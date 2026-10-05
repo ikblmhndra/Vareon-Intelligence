@@ -13,6 +13,14 @@ Isi tiap item: **apa** yang diminta, **keadaan sekarang** (fakta dari repo/stagi
 | 1 | Rebranding nama platform + UI (colorplate, typography, animation) -- **SELESAI 2026-10-02, sisa logo SVG** | aset brand | -- |
 | 2 | Rebranding template `newsletter_email` dan `cve_notification_email` -- **kode selesai 2026-10-02, verifikasi klien email belum** | (aset yang sama dengan #1) | #1 |
 | 3 | Tombol "Populate now" di CVE Tracker (semua / hanya yang baru ditambahkan) | keputusan kecil (lihat item) | -- |
+| 4 | IOC enrichment + reputasi (VirusTotal, AbuseIPDB, urlscan, Shodan/GreyNoise) | API key tiap layanan, kuota | -- |
+| 5 | Feed IOC/CVE keluar (TAXII 2.1 dan/atau CSV/JSON) + API key integrasi | target tooling (Wazuh/Splunk/Fortinet?) | #4 |
+| 6 | IOC lifecycle: first/last seen, sightings, expiry/decay | keputusan umur IOC | #4 |
+| 7 | Relevansi ke aset sendiri: ancaman x techstack, alert actor yang menarget stack kita | data aset yang rapi | -- |
+| 8 | Konektor MISP/OpenCTI (import + export) | instance target | #5 |
+| 9 | Dark web monitoring lewat sumber agregator (breach, leak site ransomware, Telegram) -- bukan crawl onion sendiri | budget, daftar domain/email eksekutif, persetujuan internal | -- |
+| 10 | Case/RFI workflow (assignment, SLA, status, audit) terhubung ke tiket CVE | alur kerja tim | -- |
+| 11 | TLP/PAP konsisten di semua objek + MFA/SSO | kebijakan TLP | #5 |
 
 ---
 
@@ -156,3 +164,109 @@ ini alih-alih petunjuk.
 > Sudah dikerjakan di sesi yang sama dan **bukan** bagian roadmap ini: teks kosong lama ("Run newCveThreat.py")
 > diganti; bug techstack bernama multi-kata (`palo alto`, `microsoft 365`, `new relic`, `harmony sase`) yang
 > CVE-nya dibuang diam-diam sudah diperbaiki -- lihat `docs/PROGRESS.md`.
+
+---
+
+# Gap fitur menuju Threat Intelligence Platform penuh (usulan 2026-10-05)
+
+Item 4-11 di bawah **usulan** (dari audit fitur 2026-10-05), belum diminta resmi: urutan = prioritas
+yang disarankan, silakan diubah. Pola gap: platform sudah kuat **mengumpulkan dan membaca** intel
+(scraper, enrichment artikel, CVE, ATT&CK, newsletter, exec dashboard), tapi lemah **bertindak dan
+terhubung** ke tooling lain. Hasil `git grep` di `apps packages scrapers`: nol hit untuk `taxii`, `misp`,
+`opencti`, `virustotal`, `sighting`, `yara|sigma`, `siem|wazuh|splunk`, `api_key`, `sso|oidc|saml|mfa`;
+`tlp` hanya di `services/stix.py` dan `services/ta_profile.py`; `webhook` 1 file. Titik sentuh yang sudah
+ada: `routers/iocs.py`, `routers/stix.py`, `routers/techstack.py`, `routers/rfi.py`/`pir.py`,
+`packages/cti-alerts` (Telegram + email), `db/models/ioc_reference.py` (`IocAllowlistEntry`).
+
+## 4. IOC enrichment + reputasi
+
+**Diminta (usulan)**: tiap IOC diperkaya otomatis (VirusTotal, AbuseIPDB, urlscan, Shodan/GreyNoise)
+dengan skor/verdict dan sumbernya tersimpan.
+**Keadaan sekarang**: IOC diekstrak dari artikel (`cti-enrich`), belum ada enrichment eksternal.
+**Yang dibutuhkan**: API key + kuota tiap layanan (simpan lewat mekanisme secret yang sama dengan
+`docs/SECRETS_ROTATION.md`), keputusan IOC mana yang di-enrich (semua vs hanya yang terkait CVE/actor
+prioritas) supaya kuota tidak habis.
+**Selesai bila**: detail IOC menampilkan verdict + tautan sumber, hasil di-cache, rate limit dihormati,
+kegagalan satu layanan tidak menggagalkan yang lain.
+
+## 5. Feed keluar + API key integrasi
+
+**Diminta (usulan)**: endpoint TAXII 2.1 dan/atau CSV/JSON dengan filter TLP, confidence, dan umur IOC,
+diakses lewat API key per service (bukan login UI), supaya Wazuh/Splunk/Fortinet menarik IOC + CVE otomatis.
+**Keadaan sekarang**: `services/stix.py` sudah membangun bundle STIX; belum ada TAXII, belum ada API key
+(auth hanya JWT user).
+**Yang dibutuhkan**: tooling target + format yang diminta, kebijakan TLP (#11), keputusan scope key
+(per client).
+**Selesai bila**: satu tooling nyata berhasil menarik feed memakai key, key bisa dicabut, tiap tarikan
+tercatat di audit log, dan hasilnya ter-scope `client_id`.
+
+## 6. IOC lifecycle
+
+**Diminta (usulan)**: first/last seen, hitungan sighting, expiry atau decay, dan false-positive/allowlist.
+**Keadaan sekarang**: allowlist sudah ada (`IocAllowlistEntry`); first/last seen, sighting, dan expiry
+**belum dicek ada/tidaknya** -- langkah pertama item ini membuktikannya di skema `iocs`.
+**Yang dibutuhkan**: keputusan umur IOC per tipe (IP vs hash vs domain).
+**Selesai bila**: IOC kedaluwarsa otomatis keluar dari feed (#5) tanpa dihapus dari riwayat.
+
+## 7. Relevansi ke aset sendiri
+
+**Diminta (usulan)**: hubungkan techstack ke ancaman -- alert "actor X menarget teknologi yang kita pakai",
+prioritas CVE berbasis exposure, ringkasan "yang relevan untuk kita" di dashboard.
+**Keadaan sekarang**: techstack, risk exposure/hosting multiplier di skor CVE (`routers/cve.py`), dan
+profil threat actor sudah ada, tapi belum ada penghubung actor -> techstack dan alert-nya.
+**Yang dibutuhkan**: techstack yang rapi dan lengkap (kualitas matching mengikuti kualitas data ini).
+**Selesai bila**: penambahan satu techstack memunculkan actor/campaign terkait, dan alert Telegram/email
+hanya terkirim untuk yang cocok dengan stack client.
+
+## 8. Konektor MISP / OpenCTI
+
+**Diminta (usulan)**: import dan export dua arah.
+**Keadaan sekarang**: belum ada. Bergantung pada #5 (format keluar sudah teruji).
+**Yang dibutuhkan**: instance MISP/OpenCTI target, atau konfirmasi tidak perlu.
+
+## 9. Dark web monitoring (lewat sumber agregator)
+
+**Diminta (usulan)**: dark web monitoring dengan empat tujuan: (1) **breach monitoring** domain dan email
+eksekutif, (2) bahan **Executive Summary**, (3) **enrich newsroom**, (4) **TA monitoring**. Mencakup juga
+niat lama item ini (typosquat/brand, sebutan di paste) sebagai fase lanjutan.
+**Keputusan desain (dari diskusi 2026-10-05)**: **bukan crawler onion sendiri**. URL onion cepat berubah
+sehingga daftar URL, captcha, dan login forum menjadi beban perawatan terus-menerus; butuh infrastruktur
+Tor terisolasi dengan risiko keamanan/hukum (konten ilegal, malware); forum butuh akun yang tidak akan
+dibuat atau ditembus captcha-nya. Ambil dari sumber yang sudah mengagregasi, jadi URL yang berubah adalah
+urusan mereka.
+**Keadaan sekarang**: tabel `ransomware_victims` + `routers/ransomware.py` + panel ransomware di newsroom
+sudah ada (ditulis scraper). Telegram baru **keluar** (`packages/cti-alerts/telegram.py` mengirim alert);
+monitoring channel Telegram **masuk** belum ada (tidak ditemukan di `scrapers/`). Breach/kredensial bocor:
+nol hit di kode.
+
+**Fase**
+1. **Breach + leak site ransomware**: HIBP (domain search) atau Intelligence X untuk domain dan email
+   eksekutif; sumber leak site ransomware tambahan (mis. API ransomware.live) ke tabel yang sudah ada.
+   Menutup tujuan 1 dan sebagian besar 4.
+2. **Telegram channel actor** (inbound) + hubungkan ke Executive Summary (2) dan newsroom (3): widget
+   "korban baru di sektor kita", "kredensial bocor 30 hari", "actor aktif"; artikel ditautkan ke korban/actor
+   yang muncul di leak site.
+3. **(opsional, bila budget ada)** layanan dark web komersial (mis. Flare, SpyCloud) sebagai pengganti
+   crawl sendiri; paste monitoring dan typosquat domain.
+
+**Yang dibutuhkan**: budget (menentukan HIBP saja yang murah dan hanya breach, atau layanan yang juga
+mengcover forum); daftar domain dan email eksekutif yang dipantau; keputusan hukum/kebijakan soal
+penyimpanan data kredensial bocor (hash saja atau plaintext; siapa boleh melihat); persetujuan internal.
+**Selesai bila**: domain yang dipantau memunculkan alert saat muncul di breach/leak baru (tanpa duplikat),
+data ter-scope `client_id`, kegagalan satu sumber tidak menghentikan yang lain, dan Executive Summary
+menampilkan ringkasan dari data ini.
+
+## 10. Case/RFI workflow
+
+**Diminta (usulan)**: assignment, SLA, status, dan jejak audit di PIR/RFI, terhubung ke tiket CVE
+(sub-view Ticketing).
+**Keadaan sekarang**: `routers/pir.py` dan `routers/rfi.py` ada; tiket CVE ada (`cve_tickets`); belum
+saling terhubung.
+**Yang dibutuhkan**: alur kerja tim (siapa menerima RFI, target SLA).
+
+## 11. TLP/PAP konsisten + MFA/SSO
+
+**Diminta (usulan)**: label TLP/PAP di semua objek dan ditegakkan saat distribusi (#5); MFA/TOTP dan SSO
+(OIDC) bila dipakai lintas tim.
+**Keadaan sekarang**: TLP hanya di STIX dan profil actor; tidak ada MFA/SSO.
+**Yang dibutuhkan**: kebijakan TLP internal, IdP yang dipakai.
