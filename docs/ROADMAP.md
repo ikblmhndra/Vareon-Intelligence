@@ -21,6 +21,7 @@ Isi tiap item: **apa** yang diminta, **keadaan sekarang** (fakta dari repo/stagi
 | 9 | Dark web monitoring lewat sumber agregator (breach, leak site ransomware, Telegram) -- bukan crawl onion sendiri | budget, daftar domain/email eksekutif, persetujuan internal | -- |
 | 10 | Case/RFI workflow (assignment, SLA, status, audit) terhubung ke tiket CVE | alur kerja tim | -- |
 | 11 | TLP/PAP konsisten di semua objek + MFA/SSO | kebijakan TLP | #5 |
+| 12 | Perbaikan prompt klasifikasi artikel berbasis audit trail (false accept / false reject) | contoh artikel yang salah diklasifikasi | audit trail `raw_enrichment` (sudah jalan 2026-10-05) |
 
 ---
 
@@ -270,3 +271,23 @@ saling terhubung.
 (OIDC) bila dipakai lintas tim.
 **Keadaan sekarang**: TLP hanya di STIX dan profil actor; tidak ada MFA/SSO.
 **Yang dibutuhkan**: kebijakan TLP internal, IdP yang dipakai.
+
+## 12. Perbaikan prompt klasifikasi berbasis audit trail
+
+**Diminta**: prompt klasifikasi perlu di-improve karena sebagian artikel yang seharusnya valid jadi tidak
+valid (ditolak) dan sebaliknya.
+**Keadaan sekarang**: prompt `_PROMPT` di `packages/cti-enrich/src/cti_enrich/stages/classify.py` (disalin
+verbatim dari sistem lama, menilai **hanya dari judul**). Sejak 2026-10-05 respons LLM mentah, model, dan
+`prompt_version` tersimpan di `raw_enrichment["classify"]` (artikel diterima dan ditolak), jadi kasus salah
+bisa dianalisis dan hasil antar revisi prompt dibandingkan. Hanya artikel yang diproses setelah deploy yang
+punya data ini. Angka kesalahan sekarang **belum diukur**.
+**Titik sentuh**: `classify.py` (`_PROMPT`, `ClassifyResult`), `routers/filtered_articles.py` (daftar
+ditolak), `tests/unit/test_llm_json_retry.py`.
+**Yang dibutuhkan**: contoh nyata yang salah di dua arah (ditolak padahal relevan, diterima padahal bukan);
+keputusan apakah klasifikasi tetap hanya dari judul atau ikut membaca ringkasan/isi (lebih akurat, tapi
+tiap artikel butuh fetch teks sebelum klasifikasi, dan itu menggeser urutan stage di `pipeline.py`).
+**Langkah**: (1) kumpulkan 30-50 contoh berlabel dari `rejected_articles` dan `articles`; (2) ukur
+precision/recall prompt sekarang sebagai baseline; (3) revisi prompt, ukur ulang di set yang sama; (4) rilis
+dengan `prompt_version` baru dan pantau rasio tolak harian.
+**Selesai bila**: ada set contoh berlabel tersimpan di repo (tests/fixtures), metrik sebelum dan sesudah
+tercatat, dan rasio false reject/false accept turun tanpa menaikkan kegagalan JSON.
