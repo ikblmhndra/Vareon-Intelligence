@@ -35,13 +35,13 @@ export default function CveTrackerPage() {
 
   return (
     <div>
-      <div className="mb-4 flex gap-1.5 border-b border-border pb-3">
+      <div className="mb-4 flex gap-1.5 border-b border-border pb-3 overflow-x-auto">
         {VIEWS.map((v) => (
           <button
             key={v.id}
             onClick={() => setView(v.id)}
             className={cn(
-              "rounded-full border px-4 py-2 text-sm font-medium transition-colors duration-200",
+              "shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-sm font-medium transition-colors duration-200",
               view === v.id
                 ? "border-primary/30 bg-primary/10 text-primary"
                 : "border-border bg-surface text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -54,13 +54,13 @@ export default function CveTrackerPage() {
 
       {view === "cves" ? (
         <div>
-          <div className="mb-3 flex gap-1.5">
+          <div className="mb-3 flex gap-1.5 overflow-x-auto">
             {CVE_SUBVIEWS.map((s) => (
               <button
                 key={s.id}
                 onClick={() => setSubview(s.id)}
                 className={cn(
-                  "rounded-full border px-4 py-2 text-sm font-medium transition-colors duration-200",
+                  "shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-sm font-medium transition-colors duration-200",
                   subview === s.id
                     ? "border-primary/30 bg-primary/10 text-primary"
                     : "border-border bg-surface text-muted-foreground hover:bg-muted hover:text-foreground",

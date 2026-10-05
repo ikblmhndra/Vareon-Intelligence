@@ -57,11 +57,11 @@ export default function NewsroomPage() {
 
   return (
     <div className="pb-10">
-      <div className="mb-4 flex gap-1.5 border-b border-border pb-3">
+      <div className="mb-4 flex gap-1.5 border-b border-border pb-3 overflow-x-auto">
         <button
           onClick={() => setView("cyber")}
           className={cn(
-            "rounded-full border px-4 py-2 text-sm font-medium transition-colors duration-200",
+            "shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-sm font-medium transition-colors duration-200",
             view === "cyber"
               ? "border-primary/30 bg-primary/10 text-primary"
               : "border-border bg-surface text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -73,7 +73,7 @@ export default function NewsroomPage() {
           <button
             onClick={() => setView("filtered")}
             className={cn(
-              "rounded-full border px-4 py-2 text-sm font-medium transition-colors duration-200",
+              "shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-sm font-medium transition-colors duration-200",
               view === "filtered"
                 ? "border-destructive/40 bg-destructive/10 text-destructive"
                 : "border-border bg-surface text-muted-foreground hover:bg-muted hover:text-foreground",

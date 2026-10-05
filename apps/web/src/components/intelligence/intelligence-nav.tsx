@@ -29,13 +29,13 @@ const NAV_ITEMS = [
 export function IntelligenceNav() {
   const pathname = usePathname();
   return (
-    <div className="mb-4 flex gap-1.5 border-b border-border pb-3">
+    <div className="mb-4 flex gap-1.5 border-b border-border pb-3 overflow-x-auto">
       {NAV_ITEMS.map((item) => (
         <Link
           key={item.href}
           href={item.href}
           className={cn(
-            "rounded-full border px-4 py-2 text-sm font-medium transition-colors duration-200",
+            "shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-sm font-medium transition-colors duration-200",
             pathname === item.href
               ? "border-primary/30 bg-primary/10 text-primary"
               : "border-border bg-surface text-muted-foreground hover:bg-muted hover:text-foreground",
