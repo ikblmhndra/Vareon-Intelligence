@@ -194,15 +194,17 @@ function AddUserForm() {
       <div className="mb-3 text-base font-semibold text-foreground">Add User</div>
       <div className="space-y-2.5">
         <div className="space-y-1.5">
-          <Label className="text-sm font-medium text-muted-foreground">Username</Label>
-          <Input value={username} onChange={(e) => setUsername(e.target.value)} className="font-mono text-xs" />
+          <Label htmlFor="add-user-username" className="text-sm font-medium text-muted-foreground">Username</Label>
+          <Input id="add-user-username" autoComplete="off" value={username} onChange={(e) => setUsername(e.target.value)} className="font-mono text-xs" />
         </div>
         <div className="space-y-1.5">
-          <Label className="text-sm font-medium text-muted-foreground">
+          <Label htmlFor="add-user-password" className="text-sm font-medium text-muted-foreground">
             Password <span className="normal-case opacity-70">({policyHint(policy)})</span>
           </Label>
           <Input
+            id="add-user-password"
             type="password"
+            autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             className="font-mono text-xs"
@@ -224,10 +226,10 @@ function AddUserForm() {
           </Select>
         </div>
         <div className="space-y-1.5">
-          <Label className="text-sm font-medium text-muted-foreground">
+          <Label htmlFor="add-user-clients" className="text-sm font-medium text-muted-foreground">
             Client(s) <span className="normal-case opacity-70">comma-separated</span>
           </Label>
-          <Input value={clientIds} onChange={(e) => setClientIds(e.target.value)} className="font-mono text-xs" />
+          <Input id="add-user-clients" value={clientIds} onChange={(e) => setClientIds(e.target.value)} className="font-mono text-xs" />
         </div>
         {error && (
           <p className="rounded-md border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
@@ -288,10 +290,10 @@ function ResetPasswordDialog({
           User: <span className="text-foreground">{target?.username}</span>
         </p>
         <div className="space-y-1.5">
-          <Label className="text-sm font-medium text-muted-foreground">
+          <Label htmlFor="reset-user-password" className="text-sm font-medium text-muted-foreground">
             New Password <span className="normal-case opacity-70">({policyHint(policy)})</span>
           </Label>
-          <Input type="password" value={pw} onChange={(e) => setPw(e.target.value)} className="font-mono text-xs" />
+          <Input id="reset-user-password" type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} className="font-mono text-xs" />
         </div>
         {error && <p className="text-xs text-destructive">{error}</p>}
         <DialogFooter>

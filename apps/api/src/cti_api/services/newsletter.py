@@ -34,10 +34,10 @@ from cti_core.db.repositories.ioc_reference import AsyncIocAllowlistRepo
 from cti_core.db.repositories.newsletter import AsyncNewsletterRepo
 from cti_core.ioc.extractor import extract_iocs
 from cti_core.llm.client import get_llm_client, parse_json_response
-from jinja2 import Environment, FileSystemLoader
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_api.services import campaign as campaign_service
+from cti_api.services.email_env import make_env
 
 _TEMPLATE_DIR = Path(__file__).parent.parent / "templates"
 _NEWSLETTER_EMAIL_TEMPLATE = "newsletter_email.html"
@@ -417,7 +417,7 @@ async def build_newsletter_context(
 
 
 def render_newsletter_html(context: dict[str, Any]) -> str:
-    env = Environment(loader=FileSystemLoader(str(_TEMPLATE_DIR)), autoescape=False)
+    env = make_env(_TEMPLATE_DIR)
     template = env.get_template(_NEWSLETTER_EMAIL_TEMPLATE)
     return template.render(platform_name=platform_name(), **context)
 

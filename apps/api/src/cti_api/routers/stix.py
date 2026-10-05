@@ -13,7 +13,11 @@ string -- penyesuaian skema yang sama kayak `iocs.py`/`newsletter.py`.
 FastAPI udah nge-reject path non-integer duluan (422 Unprocessable
 Entity), jadi try/except parse ObjectId yang ada di kode lama gak
 relevan lagi di sini; filename export juga gak perlu potong 12 karakter
-awal (`article_id[:12]`) karena int selalu pendek."""
+awal (`article_id[:12]`) karena int selalu pendek.
+
+QA 2026-10-05: catatan 'tanpa require_auth' di atas SUDAH TIDAK BERLAKU -- semua endpoint router ini
+sekarang wajib login (`require_auth`).
+"""
 
 from __future__ import annotations
 
@@ -27,7 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cti_api.deps import AuthedUser, get_db, require_auth
 from cti_api.services import stix as stix_service
 
-router = APIRouter(prefix="/api/stix", tags=["stix"])
+router = APIRouter(prefix="/api/stix", tags=["stix"], dependencies=[Depends(require_auth)])
 
 
 def _today() -> str:

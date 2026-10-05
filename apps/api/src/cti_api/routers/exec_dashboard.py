@@ -16,7 +16,9 @@ from cti_api.deps import AuthedUser, effective_client_id, get_db, request_ip, re
 from cti_api.services import exec_brief as exec_brief_service
 from cti_api.services import exec_dashboard as exec_dashboard_service
 
-router = APIRouter(prefix="/api/exec", tags=["exec-dashboard"])
+router = APIRouter(
+    prefix="/api/exec", tags=["exec-dashboard"], dependencies=[Depends(require_auth)]
+)
 
 
 @router.get("/dashboard")

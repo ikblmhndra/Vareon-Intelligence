@@ -26,6 +26,25 @@ router `changelog.py`) -- parser-nya expect header persis
   buka tab Ticket di modal CVE. Backend: `GET /api/cve/tickets`.
 
 ### Diperbaiki
+- **QA end-to-end 2026-10-05** (kode sampai UI):
+  - Artikel yang ditolak classifier gagal tersimpan: `rejected_articles` tidak punya kolom
+    `raw_enrichment` (migrasi `d7b1f3a9c2e5`).
+  - `/api/cve`: paginasi menduplikasi/menghilangkan baris (urutan tanpa tie-breaker `id`).
+  - Keamanan API: endpoint baca yang dulu terbuka (articles, filtered-articles, PIR, source
+    reliability, TA groups, STIX, exec dashboard, newsletter source-hints) sekarang wajib login
+    (kecuali `GET /api/ta/watchlist/navigator-layer`); PIR/RFI by id dicek kepemilikan client;
+    `admin` tidak bisa lagi membuat/mengubah superadmin atau memberi client di luar miliknya;
+    Jinja email/newsletter autoescape aktif + link hanya http(s); rate limit login atomik; upload
+    lockfile dibaca dengan batas; login tidak lagi membedakan user ada/tidak lewat waktu respons.
+  - Sesi/JWT: token punya `jti`+`iat` dan bisa dicabut (denylist Redis) -- logout, ganti/reset
+    password, ubah role/client mencabut sesi lama. `POST /api/auth/change-password` sekarang
+    **wajib** `current_password` (kontrak API berubah). `force_pw_change` ditegakkan di server
+    (403 `Password change required` kecuali change-password/me/logout/policy) dan web menampilkan
+    dialog ganti password yang tidak bisa ditutup. `POST /api/auth/init` memakai advisory lock.
+  - Web: redirect loop cookie expired, open redirect di login, 401 di tengah sesi, halaman
+    404/error, kartu Low di CVE, debounce search CVE, header sort & baris CVE bisa lewat keyboard,
+    label form admin, security header dasar.
+
 - **Export CVE Excel** disamain sama format logbook: kolom A "No" nomor
   urut, CVE Reported Date + Date Acknowledged jadi `YYYY-MM-DD HH:MM:SS`
   (WIB, sebelumnya tanggal doang / ISO mentah), Reported Date ambil dari

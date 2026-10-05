@@ -56,6 +56,8 @@ from cti_api.schemas.pkg_vuln import (
 )
 from cti_api.services import pkg_vuln as pkg_vuln_service
 
+_MAX_LOCKFILE_BYTES = 2_000_000
+
 router = APIRouter(prefix="/api/pkgvuln", tags=["pkgvuln"])
 
 
@@ -373,13 +375,13 @@ async def import_lockfile_endpoint(
     pom.xml, poetry.lock). Parse package dengan versi pinned, tambahin
     ke monitoring."""
     cid = effective_client_id(user, x_client_id)
-    content_bytes = await file.read()
+    content_bytes = await file.read(_MAX_LOCKFILE_BYTES + 1)  # jangan baca upload tak terbatas
+    if len(content_bytes) > _MAX_LOCKFILE_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 2 MB)")
     try:
         content = content_bytes.decode("utf-8", errors="replace")
     except Exception as e:
         raise HTTPException(status_code=400, detail="Could not decode file as UTF-8") from e
-    if len(content) > 2_000_000:
-        raise HTTPException(status_code=413, detail="File too large (max 2 MB)")
     result = await pkg_vuln_service.import_lockfile(
         session, file.filename or "unknown", content, client_id=cid
     )

@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
 
 import { AppSidebar, AppTopbar } from "@/components/app-header";
+import { ChangePasswordDialog } from "@/components/change-password-dialog";
 import { useAuth } from "@/components/providers/auth-provider";
 
 /** Shell buat SEMUA route ber-auth (9 route Fase 8) -- `proxy.ts` udah
@@ -12,17 +12,31 @@ import { useAuth } from "@/components/providers/auth-provider";
  * (baru ketauan pas `/api/auth/me` beneran dipanggil -- proxy.ts SENGAJA
  * gak decode JWT, lihat docstring situ). */
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { status } = useAuth();
-  const router = useRouter();
+  const { status, user, logout } = useAuth();
 
   useEffect(() => {
+    // Cookie yang tidak valid HARUS dihapus dulu (`logout()` = POST /api/auth/logout lalu ke
+    // /login). Cuma `router.replace("/login")` bikin loop: `proxy.ts` melempar /login + cookie
+    // apa pun balik ke /dashboard.
     if (status === "unauthenticated") {
-      router.replace("/login");
+      void logout();
     }
-  }, [status, router]);
+  }, [status, logout]);
+
+  if (status === "loading") {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
+        Loading...
+      </div>
+    );
+  }
 
   if (status !== "authenticated") {
     return null;
+  }
+
+  if (user?.force_pw_change) {
+    return <ChangePasswordDialog open forced onOpenChange={() => undefined} />;
   }
 
   return (

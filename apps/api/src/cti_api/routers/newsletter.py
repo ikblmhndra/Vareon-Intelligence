@@ -3,7 +3,11 @@ SENGAJA gak `require_auth` -- port apa adanya, sama pola asimetri
 baca-vs-tulis kayak router lain (`articles.py` dkk). Email beneran
 dikirim lewat `cti_alerts.mailer.create_graph_draft` (Graph draft
 API, BUKAN `/sendMail` -- lihat docstring modul itu), bukan SMTP (lihat
-alasan di sana juga)."""
+alasan di sana juga).
+
+QA 2026-10-05: catatan 'tanpa require_auth' di atas SUDAH TIDAK BERLAKU -- `GET /source-hints`
+sekarang wajib login (`require_auth`).
+"""
 
 from __future__ import annotations
 
@@ -78,7 +82,7 @@ async def _build_and_save(
     return context, html, newsletter_id
 
 
-@router.get("/source-hints")
+@router.get("/source-hints", dependencies=[Depends(require_auth)])
 async def source_hints(session: AsyncSession = Depends(get_db)) -> dict[str, dict[str, object]]:
     return await AsyncNewsletterRepo(session).get_all_paywall_hints()
 

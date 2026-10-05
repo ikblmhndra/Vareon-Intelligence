@@ -43,8 +43,9 @@ from cti_alerts.mailer import create_graph_draft
 from cti_core.config import platform_name
 from cti_core.db.repositories.cve import AsyncCveTrackerRepo
 from cti_core.llm.client import get_llm_client, parse_json_response
-from jinja2 import Environment, FileSystemLoader
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from cti_api.services.email_env import make_env
 
 _TEMPLATE_DIR = Path(__file__).parent.parent / "templates"
 _TEMPLATE_FILE = "cve_notification_email.html"
@@ -155,7 +156,7 @@ Wrap important phrases in <strong> tags. Return only the HTML fragment, no surro
 
 
 def _render_email(context: dict[str, Any]) -> str:
-    env = Environment(loader=FileSystemLoader(str(_TEMPLATE_DIR)), autoescape=False)
+    env = make_env(_TEMPLATE_DIR)
     return env.get_template(_TEMPLATE_FILE).render(platform_name=platform_name(), **context)
 
 

@@ -30,14 +30,14 @@ export function AttackDbView() {
     <div>
       <SyncStatusCards />
 
-      <div className="mb-4 flex gap-1.5">
+      <div className="mb-4 flex gap-1.5 overflow-x-auto">
         {BROWSE_TABS.map((t) => (
           <button
             key={t.value}
             type="button"
             onClick={() => setTab(t.value)}
             className={cn(
-              "rounded-full border px-4 py-2 text-sm font-medium transition-colors duration-200",
+              "shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-sm font-medium transition-colors duration-200",
               tab === t.value
                 ? "border-primary/30 bg-primary/10 text-primary"
                 : "border-border bg-surface text-muted-foreground hover:bg-muted hover:text-foreground",

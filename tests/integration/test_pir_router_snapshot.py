@@ -74,10 +74,13 @@ async def _seed_pir(session: AsyncSession) -> int:
 
 
 async def test_pir_options(
-    api_client: AsyncClient, api_session: AsyncSession, snapshot: SnapshotAssertion
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    snapshot: SnapshotAssertion,
+    auth_header: Callable[..., dict[str, str]],
 ) -> None:
     await _seed_article(api_session)
-    resp = await api_client.get("/api/pir/options")
+    resp = await api_client.get("/api/pir/options", headers=auth_header())
     assert resp.status_code == 200
     assert resp.json() == snapshot
 
@@ -96,21 +99,29 @@ async def test_get_pirs(
 
 
 async def test_pir_articles(
-    api_client: AsyncClient, api_session: AsyncSession, snapshot: SnapshotAssertion
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    snapshot: SnapshotAssertion,
+    auth_header: Callable[..., dict[str, str]],
 ) -> None:
     await _seed_article(api_session)
     pir_id = await _seed_pir(api_session)
-    resp = await api_client.get(f"/api/pir/{pir_id}/articles")
+    resp = await api_client.get(f"/api/pir/{pir_id}/articles", headers=auth_header())
     assert resp.status_code == 200
     assert resp.json() == snapshot(matcher=_NORMALIZE)
 
 
 async def test_pir_get_note_empty(
-    api_client: AsyncClient, api_session: AsyncSession, snapshot: SnapshotAssertion
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    snapshot: SnapshotAssertion,
+    auth_header: Callable[..., dict[str, str]],
 ) -> None:
     pir_id = await _seed_pir(api_session)
     resp = await api_client.get(
-        f"/api/pir/{pir_id}/note", params={"url": "https://example.com/apt41-recent"}
+        f"/api/pir/{pir_id}/note",
+        params={"url": "https://example.com/apt41-recent"},
+        headers=auth_header(),
     )
     assert resp.status_code == 200
     assert resp.json() == snapshot(matcher=_NORMALIZE)
@@ -137,21 +148,27 @@ async def test_pir_save_note(
 
 
 async def test_pir_export(
-    api_client: AsyncClient, api_session: AsyncSession, snapshot: SnapshotAssertion
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    snapshot: SnapshotAssertion,
+    auth_header: Callable[..., dict[str, str]],
 ) -> None:
     await _seed_article(api_session)
     pir_id = await _seed_pir(api_session)
-    resp = await api_client.get(f"/api/pir/{pir_id}/export")
+    resp = await api_client.get(f"/api/pir/{pir_id}/export", headers=auth_header())
     assert resp.status_code == 200
     assert resp.json() == snapshot(matcher=_NORMALIZE)
 
 
 async def test_pir_export_docx(
-    api_client: AsyncClient, api_session: AsyncSession, snapshot: SnapshotAssertion
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    snapshot: SnapshotAssertion,
+    auth_header: Callable[..., dict[str, str]],
 ) -> None:
     await _seed_article(api_session)
     pir_id = await _seed_pir(api_session)
-    resp = await api_client.get(f"/api/pir/{pir_id}/export/docx")
+    resp = await api_client.get(f"/api/pir/{pir_id}/export/docx", headers=auth_header())
     assert resp.status_code == 200
     assert resp.headers["content-type"] == (
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document"

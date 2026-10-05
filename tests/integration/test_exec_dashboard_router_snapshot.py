@@ -23,9 +23,12 @@ _NORMALIZE = path_type({r"(.*\.)?generated_at$": (str,)}, regex=True, strict=Fal
 
 
 async def test_dashboard_v1(
-    api_client: AsyncClient, api_session: AsyncSession, snapshot: SnapshotAssertion
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    snapshot: SnapshotAssertion,
+    auth_header: Callable[..., dict[str, str]],
 ) -> None:
-    resp = await api_client.get("/api/exec/dashboard")
+    resp = await api_client.get("/api/exec/dashboard", headers=auth_header())
     assert resp.status_code == 200
     assert resp.json() == snapshot
 

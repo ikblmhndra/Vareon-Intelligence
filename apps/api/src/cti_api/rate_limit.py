@@ -18,10 +18,14 @@ from redis.asyncio import Redis
 async def is_rate_limited(
     redis: Redis, key: str, *, max_requests: int = 10, window_seconds: int = 60
 ) -> bool:
-    count = cast(int, await redis.incr(f"ratelimit:{key}"))
-    if count == 1:
-        await redis.expire(f"ratelimit:{key}", window_seconds)
-    return count > max_requests
+    # SET NX EX + INCR dalam satu transaksi: key selalu punya TTL, tidak bisa terkunci permanen
+    # kalau proses mati di antara dua perintah.
+    name = f"ratelimit:{key}"
+    async with redis.pipeline(transaction=True) as pipe:
+        pipe.set(name, 0, ex=window_seconds, nx=True)
+        pipe.incr(name)
+        results = await pipe.execute()
+    return cast(int, results[-1]) > max_requests
 
 
 @lru_cache(maxsize=1)

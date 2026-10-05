@@ -483,8 +483,12 @@ class AsyncCveTrackerRepo:
 
         order_col = _SORT_FIELDS.get(sort_by, CveTracker.published)
         order = order_col.desc() if sort_dir == "desc" else order_col.asc()
+        # `CveTracker.id` = tie-breaker: tanpa ini baris ber-nilai sama (mis. published) bisa
+        # muncul di dua halaman dan sebagian lain tidak pernah muncul.
         list_stmt = (
-            base.order_by(order.nulls_last()).offset((page - 1) * page_size).limit(page_size)
+            base.order_by(order.nulls_last(), CveTracker.id)
+            .offset((page - 1) * page_size)
+            .limit(page_size)
         )
         result = await self.session.execute(list_stmt)
         return list(result.scalars().all()), total
