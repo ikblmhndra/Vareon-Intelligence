@@ -216,6 +216,9 @@ class _FakeRedis:
         self._counts[key] = int(value)
         return True
 
+    async def mget(self, *keys: str) -> list[int | None]:
+        return [self._counts.get(k) for k in keys]
+
     def pipeline(self, transaction: bool = True) -> _FakePipeline:
         return _FakePipeline(self)
 

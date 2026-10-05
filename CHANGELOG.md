@@ -36,6 +36,11 @@ router `changelog.py`) -- parser-nya expect header persis
     `admin` tidak bisa lagi membuat/mengubah superadmin atau memberi client di luar miliknya;
     Jinja email/newsletter autoescape aktif + link hanya http(s); rate limit login atomik; upload
     lockfile dibaca dengan batas; login tidak lagi membedakan user ada/tidak lewat waktu respons.
+  - Sesi/JWT: token punya `jti`+`iat` dan bisa dicabut (denylist Redis) -- logout, ganti/reset
+    password, ubah role/client mencabut sesi lama. `POST /api/auth/change-password` sekarang
+    **wajib** `current_password` (kontrak API berubah). `force_pw_change` ditegakkan di server
+    (403 `Password change required` kecuali change-password/me/logout/policy) dan web menampilkan
+    dialog ganti password yang tidak bisa ditutup. `POST /api/auth/init` memakai advisory lock.
   - Web: redirect loop cookie expired, open redirect di login, 401 di tengah sesi, halaman
     404/error, kartu Low di CVE, debounce search CVE, header sort & baris CVE bisa lewat keyboard,
     label form admin, security header dasar.

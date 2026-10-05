@@ -99,6 +99,7 @@
       'default': list([
       ]),
     }),
+    'force_pw_change': False,
     'role': 'superadmin',
     'username': 'tester',
   })

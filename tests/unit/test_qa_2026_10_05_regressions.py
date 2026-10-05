@@ -146,3 +146,79 @@ async def test_rate_limit_atomik_dan_memblokir_setelah_batas():
     r = _Redis()
     hasil = [await is_rate_limited(r, "k", max_requests=3, window_seconds=60) for _ in range(5)]
     assert hasil == [False, False, False, True, True]
+
+
+class _KvRedis:
+    """Redis minimal untuk pencabutan token: set/mget."""
+
+    def __init__(self):
+        self.kv = {}
+
+    async def set(self, key, value, ex=None, nx=False):
+        self.kv[key] = value
+        return True
+
+    async def mget(self, *keys):
+        return [self.kv.get(k) for k in keys]
+
+
+def _auth_app(monkeypatch, redis):
+    from cti_core.config import get_settings
+    from fastapi import Depends, FastAPI
+
+    for key, value in {
+        "DATABASE__URL": "postgresql+asyncpg://x:x@localhost/x",
+        "DATABASE__SYNC_URL": "postgresql+psycopg://x:x@localhost/x",
+        "AUTH__JWT_SECRET": "unit-test-jwt-secret",
+        "AUTH__SESSION_SECRET_KEY": "unit-test-session-secret",
+    }.items():
+        monkeypatch.setenv(key, value)
+    get_settings.cache_clear()
+
+    from cti_api.deps import get_redis, require_auth
+
+    app = FastAPI()
+
+    @app.get("/api/x")
+    async def x(user=Depends(require_auth)):  # noqa: B008
+        return {"u": user["username"]}
+
+    @app.get("/api/auth/me")
+    async def me(user=Depends(require_auth)):  # noqa: B008
+        return {"u": user["username"], "fpc": user["force_pw_change"]}
+
+    app.dependency_overrides[get_redis] = lambda: redis
+    return app
+
+
+def test_token_dicabut_setelah_revoke_user(monkeypatch):
+    import asyncio
+    import time
+
+    from cti_api.security import create_token
+    from cti_api.token_revocation import revoke_user_tokens
+    from fastapi.testclient import TestClient
+
+    redis = _KvRedis()
+    client = TestClient(_auth_app(monkeypatch, redis))
+    token = create_token("alice", "analyst")
+    headers = {"Authorization": f"Bearer {token}"}
+    assert client.get("/api/x", headers=headers).status_code == 200
+    asyncio.run(revoke_user_tokens(redis, "alice"))
+    assert client.get("/api/x", headers=headers).status_code == 401
+    time.sleep(1.1)  # token baru (iat lebih baru dari waktu pencabutan) harus diterima
+    fresh = {"Authorization": f"Bearer {create_token('alice', 'analyst')}"}
+    assert client.get("/api/x", headers=fresh).status_code == 200
+
+
+def test_force_pw_change_hanya_boleh_endpoint_tertentu(monkeypatch):
+    from cti_api.security import create_token
+    from fastapi.testclient import TestClient
+
+    client = TestClient(_auth_app(monkeypatch, _KvRedis()))
+    headers = {"Authorization": f"Bearer {create_token('bob', 'analyst', force_pw_change=True)}"}
+    blocked = client.get("/api/x", headers=headers)
+    assert blocked.status_code == 403
+    assert blocked.json()["detail"] == "Password change required"
+    ok = client.get("/api/auth/me", headers=headers)
+    assert ok.status_code == 200 and ok.json()["fpc"] is True

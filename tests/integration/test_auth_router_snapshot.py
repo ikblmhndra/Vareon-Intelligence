@@ -122,7 +122,7 @@ async def test_change_password(
     resp = await api_client.post(
         "/api/auth/change-password",
         headers=auth_header(username="analyst1"),
-        json={"new_password": "NewP@ssw0rd456"},
+        json={"current_password": _PASSWORD, "new_password": "NewP@ssw0rd456"},
     )
     assert resp.status_code == 200
     assert resp.json() == snapshot

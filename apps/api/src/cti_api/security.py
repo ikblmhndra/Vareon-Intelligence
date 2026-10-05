@@ -8,6 +8,7 @@ gantiin `RuntimeError` manual yang dulu ada di `main.py:lifespan()`."""
 from __future__ import annotations
 
 import datetime
+import uuid
 from typing import Any
 
 import bcrypt
@@ -23,17 +24,27 @@ def verify_password(plain: str, hashed: str) -> bool:
     return bcrypt.checkpw(plain.encode(), hashed.encode())
 
 
-def create_token(username: str, role: str, client_ids: list[str] | None = None) -> str:
+def create_token(
+    username: str,
+    role: str,
+    client_ids: list[str] | None = None,
+    *,
+    force_pw_change: bool = False,
+) -> str:
+    """`jti` + `iat` dipakai pencabutan token (`token_revocation`); `fpc` = user wajib ganti
+    password dulu (`deps.get_current_user` menolak endpoint lain selama true)."""
     settings = get_settings().auth
-    expire = datetime.datetime.now(datetime.UTC) + datetime.timedelta(
-        minutes=settings.jwt_expire_min
-    )
+    now = datetime.datetime.now(datetime.UTC)
+    expire = now + datetime.timedelta(minutes=settings.jwt_expire_min)
     return str(
         jwt.encode(
             {
                 "sub": username,
                 "role": role,
                 "client_ids": client_ids or ["default"],
+                "fpc": force_pw_change,
+                "jti": uuid.uuid4().hex,
+                "iat": int(now.timestamp()),
                 "exp": expire,
             },
             settings.jwt_secret,

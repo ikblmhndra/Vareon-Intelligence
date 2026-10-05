@@ -10,6 +10,8 @@ export interface AuthUser {
   client_ids: string[];
   client_countries: string[];
   clients_map: Record<string, string[]>;
+  /** Wajib ganti password dulu: server menolak semua endpoint lain sampai selesai. */
+  force_pw_change?: boolean;
 }
 
 interface AuthContextValue {

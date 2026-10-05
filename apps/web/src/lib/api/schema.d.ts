@@ -3138,6 +3138,8 @@ export interface components {
         };
         /** ChangePasswordRequest */
         ChangePasswordRequest: {
+            /** Current Password */
+            current_password: string;
             /** New Password */
             new_password: string;
         };

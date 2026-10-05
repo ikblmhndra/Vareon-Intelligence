@@ -278,6 +278,11 @@
       },
       "ChangePasswordRequest": {
         "properties": {
+          "current_password": {
+            "minLength": 1,
+            "title": "Current Password",
+            "type": "string"
+          },
           "new_password": {
             "minLength": 1,
             "title": "New Password",
@@ -285,6 +290,7 @@
           }
         },
         "required": [
+          "current_password",
           "new_password"
         ],
         "title": "ChangePasswordRequest",

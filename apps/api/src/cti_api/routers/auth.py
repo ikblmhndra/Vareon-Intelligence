@@ -14,8 +14,9 @@ from cti_core.db.repositories.auth import (
     AsyncRoleRepo,
     AsyncUserRepo,
 )
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
 from redis.asyncio import Redis
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_api.deps import AuthedUser, get_db, get_redis, request_ip, require_admin, require_auth
@@ -30,12 +31,14 @@ from cti_api.schemas.auth import (
     UserCreate,
     UserRoleUpdate,
 )
-from cti_api.security import create_token, hash_password, verify_password
+from cti_api.security import create_token, decode_token, hash_password, verify_password
 from cti_api.services import policy as policy_service
+from cti_api.token_revocation import revoke_token, revoke_user_tokens
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 _DUMMY_HASH = hash_password("dummy-password-for-timing")
+_INIT_LOCK_KEY = 7_261_001  # pg_advisory_xact_lock untuk bootstrap /init
 
 
 def _pw_error(errors: list[str]) -> HTTPException:
@@ -105,7 +108,9 @@ async def login(
     if not verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     client_ids = _user_client_ids(user)
-    token = create_token(user.username, user.role_name, client_ids=client_ids)
+    token = create_token(
+        user.username, user.role_name, client_ids=client_ids, force_pw_change=user.force_pw_change
+    )
     client_doc = await AsyncClientRepo(session).get(client_ids[0]) if client_ids else None
     client_countries = [c.country_code for c in client_doc.countries] if client_doc else []
     await AsyncAuditLogRepo(session).write(username=user.username, action="login", ip_address=ip)
@@ -132,8 +137,16 @@ async def login(
 
 
 @router.post("/logout")
-async def logout(response: Response, _user: AuthedUser = Depends(require_auth)) -> dict[str, bool]:
+async def logout(
+    response: Response,
+    authorization: str | None = Header(None),
+    redis: Redis = Depends(get_redis),
+    _user: AuthedUser = Depends(require_auth),
+) -> dict[str, bool]:
     response.delete_cookie(key="cti_auth", path="/")
+    # token yang sudah lolos `require_auth` pasti ter-decode; cabut supaya tidak bisa dipakai lagi
+    if authorization:
+        await revoke_token(redis, decode_token(authorization.split(" ", 1)[1]))
     return {"ok": True}
 
 
@@ -142,8 +155,16 @@ async def change_password(
     body: ChangePasswordRequest,
     request: Request,
     session: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(get_redis),
     user: AuthedUser = Depends(require_auth),
 ) -> dict[str, bool]:
+    current = await AsyncUserRepo(session).get_by_username(user["username"])
+    if current is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not current.password_hash or not verify_password(
+        body.current_password, current.password_hash
+    ):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
     policy = await policy_service.get_policy(session)
     errors = policy_service.validate_password(body.new_password, policy)
     if errors:
@@ -157,6 +178,7 @@ async def change_password(
         username=user["username"], action="change_password", ip_address=request_ip(request)
     )
     await session.commit()
+    await revoke_user_tokens(redis, user["username"])  # sesi lama (termasuk ini) harus login ulang
     return {"ok": True}
 
 
@@ -165,6 +187,8 @@ async def init_admin(
     body: UserCreate, session: AsyncSession = Depends(get_db)
 ) -> dict[str, object]:
     """Bootstrap: bikin superadmin pertama. Gagal kalau udah ada user."""
+    # kunci transaksi: dua /init bersamaan tidak bisa sama-sama melihat count()==0
+    await session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": _INIT_LOCK_KEY})
     user_repo = AsyncUserRepo(session)
     if await user_repo.count() > 0:
         raise HTTPException(status_code=409, detail="Users already exist — use /api/auth/users")
@@ -280,6 +304,7 @@ async def reset_user_password(
     body: PasswordResetRequest,
     request: Request,
     session: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(get_redis),
     admin: AuthedUser = Depends(require_admin),
 ) -> dict[str, bool]:
     await _forbid_admin_touching_superadmin(session, admin, username)
@@ -303,6 +328,7 @@ async def reset_user_password(
         ip_address=request_ip(request),
     )
     await session.commit()
+    await revoke_user_tokens(redis, username)
     return {"ok": True}
 
 
@@ -312,6 +338,7 @@ async def update_user_client_list(
     body: UserClientsUpdate,
     request: Request,
     session: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(get_redis),
     admin: AuthedUser = Depends(require_admin),
 ) -> dict[str, object]:
     if not body.client_ids:
@@ -329,6 +356,7 @@ async def update_user_client_list(
         ip_address=request_ip(request),
     )
     await session.commit()
+    await revoke_user_tokens(redis, username)
     return {"ok": True, "client_ids": body.client_ids}
 
 
@@ -338,6 +366,7 @@ async def update_user_role_endpoint(
     body: UserRoleUpdate,
     request: Request,
     session: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(get_redis),
     admin: AuthedUser = Depends(require_admin),
 ) -> dict[str, object]:
     if not await AsyncRoleRepo(session).exists(body.role):
@@ -356,6 +385,7 @@ async def update_user_role_endpoint(
         ip_address=request_ip(request),
     )
     await session.commit()
+    await revoke_user_tokens(redis, username)
     return {"ok": True, "role": body.role}
 
 
