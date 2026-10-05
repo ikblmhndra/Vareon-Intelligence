@@ -19,6 +19,7 @@ from cti_api.security import decode_token
 __all__ = [
     "AuthedUser",
     "effective_client_id",
+    "ensure_client_access",
     "get_current_user",
     "get_db",
     "get_redis",
@@ -54,8 +55,11 @@ async def get_current_user(authorization: str | None = Header(None)) -> AuthedUs
         raise HTTPException(status_code=401, detail="Invalid or expired token") from exc
     raw = payload.get("client_ids")
     client_ids = raw if isinstance(raw, list) and raw else [payload.get("client_id", "default")]
+    username = payload.get("sub")
+    if not isinstance(username, str) or not username:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
     return AuthedUser(
-        username=payload["sub"],
+        username=username,
         role=payload.get("role", "analyst"),
         client_ids=client_ids,
     )
@@ -87,6 +91,14 @@ def effective_client_id(user: AuthedUser, x_client_id: str | None) -> str:
     if user["role"] == "superadmin":
         return x_client_id
     return x_client_id if x_client_id in client_ids else client_ids[0]
+
+
+def ensure_client_access(user: AuthedUser, client_id: str) -> None:
+    """Tolak (404, bukan 403: tidak membocorkan keberadaan) akses ke objek milik client lain."""
+    if user["role"] == "superadmin":
+        return
+    if client_id not in user.get("client_ids", []):
+        raise HTTPException(status_code=404, detail="Not found")
 
 
 def request_ip(request: Request) -> str:

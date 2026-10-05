@@ -73,7 +73,7 @@
     </div>
     {% set h = highlight %}
     <div class="highlight-card">
-      <div class="art-title"><a href="{{ h.url }}" target="_blank">{{ h.title }}</a></div>
+      <div class="art-title"><a href="{{ h.url | http_url }}" target="_blank">{{ h.title }}</a></div>
       <div class="art-meta">
         {{ h.source }} &nbsp;·&nbsp; {{ h.posted_on }}
         {% if h.news_type %}&nbsp;·&nbsp; {{ h.news_type }}{% endif %}
@@ -107,7 +107,7 @@
     </div>
     {% for art in apac %}
     <div class="article-card">
-      <div class="art-title"><a href="{{ art.url }}" target="_blank">{{ art.title }}</a></div>
+      <div class="art-title"><a href="{{ art.url | http_url }}" target="_blank">{{ art.title }}</a></div>
       <div class="art-meta">{{ art.source }} &nbsp;·&nbsp; {{ art.posted_on }}{% if art.news_type %} &nbsp;·&nbsp; {{ art.news_type }}{% endif %}</div>
       {% if art.key_points %}
       <ul class="key-points">{% for p in art.key_points %}<li>{{ p }}</li>{% endfor %}</ul>
@@ -137,7 +137,7 @@
     </div>
     {% for art in global_news %}
     <div class="article-card">
-      <div class="art-title"><a href="{{ art.url }}" target="_blank">{{ art.title }}</a></div>
+      <div class="art-title"><a href="{{ art.url | http_url }}" target="_blank">{{ art.title }}</a></div>
       <div class="art-meta">{{ art.source }} &nbsp;·&nbsp; {{ art.posted_on }}{% if art.news_type %} &nbsp;·&nbsp; {{ art.news_type }}{% endif %}</div>
       {% if art.key_points %}
       <ul class="key-points">{% for p in art.key_points %}<li>{{ p }}</li>{% endfor %}</ul>
@@ -167,7 +167,7 @@
     </div>
     {% for art in indonesia %}
     <div class="article-card">
-      <div class="art-title"><a href="{{ art.url }}" target="_blank">{{ art.title }}</a></div>
+      <div class="art-title"><a href="{{ art.url | http_url }}" target="_blank">{{ art.title }}</a></div>
       <div class="art-meta">{{ art.source }} &nbsp;·&nbsp; {{ art.posted_on }}{% if art.news_type %} &nbsp;·&nbsp; {{ art.news_type }}{% endif %}</div>
       {% if art.key_points %}
       <ul class="key-points">{% for p in art.key_points %}<li>{{ p }}</li>{% endfor %}</ul>

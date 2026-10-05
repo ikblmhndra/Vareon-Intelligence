@@ -35,6 +35,8 @@ from cti_api.services import policy as policy_service
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
+_DUMMY_HASH = hash_password("dummy-password-for-timing")
+
 
 def _pw_error(errors: list[str]) -> HTTPException:
     return HTTPException(status_code=422, detail=f"Password missing: {', '.join(errors)}")
@@ -94,6 +96,7 @@ async def login(
     user_repo = AsyncUserRepo(session)
     user = await user_repo.get_by_username(body.username)
     if not user:
+        verify_password(body.password, _DUMMY_HASH)  # samakan waktu respons dgn user yang ada
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if not user.password_hash:
         raise HTTPException(
@@ -213,6 +216,28 @@ async def get_users(
     ]
 
 
+async def _forbid_admin_touching_superadmin(
+    session: AsyncSession, admin: AuthedUser, username: str
+) -> None:
+    """Admin (non-superadmin) tidak boleh mengubah akun superadmin."""
+    if admin["role"] == "superadmin":
+        return
+    target = await AsyncUserRepo(session).get_by_username(username)
+    if target is not None and target.role_name == "superadmin":
+        raise HTTPException(status_code=403, detail="Only superadmin can modify a superadmin")
+
+
+def _forbid_foreign_clients(admin: AuthedUser, client_ids: list[str]) -> None:
+    """Admin (non-superadmin) hanya boleh memberi akses ke client yang dia sendiri punya."""
+    if admin["role"] == "superadmin":
+        return
+    outside = sorted(set(client_ids) - set(admin["client_ids"]))
+    if outside:
+        raise HTTPException(
+            status_code=403, detail=f"Cannot grant access to client(s) you do not have: {outside}"
+        )
+
+
 @router.post("/users")
 async def add_user(
     body: UserCreate,
@@ -226,6 +251,9 @@ async def add_user(
         raise _pw_error(errors)
     if not await AsyncRoleRepo(session).exists(body.role):
         raise HTTPException(status_code=422, detail=f"Role '{body.role}' does not exist")
+    if body.role == "superadmin" and admin["role"] != "superadmin":
+        raise HTTPException(status_code=403, detail="Only superadmin can grant superadmin role")
+    _forbid_foreign_clients(admin, body.client_ids)
     user_repo = AsyncUserRepo(session)
     if await user_repo.get_by_username(body.username):
         raise HTTPException(status_code=409, detail="Username already exists")
@@ -254,6 +282,7 @@ async def reset_user_password(
     session: AsyncSession = Depends(get_db),
     admin: AuthedUser = Depends(require_admin),
 ) -> dict[str, bool]:
+    await _forbid_admin_touching_superadmin(session, admin, username)
     user_repo = AsyncUserRepo(session)
     target = await user_repo.get_by_username(username)
     if target and not target.password_hash:
@@ -287,6 +316,8 @@ async def update_user_client_list(
 ) -> dict[str, object]:
     if not body.client_ids:
         raise HTTPException(status_code=400, detail="client_ids must not be empty")
+    await _forbid_admin_touching_superadmin(session, admin, username)
+    _forbid_foreign_clients(admin, body.client_ids)
     ok = await AsyncUserRepo(session).update_client_ids(username, body.client_ids)
     if not ok:
         raise HTTPException(status_code=404, detail="User not found")
@@ -313,6 +344,7 @@ async def update_user_role_endpoint(
         raise HTTPException(status_code=422, detail=f"Role '{body.role}' does not exist")
     if body.role == "superadmin" and admin["role"] != "superadmin":
         raise HTTPException(status_code=403, detail="Only superadmin can grant superadmin role")
+    await _forbid_admin_touching_superadmin(session, admin, username)
     ok = await AsyncUserRepo(session).update_role(username, body.role)
     if not ok:
         raise HTTPException(status_code=404, detail="User not found")

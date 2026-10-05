@@ -288,7 +288,9 @@ async def test_list_for_export_respects_exclude_and_ack_filter(
     assert [c.cve_id for c in result] == ["CVE-2026-0001"]
 
 
-async def test_ticket_list_with_cve_filters_and_scopes_client(async_db_session: AsyncSession) -> None:
+async def test_ticket_list_with_cve_filters_and_scopes_client(
+    async_db_session: AsyncSession,
+) -> None:
     """`list_with_cve` -- view Ticketing: join ke CVE, filter status/search,
     scope per-client."""
     await _ensure_clients(async_db_session)

@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import pathlib
 from collections.abc import AsyncIterator, Callable, Iterator
+from typing import Any
 
 import httpx
 import pytest
@@ -208,6 +209,38 @@ class _FakeRedis:
 
     async def expire(self, key: str, seconds: int) -> bool:
         return True
+
+    async def set(self, key: str, value: int, *, ex: int | None = None, nx: bool = False) -> bool:
+        if nx and key in self._counts:
+            return False
+        self._counts[key] = int(value)
+        return True
+
+    def pipeline(self, transaction: bool = True) -> _FakePipeline:
+        return _FakePipeline(self)
+
+
+class _FakePipeline:
+    """`async with redis.pipeline()`: antrikan `set`/`incr`, `execute()` jalankan berurutan."""
+
+    def __init__(self, redis: _FakeRedis) -> None:
+        self._redis = redis
+        self._ops: list[tuple[str, tuple[Any, ...], dict[str, Any]]] = []
+
+    async def __aenter__(self) -> _FakePipeline:
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        return None
+
+    def set(self, *args: Any, **kwargs: Any) -> None:
+        self._ops.append(("set", args, kwargs))
+
+    def incr(self, *args: Any, **kwargs: Any) -> None:
+        self._ops.append(("incr", args, kwargs))
+
+    async def execute(self) -> list[Any]:
+        return [await getattr(self._redis, name)(*a, **kw) for name, a, kw in self._ops]
 
 
 @pytest.fixture

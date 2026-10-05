@@ -69,43 +69,58 @@ async def _seed_one_article(session: AsyncSession) -> int:
 
 
 async def test_article_dedup_groups(
-    api_client: AsyncClient, api_session: AsyncSession, snapshot: SnapshotAssertion
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    snapshot: SnapshotAssertion,
+    auth_header: Callable[..., dict[str, str]],
 ) -> None:
     await _seed_dedup_articles(api_session)
-    resp = await api_client.get("/api/articles/dedup-groups")
+    resp = await api_client.get("/api/articles/dedup-groups", headers=auth_header())
     assert resp.status_code == 200
     assert resp.json() == snapshot(matcher=_NORMALIZE)
 
 
 async def test_list_articles(
-    api_client: AsyncClient, api_session: AsyncSession, snapshot: SnapshotAssertion
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    snapshot: SnapshotAssertion,
+    auth_header: Callable[..., dict[str, str]],
 ) -> None:
     await _seed_one_article(api_session)
-    resp = await api_client.get("/api/articles")
+    resp = await api_client.get("/api/articles", headers=auth_header())
     assert resp.status_code == 200
     assert resp.json() == snapshot(matcher=_NORMALIZE)
 
 
 async def test_list_articles_dedup(
-    api_client: AsyncClient, api_session: AsyncSession, snapshot: SnapshotAssertion
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    snapshot: SnapshotAssertion,
+    auth_header: Callable[..., dict[str, str]],
 ) -> None:
     await _seed_dedup_articles(api_session)
-    resp = await api_client.get("/api/articles", params={"dedup": "true"})
+    resp = await api_client.get("/api/articles", params={"dedup": "true"}, headers=auth_header())
     assert resp.status_code == 200
     assert resp.json() == snapshot(matcher=_NORMALIZE)
 
 
 async def test_list_filters(
-    api_client: AsyncClient, api_session: AsyncSession, snapshot: SnapshotAssertion
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    snapshot: SnapshotAssertion,
+    auth_header: Callable[..., dict[str, str]],
 ) -> None:
     await _seed_one_article(api_session)
-    resp = await api_client.get("/api/filters")
+    resp = await api_client.get("/api/filters", headers=auth_header())
     assert resp.status_code == 200
     assert resp.json() == snapshot
 
 
 async def test_dashboard_stats(
-    api_client: AsyncClient, api_session: AsyncSession, snapshot: SnapshotAssertion
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    snapshot: SnapshotAssertion,
+    auth_header: Callable[..., dict[str, str]],
 ) -> None:
     from cti_api.services import article_dashboard
 
@@ -114,7 +129,7 @@ async def test_dashboard_stats(
     # TTL, key dari `days`/tanggal) -- di-clear biar gak numpang hasil
     # basi dari test lain (pola sama kayak `cluster_service._CACHE`).
     article_dashboard._dashboard_cache.clear()
-    resp = await api_client.get("/api/dashboard")
+    resp = await api_client.get("/api/dashboard", headers=auth_header())
     assert resp.status_code == 200
     assert resp.json() == snapshot
 

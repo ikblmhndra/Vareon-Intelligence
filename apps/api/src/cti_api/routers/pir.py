@@ -10,7 +10,11 @@ adanya dari kode lama, BUKAN keputusan baru di sini:
    gak -- lihat docstring `cti_core.db.repositories.pir` buat detail.
 
 Alert otomatis PIR (`check_new_articles_vs_pirs` lama) BELUM diport --
-itu Fase 7.8 (Celery beat), bukan router CRUD ini."""
+itu Fase 7.8 (Celery beat), bukan router CRUD ini.
+
+QA 2026-10-05: catatan 'tanpa require_auth' di atas SUDAH TIDAK BERLAKU -- semua endpoint router ini
+sekarang wajib login (`require_auth`).
+"""
 
 from __future__ import annotations
 
@@ -27,7 +31,14 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_api.deps import AuthedUser, effective_client_id, get_db, request_ip, require_auth
+from cti_api.deps import (
+    AuthedUser,
+    effective_client_id,
+    ensure_client_access,
+    get_db,
+    request_ip,
+    require_auth,
+)
 from cti_api.schemas.pir import (
     PIRArticleListResponse,
     PIRArticleOut,
@@ -41,7 +52,7 @@ from cti_api.schemas.pir import (
 )
 from cti_api.services.pir_docx import build_docx, export_filename
 
-router = APIRouter(prefix="/api/pir", tags=["pir"])
+router = APIRouter(prefix="/api/pir", tags=["pir"], dependencies=[Depends(require_auth)])
 
 
 def _to_out(pir: PIRRequirement, total: int, last_match: str | None, recent: int) -> PIROut:
@@ -100,6 +111,15 @@ def _article_export_dict(article: Article, note: PIRNote | None) -> dict[str, An
     }
 
 
+async def _get_pir_or_404(repo: AsyncPIRRepo, pir_id: int, user: AuthedUser) -> PIRRequirement:
+    """PIR by id, hanya jika milik client user (superadmin: semua). Selain itu 404."""
+    pir = await repo.get_by_id(pir_id)
+    if pir is None:
+        raise HTTPException(status_code=404, detail="PIR not found")
+    ensure_client_access(user, pir.client_id)
+    return pir
+
+
 @router.get("/options", response_model=PIROptions)
 async def pir_options(session: AsyncSession = Depends(get_db)) -> PIROptions:
     options = await AsyncPIRRepo(session).get_options(AsyncArticleRepo(session))
@@ -123,11 +143,10 @@ async def pir_articles(
     page: int = Query(1, ge=1),
     page_size: int = Query(15, ge=1, le=50),
     session: AsyncSession = Depends(get_db),
+    user: AuthedUser = Depends(require_auth),
 ) -> PIRArticleListResponse:
     repo = AsyncPIRRepo(session)
-    pir = await repo.get_by_id(pir_id)
-    if pir is None:
-        raise HTTPException(status_code=404, detail="PIR not found")
+    pir = await _get_pir_or_404(repo, pir_id, user)
     articles, total = await repo.list_articles_for_pir(
         pir, AsyncArticleRepo(session), page=page, page_size=page_size
     )
@@ -142,9 +161,14 @@ async def pir_articles(
 
 @router.get("/{pir_id}/note", response_model=PIRNoteOut)
 async def pir_get_note(
-    pir_id: int, url: str = Query(...), session: AsyncSession = Depends(get_db)
+    pir_id: int,
+    url: str = Query(...),
+    session: AsyncSession = Depends(get_db),
+    user: AuthedUser = Depends(require_auth),
 ) -> PIRNoteOut:
-    note = await AsyncPIRRepo(session).get_note(pir_id, url)
+    repo = AsyncPIRRepo(session)
+    await _get_pir_or_404(repo, pir_id, user)
+    note = await repo.get_note(pir_id, url)
     if note is None:
         return PIRNoteOut(pir_id=pir_id, url=url, note="", analyst="", updated_at="")
     return PIRNoteOut(
@@ -164,7 +188,9 @@ async def pir_save_note(
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),
 ) -> PIRNoteOut:
-    note = await AsyncPIRRepo(session).save_note(pir_id, body.url, body.note, body.analyst)
+    repo = AsyncPIRRepo(session)
+    await _get_pir_or_404(repo, pir_id, user)
+    note = await repo.save_note(pir_id, body.url, body.note, body.analyst)
     await AsyncAuditLogRepo(session).write(
         username=user["username"],
         action="save_pir_note",
@@ -204,22 +230,24 @@ async def _build_export_data(
 
 
 @router.get("/{pir_id}/export")
-async def pir_export(pir_id: int, session: AsyncSession = Depends(get_db)) -> dict[str, Any]:
+async def pir_export(
+    pir_id: int,
+    session: AsyncSession = Depends(get_db),
+    user: AuthedUser = Depends(require_auth),
+) -> dict[str, Any]:
     repo = AsyncPIRRepo(session)
-    pir = await repo.get_by_id(pir_id)
-    if pir is None:
-        raise HTTPException(status_code=404, detail="PIR not found")
+    pir = await _get_pir_or_404(repo, pir_id, user)
     return await _build_export_data(repo, session, pir)
 
 
 @router.get("/{pir_id}/export/docx")
 async def pir_export_docx(
-    pir_id: int, session: AsyncSession = Depends(get_db)
+    pir_id: int,
+    session: AsyncSession = Depends(get_db),
+    user: AuthedUser = Depends(require_auth),
 ) -> StreamingResponse:
     repo = AsyncPIRRepo(session)
-    pir = await repo.get_by_id(pir_id)
-    if pir is None:
-        raise HTTPException(status_code=404, detail="PIR not found")
+    pir = await _get_pir_or_404(repo, pir_id, user)
     data = await _build_export_data(repo, session, pir)
     docx_bytes = build_docx(data)
     filename = export_filename(data["pir"].get("title", "PIR"), data["exported_at"])
@@ -263,6 +291,7 @@ async def put_pir(
     user: AuthedUser = Depends(require_auth),
 ) -> PIROut:
     repo = AsyncPIRRepo(session)
+    await _get_pir_or_404(repo, pir_id, user)
     data = body.model_dump(exclude_none=True)
     pir = await repo.update(pir_id, data)
     if pir is None:
@@ -294,7 +323,9 @@ async def remove_pir(
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),
 ) -> dict[str, bool]:
-    ok = await AsyncPIRRepo(session).delete(pir_id)
+    repo = AsyncPIRRepo(session)
+    await _get_pir_or_404(repo, pir_id, user)
+    ok = await repo.delete(pir_id)
     if not ok:
         raise HTTPException(status_code=404, detail="PIR not found")
     await AsyncAuditLogRepo(session).write(

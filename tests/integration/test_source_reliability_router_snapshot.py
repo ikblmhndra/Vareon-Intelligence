@@ -36,35 +36,47 @@ async def _seed_entry(session: AsyncSession) -> None:
 
 
 async def test_list_sr_entries(
-    api_client: AsyncClient, api_session: AsyncSession, snapshot: SnapshotAssertion
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    snapshot: SnapshotAssertion,
+    auth_header: Callable[..., dict[str, str]],
 ) -> None:
     await _seed_entry(api_session)
-    resp = await api_client.get("/api/sr/entries")
+    resp = await api_client.get("/api/sr/entries", headers=auth_header())
     assert resp.status_code == 200
     assert resp.json() == snapshot(matcher=_NORMALIZE)
 
 
 async def test_sr_stats(
-    api_client: AsyncClient, api_session: AsyncSession, snapshot: SnapshotAssertion
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    snapshot: SnapshotAssertion,
+    auth_header: Callable[..., dict[str, str]],
 ) -> None:
     await _seed_entry(api_session)
-    resp = await api_client.get("/api/sr/stats")
+    resp = await api_client.get("/api/sr/stats", headers=auth_header())
     assert resp.status_code == 200
     assert resp.json() == snapshot
 
 
 async def test_sr_labels(
-    api_client: AsyncClient, api_session: AsyncSession, snapshot: SnapshotAssertion
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    snapshot: SnapshotAssertion,
+    auth_header: Callable[..., dict[str, str]],
 ) -> None:
-    resp = await api_client.get("/api/sr/labels")
+    resp = await api_client.get("/api/sr/labels", headers=auth_header())
     assert resp.status_code == 200
     assert resp.json() == snapshot
 
 
 async def test_ungraded_sources_empty(
-    api_client: AsyncClient, api_session: AsyncSession, snapshot: SnapshotAssertion
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    snapshot: SnapshotAssertion,
+    auth_header: Callable[..., dict[str, str]],
 ) -> None:
-    resp = await api_client.get("/api/sr/ungraded-sources")
+    resp = await api_client.get("/api/sr/ungraded-sources", headers=auth_header())
     assert resp.status_code == 200
     assert resp.json() == snapshot
 

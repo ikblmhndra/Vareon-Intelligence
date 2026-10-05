@@ -39,19 +39,25 @@ async def _seed_group(session: AsyncSession) -> None:
 
 
 async def test_get_ta_groups(
-    api_client: AsyncClient, api_session: AsyncSession, snapshot: SnapshotAssertion
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    snapshot: SnapshotAssertion,
+    auth_header: Callable[..., dict[str, str]],
 ) -> None:
     await _seed_group(api_session)
-    resp = await api_client.get("/api/ta/groups")
+    resp = await api_client.get("/api/ta/groups", headers=auth_header())
     assert resp.status_code == 200
     assert resp.json() == snapshot(matcher=_NORMALIZE)
 
 
 async def test_ta_stats(
-    api_client: AsyncClient, api_session: AsyncSession, snapshot: SnapshotAssertion
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    snapshot: SnapshotAssertion,
+    auth_header: Callable[..., dict[str, str]],
 ) -> None:
     await _seed_group(api_session)
-    resp = await api_client.get("/api/ta/stats")
+    resp = await api_client.get("/api/ta/stats", headers=auth_header())
     assert resp.status_code == 200
     assert resp.json() == snapshot
 
@@ -85,9 +91,12 @@ async def test_delete_ta_group(
 
 
 async def test_get_whitelist_empty(
-    api_client: AsyncClient, api_session: AsyncSession, snapshot: SnapshotAssertion
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    snapshot: SnapshotAssertion,
+    auth_header: Callable[..., dict[str, str]],
 ) -> None:
-    resp = await api_client.get("/api/ta/whitelist")
+    resp = await api_client.get("/api/ta/whitelist", headers=auth_header())
     assert resp.status_code == 200
     assert resp.json() == snapshot
 
@@ -107,17 +116,23 @@ async def test_restore_from_whitelist(
 
 
 async def test_get_ta_watchlist_names_empty(
-    api_client: AsyncClient, api_session: AsyncSession, snapshot: SnapshotAssertion
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    snapshot: SnapshotAssertion,
+    auth_header: Callable[..., dict[str, str]],
 ) -> None:
-    resp = await api_client.get("/api/ta/watchlist-names")
+    resp = await api_client.get("/api/ta/watchlist-names", headers=auth_header())
     assert resp.status_code == 200
     assert resp.json() == snapshot
 
 
 async def test_get_ta_watchlist_empty(
-    api_client: AsyncClient, api_session: AsyncSession, snapshot: SnapshotAssertion
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    snapshot: SnapshotAssertion,
+    auth_header: Callable[..., dict[str, str]],
 ) -> None:
-    resp = await api_client.get("/api/ta/watchlist")
+    resp = await api_client.get("/api/ta/watchlist", headers=auth_header())
     assert resp.status_code == 200
     assert resp.json() == snapshot
 
@@ -181,9 +196,12 @@ async def test_post_ta_profile_generate(
 
 
 async def test_get_ta_profile_endpoint_not_found(
-    api_client: AsyncClient, api_session: AsyncSession, snapshot: SnapshotAssertion
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    snapshot: SnapshotAssertion,
+    auth_header: Callable[..., dict[str, str]],
 ) -> None:
-    resp = await api_client.get("/api/ta/profile/Unknown")
+    resp = await api_client.get("/api/ta/profile/Unknown", headers=auth_header())
     assert resp.status_code == 200
     assert resp.json() == snapshot
 

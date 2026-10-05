@@ -71,27 +71,36 @@ async def test_export_article_stix(
 
 
 async def test_export_ta_stix_not_found(
-    api_client: AsyncClient, api_session: AsyncSession, snapshot: SnapshotAssertion
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    snapshot: SnapshotAssertion,
+    auth_header: Callable[..., dict[str, str]],
 ) -> None:
-    resp = await api_client.get("/api/stix/ta/UnknownActor")
+    resp = await api_client.get("/api/stix/ta/UnknownActor", headers=auth_header())
     assert resp.status_code == 404
     assert resp.json() == snapshot
 
 
 async def test_export_ioc_stix(
-    api_client: AsyncClient, api_session: AsyncSession, snapshot: SnapshotAssertion
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    snapshot: SnapshotAssertion,
+    auth_header: Callable[..., dict[str, str]],
 ) -> None:
     await AsyncIOCRepo(api_session).upsert(
         type="domain", value="evil.example", source_url="https://a.example", source_name="A"
     )
-    resp = await api_client.get("/api/stix/iocs")
+    resp = await api_client.get("/api/stix/iocs", headers=auth_header())
     assert resp.status_code == 200
     assert resp.json() == snapshot(matcher=_NORMALIZE)
 
 
 async def test_export_pir_stix_empty(
-    api_client: AsyncClient, api_session: AsyncSession, snapshot: SnapshotAssertion
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    snapshot: SnapshotAssertion,
+    auth_header: Callable[..., dict[str, str]],
 ) -> None:
-    resp = await api_client.get("/api/stix/pirs")
+    resp = await api_client.get("/api/stix/pirs", headers=auth_header())
     assert resp.status_code == 200
     assert resp.json() == snapshot(matcher=_NORMALIZE)

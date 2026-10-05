@@ -4,7 +4,11 @@ global lintas client (lihat docstring `cti_core.db.repositories.
 source_reliability`). `GET` endpoints (`/entries`, `/stats`, `/labels`,
 `/ungraded-sources`) SENGAJA gak `require_auth` -- port apa adanya,
 legacy juga gak nge-gate GET di router ini, cuma POST/PUT/DELETE yang
-di-gate. Sama pola asimetri baca-vs-tulis kayak `articles.py`."""
+di-gate. Sama pola asimetri baca-vs-tulis kayak `articles.py`.
+
+QA 2026-10-05: catatan 'tanpa require_auth' di atas SUDAH TIDAK BERLAKU -- semua endpoint router ini
+sekarang wajib login (`require_auth`).
+"""
 
 from __future__ import annotations
 
@@ -26,7 +30,9 @@ from cti_api.schemas.source_reliability import (
     SREntryUpdate,
 )
 
-router = APIRouter(prefix="/api/sr", tags=["source-reliability"])
+router = APIRouter(
+    prefix="/api/sr", tags=["source-reliability"], dependencies=[Depends(require_auth)]
+)
 
 
 def _serialize(e: SourceReliabilityEntry) -> SREntryOut:

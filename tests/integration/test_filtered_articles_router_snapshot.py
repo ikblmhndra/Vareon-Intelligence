@@ -44,10 +44,13 @@ async def _seed_rejected(session: AsyncSession) -> None:
 
 
 async def test_list_filtered(
-    api_client: AsyncClient, api_session: AsyncSession, snapshot: SnapshotAssertion
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    snapshot: SnapshotAssertion,
+    auth_header: Callable[..., dict[str, str]],
 ) -> None:
     await _seed_rejected(api_session)
-    resp = await api_client.get("/api/filtered-articles")
+    resp = await api_client.get("/api/filtered-articles", headers=auth_header())
     assert resp.status_code == 200
     assert resp.json() == snapshot(matcher=_NORMALIZE)
 

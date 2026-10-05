@@ -69,9 +69,12 @@ def _fake_enrich_articles() -> AsyncMock:
 
 
 async def test_source_hints(
-    api_client: AsyncClient, api_session: AsyncSession, snapshot: SnapshotAssertion
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    snapshot: SnapshotAssertion,
+    auth_header: Callable[..., dict[str, str]],
 ) -> None:
-    resp = await api_client.get("/api/newsletter/source-hints")
+    resp = await api_client.get("/api/newsletter/source-hints", headers=auth_header())
     assert resp.status_code == 200
     assert resp.json() == snapshot
 

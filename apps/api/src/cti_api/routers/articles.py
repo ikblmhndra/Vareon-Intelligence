@@ -12,7 +12,11 @@ udah nulis IOC lewat jalur normal, bukan backfill URL-match belakangan).
 `/api/country-groups` SENGAJA di-skip -- itu peta nama->varian buat data
 negara yang dulu FREE-TEXT; skema baru (`ArticleCountry.country_code`)
 udah ISO alpha-2 dari enrichment, gak ada lagi varian nama yang perlu
-di-grup di layer API."""
+di-grup di layer API.
+
+QA 2026-10-05: catatan 'tanpa require_auth' di atas SUDAH TIDAK BERLAKU -- semua endpoint router ini
+sekarang wajib login (`require_auth`).
+"""
 
 from __future__ import annotations
 
@@ -35,7 +39,7 @@ from cti_api.schemas.article import (
 from cti_api.services import article_dashboard, confidence
 from cti_api.services import dedup as dedup_service
 
-router = APIRouter(prefix="/api", tags=["articles"])
+router = APIRouter(prefix="/api", tags=["articles"], dependencies=[Depends(require_auth)])
 """`list_articles`/`list_filters`/`dashboard_stats`/`article_dedup_groups`
 SENGAJA gak pakai `require_auth` -- port apa adanya dari legacy
 (`routers/articles.py` asli juga gak ngasih dependency itu ke keempatnya,

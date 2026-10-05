@@ -7,7 +7,11 @@ gantiin tabel baru `rejected_articles` (Fase 7.3, keputusan eksplisit
 user buat gak diem-diemin, lihat docs/PROGRESS.md), ditulis
 `cti_enrich.stages.persist.persist_rejected()`. `GET ""` SENGAJA gak
 `require_auth` -- port apa adanya, legacy juga gak nge-gate endpoint ini
-(cuma `POST /restore` yang di-gate), sama asimetri kayak `articles.py`."""
+(cuma `POST /restore` yang di-gate), sama asimetri kayak `articles.py`.
+
+QA 2026-10-05: catatan 'tanpa require_auth' di atas SUDAH TIDAK BERLAKU -- semua endpoint router ini
+sekarang wajib login (`require_auth`).
+"""
 
 from __future__ import annotations
 
@@ -19,7 +23,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cti_api.deps import AuthedUser, get_db, require_auth
 from cti_api.schemas.filtered_article import RejectedArticleListResponse, RejectedArticleOut
 
-router = APIRouter(prefix="/api/filtered-articles", tags=["filtered-articles"])
+router = APIRouter(
+    prefix="/api/filtered-articles",
+    tags=["filtered-articles"],
+    dependencies=[Depends(require_auth)],
+)
 
 
 def _serialize(a: RejectedArticle) -> RejectedArticleOut:

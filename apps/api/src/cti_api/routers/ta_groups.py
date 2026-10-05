@@ -12,7 +12,12 @@ port apa adanya dari kode lama, BUKAN keputusan baru:
    terhadap). Efeknya: header `X-Client-ID` sembarang diterima apa
    adanya buat baca. `POST`/`DELETE /watchlist` (perlu auth) TETAP pakai
    `effective_client_id` yang tervalidasi. Port apa adanya, sama alasan
-   kayak asimetri client-scoping di `rfi.py`/`pir.py`."""
+   kayak asimetri client-scoping di `rfi.py`/`pir.py`.
+
+QA 2026-10-05: catatan 'tanpa require_auth' di atas SUDAH TIDAK BERLAKU -- semua endpoint router ini
+sekarang wajib login (`require_auth`). Pengecualian: `GET /watchlist/navigator-layer`
+(dibuka dari ATT&CK Navigator eksternal) masih publik -- perlu keputusan terpisah.
+"""
 
 from __future__ import annotations
 
@@ -53,7 +58,7 @@ def _whitelist_out(w: TAWhitelistEntry) -> TAWhitelistOut:
     return TAWhitelistOut(id=w.id, name=w.name, added_date=w.added_date.date().isoformat())
 
 
-@router.get("/groups", response_model=TAGroupListResponse)
+@router.get("/groups", response_model=TAGroupListResponse, dependencies=[Depends(require_auth)])
 async def get_ta_groups(
     search: str | None = None,
     page: int = Query(1, ge=1),
@@ -70,12 +75,12 @@ async def get_ta_groups(
     )
 
 
-@router.get("/stats")
+@router.get("/stats", dependencies=[Depends(require_auth)])
 async def ta_stats(session: AsyncSession = Depends(get_db)) -> dict[str, object]:
     return await AsyncTARepo(session).get_ta_stats()
 
 
-@router.post("/groups")
+@router.post("/groups", dependencies=[Depends(require_auth)])
 async def post_ta_group(
     body: TAGroupAdd,
     request: Request,
@@ -93,7 +98,7 @@ async def post_ta_group(
     return result
 
 
-@router.delete("/groups/{group_id}")
+@router.delete("/groups/{group_id}", dependencies=[Depends(require_auth)])
 async def delete_ta_group(
     group_id: int,
     group_name: str,
@@ -112,7 +117,9 @@ async def delete_ta_group(
     return result
 
 
-@router.get("/whitelist", response_model=TAWhitelistListResponse)
+@router.get(
+    "/whitelist", response_model=TAWhitelistListResponse, dependencies=[Depends(require_auth)]
+)
 async def get_whitelist(
     search: str | None = None,
     page: int = Query(1, ge=1),
@@ -129,7 +136,7 @@ async def get_whitelist(
     )
 
 
-@router.delete("/whitelist/{name}")
+@router.delete("/whitelist/{name}", dependencies=[Depends(require_auth)])
 async def restore_from_whitelist(
     name: str,
     request: Request,
@@ -147,7 +154,7 @@ async def restore_from_whitelist(
     return {"success": ok}
 
 
-@router.get("/watchlist-names")
+@router.get("/watchlist-names", dependencies=[Depends(require_auth)])
 async def get_ta_watchlist_names(
     x_client_id: str | None = Header(None), session: AsyncSession = Depends(get_db)
 ) -> dict[str, list[str]]:
@@ -156,7 +163,9 @@ async def get_ta_watchlist_names(
     return {"names": names}
 
 
-@router.get("/watchlist", response_model=TAWatchlistListResponse)
+@router.get(
+    "/watchlist", response_model=TAWatchlistListResponse, dependencies=[Depends(require_auth)]
+)
 async def get_ta_watchlist(
     search: str | None = None,
     page: int = Query(1, ge=1),
@@ -194,7 +203,7 @@ async def get_ta_watchlist(
     )
 
 
-@router.get("/{actor}/timeline")
+@router.get("/{actor}/timeline", dependencies=[Depends(require_auth)])
 async def get_actor_timeline(
     actor: str,
     request: Request,
@@ -212,7 +221,7 @@ async def get_actor_timeline(
     return await AsyncTAProfileRepo(session).get_timeline(actor, months=months)
 
 
-@router.post("/watchlist")
+@router.post("/watchlist", dependencies=[Depends(require_auth)])
 async def post_ta_watchlist(
     body: TAGroupAdd,
     request: Request,
@@ -232,7 +241,7 @@ async def post_ta_watchlist(
     return result
 
 
-@router.delete("/watchlist/{name}")
+@router.delete("/watchlist/{name}", dependencies=[Depends(require_auth)])
 async def delete_ta_watchlist(
     name: str,
     request: Request,
@@ -256,7 +265,7 @@ class TAProfileGenerateBody(BaseModel):
     name: str
 
 
-@router.post("/profile/generate")
+@router.post("/profile/generate", dependencies=[Depends(require_auth)])
 async def post_ta_profile_generate(
     body: TAProfileGenerateBody,
     request: Request,
@@ -279,7 +288,7 @@ async def post_ta_profile_generate(
     return {"success": True, "profile": profile}
 
 
-@router.get("/profile/{name}")
+@router.get("/profile/{name}", dependencies=[Depends(require_auth)])
 async def get_ta_profile_endpoint(
     name: str, session: AsyncSession = Depends(get_db)
 ) -> dict[str, object]:

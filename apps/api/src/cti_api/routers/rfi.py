@@ -10,7 +10,14 @@ from cti_core.db.repositories.rfi import AsyncRFIRepo
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_api.deps import AuthedUser, effective_client_id, get_db, request_ip, require_auth
+from cti_api.deps import (
+    AuthedUser,
+    effective_client_id,
+    ensure_client_access,
+    get_db,
+    request_ip,
+    require_auth,
+)
 from cti_api.schemas.rfi import RFICreate, RFIListResponse, RFIOut, RFIUpdate
 
 router = APIRouter(prefix="/api/rfi", tags=["rfi"])
@@ -82,6 +89,13 @@ async def post_rfi(
     return _serialize(rfi)
 
 
+async def _ensure_rfi_access(repo: AsyncRFIRepo, rfi_id: int, user: AuthedUser) -> None:
+    rfi = await repo.get_by_id_unscoped(rfi_id)
+    if rfi is None:
+        raise HTTPException(status_code=404, detail="RFI not found")
+    ensure_client_access(user, rfi.client_id)
+
+
 @router.put("/{rfi_id}", response_model=RFIOut)
 async def put_rfi(
     rfi_id: int,
@@ -90,7 +104,9 @@ async def put_rfi(
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),
 ) -> RFIOut:
-    rfi = await AsyncRFIRepo(session).update(rfi_id, body.model_dump(exclude_none=True))
+    repo = AsyncRFIRepo(session)
+    await _ensure_rfi_access(repo, rfi_id, user)
+    rfi = await repo.update(rfi_id, body.model_dump(exclude_none=True))
     if rfi is None:
         raise HTTPException(status_code=404, detail="RFI not found")
     await AsyncAuditLogRepo(session).write(
@@ -114,7 +130,9 @@ async def remove_rfi(
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),
 ) -> dict[str, bool]:
-    ok = await AsyncRFIRepo(session).delete(rfi_id)
+    repo = AsyncRFIRepo(session)
+    await _ensure_rfi_access(repo, rfi_id, user)
+    ok = await repo.delete(rfi_id)
     if not ok:
         raise HTTPException(status_code=404, detail="RFI not found")
     await AsyncAuditLogRepo(session).write(
