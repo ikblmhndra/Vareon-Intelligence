@@ -14,6 +14,8 @@ import { getActiveClientId } from "@/lib/auth/client-id";
  */
 export const api = createClient<paths>({ baseUrl: "/api/proxy" });
 
+let sessionExpiredHandled = false;
+
 api.use({
   onRequest({ request }) {
     const clientId = getActiveClientId();
@@ -21,5 +23,17 @@ api.use({
       request.headers.set("X-Client-ID", clientId);
     }
     return request;
+  },
+  async onResponse({ response }) {
+    // Token habis di tengah sesi: hapus cookie dulu (kalau tidak, `proxy.ts` melempar /login
+    // balik ke /dashboard), baru ke halaman login.
+    if (response.status === 401 && typeof window !== "undefined" && !sessionExpiredHandled) {
+      sessionExpiredHandled = true;
+      await fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
+      // reload penuh (bukan router.push): buang semua state klien; ini modul non-React.
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+      window.location.href = "/login";
+    }
+    return response;
   },
 });

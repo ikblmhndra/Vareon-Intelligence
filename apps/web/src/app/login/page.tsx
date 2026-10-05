@@ -9,6 +9,14 @@ import { Label } from "@/components/ui/label";
 import { useAuth } from "@/components/providers/auth-provider";
 import { PLATFORM_NAME } from "@/lib/brand";
 
+/** Hanya path internal ("/x"); tolak "//host", "/\\host", dan URL absolut (open redirect). */
+function safeRedirect(target: string | null): string {
+  if (target && target.startsWith("/") && !target.startsWith("//") && !target.startsWith("/\\")) {
+    return target;
+  }
+  return "/dashboard";
+}
+
 function LoginForm() {
   const { login } = useAuth();
   const router = useRouter();
@@ -22,13 +30,18 @@ function LoginForm() {
     event.preventDefault();
     setError(null);
     setPending(true);
-    const result = await login(username, password);
-    setPending(false);
-    if (!result.ok) {
-      setError(result.detail);
-      return;
+    try {
+      const result = await login(username, password);
+      if (!result.ok) {
+        setError(result.detail);
+        return;
+      }
+      router.push(safeRedirect(searchParams.get("redirect")));
+    } catch {
+      setError("Tidak bisa terhubung ke server. Coba lagi.");
+    } finally {
+      setPending(false);
     }
-    router.push(searchParams.get("redirect") || "/dashboard");
   }
 
   return (

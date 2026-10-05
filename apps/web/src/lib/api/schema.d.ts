@@ -952,6 +952,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cve/tickets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Cve Tickets
+         * @description Daftar ticket client ini (view "Ticketing" di CVE Tracker) --
+         *     `_serialize_ticket` + ringkasan CVE-nya (severity/score/tech/
+         *     detected_on) biar tabel gak perlu N request.
+         */
+        get: operations["list_cve_tickets_api_cve_tickets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/cve/{cve_id}/acknowledge": {
         parameters: {
             query?: never;
@@ -4932,7 +4954,9 @@ export interface operations {
                 dedup?: boolean;
                 dedup_threshold?: number;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -4998,7 +5022,9 @@ export interface operations {
                 threshold?: number;
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -6993,6 +7019,43 @@ export interface operations {
             };
         };
     };
+    list_cve_tickets_api_cve_tickets_get: {
+        parameters: {
+            query?: {
+                search?: string | null;
+                status?: string | null;
+            };
+            header?: {
+                "x-client-id"?: string | null;
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     acknowledge_api_cve__cve_id__acknowledge_post: {
         parameters: {
             query?: never;
@@ -7222,7 +7285,9 @@ export interface operations {
                 posted_on_start?: string | null;
                 posted_on_end?: string | null;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -7291,7 +7356,9 @@ export interface operations {
                 days?: number;
                 incident_only?: boolean;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -7366,7 +7433,9 @@ export interface operations {
                 page_size?: number;
                 search?: string | null;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -7430,7 +7499,9 @@ export interface operations {
     list_filters_api_filters_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -7443,6 +7514,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FilterOptions"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -8608,7 +8688,9 @@ export interface operations {
     source_hints_api_newsletter_source_hints_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -8625,6 +8707,15 @@ export interface operations {
                             [key: string]: unknown;
                         };
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -8768,7 +8859,9 @@ export interface operations {
     pir_options_api_pir_options_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -8781,6 +8874,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PIROptions"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -8863,7 +8965,9 @@ export interface operations {
                 page?: number;
                 page_size?: number;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 pir_id: number;
             };
@@ -8894,7 +8998,9 @@ export interface operations {
     pir_export_api_pir__pir_id__export_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 pir_id: number;
             };
@@ -8927,7 +9033,9 @@ export interface operations {
     pir_export_docx_api_pir__pir_id__export_docx_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 pir_id: number;
             };
@@ -8960,7 +9068,9 @@ export interface operations {
             query: {
                 url: string;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 pir_id: number;
             };
@@ -10521,7 +10631,9 @@ export interface operations {
                 sort_by?: string;
                 sort_dir?: string;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -10661,7 +10773,9 @@ export interface operations {
     sr_labels_api_sr_labels_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -10680,12 +10794,23 @@ export interface operations {
                     };
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     sr_stats_api_sr_stats_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -10702,12 +10827,23 @@ export interface operations {
                     };
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     ungraded_sources_api_sr_ungraded_sources_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -10722,6 +10858,15 @@ export interface operations {
                     "application/json": {
                         [key: string]: string[];
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -10767,7 +10912,9 @@ export interface operations {
                 /** @description Maximum number of IOCs to export (default 500, max 2000) */
                 limit?: number;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -10796,7 +10943,9 @@ export interface operations {
     export_pir_stix_api_stix_pirs_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -10811,12 +10960,23 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     export_ta_stix_api_stix_ta__actor_name__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 actor_name: string;
             };
@@ -10853,7 +11013,9 @@ export interface operations {
                 sort_by?: string;
                 sort_dir?: string;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -10993,7 +11155,9 @@ export interface operations {
     get_ta_profile_endpoint_api_ta_profile__name__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
                 name: string;
             };
@@ -11026,7 +11190,9 @@ export interface operations {
     ta_stats_api_ta_stats_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -11043,6 +11209,15 @@ export interface operations {
                     };
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     get_ta_watchlist_api_ta_watchlist_get: {
@@ -11056,6 +11231,7 @@ export interface operations {
             };
             header?: {
                 "x-client-id"?: string | null;
+                authorization?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -11125,6 +11301,7 @@ export interface operations {
             query?: never;
             header?: {
                 "x-client-id"?: string | null;
+                authorization?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -11229,7 +11406,9 @@ export interface operations {
                 sort_by?: string;
                 sort_dir?: string;
             };
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
