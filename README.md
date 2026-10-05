@@ -143,6 +143,7 @@ Butuh dump Mongo + file offset dedup dari server lama, warm start, dan cutover b
 |---|---|
 | `docs/CUTOVER_RUNBOOK.md` | cutover, pantau, backup/restore, rollback, troubleshooting, **yang belum terbukti** (bagian 10) |
 | `docs/PROD_PREP.md` | backup Mongo lama, timer backup Postgres, latihan rollback |
+| `docs/CI_CD.md` | CI dan **CD otomatis ke produksi** (runner self-hosted, `make deploy`, rollback otomatis) |
 | `docs/SECRETS_ROTATION.md` | daftar secret dan status rotasinya |
 | `docs/ADDING_A_SCRAPER.md` | menambah scraper baru |
 | `docs/KNOWN_BROKEN.md` | scraper yang rusak/di-waive dan akar masalahnya |
