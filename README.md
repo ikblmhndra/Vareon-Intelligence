@@ -1,4 +1,4 @@
-# Niskala Intelligence
+# Vareon Intelligence
 
 Platform Cyber Threat Intelligence: mengumpulkan berita dan sinyal ancaman dari ~90 sumber (RSS, situs web,
 API, X/Twitter, GitHub), memperkaya dengan NLP + LLM (klasifikasi, threat actor, TTP MITRE ATT&CK, negara),

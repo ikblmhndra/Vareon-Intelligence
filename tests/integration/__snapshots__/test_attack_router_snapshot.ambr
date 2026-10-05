@@ -17,7 +17,7 @@
     ]),
     'metadata': list([
     ]),
-    'name': 'Niskala Intelligence — ATT&CK DB',
+    'name': 'Vareon Intelligence — ATT&CK DB',
     'selectSubtechniquesWithParent': False,
     'selectTechniquesAcrossTactics': True,
     'showTacticRowBackground': True,

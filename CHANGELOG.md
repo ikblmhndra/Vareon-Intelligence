@@ -8,6 +8,12 @@ router `changelog.py`) -- parser-nya expect header persis
 
 ## [Unreleased] - 2026-10-05
 
+### Diubah
+- **Rebranding**: nama tampilan platform jadi **Vareon Intelligence**
+  (sebelumnya Niskala Intelligence) -- judul tab, login, logo header, judul
+  API/OpenAPI, template email, dan README. Identifier teknis (`cti-platform`,
+  `cti_*`, nama image/container) tidak ikut berubah.
+
 ### Ditambah
 - **CVE Tracker > Ticketing**: sub-view baru buat daftar semua ticket
   (cari by ticket/CVE/asset/owner, filter Remediation Status), klik baris

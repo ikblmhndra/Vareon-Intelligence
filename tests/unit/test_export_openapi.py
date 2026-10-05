@@ -19,7 +19,7 @@ from export_openapi import export_schema
 def test_export_schema_has_expected_shape() -> None:
     schema = export_schema()
     assert schema["openapi"].startswith("3.")
-    assert schema["info"]["title"] == "Niskala Intelligence API"
+    assert schema["info"]["title"] == "Vareon Intelligence API"
     assert "/healthz" in schema["paths"]
     assert len(schema["paths"]) > 100
     assert "schemas" in schema["components"]

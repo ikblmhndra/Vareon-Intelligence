@@ -58,10 +58,10 @@ function Brand() {
         aria-hidden
         className="grid size-10 shrink-0 place-items-center rounded-full bg-primary font-heading text-lg font-bold text-primary-foreground"
       >
-        N
+        V
       </span>
       <span className="font-heading text-lg leading-tight font-extrabold tracking-tight text-foreground">
-        Niskala
+        Vareon
         <br />
         Intelligence
       </span>

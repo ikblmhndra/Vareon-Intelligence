@@ -46,7 +46,7 @@
     ]),
     'metadata': list([
     ]),
-    'name': 'Niskala Intelligence — Threat Actor View (90d)',
+    'name': 'Vareon Intelligence — Threat Actor View (90d)',
     'selectTechniquesAcrossTactics': True,
     'showTacticRowBackground': True,
     'tacticRowBackground': '#1a1a2e',
@@ -75,7 +75,7 @@
     ]),
     'metadata': list([
     ]),
-    'name': 'Niskala Intelligence — Threat Actor View (90d)',
+    'name': 'Vareon Intelligence — Threat Actor View (90d)',
     'selectTechniquesAcrossTactics': True,
     'showTacticRowBackground': True,
     'tacticRowBackground': '#1a1a2e',

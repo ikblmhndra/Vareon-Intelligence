@@ -18,7 +18,7 @@ Isi tiap item: **apa** yang diminta, **keadaan sekarang** (fakta dari repo/stagi
 
 ## 1. Rebranding nama platform dan UI
 
-> **Status 2026-10-02 -- dikerjakan** (PR #3 dan #4). Nama tampilan **Niskala Intelligence** (satu konstanta
+> **Status 2026-10-02 -- dikerjakan** (PR #3 dan #4). Nama tampilan **Vareon Intelligence** (satu konstanta
 > `apps/web/src/lib/brand.ts` + setelan `platform_name` di `cti_core.config`); tema light dan dark
 > (`globals.css`, token terpisah untuk severity, kontras dicek AA); font Google Sans Flex; `prefers-reduced-motion`;
 > sidebar, dashboard + peta dunia, semua tab dan dialog utama dicek di staging. Identifier teknis (`cti-platform`,

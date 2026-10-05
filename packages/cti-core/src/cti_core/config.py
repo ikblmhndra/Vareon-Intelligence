@@ -223,7 +223,7 @@ class WorkerSettings(_StrictModel):
     di-catch-up selama slot yang kelewat masih dalam jendela ini."""
 
 
-DEFAULT_PLATFORM_NAME = "Niskala Intelligence"
+DEFAULT_PLATFORM_NAME = "Vareon Intelligence"
 
 
 class Settings(BaseSettings):
