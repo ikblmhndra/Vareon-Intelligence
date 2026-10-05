@@ -563,7 +563,10 @@ class RejectedArticleRepo:
         scraper_id: str | None = None,
         posted_on: datetime.date | None = None,
         reason: str | None = None,
+        raw_enrichment: dict[str, Any] | None = None,
     ) -> RejectedArticle:
+        """`raw_enrichment` (audit trail respons LLM mentah) None = jangan
+        sentuh yang sudah tersimpan."""
         h = compute_url_hash(url)
         existing = self.session.execute(
             select(RejectedArticle).where(RejectedArticle.url_hash == h)
@@ -578,6 +581,7 @@ class RejectedArticleRepo:
                 scraper_id=scraper_id,
                 posted_on=posted_on,
                 reason=reason,
+                raw_enrichment=raw_enrichment or {},
             )
             self.session.add(row)
             self.session.flush()
@@ -588,6 +592,8 @@ class RejectedArticleRepo:
         existing.scraper_id = scraper_id
         existing.posted_on = posted_on
         existing.reason = reason
+        if raw_enrichment is not None:
+            existing.raw_enrichment = raw_enrichment
         self.session.flush()
         return existing
 

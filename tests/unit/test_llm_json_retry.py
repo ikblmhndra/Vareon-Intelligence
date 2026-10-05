@@ -110,3 +110,18 @@ def test_build_messages_shapes() -> None:
     assert plain == [{"role": "system", "content": "SYS"}, {"role": "user", "content": "judul"}]
     assert hard[0] == plain[0]
     assert hard[1]["content"] == f"<t>judul</t>\n\n{JSON_ONLY_REMINDER}"
+
+
+def test_classify_keeps_raw_response_of_every_attempt_for_audit(use_client) -> None:
+    use_client(classify_mod, [KIRO, CLASSIFY_JSON])
+
+    audit = classify_mod.classify("Some article title").audit
+
+    assert audit["model"] == "test-model"
+    assert audit["prompt_version"] == classify_mod.PROMPT_VERSION
+    assert [(a["attempt"], a["parsed"], a["finish_reason"]) for a in audit["attempts"]] == [
+        (0, False, "stop"),
+        (1, True, "stop"),
+    ]
+    assert audit["attempts"][0]["content"] == KIRO  # persona mentah ikut tersimpan
+    assert json.loads(audit["attempts"][1]["content"])["reason"] == "vendor blog"

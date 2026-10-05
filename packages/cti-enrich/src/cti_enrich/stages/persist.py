@@ -89,6 +89,10 @@ def _country_roles(
     return pairs
 
 
+def _audit_fields(classify_result: ClassifyResult) -> dict[str, dict[str, object]]:
+    return {"raw_enrichment": {"classify": classify_result.audit}} if classify_result.audit else {}
+
+
 def persist(
     *,
     session: Session,
@@ -123,6 +127,9 @@ def persist(
         ),
         victim_name=classify_result.victim_name,
         c2_indicator=c2_indicator,
+        # Audit trail respons LLM mentah (`raw_enrichment`, lihat `ClassifyResult.audit`).
+        # Cuma kalau ada isinya, supaya pemanggil tanpa audit gak mengosongkan yang lama.
+        **_audit_fields(classify_result),
     )
 
     industries = resolve_industries(classify_result.industries_impacted)
@@ -186,4 +193,5 @@ def persist_rejected(
         scraper_id=scraper_id,
         posted_on=posted_on,
         reason=classify_result.reason,
+        raw_enrichment=_audit_fields(classify_result).get("raw_enrichment"),
     )

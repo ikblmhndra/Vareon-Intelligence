@@ -24,13 +24,18 @@ string tebak-tebakan)."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass, field
+from typing import Any
 
+import structlog
 from cti_core.llm.client import get_llm_client, parse_json_response, store_param
 from openai import RateLimitError
 
 from cti_enrich.stages.llm_messages import build_messages
+
+log = structlog.get_logger()
 
 _PROMPT = """
         As a Threat Intelligence analyst, determine whether the following article title provides meaningful insight into the cybersecurity threat landscape.
@@ -142,6 +147,16 @@ _PROMPT = """
     """
 
 
+PROMPT_VERSION = hashlib.sha256(_PROMPT.encode()).hexdigest()[:8]
+"""Sidik jari `_PROMPT` -- ikut disimpan di audit trail (`ClassifyResult.audit`)
+biar keputusan lama bisa dibandingkan lintas revisi prompt (berubah otomatis
+kalau prompt diedit, gak perlu dinaikkan manual)."""
+
+_AUDIT_CONTENT_MAX = 4000
+"""Batas karakter respons mentah per percobaan di audit trail -- jawaban
+normal ~600 karakter; ini cuma pagar buat respons ngaco yang panjang."""
+
+
 class OpenAIQuotaExhausted(RuntimeError):
     """Kuota/kredit OpenAI habis -- port `articleValidator.OpenAIQuotaExhausted`."""
 
@@ -159,6 +174,11 @@ class ClassifyResult:
     incident_confidence: float | None = None
     incident_indicators: list[str] = field(default_factory=list)
     victim_name: str | None = None
+    audit: dict[str, Any] = field(default_factory=dict)
+    """Audit trail respons LLM (`persist()` -> `raw_enrichment["classify"]`):
+    model, `PROMPT_VERSION`, dan SETIAP percobaan (isi mentah + `finish_reason`),
+    termasuk percobaan gagal yang akhirnya diselamatkan retry. Kosong di
+    pemanggil yang gak butuh (test/fixture)."""
 
 
 def resolve_industries(industries_impacted: list[str]) -> list[str]:
@@ -200,6 +220,7 @@ dilaporkan apa adanya di hasil korpus test, bukan disembunyiin."""
 def classify(title: str) -> ClassifyResult:
     client, model_name = get_llm_client()
     last_error: json.JSONDecodeError | None = None
+    attempts: list[dict[str, Any]] = []
     for attempt in range(_MAX_ATTEMPTS):
         try:
             completion = client.chat.completions.create(
@@ -225,13 +246,26 @@ def classify(title: str) -> ClassifyResult:
                 raise OpenAIQuotaExhausted(f"OpenAI credit exhausted: {e}") from e
             raise
 
+        choice = completion.choices[0]
+        content = choice.message.content
+        entry: dict[str, Any] = {
+            "attempt": attempt,
+            "finish_reason": choice.finish_reason,
+            "content": (content or "")[:_AUDIT_CONTENT_MAX],
+        }
+        attempts.append(entry)
         try:
-            data = parse_json_response(completion.choices[0].message.content)
+            data = parse_json_response(content)
+            entry["parsed"] = True
             break
         except json.JSONDecodeError as e:
+            entry["parsed"] = False
             last_error = e
     else:
         assert last_error is not None
+        # Gagal total: catatan DB gak ada (exception diteruskan ke Celery),
+        # jadi respons mentahnya masuk log -- bahan audit kasus kayak "Kiro".
+        log.warning("classify_json_failed", title=title[:200], model=model_name, attempts=attempts)
         raise last_error
     return ClassifyResult(
         related_cyber=bool(data.get("related_cyber")),
@@ -245,4 +279,5 @@ def classify(title: str) -> ClassifyResult:
         incident_confidence=data.get("incident_confidence"),
         incident_indicators=data.get("incident_indicators", []) or [],
         victim_name=data.get("victim_name"),
+        audit={"model": model_name, "prompt_version": PROMPT_VERSION, "attempts": attempts},
     )

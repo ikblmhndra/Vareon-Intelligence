@@ -5879,7 +5879,13 @@ bandingnya: `docs/PARALLEL_RUN_COMPARISON.md`. Banding baru bermakna SETELAH pos
 
 - ~~**`/opt/HuntingScript/`**~~ dan ~~**`/opt/alertRundeck/`**~~ — **kelar:
   Rundeck gak jadwalin keduanya.** Di luar scope.
-- **Simpen raw response LLM buat audit trail produksi** (2026-09-18,
+- ~~**Simpen raw response LLM buat audit trail produksi**~~ **kelar 2026-10-05
+  (stage klasifikasi)**: `classify()` nyimpen model, `PROMPT_VERSION` (hash prompt),
+  dan SETIAP percobaan (isi mentah + `finish_reason`) ke `raw_enrichment["classify"]`
+  -- artikel diterima (`Article`) DAN ditolak (`RejectedArticle`). Gagal total
+  (JSON rusak semua percobaan) -> respons mentah masuk log `classify_json_failed`,
+  bukan DB. Belum: stage `extract_ttps`, dan tampilan di UI/API (query lewat SQL).
+  Catatan asli: (2026-09-18,
   diusulkan user pas nemuin gateway LLM dev ngebalikin persona "Kiro" yang
   nolak instruksi JSON, lihat catatan bug Fase 7.3 Bagian 1 di atas) --
   BELUM dikerjain, dicatet dulu biar gak lupa.
