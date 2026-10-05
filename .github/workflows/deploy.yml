@@ -1,0 +1,59 @@
+name: Deploy
+
+# CD ke produksi. Jalan di self-hosted runner (label `cti-prod`) yang terpasang DI host produksi:
+# host itu IP privat, jadi runner GitHub (cloud) tidak bisa menjangkaunya. Setup: docs/CI_CD.md.
+#
+# Hanya terpicu oleh (a) CI hijau untuk PUSH ke main di repo ini, atau (b) klik manual. Tidak pernah
+# oleh pull request -- runner self-hosted tidak boleh menjalankan kode PR.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Satu deploy dalam satu waktu; deploy yang sedang berjalan TIDAK dibatalkan (menghentikan
+# `docker compose up` di tengah jalan bisa meninggalkan stack setengah jalan).
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # workflow_run juga terpicu oleh CI milik PR dari branch bernama `main` di fork: wajib cek
+    # event == push dan repo asal == repo ini, kalau tidak kode fork bisa sampai ke host produksi.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: [self-hosted, cti-prod]
+    # Atur "Required reviewers" di Settings > Environments > production kalau mau persetujuan manual.
+    environment: production
+    timeout-minutes: 45
+    env:
+      # Direktori checkout produksi (berisi .env, docker/stack.env, secrets/ yang tidak ada di git).
+      CTI_PROD_DIR: ${{ vars.CTI_PROD_DIR }}
+      TARGET_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - name: Samakan checkout produksi dengan commit yang lolos CI
+        run: |
+          set -euo pipefail
+          [ -n "$CTI_PROD_DIR" ] || { echo "::error::variabel repo CTI_PROD_DIR belum diisi (docs/CI_CD.md)"; exit 1; }
+          cd "$CTI_PROD_DIR"
+          git fetch origin main
+          # Hanya commit yang ada di riwayat origin/main; --ff-only menolak kalau checkout produksi
+          # menyimpang (mis. ada edit lokal yang sudah di-commit).
+          git merge-base --is-ancestor "$TARGET_SHA" origin/main \
+            || { echo "::error::$TARGET_SHA bukan bagian dari origin/main"; exit 1; }
+          git merge --ff-only "$TARGET_SHA"
+          git log --oneline -1
+
+      - name: Deploy (backup, build, migrasi, up, cek sehat, rollback otomatis kalau gagal)
+        run: |
+          cd "$CTI_PROD_DIR"
+          bash tools/ops/deploy.sh
