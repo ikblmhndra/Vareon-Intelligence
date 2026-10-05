@@ -594,7 +594,7 @@ class AsyncCveTrackerRepo:
                 stmt = stmt.where(CveTracker.cve_id.in_(acked_subq))
             else:
                 stmt = stmt.where(CveTracker.cve_id.notin_(acked_subq))
-        stmt = stmt.order_by(CveTracker.detected_on.desc()).limit(50000)
+        stmt = stmt.order_by(CveTracker.detected_on.asc(), CveTracker.cve_id.asc()).limit(50000)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 

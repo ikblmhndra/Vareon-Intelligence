@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import datetime
 import io
+import zoneinfo
 from copy import copy
 from pathlib import Path
 from typing import Any
@@ -37,10 +38,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 _TEMPLATE_PATH = Path(__file__).parent.parent / "templates" / "CVE_Tracker_template.xlsx"
 _TRACKER_SHEET = "CVE Ticket Tracker"
 _DATA_START_ROW = 16
+_TZ = zoneinfo.ZoneInfo("Asia/Jakarta")
 
+# Kolom A = "No" (nomor urut 1..N, header kosong di template). Kolom 4
+# (`cve_reported_date`) + 14 (`acknowledge_time`) = timestamp lengkap
+# `YYYY-MM-DD HH:MM:SS` (WIB), bukan ISO `T`.
 # Kolom (1-based) -> (sumber, nama field). Sumber "cve" = `CveTracker`,
 # "ticket" = `CveTicket`. `cve_reported_date` (kolom 4) SELALU derive
-# dari `CveTracker.published` -- kolom itu di `CveTicket` legacy
+# dari `CveTracker.detected_on` -- kolom itu di `CveTicket` legacy
 # (readonly di UI, gak pernah beneran di-override) SENGAJA di-drop pas
 # desain skema baru, lihat docstring `CveTicket`.
 _COL_MAP: dict[int, tuple[str, str]] = {
@@ -71,14 +76,18 @@ def _fmt(val: Any) -> Any:
         return ""
     if isinstance(val, bool):
         return "Yes" if val else "No"
-    if isinstance(val, datetime.datetime | datetime.date):
+    if isinstance(val, datetime.datetime):
+        if val.tzinfo is not None:
+            val = val.astimezone(_TZ)
+        return val.strftime("%Y-%m-%d %H:%M:%S")
+    if isinstance(val, datetime.date):
         return val.isoformat()
     return val
 
 
 def _cell_value(col_idx: int, cve: CveTracker, ticket: CveTicket | None) -> Any:
     if col_idx == 4:
-        return _fmt(cve.published)
+        return _fmt(cve.detected_on or cve.published)
 
     source, field = _COL_MAP[col_idx]
     if source == "cve":
@@ -87,6 +96,10 @@ def _cell_value(col_idx: int, cve: CveTracker, ticket: CveTicket | None) -> Any:
     val = getattr(ticket, field, None) if ticket is not None else None
     if not val and field == "affected_asset":
         val = cve.tech
+    if not val and field == "affected_version":
+        # sama kayak prefill form ticket di UI (`cve-ticket-tab.tsx`):
+        # constraint dari tiap entry `"<produk>: <constraint>"`.
+        val = ", ".join(a.affected.split(": ", 1)[1] for a in cve.affected if ": " in a.affected)
     if not val and field == "fixed_version":
         val = cve.solutions
     if not val and field == "active_exploitation":
@@ -143,6 +156,10 @@ async def export_cves_to_excel(
     for row_offset, cve in enumerate(cves):
         row_num = _DATA_START_ROW + row_offset
         ticket = tickets.get(cve.cve_id)
+
+        ws.cell(row=row_num, column=1).value = row_offset + 1
+        if style_ref:
+            _copy_style(style_ref[0], ws.cell(row=row_num, column=1))
 
         for col_idx in range(2, 22):
             cell = ws.cell(row=row_num, column=col_idx)

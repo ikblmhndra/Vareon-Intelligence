@@ -6,11 +6,12 @@ from __future__ import annotations
 
 import datetime
 import io
+import re
 
 import openpyxl
 import pytest
 from cti_api.services import cve_export as svc
-from cti_core.db.models.cve import CveTracker
+from cti_core.db.models.cve import CveAffected, CveTracker
 from cti_core.db.repositories.auth import AsyncClientRepo
 from cti_core.db.repositories.cve import AsyncCveFalsePositiveRepo, AsyncCveTicketRepo
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -60,7 +61,9 @@ async def test_export_writes_cve_and_ticket_fields(async_db_session: AsyncSessio
 
     assert ws.cell(row=16, column=2).value == ticket.ticket_id
     assert ws.cell(row=16, column=3).value == "CVE-2026-0001"
-    assert ws.cell(row=16, column=4).value == "2026-09-01"  # cve_reported_date derived
+    assert ws.cell(row=16, column=1).value == 1  # kolom "No" nomor urut
+    # cve_reported_date derive dari detected_on, format `YYYY-MM-DD HH:MM:SS`
+    assert re.fullmatch(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d", ws.cell(row=16, column=4).value)
     assert ws.cell(row=16, column=5).value == "CRITICAL"
     assert ws.cell(row=16, column=6).value == 9.8
     assert ws.cell(row=16, column=7).value == "web-01"
@@ -80,6 +83,7 @@ async def test_export_falls_back_to_cve_fields_when_no_ticket(
             tech="nginx",
             solutions="Patch to 1.27",
             active_exploitation=True,
+            affected=[CveAffected(affected="nginx: < 1.27"), CveAffected(affected="nginx: >= 1.0")],
         )
     )
     await async_db_session.flush()
@@ -89,6 +93,7 @@ async def test_export_falls_back_to_cve_fields_when_no_ticket(
 
     assert ws.cell(row=16, column=2).value in ("", None)  # ticket_id kosong, gak ada ticket
     assert ws.cell(row=16, column=7).value == "nginx"  # affected_asset fallback ke cve.tech
+    assert ws.cell(row=16, column=8).value == "< 1.27, >= 1.0"  # affected_version dari cve.affected
     assert ws.cell(row=16, column=9).value == "Patch to 1.27"  # fixed_version fallback solutions
     assert ws.cell(row=16, column=13).value == "Yes"  # active_exploitation fallback dari cve
 
