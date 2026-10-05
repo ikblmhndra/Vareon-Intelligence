@@ -31,7 +31,7 @@ def test_job_deploy_menolak_pr_dan_fork() -> None:
     assert "workflow_run.conclusion == 'success'" in cond
     assert "workflow_run.event == 'push'" in cond
     assert "head_repository.full_name == github.repository" in cond
-    assert job["runs-on"] == ["self-hosted", "cti-prod"]
+    assert job["runs-on"] == ["self-hosted", "Linux", "X64"]  # runner nameless.selfhosted
     assert job["environment"] == "production"
 
 

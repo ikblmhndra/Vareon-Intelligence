@@ -21,15 +21,18 @@ port masuk/SSH yang perlu dibuka.
 
 ## Setup (sekali)
 
-1. **Runner di host produksi.** GitHub: repo > Settings > Actions > Runners > *New self-hosted runner*
-   (Linux). Ikuti perintah download dari halaman itu, lalu konfigurasi dengan label `cti-prod`:
-   ```bash
-   ./config.sh --url https://github.com/ikblmhndra/Vareon-Intelligence --token <TOKEN-DARI-HALAMAN-ITU> \
-       --labels cti-prod --unattended
-   sudo ./svc.sh install <user> && sudo ./svc.sh start
-   ```
-   `<user>` = user yang memiliki checkout produksi dan ada di grup `docker` (harus bisa `docker compose`
-   tanpa sudo). Token berlaku sebentar dan tidak boleh ditempel ke chat/tiket.
+1. **Runner di host produksi.** Runner yang dipakai: **`nameless.selfhosted`** (Settings > Actions >
+   Runners), label bawaan `self-hosted`, `Linux`, `X64`. `runs-on` memilih berdasarkan **label**, bukan nama
+   runner, jadi job deploy meminta `[self-hosted, Linux, X64]`. Syaratnya:
+   - runner terpasang **di host produksi** (bukan mesin lain: skrip deploy memakai Docker lokal dan
+     checkout produksi di sana);
+   - jalan sebagai user yang memiliki checkout produksi dan ada di grup `docker` (harus bisa
+     `docker compose` tanpa sudo).
+   Kalau nanti ada runner self-hosted kedua di repo ini, tambahkan label khusus (mis. `cti-prod`) ke runner
+   ini lewat Settings > Actions > Runners > runner > Labels, lalu tambahkan juga ke `runs-on` di
+   `deploy.yml` dan `tests/unit/test_deploy_pipeline.py`; kalau tidak, job deploy bisa jatuh ke runner lain.
+   Runner baru: ikuti perintah dari tombol *New self-hosted runner*; token tidak boleh ditempel ke
+   chat/tiket.
 2. **Variabel repo** `CTI_PROD_DIR` = path checkout produksi (mis. `/opt/cti-platform`), di Settings >
    Secrets and variables > Actions > *Variables*. Checkout itu berisi `.env`, `docker/stack.env`, dan
    `secrets/` (tidak ada di git).
@@ -68,8 +71,8 @@ port masuk/SSH yang perlu dibuka.
   tertangkap di sini; backup otomatis sebelum deploy adalah jaring pengamannya.
 - **`.env` / `docker/stack.env` tidak ikut git.** Kalau sebuah PR menambah key baru, isi dulu di host
   produksi **sebelum** merge, kalau tidak aplikasi menolak start (dan deploy akan rollback).
-- **Runner self-hosted = kode berjalan di host produksi.** Jangan pernah memakai label `cti-prod` di
-  workflow yang terpicu PR, dan jangan membuka repo ini ke kontributor yang tidak dipercaya tanpa branch
+- **Runner self-hosted = kode berjalan di host produksi.** Jangan pernah memakai runner ini
+  (`runs-on: self-hosted`) di workflow yang terpicu PR, dan jangan membuka repo ini ke kontributor yang tidak dipercaya tanpa branch
   protection. User runner di grup `docker` setara root di host itu.
 - Satu deploy dalam satu waktu (`concurrency` + `flock`). Deploy yang sedang berjalan tidak dibatalkan
   oleh commit baru; commit berikutnya menunggu giliran.

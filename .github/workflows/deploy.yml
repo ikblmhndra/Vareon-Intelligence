@@ -1,6 +1,7 @@
 name: Deploy
 
-# CD ke produksi. Jalan di self-hosted runner (label `cti-prod`) yang terpasang DI host produksi:
+# CD ke produksi. Jalan di self-hosted runner `nameless.selfhosted` (label bawaan self-hosted/Linux/X64)
+# yang terpasang DI host produksi:
 # host itu IP privat, jadi runner GitHub (cloud) tidak bisa menjangkaunya. Setup: docs/CI_CD.md.
 #
 # Hanya terpicu oleh (a) CI hijau untuk PUSH ke main di repo ini, atau (b) klik manual. Tidak pernah
@@ -31,7 +32,7 @@ jobs:
       (github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.event == 'push' &&
        github.event.workflow_run.head_repository.full_name == github.repository)
-    runs-on: [self-hosted, cti-prod]
+    runs-on: [self-hosted, Linux, X64]
     # Atur "Required reviewers" di Settings > Environments > production kalau mau persetujuan manual.
     environment: production
     timeout-minutes: 45
