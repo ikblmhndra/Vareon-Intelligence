@@ -1,208 +1,388 @@
-# Nambah Scraper
+# Nambah Scraper Baru (step by step)
 
-Dokumen ini **satu jalur buat dua hal**:
+Panduan buat nambah **satu scraper baru** dari nol sampai jalan di produksi. Cara
+merawat scraper yang sudah jalan (rusak, kosong, mati) ada di
+[`SCRAPER_MAINTENANCE.md`](SCRAPER_MAINTENANCE.md).
 
-- Nambah scraper baru ke platform
-- Migrasi scraper lama di Fase 4
+Prinsipnya: **satu scraper = satu file** di `scrapers/src/cti_scrapers/feeds/`.
+Tidak ada registry yang diedit, tidak ada jadwal terpusat, tidak ada entri
+`pyproject.toml`. Taruh file, framework menemukannya sendiri (auto-discovery,
+`cti_scraper.registry`). Saat ini ada ±95 scraper terdaftar.
 
-Sengaja disamain. Kalau migrasi 91 scraper lama lewat jalur ini kerasa ribet,
-berarti nambah scraper baru nanti juga ribet — dan itu masalah utama yang mau
-dibenerin revamp ini. **Migrasi = 91 kali uji coba jalur ini.**
-
-Aturannya: **satu scraper = satu file.** Gak ada file lain yang perlu diedit.
-Gak ada registry buat didaftarin, gak ada jadwal terpusat, gak ada entri
-`pyproject.toml`. Taruh file, selesai.
+> Terakhir diverifikasi terhadap kode dan container prod: 2026-10-05
+> (`cti-scraper list`, `cti-scraper dry-run bitdefender` jalan di container `worker`).
 
 ---
 
-## Alurnya
+## 0. Peta singkat: apa yang terjadi pada scraper
 
 ```
-scaffold  ->  isi  ->  dry-run  ->  verify  ->  enable
+beat (jadwal cron)  ->  Celery task scrape.run  ->  Runner  ->  fetch() milik scraper
+                                                      |
+                              dedup (reserve) <-------+------->  sink (sesuai tipe item)
+                                                                    |
+                                                  ArticleItem -> enrich task (LLM, skor, IOC) -> tabel articles
 ```
 
-### 1. Scaffold
+Yang kamu tulis cuma `fetch()` (atau, untuk RSS/XPath/API sederhana, cuma isi
+atribut kelas). **Dedup, retry, rate limit, heartbeat, logging, penyimpanan,
+alert ditangani framework** -- jangan ditulis ulang di file scraper.
+
+---
+
+## 1. Pilih jenis scraper
+
+| Sumber | Family | `meta.runtime` | Contoh |
+|---|---|---|---|
+| RSS / Atom | `RSSScraper` | `light` | `feeds/bitdefender.py` |
+| Halaman HTML statis | `XPathScraper` | `light` | `feeds/cyfirma.py` |
+| Halaman HTML yang perlu JavaScript | `XPathScraper` | `browser` | `feeds/abnormalsecurity.py` |
+| JSON API sederhana (daftar item) | `ApiScraper` | `light` | `families/api.py` |
+| Selain itu (state, auth, dokumen sendiri) | turunan `BaseScraper` langsung | sesuai kebutuhan | `collectors/ransomware_live.py` |
+
+Urutan coba: **RSS dulu** (paling stabil, paling murah), lalu API, lalu XPath
+`light`, dan `browser` hanya kalau memang wajib (Chromium berat dan jalan di
+worker terpisah dengan concurrency kecil).
+
+Cek sumbernya dulu sebelum menulis apa pun:
 
 ```bash
-cti-scraper new bitdefender --kind rss
+curl -sI https://contoh.com/feed | head -5          # status + content-type
+curl -s  https://contoh.com/feed | head -40         # RSS? Atom? isinya apa?
+curl -s  https://contoh.com/robots.txt              # ada larangan crawling?
 ```
 
-Bikin `scrapers/feeds/bitdefender.py` yang udah bisa jalan, isinya metadata
-minimum. `--kind`: `rss` | `xpath` | `api`.
+Kalau ada RSS/Atom, selalu pakai itu, bukan scrape HTML-nya. Kalau situs
+melarang crawling atau butuh login/captcha, **berhenti dan putuskan dulu**
+(jangan menembus captcha atau bikin akun di sumber).
 
-### 2. Isi
+---
 
-Buat RSS, biasanya cuma segini:
+## 2. Siapkan lingkungan dev
+
+```bash
+git checkout -b feat/scraper-<nama>
+uv sync --extra dev                                  # dari root repo
+uv run cti-scraper list | head                       # harus menampilkan daftar scraper
+```
+
+Scraper `runtime="browser"` butuh Playwright: `uv sync --extra browser` di
+`packages/cti-scraper`, lalu `playwright install chromium`.
+
+---
+
+## 3. Buat file scraper
+
+**Tidak ada perintah scaffold** (`cti-scraper new` *tidak ada*): salin scraper
+referensi yang sejenis lalu ubah.
+
+```bash
+cp scrapers/src/cti_scrapers/feeds/bitdefender.py scrapers/src/cti_scrapers/feeds/<slug>.py
+```
+
+### 3a. RSS (kasus paling umum)
 
 ```python
-class Bitdefender(RssScraper):
+"""Nama Sumber -- apa yang dipantau, dan kenapa."""
+
+from __future__ import annotations
+
+from cti_scraper.base import ScraperMeta
+from cti_scraper.families.rss import RSSScraper
+from cti_scraper.schedule import spread
+
+
+class NamaSumber(RSSScraper):
     meta = ScraperMeta(
-        id="bitdefender",
-        source="Bitdefender",
-        schedule="30 * * * *",
+        id="nama_sumber",                       # slug, huruf kecil. JANGAN diubah setelah deploy
+        source="Nama Sumber",                   # label tampilan, harus UNIK dan bermakna
+        schedule=spread("*/30 * * * *", "nama_sumber"),
         tags=("vendor",),
+        legacy_script="nama_sumber",            # dipakai nama folder fixture (lihat langkah 5)
     )
-    feeds = ("https://www.bitdefender.com/blog/api/rss/labs/",)
+    feeds = ("https://contoh.com/feed.xml",)
 ```
 
-Buat XPath, tambahin `url` + dua selector. Buat API, override `fetch()`.
+Atribut RSS yang sering perlu diubah (semua `ClassVar`, lihat
+`packages/cti-scraper/src/cti_scraper/families/rss.py`):
 
-### 3. Dry-run — jalanin beneran, gak nulis apa-apa
+| Atribut | Default | Kapan diubah |
+|---|---|---|
+| `item_path` | `.//item` | Atom: `.//{http://www.w3.org/2005/Atom}entry` |
+| `link_path` / `link_attr` | `link` / `None` | Atom: `link_attr = "href"` |
+| `date_path` | `pubDate` | `None` kalau feed tidak punya tanggal (dipakai waktu scrape) |
+| `base_url` | `""` | link di feed relatif |
+| `xml_fixups` / `html_unescape` | kosong / `False` | feed dengan entity rusak (jarang perlu) |
+| `_include_item(node)` | semua lolos | filter per item, mis. kategori tertentu saja |
 
-```bash
-cti-scraper dry-run bitdefender
+### 3b. XPath
+
+```python
+class NamaSumber(XPathScraper):
+    meta = ScraperMeta(id="nama_sumber", source="Nama Sumber",
+                       schedule=spread("0 */2 * * *", "nama_sumber"), runtime="light")
+    url = "https://contoh.com/blog"
+    title_xpath = "(//article//h2)[{i}]"       # {i} diisi 1..max_items kalau indexed=True
+    link_xpath = "(//article//h2/a/@href)[{i}]"
+    base_url = "https://contoh.com"
 ```
 
-Ngambil dari sumber aslinya, nampilin item yang kebaca, **gak nyentuh
-database, gak ngirim alert, gak nandain dedup**. Ini yang dipakai buat
-mastiin selector-nya bener sebelum dinyalain.
+`indexed = False` memakai satu XPath untuk semua kartu (judul dan link dipasangkan
+berurutan). Kalau `title_xpath` tidak cocok sama sekali, framework melempar
+`ParseError` (artinya: situs berubah). Untuk halaman yang butuh JavaScript:
+`runtime="browser"` plus `wait_for = "<css selector>"`.
 
-Ini juga yang sekarang gak ada sama sekali. Dulu satu-satunya cara nguji
-scraper adalah nyalain di produksi dan nungguin.
+### 3c. API JSON
 
-### 4. Verify — bandingin sama baseline
+Isi `url`, `root_path` (kunci yang menunjuk list), dan `field_map`
+(`{"title": "<kunci json>", "url": "<kunci json>"}`). Kalau mapping tidak sesederhana
+itu, turunkan `BaseScraper` langsung dan tulis `fetch()` sendiri.
 
-```bash
-cti-scraper verify bitdefender
+### 3d. Menulis `fetch()` sendiri (bespoke)
+
+```python
+def fetch(self, ctx):
+    resp = ctx.http.get("https://api.contoh.com/items")   # client bersama: UA, timeout, rate limit
+    for row in resp.json()["items"]:
+        yield ArticleItem(title=row["title"], url=row["url"], posted_on=ctx.now.date())
 ```
 
-Ngasih plugin baru **byte HTTP yang sama persis** dari fixture Fase 0, lalu
-bandingin item yang dihasilkan sama `expected_items.json`.
+Aturan `fetch()`:
+- HTTP **hanya** lewat `ctx.http`; browser lewat `ctx.page()`. Jangan bikin `httpx.Client`/`requests` sendiri.
+- Waktu **hanya** lewat `ctx.now` (bukan `datetime.now()`), supaya test deterministik.
+- Jangan akses DB, Telegram, atau token mentah. Butuh data internal? Deklarasikan `meta.reference_data`; butuh API key? Deklarasikan `meta.credential`.
+- Jangan `try/except` untuk menelan error. Lempar `TransientFetchError` untuk yang layak di-retry (5xx, timeout) dan `ParseError` kalau dokumen terbaca tapi strukturnya berubah.
+- Yield nol item itu sah (tercatat `empty`). Jangan `yield` sampah supaya "kelihatan jalan".
+- Tipe item lain (`NoticeItem`, `CveItem`, `RansomwareVictimItem`, ...) menentukan tujuan lewat *sink*; lihat `cti_scraper/items.py` dan `sinks.py`.
 
-Ada dua jalur, tergantung fixture-nya ada atau nggak:
+### 3e. Isi `ScraperMeta` dengan benar
 
-- **Ada fixture dari Fase 0**: wajib lolos diff-nya. Ini gate-nya.
-- **Gak ada fixture** (scraper baru, atau scraper migrasi yang kebetulan gak
-  sempat kerekam di Fase 0 — lihat catatan di bawah): `verify` ngerekamnya
-  jadi baseline pertama **saat itu juga**, dari sumber asli. Mulai run
-  berikutnya, dia ikut ke-regression-test kayak yang lain.
-
-  Ini disengaja: gak semua scraper HARUS punya fixture Fase 0 sebelum
-  dimigrasi. Yang gak sempat kerekam (situs lambat, run keputus, dll) cukup
-  dapet baseline-nya pas giliran dia diverifikasi satu-per-satu — bukan
-  ngeblok scraper lain nunggu perekaman ulang.
-
-URL dibandingin pakai `canonicalize_url`, bukan string mentah — kode baru
-sengaja ngenormalisasi. Judul dibandingin persis.
-
-### 5. Enable
-
-```bash
-cti-scraper enable bitdefender
-```
-
-Nyalain di control plane. Beat langsung ngambil jadwalnya tanpa perlu deploy
-ulang — `MongoScheduler` baca ulang tiap 60 detik.
-
----
-
-## Yang ditangani framework
-
-Jangan tulis ini di file scraper. Semua udah dihandle:
-
-| | Ditangani di mana |
+| Field | Catatan |
 |---|---|
-| Dedup | `runner` — reserve sebelum proses, commit setelah sukses |
-| Retry + backoff | task Celery, cuma buat error transient |
-| Rate limit | token bucket Redis, **per-domain** (bukan per-scraper) |
-| Heartbeat per-run | `runner` — `items_found`, `items_new`, status, traceback |
-| Logging | structlog, udah ke-bind `scraper_id` + `run_id` |
-| Simpan | sink registry, dipilih dari tipe item yang di-`yield` |
-| Alert | terpisah dari simpan, task Celery sendiri |
-| Jadwal | `meta.schedule`, beat baca dari registry |
-
-Yang lu tulis cuma `fetch()`. Itu doang.
-
-**Jangan nulis `try`/`except` buat nutupin error.** 166 dari 241 scraper lama
-gak punya penanganan error sama sekali, dan yang punya kebanyakan malah
-`except Exception: pass` — bikin scraper rusak gak bisa dibedain dari yang
-sehat. Framework yang nangkep, ngeklasifikasi, dan nyatet. Lempar
-`ParseError` kalau dokumennya kebaca tapi strukturnya gak sesuai — itu berarti
-situsnya berubah, dan orang harus lihat, bukan di-retry tiga kali.
+| `id` | **Permanen.** Jadi namespace dedup dan kunci control plane. Mengubahnya = mereset dedup, scraper meng-yield ulang semua item. |
+| `source` | Tampil di artikel, Telegram, dan UI. Harus unik (case-insensitive) dan bukan placeholder ("Name", "Source", ...), dijaga `tests/contract/test_scraper_labels.py`. |
+| `schedule` | Cron 5 field. Pakai `spread("*/N * * * *", id)` supaya puluhan scraper tidak menembak di menit yang sama. Untuk RSS vendor, 15-60 menit cukup. |
+| `runtime` | `light` (httpx) atau `browser` (Playwright). Menentukan queue Celery: `browser` -> `scrape.browser`, ada `credential` -> `scrape.api`, sisanya -> `scrape.rss`. |
+| `rate_limit` | Default `20/minute`, **per domain** (dua scraper ke host sama berbagi budget). Turunkan untuk situs yang sensitif. |
+| `max_items` | Batas keras per run (maks 1000). Pagar kalau parser tiba-tiba meledak. |
+| `tags` | Bebas, dipakai filter (`cti-scraper list --tag vendor`). |
+| `legacy_script` / `legacy_label` | Untuk scraper baru, `legacy_script` cukup diisi sama dengan `id` (dipakai nama folder fixture). Harus unik. |
+| `enabled` | Default `True`. Lihat langkah 8 sebelum deploy. |
 
 ---
 
-## Kasus yang gak standar
+## 4. Dry-run (nyata, tidak menulis apa pun)
 
-Scraper yang nulis bentuk dokumen sendiri (ransomware.live, NVD) **gak
-perlu jalan keluar khusus** — dia cukup `yield` tipe item yang beda:
-
-```python
-def fetch(self, ctx):
-    yield RansomwareVictimItem(group_name=..., victim=...)
+```bash
+uv run cti-scraper dry-run nama_sumber
+# status=ok items_found=15 duration_ms=147
 ```
 
-Sink registry yang nentuin tujuannya dari tipe item. Gak ada
-`if scraper.is_special` di mana pun. Kalau butuh tujuan yang belum ada,
-daftarin `@sink_for(ItemKu)` di file yang sama — tetap satu file.
+Mengambil dari sumber asli, **tanpa** menyentuh DB, dedup, atau alert. Output-nya
+cuma ringkasan (status, jumlah item, error), **bukan daftar item**. Untuk melihat
+isi item (judul/URL/tanggal) sungguhan, pakai snippet ini:
 
-### Pilihan yang bisa diubah admin tanpa deploy (`meta.options`)
+```bash
+uv run python - <<'PY'
+from datetime import UTC, datetime
+import structlog
+from cti_scraper import registry
+from cti_scraper.base import ScrapeContext
+from cti_scraper.http import ScraperHttpClient
 
-Kalau sebuah scraper punya DUA cara sah mengambil data dan admin perlu bisa pindah tanpa
-deploy (contoh nyata: sumber Twitter -- twitterapi.io vs API resmi X), deklarasikan
-`ScraperOption`. Pilihannya TERTUTUP (`choices`), jadi bisa divalidasi penuh di API:
-
-```python
-meta = ScraperMeta(
-    ...,
-    credential="twitter",  # = kredensial pilihan DEFAULT (menentukan queue)
-    options=(
-        ScraperOption(
-            key="provider",
-            label="Sumber data",
-            default="twitterapi_io",
-            choices=(
-                OptionChoice("twitterapi_io", "twitterapi.io", credential="twitter"),
-                OptionChoice("x_official", "X API resmi", credential="x"),
-            ),
-        ),
-    ),
+cls = registry.get("nama_sumber")
+m = cls.meta
+ctx = ScrapeContext(
+    meta=m, run_id="dev", log=structlog.get_logger(),
+    http=ScraperHttpClient(timeout_s=m.timeout_s, rate_limit=m.rate_limit),
+    now=datetime.now(UTC).replace(tzinfo=None),
 )
-
-
-def fetch(self, ctx):
-    provider = ctx.options["provider"]  # nilai efektif; kredensialnya sudah dipasang Runner
+for it in cls().fetch(ctx):
+    print(it.title, it.url, it.posted_on)
+PY
 ```
 
-- Admin memilih di **/scrapers -> detail scraper** (disimpan di `scraper_config.options`);
-  `Runner` membacanya tiap run. Tanpa pilihan admin, scraper jalan dengan `default` kode.
-- `credential` per pilihan: header auth ikut pilihan. `fetch()` tetap tidak pernah memegang token.
-- Pilihan usang di DB (dihapus dari kode) DIABAIKAN -> default; API menolak (422) nilai yang
-  tidak dideklarasikan. Kontraknya dijaga `tests/contract/test_scraper_options.py`.
-- Coba sekali jalan tanpa mengubah konfigurasi: `cti-scraper dry-run <id> --option provider=x_official`.
-- Kalau salah satu pilihan MENAGIH per pemakaian, tulis peringatan biayanya di `description`
-  (tampil di dropdown) dan jangan jadikan default.
+(Hanya untuk `runtime="light"`; scraper `browser` cukup dicek lewat `dry-run` dan `verify`.)
+Cek: jumlah item masuk akal, judul dan URL benar, tanggal terisi, dan tidak ada
+`ERROR [...]` di `dry-run`.
+
+Status yang mungkin: `ok`, `empty` (nol item), `parse_error` (struktur berubah),
+`fetch_error`, `rate_limited`, `backpressure`.
+
+Dry-run juga bisa dijalankan di container prod (read-only terhadap data):
+
+```bash
+docker compose exec worker cti-scraper dry-run nama_sumber
+```
 
 ---
 
-## Definisi selesai
+## 5. Fixture + verify (baseline regression)
 
-Scraper dianggap beres kalau:
+Fixture = byte HTTP yang direkam, supaya test tidak bergantung pada internet.
 
-- [ ] `cti-scraper dry-run` ngeluarin item yang bener
-- [ ] `cti-scraper verify` lolos (migrasi) atau bikin baseline (baru)
-- [ ] `meta.schedule` sesuai jadwal Rundeck aslinya (`rundeck-jobs-map.json`)
-- [ ] `meta.runtime` cocok sama caranya ngambil (`browser` kalau butuh render)
-- [ ] Contract test lolos: `pytest tests/contract -k <id>`
-- [ ] Gak ada `try`/`except` yang nelen error
-- [ ] Gak ada file lain yang diedit
+```bash
+uv run cti-scraper verify nama_sumber --record     # rekam baseline dari sumber asli
+uv run cti-scraper verify nama_sumber              # jalankan ulang lawan fixture, harus "OK"
+```
 
-Kalau langkah mana pun kerasa maksa waktu migrasi, **itu bug framework, bukan
-bug scraper.** Benerin framework-nya, jangan diakalin di file scraper — file
-ke-92 bakal kena masalah yang sama.
+- Hasil rekaman ada di `tests/fixtures/<legacy_script>/` (`<tanggal>.input.xml|html|json`
+  dan `expected_items.json`). **Commit folder ini.**
+- `--record` memerlukan `meta.legacy_script`. Scraper `runtime="browser"` tidak bisa
+  direkam lewat CLI ini (pakai `tools/salvage/record_fixtures.py`).
+- `verify` hanya jalan di **repo dev** (container prod tidak membawa `tests/fixtures`).
+- Setelah merekam, **buka `expected_items.json`** dan pastikan isinya memang benar,
+  jangan menyimpan baseline yang salah.
 
 ---
 
-## Kenapa `fetch()` gak pernah dikasih akses Mongo/Telegram langsung
+## 6. Test dan lint
 
-Ini bukan gaya penulisan, ini pagar keamanan. Waktu ngerekam fixture dari
-scraper lama, ketemu dua yang bikin `MongoClient` langsung dari config dan
-satu yang bikin `telegram.Bot` langsung dengan token hardcoded — kalau
-harness perekam gak nambal ini, scraper "cuma dites doang" bisa beneran
-nulis ke database produksi atau ngirim pesan ke channel asli.
+```bash
+uv run pytest tests/contract -k nama_sumber -q     # kontrak: id cocok, cron valid, fetch generator, max_items, runtime
+uv run pytest tests/contract/test_scraper_labels.py -q   # label unik, bukan placeholder
+uv run ruff check scrapers && uv run ruff format --check scrapers
+```
 
-`BaseScraper.fetch()` cuma dikasih `ctx.http` (buat HTTP) dan `ctx.page()`
-(buat browser). Gak ada jalur ke Mongo, Telegram, atau kredensial mentah
-apa pun. Nulis data lewat `yield`, ngirim alert lewat sink yang framework
-sediain. Itu **struktural**, bukan konvensi — jadi kelas bug yang sama gak
-mungkin lagi kejadian, bukan cuma "diusahakan jangan".
+Contract test jalan otomatis untuk semua scraper terdaftar. Kalau gagal,
+**benerin framework atau meta-nya**, jangan mengakali di `fetch()`.
+
+---
+
+## 7. Commit dan review
+
+```bash
+git add scrapers/src/cti_scrapers/feeds/<slug>.py tests/fixtures/<slug>
+git commit -m "feat(scraper): tambah <Nama Sumber>"
+```
+
+Hanya dua hal yang berubah: file scraper dan folder fixture. Kalau kamu merasa
+perlu mengedit file lain, tanyakan dulu kenapa (biasanya itu tanda ada masalah di
+framework).
+
+---
+
+## 8. Deploy ke produksi
+
+Kode scraper ikut **image** (`COPY scrapers scrapers`), dan registry hanya dibaca
+saat proses start. Jadi scraper baru perlu **rebuild image dan restart proses**
+yang membaca registry:
+
+```bash
+git pull
+docker compose --profile app up -d --build worker worker-browser beat api
+```
+
+| Service | Kenapa ikut rebuild |
+|---|---|
+| `worker` | menjalankan scraper `scrape.rss` dan `scrape.api` |
+| `worker-browser` | menjalankan scraper `runtime="browser"` (tetap rebuild walau scraper `light`, image yang sama) |
+| `beat` | **membangun jadwal saat start**; tanpa restart scraper baru tidak pernah dijadwalkan |
+| `api` | daftar scraper di halaman `/scrapers` dan endpoint dry-run/trigger dibaca dari registry |
+
+> Jadwal TIDAK di-hot-reload. Dokumen lama menulis "beat baca ulang tiap 60 detik":
+> itu **tidak benar** untuk kode sekarang. `ScraperConfig.schedule`/`enabled` yang
+> diubah lewat control plane baru dipakai beat setelah restart (lihat docstring
+> `cti_worker.beat.build_beat_schedule`).
+
+### Run pertama scraper baru (cold start)
+
+Scraper yang belum punya riwayat dedup (nol baris `scraper_seen`) kena
+**cold-start cap**: hanya `Settings.scraper.cold_start_max_items` (default **5**) item
+**terbaru** yang diproses (enrichment, LLM, Telegram), sisanya langsung ditandai
+"sudah dilihat" tanpa diproses (`Runner._cold_start_cap`). Jadi feed dengan ratusan
+item lama tidak membanjiri antrian, tapi **5 item terbaru tetap masuk** sebagai artikel.
+
+Kalau kamu mau **nol** item dari run pertama (mis. feed baru tapi isinya tidak
+relevan sebelum hari ini):
+
+```bash
+docker compose exec worker cti-scraper run nama_sumber --prime
+```
+
+`--prime` menandai semua item yang ketemu sebagai seen tanpa menyimpan atau
+mengirim apa pun; run terjadwal berikutnya hanya memproses yang benar-benar baru.
+
+Kalau mau menguji dulu di prod tanpa menjadwalkan: deploy dengan `enabled=False`
+di `meta`, cek lewat `dry-run` di container, lalu aktifkan (`cti-scraper enable
+nama_sumber` atau tombol di `/scrapers`) dan **restart `beat`**.
+
+---
+
+## 9. Verifikasi setelah deploy
+
+1. `/scrapers` di UI: scraper muncul, status bukan `stale`/`dead`.
+2. Setelah satu tick jadwalnya: buka detail scraper -> **Runs**: `status=ok`, `items_found>0`.
+3. Tab **Items**: item muncul; cek satu artikel di Newsroom (judul, URL, sumber benar).
+4. Kalau status `empty`, `parse_error`, atau `fetch_error`, ikuti
+   [`SCRAPER_MAINTENANCE.md`](SCRAPER_MAINTENANCE.md).
+
+Di UI (admin) tersedia juga **Dry-run** dan **Trigger** manual per scraper; trigger
+mengirim tugas ke queue yang benar sesuai `meta.runtime`/`credential`.
+
+---
+
+## Kasus khusus
+
+**API key / kredensial** -- isi `meta.credential = "github" | "nvd" | "twitter" | ...`
+(lihat `cti_scraper/credentials.py`). `Runner` memasang header auth ke `ctx.http`
+sebelum `fetch()`; kode scraper tidak pernah memegang token. Secret kosong di env
+membuat run gagal `fetch_error` (stage `config`), bukan crash. Scraper
+ber-credential masuk queue `scrape.api`.
+
+**Data internal (techstack, dst.)** -- `meta.reference_data = ("techstack",)`;
+`Runner` membaca dari Postgres lalu menaruhnya di `ctx.reference["techstack"]`.
+`dry-run` tetap butuh koneksi DB untuk ini.
+
+**Dua cara ambil data, admin boleh pindah tanpa deploy** -- deklarasikan
+`ScraperOption` di `meta.options` (pilihan tertutup, divalidasi API). Dibaca lewat
+`ctx.options["key"]`. Coba tanpa mengubah konfigurasi:
+`cti-scraper dry-run <id> --option provider=x_official`. Kalau salah satu pilihan
+berbayar per pemakaian, tulis peringatan biaya di `description` dan jangan jadikan default.
+Kontrak dijaga `tests/contract/test_scraper_options.py`.
+
+**Bentuk dokumen sendiri** (ransomware, CVE) -- cukup `yield` tipe item yang sesuai;
+sink dipilih dari tipe item. Butuh tujuan baru: daftarkan `@sink_for(ItemKu)` di
+file yang sama.
+
+**Browser** -- `runtime="browser"`, pakai `with ctx.page() as page:`. Memanggil
+`ctx.page()` dengan `runtime="light"` melempar `ConfigError` (sengaja, supaya
+ketahuan saat dev). Concurrency worker browser sengaja kecil (`BROWSER_WORKER_CONCURRENCY`, default 2).
+
+---
+
+## Kenapa `fetch()` tidak boleh akses DB/Telegram langsung
+
+Ini pagar keamanan, bukan gaya. Saat merekam fixture dari scraper lama, ada yang
+membuat `MongoClient` langsung dari config dan ada yang menyimpan token Telegram
+hardcoded: scraper yang "cuma dites" bisa menulis ke database produksi atau
+mengirim pesan ke channel asli. `fetch()` hanya diberi `ctx.http`, `ctx.page()`,
+`ctx.now`, `ctx.options`, `ctx.reference`. Jadi kelas bug itu tidak mungkin terulang.
+
+---
+
+## Checklist selesai
+
+- [ ] `cti-scraper dry-run <id>` mengeluarkan item yang benar
+- [ ] Fixture direkam, `expected_items.json` sudah dicek manual, `cti-scraper verify <id>` = OK
+- [ ] `pytest tests/contract -k <id>` dan `test_scraper_labels.py` lolos; `ruff` bersih
+- [ ] `id` final (tidak akan diubah), `source` unik dan bermakna
+- [ ] `schedule` memakai `spread()`, `runtime` sesuai cara ambil, `rate_limit` wajar
+- [ ] Tidak ada `try/except` yang menelan error, tidak ada `print` sisa debug
+- [ ] Hanya file scraper + folder fixture yang berubah
+- [ ] Setelah deploy: run pertama `ok`, item muncul (ingat cold start: 5 item terbaru; pakai `--prime` kalau tidak mau)
+
+## Masalah umum saat menambah
+
+| Gejala | Penyebab | Solusi |
+|---|---|---|
+| `scraper '<id>' gak kedaftar` | file di luar `cti_scrapers/`, class bukan subclass `BaseScraper`, atau `meta.id` beda | cek lokasi file dan `meta.id` |
+| `ConfigError ... gak nulis meta sendiri` | subclass konkret tanpa `meta` | tambah `meta = ScraperMeta(...)` |
+| `DuplicateScraperId` | `id` sudah dipakai file lain | ganti slug |
+| `parse_error ... gak ada node di item_path` | feed Atom tapi `item_path` default RSS | set `item_path`/`link_attr` untuk Atom |
+| `parse_error ... XML gak valid` | feed rusak/diblokir, kadang halaman challenge | `curl` URL-nya, cek isi; mungkin butuh `xml_fixups` atau situs memblokir bot |
+| `fetch_error` 403/429 | situs memblokir UA/laju | turunkan `rate_limit`, cek apakah perlu `browser` |
+| `empty` terus | selector salah, atau sumber memang sepi | bandingkan dengan `curl` isi halaman |
+| Scraper baru tidak pernah jalan | `beat` belum di-restart | `docker compose up -d --build beat` |
+| UI `/scrapers` tidak menampilkan scraper baru | `api` belum di-rebuild | rebuild `api` |
+| Run pertama menghasilkan 5 artikel padahal tidak diinginkan | cold-start cap (normal) | pakai `--prime` sebelum dijadwalkan |

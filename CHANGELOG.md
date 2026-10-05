@@ -9,6 +9,12 @@ router `changelog.py`) -- parser-nya expect header persis
 ## [Unreleased] - 2026-10-05
 
 ### Diubah
+- **Dokumentasi scraper** ditulis ulang: `docs/ADDING_A_SCRAPER.md` (step by step nambah scraper,
+  diverifikasi ke kode dan prod; koreksi: tidak ada `cti-scraper new`, beat tidak hot-reload) dan
+  `docs/SCRAPER_MAINTENANCE.md` (status kesehatan, playbook per masalah, rutinitas).
+- **Audit trail respons LLM klasifikasi**: `raw_enrichment["classify"]` (artikel diterima
+  dan ditolak) menyimpan model, `prompt_version`, dan isi mentah tiap percobaan --
+  buat membandingkan keputusan valid/tidak-valid lintas revisi prompt.
 - **Rebranding**: nama tampilan platform jadi **Vareon Intelligence**
   (sebelumnya Niskala Intelligence) -- judul tab, login, logo header, judul
   API/OpenAPI, template email, dan README. Identifier teknis (`cti-platform`,
