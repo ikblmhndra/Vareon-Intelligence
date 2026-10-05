@@ -233,3 +233,6 @@ class RejectedArticle(Base):
     rejected_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+    raw_enrichment: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    """Audit trail respons LLM klasifikasi mentah (`ClassifyResult.audit`); bukan sumber baca."""
