@@ -683,6 +683,47 @@ class AsyncCveTicketRepo:
         )
         return {t.cve_id: t for t in result.scalars().all()}
 
+    async def list_with_cve(
+        self,
+        client_id: str,
+        *,
+        search: str | None = None,
+        status: str | None = None,
+    ) -> list[tuple[CveTicket, CveTracker | None]]:
+        """Semua ticket client ini + CVE-nya (outer join -- ticket bisa
+        yatim kalau CVE-nya udah dipurge), terbaru dulu. Buat view
+        "Ticketing" di CVE Tracker. `status="__none__"` = ticket tanpa
+        `remediation_status`."""
+        stmt = (
+            select(CveTicket, CveTracker)
+            .outerjoin(
+                CveTracker,
+                (CveTracker.cve_id == CveTicket.cve_id)
+                & (CveTracker.client_id == CveTicket.client_id),
+            )
+            .where(CveTicket.client_id == client_id)
+        )
+        if search:
+            like = f"%{search}%"
+            stmt = stmt.where(
+                or_(
+                    CveTicket.ticket_id.ilike(like),
+                    CveTicket.cve_id.ilike(like),
+                    CveTicket.affected_asset.ilike(like),
+                    CveTicket.asset_owner.ilike(like),
+                    CveTicket.owner_team.ilike(like),
+                )
+            )
+        if status == "__none__":
+            stmt = stmt.where(
+                or_(CveTicket.remediation_status.is_(None), CveTicket.remediation_status == "")
+            )
+        elif status:
+            stmt = stmt.where(CveTicket.remediation_status == status)
+        stmt = stmt.order_by(CveTicket.ticket_id.desc()).limit(5000)
+        result = await self.session.execute(stmt)
+        return [(t, c) for t, c in result.all()]
+
     async def get_next_ticket_id(self) -> str:
         """`"CTI-{tahun}-{bulan:02d}-{urut:03d}"` -- scan GLOBAL lintas
         SEMUA client (legacy: query tanpa filter client_id sama sekali),

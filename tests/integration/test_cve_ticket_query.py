@@ -286,3 +286,25 @@ async def test_list_for_export_respects_exclude_and_ack_filter(
         client_id="default", exclude_cve_ids=["CVE-2026-0002"], ack_filter="acked"
     )
     assert [c.cve_id for c in result] == ["CVE-2026-0001"]
+
+
+async def test_ticket_list_with_cve_filters_and_scopes_client(async_db_session: AsyncSession) -> None:
+    """`list_with_cve` -- view Ticketing: join ke CVE, filter status/search,
+    scope per-client."""
+    await _ensure_clients(async_db_session)
+    repo = AsyncCveTicketRepo(async_db_session)
+    async_db_session.add(CveTracker(cve_id="CVE-2026-7001", client_id="default", tech="nginx"))
+    await async_db_session.flush()
+    await repo.upsert(cve_id="CVE-2026-7001", client_id="default", remediation_status="Open")
+    await repo.upsert(cve_id="CVE-2026-7002", client_id="default")  # CVE yatim + tanpa status
+
+    all_rows = await repo.list_with_cve("default")
+    assert {t.cve_id for t, _ in all_rows} == {"CVE-2026-7001", "CVE-2026-7002"}
+    joined = {t.cve_id: c for t, c in all_rows}
+    assert joined["CVE-2026-7001"] is not None and joined["CVE-2026-7002"] is None
+
+    opened = await repo.list_with_cve("default", status="Open")
+    assert [t.cve_id for t, _ in opened] == ["CVE-2026-7001"]
+    no_status = await repo.list_with_cve("default", status="__none__")
+    assert [t.cve_id for t, _ in no_status] == ["CVE-2026-7002"]
+    assert await repo.list_with_cve("other-client") == []

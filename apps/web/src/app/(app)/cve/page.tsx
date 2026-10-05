@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { cn } from "@/lib/utils";
 import { CveCoreView } from "@/components/cve/cve-core-view";
+import { CveTicketingView } from "@/components/cve/cve-ticketing-view";
 import { TechStackPanel } from "@/components/cve/techstack-panel";
 import { PkgVulnView } from "@/components/cve/pkgvuln/pkgvuln-view";
 
@@ -15,6 +16,7 @@ type View = (typeof VIEWS)[number]["id"];
 
 const CVE_SUBVIEWS = [
   { id: "cves", label: "CVEs" },
+  { id: "ticketing", label: "Ticketing" },
   { id: "techstack", label: "Tech Stack" },
 ] as const;
 type CveSubview = (typeof CVE_SUBVIEWS)[number]["id"];
@@ -68,7 +70,7 @@ export default function CveTrackerPage() {
               </button>
             ))}
           </div>
-          {subview === "cves" ? <CveCoreView /> : <TechStackPanel />}
+          {subview === "cves" ? <CveCoreView /> : subview === "ticketing" ? <CveTicketingView /> : <TechStackPanel />}
         </div>
       ) : (
         <PkgVulnView />

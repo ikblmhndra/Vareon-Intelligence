@@ -533,6 +533,30 @@ async def create_draft_email(
     return result
 
 
+@router.get("/tickets")
+async def list_cve_tickets(
+    search: str | None = Query(None),
+    status: str | None = Query(None),
+    session: AsyncSession = Depends(get_db),
+    user: AuthedUser = Depends(require_auth),
+    x_client_id: str | None = Header(None),
+) -> dict[str, object]:
+    """Daftar ticket client ini (view "Ticketing" di CVE Tracker) --
+    `_serialize_ticket` + ringkasan CVE-nya (severity/score/tech/
+    detected_on) biar tabel gak perlu N request."""
+    cid = effective_client_id(user, x_client_id)
+    rows = await AsyncCveTicketRepo(session).list_with_cve(cid, search=search, status=status)
+    tickets: list[dict[str, object]] = []
+    for ticket, cve in rows:
+        item = _serialize_ticket(ticket)
+        item["cve_severity"] = (cve.cve_severity if cve else "") or ""
+        item["cve_score"] = (cve.cve_score if cve else None) or 0.0
+        item["tech"] = (cve.tech if cve else "") or ""
+        item["detected_on"] = cve.detected_on.isoformat() if cve and cve.detected_on else ""
+        tickets.append(item)
+    return {"tickets": tickets, "total": len(tickets)}
+
+
 @router.get("/{cve_id}/ticket")
 async def get_cve_ticket(
     cve_id: str,
