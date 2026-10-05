@@ -6,6 +6,20 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
+## [Unreleased] - 2026-10-05
+
+### Ditambah
+- **CVE Tracker > Ticketing**: sub-view baru buat daftar semua ticket
+  (cari by ticket/CVE/asset/owner, filter Remediation Status), klik baris
+  buka tab Ticket di modal CVE. Backend: `GET /api/cve/tickets`.
+
+### Diperbaiki
+- **Export CVE Excel** disamain sama format logbook: kolom A "No" nomor
+  urut, CVE Reported Date + Date Acknowledged jadi `YYYY-MM-DD HH:MM:SS`
+  (WIB, sebelumnya tanggal doang / ISO mentah), Reported Date ambil dari
+  `detected_on` jadi gak kosong lagi, Affected Version fallback ke data
+  CVE kalau ticket belum ada, baris diurut `detected_on` naik.
+
 ## [0.1.0] - 2026-09-18
 
 Revamp platform CTI dari dua repo terpisah (`ScraperNews` + `ScraperNewsWeb`,
