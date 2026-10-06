@@ -31,7 +31,7 @@ Bandingkan sama `ScraperNews/newCveThreat.py` asli (391 baris):
   kata di deskripsi mana pun, jadi CVE Zabbix yang menyebut "MariaDB" ikut tercatat sebagai
   tech `mariadb` (affected-nya "Zabbix"), CVE Plane yang menyebut "GitLab OAuth" jadi tech `gitlab`,
   dst. Sekarang kandidat hanya lolos kalau nama tech muncul di vendor/product/packageName/CPE
-  record MITRE (lihat `_relevant_techs`). Satu CVE juga dikelompokkan per `cve_id` -- dulu `seen`
+  record MITRE (lihat `relevant_techs`). Satu CVE juga dikelompokkan per `cve_id` -- dulu `seen`
   global membuat CVE yang kena beberapa tech menempel ke tech pertama yang kebetulan ketemu.
 """
 
@@ -80,15 +80,21 @@ def _mentions(tech: str, text: str) -> bool:
     return bool(needle) and f" {needle} " in f" {_tokens(text)} "
 
 
-def _relevant_techs(techs: list[str], summary: str, products: list[str]) -> list[str]:
+def usable_products(products: list[str]) -> list[str]:
+    """`products` tanpa isian placeholder ("n/a", "unknown", ...)."""
+    return [p for p in products if _tokens(p) not in _PLACEHOLDER_PRODUCTS]
+
+
+def relevant_techs(techs: list[str], summary: str, products: list[str]) -> list[str]:
     """Subset `techs` yang beneran terdampak. `products` = vendor/product/packageName/CPE dari
     record MITRE; kalau CNA tak mengisinya sama sekali baru jatuh ke ringkasan (satu-satunya
-    petunjuk yang tersisa)."""
-    haystacks = [p for p in products if _tokens(p) not in _PLACEHOLDER_PRODUCTS] or [summary]
+    petunjuk yang tersisa). Dipakai juga `tools/ops/reconcile_cve_tech.py` -- satu definisi
+    "cocok" buat scraper dan pembersihan."""
+    haystacks = usable_products(products) or [summary]
     return [t for t in techs if any(_mentions(t, h) for h in haystacks)]
 
 
-def _affected_products(cna: dict[str, Any]) -> list[str]:
+def affected_products(cna: dict[str, Any]) -> list[str]:
     out: list[str] = []
     for aff in cna.get("affected", []):
         for key in ("vendor", "product", "packageName"):
@@ -104,7 +110,7 @@ class MitreDetail:
     fields: dict[str, Any]
     """Isian `CveItem` (tanpa `client_id`/`tech` -- tech ditentukan per client di `fetch()`)."""
     products: list[str]
-    """Nama produk terdampak buat `_relevant_techs`; BUKAN bagian dari `CveItem`."""
+    """Nama produk terdampak buat `relevant_techs`; BUKAN bagian dari `CveItem`."""
 
 
 class NewCve(BaseScraper):
@@ -159,7 +165,7 @@ class NewCve(BaseScraper):
                 continue
 
             detail = self._mitre_detail(ctx, cand)
-            relevant = _relevant_techs(techs, cand["summary"], detail.products)
+            relevant = relevant_techs(techs, cand["summary"], detail.products)
             if not relevant:
                 # Kata kunci NVD/Tenable ketemu di deskripsi, tapi produk terdampaknya lain
                 # (CVE Zabbix yang menyebut MariaDB) -- bukan CVE-nya techstack ini.
@@ -331,4 +337,4 @@ class NewCve(BaseScraper):
             "cve_severity": severity,
             "cvss_vector": vector,
         }
-        return MitreDetail(fields=fields, products=_affected_products(cna))
+        return MitreDetail(fields=fields, products=affected_products(cna))
