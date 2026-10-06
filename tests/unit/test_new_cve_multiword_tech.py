@@ -89,7 +89,7 @@ def nvd_hit(cve_id: str, summary: str) -> dict:
 def test_a_multi_word_techstack_gets_its_cves_from_nvd_stored_under_the_real_name() -> None:
     items, requested = run_fetch(
         {"acme": ["palo alto"]},
-        nvd={"palo%20alto": nvd_hit("CVE-2026-9001", "PAN-OS flaw")},
+        nvd={"palo%20alto": nvd_hit("CVE-2026-9001", "Palo Alto PAN-OS flaw")},
         tenable_rows={},
     )
 
@@ -121,7 +121,7 @@ def test_tenable_still_rejects_a_hit_that_does_not_really_mention_the_multi_word
 def test_every_client_that_has_the_multi_word_tech_gets_its_own_row() -> None:
     items, _ = run_fetch(
         {"acme": ["palo alto", "nginx"], "globex": ["palo alto"]},
-        nvd={"palo%20alto": nvd_hit("CVE-2026-9004", "PAN-OS flaw")},
+        nvd={"palo%20alto": nvd_hit("CVE-2026-9004", "Palo Alto PAN-OS flaw")},
         tenable_rows={},
     )
 

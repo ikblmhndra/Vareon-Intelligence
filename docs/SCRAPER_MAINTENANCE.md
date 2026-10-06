@@ -155,6 +155,26 @@ artikel dari satu scraper (Runs -> `items_new` besar).
 - `max_items` membatasi per run. Kalau tiba-tiba mentok di batas, parser kemungkinan menangkap elemen salah (menu, iklan).
 - Lihat tab **Items**, cari pola judul/URL yang tidak masuk akal, perbaiki selector, lalu Reset dedup.
 
+### G. CVE Tracker: kolom Tech tidak cocok dengan Affected
+
+Gejala: CVE tercatat di bawah tech yang bukan produk terdampaknya (Tech `mariadb`, Affected
+"Zabbix"). Penyebabnya `keywordSearch` NVD yang mencocokkan kata di deskripsi mana pun; sejak 0.2.1
+`new_cve` hanya menerima CVE kalau nama tech muncul di vendor/product/CPE record MITRE. Run yang
+sehat TIDAK membersihkan baris lama -- CVE yang sekarang ditolak tidak pernah di-fetch lagi.
+
+```bash
+# laporan saja (default) -- tidak menulis apa pun
+docker run --rm --network <project>_default --env-file .env -v "$PWD/tools:/tools:ro" \
+  --entrypoint python cti-worker:$CTI_TAG /tools/ops/reconcile_cve_tech.py [--client <client_id>]
+# setelah laporan dibaca dan masuk akal: tambahkan --apply
+```
+
+Tiap baris dinilai ulang dengan aturan yang sama dengan scraper: `RETAG` (tech lain milik client
+yang sama yang cocok), `DELETE` (tidak ada yang cocok), `REVIEW` (tidak cocok tapi sudah punya
+ticket/ACK -- **tidak pernah dihapus otomatis**, putuskan manual). CVE yang record MITRE-nya tak
+terjangkau atau tanpa data dilewati dan dihitung "tak terverifikasi". Butuh akses ke
+`cveawg.mitre.org`, ~1 request/detik per CVE unik. Idempoten, aman diulang.
+
 ---
 
 ## 5. Perubahan yang perlu deploy
@@ -213,5 +233,6 @@ UI /scrapers atau digest Telegram -> status?
   zero_yield  -> sepi atau rusak? curl bandingkan          (4.C)
   fetch_error -> blokir/credential/timeout                 (4.D)
   backpressure-> cek enrichment, bukan scraper             (4.E)
+  CVE: Tech tidak cocok dengan Affected -> reconcile_cve_tech (4.G)
 Sudah diperbaiki? -> deploy (bagian 5) -> tunggu satu tick -> cek Runs -> (kalau perlu) Reset dedup
 ```

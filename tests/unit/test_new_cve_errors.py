@@ -65,5 +65,6 @@ def test_a_well_formed_record_is_still_parsed() -> None:
 
     result = detail(lambda r: json_response(record))
 
-    assert result is not None and result["cve_id"] == "CVE-2026-1111"
-    assert "Widget: < 2.0" in str(result)
+    assert result.fields["cve_id"] == "CVE-2026-1111"
+    assert result.fields["affected"] == ["Widget: < 2.0"]
+    assert result.products == ["Widget"]

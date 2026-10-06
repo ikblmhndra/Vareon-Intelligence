@@ -27,12 +27,19 @@ Bandingkan sama `ScraperNews/newCveThreat.py` asli (391 baris):
   Di sini `severity` selalu direset `None` per kandidat.
 - Telegram alert + email (`cveEmailAutomation`) -- BUKAN tanggung jawab
   scraper, itu ranah `cti-alerts` (belum dibangun).
+- **Techstack harus cocok dengan produk yang terdampak**: `keywordSearch` NVD cuma mencocokkan
+  kata di deskripsi mana pun, jadi CVE Zabbix yang menyebut "MariaDB" ikut tercatat sebagai
+  tech `mariadb` (affected-nya "Zabbix"), CVE Plane yang menyebut "GitLab OAuth" jadi tech `gitlab`,
+  dst. Sekarang kandidat hanya lolos kalau nama tech muncul di vendor/product/packageName/CPE
+  record MITRE (lihat `relevant_techs`). Satu CVE juga dikelompokkan per `cve_id` -- dulu `seen`
+  global membuat CVE yang kena beberapa tech menempel ke tech pertama yang kebetulan ketemu.
 """
 
 from __future__ import annotations
 
 import re
 from collections.abc import Iterator
+from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any
 
@@ -56,6 +63,54 @@ def _mitre_date(raw: str | None) -> date | None:
         return date.fromisoformat(raw[:10])
     except ValueError:
         return None
+
+
+# Isian "produk" yang bukan nama produk -- CNA kadang mengisi ini kalau tak punya data.
+_PLACEHOLDER_PRODUCTS = frozenset({"", "n a", "na", "none", "unknown", "unspecified", "various"})
+
+
+def _tokens(text: str) -> str:
+    """Huruf kecil, semua non-alfanumerik jadi satu spasi -- "Palo_Alto-Networks" dan
+    "palo alto networks" jadi bentuk yang sama, dan `nginx` tidak cocok dengan `nginxy`."""
+    return " ".join(re.findall(r"[a-z0-9]+", text.lower()))
+
+
+def _mentions(tech: str, text: str) -> bool:
+    needle = _tokens(tech)
+    return bool(needle) and f" {needle} " in f" {_tokens(text)} "
+
+
+def usable_products(products: list[str]) -> list[str]:
+    """`products` tanpa isian placeholder ("n/a", "unknown", ...)."""
+    return [p for p in products if _tokens(p) not in _PLACEHOLDER_PRODUCTS]
+
+
+def relevant_techs(techs: list[str], summary: str, products: list[str]) -> list[str]:
+    """Subset `techs` yang beneran terdampak. `products` = vendor/product/packageName/CPE dari
+    record MITRE; kalau CNA tak mengisinya sama sekali baru jatuh ke ringkasan (satu-satunya
+    petunjuk yang tersisa). Dipakai juga `tools/ops/reconcile_cve_tech.py` -- satu definisi
+    "cocok" buat scraper dan pembersihan."""
+    haystacks = usable_products(products) or [summary]
+    return [t for t in techs if any(_mentions(t, h) for h in haystacks)]
+
+
+def affected_products(cna: dict[str, Any]) -> list[str]:
+    out: list[str] = []
+    for aff in cna.get("affected", []):
+        for key in ("vendor", "product", "packageName"):
+            value = aff.get(key)
+            if isinstance(value, str) and value:
+                out.append(value)
+        out.extend(c for c in aff.get("cpes", []) if isinstance(c, str))
+    return out
+
+
+@dataclass(frozen=True)
+class MitreDetail:
+    fields: dict[str, Any]
+    """Isian `CveItem` (tanpa `client_id`/`tech` -- tech ditentukan per client di `fetch()`)."""
+    products: list[str]
+    """Nama produk terdampak buat `relevant_techs`; BUKAN bagian dari `CveItem`."""
 
 
 class NewCve(BaseScraper):
@@ -91,38 +146,63 @@ class NewCve(BaseScraper):
             for tech in techs:
                 tech_to_clients.setdefault(tech.strip(), []).append(client_id)
 
-        seen_cve_ids: set[str] = set()
-        candidates = [
-            *self._nvd_candidates(ctx, tech_list, seen_cve_ids),
-            *self._tenable_candidates(ctx, tech_list, seen_cve_ids),
-        ]
+        # Satu CVE = satu kandidat, membawa SEMUA tech yang memunculkannya (NVD/Tenable).
+        candidates: dict[str, dict[str, Any]] = {}
+        self._nvd_candidates(ctx, tech_list, candidates)
+        self._tenable_candidates(ctx, tech_list, candidates)
 
+        tech_order = {tech.strip(): i for i, tech in enumerate(tech_list)}
         found = 0
-        for cand in candidates:
+        for cand in candidates.values():
             if found >= self.meta.max_items:
                 return
 
-            client_ids = tech_to_clients.get(cand["tech"])
-            if not client_ids:
+            techs = [t for t in cand["techs"] if t in tech_to_clients]
+            if not techs:
                 ctx.log.warning(
-                    "cve_candidate_no_client_match", tech=cand["tech"], cve_id=cand["id"]
+                    "cve_candidate_no_client_match", tech=cand["techs"], cve_id=cand["id"]
                 )
                 continue
 
             detail = self._mitre_detail(ctx, cand)
-            if detail is None:
+            relevant = relevant_techs(techs, cand["summary"], detail.products)
+            if not relevant:
+                # Kata kunci NVD/Tenable ketemu di deskripsi, tapi produk terdampaknya lain
+                # (CVE Zabbix yang menyebut MariaDB) -- bukan CVE-nya techstack ini.
+                ctx.log.info(
+                    "cve_candidate_tech_not_affected",
+                    cve_id=cand["id"],
+                    techs=techs,
+                    products=detail.products[:5],
+                )
                 continue
 
-            for client_id in client_ids:
+            # Satu baris per (CVE, client) -- kalau satu client punya beberapa tech yang kena,
+            # pakai yang urutannya paling awal di techstack biar hasilnya deterministik.
+            client_tech: dict[str, str] = {}
+            for tech in sorted(relevant, key=tech_order.__getitem__):
+                for client_id in tech_to_clients[tech]:
+                    client_tech.setdefault(client_id, tech)
+
+            for client_id, tech in client_tech.items():
                 if found >= self.meta.max_items:
                     return
                 found += 1
-                yield CveItem(client_id=client_id, **detail)
+                yield CveItem(client_id=client_id, tech=tech, **detail.fields)
+
+    @staticmethod
+    def _add_candidate(
+        candidates: dict[str, dict[str, Any]], cve_id: str, tech: str, link: str, summary: str
+    ) -> None:
+        cand = candidates.setdefault(
+            cve_id, {"id": cve_id, "link": link, "summary": summary, "techs": []}
+        )
+        if tech not in cand["techs"]:
+            cand["techs"].append(tech)
 
     def _nvd_candidates(
-        self, ctx: ScrapeContext, tech_list: list[str], seen: set[str]
-    ) -> list[dict[str, str]]:
-        out: list[dict[str, str]] = []
+        self, ctx: ScrapeContext, tech_list: list[str], candidates: dict[str, dict[str, Any]]
+    ) -> None:
         now_str = ctx.now.strftime("%Y-%m-%dT%H:%M:%S.000")
         start_str = (ctx.now - timedelta(days=8)).strftime("%Y-%m-%dT%H:%M:%S.000")
 
@@ -136,27 +216,21 @@ class NewCve(BaseScraper):
 
             for cve in data.get("vulnerabilities", []):
                 cve_id = cve["cve"]["id"]
-                if cve_id in seen:
-                    continue
-                seen.add(cve_id)
                 summary = next(
                     (d["value"] for d in cve["cve"].get("descriptions", []) if d["lang"] == "en"),
                     "",
                 )
-                out.append(
-                    {
-                        "tech": tech.strip(),
-                        "id": cve_id,
-                        "link": f"https://nvd.nist.gov/vuln/detail/{cve_id}",
-                        "summary": summary,
-                    }
+                self._add_candidate(
+                    candidates,
+                    cve_id,
+                    tech.strip(),
+                    f"https://nvd.nist.gov/vuln/detail/{cve_id}",
+                    summary,
                 )
-        return out
 
     def _tenable_candidates(
-        self, ctx: ScrapeContext, tech_list: list[str], seen: set[str]
-    ) -> list[dict[str, str]]:
-        out: list[dict[str, str]] = []
+        self, ctx: ScrapeContext, tech_list: list[str], candidates: dict[str, dict[str, Any]]
+    ) -> None:
         now_str = ctx.now.strftime("%Y-%m-%d")
         start_str = (ctx.now - timedelta(days=8)).strftime("%Y-%m-%d")
 
@@ -182,22 +256,17 @@ class NewCve(BaseScraper):
 
                 # Tenable kadang balikin hasil yang gak beneran nyebut tech-nya --
                 # validasi tech-nya ada literal di summary sebelum dipakai.
-                if not re.search(rf"\b{re.escape(tech.strip())}\b", cve_sum.lower()):
+                if not _mentions(tech, cve_sum):
                     continue
-                if cve_id in seen:
-                    continue
-                seen.add(cve_id)
-                out.append(
-                    {
-                        "tech": tech.strip(),
-                        "id": cve_id,
-                        "link": f"https://www.tenable.com/cve/{cve_id}",
-                        "summary": cve_sum,
-                    }
+                self._add_candidate(
+                    candidates,
+                    cve_id,
+                    tech.strip(),
+                    f"https://www.tenable.com/cve/{cve_id}",
+                    cve_sum,
                 )
-        return out
 
-    def _mitre_detail(self, ctx: ScrapeContext, cand: dict[str, str]) -> dict[str, Any] | None:
+    def _mitre_detail(self, ctx: ScrapeContext, cand: dict[str, Any]) -> MitreDetail:
         try:
             data = get_waiting(ctx, f"{_MITRE_URL}/{cand['id']}").json()
         except ScraperError:
@@ -254,9 +323,8 @@ class NewCve(BaseScraper):
 
         cve_meta = data.get("cveMetadata", {})
 
-        return {
+        fields = {
             "cve_id": cand["id"],
-            "tech": cand["tech"],
             "link": cand["link"],
             "summary": cand["summary"],
             "published": _mitre_date(cve_meta.get("datePublished")),
@@ -269,3 +337,4 @@ class NewCve(BaseScraper):
             "cve_severity": severity,
             "cvss_vector": vector,
         }
+        return MitreDetail(fields=fields, products=affected_products(cna))
