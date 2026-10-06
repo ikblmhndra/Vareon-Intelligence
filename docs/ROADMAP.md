@@ -22,6 +22,12 @@ Isi tiap item: **apa** yang diminta, **keadaan sekarang** (fakta dari repo/stagi
 | 10 | Case/RFI workflow (assignment, SLA, status, audit) terhubung ke tiket CVE | alur kerja tim | -- |
 | 11 | TLP/PAP konsisten di semua objek + MFA/SSO | kebijakan TLP | #5 |
 | 12 | Perbaikan prompt klasifikasi artikel berbasis audit trail (false accept / false reject) | contoh artikel yang salah diklasifikasi | audit trail `raw_enrichment` (sudah jalan 2026-10-05) |
+| 13 | **CI di `main` merah** (3 job), jadi job Deploy belum pernah jalan (5 run, semua `skipped`) | -- | -- |
+| 14 | Logo hilang di export Excel CVE Tracker (Pillow belum jadi dependency) | -- | -- |
+| 15 | Pakai `published_at` di UI/API/dashboard + samakan format tanggal export | keputusan format kolom Acknowledged | backfill `published_at` di produksi |
+| 16 | Dashboard CVE: SLA per severity (ganti rating ambang tetap) | target SLA ack/remediasi per severity | -- |
+| 17 | Dashboard CVE: panel backlog/aging, KEV/EPSS, produk paling sering terdampak | pilihan panel | -- |
+| 18 | Validasi isian ticket CVE + keputusan model ticket (1 ticket per CVE vs satu ticket banyak CVE) | daftar nilai baku, keputusan model | -- |
 
 ---
 
@@ -291,3 +297,122 @@ precision/recall prompt sekarang sebagai baseline; (3) revisi prompt, ukur ulang
 dengan `prompt_version` baru dan pantau rasio tolak harian.
 **Selesai bila**: ada set contoh berlabel tersimpan di repo (tests/fixtures), metrik sebelum dan sesudah
 tercatat, dan rasio false reject/false accept turun tanpa menaikkan kegagalan JSON.
+
+---
+
+# Tindak lanjut CVE Tracker dan CI (temuan 2026-10-06)
+
+Item 13-18 berasal dari audit workbook Excel `CVE_Tracker_Dashboard.xlsx`, pengerjaan Dashboard CVE
+Tracker, perubahan kolom export Excel, dan pembacaan hasil CI di GitHub pada hari yang sama. 13-14 adalah
+cacat nyata dengan bukti; 15-18 usulan (belum diminta resmi), urutan = prioritas yang disarankan.
+**Sengaja tidak dimasukkan**: impor riwayat Excel 2026 (811 CVE) ke platform, diputuskan tidak
+2026-10-06 (dashboard hanya membaca data platform).
+
+## 13. CI di `main` merah, CD otomatis tidak bisa terpicu
+
+**Diminta (usulan)**: bikin CI hijau lagi supaya `deploy.yml` (hanya jalan kalau CI sukses untuk push ke
+`main`) benar-benar terpicu.
+**Keadaan sekarang**: run CI #11 sampai #16 (2026-10-05 s/d 10-06, termasuk `main` @ `d3f2a04`) semuanya
+`failure`. Tiga job merah, tiga sebab berbeda (dibaca dari log GitHub Actions, run #16):
+1. `lint`: `ruff format --check .` menolak 2 file, `docs/ADDING_A_SCRAPER.md` dan
+   `tests/unit/test_rss_illegal_xml_chars.py` (reproduksi lokal; `ruff format` memperbaikinya).
+2. `compose`: `env file .../.env not found`. `docker-compose.yml` memuat `env_file: ${CTI_ENV_FILE:-.env}`,
+   sedangkan job hanya punya `docker/stack.env.example` (`.env` tidak ada di git).
+3. `test`: 2 test gagal, 2150 lolos, 3 di-skip. (a) `tests/contract/test_golden.py::test_golden_trendmicro`: Chromium
+   Playwright tidak terpasang di runner. (b) `tests/integration/test_articles_router_snapshot.py::
+   test_article_dedup_groups`: seed memakai `_TODAY = datetime.date(2026, 9, 24)` hard-code, sedangkan
+   `services/dedup.py::get_dedup_groups` memakai jendela 7 hari dari `date.today()`, jadi test ini mati
+   sejak 2026-10-01 (bom waktu, bukan regresi kode).
+Akibatnya kelima run Deploy (#1-#5) berstatus `skipped` (syaratnya CI `success`): job deploy belum pernah
+berjalan sekali pun. Job lain (typecheck, web, api-contract, 4 build image, gitleaks) hijau. Upload codecov juga gagal
+("Token required") tapi `continue-on-error`, tidak ikut memerahkan job.
+**Titik sentuh**: `.github/workflows/ci.yml` (`compose`, `test`), `tests/integration/
+test_articles_router_snapshot.py` (`_TODAY`), 2 file yang disebut di atas.
+**Yang dibutuhkan**: tidak ada keputusan; untuk (3a) pilih memasang Chromium di job `test`
+(`playwright install --with-deps chromium`, menambah beberapa menit) atau men-skip test marker
+`playwright` kalau browser tidak ada (seperti test Docker yang sudah di-skip otomatis).
+**Selesai bila**: CI hijau di `main`, dan Deploy terpicu sekali (otomatis atau `workflow_dispatch`) dan
+lolos `deploy.sh` dengan health check. Sampai itu, produksi hanya bisa di-update manual (`make deploy`, atau Actions > Deploy > Run workflow).
+
+## 14. Logo hilang di export Excel CVE Tracker
+
+**Diminta (usulan)**: file hasil `GET /api/cve/export` membawa logo di kiri atas seperti template.
+**Keadaan sekarang**: template `apps/api/src/cti_api/templates/CVE_Tracker_template.xlsx` berisi logo
+(`xl/media/image1.png`), tapi hasil export tidak: openpyxl membuang gambar kalau Pillow tidak terpasang,
+dan `pillow` tidak ada di `uv.lock` (jadi tidak ada di image API juga). Reproduksi: memuat lalu menyimpan
+template asli dengan openpyxl di venv proyek menghasilkan zip tanpa `xl/media/*`. Sudah begitu sebelum
+perubahan kolom export 2026-10-06.
+**Titik sentuh**: `apps/api/pyproject.toml` (+ `uv.lock`), `services/cve_export.py`,
+`tests/integration/test_cve_export_service.py`.
+**Yang dibutuhkan**: tidak ada.
+**Selesai bila**: `pillow` jadi dependency `cti-api`, image API tetap lolos smoke CI, dan satu test
+memastikan workbook hasil export memuat 1 gambar.
+
+## 15. Pakai `published_at` di UI/API/dashboard + samakan format tanggal
+
+**Diminta (usulan)**: jam publish MITRE (`cve_tracker.published_at`, ditambah 2026-10-06 untuk export)
+dipakai juga di tempat lain, dan format tanggal export seragam.
+**Keadaan sekarang**: `CveOut` (`schemas/cve.py`) belum mengekspos `published_at`; tab Ticket
+(`cve-ticket-tab.tsx`, `reportedDateVal = fmtDt(cve.published)`) menampilkan "CVE Reported Date" tanpa
+jam; MTTD di dashboard dihitung dalam **hari** (`detected_on` - `published`) karena `published` tanpa jam
+(`services/cve_dashboard.py`). Di export, kolom "Date Acknowledged by CTI Team" masih
+`YYYY-MM-DD HH:MM:SS`, beda dari dua kolom di sebelahnya (`HH:MM DD-MM-YYYY`).
+**Titik sentuh**: `schemas/cve.py`, `routers/cve.py` (`_serialize`), `cve-ticket-tab.tsx`,
+`services/cve_dashboard.py`, `cve-dashboard-view.tsx` (teks definisi MTTD), `services/cve_export.py`.
+**Yang dibutuhkan**: `tools/ops/backfill_cve_published_at.py --apply` sudah dijalankan di produksi
+(tanpa itu CVE lama tidak punya jam); keputusan apakah kolom Acknowledged ikut `HH:MM DD-MM-YYYY`.
+**Selesai bila**: tab Ticket menampilkan jam publish, MTTD tampil dalam jam untuk CVE yang punya
+`published_at` (dan jatuh ke hari untuk yang belum, dengan `n` terpisah supaya cakupannya kelihatan),
+kontrak API diregenerasi (`export_openapi` + `gen:api`), dan format kolom export konsisten.
+
+## 16. Dashboard CVE: SLA per severity
+
+**Diminta (usulan)**: rating di dashboard berdasarkan target SLA per severity, bukan ambang tetap.
+**Keadaan sekarang**: rating (Excellent/Good/Fair/Needs improvement) memakai ambang dari sheet Excel lama
+untuk rata-rata MTTA (<=1 / <=7 / <=14 hari) dan sama untuk semua severity
+(`apps/web/src/lib/cve/dashboard.ts::ratingForMtta`): CRITICAL dengan MTTA 10 hari dan LOW dengan 10 hari
+dinilai sama ("Fair"). Rata-rata juga mudah tertarik outlier; median dan p90 sudah dihitung tapi belum
+dipakai untuk menilai.
+**Titik sentuh**: `dashboard.ts`, `cve-dashboard-view.tsx`, `services/cve_dashboard.py` (hitung pelanggaran
+di server, bukan di browser).
+**Yang dibutuhkan**: target per severity untuk acknowledge dan remediasi (hari kalender atau hari kerja,
+per client atau global), dan metrik yang dinilai (mean, median, atau persentase CVE dalam SLA).
+**Selesai bila**: dashboard menampilkan jumlah/persen CVE yang melanggar SLA per severity dan daftar CVE
+yang sedang melewati batas, dengan target tersimpan sebagai konfigurasi (bukan konstanta di kode).
+
+## 17. Dashboard CVE: panel tambahan
+
+**Diminta (usulan)**: panel yang tidak ada di Excel lama tapi datanya sudah ada di platform.
+**Keadaan sekarang** (angka dari workbook Excel 2026, 811 CVE, bukan dari DB platform): 511 CVE sudah
+di-acknowledge tapi status remediation kosong dan 147 belum di-acknowledge (backlog yang sekarang hanya
+terlihat sebagai bucket "Awaiting status" dan "Unacknowledged"); produk paling sering muncul n8n 62,
+Splunk Enterprise 60, wazuh 43, suricata 42. Platform menyimpan `cisa_kev`, `epss_score`, dan
+`active_exploitation` per CVE (`db/models/cve.py`) yang belum dipakai di dashboard.
+**Usulan panel**: (a) aging backlog (CVE tanpa status > N hari, dikelompokkan per severity); (b) CVE
+dengan KEV/EPSS tinggi yang belum remediasi; (c) produk/tech paling sering terdampak.
+**Titik sentuh**: `services/cve_dashboard.py` (`DashRow` perlu kolom tambahan),
+`repositories/cve.py::list_dashboard_rows`, `cve-dashboard-view.tsx`.
+**Yang dibutuhkan**: pilihan panel yang berguna dan ambang "terlalu lama" untuk aging.
+**Selesai bila**: tiap panel punya test di `tests/unit/test_cve_dashboard.py` dan satu test integrasi yang
+mengunci scope client/techstack seperti panel yang sudah ada.
+
+## 18. Validasi isian ticket CVE + model ticket
+
+**Diminta (usulan)**: nilai ticket dibatasi ke daftar baku, dan diputuskan apakah satu ticket boleh
+menaungi banyak CVE.
+**Keadaan sekarang**: `remediation_status`, `risk_acceptance`, dan `active_exploitation` adalah "soft
+enum" tanpa CHECK maupun validasi API (`CveTicketBody` semuanya `str`); dropdown UI memakai
+Open/In Progress/Resolved/Risk Accepted/Closed. Dashboard menyerap vocab legenda Excel lewat
+`_STATUS_ALIASES` (`services/cve_dashboard.py`) supaya nilai legacy tidak diam-diam salah bucket. Di
+workbook Excel akar masalahnya terlihat: dropdown status hanya menutup beberapa baris (daftarnya memuat
+"Not Applicable" dobel dan tanpa "Completed"), ada 4 baris berstatus "Closed" di luar legenda, dan 657 dari
+811 status kosong. Model: Excel memakai 600 ticket untuk 811 CVE (maks 32 CVE dalam satu ticket, mis. satu
+patch Splunk), platform satu `CveTicket` per `(cve_id, client_id)` (docstring `CveTicket`).
+**Titik sentuh**: `schemas/cve.py::CveTicketBody`, `routers/cve.py` (`PUT /{cve_id}/ticket`),
+`cve-ticket-tab.tsx`, `cve-ticketing-view.tsx`, `db/models/cve.py::CveTicket`.
+**Yang dibutuhkan**: daftar nilai baku (termasuk apakah "Not Applicable" dan "Completed" masuk), dan
+keputusan model: tetap 1 ticket per CVE, atau izinkan ticket menaungi banyak CVE (perubahan skema +
+export + dashboard).
+**Selesai bila**: `PUT /ticket` menolak nilai di luar daftar dengan 422 (nilai lama dimigrasi atau
+dipetakan), UI dan dashboard memakai satu daftar yang sama, dan keputusan model ticket tertulis di
+docstring `CveTicket`.
