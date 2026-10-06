@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 const DAYS = 30;
 
-/** Band burgundy "Perlu perhatian" di atas Dashboard (Arah A): satu titik
+/** Band burgundy "Need Attention" di atas Dashboard (Arah A): satu titik
  * fokus berisi hal yang paling mendesak, dibaca dari dashboard exec + stats CVE. */
 export function AttentionBand() {
   const exec = useQuery({
@@ -37,19 +37,19 @@ export function AttentionBand() {
 
   return (
     <section
-      aria-label="Perlu perhatian"
+      aria-label="Need Attention"
       className="grid gap-6 rounded-3xl bg-[#430a23] p-6 text-[#f6ede4] sm:p-8 md:grid-cols-[1.4fr_1fr_1fr_1fr] md:items-center"
     >
       <div>
-        <div className="text-xs font-semibold tracking-widest text-[#fbbfa1] uppercase">Perlu perhatian</div>
+        <div className="text-xs font-semibold tracking-widest text-[#fbbfa1] uppercase">Need Attention</div>
         <div className="mt-2 text-2xl leading-tight font-bold">
-          {top ? `Sektor ${top.sector} memimpin risiko` : "Ringkasan risiko terkini"}
+          {top ? `Sector ${top.sector} leads in risk` : "Current Risk Summary"}
         </div>
-        <div className="mt-1 text-sm text-[#e6cfd6]">Periode {DAYS} hari terakhir</div>
+        <div className="mt-1 text-sm text-[#e6cfd6]">Period {DAYS} days</div>
       </div>
-      <Metric value={cve.data?.critical} label="CVE Critical terbuka" accent />
-      <Metric value={top?.risk_score} suffix="/100" label={top ? `Skor risiko ${top.sector}` : "Skor risiko"} />
-      <Metric value={exec.data?.total_incidents} label="Insiden" />
+      <Metric value={cve.data?.critical} label="Open CVE Critical" accent />
+      <Metric value={top?.risk_score} suffix="/100" label={top ? `Risk Score ${top.sector}` : "Risk Score"} />
+      <Metric value={exec.data?.total_incidents} label="Incidents" />
     </section>
   );
 }
