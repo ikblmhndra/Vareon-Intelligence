@@ -13,8 +13,11 @@ def test_migrasi_rejected_raw_enrichment_menyambung_ke_head():
     from alembic.config import Config
     from alembic.script import ScriptDirectory
 
-    heads = ScriptDirectory.from_config(Config("alembic.ini")).get_heads()
-    assert heads == ["d7b1f3a9c2e5"]
+    script = ScriptDirectory.from_config(Config("alembic.ini"))
+    # satu head (tidak bercabang) dan migrasi `raw_enrichment` ada di rantainya; head-nya sendiri
+    # bergeser tiap ada migrasi baru, jadi jangan dikunci ke satu revisi.
+    assert len(script.get_heads()) == 1
+    assert "d7b1f3a9c2e5" in {r.revision for r in script.walk_revisions()}
 
 
 class _FakeResult:

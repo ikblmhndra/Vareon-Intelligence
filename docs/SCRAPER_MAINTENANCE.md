@@ -175,6 +175,26 @@ ticket/ACK -- **tidak pernah dihapus otomatis**, putuskan manual). CVE yang reco
 terjangkau atau tanpa data dilewati dan dihitung "tak terverifikasi". Butuh akses ke
 `cveawg.mitre.org`, ~1 request/detik per CVE unik. Idempoten, aman diulang.
 
+### H. Export Excel: "CVE Reported Date" tampil tanggal saja (tanpa jam)
+
+Gejala: di export CVE Tracker kolom **CVE Reported Date** berisi `31-08-2026`, bukan
+`20:53 31-08-2026`. Kolom itu membaca `cve_tracker.published_at` (jam publish dari MITRE, ditulis
+`new_cve`); CVE yang masuk sebelum kolom itu ada, atau yang MITRE-nya tidak memberi jam, kosong dan
+jatuh ke tanggal `published`. (**Reported by System** tidak terpengaruh: itu `detected_on`, kapan
+scraper pertama dapat CVE-nya.)
+
+```bash
+# laporan saja (default) -- tidak menulis apa pun
+docker run --rm --network <project>_default --env-file .env -v "$PWD/tools:/tools:ro" \
+  --entrypoint python cti-worker:$CTI_TAG /tools/ops/backfill_cve_published_at.py [--client <client_id>]
+# setelah laporan dibaca dan masuk akal: tambahkan --apply
+```
+
+Hanya baris dengan `published_at` NULL yang disentuh, dan yang sudah terisi tidak pernah ditimpa.
+Baris yang tanggal MITRE-nya beda dengan `published` tersimpan dilaporkan `MISMATCH` dan **tidak
+ditulis**; CVE yang MITRE-nya tak terjangkau atau tanpa jam dilewati ("tak terverifikasi"). Butuh
+akses ke `cveawg.mitre.org`, ~1 request/detik per CVE unik. Idempoten, aman diulang.
+
 ---
 
 ## 5. Perubahan yang perlu deploy
@@ -234,5 +254,6 @@ UI /scrapers atau digest Telegram -> status?
   fetch_error -> blokir/credential/timeout                 (4.D)
   backpressure-> cek enrichment, bukan scraper             (4.E)
   CVE: Tech tidak cocok dengan Affected -> reconcile_cve_tech (4.G)
+  Export CVE: Reported Date tanpa jam    -> backfill_cve_published_at (4.H)
 Sudah diperbaiki? -> deploy (bagian 5) -> tunggu satu tick -> cek Runs -> (kalau perlu) Reset dedup
 ```

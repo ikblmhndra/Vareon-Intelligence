@@ -8,12 +8,26 @@ router `changelog.py`) -- parser-nya expect header persis
 
 ## [Unreleased] - 2026-10-05
 
+**Saat upgrade dari 0.2.1:** jalankan migrasi (`up -d` sudah menjalankan service `migrate`): revisi baru
+`e8c2a4b6d1f3` (kolom `cve_tracker.published_at`). Setelah itu jalankan sekali
+`tools/ops/backfill_cve_published_at.py` (laporan dulu, lalu `--apply`; `docs/SCRAPER_MAINTENANCE.md`
+4.H) supaya CVE lama punya jam di kolom "CVE Reported Date" -- tanpa itu mereka tampil tanggal saja.
+
 ### Ditambah
+- **Export Excel CVE Tracker: kolom "Reported by System" + format jam.** "CVE Reported Date" sekarang
+  `HH:MM DD-MM-YYYY` (WIB, mis. `20:53 31-08-2026`) dan berisi jam publish asli dari MITRE; kolom baru
+  **Reported by System** tepat di sebelahnya berisi `detected_on`, kapan scraper pertama dapat CVE-nya
+  (sebelumnya kolom "CVE Reported Date" sendiri memakai nilai ini, jadi dua kolom itu tidak pernah
+  bisa dibedakan). Kolom sesudahnya bergeser satu ke kanan (Severity jadi F, Closure Date jadi V);
+  template `CVE_Tracker_template.xlsx` ikut diubah. Butuh `cve_tracker.published_at` (kolom baru;
+  `new_cve` mengisinya dari `cveMetadata.datePublished`, scraper dulu memotongnya jadi tanggal).
+  CVE yang belum punya jamnya tampil tanggal saja (`DD-MM-YYYY`), bukan jam tebakan.
+  **`tools/ops/backfill_cve_published_at.py`** mengisinya untuk CVE lama (laporan default, `--apply`).
 - **Dashboard CVE Tracker** (sub-view "Dashboard" di `/cve`, endpoint `GET /api/cve/dashboard?year=`):
   pengganti sheet Dashboard di workbook Excel `CVE_Tracker_Dashboard.xlsx`. Isinya KPI, MTTD/MTTA/MTTR
   per severity dan per owner team, tren bulanan per severity (chart + tabel), posisi CVE per tahap, dan
   10 CVE paling lambat. Scope sama dengan tab CVEs (client aktif, techstack aktif, tanpa false positive).
-  Tidak ada migrasi dan data Excel tidak diimpor. Definisi di `cti_api.services.cve_dashboard`; beda
+  Dashboard sendiri tidak butuh migrasi dan data Excel tidak diimpor. Definisi di `cti_api.services.cve_dashboard`; beda
   dari rumus Excel yang disengaja: nol ikut dihitung (+ median, p90, n), resolution rate dibagi CVE yang
   memang butuh tindakan (bukan semua baris), MTTD dalam hari (`detected_on` - `published`; di Excel selalu
   1 atau 6 jam), MTTR tidak dihitung untuk "Not Affected", dan tidak ada batas baris.

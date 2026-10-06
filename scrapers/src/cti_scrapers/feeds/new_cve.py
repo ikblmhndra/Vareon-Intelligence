@@ -40,7 +40,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterator
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import lxml.html
@@ -63,6 +63,19 @@ def _mitre_date(raw: str | None) -> date | None:
         return date.fromisoformat(raw[:10])
     except ValueError:
         return None
+
+
+def mitre_datetime(raw: str | None) -> datetime | None:
+    """`cveMetadata.datePublished` lengkap dengan jam, tz-aware (UTC). MITRE menulisnya
+    `2026-08-31T13:53:00.000Z`; tanpa penanda zona dianggap UTC (format CVE JSON 5.x). Hanya
+    tanggal (`2026-08-31`) atau tak terbaca -> `None`: jam yang ditebak lebih buruk daripada kosong."""
+    if not raw or len(raw) < 16 or "T" not in raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
 
 
 # Isian "produk" yang bukan nama produk -- CNA kadang mengisi ini kalau tak punya data.
@@ -328,6 +341,7 @@ class NewCve(BaseScraper):
             "link": cand["link"],
             "summary": cand["summary"],
             "published": _mitre_date(cve_meta.get("datePublished")),
+            "published_at": mitre_datetime(cve_meta.get("datePublished")),
             "cve_modified_date": _mitre_date(cve_meta.get("dateUpdated"))
             or _mitre_date(cve_meta.get("datePublished")),
             "references": references,

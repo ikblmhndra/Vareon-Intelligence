@@ -62,14 +62,16 @@ async def test_export_writes_cve_and_ticket_fields(async_db_session: AsyncSessio
     assert ws.cell(row=16, column=2).value == ticket.ticket_id
     assert ws.cell(row=16, column=3).value == "CVE-2026-0001"
     assert ws.cell(row=16, column=1).value == 1  # kolom "No" nomor urut
-    # cve_reported_date derive dari detected_on, format `YYYY-MM-DD HH:MM:SS`
-    assert re.fullmatch(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d", ws.cell(row=16, column=4).value)
-    assert ws.cell(row=16, column=5).value == "CRITICAL"
-    assert ws.cell(row=16, column=6).value == 9.8
-    assert ws.cell(row=16, column=7).value == "web-01"
-    assert ws.cell(row=16, column=11).value == "owner@example.com"
-    assert ws.cell(row=16, column=15).value == "2026-10-01"
-    assert ws.cell(row=16, column=18).value == "Yes"  # escalation_required bool -> Yes/No
+    # CVE Reported Date (kolom 4) tanpa `published_at` jatuh ke tanggal `published` saja;
+    # Reported by System (kolom 5) = detected_on, `HH:MM DD-MM-YYYY`
+    assert ws.cell(row=16, column=4).value == "01-09-2026"
+    assert re.fullmatch(r"\d\d:\d\d \d\d-\d\d-\d{4}", ws.cell(row=16, column=5).value)
+    assert ws.cell(row=16, column=6).value == "CRITICAL"
+    assert ws.cell(row=16, column=7).value == 9.8
+    assert ws.cell(row=16, column=8).value == "web-01"
+    assert ws.cell(row=16, column=12).value == "owner@example.com"
+    assert ws.cell(row=16, column=16).value == "2026-10-01"
+    assert ws.cell(row=16, column=19).value == "Yes"  # escalation_required bool -> Yes/No
 
 
 async def test_export_falls_back_to_cve_fields_when_no_ticket(
@@ -92,10 +94,10 @@ async def test_export_falls_back_to_cve_fields_when_no_ticket(
     _, ws = _load(data)
 
     assert ws.cell(row=16, column=2).value in ("", None)  # ticket_id kosong, gak ada ticket
-    assert ws.cell(row=16, column=7).value == "nginx"  # affected_asset fallback ke cve.tech
-    assert ws.cell(row=16, column=8).value == "< 1.27, >= 1.0"  # affected_version dari cve.affected
-    assert ws.cell(row=16, column=9).value == "Patch to 1.27"  # fixed_version fallback solutions
-    assert ws.cell(row=16, column=13).value == "Yes"  # active_exploitation fallback dari cve
+    assert ws.cell(row=16, column=8).value == "nginx"  # affected_asset fallback ke cve.tech
+    assert ws.cell(row=16, column=9).value == "< 1.27, >= 1.0"  # affected_version dari cve.affected
+    assert ws.cell(row=16, column=10).value == "Patch to 1.27"  # fixed_version fallback solutions
+    assert ws.cell(row=16, column=14).value == "Yes"  # active_exploitation fallback dari cve
 
 
 async def test_export_excludes_false_positives_by_default(async_db_session: AsyncSession) -> None:
@@ -143,3 +145,90 @@ async def test_export_empty_result_produces_no_data_rows(async_db_session: Async
     data = await svc.export_cves_to_excel(async_db_session, client_id="default")
     _, ws = _load(data)
     assert ws.cell(row=16, column=3).value is None
+
+
+# ── CVE Reported Date + Reported by System ────────────────────────────────────
+
+UTC = datetime.UTC
+
+
+async def test_export_has_reported_by_system_column_right_after_reported_date(
+    async_db_session: AsyncSession,
+) -> None:
+    await _ensure_clients(async_db_session)
+    _, ws = _load(await svc.export_cves_to_excel(async_db_session, client_id="default"))
+
+    headers = {c: ws.cell(row=15, column=c).value for c in range(2, 23)}
+    assert headers[3] == "CVE ID"
+    assert headers[4] == "CVE Reported Date"
+    assert headers[5] == "Reported by System"
+    assert headers[6] == "Severity"
+    assert headers[22] == "Closure Date"
+    assert ws.cell(row=15, column=23).value is None  # tidak ada kolom sisa
+
+
+async def test_reported_date_is_mitre_publish_time_and_reported_by_system_is_scraper_time(
+    async_db_session: AsyncSession,
+) -> None:
+    """Dua kolom beda sumber: jam publish MITRE (`published_at`) vs kapan scraper dapat CVE-nya
+    (`detected_on`). Keduanya `HH:MM DD-MM-YYYY` di WIB (UTC+7), bukan UTC."""
+    await _ensure_clients(async_db_session)
+    async_db_session.add(
+        CveTracker(
+            cve_id="CVE-2026-0010",
+            client_id="default",
+            tech="nginx",
+            published=datetime.date(2026, 8, 31),
+            published_at=datetime.datetime(2026, 8, 31, 13, 53, tzinfo=UTC),  # 20:53 WIB
+            detected_on=datetime.datetime(2026, 9, 1, 2, 5, tzinfo=UTC),  # 09:05 WIB
+        )
+    )
+    await async_db_session.flush()
+
+    _, ws = _load(await svc.export_cves_to_excel(async_db_session, client_id="default"))
+
+    assert ws.cell(row=16, column=4).value == "20:53 31-08-2026"
+    assert ws.cell(row=16, column=5).value == "09:05 01-09-2026"
+
+
+async def test_reported_date_crosses_midnight_into_the_next_wib_day(
+    async_db_session: AsyncSession,
+) -> None:
+    await _ensure_clients(async_db_session)
+    async_db_session.add(
+        CveTracker(
+            cve_id="CVE-2026-0011",
+            client_id="default",
+            published_at=datetime.datetime(2026, 12, 31, 18, 30, tzinfo=UTC),  # 01:30 WIB 1 Jan
+            detected_on=datetime.datetime(2026, 12, 31, 18, 40, tzinfo=UTC),
+        )
+    )
+    await async_db_session.flush()
+
+    _, ws = _load(await svc.export_cves_to_excel(async_db_session, client_id="default"))
+
+    assert ws.cell(row=16, column=4).value == "01:30 01-01-2027"
+    assert ws.cell(row=16, column=5).value == "01:40 01-01-2027"
+
+
+async def test_reported_date_without_publish_time_shows_the_date_only_not_a_guessed_time(
+    async_db_session: AsyncSession,
+) -> None:
+    await _ensure_clients(async_db_session)
+    async_db_session.add_all(
+        [
+            CveTracker(
+                cve_id="CVE-2026-0012", client_id="default", published=datetime.date(2026, 8, 31)
+            ),
+            CveTracker(cve_id="CVE-2026-0013", client_id="default"),  # tanpa published sama sekali
+        ]
+    )
+    await async_db_session.flush()
+
+    _, ws = _load(await svc.export_cves_to_excel(async_db_session, client_id="default"))
+
+    by_id = {ws.cell(row=r, column=3).value: ws.cell(row=r, column=4).value for r in (16, 17)}
+    assert by_id["CVE-2026-0012"] == "31-08-2026"
+    assert by_id["CVE-2026-0013"] in ("", None)
+    # Reported by System tetap terisi (detected_on NOT NULL)
+    assert re.fullmatch(r"\d\d:\d\d \d\d-\d\d-\d{4}", ws.cell(row=16, column=5).value)

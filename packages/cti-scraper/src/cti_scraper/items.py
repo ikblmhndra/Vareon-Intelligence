@@ -133,6 +133,8 @@ class CveItem(Item):
     link: str | None = None
     summary: str | None = None
     published: datetime.date | None = None
+    published_at: datetime.datetime | None = None
+    """Jam publish lengkap dari MITRE (tz-aware, UTC). `published` di atas cuma tanggalnya."""
     cve_modified_date: datetime.date | None = None
     """Tanggal MITRE terakhir update record ini -- field DB `CveTracker`
     udah ada dari Fase 2, tapi ketinggalan di draft awal Item ini (Fase 3

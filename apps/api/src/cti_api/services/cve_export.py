@@ -40,34 +40,41 @@ _TRACKER_SHEET = "CVE Ticket Tracker"
 _DATA_START_ROW = 16
 _TZ = zoneinfo.ZoneInfo("Asia/Jakarta")
 
-# Kolom A = "No" (nomor urut 1..N, header kosong di template). Kolom 4
-# (`cve_reported_date`) + 14 (`acknowledge_time`) = timestamp lengkap
-# `YYYY-MM-DD HH:MM:SS` (WIB), bukan ISO `T`.
-# Kolom (1-based) -> (sumber, nama field). Sumber "cve" = `CveTracker`,
-# "ticket" = `CveTicket`. `cve_reported_date` (kolom 4) SELALU derive
-# dari `CveTracker.detected_on` -- kolom itu di `CveTicket` legacy
-# (readonly di UI, gak pernah beneran di-override) SENGAJA di-drop pas
-# desain skema baru, lihat docstring `CveTicket`.
+# Kolom A = "No" (nomor urut 1..N, header kosong di template). Kolom 4 ("CVE Reported Date") +
+# 5 ("Reported by System") formatnya `HH:MM DD-MM-YYYY` (WIB); kolom 15 (`acknowledge_time`) =
+# timestamp lengkap `YYYY-MM-DD HH:MM:SS` (WIB), bukan ISO `T`.
+#
+# - Kolom 4 = jam publish asli dari MITRE (`CveTracker.published_at`). Baris yang belum punya jamnya
+#   (masuk sebelum kolom itu ada dan belum di-backfill) jatuh ke tanggal `published` saja
+#   (`DD-MM-YYYY`) -- jam yang ditebak lebih buruk daripada tidak ada. `cve_reported_date` di
+#   `CveTicket` legacy (readonly di UI, gak pernah beneran di-override) SENGAJA di-drop pas desain
+#   skema baru, lihat docstring `CveTicket`.
+# - Kolom 5 = `CveTracker.detected_on`: kapan scraper pertama kali dapat CVE ini.
+#
+# Kolom (1-based) -> (sumber, nama field). Sumber "cve" = `CveTracker`, "ticket" = `CveTicket`.
+_COL_REPORTED_DATE = 4
+_COL_REPORTED_BY_SYSTEM = 5
+_LAST_COL = 22
 _COL_MAP: dict[int, tuple[str, str]] = {
     2: ("ticket", "ticket_id"),
     3: ("cve", "cve_id"),
-    5: ("cve", "cve_severity"),
-    6: ("cve", "cve_score"),
-    7: ("ticket", "affected_asset"),
-    8: ("ticket", "affected_version"),
-    9: ("ticket", "fixed_version"),
-    10: ("ticket", "asset_owner"),
-    11: ("ticket", "owner_email"),
-    12: ("ticket", "owner_team"),
-    13: ("ticket", "active_exploitation"),
-    14: ("ticket", "acknowledge_time"),
-    15: ("ticket", "remediation_date_plan"),
-    16: ("ticket", "remediation_status"),
-    17: ("ticket", "actual_remediation_date"),
-    18: ("ticket", "escalation_required"),
-    19: ("ticket", "comments"),
-    20: ("ticket", "risk_acceptance"),
-    21: ("ticket", "closure_date"),
+    6: ("cve", "cve_severity"),
+    7: ("cve", "cve_score"),
+    8: ("ticket", "affected_asset"),
+    9: ("ticket", "affected_version"),
+    10: ("ticket", "fixed_version"),
+    11: ("ticket", "asset_owner"),
+    12: ("ticket", "owner_email"),
+    13: ("ticket", "owner_team"),
+    14: ("ticket", "active_exploitation"),
+    15: ("ticket", "acknowledge_time"),
+    16: ("ticket", "remediation_date_plan"),
+    17: ("ticket", "remediation_status"),
+    18: ("ticket", "actual_remediation_date"),
+    19: ("ticket", "escalation_required"),
+    20: ("ticket", "comments"),
+    21: ("ticket", "risk_acceptance"),
+    22: ("ticket", "closure_date"),
 }
 
 
@@ -85,9 +92,23 @@ def _fmt(val: Any) -> Any:
     return val
 
 
+def _fmt_stamp(val: datetime.datetime | datetime.date | None) -> str:
+    """`HH:MM DD-MM-YYYY` di WIB (mis. `20:53 31-08-2026`). `date` murni (tanpa jam) jadi
+    `DD-MM-YYYY` saja. Teks, bukan nilai tanggal Excel -- sama seperti logbook manual lama."""
+    if val is None:
+        return ""
+    if isinstance(val, datetime.datetime):  # cek duluan: datetime adalah subclass date
+        if val.tzinfo is not None:
+            val = val.astimezone(_TZ)
+        return val.strftime("%H:%M %d-%m-%Y")
+    return val.strftime("%d-%m-%Y")
+
+
 def _cell_value(col_idx: int, cve: CveTracker, ticket: CveTicket | None) -> Any:
-    if col_idx == 4:
-        return _fmt(cve.detected_on or cve.published)
+    if col_idx == _COL_REPORTED_DATE:
+        return _fmt_stamp(cve.published_at or cve.published)
+    if col_idx == _COL_REPORTED_BY_SYSTEM:
+        return _fmt_stamp(cve.detected_on)
 
     source, field = _COL_MAP[col_idx]
     if source == "cve":
@@ -161,7 +182,7 @@ async def export_cves_to_excel(
         if style_ref:
             _copy_style(style_ref[0], ws.cell(row=row_num, column=1))
 
-        for col_idx in range(2, 22):
+        for col_idx in range(2, _LAST_COL + 1):
             cell = ws.cell(row=row_num, column=col_idx)
             cell.value = _cell_value(col_idx, cve, ticket)
             ref_idx = col_idx - 1

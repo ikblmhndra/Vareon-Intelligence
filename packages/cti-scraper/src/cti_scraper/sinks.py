@@ -173,6 +173,9 @@ def _cve_sink(item: CveItem, meta: ScraperMeta, session: Session) -> None:
     from cti_core.db.repositories.cve import CveTrackerRepo
 
     repo = CveTrackerRepo(session)
+    # `published_at` hanya ikut kalau MITRE ngasih jamnya -- jangan menimpa nilai yang sudah ada
+    # (mis. hasil backfill) dengan NULL.
+    extra = {"published_at": item.published_at} if item.published_at is not None else {}
     repo.upsert(
         cve_id=item.cve_id,
         client_id=item.client_id,
@@ -187,6 +190,7 @@ def _cve_sink(item: CveItem, meta: ScraperMeta, session: Session) -> None:
         cvss_vector=item.cvss_vector,
         references=item.references,
         affected=item.affected,
+        **extra,
     )
 
 
