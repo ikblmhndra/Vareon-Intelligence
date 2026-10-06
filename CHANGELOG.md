@@ -9,6 +9,14 @@ router `changelog.py`) -- parser-nya expect header persis
 ## [Unreleased] - 2026-10-05
 
 ### Ditambah
+- **Dashboard CVE Tracker** (sub-view "Dashboard" di `/cve`, endpoint `GET /api/cve/dashboard?year=`):
+  pengganti sheet Dashboard di workbook Excel `CVE_Tracker_Dashboard.xlsx`. Isinya KPI, MTTD/MTTA/MTTR
+  per severity dan per owner team, tren bulanan per severity (chart + tabel), posisi CVE per tahap, dan
+  10 CVE paling lambat. Scope sama dengan tab CVEs (client aktif, techstack aktif, tanpa false positive).
+  Tidak ada migrasi dan data Excel tidak diimpor. Definisi di `cti_api.services.cve_dashboard`; beda
+  dari rumus Excel yang disengaja: nol ikut dihitung (+ median, p90, n), resolution rate dibagi CVE yang
+  memang butuh tindakan (bukan semua baris), MTTD dalam hari (`detected_on` - `published`; di Excel selalu
+  1 atau 6 jam), MTTR tidak dihitung untuk "Not Affected", dan tidak ada batas baris.
 - **CD otomatis ke produksi**: `.github/workflows/deploy.yml` men-deploy tiap push ke `main` yang lolos
   CI, lewat runner self-hosted di host produksi (host privat, tanpa port masuk). `tools/ops/deploy.sh`
   (juga `make deploy`) melakukan backup Postgres, menandai image berjalan sebagai `:prev`, build,

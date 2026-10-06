@@ -52,7 +52,9 @@ from cti_api.schemas.cve import (
     DraftEmailBody,
     PurgeOrphanedBody,
 )
+from cti_api.schemas.cve_dashboard import CveDashboard
 from cti_api.schemas.techstack import EXPOSURE_MULTIPLIER, HOSTING_MULTIPLIER
+from cti_api.services import cve_dashboard as cve_dashboard_service
 from cti_api.services import cve_email as cve_email_service
 from cti_api.services import cve_export as cve_export_service
 from cti_api.services import cve_lookup as cve_lookup_service
@@ -242,6 +244,28 @@ async def cve_stats(
         ack_filter=ack_filter,
     )
     return CveStats(**stats)
+
+
+@router.get("/dashboard", response_model=CveDashboard)
+async def cve_dashboard(
+    year: int | None = Query(None, ge=2000, le=2100),
+    session: AsyncSession = Depends(get_db),
+    user: AuthedUser = Depends(require_auth),
+    x_client_id: str | None = Header(None),
+) -> CveDashboard:
+    """Dashboard MTTD/MTTA/MTTR per tahun (`detected_on`, WIB), scope sama dengan
+    `/stats`: client aktif, techstack aktif, tanpa false-positive -- total di sini
+    = total di tab CVEs. `year` kosong = tahun berjalan. Definisi metrik:
+    `cti_api.services.cve_dashboard`."""
+    cid = effective_client_id(user, x_client_id)
+    fp_ids = await AsyncCveFalsePositiveRepo(session).list_cve_ids(cid)
+    return await cve_dashboard_service.get_dashboard(
+        session,
+        client_id=cid,
+        year=year,
+        tech=await _active_tech_names(session, cid),
+        exclude_cve_ids=fp_ids or None,
+    )
 
 
 @router.get("/tech-list")

@@ -37,6 +37,8 @@ export interface ChartTheme {
   /** 10 warna siklik (doughnut/multi-series). */
   series: string[];
   grades: Record<string, string>;
+  /** Warna per severity CVE (token `--severity-*`, sudah dipilih per tema). */
+  severity: Record<"CRITICAL" | "HIGH" | "MEDIUM" | "LOW", string>;
 }
 
 /** Berubah tiap kelas tema `<html>` berubah; pakai sebagai dependency re-render. */
@@ -67,6 +69,12 @@ export function useChartTheme(): ChartTheme {
         D: v("--severity-high"),
         E: v("--severity-critical"),
         F: v("--muted-foreground"),
+      },
+      severity: {
+        CRITICAL: v("--severity-critical"),
+        HIGH: v("--severity-high"),
+        MEDIUM: v("--severity-medium"),
+        LOW: v("--severity-low"),
       },
     };
   }, [themeKey]);
