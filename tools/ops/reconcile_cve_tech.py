@@ -21,9 +21,10 @@ Dari host (dev):
     uv run python tools/ops/reconcile_cve_tech.py
     uv run python tools/ops/reconcile_cve_tech.py --client acme --apply
 
-Di server (image worker tidak membawa `tools/`, di-mount read-only seperti runbook 3.2):
-    docker run --rm --network <project>_default --env-file .env -v "$PWD/tools:/tools:ro" \\
-      --entrypoint python cti-worker:$CTI_TAG /tools/ops/reconcile_cve_tech.py
+Di server (dari folder repo; `tools/` di-mount read-only, image worker tidak membawanya):
+    docker compose --env-file docker/stack.env --profile app run --rm --no-deps -T \\
+      -v "$PWD/tools:/tools:ro" --entrypoint python worker /tools/ops/reconcile_cve_tech.py
+(tambahkan `--client acme` dan/atau `--apply` di ujung perintah yang sama)
 """
 
 from __future__ import annotations

@@ -162,12 +162,20 @@ Gejala: CVE tercatat di bawah tech yang bukan produk terdampaknya (Tech `mariadb
 `new_cve` hanya menerima CVE kalau nama tech muncul di vendor/product/CPE record MITRE. Run yang
 sehat TIDAK membersihkan baris lama -- CVE yang sekarang ditolak tidak pernah di-fetch lagi.
 
+Jalankan dari folder repo di server (yang berisi `docker-compose.yml`). `compose run` otomatis masuk
+jaringan dan env aplikasi, jadi tidak perlu `--network` ataupun `--env-file`:
+
 ```bash
-# laporan saja (default) -- tidak menulis apa pun
-docker run --rm --network <project>_default --env-file .env -v "$PWD/tools:/tools:ro" \
-  --entrypoint python cti-worker:$CTI_TAG /tools/ops/reconcile_cve_tech.py [--client <client_id>]
-# setelah laporan dibaca dan masuk akal: tambahkan --apply
+# 1) laporan saja (default) -- tidak menulis apa pun
+docker compose --env-file docker/stack.env --profile app run --rm --no-deps -T \
+  -v "$PWD/tools:/tools:ro" --entrypoint python worker /tools/ops/reconcile_cve_tech.py
+
+# 2) satu client saja: tambahkan di ujung perintah yang sama, mis.  --client acme
+# 3) setelah laporan dibaca dan masuk akal: tambahkan di ujung perintah yang sama  --apply
 ```
+
+Pakai `docker compose run`, bukan `docker run --env-file .env`: yang terakhir tidak membuang komentar
+inline di `.env` (lihat `tools/ops/deploy.sh`, pola yang sama).
 
 Tiap baris dinilai ulang dengan aturan yang sama dengan scraper: `RETAG` (tech lain milik client
 yang sama yang cocok), `DELETE` (tidak ada yang cocok), `REVIEW` (tidak cocok tapi sudah punya
