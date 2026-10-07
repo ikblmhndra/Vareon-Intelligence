@@ -273,6 +273,40 @@ katalog, bukan alias tulis tangan. Yang tersisa:
 3. **Image worker harus dibangun ulang sebelum menjalankan `reconcile_cve_tech`** (tool memakai pencocok
    dari image, bukan dari folder `tools/`; sama seperti catatan 0.2.1).
 
+#### 7.1.2 Menjalankan spike pengukuran
+
+`tools/ops/spike_cve_catalog.py` (hanya pustaka standar Python 3.10+, tanpa DB/jaringan/image; jalan di
+server dev atau laptop mana pun). Sumber: clone CVE List V5.
+
+```bash
+git clone --depth 1 https://github.com/CVEProject/cvelistV5          # beberapa GB, sekali saja
+# opsional, untuk recall terhadap tracker (jalankan di host yang punya akses Postgres):
+docker compose --env-file docker/stack.env --profile app exec -T postgres psql -U cti -d cti -c \
+  "\copy (SELECT DISTINCT cve_id, tech FROM cve_tracker WHERE tech IS NOT NULL) TO STDOUT CSV HEADER" \
+  > tracker.csv
+python3 tools/ops/spike_cve_catalog.py --source cvelistV5 --since 2025-01-01 \
+  --tracker-csv tracker.csv --out spike_report.md --catalog-csv spike_catalog.csv
+```
+
+`--source` juga menerima zip rilis (zip bersarang ditangani; bentuk bersarang itu **asumsi** yang belum
+dicek terhadap rilis sungguhan, jadi pakai clone kalau ragu). `--id-years` melebarkan tahun ID yang dipindai
+(default tahun sebelum `--since` sampai tahun ini; tahun di nama berkas BUKAN tahun terbit). Uji skala:
+60.000 berkas sintetis selesai dalam 31 detik dan 154 MB.
+
+Laporan menjawab: berapa CVE punya produk yang layak (CNA, dan yang diselamatkan ADP), berapa identitas
+(vendor, produk) mentah vs ternormalisasi vs digabung ejaannya vs **keluarga produk** (varian versi
+Windows dst.), jenis dan contoh sampah, ekor panjang (berapa identitas punya >= 5 CVE), kandidat merge,
+produk teratas, **vonis per 34 tech** (`bersih` / `satu vendor, banyak produk` / `ambigu` / `tidak ada`),
+dan recall terhadap tracker (`keduanya` / `hanya-tracker` / `hanya-katalog`). Bagian "Batas pengukuran"
+di laporan menyebut apa yang tidak diukur.
+
+**Dibaca dari 10 record asli CVE 2025 yang dipakai memvalidasi skrip** (bukan hasil spike penuh):
+(a) Microsoft menulis tiap versi Windows sebagai produk sendiri, jadi ukuran katalog menyesatkan tanpa
+hitungan keluarga; (b) Palo Alto muncul sebagai `Palo Alto Networks` DAN `paloaltonetworks` (dari CPE) dan
+satu tech menyentuh banyak produk (PAN-OS, Prisma, Cloud NGFW): kasus hierarki, bukan ambigu;
+(c) `kubernetes | ingress-nginx` cocok kata utuh `nginx` dan vonisnya `bersih` padahal bukan F5 nginx:
+vonis mengukur konsistensi nama, bukan kebenaran produk, jadi tinjau manusia tetap wajib.
+
 ### 7.2 Langkah pendukung (belum jadi item roadmap sendiri)
 
 1. **Ukur recall.** Skrip sekali jalan di server: untuk tiap tech, bandingkan isi tracker dengan query

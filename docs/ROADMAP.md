@@ -546,7 +546,7 @@ branch) dipertahankan; istilahnya kelak diturunkan dari katalog.
 
 ### Fase
 
-1. **Spike pengukuran (hanya baca, tidak mengubah produk)**: tarik CVE 2025 sampai sekarang, hitung produk
+1. **Spike pengukuran** -- **skrip siap (2026-10-07), belum dijalankan di data penuh**: `tools/ops/spike_cve_catalog.py` (stdlib saja; cara pakai di docstring dan `docs/CVE_TECH_MATCHING.md` 7.1.2). Hanya baca, tidak mengubah produk: tarik CVE 2025 sampai sekarang, hitung produk
    (vendor, produk) unik, persentase sampah (`n/a`, nama repo, string versi), duplikasi ejaan, dan berapa dari
    34 tech produksi ketemu dengan bersih. Sekaligus jadi angka recall (`docs/CVE_TECH_MATCHING.md` 7.2.1).
    Hasilnya menentukan seberapa berat normalisasi katalog -- risiko terbesar desain ini.
