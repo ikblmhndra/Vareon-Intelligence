@@ -38,7 +38,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 import httpx
-from cti_core.tech_match import AliasMap
 from cti_scrapers.feeds.new_cve import affected_products, relevant_techs, usable_products
 
 if TYPE_CHECKING:
@@ -105,22 +104,19 @@ def plan(
     rows: Iterable[Row],
     products_by_cve: Mapping[str, list[str] | None],
     client_techs: Mapping[str, Sequence[str]],
-    alias_map: AliasMap | None = None,
 ) -> Plan:
-    """Nilai tiap baris. Murni -- tidak menyentuh DB maupun jaringan. `alias_map` = alias per
-    tech (`load_alias_map`); harus sama dengan yang dipakai scraper, kalau tidak tool menilai dengan
-    definisi "cocok" yang berbeda dan menghapus data yang sah."""
+    """Nilai tiap baris. Murni -- tidak menyentuh DB maupun jaringan."""
     result = Plan(findings=[])
     for row in rows:
         products = products_by_cve.get(row.cve_id)
         if products is None or (not usable_products(products) and not row.summary.strip()):
             result.unverified += 1  # tanpa bukti apa pun -> jangan menebak
             continue
-        if relevant_techs([row.tech], row.summary, products, alias_map):
+        if relevant_techs([row.tech], row.summary, products):
             result.ok += 1
             continue
         others = sorted(t for t in client_techs.get(row.client_id, ()) if t != row.tech)
-        better = relevant_techs(others, row.summary, products, alias_map)
+        better = relevant_techs(others, row.summary, products)
         if better:
             result.findings.append(Finding(row, "retag", better[0]))
         elif row.has_ticket:
@@ -140,17 +136,6 @@ def render(finding: Finding, products: Sequence[str] | None) -> str:
     return (
         f"{finding.action.upper():<7} {row.cve_id:<16} {row.client_id:<14} {tech:<28} "
         f"| affected: {affected}{note}"
-    )
-
-
-def load_alias_map(session: Session) -> dict[str, list[str]]:
-    """`techstack_entries.aliases` dalam bentuk yang sama dengan reference data scraper."""
-    from cti_core.db.models.techstack import TechStackEntry
-    from cti_core.tech_match import build_alias_map
-    from sqlalchemy import select
-
-    return build_alias_map(
-        session.execute(select(TechStackEntry.name, TechStackEntry.aliases)).all()  # type: ignore[arg-type]
     )
 
 
@@ -241,7 +226,6 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     with Session(get_sync_engine()) as session:
         rows, client_techs = load_rows(session, args.client)
-        alias_map = load_alias_map(session)
         cve_ids = sorted({r.cve_id for r in rows})
         print(f"{len(rows)} baris, {len(cve_ids)} CVE unik -- mengambil record MITRE ...")
 
@@ -254,7 +238,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     time.sleep(args.delay)
                 products[cve_id] = fetch_products(http, cve_id)
 
-        result = plan(rows, products, client_techs, alias_map)
+        result = plan(rows, products, client_techs)
         for f in result.findings:
             print(render(f, products.get(f.row.cve_id)))
 

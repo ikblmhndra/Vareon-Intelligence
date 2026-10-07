@@ -7,8 +7,8 @@ pengembangan (standarisasi techstack, `docs/ROADMAP.md` #19).
 **Status** (2026-10-07): perbaikan filter dan tool pembersih sudah di rilis 0.2.1 (PR #8); koreksi
 bug angka-versi (`graylog2-server`) sudah di `main`. **Arah standarisasi berubah hari ini**: bukan lagi
 alias manual + katalog kurasi, melainkan **mirror CVE -> katalog tech -> Monitor** (7.1, desain lengkap di
-`docs/ROADMAP.md` #19); belum ada kode untuk bagian barunya. Fase 1 lama (kolom `aliases` + pencocok
-bersama) ada di branch `nameless/roadmap-runners`, belum di `main` (7.1.1). Perintah menjalankan tool
+`docs/ROADMAP.md` #19); belum ada kode untuk bagian barunya. Pencocok bersama `cti_core.tech_match`
+(tanpa kolom `aliases`, dibuang) ada di branch `nameless/roadmap-runners`, belum di `main` (7.1.1). Perintah menjalankan tool
 pembersih: `docs/SCRAPER_MAINTENANCE.md` 4.G.
 
 ---
@@ -242,79 +242,36 @@ ketemu bersih, sekaligus recall 7.2.1); (2) mirror + katalog baca-saja + job ret
 (3) tab All/Monitored + `catalog_id` + validasi API; (4) ganti `new_cve`, **mode bayangan dulu** di server dev;
 (5) merge produk oleh admin. Pemetaan 34 tech lama ke katalog ditinjau manual (`name` tetap kunci join).
 
-#### 7.1.1 Fase 1 lama (alias + pencocok bersama): di branch, belum di `main`
+#### 7.1.1 Pencocok bersama `cti_core.tech_match`: di branch, belum di `main`
 
-Dikerjakan sebelum arah di atas disepakati. Keputusan: `cti_core.tech_match` dan perbaikan pencocok 5-6
-(kata utuh, tanpa regex tak ter-escape) tetap berguna; kolom `aliases` + seed kemungkinan tumpang tindih
-dengan katalog (rekomendasi: dibuang sebelum merge, lihat "Terbuka" di ROADMAP #19). Di bawah deskripsi
-apa adanya, berlaku **hanya jika** branch itu di-merge.
-
-**Isi:**
+Dikerjakan sebelum arah di atas disepakati. Versi dengan kolom `techstack_entries.aliases`, migrasi, seed 8
+tech, dan reference data `techstack_aliases` **dibuang** (user 2026-10-07): identitas produk nanti datang dari
+katalog, bukan alias tulis tangan. Yang tersisa:
 
 - **`cti_core.tech_match`** (`packages/cti-core/src/cti_core/tech_match.py`): satu definisi "teks ini
   menyebut tech itu". Aturannya diangkat dari gate 0.2.1: huruf kecil, non-alfanumerik jadi spasi
   (`Node.js` = `node js`), tech harus **kata utuh**, angka (maks 4 digit) yang menempel di ujung
   dianggap versi mayor (`graylog2-server` ~ `graylog`), huruf yang menempel bukan (`nginxy` bukan
-  `nginx`). Ditambah **alias** (diperlakukan sama dengan nama) dan satu pengaman: istilah yang setelah
-  dinormalisasi kurang dari 2 karakter (nama `c++` jadi `c`) tidak pernah cocok.
-- **Kolom `techstack_entries.aliases`** (JSONB, NOT NULL, default `[]`), migrasi `a9d4e6f81b3c`.
-  Entri yang dibuat lewat UI mulai kosong; `name` dan kunci join tidak berubah.
-- **Pemanggil yang kini memakai modul itu**: gate dan filter Tenable di `new_cve`
-  (`relevant_techs(..., alias_map)`), `score.py` (`related_tech_status` untuk judul artikel dan tweet,
-  `check_tech_stack` untuk vendor CVE), `cve_priority.in_tech_stack`, dan penilai
-  `tools/ops/reconcile_cve_tech.py` (membaca alias dari DB, jadi tool dan scraper tetap satu definisi).
-  Scraper menerima alias lewat reference data baru `techstack_aliases` (`{nama ternormalisasi: [alias]}`,
-  gabungan lintas client); `techstack` dan `techstack_by_client` tetap `list[str]`.
-- **Seed alias** (dari daftar produksi 2026-10-07, 34 nama; sengaja konservatif):
+  `nginx`). Satu pengaman: istilah yang setelah dinormalisasi kurang dari 2 karakter (nama `c++` jadi `c`)
+  tidak pernah cocok.
+- **Pemanggilnya**: gate dan filter Tenable di `new_cve`, `score.py` (`related_tech_status` untuk judul
+  artikel dan tweet, `check_tech_stack` untuk vendor CVE), `cve_priority.in_tech_stack`, dan penilai
+  `tools/ops/reconcile_cve_tech.py` (jadi tool dan scraper tetap satu definisi). Tidak ada migrasi.
+- **Belum disatukan**: `reports/cve_record.py::applicable_to_stack` (pencocok ketujuh). Tesnya
+  (`test_cve_record.py`) mengunci `c++` ~ `c++ inc`, bertentangan dengan aturan istilah pendek, jadi itu
+  perubahan perilaku yang harus diputuskan.
+- **Nama lain produk yang sama** (`PAN-OS` untuk `palo alto`, `RouterOS` untuk `mikrotik`) **tidak**
+  tertangani tanpa alias; itu tugas katalog. Selama katalog belum ada, CVE yang produk CNA-nya bernama lain
+  dari nama tech tetap ditolak gate (batasan yang sama dengan 0.2.1; lihat 6).
 
-  | Tech | Alias | Alasan |
-  |---|---|---|
-  | `palo alto` | `paloaltonetworks`, `pan-os`, `panos`, `globalprotect` | CNA menulis vendor/produk gaya CPE tanpa spasi |
-  | `fortigate` | `fortios` | FortiOS = OS FortiGate; CNA menulis produknya `FortiOS` |
-  | `mikrotik` | `routeros` | produk MikroTik di CNA bernama `RouterOS` |
-  | `microsoft 365` | `office 365`, `m365` | |
-  | `harmony sase` | `perimeter 81` | Harmony SASE = Perimeter 81 yang di-rebrand |
-  | `perimeter81` | `perimeter 81` | nama tech tanpa spasi, CNA menulisnya dengan spasi |
-  | `burp suite` | `burpsuite` | |
-  | `new relic` | `newrelic` | nama paket/CPE tanpa spasi |
+**Yang berubah di produksi bila branch ini di-merge (baca sebelum deploy):**
 
-  Draf ini hasil penilaian, bukan data CNA. Tinjau sebelum dipercaya, dan jalankan
-  `reconcile_cve_tech` (laporan saja) sesudah deploy: baris `DELETE` yang menurut lu sah berarti
-  alias kurang. Alias yang terlalu umum membawa balik masalah yang diperbaiki di sini.
-
-**Mengubah alias** (hanya jika fase 1 lama di-merge; belum ada UI/API)
-
-```sql
--- lihat
-SELECT name, aliases FROM techstack_entries WHERE aliases <> '[]'::jsonb ORDER BY name;
--- ubah (alias dinormalisasi saat dibaca, jadi huruf besar/kecil dan tanda baca bebas)
-UPDATE techstack_entries SET aliases = '["pan-os","paloaltonetworks"]'::jsonb
- WHERE lower(name) = 'palo alto';
-```
-
-Berlaku di run/artikel/permintaan berikutnya **tanpa restart**: reference data dibaca tiap run
-scraper, `score()` tiap artikel, `cve_priority` tiap permintaan. Alias per entri (per client), tapi
-scraper menggabungkannya lintas client karena alias itu sifat produknya.
-
-**Yang berubah di produksi bila fase 1 lama di-merge (baca sebelum deploy):**
-
-1. **Migrasi**: `up -d` menjalankan service `migrate` (kolom nullable-safe: NOT NULL dengan default
-   sementara, aman untuk data lama).
+1. Tidak ada migrasi.
 2. **Alert topik `tech_stack` dan skor prioritas CVE bisa berkurang**: pencocok 5 (substring tanpa batas
    kata) dan 6 (substring dua arah) kini kata utuh. Pasangan yang dulu cocok hanya karena substring
    (`go` ~ `google`) tidak lagi. Itu tujuannya, tapi terlihat sebagai perubahan angka/alert.
 3. **Image worker harus dibangun ulang sebelum menjalankan `reconcile_cve_tech`** (tool memakai pencocok
    dari image, bukan dari folder `tools/`; sama seperti catatan 0.2.1).
-4. **Belum ditangani**: pencarian kandidat (`keywordSearch` NVD, Tenable) tetap memakai nama tech
-   tanpa alias, jadi CVE yang deskripsinya hanya menyebut `PAN-OS` (bukan `palo alto`) belum ditemukan
-   sejak awal; alias baru menyelamatkan CVE yang SUDAH jadi kandidat dari gate. Menambah alias sebagai
-   kata kunci pencarian menambah request NVD (batas 60/menit) dan jadi bahan fase 3.
-
-Keputusan yang dibutuhkan dari user untuk fase 2-3: sumber katalog (kurasi manual dari techstack yang
-ada, atau pencarian ke API CPE NVD saat menambah) dan aturan hierarki produk.
-
-Risiko: pemetaan entri lama ke katalog harus ditinjau manusia; katalog yang tidak dirawat membuat alias
-usang; sisi CNA tetap tidak terkendali, jadi alias saja tidak cukup (lihat 7.2).
 
 ### 7.2 Langkah pendukung (belum jadi item roadmap sendiri)
 
@@ -339,7 +296,7 @@ usang; sisi CNA tetap tidak terkendali, jadi alias saja tidak cukup (lihat 7.2).
 | Playbook menjalankan | `docs/SCRAPER_MAINTENANCE.md` 4.G |
 | PR rilis 0.2.1 | PR #8 (`ikblmhndra/Vareon-Intelligence#8`) |
 | Koreksi angka-versi | commit `f96d23b` (`nameless/dev`) |
-| Pencocok bersama (fase 1) | `packages/cti-core/src/cti_core/tech_match.py`, migrasi `alembic/versions/a9d4e6f81b3c_techstack_aliases.py` |
+| Pencocok bersama | `packages/cti-core/src/cti_core/tech_match.py` (di branch, belum di `main`) |
 | Pemanggilnya | `packages/cti-enrich/src/cti_enrich/stages/score.py`, `apps/api/src/cti_api/services/cve_priority.py` |
 | Daftar techstack ke scraper | `packages/cti-scraper/src/cti_scraper/reference_data.py` |
 | Rencana (arah baru) | `docs/ROADMAP.md` #19 |

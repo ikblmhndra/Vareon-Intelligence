@@ -48,17 +48,14 @@ def _patch_urgency(label: str, in_tech_stack: bool) -> str:
     return "monitor"
 
 
-def _in_tech_stack(tracker_tech: str, tech_stack: list[tuple[str, list[str]]]) -> bool:
+def _in_tech_stack(tracker_tech: str, tech_stack: list[str]) -> bool:
     """`cve_tracker.tech` termasuk techstack client ini. Dulu substring dua arah tanpa batas kata
-    (`go` ~ `google`, `edge` ~ `knowledge`); sekarang `cti_core.tech_match` (kata utuh + alias):
-    nama tracker disebut oleh salah satu entri (nama/aliasnya), ATAU entri (nama) disebut oleh nama
-    tracker -- arah kedua menjaga "jira" di tracker cocok dengan entri "jira service management"."""
+    (`go` ~ `google`, `edge` ~ `knowledge`); sekarang `cti_core.tech_match` (kata utuh): nama entri
+    disebut oleh nama tracker, ATAU nama tracker disebut oleh nama entri -- arah kedua menjaga
+    "jira" di tracker cocok dengan entri "jira service management"."""
     if not tracker_tech.strip():
         return False
-    return any(
-        mentions(name, tracker_tech, aliases) or mentions(tracker_tech, name)
-        for name, aliases in tech_stack
-    )
+    return any(mentions(name, tracker_tech) or mentions(tracker_tech, name) for name in tech_stack)
 
 
 async def prioritize_campaign_cves(
@@ -73,7 +70,7 @@ async def prioritize_campaign_cves(
     tech_entries, _total = await AsyncTechStackRepo(session).list_filtered(
         client_id=client_id, page=1, page_size=10000
     )
-    tech_stack = [(e.name, e.aliases or []) for e in tech_entries if e.name]
+    tech_stack = [e.name for e in tech_entries if e.name]
 
     results: list[dict[str, Any]] = []
     for cve_id in cve_ids:

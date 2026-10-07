@@ -31,9 +31,8 @@ scraper (`new_cve`). Semua yang lain (enrichment, ticket, dashboard, export) bek
 
 `scrapers/src/cti_scrapers/feeds/new_cve.py`. `meta`: `id="new_cve"`, jadwal `spread("0 * * * *")` (tiap jam,
 menit digeser), `rate_limit="60/minute"`, `max_items=300`, `credential="nvd"` (jadi masuk queue `scrape.api`),
-`reference_data=("techstack", "techstack_by_client", "techstack_aliases"*)`, `dedup_key()` = `None`
+`reference_data=("techstack", "techstack_by_client")`, `dedup_key()` = `None`
 (**selalu upsert ulang**, karena MITRE bisa memperbarui skor).
-\* `techstack_aliases` hanya ada di branch fase 1 (belum di `main`).
 
 Langkah satu run (`NewCve.fetch`):
 1. Baca `ctx.reference`: daftar nama tech (distinct lintas client) dan `{client_id: [nama tech]}`.
@@ -192,8 +191,9 @@ list, `cve-detail-modal` dengan tab Ticket), **Dashboard** (`cve-dashboard-view`
 | 6 | `cve_priority.in_tech_stack` | substring dua arah |
 | **7** | **`reports/cve_record.py::applicable_to_stack`** | **substring `re.escape(tech)` terhadap vendor, tanpa batas kata** (label "Might Applicable to Organization!") |
 
-Branch `nameless/roadmap-runners` (fase 1, belum di `main`) menyatukan 2-6 ke `cti_core.tech_match`; **#7
-belum**. Kalau fase 1 (atau penggantinya) di-merge, #7 harus ikut disatukan.
+Branch `nameless/roadmap-runners` (belum di `main`) menyatukan 2-6 ke `cti_core.tech_match`; **#7 sengaja belum**:
+`test_cve_record.py` mengunci `c++` ~ `c++ inc`, yang bertentangan dengan aturan "istilah < 2 karakter tak pernah
+cocok", jadi menyatukannya adalah perubahan perilaku yang harus diputuskan.
 
 ## 10. Hal yang harus dipertahankan saat mengubah desain (checklist invarian)
 

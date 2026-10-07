@@ -49,20 +49,6 @@ def _resolve_techstack_by_client(session: Session) -> dict[str, list[str]]:
     return result
 
 
-def _resolve_techstack_aliases(session: Session) -> dict[str, list[str]]:
-    """{`normalize(nama tech)`: [alias]} -- `techstack_entries.aliases`, GABUNGAN lintas client
-    (alias itu sifat produknya, bukan sifat client), hanya tech yang punya alias. Kunci
-    ternormalisasi supaya "Palo_Alto" dan "palo alto" ketemu (`cti_core.tech_match.aliases_of`).
-    Dipasangkan dengan `techstack`/`techstack_by_client` yang tetap `list[str]` nama polos."""
-    from cti_core.db.models.techstack import TechStackEntry
-    from cti_core.tech_match import build_alias_map
-    from sqlalchemy import select
-
-    return build_alias_map(
-        session.execute(select(TechStackEntry.name, TechStackEntry.aliases)).all()  # type: ignore[arg-type]
-    )
-
-
 def _resolve_true_positive_cves(session: Session) -> list[dict[str, Any]]:
     """CVE di `cve_tracker` yang BUKAN false positive -- [{cve_id,
     poc_urls}]. `CveTracker` baris per-(cve_id, client_id) (lihat model),
@@ -138,7 +124,6 @@ def _resolve_tweet_last_seen_ids(session: Session) -> dict[str, str]:
 _RESOLVERS = {
     "techstack": _resolve_techstack,
     "techstack_by_client": _resolve_techstack_by_client,
-    "techstack_aliases": _resolve_techstack_aliases,
     "true_positive_cves": _resolve_true_positive_cves,
     "threat_actor_groups": _resolve_threat_actor_groups,
     "monitored_people": _resolve_monitored_people,

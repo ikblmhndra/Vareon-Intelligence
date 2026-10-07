@@ -28,7 +28,7 @@ Isi tiap item: **apa** yang diminta, **keadaan sekarang** (fakta dari repo/stagi
 | 16 | Dashboard CVE: SLA per severity (ganti rating ambang tetap) | target SLA ack/remediasi per severity | -- |
 | 17 | Dashboard CVE: panel backlog/aging, KEV/EPSS, produk paling sering terdampak | pilihan panel | -- |
 | 18 | Validasi isian ticket CVE + keputusan model ticket (1 ticket per CVE vs satu ticket banyak CVE) | daftar nilai baku, keputusan model | -- |
-| 19 | **Katalog tech dari mirror CVE + Monitor** (arah baru 2026-10-07, menggantikan rencana alias/fase 2-3): mirror semua CVE (retensi tahun kalender) -> katalog vendor+produk -> tab All Tech / Monitored Tech -> tab CVEs hanya tech yang di-monitor. **Desain disepakati, belum ada kode untuk bagian barunya**; fase 1 lama (alias + pencocok bersama) ada di branch, belum di `main`; rancangan di `docs/CVE_TECH_MATCHING.md` 7 | spike data (butuh akses jaringan ke CVE List V5/NVD), konfirmasi 3 hal terbuka (di item) | uji di server dev dulu |
+| 19 | **Katalog tech dari mirror CVE + Monitor** (arah baru 2026-10-07, menggantikan rencana alias/fase 2-3; kolom `aliases` dibuang): mirror semua CVE (retensi tahun kalender) -> katalog vendor+produk -> tab All Tech / Monitored Tech -> tab CVEs hanya tech yang di-monitor. **Desain disepakati, belum ada kode untuk bagian barunya**; pencocok bersama `cti_core.tech_match` (tanpa alias) ada di branch, belum di `main`; rancangan di `docs/CVE_TECH_MATCHING.md` 7 | spike data (butuh akses jaringan ke CVE List V5/NVD), konfirmasi 3 hal terbuka (di item) | uji di server dev dulu |
 
 ---
 
@@ -482,9 +482,12 @@ Tujuh pencocok dengan aturan berbeda memakainya (NVD `keywordSearch`; Tenable; g
 `applicable_to_stack`). Di produksi, 55
 dari 118 baris tracker yang bisa diverifikasi salah. `new_cve` mencari per nama tech tiap jam (34 request ke
 NVD, mencari kata di deskripsi), jendela 8 hari, dan satu panggilan MITRE per kandidat (batas 60/menit).
-**Fase 1 lama** (commit `feat(techstack): ... fase 1`, kolom `techstack_entries.aliases` migrasi
-`a9d4e6f81b3c` + `cti_core.tech_match` + seed 8 tech) ada di branch `nameless/roadmap-runners`, **belum di
-`main`** (PR #11 hanya membawa fix CI). Nasibnya menunggu keputusan di "Terbuka".
+**Yang sudah ada di branch `nameless/roadmap-runners` (belum di `main`)**: `cti_core.tech_match` (satu
+definisi "cocok": kata utuh, angka versi menempel diterima, huruf menempel ditolak, istilah < 2 karakter tak
+pernah cocok) dipakai pencocok 2-6 dan penilai `reconcile_cve_tech`. **Kolom `techstack_entries.aliases`,
+migrasi, seed, dan reference data `techstack_aliases` dibuang (keputusan user 2026-10-07)**; tidak ada migrasi
+baru. Efek yang terlihat di produksi bila di-merge: alert `tech_stack` dan flag `in_tech_stack` tidak lagi
+cocok lewat substring (`go` ~ `google`).
 
 ### Desain (disepakati 2026-10-07)
 
@@ -538,8 +541,7 @@ proyeksikan ke tech yang di-monitor".
 tercatat sebelumnya dan tidak disentuh fase 1; lihat `docs/CVE_TRACKER_FLOW.md` 9).
 
 **Pencocok teks tetap dibutuhkan** untuk artikel dan tweet (tidak punya CPE): `cti_core.tech_match` (di
-branch) dipertahankan; yang berubah adalah dari mana istilahnya diturunkan (katalog, bukan alias yang
-ditulis tangan).
+branch) dipertahankan; istilahnya kelak diturunkan dari katalog.
 
 ### Fase
 
@@ -567,9 +569,8 @@ Semuanya diuji di **server dev dulu**, baru produksi.
   terstruktur baru; kolom Affected tetap teks (`cve_affected.affected`) dan ticket tetap
   `affected_version`/`fixed_version` isian analis. Relevansi berbasis versi (#7) tidak dikerjakan di #19
   (usulan range terstruktur dibatalkan, bukan ditunda).
-- **Nasib fase 1 di branch**: (a) buang kolom `aliases` + seed + migrasi dari branch sebelum merge, atau (b)
-  pertahankan sampai jelas dari mana istilah teks diturunkan. Rekomendasi: (a). `cti_core.tech_match` dan
-  perbaikan pencocok 5-6 (kata utuh, tanpa regex tak ter-escape) tetap berguna di kedua pilihan.
+- **Pencocok ketujuh** (`applicable_to_stack`, laporan Top CVE) belum disatukan: tesnya mengunci `c++` ~
+  `c++ inc`. Putuskan: ubah tesnya (istilah < 2 karakter tak pernah cocok) atau beri pengecualian.
 
 **Titik sentuh (perkiraan)**: model + migrasi Alembic baru (mirror, katalog, `techstack_entries.catalog_id`;
 dicek `test_migrations_match_models`), job ingest dan retensi di `apps/worker` (queue `maintenance`),

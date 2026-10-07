@@ -12,7 +12,6 @@ from __future__ import annotations
 import datetime
 
 from sqlalchemy import BigInteger, Date, ForeignKey, String, UniqueConstraint
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from cti_core.db.base import Base, TimestampMixin
@@ -32,11 +31,3 @@ class TechStackEntry(TimestampMixin, Base):
     hosting_type: Mapped[str | None] = mapped_column(String(50))
     source: Mapped[str | None] = mapped_column(String(100))
     added_date: Mapped[datetime.date | None] = mapped_column(Date)
-    aliases: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
-    """Nama lain produk ini ("pan-os" untuk "palo alto", "routeros" untuk "mikrotik") yang
-    diperlakukan SAMA dengan `name` oleh `cti_core.tech_match` -- ROADMAP #19 fase 1. Dibaca
-    semua pencocok tech (gate `new_cve`, `score.py`, `cve_priority`, `reconcile_cve_tech`).
-    `name` tetap label tampilan DAN kunci join (`cve_tracker.tech`, `get_risk_context`), jadi
-    kolom ini tidak mengubah identitas entri. Belum ada UI/API untuk mengubahnya (fase 2);
-    sementara lewat SQL, lihat `docs/CVE_TECH_MATCHING.md` 7.1. Entri yang dibuat lewat UI
-    mulai dengan `[]`."""
