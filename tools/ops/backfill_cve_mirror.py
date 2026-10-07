@@ -127,8 +127,38 @@ def describe_source(source: Path, years: set[int], *, sample: int = 8) -> str:
     return "\n".join(head)
 
 
+def count_source(source: Path, years: set[int]) -> int:
+    """Jumlah berkas CVE yang akan dibaca (untuk ETA); hanya nama berkas, isinya tidak dibaca."""
+    pat = re.compile(r"CVE-(\d{4})-\d+\.json$")
+
+    def wanted(name: str) -> bool:
+        m = pat.search(name)
+        return bool(m) and int(m.group(1)) in years
+
+    if source.is_file():
+        with zipfile.ZipFile(source) as zf:
+            return sum(1 for n in zf.namelist() if wanted(n))
+    root = source / "cves" if (source / "cves").is_dir() else source
+    return sum(1 for p in root.rglob("CVE-*.json") if wanted(p.name))
+
+
 def _try_lock(session: Session) -> bool:
     return bool(session.scalar(select(func.pg_try_advisory_lock(LOCK_KEY))))
+
+
+def _progress(report: Report, elapsed: float, total: int | None) -> None:
+    rate = report.scanned / elapsed if elapsed > 0 else 0.0
+    where = f"{report.scanned}/{total}" if total else str(report.scanned)
+    eta = ""
+    if total and rate > 0:
+        eta = f", sisa ~{max(total - report.scanned, 0) / rate / 60:.1f} menit"
+    print(
+        f"[{elapsed / 60:.1f} mnt] {where} berkas ({rate:.0f}/dtk{eta}); "
+        f"created={report.outcomes['created']} skipped={report.outcomes['skipped']} "
+        f"gagal={report.failed}",
+        file=sys.stderr,
+        flush=True,
+    )
 
 
 def run(
@@ -139,6 +169,8 @@ def run(
     apply: bool,
     commit_every: int = 500,
     limit: int | None = None,
+    total: int | None = None,
+    progress_every: int = 2000,
 ) -> Report:
     """Proses `records` (nama, isi) ke mirror. `apply=False` = semua di-rollback di akhir."""
     if not _try_lock(session):
@@ -153,6 +185,8 @@ def run(
             if limit is not None and report.scanned >= limit:
                 break
             report.scanned += 1
+            if progress_every and report.scanned % progress_every == 0:
+                _progress(report, time.monotonic() - started, total)
             try:
                 data = json.loads(blob)
                 cve_id = data["cveMetadata"]["cveId"]
@@ -229,6 +263,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return 4
 
+    total = count_source(args.source, years)
+    if args.limit is not None:
+        total = min(total, args.limit)
+    print(
+        f"Membaca {total} berkas CVE (tahun {sorted(years)}); progress tiap 2000 berkas.",
+        file=sys.stderr,
+        flush=True,
+    )
     with sync_session() as session:
         try:
             report = run(
@@ -238,6 +280,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 apply=args.apply,
                 commit_every=args.commit_every,
                 limit=args.limit,
+                total=total,
             )
         except Locked as e:
             print(str(e), file=sys.stderr)

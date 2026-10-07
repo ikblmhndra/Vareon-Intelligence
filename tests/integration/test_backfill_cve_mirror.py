@@ -133,3 +133,21 @@ def test_diagnosis_shows_which_years_the_source_does_have(tmp_path: Path) -> Non
     text = bf.describe_source(tmp_path, {2030})
     assert "2024=1" in text and "2025=3" in text and "[2030]" in text
     assert "ada" in text
+
+
+def test_progress_lines_show_rate_and_eta(
+    session: Session, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    clone = make_clone(tmp_path)
+    total = bf.count_source(clone, {2024, 2025})
+    assert total == 4
+    bf.run(
+        session,
+        iter_raw(clone, {2024, 2025}),
+        today=TODAY,
+        apply=False,
+        total=total,
+        progress_every=2,
+    )
+    err = capsys.readouterr().err
+    assert "[" in err and "2/4 berkas" in err and "sisa ~" in err and "4/4 berkas" in err
