@@ -150,23 +150,40 @@ artikel yang menyebut CVE di judul (`get_article_mentions`, ILIKE), dan status F
 - **Draft email** (`POST /draft-email`): 3 panggilan LLM + template `cve_notification_email.html`, membuat
   draft lewat Microsoft Graph. **Manual**, dipicu analis.
 
-## 7. Notifikasi: apa yang ADA dan apa yang TIDAK
+## 7. Notifikasi: apa yang ADA
 
-**Tidak ada notifikasi otomatis per CVE baru.** `_cve_sink` hanya upsert; `legacy_label="NEW CVE"` cuma label
-kompatibilitas health. (Koreksi atas asumsi lisan sebelumnya yang menyebut ada alert Telegram/email untuk CVE
-baru; kode tidak mendukungnya.) Yang memang ada terkait CVE:
+**CVE baru di `cve_tracker` -> ringkasan Telegram (baru 2026-10-07, di branch `nameless/roadmap-runners`, belum
+di `main`).** Sebelumnya **tidak ada** notifikasi otomatis per CVE baru: `_cve_sink` hanya upsert, dan
+`legacy_label="NEW CVE"` cuma label kompatibilitas health. (Koreksi atas asumsi lisan sebelumnya.) Sekarang:
+- `_cve_sink` memakai `CveTrackerRepo.upsert_with_status`; kalau baris **dibuat** (INSERT, bukan update) dicatat
+  `(cve_id, client_id)` di `Session.info["cve_new_rows"]`.
+- `Runner.execute()` memanggil `sinks.finish_run(session)` **sesudah** run dicatat selesai ->
+  `cti_scraper.cve_alert.notify_new_cves`: baca ulang baris itu dari DB, saring, kirim **satu pesan per client
+  per run** ke topik Telegram `cve_new` (`TELEGRAM__THREAD_IDS`).
+- Penyaring: hanya `published` dalam **3 hari terakhir** (tech baru/backfill/DB baru tidak membanjiri channel;
+  tanpa tanggal publish = tidak dikirim), bukan false positive client itu. "Tech di-monitor" tidak perlu
+  penyaring sendiri: baris tracker memang hanya dibuat untuk (client, tech) di `techstack_entries`.
+- Format: judul + nama client + jumlah; maksimal 10 CVE (severity terparah dulu), sisanya "dan N lainnya";
+  selalu < 4096 karakter (baris dikurangi sampai muat); semua teks luar di-`html.escape`.
+- **Kegagalan kirim tidak menggagalkan run dan tidak dicoba ulang** (`cve_new_alert_failed` di log): karena sink
+  sudah commit, run berikutnya melihat baris itu sebagai update. Topik `cve_new` belum ada di `.env` prod =
+  alert tidak terkirim, ingest tetap jalan.
+- **Deploy**: tambahkan `"cve_new": <thread id>` ke `TELEGRAM__THREAD_IDS` di `.env` host (nilai `0` = chat
+  utama tanpa thread). `.env.example` dan `.env.prod.template` sudah memuatnya.
+- Kalau pipeline diganti mirror -> promosi (#19), titik panggilnya sama: "baris `cve_tracker` baru dibuat".
+
+Yang lain terkait CVE (tidak berubah):
 
 | Apa | Pemicu | Tujuan | Memakai techstack? |
 |---|---|---|---|
 | Alert artikel (`cti_enrich` routing) | tiap artikel di-enrich; `related_tech_status` (judul menyebut tech) atau `related_tech_cve_status` (vendor CVE di judul cocok) | topik `tech_stack` | ya, **daftar nama distinct lintas client** (`score()`) |
 | Top CVE mingguan (`report.weekly_top_cve`, Minggu 07:01) | beat | `tech_stack` | ya (`techstack_names`, **lintas client**) + `applicable_to_stack` |
 | Trending CVE (`report.trending_cve`, jam tertentu menit 5) | beat | `tech_stack` bila cocok, jika tidak `tech_stack_unrelated` + `vendor_report` | ya, sama |
-| Alert PoC GitHub (`github_poc_monitor`) | repo baru ≤ 3 hari dari pencarian broad | `github_poc` | ya (lewat vendor/produk MITRE) |
+| Alert PoC GitHub (`github_poc_monitor`) | repo baru <= 3 hari dari pencarian broad | `github_poc` | ya (lewat vendor/produk MITRE) |
 | Draft email CVE | analis menekan tombol | Graph (draft) | tidak |
 
-Jadi "notifikasi hanya untuk tech yang di-monitor" **belum punya padanan per-CVE** di sistem sekarang; kalau
-itu diinginkan, itu fitur baru (bukan sekadar menjaga perilaku lama). Digest dan alert di atas memakai nama
-techstack **gabungan semua client**, tidak per client.
+Digest dan alert artikel/laporan memakai nama techstack **gabungan semua client**, tidak per client; ringkasan
+CVE baru di atas adalah satu-satunya yang per client.
 
 ## 8. Peta UI (`apps/web/src/app/(app)/cve/page.tsx`)
 
@@ -211,7 +228,8 @@ cocok", jadi menyatukannya adalah perubahan perilaku yang harus diputuskan.
 6. `detected_on` diisi saat INSERT pertama; dasar KPI dashboard. CVE yang dipromosikan dari mirror harus
    menetapkan `detected_on` dengan sengaja (waktu ditemukan sistem, bukan tanggal publish) supaya MTTD tetap
    bermakna.
-7. Tidak ada notifikasi per CVE baru (bagian 7); jangan mengasumsikan ada.
+7. Notifikasi CVE baru bergantung pada **INSERT baris tracker** (bagian 7): jalur apa pun yang membuat baris
+   (promosi dari mirror) harus lewat `upsert_with_status` + `finish_run`, bukan insert langsung.
 8. Export, `/stats`, dan dashboard harus tetap memakai **scope yang sama** dengan tab CVEs.
 
 ## 11. Belum diverifikasi (jujur)

@@ -43,7 +43,7 @@ from cti_scraper.http import ScraperHttpClient
 from cti_scraper.item_display import display_title_url
 from cti_scraper.items import ArticleItem, NoticeItem
 from cti_scraper.options import credential_for, resolve_options, validate_options
-from cti_scraper.sinks import dispatch
+from cti_scraper.sinks import dispatch, finish_run
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
@@ -200,6 +200,8 @@ class Runner:
                 errors=result.errors,
             )
             self.session.commit()
+            # Ringkasan CVE baru (kalau ada) -- sesudah run tercatat; tidak pernah raise.
+            finish_run(self.session)
 
         result.duration_ms = int((time.monotonic() - started) * 1000)
         log.info(

@@ -176,7 +176,7 @@ def _cve_sink(item: CveItem, meta: ScraperMeta, session: Session) -> None:
     # `published_at` hanya ikut kalau MITRE ngasih jamnya -- jangan menimpa nilai yang sudah ada
     # (mis. hasil backfill) dengan NULL.
     extra = {"published_at": item.published_at} if item.published_at is not None else {}
-    repo.upsert(
+    _row, created = repo.upsert_with_status(
         cve_id=item.cve_id,
         client_id=item.client_id,
         tech=item.tech,
@@ -192,6 +192,23 @@ def _cve_sink(item: CveItem, meta: ScraperMeta, session: Session) -> None:
         affected=item.affected,
         **extra,
     )
+    if created:
+        # Dikumpulkan sepanjang run, dikirim SEKALI di akhir (`finish_run`); lihat `cve_alert`.
+        session.info.setdefault(_NEW_CVE_KEY, []).append((item.cve_id, item.client_id))
+
+
+_NEW_CVE_KEY = "cve_new_rows"
+"""Kunci `Session.info`: [(cve_id, client_id)] baris `cve_tracker` yang DIBUAT run ini."""
+
+
+def finish_run(session: Session) -> None:
+    """Dipanggil `Runner.execute()` SETELAH run dicatat selesai. Mengirim ringkasan CVE baru yang
+    dikumpulkan `_cve_sink`. Tidak pernah raise: alert bukan alasan run gagal."""
+    pairs = session.info.pop(_NEW_CVE_KEY, None)
+    if pairs:
+        from cti_scraper.cve_alert import notify_new_cves
+
+        notify_new_cves(session, pairs)
 
 
 @sink_for(CvePocItem)

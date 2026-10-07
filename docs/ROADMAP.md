@@ -525,11 +525,12 @@ terbitan N-2 dibuang (di 2026 mirror berisi 2025 dan 2026; di 2027 CVE 2025 dibu
 - **CVEs**: hanya CVE untuk tech yang di-monitor. **CVE DB** (tab baru, baca-saja): menjelajah semua CVE di
   mirror (terbatas sedalam retensi), dan dari satu CVE bisa klik produk terdampaknya lalu Monitor. Butuh
   index (tanggal, severity, produk).
-- **Notifikasi**: user menjawab "hanya yang di-monitor", **tapi premisnya salah**: sistem sekarang tidak
-  punya notifikasi otomatis per CVE baru (hanya artikel/laporan Top CVE/PoC, dan draft email manual; lihat
-  `docs/CVE_TRACKER_FLOW.md` 7). Perlu diputuskan ulang: apakah alert per CVE baru untuk tech di-monitor
-  adalah fitur baru yang diinginkan, dan laporan/alert yang ada dibuat per client (sekarang memakai nama
-  techstack gabungan semua client).
+- **Notifikasi: sudah dibangun terpisah dari #19 (2026-10-07, branch `nameless/roadmap-runners`).** Keputusan
+  user: Telegram saja, semua CVE baru untuk tech yang di-monitor, satu ringkasan per run (per client),
+  dibangun sekarang di sink yang ada. Premis awalnya (sudah ada alert per CVE baru) ternyata salah; sebelum
+  ini hanya ada alert artikel, laporan Top CVE, alert PoC, dan draft email manual. Titik panggilnya (baris
+  `cve_tracker` baru dibuat) tetap sama saat pipeline diganti mirror -> promosi. Rinci: `docs/CVE_TRACKER_FLOW.md`
+  7. Sisa: laporan/alert lama (artikel, Top CVE) masih memakai nama techstack gabungan semua client.
 
 **Dampak ke item lain**: #3 ("Populate now") **hilang** -- tech baru yang di-monitor langsung terisi dari
 mirror (sedalam retensi; riwayat sebelum 2025 sudah ada di tracker dari migrasi Mongo), jadi jendela 8 hari,

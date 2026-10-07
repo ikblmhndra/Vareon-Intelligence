@@ -26,6 +26,7 @@ EXPECTED = {
     "Fase 10.E": {"notd", "debug", "library_advisory", "logbook", "top_ta"},
     "github PoC (2026-10-02)": {"github_poc"},
     "feed Twitter (2026-10-02)": {"feed_twitter"},
+    "ringkasan CVE baru (2026-10-07)": {"cve_new"},
 }  # fmt: skip
 
 
