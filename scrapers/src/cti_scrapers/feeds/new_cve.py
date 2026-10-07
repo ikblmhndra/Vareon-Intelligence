@@ -37,13 +37,13 @@ Bandingkan sama `ScraperNews/newCveThreat.py` asli (391 baris):
 
 from __future__ import annotations
 
-import re
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import lxml.html
+from cti_core.tech_match import AliasMap, aliases_of, mentions, mentions_any, normalize
 from cti_scraper.base import BaseScraper, ScrapeContext, ScraperMeta
 from cti_scraper.errors import ParseError, ScraperError
 from cti_scraper.items import CveItem, Item
@@ -82,36 +82,24 @@ def mitre_datetime(raw: str | None) -> datetime | None:
 _PLACEHOLDER_PRODUCTS = frozenset({"", "n a", "na", "none", "unknown", "unspecified", "various"})
 
 
-def _tokens(text: str) -> str:
-    """Huruf kecil, semua non-alfanumerik jadi satu spasi -- "Palo_Alto-Networks" dan
-    "palo alto networks" jadi bentuk yang sama, dan `nginx` tidak cocok dengan `nginxy`."""
-    return " ".join(re.findall(r"[a-z0-9]+", text.lower()))
-
-
-def _mentions(tech: str, text: str) -> bool:
-    """`tech` muncul sebagai kata utuh di `text`. Angka yang menempel di ujung dianggap versi
-    mayor nama produk yang sama ("graylog2-server", "Log4j2", "Struts2" -> tech `graylog`, `log4j`,
-    `struts`); huruf yang menempel tidak ("nginxy" bukan `nginx`). Ditemukan dari laporan
-    `reconcile_cve_tech`: tanpa ini CVE Graylog yang sah ikut ditandai salah dan dibuang."""
-    needle = _tokens(tech)
-    if not needle:
-        return False
-    pattern = rf"(?<![a-z0-9]){re.escape(needle)}[0-9]{{0,4}}(?![a-z0-9])"
-    return re.search(pattern, _tokens(text)) is not None
-
-
 def usable_products(products: list[str]) -> list[str]:
     """`products` tanpa isian placeholder ("n/a", "unknown", ...)."""
-    return [p for p in products if _tokens(p) not in _PLACEHOLDER_PRODUCTS]
+    return [p for p in products if normalize(p) not in _PLACEHOLDER_PRODUCTS]
 
 
-def relevant_techs(techs: list[str], summary: str, products: list[str]) -> list[str]:
+def relevant_techs(
+    techs: list[str],
+    summary: str,
+    products: list[str],
+    alias_map: AliasMap | None = None,
+) -> list[str]:
     """Subset `techs` yang beneran terdampak. `products` = vendor/product/packageName/CPE dari
     record MITRE; kalau CNA tak mengisinya sama sekali baru jatuh ke ringkasan (satu-satunya
-    petunjuk yang tersisa). Dipakai juga `tools/ops/reconcile_cve_tech.py` -- satu definisi
-    "cocok" buat scraper dan pembersihan."""
+    petunjuk yang tersisa). `alias_map` = nama lain per tech (`techstack_entries.aliases`).
+    Aturan "cocok" ada di `cti_core.tech_match` (satu definisi buat scraper, `score.py`,
+    `cve_priority`, dan `tools/ops/reconcile_cve_tech.py`)."""
     haystacks = usable_products(products) or [summary]
-    return [t for t in techs if any(_mentions(t, h) for h in haystacks)]
+    return [t for t in techs if any(mentions_any([t], h, alias_map) for h in haystacks)]
 
 
 def affected_products(cna: dict[str, Any]) -> list[str]:
@@ -141,7 +129,7 @@ class NewCve(BaseScraper):
         rate_limit="60/minute",
         max_items=300,  # fan-out per client bisa ngalahin 50 default gampang
         credential="nvd",
-        reference_data=("techstack", "techstack_by_client"),
+        reference_data=("techstack", "techstack_by_client", "techstack_aliases"),
         tags=("migrated", "bespoke", "cve"),
         legacy_label="NEW CVE",
         legacy_script="newCveThreat",
@@ -154,6 +142,7 @@ class NewCve(BaseScraper):
     def fetch(self, ctx: ScrapeContext) -> Iterator[CveItem]:
         tech_list: list[str] = ctx.reference["techstack"]
         tech_by_client: dict[str, list[str]] = ctx.reference["techstack_by_client"]
+        alias_map: AliasMap = ctx.reference.get("techstack_aliases") or {}
         if not tech_list:
             return
 
@@ -169,7 +158,7 @@ class NewCve(BaseScraper):
         # Satu CVE = satu kandidat, membawa SEMUA tech yang memunculkannya (NVD/Tenable).
         candidates: dict[str, dict[str, Any]] = {}
         self._nvd_candidates(ctx, tech_list, candidates)
-        self._tenable_candidates(ctx, tech_list, candidates)
+        self._tenable_candidates(ctx, tech_list, candidates, alias_map)
 
         tech_order = {tech.strip(): i for i, tech in enumerate(tech_list)}
         found = 0
@@ -185,7 +174,7 @@ class NewCve(BaseScraper):
                 continue
 
             detail = self._mitre_detail(ctx, cand)
-            relevant = relevant_techs(techs, cand["summary"], detail.products)
+            relevant = relevant_techs(techs, cand["summary"], detail.products, alias_map)
             if not relevant:
                 # Kata kunci NVD/Tenable ketemu di deskripsi, tapi produk terdampaknya lain
                 # (CVE Zabbix yang menyebut MariaDB) -- bukan CVE-nya techstack ini.
@@ -249,7 +238,11 @@ class NewCve(BaseScraper):
                 )
 
     def _tenable_candidates(
-        self, ctx: ScrapeContext, tech_list: list[str], candidates: dict[str, dict[str, Any]]
+        self,
+        ctx: ScrapeContext,
+        tech_list: list[str],
+        candidates: dict[str, dict[str, Any]],
+        alias_map: AliasMap | None = None,
     ) -> None:
         now_str = ctx.now.strftime("%Y-%m-%d")
         start_str = (ctx.now - timedelta(days=8)).strftime("%Y-%m-%d")
@@ -276,7 +269,7 @@ class NewCve(BaseScraper):
 
                 # Tenable kadang balikin hasil yang gak beneran nyebut tech-nya --
                 # validasi tech-nya ada literal di summary sebelum dipakai.
-                if not _mentions(tech, cve_sum):
+                if not mentions(tech, cve_sum, aliases_of(tech, alias_map)):
                     continue
                 self._add_candidate(
                     candidates,

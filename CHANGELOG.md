@@ -10,7 +10,8 @@ router `changelog.py`) -- parser-nya expect header persis
 
 **Saat upgrade dari 0.2.1:**
 1. Jalankan migrasi (`up -d` sudah menjalankan service `migrate`): revisi baru `e8c2a4b6d1f3` (kolom
-   nullable `cve_tracker.published_at`, aman untuk data lama). Kontrak API hanya bertambah:
+   nullable `cve_tracker.published_at`, aman untuk data lama) dan `a9d4e6f81b3c` (kolom
+   `techstack_entries.aliases`, default `[]`, plus seed alias untuk 8 tech). Kontrak API hanya bertambah:
    `GET /api/cve/dashboard`.
 2. Jalankan sekali `make backfill-published-at` (laporan dulu, lalu `ARGS='--apply'`;
    `docs/SCRAPER_MAINTENANCE.md` 4.H) supaya CVE lama punya jam di kolom "CVE Reported Date" export --
@@ -19,6 +20,12 @@ router `changelog.py`) -- parser-nya expect header persis
    skrip yang membaca file export per posisi kolom harus disesuaikan.
 
 ### Ditambah
+- **Standarisasi techstack fase 1** (`docs/ROADMAP.md` #19): `cti_core.tech_match`, satu definisi "teks ini
+  menyebut tech itu" (kata utuh, angka versi menempel diterima, alias, istilah < 2 karakter tak pernah
+  cocok), dan kolom `techstack_entries.aliases` (JSONB). Seed alias dari daftar produksi untuk `palo alto`
+  (`pan-os`, `paloaltonetworks`, ...), `fortigate`, `mikrotik`, `microsoft 365`, `harmony sase`,
+  `perimeter81`, `burp suite`, `new relic`. Reference data scraper baru `techstack_aliases`. Belum ada
+  UI/API untuk alias (fase 2); sementara lewat SQL, lihat `docs/CVE_TECH_MATCHING.md` 7.1.
 - **`docs/CVE_TECH_MATCHING.md`**: catatan satu topik soal kolom Tech di CVE Tracker (masalah, akar masalah,
   solusi 0.2.1, cara memverifikasi, batasan, dan rencana standarisasi techstack). Rencananya dicatat di
   `docs/ROADMAP.md` #19; belum dikerjakan.
@@ -46,6 +53,13 @@ router `changelog.py`) -- parser-nya expect header persis
   `--yes`: downgrade DB tidak pernah otomatis). Setup dan batasan: `docs/CI_CD.md`.
 
 ### Diubah
+- **Pencocok tech di `score.py` dan `cve_priority` kini kata utuh + alias (sebelumnya substring).**
+  Alert topik `tech_stack` (judul artikel/tweet dan vendor CVE) dan flag `in_tech_stack` di skor prioritas
+  CVE tidak lagi cocok ke kata yang hanya mengandung nama tech (`go` ~ `google`, `edge` ~ `knowledge`), dan
+  nama tech bertanda baca (`node.js`, `c++`) tidak lagi diperlakukan sebagai regex. Efeknya terlihat sebagai
+  alert/bobot prioritas yang berkurang untuk pasangan yang dulu cocok kebetulan. `reconcile_cve_tech` membaca
+  alias dari DB dan memakai pencocok yang sama dengan scraper: **bangun ulang image worker sebelum
+  menjalankannya**.
 - **Export Excel CVE Tracker (`GET /api/cve/export`)**: kolom baru **Reported by System** tepat di
   sebelah kanan **CVE Reported Date**. Isinya `detected_on`, kapan scraper pertama dapat CVE-nya.
   "CVE Reported Date" sekarang `HH:MM DD-MM-YYYY` (WIB, mis. `20:53 31-08-2026`) dan berisi jam publish

@@ -28,7 +28,7 @@ Isi tiap item: **apa** yang diminta, **keadaan sekarang** (fakta dari repo/stagi
 | 16 | Dashboard CVE: SLA per severity (ganti rating ambang tetap) | target SLA ack/remediasi per severity | -- |
 | 17 | Dashboard CVE: panel backlog/aging, KEV/EPSS, produk paling sering terdampak | pilihan panel | -- |
 | 18 | Validasi isian ticket CVE + keputusan model ticket (1 ticket per CVE vs satu ticket banyak CVE) | daftar nilai baku, keputusan model | -- |
-| 19 | **Standarisasi techstack** (identitas baku + alias + katalog) dan satu pencocok tech untuk CVE, artikel, dan prioritas -- fase 1 (alias + pencocok bersama) dulu; latar belakang dan rancangan di `docs/CVE_TECH_MATCHING.md` | draf alias awal (`SELECT DISTINCT name FROM techstack_entries`), sumber katalog, aturan hierarki produk | #13 (supaya bisa ter-deploy otomatis) |
+| 19 | **Standarisasi techstack** (identitas baku + alias + katalog) dan satu pencocok tech untuk CVE, artikel, dan prioritas -- **fase 1 (alias + pencocok bersama) selesai 2026-10-07, belum di-deploy; fase 2-3 belum**; latar belakang dan rancangan di `docs/CVE_TECH_MATCHING.md` | draf alias awal (`SELECT DISTINCT name FROM techstack_entries`), sumber katalog, aturan hierarki produk | #13 (supaya bisa ter-deploy otomatis) |
 
 ---
 
@@ -488,3 +488,22 @@ hierarki produk, dan CI `main` hijau (#13) supaya hasilnya ter-deploy otomatis.
 tidak cocok ke "google"); `tools/ops/reconcile_cve_tech.py` pada data produksi tidak lagi menghasilkan
 `DELETE` yang disebabkan nama (hanya data CNA yang memang salah); dan angka recall sebelum/sesudah
 tercatat di `docs/CVE_TECH_MATCHING.md`.
+
+**Status 2026-10-07 -- fase 1 dikerjakan, belum di-deploy** (daftar 34 nama produksi dari user dipakai untuk
+seed). Isi: `cti_core.tech_match` (satu definisi "cocok": kata utuh, angka versi menempel diterima, huruf
+menempel ditolak, alias, istilah < 2 karakter tak pernah cocok); kolom `techstack_entries.aliases` (JSONB,
+migrasi `a9d4e6f81b3c`, seed 8 tech yang namanya ditulis CNA berbeda: `palo alto`, `fortigate`, `mikrotik`,
+`microsoft 365`, `harmony sase`, `perimeter81`, `burp suite`, `new relic`); pencocok 2-6 (Tenable + gate
+`new_cve`, `related_tech_status`, `check_tech_stack`, `in_tech_stack`) dan penilai `reconcile_cve_tech`
+memanggilnya. Reference data baru `techstack_aliases`. Uraian, tabel seed, dan cara mengubah alias lewat SQL
+di `docs/CVE_TECH_MATCHING.md` 7.1.
+**Terbukti** (lokal, Postgres 16): test parametrik mengunci `graylog2-server` ~ `graylog`, `PAN-OS` ~ `palo
+alto` (lewat alias), `mcp-atlassian` !~ `jira`, `go` !~ `google`; migrasi mengisi alias lewat `lower(name)`;
+`test_migrations_match_models` lolos; resolver menggabungkan alias lintas client; `prioritize_campaign_cves`
+tidak lagi mencocokkan substring.
+**Belum**: (1) `tools/ops/reconcile_cve_tech.py` pada data produksi sesudah deploy (kriteria "Selesai bila"
+poin 3) dan angka recall sebelum/sesudah -- butuh produksi; (2) alias belum jadi kata kunci pencarian NVD/Tenable
+(CVE yang deskripsinya hanya menyebut `PAN-OS` belum ditemukan sejak awal), karena menambah request ke NVD
+(60/menit); (3) UI/API untuk alias dan `vendor`/`product` (fase 2), query CPE + hierarki (fase 3). Seed alias adalah
+penilaian, bukan data CNA: tinjau lewat laporan `reconcile_cve_tech`. **Perilaku berubah di produksi**: alert
+topik `tech_stack` dan skor prioritas yang dulu cocok lewat substring bisa berkurang (lihat doc 7.1).

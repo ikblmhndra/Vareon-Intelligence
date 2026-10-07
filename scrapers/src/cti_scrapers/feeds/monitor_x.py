@@ -188,6 +188,7 @@ class MonitorX(BaseScraper):
             "monitored_accounts",
             "tweet_last_seen_ids",
             "techstack",
+            "techstack_aliases",
             "threat_actor_groups",
             "monitored_people",
         ),
@@ -235,6 +236,7 @@ class MonitorX(BaseScraper):
                     techstack=techstack,
                     group_list=group_list,
                     apac_people_list=apac_people_list,
+                    tech_aliases=ctx.reference.get("techstack_aliases"),
                 )
                 if scan.funding_keyword:
                     continue  # noise pendanaan, bukan sinyal TI -- port funding_status lama

@@ -22,6 +22,7 @@ from typing import Any
 
 from cti_core.db.repositories.cve import AsyncCveTrackerRepo
 from cti_core.db.repositories.techstack import AsyncTechStackRepo
+from cti_core.tech_match import mentions
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -47,6 +48,19 @@ def _patch_urgency(label: str, in_tech_stack: bool) -> str:
     return "monitor"
 
 
+def _in_tech_stack(tracker_tech: str, tech_stack: list[tuple[str, list[str]]]) -> bool:
+    """`cve_tracker.tech` termasuk techstack client ini. Dulu substring dua arah tanpa batas kata
+    (`go` ~ `google`, `edge` ~ `knowledge`); sekarang `cti_core.tech_match` (kata utuh + alias):
+    nama tracker disebut oleh salah satu entri (nama/aliasnya), ATAU entri (nama) disebut oleh nama
+    tracker -- arah kedua menjaga "jira" di tracker cocok dengan entri "jira service management"."""
+    if not tracker_tech.strip():
+        return False
+    return any(
+        mentions(name, tracker_tech, aliases) or mentions(tracker_tech, name)
+        for name, aliases in tech_stack
+    )
+
+
 async def prioritize_campaign_cves(
     session: AsyncSession, cve_ids: list[str], *, client_id: str = "default"
 ) -> list[dict[str, Any]]:
@@ -59,7 +73,7 @@ async def prioritize_campaign_cves(
     tech_entries, _total = await AsyncTechStackRepo(session).list_filtered(
         client_id=client_id, page=1, page_size=10000
     )
-    tech_stack = {e.name.lower() for e in tech_entries if e.name}
+    tech_stack = [(e.name, e.aliases or []) for e in tech_entries if e.name]
 
     results: list[dict[str, Any]] = []
     for cve_id in cve_ids:
@@ -85,10 +99,7 @@ async def prioritize_campaign_cves(
         cisa_kev = bool(row.cisa_kev)
         actively_exploited = bool(row.active_exploitation)
         poc_available = bool(row.poc_available)
-        tech_name = (row.tech or "").lower()
-        in_tech_stack = bool(
-            tech_name and any(t in tech_name or tech_name in t for t in tech_stack)
-        )
+        in_tech_stack = _in_tech_stack(row.tech or "", tech_stack)
 
         score = (
             cvss * 10 * 0.30

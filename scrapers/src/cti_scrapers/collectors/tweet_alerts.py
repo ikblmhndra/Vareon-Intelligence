@@ -150,6 +150,7 @@ class TweetAlertScraper(BaseScraper):
             techstack=techstack,
             group_list=groups,
             apac_people_list=people,
+            tech_aliases=ctx.reference.get("techstack_aliases"),
         )
         if scan.funding_keyword:
             return  # noise pendanaan (`tweet_indicator = False` di skrip lama)
@@ -196,7 +197,7 @@ class TweetAlertScraper(BaseScraper):
             )
 
 
-_REFERENCE = ("techstack", "threat_actor_groups", "monitored_people")
+_REFERENCE = ("techstack", "techstack_aliases", "threat_actor_groups", "monitored_people")
 
 
 class TweetAlerts1h(TweetAlertScraper):

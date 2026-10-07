@@ -60,6 +60,7 @@ from cti_core.db.repositories.threat_reference import (
     list_monitored_people,
     list_threat_actor_groups,
 )
+from cti_core.tech_match import AliasMap, build_alias_map, mentions_any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -377,13 +378,16 @@ class ScoreResult:
     funding_keyword: str | None = None
 
 
-def check_tech_stack(tech_name: str, techstack: list[str]) -> bool:
-    """Port `cveValidator.checkTechStack`."""
-    lowered = tech_name.lower()
-    return any(re.search(re.escape(tech.lower().strip()), lowered) for tech in techstack)
+def check_tech_stack(
+    tech_name: str, techstack: list[str], alias_map: AliasMap | None = None
+) -> bool:
+    """Port `cveValidator.checkTechStack` -- `tech_name` di sini nama VENDOR dari record CVE.
+    Dulu substring tanpa batas kata (tech `go` cocok ke vendor `google`); sekarang kata utuh,
+    satu aturan dengan pencocok lain (`cti_core.tech_match`), plus alias per tech."""
+    return mentions_any(techstack, tech_name, alias_map)
 
 
-def _check_cve_vendor(cve_id: str, techstack: list[str]) -> bool:
+def _check_cve_vendor(cve_id: str, techstack: list[str], alias_map: AliasMap | None = None) -> bool:
     """Port `cveValidator.checkCVE` -- HTTP ke MITRE, cek vendor CVE lawan
     techstack (di-passing langsung, bukan query Postgres lagi -- `score()`
     udah baca techstack sekali di awal)."""
@@ -411,7 +415,7 @@ def _check_cve_vendor(cve_id: str, techstack: list[str]) -> bool:
     if not vendor_name:
         vendor_name = "Unknown"
 
-    return check_tech_stack(vendor_name, techstack)
+    return check_tech_stack(vendor_name, techstack, alias_map)
 
 
 def score(title: str, body: str, session: Session) -> ScoreResult:
@@ -424,10 +428,18 @@ def score(title: str, body: str, session: Session) -> ScoreResult:
     dengan daftar dari `ctx.reference` (resolusi lewat `reference_data`,
     Fase 4)."""
     techstack = sorted(session.execute(select(TechStackEntry.name).distinct()).scalars().all())
+    tech_aliases = build_alias_map(
+        session.execute(select(TechStackEntry.name, TechStackEntry.aliases)).all()  # type: ignore[arg-type]
+    )
     group_list = list_threat_actor_groups(session)
     apac_people_list = list_monitored_people(session)
     return score_with_lists(
-        title, body, techstack=techstack, group_list=group_list, apac_people_list=apac_people_list
+        title,
+        body,
+        techstack=techstack,
+        group_list=group_list,
+        apac_people_list=apac_people_list,
+        tech_aliases=tech_aliases,
     )
 
 
@@ -438,6 +450,7 @@ def score_with_lists(
     techstack: list[str],
     group_list: list[str],
     apac_people_list: list[str],
+    tech_aliases: AliasMap | None = None,
 ) -> ScoreResult:
     """Inti scoring, PURE -- gak ada I/O Postgres (MITRE tetap HTTP, lihat
     `_check_cve_vendor`). `country_list` gak perlu di-passing -- dari
@@ -467,9 +480,8 @@ def score_with_lists(
 
     result.cve_list_title = re.findall(_RE_CVE_MENTION, title.lower())
 
-    for tech in techstack:
-        if re.search(rf"\b{tech.lower()}\b", title.lower()):
-            result.related_tech_status = True
+    if mentions_any(techstack, title, tech_aliases):
+        result.related_tech_status = True
 
     result.databreach_list = _find_hits(_DATABREACH_KEYWORD, title)
     result.zero_day_list = re.findall(r"\b(zero|0)[-.]day\b", title.lower())
@@ -542,7 +554,9 @@ def score_with_lists(
         and not result.mentioned_countries
     ):
         for cve_id in result.cve_list_title:
-            result.related_tech_cve_status = _check_cve_vendor(cve_id.upper(), techstack)
+            result.related_tech_cve_status = _check_cve_vendor(
+                cve_id.upper(), techstack, tech_aliases
+            )
             if result.related_tech_cve_status:
                 break
 

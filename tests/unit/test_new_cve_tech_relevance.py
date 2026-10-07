@@ -36,6 +36,7 @@ def run(
     nvd: dict[str, dict],
     records: dict[str, dict],
     tenable_rows: dict[str, list[tuple[str, str]]] | None = None,
+    aliases: dict[str, list[str]] | None = None,
 ) -> list[tuple[str, str, str]]:
     """`nvd`: {keyword_ter-encode: respons NVD}; `records`: {cve_id: record MITRE}."""
 
@@ -53,7 +54,11 @@ def run(
     ctx = make_ctx(
         NewCve,
         handler,
-        reference={"techstack": techs, "techstack_by_client": techstack_by_client},
+        reference={
+            "techstack": techs,
+            "techstack_by_client": techstack_by_client,
+            "techstack_aliases": aliases or {},
+        },
     )
     return sorted((i.cve_id, i.client_id, i.tech) for i in NewCve().fetch(ctx))
 
@@ -237,3 +242,44 @@ def test_tenable_hits_are_checked_against_the_affected_product_too() -> None:
     )
 
     assert items == []
+
+
+def test_an_alias_makes_a_differently_named_product_count_as_the_tech() -> None:
+    """CNA menulis vendor `paloaltonetworks` + produk `PAN-OS` (gaya CPE, tanpa spasi); nama tech
+    `palo alto` tidak ada di kedua isian itu. Tanpa alias CVE PAN-OS yang sah dibuang diam-diam
+    (ROADMAP #19: kelas PAN-OS)."""
+    record = {"CVE-2026-9201": mitre(product("paloaltonetworks", "PAN-OS"))}
+    nvd = {"palo%20alto": nvd_hit("CVE-2026-9201", "Palo Alto PAN-OS GlobalProtect flaw")}
+
+    assert run({"acme": ["palo alto"]}, nvd=nvd, records=record) == []
+    assert run(
+        {"acme": ["palo alto"]},
+        nvd=nvd,
+        records=record,
+        aliases={"palo alto": ["paloaltonetworks", "pan-os"]},
+    ) == [("CVE-2026-9201", "acme", "palo alto")]
+
+
+def test_an_alias_does_not_rescue_an_unrelated_product() -> None:
+    items = run(
+        {"acme": ["palo alto"]},
+        nvd={"palo%20alto": nvd_hit("CVE-2026-9202", "Zabbix agent crash, tested behind PAN-OS")},
+        records={"CVE-2026-9202": mitre(product("Zabbix", "Zabbix"))},
+        aliases={"palo alto": ["paloaltonetworks", "pan-os"]},
+    )
+
+    assert items == []
+
+
+def test_tenable_hits_accept_an_alias_in_the_summary() -> None:
+    kwargs: dict[str, Any] = {
+        "nvd": {},
+        "records": {"CVE-2026-9203": mitre(product("MikroTik", "RouterOS"))},
+        "tenable_rows": {"mikrotik": [("CVE-2026-9203", "RouterOS SNMP heap overflow")]},
+    }
+
+    # Ringkasan Tenable tidak menyebut "mikrotik": tanpa alias hit-nya dibuang sebelum ke MITRE.
+    assert run({"acme": ["mikrotik"]}, **kwargs) == []
+    assert run({"acme": ["mikrotik"]}, aliases={"mikrotik": ["routeros"]}, **kwargs) == [
+        ("CVE-2026-9203", "acme", "mikrotik")
+    ]

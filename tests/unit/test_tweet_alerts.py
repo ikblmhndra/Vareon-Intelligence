@@ -49,7 +49,9 @@ def _llm_and_mitre(monkeypatch: pytest.MonkeyPatch) -> None:
         "classify",
         lambda text: ClassifyResult(related_cyber="NOT-CYBER" not in text),
     )
-    monkeypatch.setattr("cti_enrich.stages.score._check_cve_vendor", lambda cve, stack: False)
+    monkeypatch.setattr(
+        "cti_enrich.stages.score._check_cve_vendor", lambda cve, stack, aliases=None: False
+    )
 
 
 def run(cls, api: Api, **kw):
@@ -191,7 +193,9 @@ def test_a_tweet_routed_to_two_topics_becomes_two_notices_with_distinct_keys() -
 def test_a_cve_related_to_the_tech_stack_goes_to_tech_stack(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr("cti_enrich.stages.score._check_cve_vendor", lambda cve, stack: True)
+    monkeypatch.setattr(
+        "cti_enrich.stages.score._check_cve_vendor", lambda cve, stack, aliases=None: True
+    )
 
     [n] = run(TweetAlerts1h, Api([tweet(1, "CVE-2026-1111 exploited")]))
 
