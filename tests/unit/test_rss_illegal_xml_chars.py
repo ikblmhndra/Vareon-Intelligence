@@ -20,23 +20,23 @@ from tests.unit.scraper_helpers import make_ctx
 # konten IOC yang di-paste, sama seperti yang bikin dry-run gagal pas port.
 ATOM_FEED_WITH_ILLEGAL_BYTES = (
     b'<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom">'
-    b'<title>Toxin Labs</title>'
-    b'<entry>'
+    b"<title>Toxin Labs</title>"
+    b"<entry>"
     b'<title type="html">Kraken - The Deep Sea Lurker Part 1</title>'
     b'<link href="https://0xtoxin.github.io/malware%20analysis/KrakenKeylogger-pt1/"'
     b' rel="alternate" type="text/html" />'
-    b'<published>2023-05-20T00:00:00+00:00</published>'
-    b'<id>https://0xtoxin.github.io/malware%20analysis/KrakenKeylogger-pt1</id>'
+    b"<published>2023-05-20T00:00:00+00:00</published>"
+    b"<id>https://0xtoxin.github.io/malware%20analysis/KrakenKeylogger-pt1</id>"
     b'<content type="html">[+] PersonalEmail - redacted@example.com\x02\x02\n[+] PersonalEmail'
-    b'</content>'
-    b'</entry>'
-    b'<entry>'
+    b"</content>"
+    b"</entry>"
+    b"<entry>"
     b'<title type="html">Clean Entry</title>'
     b'<link href="https://0xtoxin.github.io/clean-entry/" rel="alternate" type="text/html" />'
-    b'<published>2023-08-06T00:00:00+00:00</published>'
-    b'<id>https://0xtoxin.github.io/clean-entry</id>'
-    b'</entry>'
-    b'</feed>'
+    b"<published>2023-08-06T00:00:00+00:00</published>"
+    b"<id>https://0xtoxin.github.io/clean-entry</id>"
+    b"</entry>"
+    b"</feed>"
 )
 
 

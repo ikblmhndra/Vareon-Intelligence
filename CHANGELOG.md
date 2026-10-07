@@ -70,11 +70,20 @@ router `changelog.py`) -- parser-nya expect header persis
   **Image worker harus dibangun ulang sebelum `reconcile_cve_tech` dijalankan lagi**: tool memakai
   pencocok dari image, bukan dari folder `tools/`. Jangan `--apply` dengan image 0.2.1.
 
+- **CI di `main` merah sejak run #11 (tiga job, tiga sebab berbeda), sehingga job Deploy tidak pernah
+  terpicu.** `lint`: `docs/ADDING_A_SCRAPER.md` dan `tests/unit/test_rss_illegal_xml_chars.py` belum
+  ter-format (`ruff format`). `compose`: `env_file: ${CTI_ENV_FILE:-.env}` butuh `.env` yang tidak ada di
+  git, sekarang job menunjuk `CTI_ENV_FILE=.env.example`. `test`: `test_golden_trendmicro` butuh Chromium
+  Playwright (sekarang job `test` menjalankan `uv run playwright install --with-deps chromium`, versi
+  mengikuti `uv.lock`), dan `test_article_dedup_groups` seed-nya memakai tanggal tetap sementara
+  `get_dedup_groups` hanya melihat 7 hari terakhir, jadi mati sendiri sejak 2026-10-01 (sekarang seed
+  dengan tanggal hari ini; `test_list_articles_dedup` tetap pinned karena snapshot-nya memuat `week`).
+
 ### Diketahui / belum dikerjakan
-- **CI di `main` merah** (`lint`: 2 file belum ter-format; `compose`: `.env` tidak ada di runner; `test`:
-  `test_golden_trendmicro` butuh Chromium Playwright dan `test_article_dedup_groups` memakai tanggal
-  hard-code), sehingga job Deploy belum pernah jalan. Sampai CI hijau, produksi hanya bisa di-update
-  manual (`make deploy`, atau Actions > Deploy > Run workflow). Rinciannya di `docs/ROADMAP.md` #13.
+- **Hijau CI di `main` dan Deploy otomatis belum terbukti.** Perbaikan di atas baru diuji lokal per
+  penyebab; CI penuh baru jalan setelah PR dibuat. Sampai Deploy terpicu sekali dan lolos `deploy.sh`,
+  produksi hanya bisa di-update manual (`make deploy`, atau Actions > Deploy > Run workflow). Rinciannya
+  di `docs/ROADMAP.md` #13.
 - Usulan lanjutan Dashboard CVE dan validasi ticket: `docs/ROADMAP.md` #15-#18.
 
 ## [0.2.1] - 2026-10-06
