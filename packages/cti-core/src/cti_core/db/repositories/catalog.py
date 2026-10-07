@@ -55,6 +55,12 @@ class CatalogRepo:
         self._vendors: dict[str, CatalogVendor] = {}
         self._families: dict[tuple[int, str], CatalogFamily] = {}
 
+    def reset_cache(self) -> None:
+        """Buang cache baris. WAJIB setelah rollback savepoint: objek yang dibuat di dalamnya sudah
+        hilang dari DB tapi masih ada di cache dan akan dipakai sebagai FK yang tak berlaku."""
+        self._vendors.clear()
+        self._families.clear()
+
     # ── alias ─────────────────────────────────────────────────────────────────────────────────
 
     def alias_map(self) -> dict[str, str]:

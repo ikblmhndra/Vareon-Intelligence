@@ -159,6 +159,16 @@ def _periodic_schedule() -> dict[str, dict[str, object]]:
             "schedule": crontab(hour="*/3", minute=0),
             "options": {"queue": QUEUE_MAINTENANCE},
         },
+        "cve-mirror-sync": {
+            "task": "cve.mirror_sync",
+            "schedule": crontab(minute="*/5"),
+            "options": {"queue": QUEUE_MAINTENANCE},
+        },
+        "cve-mirror-purge": {
+            "task": "cve.mirror_purge",
+            "schedule": crontab(hour=3, minute=30),
+            "options": {"queue": QUEUE_MAINTENANCE},
+        },
         "scraper-purge-expired-items": {
             "task": "scraper.purge_expired_items",
             "schedule": crontab(hour=3, minute=0),

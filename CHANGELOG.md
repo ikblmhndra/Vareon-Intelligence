@@ -22,6 +22,14 @@ router `changelog.py`) -- parser-nya expect header persis
    skrip yang membaca file export per posisi kolom harus disesuaikan.
 
 ### Ditambah
+- **Ingest mirror CVE dari CVE List V5** (`docs/ROADMAP.md` #19, irisan 3): tugas `cve.mirror_sync` (tiap 5 menit,
+  kursor + catch-up lewat `deltaLog.json` + antrean percobaan ulang di `job_state`) dan `cve.mirror_purge`
+  (retensi tahun kalender, harian 03:30 UTC), skrip isi awal `tools/ops/backfill_cve_mirror.py`
+  (`make backfill-cve-mirror SOURCE=... [ARGS=--apply]`, default laporan saja). **Mati secara default**:
+  `CVE_MIRROR__ENABLED=false` di `.env.example` dan `.env.prod.template` (key opsional, aman bila belum
+  ada di `.env` host); mirror belum dipakai apa pun yang terlihat user (promosi ke `cve_tracker` = irisan 4).
+  Parser record dipisah jadi `cti_core.cve_record.parse_cve_record`; `new_cve` memakainya tanpa
+  perubahan perilaku.
 - **Skema katalog tech, mirror CVE, dan target Monitor** (`docs/ROADMAP.md` #19, irisan 2; revisi `b7e3d9a1c5f2`):
   tabel `catalog_vendors`/`catalog_families`/`catalog_family_aliases` (permanen, statistik hanya naik),
   `cve_records`/`cve_record_products` (mirror, dibuang retensi tahun kalender), `techstack_targets`

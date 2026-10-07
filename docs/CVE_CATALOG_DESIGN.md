@@ -1,7 +1,7 @@
 # Rancangan: mirror CVE, katalog tech, dan Monitor (ROADMAP #19)
 
-Status: **irisan 1 (resolver murni) dan 2 (skema, model, repositori) SELESAI di branch; irisan 3-7 masih
-rancangan** (2026-10-07). Diturunkan dari keputusan user, hasil spike di data
+Status: **irisan 1 (resolver), 2 (skema, model, repositori), dan 3 (ingest) SELESAI di branch; irisan
+4-7 masih rancangan** (2026-10-07). Diturunkan dari keputusan user, hasil spike di data
 penuh (`docs/spikes/2026-10-07_cve_catalog_report_v2.md`, tafsir di `docs/CVE_TECH_MATCHING.md` 7.1.3), dan
 alur CVE Tracker yang sekarang (`docs/CVE_TRACKER_FLOW.md`; **baca bagian 10-nya**, itu invarian yang
 harus dijaga). Hal yang belum diverifikasi ditandai **[asumsi]**; yang diverifikasi ditandai **[dicek]**.
@@ -231,6 +231,24 @@ dibuang tetap utuh. Statistik katalog tidak turun (kolom `*_seen_total`).
    dicocokkan lewat teks. Belum ada kode yang MEMAKAI tabel ini (tidak ada perubahan perilaku).
 3. **Ingest**: refactor `_mitre_detail` jadi fungsi murni (tanpa mengubah perilaku `new_cve`), tugas
    `cve.mirror_sync`, kursor, catch-up, retensi. Tes dengan delta palsu + fixture asli.
+   **SELESAI** (dengan flag `CVE_MIRROR__ENABLED`, default MATI):
+   - `cti_core.cve_record.parse_cve_record` (parser murni; `new_cve` memakainya, 71 tes lama jadi
+     pengaman), `cti_core.cve_mirror_sync` (`sync_once`, `purge_expired`), tugas `cve.mirror_sync`
+     (tiap 5 menit) dan `cve.mirror_purge` (03:30 UTC) di queue `maintenance`, skrip
+     `tools/ops/backfill_cve_mirror.py` (`make backfill-cve-mirror`).
+   - Keputusan di luar rancangan awal: kursor + antrean percobaan ulang di `job_state`
+     (`cve_mirror.state`, tanpa migrasi); **catch-up dipicu dua hal**, poll sukses terakhir > 12 menit
+     (kita sendiri yang telat) atau `fetchTime` melompat > 90 menit (selang fetch teramati maks 62
+     menit, jadi satu jendela hilang tak terdeteksi bila hanya melihat `fetchTime`); kunci advisory
+     Postgres (satu siklus sekaligus, dipakai juga backfill); hanya tautan
+     `raw.githubusercontent.com/CVEProject/cvelistV5/` yang diunduh; record REJECTED dibuang dari
+     mirror; record tanpa tanggal atau di luar retensi tidak disimpan; kelebihan di atas
+     `max_files_per_run` dibawa ke siklus berikut (kursor tetap maju).
+   - Tes: `tests/unit/test_cve_mirror_sync.py`, `test_cve_mirror_task.py`,
+     `tests/integration/test_cve_mirror_sync.py`, `test_backfill_cve_mirror.py`.
+   - **Belum**: promosi ke `cve_tracker` (irisan 4), jadi mirror terisi tapi tidak mengubah apa pun yang
+     dilihat user. Ukuran tabel dan waktu retensi/backfill belum diukur di data penuh (lakukan di dev
+     sebelum menyalakan flag di prod).
 4. **Promosi + pencocokan** ke `cve_tracker` (flag, mode bayangan), memakai `upsert_with_status`.
 5. **API katalog/CVE DB/Monitor** + kontrak.
 6. **UI** All Tech / Monitored Tech / CVE DB.

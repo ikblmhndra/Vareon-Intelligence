@@ -161,6 +161,20 @@ class ScraperSettings(_StrictModel):
     (spaCy/LLM). Lihat plan §4.7."""
 
 
+class CveMirrorSettings(_StrictModel):
+    """Ingest mirror CVE dari CVE List V5 (ROADMAP #19, `cti_core.cve_mirror_sync`)."""
+
+    enabled: bool = False
+    """MATI secara default: tugas `cve.mirror_sync`/`cve.mirror_purge` tetap terjadwal tapi langsung
+    kembali. Dinyalakan dulu di dev (mode bayangan, `docs/CVE_CATALOG_DESIGN.md` 8); ganti nilai
+    butuh restart worker (env dibaca sekali per proses)."""
+    max_files_per_run: int = 3000
+    """Batas unduhan record per siklus (kelebihan dibawa ke siklus berikut lewat state). Hari
+    biasa ratusan sampai ~2.000 berkas; catch-up setelah mati lama bisa lebih besar."""
+    request_timeout_s: float = 30.0
+    """Timeout satu unduhan; `deltaLog.json` (24 MB) memakai tiga kali lipat nilai ini."""
+
+
 class WorkerSettings(_StrictModel):
     """Interval buat 2 dari 5 loop Celery beat (Fase 7.8) yang nentuin
     LOGIKA task, bukan cuma jadwal cron-nya -- IOC decay/daily recap/CVE
@@ -258,6 +272,7 @@ class Settings(BaseSettings):
     otx: OtxSettings = Field(default_factory=OtxSettings)
     scraper: ScraperSettings = Field(default_factory=ScraperSettings)
     worker: WorkerSettings = Field(default_factory=WorkerSettings)
+    cve_mirror: CveMirrorSettings = Field(default_factory=CveMirrorSettings)
 
     cors_origins: str = "http://localhost:3000"
     api_base_url: str = "http://api:8000"

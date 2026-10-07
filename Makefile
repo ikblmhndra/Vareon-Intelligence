@@ -1,11 +1,12 @@
 # Jalan pintas operasional. Detail: README.md dan docs/CUTOVER_RUNBOOK.md.
-.PHONY: help fresh-deploy fresh-status deploy backfill-published-at
+.PHONY: help fresh-deploy fresh-status deploy backfill-published-at backfill-cve-mirror
 
 help:
 	@echo "make fresh-deploy [ARGS='--skip-build --skip-nginx']  deploy dari nol di host ini (idempoten)"
 	@echo "make fresh-deploy ARGS='--restore-from /path/cti-<UTC>.dump'  isi DB dari backup (hanya DB kosong)"
 	@echo "make deploy [ARGS='--dry-run --skip-backup']      update stack yang SUDAH jalan (backup, build, migrasi, cek sehat, rollback otomatis)"
 	@echo "make fresh-status                                     status container stack"
+	@echo "make backfill-cve-mirror SOURCE=/data/cvelistV5 [ARGS='--apply']  isi mirror CVE + katalog tech dari clone/zip CVE List V5 (laporan saja tanpa --apply)"
 	@echo "make backfill-published-at [ARGS='--apply --client acme']  isi jam publish MITRE CVE lama (laporan saja tanpa --apply)"
 
 fresh-deploy:
@@ -25,3 +26,12 @@ backfill-published-at:
 	docker compose --env-file docker/stack.env --profile app run --rm --no-deps -T \
 	  -v "$(CURDIR)/tools:/tools:ro" --entrypoint python worker \
 	  /tools/ops/backfill_cve_published_at.py $(ARGS)
+
+# Isi awal mirror CVE + katalog tech (ROADMAP #19). SOURCE = clone cvelistV5 atau zip rilisnya di host;
+# di-mount read-only ke /data. Tanpa ARGS = laporan saja (di-rollback); `ARGS=--apply` baru menulis.
+# Aman bersamaan dengan cve.mirror_sync (kunci advisory yang sama). Playbook: docs/CVE_CATALOG_DESIGN.md 8.
+backfill-cve-mirror:
+	@test -n "$(SOURCE)" || { echo "SOURCE=<clone/zip cvelistV5> wajib diisi"; exit 2; }
+	docker compose --env-file docker/stack.env --profile app run --rm --no-deps -T \
+	  -v "$(CURDIR)/tools:/tools:ro" -v "$(abspath $(SOURCE)):/data/cvelist:ro" --entrypoint python worker \
+	  /tools/ops/backfill_cve_mirror.py --source /data/cvelist $(ARGS)
