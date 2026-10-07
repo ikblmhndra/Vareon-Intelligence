@@ -28,6 +28,8 @@ router `changelog.py`) -- parser-nya expect header persis
   (`make backfill-cve-mirror SOURCE=... [ARGS=--apply]`, default laporan saja). **Mati secara default**:
   `CVE_MIRROR__ENABLED=false` di `.env.example` dan `.env.prod.template` (key opsional, aman bila belum
   ada di `.env` host); mirror belum dipakai apa pun yang terlihat user (promosi ke `cve_tracker` = irisan 4).
+  Skrip backfill berhenti dengan kode 4 dan menampilkan isi sumber (folder, tahun yang ada) bila tidak ada
+  satu pun berkas CVE terbaca, bukan melapor "0" dengan sukses.
   Parser record dipisah jadi `cti_core.cve_record.parse_cve_record`; `new_cve` memakainya tanpa
   perubahan perilaku.
 - **Skema katalog tech, mirror CVE, dan target Monitor** (`docs/ROADMAP.md` #19, irisan 2; revisi `b7e3d9a1c5f2`):

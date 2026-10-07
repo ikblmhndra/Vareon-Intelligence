@@ -117,3 +117,19 @@ def test_refuses_to_run_while_the_sync_lock_is_held(session: Session, tmp_path: 
 def test_main_rejects_missing_source_and_bad_years(tmp_path: Path) -> None:
     assert bf.main(["--source", str(tmp_path / "nope")]) == 2
     assert bf.main(["--source", str(tmp_path), "--years", "abc"]) == 2
+
+
+def test_empty_source_fails_loudly_with_a_diagnosis(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (tmp_path / "salah-folder").mkdir()
+    assert bf.main(["--source", str(tmp_path)]) == 4
+    err = capsys.readouterr().err
+    assert "TIDAK ADA berkas CVE" in err and "TIDAK ada" in err and "salah-folder" in err
+
+
+def test_diagnosis_shows_which_years_the_source_does_have(tmp_path: Path) -> None:
+    make_clone(tmp_path)
+    text = bf.describe_source(tmp_path, {2030})
+    assert "2024=1" in text and "2025=3" in text and "[2030]" in text
+    assert "ada" in text

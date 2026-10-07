@@ -32,9 +32,12 @@ from __future__ import annotations
 import argparse
 import contextlib
 import datetime
+import itertools
 import json
+import re
 import sys
 import time
+import zipfile
 from collections import Counter
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
@@ -89,6 +92,39 @@ class Report:
                 + ", ".join(f"{k}={v}" for k, v in sorted(self.totals.items()))
             )
         return "\n".join(lines)
+
+
+def describe_source(source: Path, years: set[int], *, sample: int = 8) -> str:
+    """Isi sumber, untuk menjelaskan kenapa 0 berkas terbaca (jalur salah, mount kosong, clone tidak
+    lengkap, atau `--years` tidak ada di sana)."""
+    pat = re.compile(r"CVE-(\d{4})-\d+\.json$")
+    by_year: Counter[int] = Counter()
+    if source.is_file():
+        try:
+            with zipfile.ZipFile(source) as zf:
+                names = zf.namelist()
+        except zipfile.BadZipFile:
+            return f"{source} adalah berkas tapi bukan zip yang valid."
+        for n in names:
+            if m := pat.search(n):
+                by_year[int(m.group(1))] += 1
+        head = [f"zip dengan {len(names)} entri; contoh: {', '.join(names[:sample]) or '(kosong)'}"]
+    else:
+        entries = sorted(p.name for p in source.iterdir()) if source.is_dir() else []
+        root = source / "cves" if (source / "cves").is_dir() else source
+        for path in root.rglob("CVE-*.json"):
+            if m := pat.search(path.name):
+                by_year[int(m.group(1))] += 1
+        head = [
+            f"folder {source}: {len(entries)} entri di tingkat atas"
+            f"{'' if entries else ' (KOSONG: mount salah atau clone belum diunduh)'}",
+            f"contoh: {', '.join(entries[:sample]) or '-'}",
+            f"subfolder `cves/` {'ada' if (source / 'cves').is_dir() else 'TIDAK ada'}",
+        ]
+    years_found = ", ".join(f"{y}={n}" for y, n in sorted(by_year.items())) or "tidak ada"
+    head.append(f"berkas CVE-*.json per tahun (semua tahun): {years_found}")
+    head.append(f"tahun yang diminta (--years): {sorted(years)}")
+    return "\n".join(head)
 
 
 def _try_lock(session: Session) -> bool:
@@ -183,11 +219,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"--years tidak valid: {args.years!r}", file=sys.stderr)
         return 2
 
+    records = iter_raw(args.source, years)
+    first = next(records, None)
+    if first is None:  # sebelum menyentuh DB: tidak ada yang bisa dilaporkan atau ditulis
+        print(
+            "TIDAK ADA berkas CVE yang terbaca dari sumber ini.\n"
+            + describe_source(args.source, years),
+            file=sys.stderr,
+        )
+        return 4
+
     with sync_session() as session:
         try:
             report = run(
                 session,
-                iter_raw(args.source, years),
+                itertools.chain([first], records),
                 today=today,
                 apply=args.apply,
                 commit_every=args.commit_every,
