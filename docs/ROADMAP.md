@@ -474,10 +474,12 @@ docstring `CveTicket`.
 berhenti jadi "ketik nama manual". Latar belakang, akar masalah, dan solusi 0.2.1:
 `docs/CVE_TECH_MATCHING.md`.
 
-**Keadaan sekarang** (fakta dari repo/produksi, bukan tebakan): `techstack_entries.name` teks bebas, input
+**Keadaan sekarang** (alur lengkap CVE Tracker: `docs/CVE_TRACKER_FLOW.md`; fakta dari repo/produksi, bukan
+tebakan): `techstack_entries.name` teks bebas, input
 UI "Tech name..." tanpa validasi, dan nama itu juga **kunci join** ke `cve_tracker.tech` (`get_risk_context`).
-Enam pencocok dengan aturan berbeda memakainya (NVD `keywordSearch`; Tenable; gate `new_cve`;
-`score.py` `related_tech_status`; `score.py` `check_tech_stack`; `cve_priority.in_tech_stack`). Di produksi, 55
+Tujuh pencocok dengan aturan berbeda memakainya (NVD `keywordSearch`; Tenable; gate `new_cve`;
+`score.py` `related_tech_status`; `score.py` `check_tech_stack`; `cve_priority.in_tech_stack`; laporan Top CVE
+`applicable_to_stack`). Di produksi, 55
 dari 118 baris tracker yang bisa diverifikasi salah. `new_cve` mencari per nama tech tiap jam (34 request ke
 NVD, mencari kata di deskripsi), jendela 8 hari, dan satu panggilan MITRE per kandidat (batas 60/menit).
 **Fase 1 lama** (commit `feat(techstack): ... fase 1`, kolom `techstack_entries.aliases` migrasi
@@ -495,7 +497,7 @@ lewat teks nama -> tab **CVEs** hanya menampilkan CVE untuk tech yang di-monitor
 
 | Lapisan | Isi | Siklus hidup |
 |---|---|---|
-| Mirror CVE (baru) | semua CVE: id, tanggal publish/ubah, ringkasan, CVSS, produk terdampak + range versi | **habis dibuang retensi** |
+| Mirror CVE (baru) | semua CVE: id, tanggal publish/ubah, ringkasan, CVSS, produk terdampak (teks, seperti kolom Affected sekarang) | **habis dibuang retensi** |
 | Katalog tech (baru) | vendor + produk ternormalisasi, nama tampilan, `first_seen`, `last_cve_at`, jumlah CVE | **permanen**; baris yang di-monitor tidak pernah dihapus |
 | Monitored tech (`techstack_entries`) | per client; menunjuk ke katalog (kolom nullable untuk "custom"); `exposure`, `hosting_type`, flag aktif | permanen |
 | `cve_tracker` (sudah ada) | CVE per client untuk tech yang di-monitor, plus ticket/ACK | **permanen**, tanpa FK cascade ke mirror |
@@ -520,13 +522,20 @@ terbitan N-2 dibuang (di 2026 mirror berisi 2025 dan 2026; di 2027 CVE 2025 dibu
 - **CVEs**: hanya CVE untuk tech yang di-monitor. **CVE DB** (tab baru, baca-saja): menjelajah semua CVE di
   mirror (terbatas sedalam retensi), dan dari satu CVE bisa klik produk terdampaknya lalu Monitor. Butuh
   index (tanggal, severity, produk).
-- **Notifikasi** (Telegram/email CVE): hanya untuk tech yang di-monitor.
+- **Notifikasi**: user menjawab "hanya yang di-monitor", **tapi premisnya salah**: sistem sekarang tidak
+  punya notifikasi otomatis per CVE baru (hanya artikel/laporan Top CVE/PoC, dan draft email manual; lihat
+  `docs/CVE_TRACKER_FLOW.md` 7). Perlu diputuskan ulang: apakah alert per CVE baru untuk tech di-monitor
+  adalah fitur baru yang diinginkan, dan laporan/alert yang ada dibuat per client (sekarang memakai nama
+  techstack gabungan semua client).
 
 **Dampak ke item lain**: #3 ("Populate now") **hilang** -- tech baru yang di-monitor langsung terisi dari
 mirror (sedalam retensi; riwayat sebelum 2025 sudah ada di tracker dari migrasi Mongo), jadi jendela 8 hari,
 backfill 180 hari, dan pacing MITRE tidak relevan lagi. #7 dapat dasar relevansi berbasis versi bila range
 versi disimpan. `new_cve` berubah dari "cari per nama" jadi "ambil semua CVE baru/berubah sekali per jam,
 proyeksikan ke tech yang di-monitor".
+
+**Pencocok nama tech sebenarnya ada tujuh, bukan enam** (`reports/cve_record.py::applicable_to_stack` tidak
+tercatat sebelumnya dan tidak disentuh fase 1; lihat `docs/CVE_TRACKER_FLOW.md` 9).
 
 **Pencocok teks tetap dibutuhkan** untuk artikel dan tweet (tidak punya CPE): `cti_core.tech_match` (di
 branch) dipertahankan; yang berubah adalah dari mana istilahnya diturunkan (katalog, bukan alias yang
@@ -554,9 +563,10 @@ Semuanya diuji di **server dev dulu**, baru produksi.
 - **Tanggal untuk retensi dan jendela mirror**: usulan tanggal publish. Konsekuensinya CVE lama yang baru
   berubah (mis. masuk KEV di 2026 padahal terbit 2023) tidak masuk mirror -- keterbatasan yang sama dengan
   jendela 8 hari sekarang; bisa ditutup dengan mengambil khusus CVE lama yang berubah dan kena tech di-monitor.
-- **Range versi terdampak** (mis. n8n `>= 1.0.0, < 1.2.3`, dari `versions` CNA / `versionStart*`/`versionEnd*` CPE)
-  **disimpan sejak awal walau belum dipakai** (usulan; tidak ada biaya besar, dan tanpa itu relevansi berbasis
-  versi di #7 tidak punya dasar). Belum dikonfirmasi.
+- **Versi terdampak: keputusan user 2026-10-07 = ikut yang sudah ada.** Tidak ada penyimpanan range versi
+  terstruktur baru; kolom Affected tetap teks (`cve_affected.affected`) dan ticket tetap
+  `affected_version`/`fixed_version` isian analis. Relevansi berbasis versi (#7) tidak dikerjakan di #19
+  (usulan range terstruktur dibatalkan, bukan ditunda).
 - **Nasib fase 1 di branch**: (a) buang kolom `aliases` + seed + migrasi dari branch sebelum merge, atau (b)
   pertahankan sampai jelas dari mana istilah teks diturunkan. Rekomendasi: (a). `cti_core.tech_match` dan
   perbaikan pencocok 5-6 (kata utuh, tanpa regex tak ter-escape) tetap berguna di kedua pilihan.

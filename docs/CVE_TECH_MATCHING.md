@@ -82,6 +82,10 @@ Tambahan: router CVE mencari `risk_ctx.get(cve.tech.lower())` ke peta `techstack
 kecil) dari `get_risk_context` untuk `adjusted_risk_score` (exposure dan hosting). Jadi `name` sekarang
 berfungsi sebagai **kunci join**, bukan sekadar label.
 
+**Koreksi 2026-10-07: sebenarnya ada tujuh pencocok.** Yang ketujuh, `reports/cve_record.py::applicable_to_stack`
+(laporan Top CVE, label "Might Applicable to Organization!"), memakai substring `re.escape(tech)` terhadap
+vendor tanpa batas kata; lihat `docs/CVE_TRACKER_FLOW.md` 9.
+
 Nomor 3 adalah satu-satunya yang diperbaiki di 0.2.1. Nomor 4-6 punya risiko serupa (tech pendek
 seperti `go` atau `edge` cocok ke kata yang cuma mengandung huruf itu; tech bertanda baca seperti
 `node.js` atau `c++` di nomor 4 diperlakukan sebagai regex).
@@ -209,8 +213,9 @@ hanya menampilkan CVE untuk tech yang di-monitor, tab **CVE DB** (baca-saja) men
   tidak ikut.
 - Tidak ada panggilan MITRE per CVE (data CNA sudah ada dari feed massal), jadi batas 60/menit bukan
   bottleneck lagi, dan "Populate now" (#3) tidak diperlukan: tech baru terisi dari mirror.
-- Range versi terdampak bisa disimpan -> dasar relevansi berbasis versi (7.2.3, #7).
 - Hierarki produk (Outlook di bawah Microsoft 365) jadi data, bukan tambalan.
+- **Versi terdampak: tetap seperti sekarang** (teks di kolom Affected + isian ticket); range versi terstruktur
+  tidak dibangun (keputusan user 2026-10-07).
 
 **Lapisan data dan siklus hidupnya** (jangan disamakan):
 
