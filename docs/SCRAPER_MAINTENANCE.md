@@ -166,6 +166,9 @@ Latar belakang, aturan pencocokan, dan batasannya: `docs/CVE_TECH_MATCHING.md`.
 Jalankan dari folder repo di server (yang berisi `docker-compose.yml`). `compose run` otomatis masuk
 jaringan dan env aplikasi, jadi tidak perlu `--network` ataupun `--env-file`:
 
+Jalankan dari folder repo di server (yang berisi `docker-compose.yml`). `compose run` otomatis masuk
+jaringan dan env aplikasi, jadi tidak perlu `--network` ataupun `--env-file`:
+
 ```bash
 # 1) laporan saja (default) -- tidak menulis apa pun
 docker compose --env-file docker/stack.env --profile app run --rm --no-deps -T \
