@@ -545,8 +545,9 @@ tercatat sebelumnya dan tidak disentuh fase 1; lihat `docs/CVE_TRACKER_FLOW.md` 
 branch) dipertahankan; istilahnya kelak diturunkan dari katalog.
 
 **Rancangan teknis lengkap (tabel, resolver, ingest, pencocokan, retensi, API/UI, migrasi, irisan PR)**:
-`docs/CVE_CATALOG_DESIGN.md`. **Irisan 1 (resolver murni `cti_core.catalog_resolve` + 58 tes) selesai di
-branch**; irisan 2-7 (skema, ingest, promosi, API, UI, cutover) belum. Keputusan 2026-10-07: picker
+`docs/CVE_CATALOG_DESIGN.md`. **Irisan 1 (resolver murni `cti_core.catalog_resolve` + 58 tes) dan irisan 2
+(skema + model + repositori katalog/mirror/target, revisi `b7e3d9a1c5f2`, 21 tes Postgres) selesai di
+branch**; irisan 3-7 (ingest, promosi, API, UI, cutover) belum. Keputusan 2026-10-07: picker
 menyembunyikan keluarga ber-1 CVE (pencarian tetap menampilkan semuanya).
 
 ### Fase

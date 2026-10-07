@@ -22,6 +22,12 @@ router `changelog.py`) -- parser-nya expect header persis
    skrip yang membaca file export per posisi kolom harus disesuaikan.
 
 ### Ditambah
+- **Skema katalog tech, mirror CVE, dan target Monitor** (`docs/ROADMAP.md` #19, irisan 2; revisi `b7e3d9a1c5f2`):
+  tabel `catalog_vendors`/`catalog_families`/`catalog_family_aliases` (permanen, statistik hanya naik),
+  `cve_records`/`cve_record_products` (mirror, dibuang retensi tahun kalender), `techstack_targets`
+  (vendor ATAU keluarga per entri) dan kolom `techstack_entries.active` (default true). Repositori
+  `cti_core.db.repositories.catalog`. **Belum dipakai aplikasi**: semua entri techstack tetap aktif tanpa
+  target dan dicocokkan lewat teks seperti sebelumnya; migrasi aman untuk data lama.
 - **`cti_core.catalog_resolve`** (`docs/ROADMAP.md` #19, irisan 1): resolver murni (vendor, produk) mentah dari data
   CNA -> (vendor, keluarga) katalog: normalisasi sadar-unicode, produk sampah tanpa identitas, kunci vendor
   kompak tanpa akhiran legal, lipat versi/edisi jadi keluarga, CPE diutamakan, alias manual. **Belum dipakai

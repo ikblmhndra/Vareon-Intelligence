@@ -21,6 +21,7 @@ from cti_core.db.models.attack import (
     AttackTechniqueAlias,
 )
 from cti_core.db.models.auth import AuditLogEntry, Client, ClientCountry, Role, User, UserClient
+from cti_core.db.models.catalog import CatalogFamily, CatalogFamilyAlias, CatalogVendor
 from cti_core.db.models.cluster import Cluster
 from cti_core.db.models.cve import (
     CveAffected,
@@ -33,6 +34,7 @@ from cti_core.db.models.cve import (
     CveTracker,
     CveTTP,
 )
+from cti_core.db.models.cve_mirror import CveRecord, CveRecordProduct
 from cti_core.db.models.ioc import IOC, IOCFeedback, IOCSource, IOCTag, IOCThreatActor
 from cti_core.db.models.ioc_reference import IocAllowlistEntry, ThreatFeedEntry
 from cti_core.db.models.malware_trend import MalwareTrend
@@ -47,7 +49,7 @@ from cti_core.db.models.rfi import RFIRequest
 from cti_core.db.models.scraper import ScraperConfig, ScraperItem, ScraperRun, ScraperSeen
 from cti_core.db.models.source_reliability import SourceReliabilityEntry
 from cti_core.db.models.ta import TAProfile, TAWatchlistEntry, TAWhitelistEntry
-from cti_core.db.models.techstack import TechStackEntry
+from cti_core.db.models.techstack import TechStackEntry, TechStackTarget
 from cti_core.db.models.threat_reference import MonitoredPerson, ThreatActorGroup
 from cti_core.db.models.tweet import MonitoredAccount, Tweet
 
@@ -67,6 +69,9 @@ __all__ = [
     "AttackTechnique",
     "AttackTechniqueAlias",
     "AuditLogEntry",
+    "CatalogFamily",
+    "CatalogFamilyAlias",
+    "CatalogVendor",
     "Client",
     "ClientCountry",
     "Cluster",
@@ -75,6 +80,8 @@ __all__ = [
     "CveMention",
     "CveNewsletterMention",
     "CvePoc",
+    "CveRecord",
+    "CveRecordProduct",
     "CveReference",
     "CveTTP",
     "CveThreatActor",
@@ -111,6 +118,7 @@ __all__ = [
     "TAWatchlistEntry",
     "TAWhitelistEntry",
     "TechStackEntry",
+    "TechStackTarget",
     "ThreatActorGroup",
     "ThreatFeedEntry",
     "Tweet",

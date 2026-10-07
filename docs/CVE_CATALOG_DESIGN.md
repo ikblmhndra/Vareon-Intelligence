@@ -1,6 +1,7 @@
 # Rancangan: mirror CVE, katalog tech, dan Monitor (ROADMAP #19)
 
-Status: **irisan 1 (resolver murni) SELESAI di branch; irisan 2-7 masih rancangan** (2026-10-07). Diturunkan dari keputusan user, hasil spike di data
+Status: **irisan 1 (resolver murni) dan 2 (skema, model, repositori) SELESAI di branch; irisan 3-7 masih
+rancangan** (2026-10-07). Diturunkan dari keputusan user, hasil spike di data
 penuh (`docs/spikes/2026-10-07_cve_catalog_report_v2.md`, tafsir di `docs/CVE_TECH_MATCHING.md` 7.1.3), dan
 alur CVE Tracker yang sekarang (`docs/CVE_TRACKER_FLOW.md`; **baca bagian 10-nya**, itu invarian yang
 harus dijaga). Hal yang belum diverifikasi ditandai **[asumsi]**; yang diverifikasi ditandai **[dicek]**.
@@ -223,6 +224,11 @@ dibuang tetap utuh. Statistik katalog tidak turun (kolom `*_seen_total`).
 1. **Resolver murni + tes** dari data spike (fixture asli), tanpa DB. Termasuk keputusan sufiks `server core
    installation`.
 2. **Migrasi + model** mirror/katalog/target + repositori. Tes migrasi (`test_migrations_match_models`).
+   **SELESAI**: revisi `b7e3d9a1c5f2`; `cti_core.db.repositories.catalog` (`CatalogRepo`, `CveMirrorRepo`,
+   `retention_cutoff`); `tests/integration/test_catalog_mirror.py` (21 tes). Statistik `cve_seen_total`
+   naik sekali per CVE per keluarga/vendor (idempoten, tahan urutan, tidak turun saat retensi); record
+   dengan `modified_at` lebih lama ditolak; entri techstack lama tetap `active` tanpa target dan tetap
+   dicocokkan lewat teks. Belum ada kode yang MEMAKAI tabel ini (tidak ada perubahan perilaku).
 3. **Ingest**: refactor `_mitre_detail` jadi fungsi murni (tanpa mengubah perilaku `new_cve`), tugas
    `cve.mirror_sync`, kursor, catch-up, retensi. Tes dengan delta palsu + fixture asli.
 4. **Promosi + pencocokan** ke `cve_tracker` (flag, mode bayangan), memakai `upsert_with_status`.
