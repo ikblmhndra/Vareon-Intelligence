@@ -151,3 +151,9 @@ def test_progress_lines_show_rate_and_eta(
     )
     err = capsys.readouterr().err
     assert "[" in err and "2/4 berkas" in err and "sisa ~" in err and "4/4 berkas" in err
+
+
+def test_default_years_include_the_id_year_before_the_retention_cutoff() -> None:
+    """CVE-2024-11741 terbit 2025: tahun ID 2024 wajib ikut walau retensi mulai 2025-01-01."""
+    assert bf.default_years(datetime.date(2026, 10, 7)) == {2024, 2025, 2026}
+    assert bf.default_years(datetime.date(2027, 1, 1)) == {2025, 2026, 2027}

@@ -14,7 +14,8 @@ Sifat:
     advisory yang sama (`LOCK_KEY`); bila ingest sedang jalan, skrip berhenti dan minta diulang.
     Record yang lebih lama dari yang tersimpan ditolak (`modified_at`).
   - Record di luar retensi (terbit sebelum 1 Januari tahun lalu), tanpa tanggal, atau bukan
-    PUBLISHED dilewati dan dihitung; tahun default = tahun berjalan dan sebelumnya.
+    PUBLISHED dilewati dan dihitung. Yang dipindai = tahun ID `default_years` (2024-2026 di 2026:
+    CVE berID 2024 yang terbit 2025+ ikut), disaring lagi menurut tanggal terbit.
   - TIDAK menyentuh `cve_tracker`, ticket, maupun kursor `cve.mirror_sync`.
 
 Dari host (dev):
@@ -47,7 +48,7 @@ from cti_core.cve_mirror_sync import LOCK_KEY, apply_record
 from cti_core.db.engine import sync_session
 from cti_core.db.models.catalog import CatalogFamily, CatalogVendor
 from cti_core.db.models.cve_mirror import CveRecord
-from cti_core.db.repositories.catalog import CatalogRepo, CveMirrorRepo
+from cti_core.db.repositories.catalog import CatalogRepo, CveMirrorRepo, retention_cutoff
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -125,6 +126,14 @@ def describe_source(source: Path, years: set[int], *, sample: int = 8) -> str:
     head.append(f"berkas CVE-*.json per tahun (semua tahun): {years_found}")
     head.append(f"tahun yang diminta (--years): {sorted(years)}")
     return "\n".join(head)
+
+
+def default_years(today: datetime.date) -> set[int]:
+    """Tahun ID CVE yang dipindai. Retensi memakai TANGGAL TERBIT, bukan tahun ID: CVE berID tahun
+    sebelumnya sering terbit belakangan (CVE-2024-11741 terbit 2025). Maka mulai satu tahun sebelum
+    batas retensi (`retention_cutoff`), sama dengan spike (`since.year-1`). CVE berID lebih tua lagi
+    yang terbit belakangan jarang; lebarkan dengan `--years` bila perlu."""
+    return set(range(retention_cutoff(today).year - 1, today.year + 1))
 
 
 def count_source(source: Path, years: set[int]) -> int:
@@ -236,8 +245,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     ap.add_argument("--source", type=Path, required=True, help="clone cvelistV5 atau zip rilisnya")
     ap.add_argument(
         "--years",
-        default=f"{today.year - 1},{today.year}",
-        help="tahun ID CVE yang dibaca, pisah koma (default: tahun lalu dan berjalan)",
+        default=",".join(str(y) for y in sorted(default_years(today))),
+        help="tahun ID CVE yang dibaca, pisah koma (default: lihat default_years)",
     )
     ap.add_argument("--apply", action="store_true", help="commit (default: laporan saja)")
     ap.add_argument("--limit", type=int, default=None, help="berhenti setelah N berkas (uji coba)")

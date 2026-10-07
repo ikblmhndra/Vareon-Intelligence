@@ -30,6 +30,9 @@ router `changelog.py`) -- parser-nya expect header persis
   (`make backfill-cve-mirror SOURCE=... [ARGS=--apply]`, default laporan saja). **Mati secara default**:
   `CVE_MIRROR__ENABLED=false` di `.env.example` dan `.env.prod.template` (key opsional, aman bila belum
   ada di `.env` host); mirror belum dipakai apa pun yang terlihat user (promosi ke `cve_tracker` = irisan 4).
+  Default tahun ID yang dipindai skrip backfill = `default_years` (2024-2026 di 2026), bukan hanya tahun
+  berjalan dan lalu: CVE berID 2024 yang terbit 2025+ (mis. CVE-2024-11741) harus ikut, retensi memakai
+  tanggal terbit.
   Skrip backfill mencetak progress + ETA ke stderr tiap 2000 berkas (laju ukur lokal ~110 berkas/dtk,
   jadi ~17 menit untuk 117 ribu CVE; tanpa progress ia diam sampai selesai).
   Skrip backfill berhenti dengan kode 4 dan menampilkan isi sumber (folder, tahun yang ada) bila tidak ada
