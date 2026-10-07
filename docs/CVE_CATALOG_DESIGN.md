@@ -1,6 +1,6 @@
 # Rancangan: mirror CVE, katalog tech, dan Monitor (ROADMAP #19)
 
-Status: **RANCANGAN, belum ada kode** (2026-10-07). Diturunkan dari keputusan user, hasil spike di data
+Status: **irisan 1 (resolver murni) SELESAI di branch; irisan 2-7 masih rancangan** (2026-10-07). Diturunkan dari keputusan user, hasil spike di data
 penuh (`docs/spikes/2026-10-07_cve_catalog_report_v2.md`, tafsir di `docs/CVE_TECH_MATCHING.md` 7.1.3), dan
 alur CVE Tracker yang sekarang (`docs/CVE_TRACKER_FLOW.md`; **baca bagian 10-nya**, itu invarian yang
 harus dijaga). Hal yang belum diverifikasi ditandai **[asumsi]**; yang diverifikasi ditandai **[dicek]**.
@@ -75,7 +75,7 @@ yang masih dalam retensi.
 Tidak ada tabel produk terpisah: varian dilipat ke keluarga saat resolusi; nama mentah ada di
 `cve_record_products` (selama retensi).
 
-### 3.3 Resolver identitas (modul murni di `cti_core`)
+### 3.3 Resolver identitas (`cti_core.catalog_resolve`, **sudah ada**, 58 tes)
 
 `resolve(vendor_raw, product_raw, cpes) -> (vendor_key, vendor_display, family_key, family_display) | None`.
 Aturan = hasil spike, ditulis ulang sebagai modul dengan tes (spike tetap salinan lokal tanpa dependensi):
@@ -86,9 +86,20 @@ Aturan = hasil spike, ditulis ulang sebagai modul dengan tes (spike tetap salina
    `and`/`&`.
 4. Vendor placeholder/kosong -> vendor "(tanpa vendor)" (`monitorable=false`).
 5. Keluarga = produk dengan token versi di ujung dibuang (`version`, `22h2`, angka, `edition`, `x64`, ...),
-   dicek ke `catalog_family_aliases` lebih dulu. **Kelemahan yang diketahui [dicek di data]**: sufiks tanpa
-   makna versi (`... server core installation`) tidak terlipat; ditangani dengan alias manual, dan karena
-   Monitor boleh di tingkat vendor, kesalahan keluarga tidak membuat CVE hilang.
+   dicek ke `catalog_family_aliases` lebih dulu. Akhiran noise `server core installation` ikut dibuang
+   (keputusan irisan 1; tanpa itu tiap versi Windows Server menjadi dua keluarga). Pengaman: keluarga hasil
+   lipat yang sama dengan vendornya tidak dipakai (`Microsoft 365` tidak boleh jadi `microsoft`).
+6. Kunci vendor = bentuk kompak **tanpa akhiran legal** (`inc`, `corporation`, `ltd`, `llc`, `gmbh`, ...):
+   di katalog nyata ini menggabungkan 127 grup vendor tambahan, semuanya benar (Microsoft/Microsoft Inc,
+   Oracle/Oracle Corporation, D-Link/D-Link Corporation). Akhiran satu huruf sengaja tidak dipakai (menggabung
+   `n` dengan `n a`).
+
+**Hasil resolver di seluruh katalog spike (41.507 identitas, 0,5 detik)**: **39.896** pasangan (vendor,
+keluarga) dan **14.911** vendor (dari 15.290); 810 keluarga melipat > 1 identitas (2.421 identitas); 1.971
+identitas tanpa vendor (4,7%). Target pemetaan tabel 8 semuanya ada: `fortinet/fortios`, `junos os`/`junos os
+evolved`/`junos space`, `f5/nginx open source` + `nginx plus`, `mikrotik/routeros`, vendor Fortinet (51
+keluarga), Palo Alto Networks (32, dua ejaan vendor bersatu), Splunk (31). **Tetap terpisah, butuh alias
+manual**: `n8nio` vs `n8n` (175 vs 22), `graylog2` vs `graylog`, `nagios` vs `nagios enterprises llc`.
 
 ### 3.4 Monitor: satu entri, banyak target
 
@@ -161,9 +172,15 @@ dibuang tetap utuh. Statistik katalog tidak turun (kolom `*_seen_total`).
 
 ## 7. API dan UI
 
-- Katalog: `GET /api/catalog/vendors?q=&min_cves=` , `GET /api/catalog/vendors/{id}/families`,
-  `GET /api/catalog/families?q=` (search lintas keluarga, hasil menyertakan vendor). Default `min_cves=5`
-  (5.546 identitas), pencarian membuka seluruhnya. Pagination wajib.
+- Katalog: `GET /api/catalog/vendors?q=&show_all=` , `GET /api/catalog/vendors/{id}/families?show_all=`,
+  `GET /api/catalog/families?q=` (search lintas keluarga, hasil menyertakan vendor). **Keputusan user
+  2026-10-07: tampilan jelajah menyembunyikan keluarga yang hanya punya 1 CVE** (`show_all=true` untuk
+  menampilkan semuanya). Pengecualian: **pencarian (`q`) tidak menyembunyikan apa pun** (produk baru
+  dengan CVE pertamanya harus tetap bisa ditemukan dan di-monitor), dan keluarga/vendor yang sudah dirujuk
+  Monitor selalu tampil. Di data nyata ini menyembunyikan 24.562 dari 39.896 keluarga (61,6%): tampil 15.334
+  keluarga di 5.815 vendor. Hitungan "CVE per keluarga" adalah **CVE unik per keluarga** (satu CVE yang
+  mencantumkan tiga varian Windows dihitung sekali; jumlah entri di CSV spike menghitung dobel). Pagination
+  wajib.
 - Monitor: `POST /api/techstack` menerima `{vendor_id | family_id | custom_name}`; `POST/DELETE
   /api/techstack/{id}/targets`; `PATCH /api/techstack/{id}` untuk `active`. Perubahan kontrak ->
   regenerasi `docs/openapi.json` dan `apps/web/src/lib/api/schema.d.ts` (CI memeriksa drift).
@@ -215,9 +232,9 @@ dibuang tetap utuh. Statistik katalog tidak turun (kolom `*_seen_total`).
 
 ## 10. Risiko dan hal terbuka
 
-- **Kualitas keluarga otomatis**: lipat versi hanya efektif di 562 keluarga; sisanya identitas = produk. Aman
-  karena Monitor vendor-level ada, tapi picker produk akan terasa panjang (Microsoft 425 keluarga, Siemens
-  1.053). **Perlu keputusan**: apakah picker menyembunyikan keluarga ber-1 CVE di bawah vendor besar.
+- **Kualitas keluarga otomatis**: lipat versi hanya efektif di 810 keluarga; sisanya identitas = produk. Aman
+  karena Monitor vendor-level ada. Picker panjang (Microsoft 425 keluarga, Siemens 1.053) **diputuskan**:
+  keluarga ber-1 CVE disembunyikan di tampilan jelajah (bagian 7), pencarian tetap menampilkan semuanya.
 - **Volume** terus naik (Sep 2026 14,9 ribu/bulan). Mirror akhir 2026 > 130 ribu CVE; 2027 proyeksi kasar
   lebih besar. Ukur ukuran tabel dan waktu retensi di dev sebelum prod.
 - **Delta feed** bukan kontrak stabil resmi **[asumsi]**; jaga pengganti (clone/`git pull`) dan alarm bila
