@@ -78,6 +78,10 @@ router `changelog.py`) -- parser-nya expect header persis
   mengikuti `uv.lock`), dan `test_article_dedup_groups` seed-nya memakai tanggal tetap sementara
   `get_dedup_groups` hanya melihat 7 hari terakhir, jadi mati sendiri sejak 2026-10-01 (sekarang seed
   dengan tanggal hari ini; `test_list_articles_dedup` tetap pinned karena snapshot-nya memuat `week`).
+  Ketemu saat PR dijalankan di CI: `test_domain_defanged_regex_does_not_catastrophically_backtrack`
+  memakai alarm 5 detik padahal ekstraksi domain berbiaya linear ±5 detik untuk teks uji itu (bukan
+  ReDoS), jadi hasilnya mengikuti kecepatan runner. Alarm jadi 60 detik; regex tak terbatas tetap
+  tertangkap. Kode produksi tidak berubah.
 
 ### Diketahui / belum dikerjakan
 - **Hijau CI di `main` dan Deploy otomatis belum terbukti.** Perbaikan di atas baru diuji lokal per

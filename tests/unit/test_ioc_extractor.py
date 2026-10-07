@@ -93,18 +93,27 @@ def test_domain_defanged_regex_does_not_catastrophically_backtrack() -> None:
     yang mirip struktur domain multi-label. Fix: `{0,10}` (gak ada domain
     asli >10 label). Test ini reproduce bentuk teks yang sama (banyak
     "word." berulang) dengan timeout keras -- kalau regexnya balik jadi
-    unbounded lagi, test ini gantung/gagal, bukan cuma lambat."""
+    unbounded lagi, test ini gantung/gagal, bukan cuma lambat.
+
+    Ambang alarm 60 detik, BUKAN 5 (CI #17, 2026-10-07): `{0,10}` terbatas tapi
+    konstanta biayanya besar -- waktunya LINEAR (±0,45 ms per karakter: 1,3 s untuk
+    500 pengulangan, 2,7 s untuk 1000, 5,4 s untuk 2000 di mesin dev; ±5 s di runner
+    GitHub), jadi ambang 5 s tepat di batas dan merah-hijau mengikuti kecepatan
+    runner, padahal bukan ReDoS. Regex tak terbatas (`*`) tumbuh EKSPONENSIAL (x16
+    tiap +4 pengulangan; 24 s pada 22 pengulangan, tak selesai pada 2000), jadi
+    ambang 60 s tetap pasti menangkap regresi yang dimaksud tanpa bergantung pada
+    kecepatan mesin."""
     pathological = "word. " * 2000 + " end"
 
     def _handler(signum: int, frame: object) -> None:
         raise _AlarmTimeout()
 
     old_handler = signal.signal(signal.SIGALRM, _handler)
-    signal.alarm(5)
+    signal.alarm(60)
     try:
         extract_iocs(pathological)
     except _AlarmTimeout:
-        pytest.fail("extract_iocs() gantung >5s -- _RE_DOMAIN_DEFANGED balik ReDoS")
+        pytest.fail("extract_iocs() gantung >60s -- _RE_DOMAIN_DEFANGED balik ReDoS")
     finally:
         signal.alarm(0)
         signal.signal(signal.SIGALRM, old_handler)

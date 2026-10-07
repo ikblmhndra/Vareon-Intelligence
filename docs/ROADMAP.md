@@ -348,9 +348,19 @@ lolos `deploy.sh` dengan health check. Sampai itu, produksi hanya bisa di-update
 `main`), dan Deploy yang terpicu pertama kali di runner prod. Langkah `playwright install --with-deps` belum
 dijalankan di runner GitHub (sandbox pengembangan tidak boleh memasang browser); `docker/api.Dockerfile` dan
 `docker/worker.Dockerfile` memakai perintah yang sama lewat `uv tool run`.
-**Catatan terpisah** (bukan bagian #13): `tests/unit/test_ioc_extractor.py::test_domain_defanged_regex_does_not_catastrophically_backtrack`
-gagal di mesin pengembangan yang lambat (juga pada checkout tanpa perubahan) karena ambang keras 5 detik untuk 2000 pengulangan, padahal waktunya
-linear (±2,7 ms per pengulangan di sana) -- bukan ReDoS. Lolos di CI, tapi bisa goyah di runner yang lebih lambat.
+**Ditemukan saat PR #11 dijalankan di CI (2026-10-07), ikut diperbaiki di PR yang sama karena memblokir "CI hijau"**:
+`tests/unit/test_ioc_extractor.py::test_domain_defanged_regex_does_not_catastrophically_backtrack` merah di
+runner GitHub (satu-satunya kegagalan dari 2240 test; dua test yang diperbaiki di atas lolos, jadi langkah
+`playwright install` terbukti jalan). Penyebab: ambang alarm 5 detik untuk 2000 pengulangan, padahal
+`_RE_DOMAIN_DEFANGED` (`{0,10}`) berbiaya LINEAR yang besar (±0,45 ms per karakter; 1,3 s / 2,7 s / 5,4 s untuk
+500 / 1000 / 2000 pengulangan di mesin dev, ±5 s di runner), jadi lolos-gagalnya mengikuti kecepatan runner, bukan
+ReDoS (run #16 lolos tipis). Ambang dinaikkan ke 60 detik; regex tak terbatas (`*`) tumbuh eksponensial (x16
+tiap +4 pengulangan) sehingga tetap tertangkap (disimulasikan: gagal tepat di detik ke-60). Tidak ada perubahan
+pada regex produksi.
+**Temuan yang BELUM dikerjakan**: biaya ±0,45 ms per karakter itu sendiri nyata di produksi -- `extract_iocs()`
+pada satu artikel ±12KB makan ±5 detik CPU sinkron di stage enrichment. Bukan ReDoS dan bukan bagian #13; kalau
+mau dioptimalkan, titiknya `_RE_DOMAIN_DEFANGED` (mis. saringan awal sebelum regex dijalankan), dengan korpus
+`tests/unit/test_ioc_extractor.py` sebagai pengaman byte-identik.
 
 ## 14. Logo hilang di export Excel CVE Tracker
 
