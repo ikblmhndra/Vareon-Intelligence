@@ -5,9 +5,11 @@ akar masalah, solusi yang sudah berjalan, cara memverifikasi, batasan yang masih
 pengembangan (standarisasi techstack, `docs/ROADMAP.md` #19).
 
 **Status** (2026-10-07): perbaikan filter dan tool pembersih sudah di rilis 0.2.1 (PR #8); koreksi
-bug angka-versi (`graylog2-server`) sudah di `main`. **Standarisasi techstack fase 1 dikerjakan**
-(kolom `aliases` + satu pencocok bersama, lihat 7.1); fase 2 dan 3 belum. Perintah menjalankan
-tool pembersih: `docs/SCRAPER_MAINTENANCE.md` 4.G.
+bug angka-versi (`graylog2-server`) sudah di `main`. **Arah standarisasi berubah hari ini**: bukan lagi
+alias manual + katalog kurasi, melainkan **mirror CVE -> katalog tech -> Monitor** (7.1, desain lengkap di
+`docs/ROADMAP.md` #19); belum ada kode untuk bagian barunya. Fase 1 lama (kolom `aliases` + pencocok
+bersama) ada di branch `nameless/roadmap-runners`, belum di `main` (7.1.1). Perintah menjalankan tool
+pembersih: `docs/SCRAPER_MAINTENANCE.md` 4.G.
 
 ---
 
@@ -188,28 +190,61 @@ regresi. Pelajaran: **filter yang membuang diam-diam harus selalu dilihat lapora
 
 ## 7. Rencana pengembangan
 
-### 7.1 Standarisasi techstack (`docs/ROADMAP.md` #19)
+### 7.1 Standarisasi techstack: katalog dari mirror CVE + Monitor (`docs/ROADMAP.md` #19)
 
-**Tujuan**: nama tech jadi identitas baku, bukan teks bebas yang dicocokkan ulang oleh enam pencocok.
+**Kenapa arahnya berubah.** Alias manual per tech tidak skala (tiap client menambah tech, ada yang harus
+menulis alias), dan akar masalahnya tetap: nama bebas dicocokkan sebagai teks. Ide yang disepakati
+2026-10-07: biarkan **data CVE** yang mendefinisikan produk, dan biarkan pengguna **memilih** produk itu,
+bukan mengetik namanya.
 
-Rancangan:
-- Tiap entri techstack punya **identitas baku**: `vendor` + `product` gaya CPE (`f5`/`nginx`,
-  `paloaltonetworks`/`pan-os`) dan `aliases` (`palo alto`, `pan-os`, `graylog2`). `name` tetap label
-  tampilan dan tetap kunci join (`cve_tracker.tech`, `cve_priority`, `get_risk_context` tidak berubah).
-- **Satu fungsi pencocok** di `cti_core`, dipakai pencocok 2-6 di atas, mengganti lima aturan yang
-  berbeda dengan satu. Sekaligus menutup substring tanpa batas kata dan regex tanpa `re.escape`.
-- Input di UI memilih dari **katalog** (autocomplete), dengan opsi "custom" bertanda belum terverifikasi.
-- Query NVD berbasis CPE (`cpeName`) untuk CVE yang sudah dianalisis, keyword untuk yang masih baru.
+**Alur**: mirror semua CVE (2025 sampai sekarang) di DB sendiri -> **katalog tech** (vendor + produk
+ternormalisasi) turun dari data itu -> menu techstack: tab **All Tech** (katalog; cari, klik Monitor) dan
+**Monitored Tech** (per client) -> CVE baru dicocokkan lewat **identitas produk** dari data CVE -> tab CVEs
+hanya menampilkan CVE untuk tech yang di-monitor, tab **CVE DB** (baca-saja) menjelajah seluruh mirror.
 
-Fase:
+**Mengapa lebih kuat dari pencarian per nama:**
+- Pencarian berhenti memakai `keywordSearch` (kata di deskripsi mana pun, sumber 52 baris `DELETE`).
+  `new_cve` mengambil semua CVE baru/berubah sekali per jam lalu memfilter lokal berdasarkan produk
+  terdampak: request lebih sedikit, recall lebih baik, dan CVE yang cuma menyebut "MariaDB" di deskripsi
+  tidak ikut.
+- Tidak ada panggilan MITRE per CVE (data CNA sudah ada dari feed massal), jadi batas 60/menit bukan
+  bottleneck lagi, dan "Populate now" (#3) tidak diperlukan: tech baru terisi dari mirror.
+- Range versi terdampak bisa disimpan -> dasar relevansi berbasis versi (7.2.3, #7).
+- Hierarki produk (Outlook di bawah Microsoft 365) jadi data, bukan tambalan.
 
-| Fase | Isi | Usaha | Status |
-|---|---|---|---|
-| 1 | Kolom `aliases` (JSONB) + satu pencocok bersama; seed alias dari entri yang ada; tanpa ubah UI | kecil | **Dikerjakan 2026-10-07** (di bawah) |
-| 2 | `vendor`/`product` + picker katalog di UI + validasi di API | menengah | Belum. Perlu keputusan sumber katalog (lihat bawah). `docs/openapi.json` dan `schema.d.ts` harus di-regenerasi. |
-| 3 | Query NVD berbasis CPE; hierarki produk (satu entri boleh punya beberapa produk CPE) | menengah-besar | Belum. Menyelesaikan kasus Outlook/Microsoft 365. |
+**Lapisan data dan siklus hidupnya** (jangan disamakan):
 
-#### Fase 1: yang berubah
+| Lapisan | Siklus hidup |
+|---|---|
+| Mirror CVE | dibuang retensi: tahun kalender, simpan tahun berjalan + sebelumnya (di 1 Jan 2027, CVE 2025 dibuang) |
+| Katalog tech | permanen; baris yang di-monitor tidak pernah dihapus (jangan turunan sesaat dari mirror) |
+| Monitored tech (`techstack_entries`) | permanen, per client, menunjuk ke katalog (nullable untuk "custom") |
+| `cve_tracker` | permanen; CVE yang cocok dipromosikan (disalin) ke sini saat ingest, tanpa FK cascade ke mirror |
+
+Ticket/ACK hidup di `cve_tracker`, jadi tidak pernah ikut retensi. Un-monitor = **sembunyikan** (flag aktif;
+dashboard sudah punya scope "techstack aktif"), bukan hapus.
+
+**Risiko utama**: data CNA berantakan (produk `n/a`, nama repo GitHub, satu produk lima ejaan, "Microsoft 365
+Apps" vs "Microsoft Office"), jadi normalisasi katalog adalah pekerjaan terberat; picker harus
+search-first. Produk yang belum pernah punya CVE tidak ada di katalog (jalur "custom" bertanda belum
+terverifikasi). Sumber data punya kekuatan berbeda: CVE List V5 (data CNA) cepat dan lengkap tapi namanya
+kotor, NVD (CPE) bersih tapi sering telat dan sebagian CVE tak pernah diperkaya; kemungkinan butuh
+keduanya. **CVE lama yang baru berubah** (mis. masuk KEV) tidak masuk mirror kalau jendelanya tanggal
+publish. Detail, fase, hal terbuka, dan kriteria selesai: `docs/ROADMAP.md` #19.
+
+**Urutan**: (1) spike pengukuran, hanya baca (jumlah produk unik, persen sampah, berapa dari 34 tech produksi
+ketemu bersih, sekaligus recall 7.2.1); (2) mirror + katalog baca-saja + job retensi + tab CVE DB;
+(3) tab All/Monitored + `catalog_id` + validasi API; (4) ganti `new_cve`, **mode bayangan dulu** di server dev;
+(5) merge produk oleh admin. Pemetaan 34 tech lama ke katalog ditinjau manual (`name` tetap kunci join).
+
+#### 7.1.1 Fase 1 lama (alias + pencocok bersama): di branch, belum di `main`
+
+Dikerjakan sebelum arah di atas disepakati. Keputusan: `cti_core.tech_match` dan perbaikan pencocok 5-6
+(kata utuh, tanpa regex tak ter-escape) tetap berguna; kolom `aliases` + seed kemungkinan tumpang tindih
+dengan katalog (rekomendasi: dibuang sebelum merge, lihat "Terbuka" di ROADMAP #19). Di bawah deskripsi
+apa adanya, berlaku **hanya jika** branch itu di-merge.
+
+**Isi:**
 
 - **`cti_core.tech_match`** (`packages/cti-core/src/cti_core/tech_match.py`): satu definisi "teks ini
   menyebut tech itu". Aturannya diangkat dari gate 0.2.1: huruf kecil, non-alfanumerik jadi spasi
@@ -242,7 +277,7 @@ Fase:
   `reconcile_cve_tech` (laporan saja) sesudah deploy: baris `DELETE` yang menurut lu sah berarti
   alias kurang. Alias yang terlalu umum membawa balik masalah yang diperbaiki di sini.
 
-#### Mengubah alias (sementara belum ada UI/API, fase 2)
+**Mengubah alias** (hanya jika fase 1 lama di-merge; belum ada UI/API)
 
 ```sql
 -- lihat
@@ -256,7 +291,7 @@ Berlaku di run/artikel/permintaan berikutnya **tanpa restart**: reference data d
 scraper, `score()` tiap artikel, `cve_priority` tiap permintaan. Alias per entri (per client), tapi
 scraper menggabungkannya lintas client karena alias itu sifat produknya.
 
-#### Fase 1: yang berubah di produksi (baca sebelum deploy)
+**Yang berubah di produksi bila fase 1 lama di-merge (baca sebelum deploy):**
 
 1. **Migrasi**: `up -d` menjalankan service `migrate` (kolom nullable-safe: NOT NULL dengan default
    sementara, aman untuk data lama).
@@ -302,4 +337,4 @@ usang; sisi CNA tetap tidak terkendali, jadi alias saja tidak cukup (lihat 7.2).
 | Pencocok bersama (fase 1) | `packages/cti-core/src/cti_core/tech_match.py`, migrasi `alembic/versions/a9d4e6f81b3c_techstack_aliases.py` |
 | Pemanggilnya | `packages/cti-enrich/src/cti_enrich/stages/score.py`, `apps/api/src/cti_api/services/cve_priority.py` |
 | Daftar techstack ke scraper | `packages/cti-scraper/src/cti_scraper/reference_data.py` |
-| Rencana | `docs/ROADMAP.md` #19 |
+| Rencana (arah baru) | `docs/ROADMAP.md` #19 |
