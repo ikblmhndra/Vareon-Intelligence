@@ -546,7 +546,7 @@ branch) dipertahankan; istilahnya kelak diturunkan dari katalog.
 
 ### Fase
 
-1. **Spike pengukuran** -- **skrip siap (2026-10-07), belum dijalankan di data penuh**: `tools/ops/spike_cve_catalog.py` (stdlib saja; cara pakai di docstring dan `docs/CVE_TECH_MATCHING.md` 7.1.2). Hanya baca, tidak mengubah produk: tarik CVE 2025 sampai sekarang, hitung produk
+1. **Spike pengukuran** -- **dijalankan di data penuh 2026-10-07 (117.220 CVE); hasil dan implikasi di `docs/CVE_TECH_MATCHING.md` 7.1.3, laporan di `docs/spikes/`; perlu dijalankan ulang dengan skrip yang sudah diperbaiki dan `--since` = tanggal `new_cve` mulai berjalan**: `tools/ops/spike_cve_catalog.py` (stdlib saja; cara pakai di docstring dan `docs/CVE_TECH_MATCHING.md` 7.1.2). Hanya baca, tidak mengubah produk: tarik CVE 2025 sampai sekarang, hitung produk
    (vendor, produk) unik, persentase sampah (`n/a`, nama repo, string versi), duplikasi ejaan, dan berapa dari
    34 tech produksi ketemu dengan bersih. Sekaligus jadi angka recall (`docs/CVE_TECH_MATCHING.md` 7.2.1).
    Hasilnya menentukan seberapa berat normalisasi katalog -- risiko terbesar desain ini.
@@ -561,8 +561,15 @@ branch) dipertahankan; istilahnya kelak diturunkan dari katalog.
 Semuanya diuji di **server dev dulu**, baru produksi.
 
 ### Terbuka (butuh konfirmasi user)
-- **Sumber data**: usulan CVE List V5 sebagai utama (data CNA, cepat, nama kotor) + NVD sebagai pelengkap
-  (CVSS, CPE, KEV; CPE sering telat berhari-hari dan sebagian CVE tak pernah diperkaya). Diputuskan setelah spike.
+- **Sumber data**: CVE List V5 sebagai utama; spike mendukungnya (ADP menyelamatkan hanya 0,1% CVE dan CPE
+  hanya ada di 7,5% data CNA, jadi NVD/CPE tidak bisa jadi sumber identitas; NVD tetap berguna sebagai
+  pelengkap untuk CVSS/KEV). Menunggu konfirmasi user.
+- **Unit yang di-monitor** (BARU, dari spike): vendor (semua produk) atau keluarga produk? 9 dari 34 tech
+  produksi bertipe "satu vendor, banyak produk" (fortinet 311 CVE, splunk 182, juniper 168, palo alto 150,
+  ...). Usulan: dua tingkat, vendor -> keluarga, dan Monitor boleh di salah satunya. Menunggu keputusan user.
+- **Spike ulang** (BARU): jalankan lagi dengan skrip yang sudah diperbaiki, dan `--since` = tanggal `new_cve`
+  mulai berjalan, dengan `tracker.csv` dari DB yang sama. Konfirmasi juga: `tracker.csv` pertama hanya 73 baris
+  (produksi 125 saat `reconcile`), jadi DB mana / sudah dibersihkan?
 - **Tanggal untuk retensi dan jendela mirror**: usulan tanggal publish. Konsekuensinya CVE lama yang baru
   berubah (mis. masuk KEV di 2026 padahal terbit 2023) tidak masuk mirror -- keterbatasan yang sama dengan
   jendela 8 hari sekarang; bisa ditutup dengan mengambil khusus CVE lama yang berubah dan kena tech di-monitor.

@@ -307,6 +307,75 @@ satu tech menyentuh banyak produk (PAN-OS, Prisma, Cloud NGFW): kasus hierarki, 
 (c) `kubernetes | ingress-nginx` cocok kata utuh `nginx` dan vonisnya `bersih` padahal bukan F5 nginx:
 vonis mengukur konsistensi nama, bukan kebenaran produk, jadi tinjau manusia tetap wajib.
 
+#### 7.1.3 Hasil spike di data penuh (2026-10-07)
+
+Laporan lengkap: `docs/spikes/2026-10-07_cve_catalog_report.md` (versi pertama skrip; baca catatan di
+atasnya soal tiga angka yang menyesatkan). 153.413 berkas dibaca, **117.220 CVE terbit sejak 2025-01-01**.
+
+**1. Volume tumbuh cepat.** 2025 = ±43,8 ribu CVE; 2026 sampai 7 Oktober = ±73,4 ribu (sudah 1,7x tahun
+lalu). Per bulan: Maret 2026 5,9 ribu, Juli 9,7 ribu, **September 14,9 ribu (3,9x September 2025)**.
+Sekarang ±500 CVE/hari. Dengan retensi tahun kalender, mirror di akhir 2026 > 130 ribu CVE dan 2027 bisa
+lebih besar lagi (proyeksi kasar, bukan hasil ukur). Ukuran masih wajar untuk Postgres, tapi **ingest dan
+filter harus dirancang untuk ratusan CVE per hari, bukan puluhan**.
+
+**2. Ejaan bukan masalah utama.** Identitas mentah 42.710 -> ternormalisasi 37.988 -> ejaan digabung 37.770:
+penggabungan otomatis hanya **218 (0,6%)**. Normalisasi sederhana cukup; *merge* oleh admin tidak perlu
+masuk versi pertama (sesuai keputusan "ikut dulu"). Yang tersisa untuk digabung kebanyakan **ejaan vendor**
+(`palo_alto_networks` vs `paloaltonetworks`, `n8n io` vs `n8n`, `graylog2` vs `graylog`).
+
+**3. Ukuran katalog didominasi ekor panjang, bukan varian.** 14.633 vendor; **62,7% identitas (23.808)
+hanya punya 1 CVE**, 8.994 punya 2-4, **5.186 (13,7%) punya >= 5 CVE**. Melipat varian versi hanya
+mengurangi 3,8% (37.988 -> 36.543). Artinya picker harus **search-first**, dengan tampilan awal terbatas
+pada identitas >= 5 CVE dan pencarian di seluruh katalog.
+
+**4. Granularitas, bukan ejaan, masalah sebenarnya.** Daftar teratas menurut jumlah CVE didominasi varian
+edisi Windows (tiap versi/edisi 1,4-2,5 ribu CVE) dan `linux | linux` (10.064, kernel); keluarga dengan
+varian terbanyak: Dell Latitude 47, Siemens Industrial Edge 42, D-Link DIR 41 (model perangkat). Daftar
+yang diurutkan menurut popularitas tidak berguna tanpa **pengelompokan keluarga/vendor**.
+
+**5. Cakupan identitas.** 89,3% CVE punya >= 1 produk layak; **ADP menyelamatkan hanya 105 (0,1%)**, jadi
+ADP tidak layak diurus; **CPE hanya ada di 7,5% data CNA**, jadi identitas hampir seluruhnya berasal dari
+isian CNA bebas (rencana lama "query NVD berbasis CPE" tidak punya banyak bahan). "10,7% tanpa produk" adalah
+**batas atas yang menggelembung** (nama CJK dan tiga heuristik sampah yang terlalu galak; sudah diperbaiki,
+angka baru menunggu laporan ulang). 458 identitas (1.030 entri CVE) punya vendor `n/a`, dan 199 vendor
+kosong: identitas tanpa vendor perlu aturan sendiri.
+
+**6. Vonis 34 tech: bersih 10, satu vendor banyak produk 9, ambigu 10, tidak ada 5.**
+- *Bersih*: anydesk, burp suite, ejbca, gitlab, harmony sase, microsoft 365, mikrotik, n8n, suricata, wazuh.
+- *Satu vendor, banyak produk* (butuh pilihan **vendor-level atau per-keluarga**): crowdstrike, fortinet
+  (311 CVE: fortios 80, fortiproxy 44, fortimanager 40, ...), juniper, junos, nessus, okta, palo alto (150),
+  proofpoint, splunk (182).
+- *Ambigu* (produk pihak ketiga ikut menyebut nama tech; **inilah penyebab 52 baris `DELETE` produksi**,
+  dan pilihan yang harus dibuat manusia di picker): `nginx` (f5 nginx open source/plus 44 vs `0xjacky nginx ui`
+  vs kubernetes `ingress-nginx`), `esxi` (vmware esxi vs driver Intel yang menyebut esxi, vendor `n/a`),
+  `jira` (Jira Align vs Jira Service Management/Software), grafana, graylog, mariadb (connector), nagios,
+  outlook, proxmox, thales.
+- *Tidak ada*: `fortigate` (CNA menulis **FortiOS**, identitas `fortinet | fortios` 80 CVE: nama tech
+  berbeda dari nama produk CNA), `new relic`, `maxscale`, `extrahop` (tidak ada CVE di jendela), `perimeter81`
+  (tidak ada; produk yang sama dengan `harmony sase`, jadi dua entri produksi menunjuk satu produk).
+
+**7. Recall tracker: 65 dari 66 baris di jendela ditemukan oleh pencocokan identitas (98,5%).** Satu-satunya
+`hanya-tracker` adalah CVE-2026-75786 (Pandora FMS yang menyebut Grafana), **salah-cocok yang sudah diketahui**
+(bagian 1 dokumen ini), jadi baris yang benar semuanya ditemukan. Tracker di CSV hanya 73 baris (7 di luar
+jendela), jauh di bawah 125 baris laporan `reconcile` produksi: kemungkinan DB berbeda atau sudah dibersihkan,
+perlu dikonfirmasi. **Arah sebaliknya belum bisa disimpulkan**: katalog menemukan jauh lebih banyak CVE
+daripada tracker (fortinet 311 vs 2, palo alto 150 vs 0, splunk 182 vs 0, juniper 168 vs 0, microsoft 365
+542 vs 2), tetapi itu mencampur CVE yang KELEWAT pipeline dengan riwayat yang terbit SEBELUM tracker/tech itu
+ada. Memisahkannya butuh `--since` = tanggal `new_cve` mulai berjalan di DB yang sama.
+
+**Implikasi desain** (sebagai usulan; keputusan di `docs/ROADMAP.md` #19 "Terbuka"):
+1. Yang di-*monitor* perlu dua tingkat: **vendor** (semua produk, mis. Fortinet/Splunk/Juniper/Palo Alto,
+   yang di techstack produksi memang ditulis tingkat vendor) atau **keluarga produk**. Satu tingkat saja
+   tidak cukup untuk 9 tech "satu vendor, banyak produk".
+2. Picker menyajikan **katalog bertingkat vendor -> keluarga**, search-first, default >= 5 CVE.
+3. Karena 10 tech "ambigu", **pemetaan 34 tech lama ke katalog harus ditinjau manusia** (rencana sudah ada);
+   tebakan otomatis akan mengulang kesalahan keyword search.
+4. Normalisasi otomatis sudah cukup untuk versi pertama; vendor `n/a`/kosong dan ejaan vendor
+   (`graylog2`/`graylog`) perlu aturan, merge admin boleh menyusul.
+5. Abaikan ADP; jangan bergantung pada CPE; jaga fallback ke teks ringkasan untuk CVE tanpa identitas.
+6. Pencarian di picker tidak akan menemukan nama panggilan tech (`fortigate` tidak akan menemukan `fortios`
+   karena datanya tidak memuat kata itu); pengguna mencari "forti". Itu batas data, bukan bug.
+
 ### 7.2 Langkah pendukung (belum jadi item roadmap sendiri)
 
 1. **Ukur recall.** Skrip sekali jalan di server: untuk tiap tech, bandingkan isi tracker dengan query

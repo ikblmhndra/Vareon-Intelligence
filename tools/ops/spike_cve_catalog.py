@@ -7,7 +7,9 @@ satu baris skema ditulis: dari data CVE 2025 sampai sekarang, seberapa bersih "k
 
 Hanya pustaka standar Python (3.10+): jalan di server dev atau laptop mana pun, tanpa image/venv
 proyek. Pencocok kata-utuh di bawah SENGAJA salinan lokal `cti_core.tech_match` supaya skrip ini
-tidak bergantung pada versi image yang terpasang.
+tidak bergantung pada versi image yang terpasang. Beda satu hal: normalisasi di sini sadar-unicode
+(nama produk CJK tetap identitas; versi pertama menghapusnya dan menghitungnya sebagai
+"placeholder"), sedangkan `tech_match` masih ASCII (nama tech produksi semuanya ASCII).
 
 Sumber data: CVE List V5 (https://github.com/CVEProject/cvelistV5), format CVE JSON 5.x.
 
@@ -67,7 +69,7 @@ _GENERIC = frozenset(
         "multiple", "web application", "mobile application", "operating system",
     }
 )  # fmt: skip
-_RE_ALNUM = re.compile(r"[a-z0-9]+")
+_RE_ALNUM = re.compile(r"[^\W_]+")  # huruf/angka unicode: nama CJK bukan "placeholder"
 _RE_VERSIONISH = re.compile(r"^v?\d+(\.\d+)+([a-z0-9.\-]*)$")
 _RE_MULTI = re.compile(r";| and | & ")
 _RE_VERSION_TOKEN = re.compile(
@@ -107,7 +109,7 @@ def mentions(tech: str, text: str) -> bool:
     term = normalize(tech)
     if len(term) < _MIN_TERM_LEN:
         return False
-    pattern = rf"(?<![a-z0-9]){re.escape(term)}[0-9]{{0,4}}(?![a-z0-9])"
+    pattern = rf"(?<![^\W_]){re.escape(term)}[0-9]{{0,4}}(?![^\W_])"
     return re.search(pattern, normalize(text)) is not None
 
 
@@ -201,7 +203,12 @@ def parse_record(data: Any) -> CveRecord | None:
 
 
 def junk_reason(product: str) -> str | None:
-    """Alasan nama produk BUKAN identitas yang layak masuk katalog, atau `None`."""
+    """Alasan nama produk BUKAN identitas sama sekali, atau `None`. Sengaja SEMPIT: hanya yang tak
+    bisa dijadikan identitas apa pun (placeholder, kata generik, versi/angka, URL). Bentuk yang
+    janggal tapi tetap produk asli (judul plugin WordPress yang panjang, `owner/repo` GitHub, nama
+    dengan `and`/`&`) BUKAN sampah; itu dicatat terpisah lewat `shape_note`. Versi pertama skrip
+    ini menghitungnya sebagai sampah dan menggelembungkan angka "tanpa produk" (laporan
+    2026-10-07)."""
     norm = normalize(product)
     if norm in _PLACEHOLDERS:
         return "placeholder"
@@ -212,12 +219,19 @@ def junk_reason(product: str) -> str | None:
     if re.fullmatch(r"[0-9 ]+", norm):
         return "angka-saja"
     lowered = product.lower()
-    if "/" in product or "http" in lowered or "github" in lowered:
-        return "url-atau-repo"
+    if "http://" in lowered or "https://" in lowered or "github.com" in lowered:
+        return "url"
+    return None
+
+
+def shape_note(product: str) -> str | None:
+    """Bentuk nama yang TETAP identitas tapi sulit untuk picker (informasi, bukan sampah)."""
+    if re.fullmatch(r"[\w.\-]+/[\w.\-]+", product.strip()):
+        return "owner/repo"
     if len(product) > 80:
-        return "terlalu-panjang"
-    if _RE_MULTI.search(lowered):
-        return "multi-produk"
+        return "judul-panjang"
+    if _RE_MULTI.search(product.lower()):
+        return "memuat-and-atau-titik-koma"
     return None
 
 
@@ -333,6 +347,8 @@ class Report:
     vendors_normalized: int
     junk: Counter[str]
     junk_examples: dict[str, list[str]]
+    shapes: Counter[str]
+    shape_examples: dict[str, list[str]]
     catalog: dict[Identity, dict[str, Any]]
     clusters: list[tuple[str, int, list[tuple[str, int]]]]
     long_tail: dict[str, int]
@@ -380,6 +396,8 @@ def analyze(
     raw_pairs: set[tuple[str, str]] = set()
     junk: Counter[str] = Counter()
     examples: dict[str, list[str]] = defaultdict(list)
+    shapes: Counter[str] = Counter()
+    shape_examples: dict[str, list[str]] = defaultdict(list)
     spellings: dict[str, Counter[str]] = defaultdict(Counter)
     usable = only_junk = no_aff = rescued = with_cpe = 0
 
@@ -398,6 +416,10 @@ def analyze(
                 junk[why] += 1
                 if len(examples[why]) < 5 and product not in examples[why]:
                     examples[why].append(product[:70])
+            elif (note := shape_note(product)) is not None:
+                shapes[note] += 1
+                if len(shape_examples[note]) < 5 and product not in shape_examples[note]:
+                    shape_examples[note].append(product[:70])
         if ids:
             usable += 1
         elif rec.cna:
@@ -466,6 +488,8 @@ def analyze(
         vendors_normalized=len({i.vendor for i in catalog}),
         junk=junk,
         junk_examples=dict(examples),
+        shapes=shapes,
+        shape_examples=dict(shape_examples),
         catalog=catalog,
         clusters=clusters,
         long_tail=long_tail,
@@ -587,6 +611,15 @@ def render(report: Report, *, top: int = 40, today: datetime.date | None = None)
     o.append("\n| Jenis sampah | Entri | Contoh |\n|---|---|---|")
     for why, cnt in report.junk.most_common():
         o.append(f"| {why} | {cnt} | {'; '.join(report.junk_examples.get(why, []))} |")
+    o.append(
+        "\n**Bentuk nama yang janggal tapi TETAP identitas** (bukan sampah; sulit untuk picker, "
+        "dan `owner/repo` biasanya proyek open-source yang namanya ditulis sebagai path repo):\n"
+    )
+    o.append("| Bentuk | Entri | Contoh |\n|---|---|---|")
+    for why, cnt in report.shapes.most_common():
+        o.append(f"| {why} | {cnt} | {'; '.join(report.shape_examples.get(why, []))} |")
+    if not report.shapes:
+        o.append("| - | 0 | - |")
     o.append("\n**Ekor panjang** (identitas menurut jumlah CVE di jendela):\n")
     o.append("| Jumlah CVE | Identitas |\n|---|---|")
     for label, cnt in report.long_tail.items():
@@ -608,8 +641,11 @@ def render(report: Report, *, top: int = 40, today: datetime.date | None = None)
 
     o.append(f"\n## 4. Duplikasi ejaan (kandidat merge), {min(25, len(report.clusters))} teratas\n")
     o.append(
-        "Ejaan berbeda yang setelah dikompaksi jadi identitas yang sama (sisa SESUDAH normalisasi "
-        "huruf/tanda baca):\n"
+        "Ejaan MENTAH berbeda yang dikompaksi (tanpa spasi/tanda baca) jadi kunci yang sama. "
+        "Banyak "
+        "yang sudah satu identitas sejak normalisasi huruf/tanda baca (mis. `Version`/`version`); "
+        'yang BENAR-BENAR tersisa untuk digabung = selisih "ternormalisasi" dan "digabung ejaan" '
+        "di bagian 3.\n"
     )
     o.append("| Kunci | CVE | Ejaan (jumlah) |\n|---|---|---|")
     for key, cnt, spell in report.clusters[:25]:
@@ -664,8 +700,11 @@ def render(report: Report, *, top: int = 40, today: datetime.date | None = None)
             "Per tech, hanya CVE yang terbit di jendela (`di luar` = baris tracker yang terbit "
             "sebelum jendela, tidak bisa dinilai). `hanya-tracker` = ditemukan keyword search tapi "
             "TIDAK oleh pencocokan identitas (salah-cocok lama, atau nama CNA beda); "
-            "`hanya-katalog` = ditemukan identitas tapi TIDAK ada di tracker (kelewat keyword "
-            "search 8 hari, atau terbit sebelum tech ditambahkan).\n"
+            "`hanya-katalog` = ditemukan identitas tapi TIDAK ada di tracker. HATI-HATI: ini "
+            "campuran (a) CVE yang kelewat pipeline dan (b) riwayat yang terbit SEBELUM "
+            "tracker/tech "
+            "itu ada. Untuk mengukur kelewatan pipeline saja, jalankan ulang dengan `--since` = "
+            "tanggal `new_cve` mulai berjalan (dan tracker diambil dari DB yang sama).\n"
         )
         o.append(
             "| Tech | Tracker | Di luar | Di jendela | Keduanya | Hanya tracker | Hanya katalog |"

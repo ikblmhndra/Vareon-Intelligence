@@ -92,11 +92,13 @@ def test_local_matcher_follows_the_shared_rules(tech: str, text: str, expected: 
         ("1.2.3", "mirip-versi"),
         ("v2.0.1-beta", "mirip-versi"),
         ("2024", "angka-saja"),
-        ("owner/repo", "url-atau-repo"),
-        ("https://github.com/x/y", "url-atau-repo"),
-        ("a" * 90, "terlalu-panjang"),
-        ("Foo and Bar", "multi-produk"),
-        ("Foo; Bar", "multi-produk"),
+        ("https://github.com/x/y", "url"),
+        ("github.com/x/y", "url"),
+        # bentuk janggal tapi produk asli: BUKAN sampah (laporan 2026-10-07 salah menghitungnya)
+        ("chatwoot/chatwoot", None),
+        ("a" * 90, None),
+        ("Giveaways and Contests by RafflePress", None),
+        ("Social Media Share Buttons & Social Sharing Icons", None),
         ("PAN-OS", None),
         ("Windows Server 2022, 23H2 Edition (Server Core installation)", None),  # koma sah
         ("Zabbix", None),
@@ -406,3 +408,32 @@ def test_real_ingress_nginx_shows_why_a_clean_verdict_is_not_a_correct_one() -> 
 
     assert res["nginx"].cves == {"CVE-2025-1974"} and res["nginx"].verdict == "bersih"
     assert res["ivanti"].verdict == "satu vendor, banyak produk" and len(res["ivanti"].cves) == 1
+
+
+def test_non_latin_product_names_are_identities_not_placeholders() -> None:
+    """Laporan pertama di data penuh menghitung nama produk CJK (plugin WordPress) sebagai
+    "placeholder" karena normalisasi ASCII menghapusnya. Sekarang tetap identitas."""
+    assert sp.normalize("워드프레스 결제 심플페이") == "워드프레스 결제 심플페이"
+    assert sp.junk_reason("简数采集器") is None
+    c = corpus_of(cve("CVE-2025-0001", prod("某公司", "简数采集器")))
+
+    r = sp.analyze(c, [], None, since=SINCE)
+
+    assert r.with_usable_cna == 1 and r.junk == {}
+    assert sp.mentions("nginx", "nginx 서버") is True  # huruf non-Latin di sebelahnya = batas kata
+
+
+def test_odd_shapes_are_noted_but_stay_identities() -> None:
+    assert sp.shape_note("chatwoot/chatwoot") == "owner/repo"
+    assert sp.shape_note("a" * 90) == "judul-panjang"
+    assert sp.shape_note("Giveaways and Contests by RafflePress") == "memuat-and-atau-titik-koma"
+    assert sp.shape_note("nginx") is None
+    c = corpus_of(
+        cve("CVE-2025-0001", prod("chatwoot", "chatwoot/chatwoot")),
+        cve("CVE-2025-0002", prod("rafflepress", "Giveaways and Contests by RafflePress")),
+    )
+
+    r = sp.analyze(c, [], None, since=SINCE)
+
+    assert r.with_usable_cna == 2 and r.junk == {}
+    assert r.shapes == {"owner/repo": 1, "memuat-and-atau-titik-koma": 1}
