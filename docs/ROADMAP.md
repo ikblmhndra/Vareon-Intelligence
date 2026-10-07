@@ -23,7 +23,7 @@ Isi tiap item: **apa** yang diminta, **keadaan sekarang** (fakta dari repo/stagi
 | 11 | TLP/PAP konsisten di semua objek + MFA/SSO | kebijakan TLP | #5 |
 | 12 | Perbaikan prompt klasifikasi artikel berbasis audit trail (false accept / false reject) | contoh artikel yang salah diklasifikasi | audit trail `raw_enrichment` (sudah jalan 2026-10-05) |
 | 13 | **CI di `main` merah** (3 job), jadi job Deploy belum pernah jalan (5 run, semua `skipped`) | -- | -- |
-| 14 | Logo hilang di export Excel CVE Tracker (Pillow belum jadi dependency) | -- | -- |
+| 14 | Logo hilang di export Excel CVE Tracker (Pillow belum jadi dependency) -- **kode + test selesai 2026-10-07, smoke build image di CI belum** | -- | -- |
 | 15 | Pakai `published_at` di UI/API/dashboard + samakan format tanggal export | keputusan format kolom Acknowledged | backfill `published_at` di produksi |
 | 16 | Dashboard CVE: SLA per severity (ganti rating ambang tetap) | target SLA ack/remediasi per severity | -- |
 | 17 | Dashboard CVE: panel backlog/aging, KEV/EPSS, produk paling sering terdampak | pilihan panel | -- |
@@ -347,6 +347,11 @@ perubahan kolom export 2026-10-06.
 **Yang dibutuhkan**: tidak ada.
 **Selesai bila**: `pillow` jadi dependency `cti-api`, image API tetap lolos smoke CI, dan satu test
 memastikan workbook hasil export memuat 1 gambar.
+**Status 2026-10-07**: `pillow>=10.0` ditambahkan (`uv.lock`: pillow 12.3.0, wheel manylinux saja),
+`test_export_keeps_template_logo` ditambahkan (gagal tanpa pillow, lolos dengan pillow). Yang belum
+terbukti: job `docker` di CI membangun image API. `uv sync --frozen --no-dev --no-editable --package cti-api`
+(langkah stage builder) sudah dicek terpisah dan memasang pillow, tapi `docker build` penuh belum jalan
+karena registry `ghcr.io` tidak terjangkau dari sesi pengembangan.
 
 ## 15. Pakai `published_at` di UI/API/dashboard + samakan format tanggal
 

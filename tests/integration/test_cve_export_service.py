@@ -7,6 +7,7 @@ from __future__ import annotations
 import datetime
 import io
 import re
+import zipfile
 
 import openpyxl
 import pytest
@@ -232,3 +233,23 @@ async def test_reported_date_without_publish_time_shows_the_date_only_not_a_gues
     assert by_id["CVE-2026-0013"] in ("", None)
     # Reported by System tetap terisi (detected_on NOT NULL)
     assert re.fullmatch(r"\d\d:\d\d \d\d-\d\d-\d{4}", ws.cell(row=16, column=5).value)
+
+
+# ── Logo template ─────────────────────────────────────────────────────────────
+
+
+async def test_export_keeps_template_logo(async_db_session: AsyncSession) -> None:
+    """Regression: openpyxl cuma baca gambar kalau Pillow ke-import. Tanpa
+    `pillow` di dependency, logo template (`xl/media/image1.png`, ter-anchor
+    di B1:H4) hilang DIAM-DIAM dari file hasil export -- gak ada error."""
+    await _ensure_clients(async_db_session)
+    async_db_session.add(CveTracker(cve_id="CVE-2026-0007", client_id="default", tech="A"))
+    await async_db_session.flush()
+
+    data = await svc.export_cves_to_excel(async_db_session, client_id="default")
+    _, ws = _load(data)
+
+    # Cek di level zip (bukan cuma `ws._images`): ini yang beneran dibuka user.
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        assert [n for n in zf.namelist() if n.startswith("xl/media/")]
+    assert len(ws._images) == 1

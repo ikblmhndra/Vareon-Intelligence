@@ -52,13 +52,19 @@ router `changelog.py`) -- parser-nya expect header persis
   (R1:V4) digeser; dropdown sisa di V3/V4 (daftar "On Track, At Risk, ...", tidak dipakai apa pun) dibuang.
   Kolom "Date Acknowledged by CTI Team" tidak berubah (`YYYY-MM-DD HH:MM:SS`).
 
+### Diperbaiki
+- **Export CVE Tracker (`GET /api/cve/export`) tidak membawa logo.** Template `.xlsx` punya logo
+  (`xl/media/image1.png`, di B1:H4), tetapi openpyxl hanya membaca gambar kalau Pillow terpasang dan
+  `pillow` belum jadi dependency `cti-api`, jadi logo hilang tanpa error di file hasil export.
+  `pillow` sekarang jadi dependency `cti-api` (`uv.lock` ikut diperbarui) dan ada test regresi di
+  `tests/integration/test_cve_export_service.py`.
+
 ### Diketahui / belum dikerjakan
 - **CI di `main` merah** (`lint`: 2 file belum ter-format; `compose`: `.env` tidak ada di runner; `test`:
   `test_golden_trendmicro` butuh Chromium Playwright dan `test_article_dedup_groups` memakai tanggal
   hard-code), sehingga job Deploy belum pernah jalan. Sampai CI hijau, produksi hanya bisa di-update
   manual (`make deploy`, atau Actions > Deploy > Run workflow). Rinciannya di `docs/ROADMAP.md` #13.
-- Export Excel kehilangan logo template (Pillow belum jadi dependency; sudah begitu sebelum perubahan di
-  atas). `docs/ROADMAP.md` #14. Usulan lanjutan Dashboard CVE dan validasi ticket: #15-#18.
+- Usulan lanjutan Dashboard CVE dan validasi ticket: `docs/ROADMAP.md` #15-#18.
 
 ## [0.2.1] - 2026-10-06
 
