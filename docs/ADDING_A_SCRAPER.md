@@ -94,11 +94,11 @@ from cti_scraper.schedule import spread
 
 class NamaSumber(RSSScraper):
     meta = ScraperMeta(
-        id="nama_sumber",                       # slug, huruf kecil. JANGAN diubah setelah deploy
-        source="Nama Sumber",                   # label tampilan, harus UNIK dan bermakna
+        id="nama_sumber",  # slug, huruf kecil. JANGAN diubah setelah deploy
+        source="Nama Sumber",  # label tampilan, harus UNIK dan bermakna
         schedule=spread("*/30 * * * *", "nama_sumber"),
         tags=("vendor",),
-        legacy_script="nama_sumber",            # dipakai nama folder fixture (lihat langkah 5)
+        legacy_script="nama_sumber",  # dipakai nama folder fixture (lihat langkah 5)
     )
     feeds = ("https://contoh.com/feed.xml",)
 ```
@@ -119,10 +119,14 @@ Atribut RSS yang sering perlu diubah (semua `ClassVar`, lihat
 
 ```python
 class NamaSumber(XPathScraper):
-    meta = ScraperMeta(id="nama_sumber", source="Nama Sumber",
-                       schedule=spread("0 */2 * * *", "nama_sumber"), runtime="light")
+    meta = ScraperMeta(
+        id="nama_sumber",
+        source="Nama Sumber",
+        schedule=spread("0 */2 * * *", "nama_sumber"),
+        runtime="light",
+    )
     url = "https://contoh.com/blog"
-    title_xpath = "(//article//h2)[{i}]"       # {i} diisi 1..max_items kalau indexed=True
+    title_xpath = "(//article//h2)[{i}]"  # {i} diisi 1..max_items kalau indexed=True
     link_xpath = "(//article//h2/a/@href)[{i}]"
     base_url = "https://contoh.com"
 ```
@@ -142,7 +146,7 @@ itu, turunkan `BaseScraper` langsung dan tulis `fetch()` sendiri.
 
 ```python
 def fetch(self, ctx):
-    resp = ctx.http.get("https://api.contoh.com/items")   # client bersama: UA, timeout, rate limit
+    resp = ctx.http.get("https://api.contoh.com/items")  # client bersama: UA, timeout, rate limit
     for row in resp.json()["items"]:
         yield ArticleItem(title=row["title"], url=row["url"], posted_on=ctx.now.date())
 ```

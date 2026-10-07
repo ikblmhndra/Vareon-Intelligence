@@ -22,6 +22,13 @@ pytestmark = pytest.mark.asyncio
 # `_serialize()` (routers/articles.py) diturunin dari `posted_on`, jadi kalau
 # ini ngikutin tanggal ASLI, snapshot `test_list_articles_dedup` bakal geser
 # tiap minggu kalender berganti.
+#
+# JANGAN dipakai buat test yang lewat jendela relatif ke `date.today()`:
+# `get_dedup_groups` cuma ngambil artikel 7 hari terakhir, jadi seed dengan
+# tanggal pinned ini berhenti masuk jendela sejak 2026-10-01 dan
+# `test_article_dedup_groups` merah (CI #11-#16). Test itu seed dengan tanggal
+# asli -- snapshot-nya aman karena `posted_on` dinormalisasi jadi `str` dan
+# respons dedup-groups gak punya field `week`/`month`.
 _TODAY = datetime.date(2026, 9, 24)
 
 _NORMALIZE = path_type(
@@ -40,20 +47,20 @@ _NORMALIZE = path_type(
 )
 
 
-async def _seed_dedup_articles(session: AsyncSession) -> None:
+async def _seed_dedup_articles(session: AsyncSession, posted_on: datetime.date = _TODAY) -> None:
     await AsyncClientRepo(session).ensure_default()
     repo = AsyncArticleRepo(session)
     await repo.upsert(
         url="https://a.example/apt41-1",
         title="Apt41 hits manufacturing sector hard",
         source="SourceA",
-        posted_on=_TODAY,
+        posted_on=posted_on,
     )
     await repo.upsert(
         url="https://b.example/apt41-1",
         title="Apt41 hits manufacturing sector hard!",
         source="SourceB",
-        posted_on=_TODAY,
+        posted_on=posted_on,
     )
 
 
@@ -74,7 +81,7 @@ async def test_article_dedup_groups(
     snapshot: SnapshotAssertion,
     auth_header: Callable[..., dict[str, str]],
 ) -> None:
-    await _seed_dedup_articles(api_session)
+    await _seed_dedup_articles(api_session, posted_on=datetime.date.today())
     resp = await api_client.get("/api/articles/dedup-groups", headers=auth_header())
     assert resp.status_code == 200
     assert resp.json() == snapshot(matcher=_NORMALIZE)

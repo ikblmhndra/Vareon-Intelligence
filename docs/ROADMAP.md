@@ -22,7 +22,7 @@ Isi tiap item: **apa** yang diminta, **keadaan sekarang** (fakta dari repo/stagi
 | 10 | Case/RFI workflow (assignment, SLA, status, audit) terhubung ke tiket CVE | alur kerja tim | -- |
 | 11 | TLP/PAP konsisten di semua objek + MFA/SSO | kebijakan TLP | #5 |
 | 12 | Perbaikan prompt klasifikasi artikel berbasis audit trail (false accept / false reject) | contoh artikel yang salah diklasifikasi | audit trail `raw_enrichment` (sudah jalan 2026-10-05) |
-| 13 | **CI di `main` merah** (3 job), jadi job Deploy belum pernah jalan (5 run, semua `skipped`) | -- | -- |
+| 13 | **CI di `main` merah** (3 job), jadi job Deploy belum pernah jalan (5 run, semua `skipped`) -- **perbaikan selesai 2026-10-07 (diuji lokal), CI hijau + Deploy pertama belum terbukti** | -- | -- |
 | 14 | Logo hilang di export Excel CVE Tracker (Pillow belum jadi dependency) -- **kode + test selesai 2026-10-07, smoke build image di CI belum** | -- | -- |
 | 15 | Pakai `published_at` di UI/API/dashboard + samakan format tanggal export | keputusan format kolom Acknowledged | backfill `published_at` di produksi |
 | 16 | Dashboard CVE: SLA per severity (ganti rating ambang tetap) | target SLA ack/remediasi per severity | -- |
@@ -334,6 +334,33 @@ test_articles_router_snapshot.py` (`_TODAY`), 2 file yang disebut di atas.
 `playwright` kalau browser tidak ada (seperti test Docker yang sudah di-skip otomatis).
 **Selesai bila**: CI hijau di `main`, dan Deploy terpicu sekali (otomatis atau `workflow_dispatch`) dan
 lolos `deploy.sh` dengan health check. Sampai itu, produksi hanya bisa di-update manual (`make deploy`, atau Actions > Deploy > Run workflow).
+**Status 2026-10-07**: keempat penyebab diperbaiki, masing-masing direproduksi lalu dibuktikan di lokal:
+1. `lint`: `ruff format` pada 2 file (`ruff format --check .` bersih, 574 file).
+2. `compose`: step menyetel `CTI_ENV_FILE: .env.example` (mekanisme yang sudah didokumentasikan di kepala
+   `docker-compose.yml`); `docker compose config -q` lolos untuk profil default dan `app`.
+3a. `test`: step `uv run playwright install --with-deps chromium` sebelum pytest, lewat playwright di venv
+   supaya revisi Chromium sama dengan `uv.lock` (1.63.0 minta revisi 1243; gagal lokal dengan penyebab yang
+   sama persis dengan CI karena hanya ada revisi 1194). Isi test dibuktikan lolos dengan Chromium asli.
+3b. `test_article_dedup_groups` seed dengan `date.today()`; versi lama gagal dan versi baru lolos pada
+   Postgres 16 lokal (8/8 snapshot lolos). `_TODAY` pinned sengaja dipertahankan untuk test yang snapshot-nya
+   memuat `week`/`month`.
+**Belum terbukti**: CI penuh hijau (baru ada setelah PR dibuat; CI hanya jalan pada `pull_request` dan push ke
+`main`), dan Deploy yang terpicu pertama kali di runner prod. Langkah `playwright install --with-deps` belum
+dijalankan di runner GitHub (sandbox pengembangan tidak boleh memasang browser); `docker/api.Dockerfile` dan
+`docker/worker.Dockerfile` memakai perintah yang sama lewat `uv tool run`.
+**Ditemukan saat PR #11 dijalankan di CI (2026-10-07), ikut diperbaiki di PR yang sama karena memblokir "CI hijau"**:
+`tests/unit/test_ioc_extractor.py::test_domain_defanged_regex_does_not_catastrophically_backtrack` merah di
+runner GitHub (satu-satunya kegagalan dari 2240 test; dua test yang diperbaiki di atas lolos, jadi langkah
+`playwright install` terbukti jalan). Penyebab: ambang alarm 5 detik untuk 2000 pengulangan, padahal
+`_RE_DOMAIN_DEFANGED` (`{0,10}`) berbiaya LINEAR yang besar (±0,45 ms per karakter; 1,3 s / 2,7 s / 5,4 s untuk
+500 / 1000 / 2000 pengulangan di mesin dev, ±5 s di runner), jadi lolos-gagalnya mengikuti kecepatan runner, bukan
+ReDoS (run #16 lolos tipis). Ambang dinaikkan ke 60 detik; regex tak terbatas (`*`) tumbuh eksponensial (x16
+tiap +4 pengulangan) sehingga tetap tertangkap (disimulasikan: gagal tepat di detik ke-60). Tidak ada perubahan
+pada regex produksi.
+**Temuan yang BELUM dikerjakan**: biaya ±0,45 ms per karakter itu sendiri nyata di produksi -- `extract_iocs()`
+pada satu artikel ±12KB makan ±5 detik CPU sinkron di stage enrichment. Bukan ReDoS dan bukan bagian #13; kalau
+mau dioptimalkan, titiknya `_RE_DOMAIN_DEFANGED` (mis. saringan awal sebelum regex dijalankan), dengan korpus
+`tests/unit/test_ioc_extractor.py` sebagai pengaman byte-identik.
 
 ## 14. Logo hilang di export Excel CVE Tracker
 
