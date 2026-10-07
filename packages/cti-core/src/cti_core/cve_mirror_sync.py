@@ -35,7 +35,7 @@ from __future__ import annotations
 import datetime
 import json
 import re
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -44,6 +44,13 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from cti_core.catalog_resolve import resolve_all
+from cti_core.cve_promotion import (
+    EntryView,
+    Mode,
+    forget_shadow,
+    load_entries,
+    promote_record,
+)
 from cti_core.cve_record import (
     STATE_PUBLISHED,
     cna_summary,
@@ -303,6 +310,11 @@ class SyncReport:
     failed: int = 0
     dropped: int = 0
     pending: int = 0
+    promoted_new: int = 0
+    """Baris `cve_tracker` BARU dari promosi `live`."""
+    promoted_updated: int = 0
+    shadow_rows: int = 0
+    """Baris `cve_promotion_shadow` yang dievaluasi (mode `shadow`)."""
 
     def as_dict(self) -> dict[str, Any]:
         out = {k: v for k, v in self.__dict__.items() if k != "fetch_time"}
@@ -337,6 +349,7 @@ def sync_once(
     now: datetime.datetime,
     *,
     max_files: int = DEFAULT_MAX_FILES,
+    promote: Mode = "off",
 ) -> SyncReport:
     """Satu siklus ingest. Tidak melempar untuk kegagalan jaringan: dilaporkan di `status="error"`
     dan state TIDAK berubah (siklus berikut mengulang). Siklus lain yang masih berjalan ->
@@ -345,7 +358,7 @@ def sync_once(
     if not session.scalar(select(func.pg_try_advisory_lock(LOCK_KEY))):
         return SyncReport(status="locked")
     try:
-        return _sync_locked(session, fetch, now, max_files)
+        return _sync_locked(session, fetch, now, max_files, promote)
     finally:
         try:
             session.execute(select(func.pg_advisory_unlock(LOCK_KEY)))
@@ -354,7 +367,7 @@ def sync_once(
 
 
 def _sync_locked(
-    session: Session, fetch: Fetcher, now: datetime.datetime, max_files: int
+    session: Session, fetch: Fetcher, now: datetime.datetime, max_files: int, promote: Mode
 ) -> SyncReport:
     report = SyncReport()
     states = JobStateRepo(session)
@@ -384,13 +397,14 @@ def _sync_locked(
     repo = CveMirrorRepo(session, catalog)
     aliases = catalog.alias_map()
     today = now.date()
+    tech_entries: list[EntryView] = load_entries(session) if promote != "off" else []
     queue = list(work.values())
     carry: list[PendingItem] = queue[max_files:]
     retry: list[PendingItem] = []
 
     for done, item in enumerate(queue[:max_files], start=1):
         try:
-            _process(session, repo, fetch, item, today, aliases, report)
+            _process(session, repo, fetch, item, today, aliases, report, promote, tech_entries)
         except Exception as e:  # FetchError, record janggal, error DB: batch jalan terus
             _record_failure(repo, item, e, retry, report)
         if done % COMMIT_EVERY == 0:
@@ -414,6 +428,8 @@ def _process(
     today: datetime.date,
     aliases: Mapping[str, str],
     report: SyncReport,
+    promote: Mode = "off",
+    entries: Sequence[EntryView] = (),
 ) -> None:
     if not _RE_CVE_ID.match(item.cve_id) or not valid_record_link(item.link):
         report.skipped += 1
@@ -424,6 +440,17 @@ def _process(
         raise FetchError("record bukan objek JSON")
     with session.begin_nested():
         outcome, reason = apply_record(repo, data, cve_id=item.cve_id, today=today, aliases=aliases)
+        # Promosi di savepoint YANG SAMA: gagal = record ikut dicoba ulang, tak setengah jadi.
+        if promote != "off":
+            if outcome in ("created", "updated"):
+                rec = repo.get(item.cve_id)
+                if rec is not None:
+                    done = promote_record(session, rec, entries, promote)
+                    report.promoted_new += done.created
+                    report.promoted_updated += done.updated
+                    report.shadow_rows += done.shadow
+            elif outcome == "removed":
+                forget_shadow(session, item.cve_id)
     if outcome == "skipped":
         log.info("cve_mirror_record_skipped", cve_id=item.cve_id, reason=reason)
     setattr(report, outcome, getattr(report, outcome) + 1)

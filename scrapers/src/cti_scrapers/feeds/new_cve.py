@@ -48,7 +48,11 @@ from cti_core.cve_record import (
     mitre_datetime,  # noqa: F401  (re-ekspor: dipakai tools/ops/backfill_cve_published_at.py)
     parse_cve_record,
 )
-from cti_core.tech_match import mentions, normalize
+from cti_core.tech_match import (
+    mentions,
+    relevant_techs,
+    usable_products,  # noqa: F401  (re-ekspor: dipakai tools/ops/reconcile_cve_tech.py)
+)
 from cti_scraper.base import BaseScraper, ScrapeContext, ScraperMeta
 from cti_scraper.errors import ParseError, ScraperError
 from cti_scraper.items import CveItem, Item
@@ -59,24 +63,6 @@ from cti_scrapers.feeds._pacing import get_waiting
 _NVD_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 _TENABLE_URL = "https://www.tenable.com/cve/search"
 _MITRE_URL = "https://cveawg.mitre.org/api/cve"
-
-
-# Isian "produk" yang bukan nama produk -- CNA kadang mengisi ini kalau tak punya data.
-_PLACEHOLDER_PRODUCTS = frozenset({"", "n a", "na", "none", "unknown", "unspecified", "various"})
-
-
-def usable_products(products: list[str]) -> list[str]:
-    """`products` tanpa isian placeholder ("n/a", "unknown", ...)."""
-    return [p for p in products if normalize(p) not in _PLACEHOLDER_PRODUCTS]
-
-
-def relevant_techs(techs: list[str], summary: str, products: list[str]) -> list[str]:
-    """Subset `techs` yang beneran terdampak. `products` = vendor/product/packageName/CPE dari
-    record MITRE; kalau CNA tak mengisinya sama sekali baru jatuh ke ringkasan (satu-satunya
-    petunjuk yang tersisa). Aturan "cocok" ada di `cti_core.tech_match` (satu definisi buat
-    scraper, `score.py`, `cve_priority`, dan `tools/ops/reconcile_cve_tech.py`)."""
-    haystacks = usable_products(products) or [summary]
-    return [t for t in techs if any(mentions(t, h) for h in haystacks)]
 
 
 class NewCve(BaseScraper):

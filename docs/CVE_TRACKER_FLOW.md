@@ -171,6 +171,9 @@ di `main`).** Sebelumnya **tidak ada** notifikasi otomatis per CVE baru: `_cve_s
 - **Deploy**: tambahkan `"cve_new": <thread id>` ke `TELEGRAM__THREAD_IDS` di `.env` host (nilai `0` = chat
   utama tanpa thread). `.env.example` dan `.env.prod.template` sudah memuatnya.
 - Kalau pipeline diganti mirror -> promosi (#19), titik panggilnya sama: "baris `cve_tracker` baru dibuat".
+  Sudah begitu di kode (irisan 4, `CVE_MIRROR__PROMOTE=live`): `cve_promotion` mengisi
+  `Session.info["cve_new_rows"]` dan tugas `cve.mirror_sync` memanggil `finish_run` sesudah commit. Default
+  `off`: alur di atas tidak berubah.
 
 Yang lain terkait CVE (tidak berubah):
 

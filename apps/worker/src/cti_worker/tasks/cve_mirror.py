@@ -45,6 +45,7 @@ def make_fetcher(client: httpx.Client, timeout_s: float) -> Fetcher:
 def cve_mirror_sync(self: Any) -> dict[str, object]:
     from cti_core.cve_mirror_sync import sync_once
     from cti_core.db.engine import sync_session
+    from cti_scraper.sinks import finish_run
 
     cfg = get_settings().cve_mirror
     if not cfg.enabled:
@@ -60,7 +61,12 @@ def cve_mirror_sync(self: Any) -> dict[str, object]:
             make_fetcher(client, cfg.request_timeout_s),
             datetime.datetime.now(datetime.UTC),
             max_files=cfg.max_files_per_run,
+            promote=cfg.promote,
         )
+        # Sama dengan `Runner`: ringkasan Telegram CVE baru dikirim SETELAH commit (ia membaca ulang
+        # baris dari DB). Tanpa baris baru (mode off/shadow) ini tidak melakukan apa pun.
+        session.commit()
+        finish_run(session)
     return report.as_dict()
 
 

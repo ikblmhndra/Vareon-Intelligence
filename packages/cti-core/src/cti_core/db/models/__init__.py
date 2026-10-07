@@ -34,7 +34,7 @@ from cti_core.db.models.cve import (
     CveTracker,
     CveTTP,
 )
-from cti_core.db.models.cve_mirror import CveRecord, CveRecordProduct
+from cti_core.db.models.cve_mirror import CvePromotionShadow, CveRecord, CveRecordProduct
 from cti_core.db.models.ioc import IOC, IOCFeedback, IOCSource, IOCTag, IOCThreatActor
 from cti_core.db.models.ioc_reference import IocAllowlistEntry, ThreatFeedEntry
 from cti_core.db.models.malware_trend import MalwareTrend
@@ -80,6 +80,7 @@ __all__ = [
     "CveMention",
     "CveNewsletterMention",
     "CvePoc",
+    "CvePromotionShadow",
     "CveRecord",
     "CveRecordProduct",
     "CveReference",

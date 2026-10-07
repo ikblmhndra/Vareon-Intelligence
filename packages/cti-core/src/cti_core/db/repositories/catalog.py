@@ -30,7 +30,7 @@ from cti_core.db.models.catalog import (
     CatalogFamilyAlias,
     CatalogVendor,
 )
-from cti_core.db.models.cve_mirror import CveRecord, CveRecordProduct
+from cti_core.db.models.cve_mirror import CvePromotionShadow, CveRecord, CveRecordProduct
 
 _VENDOR_KEY_MAX = 300
 _VENDOR_DISPLAY_MAX = 300
@@ -281,6 +281,10 @@ class CveMirrorRepo:
         """Hapus CVE terbit sebelum `cutoff` (anak ikut lewat FK `ON DELETE CASCADE`). TIDAK
         menyentuh katalog, statistik, `cve_tracker`, maupun ticket. Balikin jumlah CVE terhapus."""
         result = self.session.execute(delete(CveRecord).where(CveRecord.published_date < cutoff))
+        # cerminan mode bayangan tak ber-FK ke mirror: dibuang dengan tanggal terbit yang sama
+        self.session.execute(
+            delete(CvePromotionShadow).where(CvePromotionShadow.published_date < cutoff)
+        )
         self.session.expire_all()
         return int(getattr(result, "rowcount", 0) or 0)
 

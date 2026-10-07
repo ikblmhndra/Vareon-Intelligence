@@ -16,6 +16,7 @@ from functools import lru_cache
 from typing import TYPE_CHECKING, Any
 
 from cti_core.config import get_settings
+from cti_core.cve_promotion import NEW_CVE_ROWS_KEY
 from sqlalchemy.orm import Session
 
 from cti_scraper.errors import BackpressureError
@@ -197,8 +198,9 @@ def _cve_sink(item: CveItem, meta: ScraperMeta, session: Session) -> None:
         session.info.setdefault(_NEW_CVE_KEY, []).append((item.cve_id, item.client_id))
 
 
-_NEW_CVE_KEY = "cve_new_rows"
-"""Kunci `Session.info`: [(cve_id, client_id)] baris `cve_tracker` yang DIBUAT run ini."""
+_NEW_CVE_KEY = NEW_CVE_ROWS_KEY
+"""Kunci `Session.info`: [(cve_id, client_id)] baris `cve_tracker` yang DIBUAT run ini. Satu
+definisi dengan promosi mirror (`cti_core.cve_promotion`), yang juga mengisinya."""
 
 
 def finish_run(session: Session) -> None:

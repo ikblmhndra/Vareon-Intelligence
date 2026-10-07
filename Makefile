@@ -1,5 +1,6 @@
 # Jalan pintas operasional. Detail: README.md dan docs/CUTOVER_RUNBOOK.md.
 .PHONY: help fresh-deploy fresh-status deploy backfill-published-at backfill-cve-mirror
+.PHONY: promote-cve-mirror compare-promotion-shadow
 
 help:
 	@echo "make fresh-deploy [ARGS='--skip-build --skip-nginx']  deploy dari nol di host ini (idempoten)"
@@ -7,6 +8,8 @@ help:
 	@echo "make deploy [ARGS='--dry-run --skip-backup']      update stack yang SUDAH jalan (backup, build, migrasi, cek sehat, rollback otomatis)"
 	@echo "make fresh-status                                     status container stack"
 	@echo "make backfill-cve-mirror SOURCE=/data/cvelistV5 [ARGS='--apply']  isi mirror CVE + katalog tech dari clone/zip CVE List V5 (laporan saja tanpa --apply)"
+	@echo "make promote-cve-mirror MODE=shadow|live [ARGS='--apply --entry fortigate']  promosi mirror -> techstack ke seluruh mirror (laporan saja tanpa --apply)"
+	@echo "make compare-promotion-shadow SINCE=2026-09-01 [ARGS='--client acme']  bandingkan bayangan dengan cve_tracker (hanya baca)"
 	@echo "make backfill-published-at [ARGS='--apply --client acme']  isi jam publish MITRE CVE lama (laporan saja tanpa --apply)"
 
 fresh-deploy:
@@ -35,3 +38,20 @@ backfill-cve-mirror:
 	docker compose --env-file docker/stack.env --profile app run --rm --no-deps -T \
 	  -v "$(CURDIR)/tools:/tools:ro" -v "$(abspath $(SOURCE)):/data/cvelist:ro" --entrypoint python worker \
 	  /tools/ops/backfill_cve_mirror.py --source /data/cvelist $(ARGS)
+
+# Promosi mirror -> techstack (ROADMAP #19 irisan 4) terhadap SELURUH mirror: mengisi riwayat bayangan
+# sebelum perbandingan, atau riwayat entri yang baru di-Monitor. Tanpa ARGS = laporan (di-rollback);
+# `ARGS=--apply` baru menulis. MODE=shadow hanya menulis cve_promotion_shadow; MODE=live menulis
+# cve_tracker (tanpa notifikasi). Playbook: docs/CVE_CATALOG_DESIGN.md 8.
+promote-cve-mirror:
+	@test -n "$(MODE)" || { echo "MODE=shadow|live wajib diisi"; exit 2; }
+	docker compose --env-file docker/stack.env --profile app run --rm --no-deps -T \
+	  -v "$(CURDIR)/tools:/tools:ro" --entrypoint python worker \
+	  /tools/ops/promote_cve_mirror.py --mode $(MODE) $(ARGS)
+
+# Hanya baca. Prasyarat: bayangan terisi (promote-cve-mirror MODE=shadow ARGS=--apply).
+compare-promotion-shadow:
+	@test -n "$(SINCE)" || { echo "SINCE=YYYY-MM-DD wajib diisi"; exit 2; }
+	docker compose --env-file docker/stack.env --profile app run --rm --no-deps -T \
+	  -v "$(CURDIR)/tools:/tools:ro" --entrypoint python worker \
+	  /tools/ops/compare_promotion_shadow.py --since $(SINCE) $(ARGS)

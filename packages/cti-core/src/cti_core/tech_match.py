@@ -75,3 +75,21 @@ def matching_names(names: Iterable[str], text: str) -> list[str]:
 def mentions_any(names: Iterable[str], text: str) -> bool:
     """Ada tech di `names` yang disebut `text`."""
     return bool(matching_names(names, text))
+
+
+# Isian "produk" yang bukan nama produk -- CNA kadang mengisi ini kalau tak punya data.
+_PLACEHOLDER_PRODUCTS = frozenset({"", "n a", "na", "none", "unknown", "unspecified", "various"})
+
+
+def usable_products(products: list[str]) -> list[str]:
+    """`products` tanpa isian placeholder ("n/a", "unknown", ...)."""
+    return [p for p in products if normalize(p) not in _PLACEHOLDER_PRODUCTS]
+
+
+def relevant_techs(techs: list[str], summary: str, products: list[str]) -> list[str]:
+    """Subset `techs` yang beneran terdampak. `products` = vendor/product/packageName/CPE dari
+    record MITRE; kalau CNA tak mengisinya sama sekali baru jatuh ke ringkasan (satu-satunya
+    petunjuk yang tersisa). Gate teks `new_cve`, dan jalur entri tanpa target di promosi mirror
+    (`cti_core.cve_promotion`); pindah ke sini supaya keduanya satu definisi."""
+    haystacks = usable_products(products) or [summary]
+    return [t for t in techs if any(mentions(t, h) for h in haystacks)]

@@ -168,6 +168,11 @@ class CveMirrorSettings(_StrictModel):
     """MATI secara default: tugas `cve.mirror_sync`/`cve.mirror_purge` tetap terjadwal tapi langsung
     kembali. Dinyalakan dulu di dev (mode bayangan, `docs/CVE_CATALOG_DESIGN.md` 8); ganti nilai
     butuh restart worker (env dibaca sekali per proses)."""
+    promote: Literal["off", "shadow", "live"] = "off"
+    """Apa yang dilakukan ingest dengan record yang baru masuk mirror (`cti_core.cve_promotion`):
+    `off` = hanya mirror; `shadow` = tulis `cve_promotion_shadow` untuk dibandingkan dengan
+    `new_cve`, `cve_tracker` tidak disentuh; `live` = tulis `cve_tracker` (+ ringkasan Telegram).
+    Hanya berlaku bila `enabled`. Jangan `live` sebelum perbandingan bayangan ditinjau."""
     max_files_per_run: int = 3000
     """Batas unduhan record per siklus (kelebihan dibawa ke siklus berikut lewat state). Hari
     biasa ratusan sampai ~2.000 berkas; catch-up setelah mati lama bisa lebih besar."""

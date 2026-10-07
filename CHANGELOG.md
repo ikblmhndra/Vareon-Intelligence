@@ -12,7 +12,7 @@ router `changelog.py`) -- parser-nya expect header persis
 1. Jalankan migrasi (`up -d` sudah menjalankan service `migrate`): revisi baru `e8c2a4b6d1f3` (kolom
    nullable `cve_tracker.published_at`, aman untuk data lama), `b7e3d9a1c5f2` (tabel katalog/mirror/target +
    `techstack_entries.active`, semua entri tetap aktif) dan `d4a9c7e1b3f6` (`cvss_vector` jadi TEXT, hanya
-   mengubah metadata). Kontrak API hanya bertambah:
+   mengubah metadata) dan `e5b2d8f4a7c1` (tabel `cve_promotion_shadow`, kosong). Kontrak API hanya bertambah:
    `GET /api/cve/dashboard`.
 2. Jalankan sekali `make backfill-published-at` (laporan dulu, lalu `ARGS='--apply'`;
    `docs/SCRAPER_MAINTENANCE.md` 4.H) supaya CVE lama punya jam di kolom "CVE Reported Date" export --
@@ -24,6 +24,16 @@ router `changelog.py`) -- parser-nya expect header persis
    skrip yang membaca file export per posisi kolom harus disesuaikan.
 
 ### Ditambah
+- **Promosi mirror -> `cve_tracker` dengan mode bayangan** (`docs/ROADMAP.md` #19, irisan 4):
+  `cti_core.cve_promotion` mencocokkan tiap CVE mirror ke entri techstack aktif per client (target keluarga >
+  target vendor > gate teks lama untuk entri tanpa target; satu baris per (CVE, client)). Flag
+  `CVE_MIRROR__PROMOTE=off|shadow|live` (default `off`, hanya berlaku bila `CVE_MIRROR__ENABLED=true`):
+  `shadow` menulis tabel baru `cve_promotion_shadow` (revisi `e5b2d8f4a7c1`) tanpa menyentuh `cve_tracker`;
+  `live` menulis `cve_tracker` (+ ringkasan Telegram CVE baru yang sudah ada). Tool `make promote-cve-mirror`
+  (seluruh mirror, laporan dulu) dan `make compare-promotion-shadow` (bayangan vs `new_cve`, dengan sebab
+  selisih). Gate teks `relevant_techs` pindah ke `cti_core.tech_match` (perilaku `new_cve` tidak berubah).
+  Entri techstack nonaktif (`active=false`) tidak lagi ikut `reference_data` (semua entri sekarang aktif,
+  jadi tidak ada perubahan perilaku). `new_cve` tetap jalan; mematikannya = irisan 7.
 - **Ingest mirror CVE dari CVE List V5** (`docs/ROADMAP.md` #19, irisan 3): tugas `cve.mirror_sync` (tiap 5 menit,
   kursor + catch-up lewat `deltaLog.json` + antrean percobaan ulang di `job_state`) dan `cve.mirror_purge`
   (retensi tahun kalender, harian 03:30 UTC), skrip isi awal `tools/ops/backfill_cve_mirror.py`

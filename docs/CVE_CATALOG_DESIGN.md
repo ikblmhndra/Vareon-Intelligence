@@ -1,7 +1,7 @@
 # Rancangan: mirror CVE, katalog tech, dan Monitor (ROADMAP #19)
 
-Status: **irisan 1 (resolver), 2 (skema, model, repositori), dan 3 (ingest) SELESAI di branch; irisan
-4-7 masih rancangan** (2026-10-07). Diturunkan dari keputusan user, hasil spike di data
+Status: **irisan 1 (resolver), 2 (skema, model, repositori), 3 (ingest), dan 4 (promosi + mode
+bayangan) SELESAI di branch; irisan 5-7 masih rancangan** (2026-10-07). Diturunkan dari keputusan user, hasil spike di data
 penuh (`docs/spikes/2026-10-07_cve_catalog_report_v2.md`, tafsir di `docs/CVE_TECH_MATCHING.md` 7.1.3), dan
 alur CVE Tracker yang sekarang (`docs/CVE_TRACKER_FLOW.md`; **baca bagian 10-nya**, itu invarian yang
 harus dijaga). Hal yang belum diverifikasi ditandai **[asumsi]**; yang diverifikasi ditandai **[dicek]**.
@@ -250,6 +250,29 @@ dibuang tetap utuh. Statistik katalog tidak turun (kolom `*_seen_total`).
      dilihat user. Ukuran tabel dan waktu retensi/backfill belum diukur di data penuh (lakukan di dev
      sebelum menyalakan flag di prod).
 4. **Promosi + pencocokan** ke `cve_tracker` (flag, mode bayangan), memakai `upsert_with_status`.
+   **SELESAI** (flag `CVE_MIRROR__PROMOTE=off|shadow|live`, default `off`, hanya berlaku bila
+   `CVE_MIRROR__ENABLED`):
+   - `cti_core.cve_promotion`: `choose` (murni: target keluarga > target vendor > teks, lalu nama
+     abjad, lalu `entry_id`; entri bertarget TIDAK dicocokkan lewat teks; entri tanpa target memakai gate
+     teks lama `tech_match.relevant_techs`, kini dipindah ke `cti_core.tech_match`), `promote_record`,
+     `promote_all`. `live` menulis `cve_tracker` lewat `upsert_with_status` (bentuk baris sama dengan
+     `_cve_sink`: skor 0.0 dan vektor "" bila tak ada metrik; `detected_on` server saat INSERT; enrichment,
+     ticket, FP tidak disentuh; tidak pernah menghapus baris tracker) dan mengisi
+     `Session.info["cve_new_rows"]`, jadi ringkasan Telegram yang ada jalan lewat `finish_run` (dipanggil
+     tugas `cve.mirror_sync` sesudah commit). `shadow` menulis tabel baru `cve_promotion_shadow`
+     (revisi `e5b2d8f4a7c1`) dan tidak menyentuh tracker; bayangan ikut dibuang retensi.
+   - Promosi satu record jalan di savepoint yang sama dengan upsert mirror (gagal = record dicoba ulang).
+   - `reference_data` (`techstack`, `techstack_by_client`) kini hanya memuat entri `active`.
+   - Tool: `tools/ops/promote_cve_mirror.py` (`make promote-cve-mirror`; seluruh mirror; laporan =
+     rollback; jalur "entri baru di-Monitor" lewat `--entry`) dan `tools/ops/compare_promotion_shadow.py`
+     (`make compare-promotion-shadow`; kategori sama / tech beda / hanya bayangan / hanya tracker +
+     sebab).
+   - **Belum / sengaja ditunda**: mematikan `new_cve` (irisan 7; selama `live` dan `new_cve` jalan
+     bersama, keduanya meng-upsert baris yang sama dan `tech` bisa bergantian, tidak ada data hilang);
+     tab CVEs/dashboard yang menyembunyikan entri nonaktif (irisan 5, perubahan API); pemicu otomatis
+     "entri baru di-Monitor" dari UI (irisan 5, saat ini lewat tool). Gate teks memakai vendor/produk
+     hasil resolver (`vendor_raw`/`product_raw`/`product_norm`), bukan `packageName`/CPE mentah seperti
+     `new_cve`: selisihnya akan terlihat di perbandingan bayangan.
 5. **API katalog/CVE DB/Monitor** + kontrak.
 6. **UI** All Tech / Monitored Tech / CVE DB.
 7. Pemetaan 34 entri + cutover.

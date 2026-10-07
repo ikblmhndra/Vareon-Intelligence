@@ -22,9 +22,11 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     String,
     Text,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -84,3 +86,33 @@ class CveRecordProduct(Base):
     """`cpe` atau `cna` (asal identitas)."""
 
     record: Mapped[CveRecord] = relationship(back_populates="products")
+
+
+class CvePromotionShadow(Base):
+    """Hasil promosi MODE BAYANGAN (`cve_mirror.promote="shadow"`, ROADMAP #19 irisan 4): untuk
+    (CVE, client) mana pipeline mirror AKAN membuat baris `cve_tracker`, dengan tech dan entri
+    mana, TANPA menulis ke `cve_tracker`. Dibandingkan dengan tracker hasil `new_cve` oleh
+    `tools/ops/compare_promotion_shadow.py` sebelum cutover (`docs/CVE_CATALOG_DESIGN.md` 8.4).
+
+    Satu baris per (CVE, client) seperti tracker. Dibuang bersama mirror oleh retensi
+    (`published_date` disalin ke sini karena tak ada FK ke `cve_records`)."""
+
+    __tablename__ = "cve_promotion_shadow"
+    __table_args__ = (Index("ix_cve_promotion_shadow_published_date", "published_date"),)
+
+    cve_id: Mapped[str] = mapped_column(String(20), primary_key=True)
+    client_id: Mapped[str] = mapped_column(
+        ForeignKey("clients.client_id", ondelete="CASCADE"), primary_key=True, index=True
+    )
+    tech: Mapped[str] = mapped_column(String(200), nullable=False)
+    """Nama entri techstack yang menang (`techstack_entries.name`), nilai yang akan jadi
+    `cve_tracker.tech`."""
+    entry_id: Mapped[int] = mapped_column(
+        ForeignKey("techstack_entries.id", ondelete="CASCADE"), nullable=False
+    )
+    specificity: Mapped[str] = mapped_column(String(10), nullable=False)
+    """`family` | `vendor` | `text` (`cti_core.cve_promotion`)."""
+    published_date: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+    evaluated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
