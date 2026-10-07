@@ -378,3 +378,34 @@ def test_a_concurrent_sync_is_refused_while_the_lock_is_held(session: Session) -
             other.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": LOCK_KEY})
     assert r.status == "locked" and net.calls == [] and count(session) == 0
     assert sync_once(session, net, NOW).created == 1  # kunci sudah lepas
+
+
+LONG_VECTOR = (
+    "CVSS:4.0/AV:L/AC:H/AT:P/PR:L/UI:N/VC:H/VI:H/VA:H/SC:H/SI:H/SA:H/E:U/CR:H/IR:H/AR:H/MVC:H/"
+    "MVI:H/MVA:H/MSI:H/MSA:H/S:P/AU:N/V:C"
+)
+
+
+def test_cvss_vectors_longer_than_100_chars_are_stored_in_mirror_and_tracker(
+    session: Session,
+) -> None:
+    """Regresi data nyata (CVE-2025-1787: 125 karakter): kolom dulu `VARCHAR(100)`."""
+    from cti_core.db.models.auth import Client
+    from cti_core.db.models.cve import CveTracker
+
+    assert len(LONG_VECTOR) > 100
+    rec = record("CVE-2025-0001")
+    rec["containers"]["cna"]["metrics"] = [
+        {"cvssV4_0": {"baseScore": 5.8, "baseSeverity": "MEDIUM", "vectorString": LONG_VECTOR}}
+    ]
+    net = FakeNet()
+    net.serve(delta("2026-10-07T11:03:20.000Z", ["CVE-2025-0001"]), rec)
+    r = sync_once(session, net, NOW)
+    assert (r.created, r.failed) == (1, 0)
+    row = session.get(CveRecord, "CVE-2025-0001")
+    assert row is not None and row.cvss_vector == LONG_VECTOR
+
+    session.add(Client(client_id="acme", name="Acme"))
+    session.flush()
+    session.add(CveTracker(cve_id="CVE-2025-0001", client_id="acme", cvss_vector=LONG_VECTOR))
+    session.flush()

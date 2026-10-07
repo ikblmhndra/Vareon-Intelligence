@@ -10,7 +10,9 @@ router `changelog.py`) -- parser-nya expect header persis
 
 **Saat upgrade dari 0.2.1:**
 1. Jalankan migrasi (`up -d` sudah menjalankan service `migrate`): revisi baru `e8c2a4b6d1f3` (kolom
-   nullable `cve_tracker.published_at`, aman untuk data lama). Kontrak API hanya bertambah:
+   nullable `cve_tracker.published_at`, aman untuk data lama), `b7e3d9a1c5f2` (tabel katalog/mirror/target +
+   `techstack_entries.active`, semua entri tetap aktif) dan `d4a9c7e1b3f6` (`cvss_vector` jadi TEXT, hanya
+   mengubah metadata). Kontrak API hanya bertambah:
    `GET /api/cve/dashboard`.
 2. Jalankan sekali `make backfill-published-at` (laporan dulu, lalu `ARGS='--apply'`;
    `docs/SCRAPER_MAINTENANCE.md` 4.H) supaya CVE lama punya jam di kolom "CVE Reported Date" export --
@@ -98,6 +100,10 @@ router `changelog.py`) -- parser-nya expect header persis
   Kolom "Date Acknowledged by CTI Team" tidak berubah (`YYYY-MM-DD HH:MM:SS`).
 
 ### Diperbaiki
+- **`cve_tracker.cvss_vector` dan `cve_records.cvss_vector` terlalu sempit (`VARCHAR(100)`)**: vektor CVSS dengan
+  metrik temporal/environmental mencapai 117-125 karakter (CVE-2025-1787, CVE-2025-27363) dan gagal
+  `StringDataRightTruncation`. Ketemu di backfill mirror pada data nyata; `new_cve` punya kerentanan yang sama
+  terhadap CVE seperti itu. Revisi `d4a9c7e1b3f6` mengubahnya jadi TEXT.
 - **Export CVE Tracker (`GET /api/cve/export`) tidak membawa logo.** Template `.xlsx` punya logo
   (`xl/media/image1.png`, di B1:H4), tetapi openpyxl hanya membaca gambar kalau Pillow terpasang dan
   `pillow` belum jadi dependency `cti-api`, jadi logo hilang tanpa error di file hasil export.

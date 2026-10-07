@@ -46,7 +46,7 @@ class CveRecord(TimestampMixin, Base):
     solutions: Mapped[str | None] = mapped_column(Text)
     cvss_score: Mapped[float | None] = mapped_column(Float)
     cvss_severity: Mapped[str | None] = mapped_column(String(20))
-    cvss_vector: Mapped[str | None] = mapped_column(String(100))
+    cvss_vector: Mapped[str | None] = mapped_column(Text)
     reference_urls: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     affected_lines: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     has_identity: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

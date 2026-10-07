@@ -81,7 +81,7 @@ class CveTracker(TimestampMixin, Base):
 
     cve_score: Mapped[float | None] = mapped_column(Float)
     cve_severity: Mapped[str | None] = mapped_column(String(20))
-    cvss_vector: Mapped[str | None] = mapped_column(String(100))
+    cvss_vector: Mapped[str | None] = mapped_column(Text)
     cve_modified_date: Mapped[datetime.date | None] = mapped_column(Date)
 
     poc_available: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
