@@ -19,6 +19,9 @@ router `changelog.py`) -- parser-nya expect header persis
    skrip yang membaca file export per posisi kolom harus disesuaikan.
 
 ### Ditambah
+- **`docs/CVE_TECH_MATCHING.md`**: catatan satu topik soal kolom Tech di CVE Tracker (masalah, akar masalah,
+  solusi 0.2.1, cara memverifikasi, batasan, dan rencana standarisasi techstack). Rencananya dicatat di
+  `docs/ROADMAP.md` #19; belum dikerjakan.
 - **Dashboard CVE Tracker** (sub-view "Dashboard" di `/cve`, endpoint `GET /api/cve/dashboard?year=`):
   pengganti sheet Dashboard di workbook Excel `CVE_Tracker_Dashboard.xlsx`. Isinya KPI, MTTD/MTTA/MTTR
   per severity dan per owner team, tren bulanan per severity (chart + tabel), posisi CVE per tahap, dan
@@ -94,14 +97,14 @@ dan baca laporannya. Baris yang sudah punya ticket atau status ACK tidak pernah 
 - **CVE Tracker: kolom Tech tidak cocok dengan Affected.** `keywordSearch` NVD mencocokkan kata di
   deskripsi mana pun, jadi CVE yang cuma menyebut sebuah teknologi sambil lalu ikut tercatat di
   bawahnya: CVE Zabbix yang menyebut MariaDB muncul sebagai `mariadb`, CVE Plane yang menyebut
-  GitLab OAuth sebagai `gitlab`, CVE repo Chainguard Academy sebagai `nginx`, CVE Pandora FMS sebagai
+  GitLab sebagai `gitlab`, CVE repo Chainguard Academy sebagai `nginx`, CVE Pandora FMS sebagai
   `grafana`. Kandidat NVD/Tenable sekarang hanya dipakai kalau nama tech muncul di vendor, product,
   packageName, atau CPE record MITRE (jatuh ke ringkasan kalau CNA tidak mengisi produk).
 - **CVE yang kena beberapa tech hanya menempel ke satu tech.** Dedup per `cve_id` yang global
   membuat CVE multi-produk (mis. Atlassian: Jira + Confluence + Bamboo) hanya tercatat di tech yang
   kebetulan ketemu duluan, jadi client yang hanya punya tech lain tidak pernah dapat. Sekarang tiap
   client yang punya salah satu tech terdampak dapat barisnya; client dengan beberapa tech terdampak
-  tetap satu baris, dengan tech yang paling awal di techstack.
+  tetap satu baris, dengan tech yang paling awal menurut abjad.
 
 ## [0.2.0] - 2026-10-05
 

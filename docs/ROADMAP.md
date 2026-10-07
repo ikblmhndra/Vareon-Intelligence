@@ -28,6 +28,7 @@ Isi tiap item: **apa** yang diminta, **keadaan sekarang** (fakta dari repo/stagi
 | 16 | Dashboard CVE: SLA per severity (ganti rating ambang tetap) | target SLA ack/remediasi per severity | -- |
 | 17 | Dashboard CVE: panel backlog/aging, KEV/EPSS, produk paling sering terdampak | pilihan panel | -- |
 | 18 | Validasi isian ticket CVE + keputusan model ticket (1 ticket per CVE vs satu ticket banyak CVE) | daftar nilai baku, keputusan model | -- |
+| 19 | **Standarisasi techstack** (identitas baku + alias + katalog) dan satu pencocok tech untuk CVE, artikel, dan prioritas -- fase 1 (alias + pencocok bersama) dulu; latar belakang dan rancangan di `docs/CVE_TECH_MATCHING.md` | draf alias awal (`SELECT DISTINCT name FROM techstack_entries`), sumber katalog, aturan hierarki produk | #13 (supaya bisa ter-deploy otomatis) |
 
 ---
 
@@ -421,3 +422,42 @@ export + dashboard).
 **Selesai bila**: `PUT /ticket` menolak nilai di luar daftar dengan 422 (nilai lama dimigrasi atau
 dipetakan), UI dan dashboard memakai satu daftar yang sama, dan keputusan model ticket tertulis di
 docstring `CveTicket`.
+
+## 19. Standarisasi techstack + satu pencocok tech
+
+**Diminta (2026-10-07)**: supaya Tech di CVE Tracker tidak salah-cocok lagi, nama tech distandarkan
+(bukan teks bebas yang dicocokkan ulang di banyak tempat). Perubahan besar: menyentuh skema, API, UI,
+scraper, scoring artikel, dan prioritas CVE. Uraian lengkap (masalah, akar masalah, solusi 0.2.1, batasan)
+di `docs/CVE_TECH_MATCHING.md`.
+**Keadaan sekarang** (fakta dari repo/produksi, bukan tebakan): `techstack_entries.name` teks bebas,
+input UI "Tech name…" tanpa validasi. Nama itu dipakai **enam pencocok dengan aturan berbeda** (NVD
+`keywordSearch`; Tenable; gate `new_cve`; `score.py` `related_tech_status` dengan `\b{tech}\b` tanpa
+`re.escape`; `score.py` `check_tech_stack` substring tanpa batas kata; `cve_priority.in_tech_stack`
+substring dua arah) dan juga jadi **kunci join** ke `cve_tracker.tech` (`get_risk_context`). Hanya gate
+`new_cve` yang diperbaiki di 0.2.1. Di produksi, 55 dari 118 baris tracker yang bisa diverifikasi salah
+(52 `DELETE`, 2 `RETAG`, 1 `REVIEW`), dan satu baris yang sah nyaris terhapus karena `graylog2-server`
+tidak cocok dengan tech `graylog`.
+**Rancangan**: tiap entri punya `vendor` + `product` gaya CPE dan `aliases`; `name` tetap label dan
+kunci join (tidak diubah); satu fungsi pencocok di `cti_core` dipakai semua; UI memilih dari katalog
+(dengan "custom" bertanda belum terverifikasi); query NVD berbasis CPE untuk CVE yang sudah dianalisis.
+**Fase**: (1) kolom `aliases` + satu pencocok bersama + seed alias, tanpa ubah UI; (2) `vendor`/`product`
++ picker katalog + validasi API; (3) query NVD berbasis CPE + hierarki produk (satu entri boleh punya
+beberapa produk CPE; kasus Outlook vs Microsoft 365).
+**Langkah pendukung** (belum jadi item sendiri; detail di `docs/CVE_TECH_MATCHING.md` 7.2): ukur recall
+tracker terhadap NVD (CPE) per tech; tabel "kandidat yang difilter" supaya CVE yang dibuang filter tidak
+hilang diam-diam; relevansi berbasis versi (terkait #7); perbaikan kecil `new_cve` (`<=` ganda di kolom
+Affected, `seen_products`, fallback skor).
+**Titik sentuh**: `db/models/techstack.py` + migrasi Alembic baru (dicek `test_migrations_match_models`),
+modul pencocok baru di `cti_core`, `feeds/new_cve.py`, `cti_enrich/stages/score.py`
+(`related_tech_status`, `check_tech_stack`, `_check_cve_vendor`), `services/cve_priority.py`,
+`routers/techstack.py` + `schemas/techstack.py` (+ regenerasi `docs/openapi.json` dan `schema.d.ts`),
+`cti_scraper/reference_data.py` (`_resolve_techstack*` perlu ikut membawa alias),
+`apps/web/src/components/cve/techstack-panel.tsx`, `tools/ops/reconcile_cve_tech.py`.
+**Yang dibutuhkan**: draf alias awal (`SELECT DISTINCT name FROM techstack_entries ORDER BY name;` dari
+produksi), keputusan sumber katalog (kurasi manual atau pencarian ke API CPE NVD saat menambah), aturan
+hierarki produk, dan CI `main` hijau (#13) supaya hasilnya ter-deploy otomatis.
+**Selesai bila**: pencocok 2-6 memanggil satu fungsi yang sama; test parametrik mengunci kasus nyata
+(`graylog2-server` cocok `graylog`, `PAN-OS` cocok `palo alto`, `mcp-atlassian` tidak cocok `jira`, `go`
+tidak cocok ke "google"); `tools/ops/reconcile_cve_tech.py` pada data produksi tidak lagi menghasilkan
+`DELETE` yang disebabkan nama (hanya data CNA yang memang salah); dan angka recall sebelum/sesudah
+tercatat di `docs/CVE_TECH_MATCHING.md`.

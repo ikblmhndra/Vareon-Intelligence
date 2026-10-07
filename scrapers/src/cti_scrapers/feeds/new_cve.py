@@ -198,7 +198,7 @@ class NewCve(BaseScraper):
                 continue
 
             # Satu baris per (CVE, client) -- kalau satu client punya beberapa tech yang kena,
-            # pakai yang urutannya paling awal di techstack biar hasilnya deterministik.
+            # pakai yang paling awal menurut abjad (urutan `techstack` di reference data) biar deterministik.
             client_tech: dict[str, str] = {}
             for tech in sorted(relevant, key=tech_order.__getitem__):
                 for client_id in tech_to_clients[tech]:

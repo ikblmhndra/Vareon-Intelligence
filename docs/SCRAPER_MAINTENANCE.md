@@ -161,6 +161,7 @@ Gejala: CVE tercatat di bawah tech yang bukan produk terdampaknya (Tech `mariadb
 "Zabbix"). Penyebabnya `keywordSearch` NVD yang mencocokkan kata di deskripsi mana pun; sejak 0.2.1
 `new_cve` hanya menerima CVE kalau nama tech muncul di vendor/product/CPE record MITRE. Run yang
 sehat TIDAK membersihkan baris lama -- CVE yang sekarang ditolak tidak pernah di-fetch lagi.
+Latar belakang, aturan pencocokan, dan batasannya: `docs/CVE_TECH_MATCHING.md`.
 
 Jalankan dari folder repo di server (yang berisi `docker-compose.yml`). `compose run` otomatis masuk
 jaringan dan env aplikasi, jadi tidak perlu `--network` ataupun `--env-file`:
