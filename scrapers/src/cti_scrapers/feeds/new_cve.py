@@ -89,8 +89,15 @@ def _tokens(text: str) -> str:
 
 
 def _mentions(tech: str, text: str) -> bool:
+    """`tech` muncul sebagai kata utuh di `text`. Angka yang menempel di ujung dianggap versi
+    mayor nama produk yang sama ("graylog2-server", "Log4j2", "Struts2" -> tech `graylog`, `log4j`,
+    `struts`); huruf yang menempel tidak ("nginxy" bukan `nginx`). Ditemukan dari laporan
+    `reconcile_cve_tech`: tanpa ini CVE Graylog yang sah ikut ditandai salah dan dibuang."""
     needle = _tokens(tech)
-    return bool(needle) and f" {needle} " in f" {_tokens(text)} "
+    if not needle:
+        return False
+    pattern = rf"(?<![a-z0-9]){re.escape(needle)}[0-9]{{0,4}}(?![a-z0-9])"
+    return re.search(pattern, _tokens(text)) is not None
 
 
 def usable_products(products: list[str]) -> list[str]:

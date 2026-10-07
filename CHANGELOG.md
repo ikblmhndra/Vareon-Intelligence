@@ -59,6 +59,13 @@ router `changelog.py`) -- parser-nya expect header persis
   `pillow` belum jadi dependency `cti-api`, jadi logo hilang tanpa error di file hasil export.
   `pillow` sekarang jadi dependency `cti-api` (`uv.lock` ikut diperbarui) dan ada test regresi di
   `tests/integration/test_cve_export_service.py`.
+- **Filter Tech 0.2.1 salah menolak produk yang namanya berakhiran angka versi.** `graylog2-server`
+  tidak cocok dengan tech `graylog` (juga `Log4j2` untuk `log4j`, `Struts2` untuk `struts`), jadi
+  `new_cve` membuang CVE yang sah dan `reconcile_cve_tech` menandainya `DELETE`. Ketemu dari laporan
+  `reconcile_cve_tech` di produksi (CVE-2026-69190). Angka yang menempel di ujung nama sekarang dianggap
+  versi mayor produk yang sama; huruf yang menempel tetap produk lain (`nginxplus` bukan `nginx`).
+  **Image worker harus dibangun ulang sebelum `reconcile_cve_tech` dijalankan lagi**: tool memakai
+  pencocok dari image, bukan dari folder `tools/`. Jangan `--apply` dengan image 0.2.1.
 
 ### Diketahui / belum dikerjakan
 - **CI di `main` merah** (`lint`: 2 file belum ter-format; `compose`: `.env` tidak ada di runner; `test`:

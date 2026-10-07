@@ -38,6 +38,15 @@ def test_a_matching_row_is_left_alone() -> None:
     assert result.findings == [] and result.ok == 1
 
 
+def test_a_product_name_with_a_glued_major_version_is_not_a_mismatch() -> None:
+    """Dari laporan produksi: `graylog2-server` untuk tech `graylog` hampir ikut dihapus."""
+    result = plan(
+        [row("CVE-1", "graylog")], {"CVE-1": ["Graylog2", "graylog2-server"]}, {"acme": ["graylog"]}
+    )
+
+    assert result.findings == [] and result.ok == 1
+
+
 def test_a_mismatched_row_with_no_better_tech_is_deleted() -> None:
     assert actions([row("CVE-1", "mariadb")], {"CVE-1": ZABBIX}, {"acme": ["mariadb"]}) == [
         ("delete", None)
