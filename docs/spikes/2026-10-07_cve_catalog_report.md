@@ -1,6 +1,6 @@
 # Spike katalog tech dari CVE List V5
 
-> **Catatan pembaca (ditambahkan setelah laporan dibaca, isi di bawah tidak diubah).** Ini keluaran
+> **DIGANTIKAN oleh `2026-10-07_cve_catalog_report_v2.md`.** **Catatan pembaca (ditambahkan setelah laporan dibaca, isi di bawah tidak diubah).** Ini keluaran
 > `tools/ops/spike_cve_catalog.py` **versi pertama** di data penuh (clone CVE List V5, 153.413 berkas).
 > Tiga angka di dalamnya menyesatkan karena kelemahan skrip, yang sudah diperbaiki di commit berikutnya:
 > (1) nama produk non-Latin (plugin CJK) dihapus normalisasi dan dihitung "placeholder";

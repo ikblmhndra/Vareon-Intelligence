@@ -309,8 +309,10 @@ vonis mengukur konsistensi nama, bukan kebenaran produk, jadi tinjau manusia tet
 
 #### 7.1.3 Hasil spike di data penuh (2026-10-07)
 
-Laporan lengkap: `docs/spikes/2026-10-07_cve_catalog_report.md` (versi pertama skrip; baca catatan di
-atasnya soal tiga angka yang menyesatkan). 153.413 berkas dibaca, **117.220 CVE terbit sejak 2025-01-01**.
+Laporan: `docs/spikes/2026-10-07_cve_catalog_report_v2.md` (skrip yang sudah diperbaiki; **angka di bawah
+dari laporan ini**). Laporan pertama (`..._report.md`) digantikan: skripnya menghitung nama CJK dan
+judul/`owner/repo` sebagai sampah. 153.413 berkas dibaca, **117.220 CVE terbit sejak 2025-01-01**.
+Rancangan yang diturunkan darinya: `docs/CVE_CATALOG_DESIGN.md`.
 
 **1. Volume tumbuh cepat.** 2025 = ±43,8 ribu CVE; 2026 sampai 7 Oktober = ±73,4 ribu (sudah 1,7x tahun
 lalu). Per bulan: Maret 2026 5,9 ribu, Juli 9,7 ribu, **September 14,9 ribu (3,9x September 2025)**.
@@ -318,14 +320,16 @@ Sekarang ±500 CVE/hari. Dengan retensi tahun kalender, mirror di akhir 2026 > 1
 lebih besar lagi (proyeksi kasar, bukan hasil ukur). Ukuran masih wajar untuk Postgres, tapi **ingest dan
 filter harus dirancang untuk ratusan CVE per hari, bukan puluhan**.
 
-**2. Ejaan bukan masalah utama.** Identitas mentah 42.710 -> ternormalisasi 37.988 -> ejaan digabung 37.770:
-penggabungan otomatis hanya **218 (0,6%)**. Normalisasi sederhana cukup; *merge* oleh admin tidak perlu
+**2. Ejaan bukan masalah utama.** Identitas mentah 42.710 -> ternormalisasi 41.507 -> ejaan digabung 41.265:
+penggabungan otomatis hanya **242 (0,6%)**. Normalisasi sederhana cukup; *merge* oleh admin tidak perlu
 masuk versi pertama (sesuai keputusan "ikut dulu"). Yang tersisa untuk digabung kebanyakan **ejaan vendor**
 (`palo_alto_networks` vs `paloaltonetworks`, `n8n io` vs `n8n`, `graylog2` vs `graylog`).
 
-**3. Ukuran katalog didominasi ekor panjang, bukan varian.** 14.633 vendor; **62,7% identitas (23.808)
-hanya punya 1 CVE**, 8.994 punya 2-4, **5.186 (13,7%) punya >= 5 CVE**. Melipat varian versi hanya
-mengurangi 3,8% (37.988 -> 36.543). Artinya picker harus **search-first**, dengan tampilan awal terbatas
+**3. Ukuran katalog didominasi ekor panjang, bukan varian.** 15.290 vendor (**79% hanya punya satu
+identitas**, 814 punya >= 5); **62,9% identitas (26.117) hanya punya 1 CVE**, 9.844 punya 2-4, **5.546
+(13,4%) punya >= 5 CVE**. Melipat varian versi hanya mengurangi 3,7% (41.507 -> 39.979), dan **hanya 562
+keluarga yang punya lebih dari satu varian (1.915 identitas, 4,6%)**: di luar Windows dan perangkat
+(Dell, D-Link, Siemens) "keluarga" praktis sama dengan produk. Artinya picker harus **search-first**, dengan tampilan awal terbatas
 pada identitas >= 5 CVE dan pencarian di seluruh katalog.
 
 **4. Granularitas, bukan ejaan, masalah sebenarnya.** Daftar teratas menurut jumlah CVE didominasi varian
@@ -333,12 +337,12 @@ edisi Windows (tiap versi/edisi 1,4-2,5 ribu CVE) dan `linux | linux` (10.064, k
 varian terbanyak: Dell Latitude 47, Siemens Industrial Edge 42, D-Link DIR 41 (model perangkat). Daftar
 yang diurutkan menurut popularitas tidak berguna tanpa **pengelompokan keluarga/vendor**.
 
-**5. Cakupan identitas.** 89,3% CVE punya >= 1 produk layak; **ADP menyelamatkan hanya 105 (0,1%)**, jadi
-ADP tidak layak diurus; **CPE hanya ada di 7,5% data CNA**, jadi identitas hampir seluruhnya berasal dari
-isian CNA bebas (rencana lama "query NVD berbasis CPE" tidak punya banyak bahan). "10,7% tanpa produk" adalah
-**batas atas yang menggelembung** (nama CJK dan tiga heuristik sampah yang terlalu galak; sudah diperbaiki,
-angka baru menunggu laporan ulang). 458 identitas (1.030 entri CVE) punya vendor `n/a`, dan 199 vendor
-kosong: identitas tanpa vendor perlu aturan sendiri.
+**5. Cakupan identitas.** **93,8% CVE punya >= 1 produk layak**; 6,2% (7.232) hanya punya sampah sungguhan
+(placeholder `n/a`, `_`, kata generik, URL, angka). **ADP menyelamatkan hanya 42 CVE (0,04%)**, jadi ADP
+tidak layak diurus; **CPE hanya ada di 7,5% data CNA**, jadi identitas hampir seluruhnya berasal dari isian
+CNA bebas (rencana lama "query NVD berbasis CPE" tidak punya banyak bahan). 4.008 + 1.256 + 996 entri
+berbentuk janggal (memuat `and`/`&`, judul panjang, `owner/repo`) tapi tetap produk asli. Vendor tanpa nama
+layak: `unknown` 1.236, `n/a` 520, kosong 211 identitas (4,7%); identitas tanpa vendor perlu aturan sendiri.
 
 **6. Vonis 34 tech: bersih 10, satu vendor banyak produk 9, ambigu 10, tidak ada 5.**
 - *Bersih*: anydesk, burp suite, ejbca, gitlab, harmony sase, microsoft 365, mikrotik, n8n, suricata, wazuh.
@@ -363,10 +367,11 @@ daripada tracker (fortinet 311 vs 2, palo alto 150 vs 0, splunk 182 vs 0, junipe
 542 vs 2), tetapi itu mencampur CVE yang KELEWAT pipeline dengan riwayat yang terbit SEBELUM tracker/tech itu
 ada. Memisahkannya butuh `--since` = tanggal `new_cve` mulai berjalan di DB yang sama.
 
-**Implikasi desain** (sebagai usulan; keputusan di `docs/ROADMAP.md` #19 "Terbuka"):
-1. Yang di-*monitor* perlu dua tingkat: **vendor** (semua produk, mis. Fortinet/Splunk/Juniper/Palo Alto,
-   yang di techstack produksi memang ditulis tingkat vendor) atau **keluarga produk**. Satu tingkat saja
-   tidak cukup untuk 9 tech "satu vendor, banyak produk".
+**Implikasi desain** (rancangan lengkap: `docs/CVE_CATALOG_DESIGN.md`):
+1. Yang di-*monitor* **dua tingkat (keputusan user 2026-10-07)**: **vendor** (semua produk, mis.
+   Fortinet/Splunk/Juniper/Palo Alto, yang di techstack produksi memang ditulis tingkat vendor) atau
+   **keluarga produk**. Satu entri boleh punya **banyak target** (`junos` = tiga keluarga Juniper; `nginx` =
+   dua keluarga F5; `graylog`/`nagios` = dua vendor yang dieja beda).
 2. Picker menyajikan **katalog bertingkat vendor -> keluarga**, search-first, default >= 5 CVE.
 3. Karena 10 tech "ambigu", **pemetaan 34 tech lama ke katalog harus ditinjau manusia** (rencana sudah ada);
    tebakan otomatis akan mengulang kesalahan keyword search.
