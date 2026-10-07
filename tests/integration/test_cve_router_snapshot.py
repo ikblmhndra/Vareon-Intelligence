@@ -285,7 +285,14 @@ async def test_export_cves(
     assert ws is not None
     header_row = [c.value for c in next(ws.iter_rows(min_row=1, max_row=1))]
     data_row_count = ws.max_row - 1
-    assert {"headers": header_row, "data_row_count": data_row_count} == snapshot
+    # header tabel sebenarnya ada di baris 15 (baris 1 = kop formulir); snapshot-nya mengunci
+    # urutan kolom, termasuk "CVE Reported Date" lalu "Reported by System".
+    table_headers = [c.value for c in ws[15] if c.value]
+    assert {
+        "headers": header_row,
+        "table_headers": table_headers,
+        "data_row_count": data_row_count,
+    } == snapshot
 
 
 async def test_next_ticket_id(

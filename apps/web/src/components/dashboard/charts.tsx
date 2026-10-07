@@ -340,3 +340,60 @@ export function TimelineChart({ labels, data }: TimelineChartProps) {
     />
   );
 }
+
+const SEVERITY_ORDER = ["CRITICAL", "HIGH", "MEDIUM", "LOW"] as const;
+
+interface SeverityStackedChartProps {
+  labels: string[];
+  /** Jumlah per severity, panjang tiap array = `labels.length`. */
+  counts: Record<(typeof SEVERITY_ORDER)[number], number[]>;
+}
+
+/** Kolom stacked per bulan, satu warna per severity (token `--severity-*`,
+ * warna mengikuti ENTITAS severity, bukan urutan). Jarak 2px antar segmen
+ * lewat border warna surface; tooltip menampilkan total bulan itu. */
+export function SeverityStackedChart({ labels, counts }: SeverityStackedChartProps) {
+  const t = useChartTheme();
+  return (
+    <Bar
+      data={{
+        labels,
+        datasets: SEVERITY_ORDER.map((sev) => ({
+          label: sev.charAt(0) + sev.slice(1).toLowerCase(),
+          data: counts[sev],
+          backgroundColor: t.severity[sev],
+          borderColor: t.surface,
+          borderWidth: 2,
+          borderSkipped: false as const,
+        })),
+      }}
+      options={{
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
+        plugins: {
+          legend: {
+            position: "bottom",
+            labels: { color: t.textBright, boxWidth: 10, usePointStyle: true, pointStyle: "rectRounded", font: { size: 12 } },
+          },
+          tooltip: {
+            ...tooltipBase(t),
+            callbacks: {
+              footer: (items: TooltipItem<"bar">[]) => `Total: ${items.reduce((sum, i) => sum + (i.parsed.y ?? 0), 0)}`,
+            },
+          },
+        },
+        scales: {
+          x: { stacked: true, grid: { display: false }, border: { display: false }, ticks: { color: t.textDim } },
+          y: {
+            stacked: true,
+            beginAtZero: true,
+            grid: gridLine(t),
+            border: { display: false },
+            ticks: { color: t.textDim, precision: 0 },
+          },
+        },
+      }}
+    />
+  );
+}

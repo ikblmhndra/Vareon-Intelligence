@@ -355,6 +355,84 @@
         "title": "ClientUpdate",
         "type": "object"
       },
+      "CveDashboard": {
+        "properties": {
+          "by_severity": {
+            "items": {
+              "$ref": "#/components/schemas/SeverityMetrics"
+            },
+            "title": "By Severity",
+            "type": "array"
+          },
+          "by_team": {
+            "items": {
+              "$ref": "#/components/schemas/TeamMetrics"
+            },
+            "title": "By Team",
+            "type": "array"
+          },
+          "monthly": {
+            "items": {
+              "$ref": "#/components/schemas/MonthMetrics"
+            },
+            "title": "Monthly",
+            "type": "array"
+          },
+          "mtta": {
+            "$ref": "#/components/schemas/MetricStat"
+          },
+          "mttd": {
+            "$ref": "#/components/schemas/MetricStat"
+          },
+          "mttr": {
+            "$ref": "#/components/schemas/MetricStat"
+          },
+          "slowest": {
+            "items": {
+              "$ref": "#/components/schemas/SlowestCve"
+            },
+            "title": "Slowest",
+            "type": "array"
+          },
+          "status": {
+            "$ref": "#/components/schemas/StatusBreakdown"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/DashboardSummary"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          },
+          "years": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Years",
+            "type": "array"
+          }
+        },
+        "required": [
+          "year",
+          "years",
+          "timezone",
+          "summary",
+          "status",
+          "mttd",
+          "mtta",
+          "mttr",
+          "by_severity",
+          "by_team",
+          "monthly",
+          "slowest"
+        ],
+        "title": "CveDashboard",
+        "type": "object"
+      },
       "CveListResponse": {
         "properties": {
           "cves": {
@@ -788,6 +866,79 @@
         "title": "DashboardStats",
         "type": "object"
       },
+      "DashboardSummary": {
+        "properties": {
+          "ack_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ack Rate"
+          },
+          "acknowledged": {
+            "default": 0,
+            "title": "Acknowledged",
+            "type": "integer"
+          },
+          "actionable": {
+            "default": 0,
+            "title": "Actionable",
+            "type": "integer"
+          },
+          "critical": {
+            "default": 0,
+            "title": "Critical",
+            "type": "integer"
+          },
+          "high": {
+            "default": 0,
+            "title": "High",
+            "type": "integer"
+          },
+          "low": {
+            "default": 0,
+            "title": "Low",
+            "type": "integer"
+          },
+          "medium": {
+            "default": 0,
+            "title": "Medium",
+            "type": "integer"
+          },
+          "no_solution_yet": {
+            "default": 0,
+            "title": "No Solution Yet",
+            "type": "integer"
+          },
+          "resolution_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolution Rate"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          },
+          "unrated": {
+            "default": 0,
+            "title": "Unrated",
+            "type": "integer"
+          }
+        },
+        "title": "DashboardSummary",
+        "type": "object"
+      },
       "DraftEmailBody": {
         "properties": {
           "cve_ids": {
@@ -962,6 +1113,61 @@
           "password"
         ],
         "title": "LoginRequest",
+        "type": "object"
+      },
+      "MetricStat": {
+        "properties": {
+          "max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max"
+          },
+          "mean": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean"
+          },
+          "median": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median"
+          },
+          "n": {
+            "default": 0,
+            "title": "N",
+            "type": "integer"
+          },
+          "p90": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P90"
+          }
+        },
+        "title": "MetricStat",
         "type": "object"
       },
       "MonitoredAccountOut": {
@@ -1237,6 +1443,93 @@
           "dep_total_count"
         ],
         "title": "MonitoredPackageOut",
+        "type": "object"
+      },
+      "MonthMetrics": {
+        "description": "Kohort per bulan `detected_on`: MTTA/MTTR di sini = rata-rata CVE yang\nTERDETEKSI bulan itu (bukan yang di-ack/di-remediasi bulan itu).",
+        "properties": {
+          "completed": {
+            "default": 0,
+            "title": "Completed",
+            "type": "integer"
+          },
+          "critical": {
+            "default": 0,
+            "title": "Critical",
+            "type": "integer"
+          },
+          "high": {
+            "default": 0,
+            "title": "High",
+            "type": "integer"
+          },
+          "in_progress": {
+            "default": 0,
+            "title": "In Progress",
+            "type": "integer"
+          },
+          "low": {
+            "default": 0,
+            "title": "Low",
+            "type": "integer"
+          },
+          "medium": {
+            "default": 0,
+            "title": "Medium",
+            "type": "integer"
+          },
+          "month": {
+            "title": "Month",
+            "type": "integer"
+          },
+          "mtta_mean": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mtta Mean"
+          },
+          "mttd_mean": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mttd Mean"
+          },
+          "mttr_mean": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mttr Mean"
+          },
+          "not_affected": {
+            "default": 0,
+            "title": "Not Affected",
+            "type": "integer"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "month"
+        ],
+        "title": "MonthMetrics",
         "type": "object"
       },
       "NewsletterListItem": {
@@ -3809,6 +4102,149 @@
         "title": "ScraperTriggerResult",
         "type": "object"
       },
+      "SeverityMetrics": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "mtta": {
+            "$ref": "#/components/schemas/MetricStat"
+          },
+          "mttd": {
+            "$ref": "#/components/schemas/MetricStat"
+          },
+          "mttr": {
+            "$ref": "#/components/schemas/MetricStat"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "severity",
+          "count",
+          "mttd",
+          "mtta",
+          "mttr"
+        ],
+        "title": "SeverityMetrics",
+        "type": "object"
+      },
+      "SlowestCve": {
+        "properties": {
+          "cve_id": {
+            "title": "Cve Id",
+            "type": "string"
+          },
+          "detected_on": {
+            "default": "",
+            "title": "Detected On",
+            "type": "string"
+          },
+          "mtta": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mtta"
+          },
+          "mttd": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mttd"
+          },
+          "mttr": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mttr"
+          },
+          "owner_team": {
+            "default": "",
+            "title": "Owner Team",
+            "type": "string"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "tech": {
+            "default": "",
+            "title": "Tech",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cve_id",
+          "severity",
+          "status"
+        ],
+        "title": "SlowestCve",
+        "type": "object"
+      },
+      "StatusBreakdown": {
+        "description": "Partisi lengkap: tiap CVE masuk TEPAT SATU bucket, jumlahnya = `summary.total`.",
+        "properties": {
+          "awaiting_status": {
+            "default": 0,
+            "title": "Awaiting Status",
+            "type": "integer"
+          },
+          "completed": {
+            "default": 0,
+            "title": "Completed",
+            "type": "integer"
+          },
+          "in_progress": {
+            "default": 0,
+            "title": "In Progress",
+            "type": "integer"
+          },
+          "not_affected": {
+            "default": 0,
+            "title": "Not Affected",
+            "type": "integer"
+          },
+          "open": {
+            "default": 0,
+            "title": "Open",
+            "type": "integer"
+          },
+          "risk_accepted": {
+            "default": 0,
+            "title": "Risk Accepted",
+            "type": "integer"
+          },
+          "unacknowledged": {
+            "default": 0,
+            "title": "Unacknowledged",
+            "type": "integer"
+          }
+        },
+        "title": "StatusBreakdown",
+        "type": "object"
+      },
       "SyncRequest": {
         "properties": {
           "domains": {
@@ -4059,6 +4495,32 @@
           "tags"
         ],
         "title": "TagBody",
+        "type": "object"
+      },
+      "TeamMetrics": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "mtta": {
+            "$ref": "#/components/schemas/MetricStat"
+          },
+          "mttr": {
+            "$ref": "#/components/schemas/MetricStat"
+          },
+          "team": {
+            "title": "Team",
+            "type": "string"
+          }
+        },
+        "required": [
+          "team",
+          "count",
+          "mtta",
+          "mttr"
+        ],
+        "title": "TeamMetrics",
         "type": "object"
       },
       "TechStackAdd": {
@@ -8396,6 +8858,90 @@
           }
         },
         "summary": "Cisa Kev Lookup",
+        "tags": [
+          "cve"
+        ]
+      }
+    },
+    "/api/cve/dashboard": {
+      "get": {
+        "description": "Dashboard MTTD/MTTA/MTTR per tahun (`detected_on`, WIB), scope sama dengan\n`/stats`: client aktif, techstack aktif, tanpa false-positive -- total di sini\n= total di tab CVEs. `year` kosong = tahun berjalan. Definisi metrik:\n`cti_api.services.cve_dashboard`.",
+        "operationId": "cve_dashboard_api_cve_dashboard_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "year",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 2100,
+                  "minimum": 2000,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Year"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-client-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Client-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CveDashboard"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cve Dashboard",
         "tags": [
           "cve"
         ]

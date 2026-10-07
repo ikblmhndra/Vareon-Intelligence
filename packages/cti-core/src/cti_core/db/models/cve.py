@@ -71,6 +71,12 @@ class CveTracker(TimestampMixin, Base):
     link: Mapped[str | None] = mapped_column(Text)
     summary: Mapped[str | None] = mapped_column(Text)
     published: Mapped[datetime.date | None] = mapped_column(Date)
+    published_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    """Jam publish asli dari MITRE (`cveMetadata.datePublished`, UTC) -- `published` di atas
+    cuma tanggalnya (dipakai filter/sort/UI sejak Fase 2). Kolom ini sumber "CVE Reported Date"
+    di export Excel; `detected_on` (kapan scraper pertama dapat CVE-nya) jadi "Reported by
+    System". `NULL` untuk CVE yang masuk sebelum kolom ini ada, diisi lewat
+    `tools/ops/backfill_cve_published_at.py`."""
     solutions: Mapped[str | None] = mapped_column(Text)
 
     cve_score: Mapped[float | None] = mapped_column(Float)

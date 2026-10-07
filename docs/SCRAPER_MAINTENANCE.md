@@ -161,19 +161,52 @@ Gejala: CVE tercatat di bawah tech yang bukan produk terdampaknya (Tech `mariadb
 "Zabbix"). Penyebabnya `keywordSearch` NVD yang mencocokkan kata di deskripsi mana pun; sejak 0.2.1
 `new_cve` hanya menerima CVE kalau nama tech muncul di vendor/product/CPE record MITRE. Run yang
 sehat TIDAK membersihkan baris lama -- CVE yang sekarang ditolak tidak pernah di-fetch lagi.
+Latar belakang, aturan pencocokan, dan batasannya: `docs/CVE_TECH_MATCHING.md`.
+
+Jalankan dari folder repo di server (yang berisi `docker-compose.yml`). `compose run` otomatis masuk
+jaringan dan env aplikasi, jadi tidak perlu `--network` ataupun `--env-file`:
 
 ```bash
-# laporan saja (default) -- tidak menulis apa pun
-docker run --rm --network <project>_default --env-file .env -v "$PWD/tools:/tools:ro" \
-  --entrypoint python cti-worker:$CTI_TAG /tools/ops/reconcile_cve_tech.py [--client <client_id>]
-# setelah laporan dibaca dan masuk akal: tambahkan --apply
+# 1) laporan saja (default) -- tidak menulis apa pun
+docker compose --env-file docker/stack.env --profile app run --rm --no-deps -T \
+  -v "$PWD/tools:/tools:ro" --entrypoint python worker /tools/ops/reconcile_cve_tech.py
+
+# 2) satu client saja: tambahkan di ujung perintah yang sama, mis.  --client acme
+# 3) setelah laporan dibaca dan masuk akal: tambahkan di ujung perintah yang sama  --apply
 ```
+
+Pakai `docker compose run`, bukan `docker run --env-file .env`: yang terakhir tidak membuang komentar
+inline di `.env` (lihat `tools/ops/deploy.sh`, pola yang sama).
 
 Tiap baris dinilai ulang dengan aturan yang sama dengan scraper: `RETAG` (tech lain milik client
 yang sama yang cocok), `DELETE` (tidak ada yang cocok), `REVIEW` (tidak cocok tapi sudah punya
 ticket/ACK -- **tidak pernah dihapus otomatis**, putuskan manual). CVE yang record MITRE-nya tak
 terjangkau atau tanpa data dilewati dan dihitung "tak terverifikasi". Butuh akses ke
 `cveawg.mitre.org`, ~1 request/detik per CVE unik. Idempoten, aman diulang.
+
+### H. Export Excel: "CVE Reported Date" tampil tanggal saja (tanpa jam)
+
+Gejala: di export CVE Tracker kolom **CVE Reported Date** berisi `31-08-2026`, bukan
+`20:53 31-08-2026`. Kolom itu membaca `cve_tracker.published_at` (jam publish dari MITRE, ditulis
+`new_cve`); CVE yang masuk sebelum kolom itu ada, atau yang MITRE-nya tidak memberi jam, kosong dan
+jatuh ke tanggal `published`. (**Reported by System** tidak terpengaruh: itu `detected_on`, kapan
+scraper pertama dapat CVE-nya.)
+
+```bash
+# di host produksi (checkout repo, stack sudah jalan). Laporan saja (default) -- tidak menulis apa pun
+make backfill-published-at                      # atau ARGS='--client <client_id>' untuk satu client
+# setelah laporan dibaca dan masuk akal:
+make backfill-published-at ARGS='--apply'
+```
+
+Target `make` menjalankan tool di container `worker` yang sudah ada (image, `.env`, dan network ikut
+service itu; `tools/` di-mount read-only; postgres/redis/migrate tidak disentuh). Tanpa checkout repo, pakai
+bentuk `docker run` seperti 4.G dengan `/tools/ops/backfill_cve_published_at.py`.
+
+Hanya baris dengan `published_at` NULL yang disentuh, dan yang sudah terisi tidak pernah ditimpa.
+Baris yang tanggal MITRE-nya beda dengan `published` tersimpan dilaporkan `MISMATCH` dan **tidak
+ditulis**; CVE yang MITRE-nya tak terjangkau atau tanpa jam dilewati ("tak terverifikasi"). Butuh
+akses ke `cveawg.mitre.org`, ~1 request/detik per CVE unik. Idempoten, aman diulang.
 
 ---
 
@@ -234,5 +267,6 @@ UI /scrapers atau digest Telegram -> status?
   fetch_error -> blokir/credential/timeout                 (4.D)
   backpressure-> cek enrichment, bukan scraper             (4.E)
   CVE: Tech tidak cocok dengan Affected -> reconcile_cve_tech (4.G)
+  Export CVE: Reported Date tanpa jam    -> backfill_cve_published_at (4.H)
 Sudah diperbaiki? -> deploy (bagian 5) -> tunggu satu tick -> cek Runs -> (kalau perlu) Reset dedup
 ```

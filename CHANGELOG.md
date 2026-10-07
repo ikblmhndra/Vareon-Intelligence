@@ -6,14 +6,76 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
-## [Unreleased] - 2026-10-05
+## [Unreleased] - 2026-10-06
+
+**Saat upgrade dari 0.2.1:**
+1. Jalankan migrasi (`up -d` sudah menjalankan service `migrate`): revisi baru `e8c2a4b6d1f3` (kolom
+   nullable `cve_tracker.published_at`, aman untuk data lama). Kontrak API hanya bertambah:
+   `GET /api/cve/dashboard`.
+2. Jalankan sekali `make backfill-published-at` (laporan dulu, lalu `ARGS='--apply'`;
+   `docs/SCRAPER_MAINTENANCE.md` 4.H) supaya CVE lama punya jam di kolom "CVE Reported Date" export --
+   tanpa itu mereka tampil tanggal saja.
+3. **Export Excel CVE Tracker: kolom bergeser satu ke kanan** mulai kolom E (lihat Diubah). Makro atau
+   skrip yang membaca file export per posisi kolom harus disesuaikan.
 
 ### Ditambah
+- **`docs/CVE_TECH_MATCHING.md`**: catatan satu topik soal kolom Tech di CVE Tracker (masalah, akar masalah,
+  solusi 0.2.1, cara memverifikasi, batasan, dan rencana standarisasi techstack). Rencananya dicatat di
+  `docs/ROADMAP.md` #19; belum dikerjakan.
+- **Dashboard CVE Tracker** (sub-view "Dashboard" di `/cve`, endpoint `GET /api/cve/dashboard?year=`):
+  pengganti sheet Dashboard di workbook Excel `CVE_Tracker_Dashboard.xlsx`. Isinya KPI, MTTD/MTTA/MTTR
+  per severity dan per owner team, tren bulanan per severity (chart + tabel), posisi CVE per tahap, dan
+  10 CVE paling lambat. Scope sama dengan tab CVEs (client aktif, techstack aktif, tanpa false positive).
+  Tidak butuh migrasi, dan data Excel tidak diimpor. Definisi metrik ada di
+  `cti_api.services.cve_dashboard`; beda dari rumus Excel yang disengaja: nol ikut dihitung (plus median,
+  p90, dan jumlah data), resolution rate dibagi CVE yang memang butuh tindakan (bukan semua baris), MTTD
+  dalam hari (`detected_on` - `published`; di Excel selalu 1 atau 6 jam), MTTR tidak dihitung untuk
+  "Not Affected", dan tidak ada batas baris.
+- **Jam publish MITRE disimpan** di `cve_tracker.published_at`. `new_cve` dulu memotong
+  `cveMetadata.datePublished` jadi tanggal (`published`, tetap ada); sekarang jam lengkapnya ikut
+  tersimpan (UTC). Scraper tidak menimpa nilai yang sudah ada dengan kosong.
+- **`tools/ops/backfill_cve_published_at.py`**: mengisi `published_at` untuk CVE lama dengan mengambil ulang
+  record MITRE. Default laporan saja; `--apply` baru menulis; `--client` membatasi cakupan. Hanya mengisi
+  yang kosong, dan tidak menulis kalau tanggal MITRE beda dengan `published` yang tersimpan (dilaporkan
+  `MISMATCH`). Dijalankan lewat `make backfill-published-at [ARGS='--apply --client <id>']` (container
+  `worker` yang sudah ada, `tools/` di-mount read-only). Playbook: `docs/SCRAPER_MAINTENANCE.md` 4.H.
 - **CD otomatis ke produksi**: `.github/workflows/deploy.yml` men-deploy tiap push ke `main` yang lolos
   CI, lewat runner self-hosted di host produksi (host privat, tanpa port masuk). `tools/ops/deploy.sh`
   (juga `make deploy`) melakukan backup Postgres, menandai image berjalan sebagai `:prev`, build,
   `up -d` (migrasi dulu), menunggu sehat, dan rollback otomatis + alarm Telegram bila gagal (tanpa
   `--yes`: downgrade DB tidak pernah otomatis). Setup dan batasan: `docs/CI_CD.md`.
+
+### Diubah
+- **Export Excel CVE Tracker (`GET /api/cve/export`)**: kolom baru **Reported by System** tepat di
+  sebelah kanan **CVE Reported Date**. Isinya `detected_on`, kapan scraper pertama dapat CVE-nya.
+  "CVE Reported Date" sekarang `HH:MM DD-MM-YYYY` (WIB, mis. `20:53 31-08-2026`) dan berisi jam publish
+  asli dari MITRE (`published_at`); CVE yang belum punya jamnya tampil tanggal saja (`DD-MM-YYYY`), bukan
+  jam tebakan. Sebelumnya kolom "CVE Reported Date" sendiri memakai `detected_on`, jadi dua kolom itu tidak
+  bisa dibedakan. Kolom sesudahnya bergeser satu ke kanan (Severity jadi F, Closure Date jadi V).
+  Template `CVE_Tracker_template.xlsx` ikut diubah: header tabel, lebar kolom, dan kotak form kanan atas
+  (R1:V4) digeser; dropdown sisa di V3/V4 (daftar "On Track, At Risk, ...", tidak dipakai apa pun) dibuang.
+  Kolom "Date Acknowledged by CTI Team" tidak berubah (`YYYY-MM-DD HH:MM:SS`).
+
+### Diperbaiki
+- **Export CVE Tracker (`GET /api/cve/export`) tidak membawa logo.** Template `.xlsx` punya logo
+  (`xl/media/image1.png`, di B1:H4), tetapi openpyxl hanya membaca gambar kalau Pillow terpasang dan
+  `pillow` belum jadi dependency `cti-api`, jadi logo hilang tanpa error di file hasil export.
+  `pillow` sekarang jadi dependency `cti-api` (`uv.lock` ikut diperbarui) dan ada test regresi di
+  `tests/integration/test_cve_export_service.py`.
+- **Filter Tech 0.2.1 salah menolak produk yang namanya berakhiran angka versi.** `graylog2-server`
+  tidak cocok dengan tech `graylog` (juga `Log4j2` untuk `log4j`, `Struts2` untuk `struts`), jadi
+  `new_cve` membuang CVE yang sah dan `reconcile_cve_tech` menandainya `DELETE`. Ketemu dari laporan
+  `reconcile_cve_tech` di produksi (CVE-2026-69190). Angka yang menempel di ujung nama sekarang dianggap
+  versi mayor produk yang sama; huruf yang menempel tetap produk lain (`nginxplus` bukan `nginx`).
+  **Image worker harus dibangun ulang sebelum `reconcile_cve_tech` dijalankan lagi**: tool memakai
+  pencocok dari image, bukan dari folder `tools/`. Jangan `--apply` dengan image 0.2.1.
+
+### Diketahui / belum dikerjakan
+- **CI di `main` merah** (`lint`: 2 file belum ter-format; `compose`: `.env` tidak ada di runner; `test`:
+  `test_golden_trendmicro` butuh Chromium Playwright dan `test_article_dedup_groups` memakai tanggal
+  hard-code), sehingga job Deploy belum pernah jalan. Sampai CI hijau, produksi hanya bisa di-update
+  manual (`make deploy`, atau Actions > Deploy > Run workflow). Rinciannya di `docs/ROADMAP.md` #13.
+- Usulan lanjutan Dashboard CVE dan validasi ticket: `docs/ROADMAP.md` #15-#18.
 
 ## [0.2.1] - 2026-10-06
 
@@ -35,14 +97,14 @@ dan baca laporannya. Baris yang sudah punya ticket atau status ACK tidak pernah 
 - **CVE Tracker: kolom Tech tidak cocok dengan Affected.** `keywordSearch` NVD mencocokkan kata di
   deskripsi mana pun, jadi CVE yang cuma menyebut sebuah teknologi sambil lalu ikut tercatat di
   bawahnya: CVE Zabbix yang menyebut MariaDB muncul sebagai `mariadb`, CVE Plane yang menyebut
-  GitLab OAuth sebagai `gitlab`, CVE repo Chainguard Academy sebagai `nginx`, CVE Pandora FMS sebagai
+  GitLab sebagai `gitlab`, CVE repo Chainguard Academy sebagai `nginx`, CVE Pandora FMS sebagai
   `grafana`. Kandidat NVD/Tenable sekarang hanya dipakai kalau nama tech muncul di vendor, product,
   packageName, atau CPE record MITRE (jatuh ke ringkasan kalau CNA tidak mengisi produk).
 - **CVE yang kena beberapa tech hanya menempel ke satu tech.** Dedup per `cve_id` yang global
   membuat CVE multi-produk (mis. Atlassian: Jira + Confluence + Bamboo) hanya tercatat di tech yang
   kebetulan ketemu duluan, jadi client yang hanya punya tech lain tidak pernah dapat. Sekarang tiap
   client yang punya salah satu tech terdampak dapat barisnya; client dengan beberapa tech terdampak
-  tetap satu baris, dengan tech yang paling awal di techstack.
+  tetap satu baris, dengan tech yang paling awal menurut abjad.
 
 ## [0.2.0] - 2026-10-05
 

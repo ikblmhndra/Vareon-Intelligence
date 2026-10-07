@@ -780,6 +780,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cve/dashboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cve Dashboard
+         * @description Dashboard MTTD/MTTA/MTTR per tahun (`detected_on`, WIB), scope sama dengan
+         *     `/stats`: client aktif, techstack aktif, tanpa false-positive -- total di sini
+         *     = total di tab CVEs. `year` kosong = tahun berjalan. Definisi metrik:
+         *     `cti_api.services.cve_dashboard`.
+         */
+        get: operations["cve_dashboard_api_cve_dashboard_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/cve/draft-email": {
         parameters: {
             query?: never;
@@ -3159,6 +3182,28 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** CveDashboard */
+        CveDashboard: {
+            /** By Severity */
+            by_severity: components["schemas"]["SeverityMetrics"][];
+            /** By Team */
+            by_team: components["schemas"]["TeamMetrics"][];
+            /** Monthly */
+            monthly: components["schemas"]["MonthMetrics"][];
+            mtta: components["schemas"]["MetricStat"];
+            mttd: components["schemas"]["MetricStat"];
+            mttr: components["schemas"]["MetricStat"];
+            /** Slowest */
+            slowest: components["schemas"]["SlowestCve"][];
+            status: components["schemas"]["StatusBreakdown"];
+            summary: components["schemas"]["DashboardSummary"];
+            /** Timezone */
+            timezone: string;
+            /** Year */
+            year: number;
+            /** Years */
+            years: number[];
+        };
         /** CveListResponse */
         CveListResponse: {
             /** Cves */
@@ -3426,6 +3471,58 @@ export interface components {
             /** Total Threat Actors */
             total_threat_actors: number;
         };
+        /** DashboardSummary */
+        DashboardSummary: {
+            /** Ack Rate */
+            ack_rate?: number | null;
+            /**
+             * Acknowledged
+             * @default 0
+             */
+            acknowledged: number;
+            /**
+             * Actionable
+             * @default 0
+             */
+            actionable: number;
+            /**
+             * Critical
+             * @default 0
+             */
+            critical: number;
+            /**
+             * High
+             * @default 0
+             */
+            high: number;
+            /**
+             * Low
+             * @default 0
+             */
+            low: number;
+            /**
+             * Medium
+             * @default 0
+             */
+            medium: number;
+            /**
+             * No Solution Yet
+             * @default 0
+             */
+            no_solution_yet: number;
+            /** Resolution Rate */
+            resolution_rate?: number | null;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+            /**
+             * Unrated
+             * @default 0
+             */
+            unrated: number;
+        };
         /** DraftEmailBody */
         DraftEmailBody: {
             /** Cve Ids */
@@ -3495,6 +3592,22 @@ export interface components {
             password: string;
             /** Username */
             username: string;
+        };
+        /** MetricStat */
+        MetricStat: {
+            /** Max */
+            max?: number | null;
+            /** Mean */
+            mean?: number | null;
+            /** Median */
+            median?: number | null;
+            /**
+             * N
+             * @default 0
+             */
+            n: number;
+            /** P90 */
+            p90?: number | null;
         };
         /** MonitoredAccountOut */
         MonitoredAccountOut: {
@@ -3594,6 +3707,61 @@ export interface components {
             version?: string | null;
             /** Vuln Count */
             vuln_count: number;
+        };
+        /**
+         * MonthMetrics
+         * @description Kohort per bulan `detected_on`: MTTA/MTTR di sini = rata-rata CVE yang
+         *     TERDETEKSI bulan itu (bukan yang di-ack/di-remediasi bulan itu).
+         */
+        MonthMetrics: {
+            /**
+             * Completed
+             * @default 0
+             */
+            completed: number;
+            /**
+             * Critical
+             * @default 0
+             */
+            critical: number;
+            /**
+             * High
+             * @default 0
+             */
+            high: number;
+            /**
+             * In Progress
+             * @default 0
+             */
+            in_progress: number;
+            /**
+             * Low
+             * @default 0
+             */
+            low: number;
+            /**
+             * Medium
+             * @default 0
+             */
+            medium: number;
+            /** Month */
+            month: number;
+            /** Mtta Mean */
+            mtta_mean?: number | null;
+            /** Mttd Mean */
+            mttd_mean?: number | null;
+            /** Mttr Mean */
+            mttr_mean?: number | null;
+            /**
+             * Not Affected
+             * @default 0
+             */
+            not_affected: number;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
         };
         /** NewsletterListItem */
         NewsletterListItem: {
@@ -4544,6 +4712,87 @@ export interface components {
             /** Trigger */
             trigger: string;
         };
+        /** SeverityMetrics */
+        SeverityMetrics: {
+            /** Count */
+            count: number;
+            mtta: components["schemas"]["MetricStat"];
+            mttd: components["schemas"]["MetricStat"];
+            mttr: components["schemas"]["MetricStat"];
+            /** Severity */
+            severity: string;
+        };
+        /** SlowestCve */
+        SlowestCve: {
+            /** Cve Id */
+            cve_id: string;
+            /**
+             * Detected On
+             * @default
+             */
+            detected_on: string;
+            /** Mtta */
+            mtta?: number | null;
+            /** Mttd */
+            mttd?: number | null;
+            /** Mttr */
+            mttr?: number | null;
+            /**
+             * Owner Team
+             * @default
+             */
+            owner_team: string;
+            /** Severity */
+            severity: string;
+            /** Status */
+            status: string;
+            /**
+             * Tech
+             * @default
+             */
+            tech: string;
+        };
+        /**
+         * StatusBreakdown
+         * @description Partisi lengkap: tiap CVE masuk TEPAT SATU bucket, jumlahnya = `summary.total`.
+         */
+        StatusBreakdown: {
+            /**
+             * Awaiting Status
+             * @default 0
+             */
+            awaiting_status: number;
+            /**
+             * Completed
+             * @default 0
+             */
+            completed: number;
+            /**
+             * In Progress
+             * @default 0
+             */
+            in_progress: number;
+            /**
+             * Not Affected
+             * @default 0
+             */
+            not_affected: number;
+            /**
+             * Open
+             * @default 0
+             */
+            open: number;
+            /**
+             * Risk Accepted
+             * @default 0
+             */
+            risk_accepted: number;
+            /**
+             * Unacknowledged
+             * @default 0
+             */
+            unacknowledged: number;
+        };
         /** SyncRequest */
         SyncRequest: {
             /** Domains */
@@ -4637,6 +4886,15 @@ export interface components {
         TagBody: {
             /** Tags */
             tags: string[];
+        };
+        /** TeamMetrics */
+        TeamMetrics: {
+            /** Count */
+            count: number;
+            mtta: components["schemas"]["MetricStat"];
+            mttr: components["schemas"]["MetricStat"];
+            /** Team */
+            team: string;
         };
         /** TechStackAdd */
         TechStackAdd: {
@@ -6685,6 +6943,40 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cve_dashboard_api_cve_dashboard_get: {
+        parameters: {
+            query?: {
+                year?: number | null;
+            };
+            header?: {
+                "x-client-id"?: string | null;
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CveDashboard"];
                 };
             };
             /** @description Validation Error */

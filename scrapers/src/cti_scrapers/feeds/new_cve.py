@@ -40,7 +40,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterator
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import lxml.html
@@ -65,6 +65,19 @@ def _mitre_date(raw: str | None) -> date | None:
         return None
 
 
+def mitre_datetime(raw: str | None) -> datetime | None:
+    """`cveMetadata.datePublished` lengkap dengan jam, tz-aware (UTC). MITRE menulisnya
+    `2026-08-31T13:53:00.000Z`; tanpa penanda zona dianggap UTC (format CVE JSON 5.x). Hanya
+    tanggal (`2026-08-31`) atau tak terbaca -> `None`: jam yang ditebak lebih buruk daripada kosong."""
+    if not raw or len(raw) < 16 or "T" not in raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
+
+
 # Isian "produk" yang bukan nama produk -- CNA kadang mengisi ini kalau tak punya data.
 _PLACEHOLDER_PRODUCTS = frozenset({"", "n a", "na", "none", "unknown", "unspecified", "various"})
 
@@ -76,8 +89,15 @@ def _tokens(text: str) -> str:
 
 
 def _mentions(tech: str, text: str) -> bool:
+    """`tech` muncul sebagai kata utuh di `text`. Angka yang menempel di ujung dianggap versi
+    mayor nama produk yang sama ("graylog2-server", "Log4j2", "Struts2" -> tech `graylog`, `log4j`,
+    `struts`); huruf yang menempel tidak ("nginxy" bukan `nginx`). Ditemukan dari laporan
+    `reconcile_cve_tech`: tanpa ini CVE Graylog yang sah ikut ditandai salah dan dibuang."""
     needle = _tokens(tech)
-    return bool(needle) and f" {needle} " in f" {_tokens(text)} "
+    if not needle:
+        return False
+    pattern = rf"(?<![a-z0-9]){re.escape(needle)}[0-9]{{0,4}}(?![a-z0-9])"
+    return re.search(pattern, _tokens(text)) is not None
 
 
 def usable_products(products: list[str]) -> list[str]:
@@ -178,7 +198,7 @@ class NewCve(BaseScraper):
                 continue
 
             # Satu baris per (CVE, client) -- kalau satu client punya beberapa tech yang kena,
-            # pakai yang urutannya paling awal di techstack biar hasilnya deterministik.
+            # pakai yang paling awal menurut abjad (urutan `techstack` di reference data) biar deterministik.
             client_tech: dict[str, str] = {}
             for tech in sorted(relevant, key=tech_order.__getitem__):
                 for client_id in tech_to_clients[tech]:
@@ -328,6 +348,7 @@ class NewCve(BaseScraper):
             "link": cand["link"],
             "summary": cand["summary"],
             "published": _mitre_date(cve_meta.get("datePublished")),
+            "published_at": mitre_datetime(cve_meta.get("datePublished")),
             "cve_modified_date": _mitre_date(cve_meta.get("dateUpdated"))
             or _mitre_date(cve_meta.get("datePublished")),
             "references": references,

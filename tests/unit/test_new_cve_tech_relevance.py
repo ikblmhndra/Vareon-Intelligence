@@ -139,6 +139,40 @@ def test_a_tech_name_does_not_match_inside_a_longer_word() -> None:
     assert items == []
 
 
+def test_digits_glued_to_the_product_name_are_a_major_version_not_another_word() -> None:
+    """Ditemukan dari laporan `reconcile_cve_tech` di produksi: `graylog2-server` ditolak untuk tech
+    `graylog`, jadi CVE Graylog yang sah ditandai DELETE. Sama untuk Log4j2 dan Struts2."""
+    items = run(
+        {"acme": ["graylog", "log4j", "struts"]},
+        nvd={
+            "graylog": nvd_hit("CVE-2026-69190", "Graylog flaw"),
+            "log4j": nvd_hit("CVE-2026-9201", "Log4j flaw"),
+            "struts": nvd_hit("CVE-2026-9202", "Struts flaw"),
+        },
+        records={
+            "CVE-2026-69190": mitre(product("Graylog2", "graylog2-server")),
+            "CVE-2026-9201": mitre(product("Apache Software Foundation", "Apache Log4j2")),
+            "CVE-2026-9202": mitre(product("Apache", "Struts2")),
+        },
+    )
+
+    assert items == [
+        ("CVE-2026-69190", "acme", "graylog"),
+        ("CVE-2026-9201", "acme", "log4j"),
+        ("CVE-2026-9202", "acme", "struts"),
+    ]
+
+
+def test_letters_glued_to_the_product_name_still_make_it_a_different_product() -> None:
+    items = run(
+        {"acme": ["nginx"]},
+        nvd={"nginx": nvd_hit("CVE-2026-9203", "nginx flaw")},
+        records={"CVE-2026-9203": mitre(product("acme", "nginxplus"))},
+    )
+
+    assert items == []
+
+
 def test_a_cve_that_hits_several_techs_goes_to_every_client_that_has_one_of_them() -> None:
     """Dulu `seen` global: CVE Atlassian yang muncul lewat "jira" dan "confluence" cuma nempel ke
     tech yang kebetulan ketemu duluan, jadi client yang hanya punya Confluence tak pernah dapat."""

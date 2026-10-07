@@ -21,7 +21,7 @@ import datetime
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import Row, Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -548,6 +548,78 @@ class AsyncCveTrackerRepo:
             base_no_severity.where(CveTracker.cve_score > 0, CveTracker.cve_score < 4.0)
         )
         return {"total": total, "critical": critical, "high": high, "medium": medium, "low": low}
+
+    async def list_dashboard_rows(
+        self,
+        *,
+        client_id: str,
+        detected_from: datetime.datetime,
+        detected_to: datetime.datetime,
+        tech: Sequence[str] | None = None,
+        exclude_cve_ids: Sequence[str] | None = None,
+    ) -> list[Row[Any]]:
+        """Bahan dashboard CVE Tracker: satu baris per CVE (`detected_on` dalam
+        `[detected_from, detected_to)`) + ticket-nya kalau ada (outer join --
+        CVE yang belum disentuh analis tetap kehitung, itu angka "untriaged").
+
+        Kolom dipilih eksplisit, BUKAN `select(CveTracker)`: relasi model ini
+        `lazy="selectin"` (6 query anak per halaman hasil), padahal dashboard
+        cuma butuh beberapa kolom skalar. Scope `client_id`/`tech`/`exclude_cve_ids`
+        sama dengan `_apply_filters()` (list + stats), supaya total di dashboard
+        = total di tab CVEs."""
+        stmt = (
+            select(
+                CveTracker.cve_id,
+                CveTracker.cve_severity,
+                CveTracker.cve_score,
+                CveTracker.tech,
+                CveTracker.published,
+                CveTracker.detected_on,
+                CveTracker.solutions,
+                CveTicket.ticket_id,
+                CveTicket.owner_team,
+                CveTicket.remediation_status,
+                CveTicket.risk_acceptance,
+                CveTicket.acknowledge_time,
+                CveTicket.actual_remediation_date,
+            )
+            .outerjoin(
+                CveTicket,
+                (CveTicket.cve_id == CveTracker.cve_id)
+                & (CveTicket.client_id == CveTracker.client_id),
+            )
+            .where(
+                CveTracker.client_id == client_id,
+                CveTracker.detected_on >= detected_from,
+                CveTracker.detected_on < detected_to,
+            )
+        )
+        if exclude_cve_ids:
+            stmt = stmt.where(CveTracker.cve_id.notin_(exclude_cve_ids))
+        if tech:
+            stmt = stmt.where(CveTracker.tech.in_(tech))
+        result = await self.session.execute(stmt.order_by(CveTracker.detected_on.asc()))
+        return list(result.all())
+
+    async def list_detected_years(
+        self,
+        *,
+        client_id: str,
+        timezone: str,
+        tech: Sequence[str] | None = None,
+        exclude_cve_ids: Sequence[str] | None = None,
+    ) -> list[int]:
+        """Tahun-tahun yang punya CVE (`detected_on` dibaca di zona `timezone`,
+        supaya CVE jam 01.00 WIB 1 Januari gak lari ke tahun lalu), terbaru dulu.
+        Buat pilihan tahun di dashboard."""
+        year = func.extract("year", func.timezone(timezone, CveTracker.detected_on))
+        stmt = select(year).where(CveTracker.client_id == client_id).distinct()
+        if exclude_cve_ids:
+            stmt = stmt.where(CveTracker.cve_id.notin_(exclude_cve_ids))
+        if tech:
+            stmt = stmt.where(CveTracker.tech.in_(tech))
+        result = await self.session.execute(stmt)
+        return sorted((int(y) for y in result.scalars().all()), reverse=True)
 
     async def list_for_export(
         self,

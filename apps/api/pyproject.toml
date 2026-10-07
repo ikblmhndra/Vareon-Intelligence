@@ -26,6 +26,9 @@ dependencies = [
     "python-multipart>=0.0.9",
     "scikit-learn>=1.5",
     "openpyxl>=3.1",
+    # openpyxl cuma baca/tulis gambar kalau Pillow ke-import; tanpa ini logo di
+    # template CVE tracker (`xl/media/image1.png`) hilang diam-diam di hasil export.
+    "pillow>=10.0",
 ]
 
 [build-system]

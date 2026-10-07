@@ -147,6 +147,7 @@ Butuh dump Mongo + file offset dedup dari server lama, warm start, dan cutover b
 | `docs/SECRETS_ROTATION.md` | daftar secret dan status rotasinya |
 | `docs/ADDING_A_SCRAPER.md` | menambah scraper baru |
 | `docs/KNOWN_BROKEN.md` | scraper yang rusak/di-waive dan akar masalahnya |
+| `docs/CVE_TECH_MATCHING.md` | kolom Tech di CVE Tracker: masalah, akar masalah, solusi, batasan, rencana standarisasi techstack |
 | `docs/PROGRESS.md` | catatan kerja per fase |
 
 ## Pengembangan lokal
