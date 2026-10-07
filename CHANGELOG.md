@@ -12,7 +12,7 @@ router `changelog.py`) -- parser-nya expect header persis
 1. Jalankan migrasi (`up -d` sudah menjalankan service `migrate`): revisi baru `e8c2a4b6d1f3` (kolom
    nullable `cve_tracker.published_at`, aman untuk data lama). Kontrak API hanya bertambah:
    `GET /api/cve/dashboard`.
-2. Jalankan sekali `tools/ops/backfill_cve_published_at.py` (laporan dulu, lalu `--apply`;
+2. Jalankan sekali `make backfill-published-at` (laporan dulu, lalu `ARGS='--apply'`;
    `docs/SCRAPER_MAINTENANCE.md` 4.H) supaya CVE lama punya jam di kolom "CVE Reported Date" export --
    tanpa itu mereka tampil tanggal saja.
 3. **Export Excel CVE Tracker: kolom bergeser satu ke kanan** mulai kolom E (lihat Diubah). Makro atau
@@ -34,7 +34,8 @@ router `changelog.py`) -- parser-nya expect header persis
 - **`tools/ops/backfill_cve_published_at.py`**: mengisi `published_at` untuk CVE lama dengan mengambil ulang
   record MITRE. Default laporan saja; `--apply` baru menulis; `--client` membatasi cakupan. Hanya mengisi
   yang kosong, dan tidak menulis kalau tanggal MITRE beda dengan `published` yang tersimpan (dilaporkan
-  `MISMATCH`). Playbook: `docs/SCRAPER_MAINTENANCE.md` 4.H.
+  `MISMATCH`). Dijalankan lewat `make backfill-published-at [ARGS='--apply --client <id>']` (container
+  `worker` yang sudah ada, `tools/` di-mount read-only). Playbook: `docs/SCRAPER_MAINTENANCE.md` 4.H.
 - **CD otomatis ke produksi**: `.github/workflows/deploy.yml` men-deploy tiap push ke `main` yang lolos
   CI, lewat runner self-hosted di host produksi (host privat, tanpa port masuk). `tools/ops/deploy.sh`
   (juga `make deploy`) melakukan backup Postgres, menandai image berjalan sebagai `:prev`, build,

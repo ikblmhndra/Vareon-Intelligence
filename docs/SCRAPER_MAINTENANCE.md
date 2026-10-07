@@ -184,11 +184,15 @@ jatuh ke tanggal `published`. (**Reported by System** tidak terpengaruh: itu `de
 scraper pertama dapat CVE-nya.)
 
 ```bash
-# laporan saja (default) -- tidak menulis apa pun
-docker run --rm --network <project>_default --env-file .env -v "$PWD/tools:/tools:ro" \
-  --entrypoint python cti-worker:$CTI_TAG /tools/ops/backfill_cve_published_at.py [--client <client_id>]
-# setelah laporan dibaca dan masuk akal: tambahkan --apply
+# di host produksi (checkout repo, stack sudah jalan). Laporan saja (default) -- tidak menulis apa pun
+make backfill-published-at                      # atau ARGS='--client <client_id>' untuk satu client
+# setelah laporan dibaca dan masuk akal:
+make backfill-published-at ARGS='--apply'
 ```
+
+Target `make` menjalankan tool di container `worker` yang sudah ada (image, `.env`, dan network ikut
+service itu; `tools/` di-mount read-only; postgres/redis/migrate tidak disentuh). Tanpa checkout repo, pakai
+bentuk `docker run` seperti 4.G dengan `/tools/ops/backfill_cve_published_at.py`.
 
 Hanya baris dengan `published_at` NULL yang disentuh, dan yang sudah terisi tidak pernah ditimpa.
 Baris yang tanggal MITRE-nya beda dengan `published` tersimpan dilaporkan `MISMATCH` dan **tidak
