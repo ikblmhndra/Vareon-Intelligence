@@ -28,7 +28,7 @@ Isi tiap item: **apa** yang diminta, **keadaan sekarang** (fakta dari repo/stagi
 | 16 | Dashboard CVE: SLA per severity (ganti rating ambang tetap) | target SLA ack/remediasi per severity | -- |
 | 17 | Dashboard CVE: panel backlog/aging, KEV/EPSS, produk paling sering terdampak | pilihan panel | -- |
 | 18 | Validasi isian ticket CVE + keputusan model ticket (1 ticket per CVE vs satu ticket banyak CVE) | daftar nilai baku, keputusan model | -- |
-| 19 | **Katalog tech dari mirror CVE + Monitor** (arah baru 2026-10-07, menggantikan rencana alias/fase 2-3; kolom `aliases` dibuang): mirror semua CVE (retensi tahun kalender) -> katalog vendor+produk -> tab All Tech / Monitored Tech -> tab CVEs hanya tech yang di-monitor. **Desain disepakati, belum ada kode untuk bagian barunya**; pencocok bersama `cti_core.tech_match` (tanpa alias) ada di branch, belum di `main`; rancangan di `docs/CVE_TECH_MATCHING.md` 7 | spike data (butuh akses jaringan ke CVE List V5/NVD), konfirmasi 3 hal terbuka (di item) | uji di server dev dulu |
+| 19 | **Katalog tech dari mirror CVE + Monitor** (arah baru 2026-10-07, menggantikan rencana alias/fase 2-3; kolom `aliases` dibuang): mirror semua CVE (retensi tahun kalender) -> katalog vendor+produk -> tab All Tech / Monitored Tech -> tab CVEs hanya tech yang di-monitor. **Kode selesai (irisan 1-7) di branch `nameless/roadmap-runners`, PR menutup roadmap ini**; tersisa operasional: pemetaan 34 entri di dev, mode bayangan, cutover (`docs/CVE_CATALOG_CUTOVER.md`); desain `docs/CVE_CATALOG_DESIGN.md` | pemetaan manual + shadow di dev | uji di server dev dulu, baru prod |
 
 ---
 
@@ -468,8 +468,8 @@ docstring `CveTicket`.
 > **Arah berubah 2026-10-07 (diskusi dengan user).** Rencana lama (kolom `aliases` + katalog yang dikurasi
 > tangan + query CPE) tidak dilanjutkan sebagai jalur utama: alias manual per tech tidak skala, dan akar
 > masalahnya (nama bebas dicocokkan sebagai teks) tetap ada. Desain di bawah menggantikan fase 2 dan 3 di
-> `docs/CVE_TECH_MATCHING.md` 7.1. **Belum ada kode untuk bagian barunya**; yang sudah ada dicatat di
-> "Keadaan sekarang".
+> `docs/CVE_TECH_MATCHING.md` 7.1. **Kodenya sudah ada** (irisan 1-7, lihat "Fase" dan "Rancangan teknis" di
+> bawah); "Keadaan sekarang" mencatat keadaan SEBELUM katalog.
 
 **Diminta (2026-10-07)**: kolom Tech di CVE Tracker tidak boleh salah-cocok lagi, dan daftar techstack
 berhenti jadi "ketik nama manual". Latar belakang, akar masalah, dan solusi 0.2.1:
@@ -593,8 +593,11 @@ Semuanya diuji di **server dev dulu**, baru produksi.
   terstruktur baru; kolom Affected tetap teks (`cve_affected.affected`) dan ticket tetap
   `affected_version`/`fixed_version` isian analis. Relevansi berbasis versi (#7) tidak dikerjakan di #19
   (usulan range terstruktur dibatalkan, bukan ditunda).
-- **Pencocok ketujuh** (`applicable_to_stack`, laporan Top CVE) belum disatukan: tesnya mengunci `c++` ~
-  `c++ inc`. Putuskan: ubah tesnya (istilah < 2 karakter tak pernah cocok) atau beri pengecualian.
+- **Pencocok ketujuh: DIPUTUSKAN (user 2026-10-08) = pengecualian.** `applicable_to_stack` (laporan Top CVE) sengaja
+  TIDAK disatukan ke `cti_core.tech_match`: `test_cve_record.py` mengunci `c++` ~ `c++ inc` (substring), dan laporan
+  itu tidak ikut jalur katalog. Tesnya tetap, perilakunya tidak diubah.
+- **Pemetaan `grafana`: DIPUTUSKAN (user 2026-10-08) = vendor-level** (vendor Grafana: menangkap Grafana OSS/
+  Enterprise, `mcp-k6`, k6, dll.; risikonya membawa produk Grafana yang tak dipakai).
 
 **Titik sentuh (perkiraan)**: model + migrasi Alembic baru (mirror, katalog, `techstack_entries.catalog_id`;
 dicek `test_migrations_match_models`), job ingest dan retensi di `apps/worker` (queue `maintenance`),

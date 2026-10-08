@@ -217,9 +217,10 @@ list, `cve-detail-modal` dengan tab Ticket), **Dashboard** (`cve-dashboard-view`
 | 6 | `cve_priority.in_tech_stack` | substring dua arah |
 | **7** | **`reports/cve_record.py::applicable_to_stack`** | **substring `re.escape(tech)` terhadap vendor, tanpa batas kata** (label "Might Applicable to Organization!") |
 
-Branch `nameless/roadmap-runners` (belum di `main`) menyatukan 2-6 ke `cti_core.tech_match`; **#7 sengaja belum**:
-`test_cve_record.py` mengunci `c++` ~ `c++ inc`, yang bertentangan dengan aturan "istilah < 2 karakter tak pernah
-cocok", jadi menyatukannya adalah perubahan perilaku yang harus diputuskan.
+Branch `nameless/roadmap-runners` (belum di `main`) menyatukan 2-6 ke `cti_core.tech_match`; **#7 pengecualian
+yang disengaja (keputusan user 2026-10-08)**: `test_cve_record.py` mengunci `c++` ~ `c++ inc`, yang bertentangan
+dengan aturan "istilah < 2 karakter tak pernah cocok"; laporan Top CVE tidak ikut jalur katalog dan perilakunya
+tidak diubah.
 
 ## 10. Hal yang harus dipertahankan saat mengubah desain (checklist invarian)
 

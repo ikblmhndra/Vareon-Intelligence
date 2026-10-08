@@ -7,7 +7,7 @@ pengembangan (standarisasi techstack, `docs/ROADMAP.md` #19).
 **Status** (2026-10-07): perbaikan filter dan tool pembersih sudah di rilis 0.2.1 (PR #8); koreksi
 bug angka-versi (`graylog2-server`) sudah di `main`. **Arah standarisasi berubah hari ini**: bukan lagi
 alias manual + katalog kurasi, melainkan **mirror CVE -> katalog tech -> Monitor** (7.1, desain lengkap di
-`docs/ROADMAP.md` #19); belum ada kode untuk bagian barunya. Pencocok bersama `cti_core.tech_match`
+`docs/ROADMAP.md` #19); kodenya sudah ada (irisan 1-7, `docs/CVE_CATALOG_DESIGN.md`). Pencocok bersama `cti_core.tech_match`
 (tanpa kolom `aliases`, dibuang) ada di branch `nameless/roadmap-runners`, belum di `main` (7.1.1). Perintah menjalankan tool
 pembersih: `docs/SCRAPER_MAINTENANCE.md` 4.G.
 
@@ -257,9 +257,9 @@ katalog, bukan alias tulis tangan. Yang tersisa:
 - **Pemanggilnya**: gate dan filter Tenable di `new_cve`, `score.py` (`related_tech_status` untuk judul
   artikel dan tweet, `check_tech_stack` untuk vendor CVE), `cve_priority.in_tech_stack`, dan penilai
   `tools/ops/reconcile_cve_tech.py` (jadi tool dan scraper tetap satu definisi). Tidak ada migrasi.
-- **Belum disatukan**: `reports/cve_record.py::applicable_to_stack` (pencocok ketujuh). Tesnya
-  (`test_cve_record.py`) mengunci `c++` ~ `c++ inc`, bertentangan dengan aturan istilah pendek, jadi itu
-  perubahan perilaku yang harus diputuskan.
+- **Pengecualian (keputusan user 2026-10-08)**: `reports/cve_record.py::applicable_to_stack` (pencocok ketujuh)
+  sengaja TIDAK disatukan. Tesnya (`test_cve_record.py`) mengunci `c++` ~ `c++ inc`, bertentangan dengan aturan
+  istilah pendek, dan laporan Top CVE tidak ikut jalur katalog; perilakunya tidak diubah.
 - **Nama lain produk yang sama** (`PAN-OS` untuk `palo alto`, `RouterOS` untuk `mikrotik`) **tidak**
   tertangani tanpa alias; itu tugas katalog. Selama katalog belum ada, CVE yang produk CNA-nya bernama lain
   dari nama tech tetap ditolak gate (batasan yang sama dengan 0.2.1; lihat 6).

@@ -213,7 +213,8 @@ dibuang tetap utuh. Statistik katalog tidak turun (kolom `*_seen_total`).
    | microsoft 365, outlook | keluarga Microsoft 365 Apps / Outlook | hierarki Office |
    | harmony sase + perimeter81 | satu produk (Check Point) | dua entri menunjuk produk sama |
    | gitlab, n8n, wazuh, suricata, mikrotik, anydesk, ejbca, burp suite | keluarga bersih | n8n: vendor `n8n io` dan `n8n` |
-   | new relic, maxscale, extrahop, thales, esxi, grafana, mariadb, proxmox | **ditinjau satu per satu** | tak ada CVE di jendela, atau ambigu |
+   | grafana | **vendor Grafana (vendor-level; DIPUTUSKAN user 2026-10-08)** | menangkap Grafana OSS/Enterprise, `mcp-k6`, k6, dll.; risiko: produk Grafana yang tak dipakai ikut |
+   | new relic, maxscale, extrahop, thales, esxi, mariadb, proxmox | **ditinjau satu per satu** | tak ada CVE di jendela, atau ambigu |
 
 4. **Mode bayangan** di dev beberapa hari: pipeline baru menulis ke `cve_tracker` hanya bila flag aktif;
    sebelum itu menulis ke tabel pembanding. Hasil: CVE yang hanya ditemukan satu pihak, dengan penjelasan.

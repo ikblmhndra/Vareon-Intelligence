@@ -22,9 +22,10 @@ Yang sengaja BUKAN tugas modul ini: menemukan kandidat CVE (`keywordSearch` NVD 
 memakai nama tech apa adanya), alias nama lain (dibuang 2026-10-07; identitas produk nanti datang
 dari katalog, `docs/ROADMAP.md` #19), dan hierarki produk (Outlook di bawah Microsoft 365).
 
-Belum memakai modul ini: `reports/cve_record.py::applicable_to_stack` (laporan Top CVE). Tesnya
-(`test_cve_record.py`) sengaja mengunci `c++` ~ `c++ inc`, yang bertentangan dengan aturan istilah
-pendek di atas, jadi menyatukannya adalah perubahan perilaku yang harus diputuskan, bukan perapian.
+Tidak memakai modul ini, PENGECUALIAN DISENGAJA (keputusan 2026-10-08):
+`reports/cve_record.py::applicable_to_stack` (laporan Top CVE). Tesnya (`test_cve_record.py`)
+mengunci `c++` ~ `c++ inc`, yang bertentangan dengan aturan istilah pendek di atas; jangan disatukan
+sebagai "perapian".
 """
 
 from __future__ import annotations
