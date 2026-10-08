@@ -231,7 +231,7 @@ cocok", jadi menyatukannya adalah perubahan perilaku yang harus diputuskan.
 3. Satu baris tracker = **satu tech** per (CVE, client); `upsert` menimpa `tech` tiap run.
 4. **Techstack kosong = tab CVEs tanpa filter tech** (tapi `purge_orphaned` menganggap semua yatim). **Diputuskan
    irisan 5**: tanpa entri sama sekali tetap tanpa filter (tidak ada perubahan perilaku); ada entri tapi semuanya
-   nonaktif = kosong. Keputusan ini perlu dikonfirmasi user (lihat `docs/CVE_CATALOG_DESIGN.md` 9.5).
+   nonaktif = kosong. Dikonfirmasi user 2026-10-08 (`docs/CVE_CATALOG_DESIGN.md` 9.5).
 5. Enrichment sweep bekerja **lintas client** dan tanpa penyaring kesegaran; skala "selalu di-enrich" untuk
    banyak tech perlu `*_checked_at` sebagai penyaring.
 6. `detected_on` diisi saat INSERT pertama; dasar KPI dashboard. CVE yang dipromosikan dari mirror harus

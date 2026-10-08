@@ -300,11 +300,15 @@ dibuang tetap utuh. Statistik katalog tidak turun (kolom `*_seen_total`).
 6. **UI** All Tech / Monitored Tech / CVE DB.
 7. Pemetaan 34 entri + cutover.
 
-### 9.5 Keputusan irisan 5 yang perlu dikonfirmasi
+### 9.5 Keputusan irisan 5 (DIKONFIRMASI user 2026-10-08)
 
+- **Nonaktif** (`active=false`) = berhenti dipantau dan disembunyikan, TIDAK dihapus: baris tracker, ticket,
+  ACK, dan false positive tetap; mengaktifkan lagi memunculkannya kembali (dan mengisi riwayatnya dari mirror).
+  Beda dari menghapus entri, yang membuat barisnya yatim dan bisa dibuang `purge-orphaned`.
 - **Techstack kosong**: client tanpa entri sama sekali = tab CVEs tanpa filter tech (tidak berubah); client
   yang punya entri tapi semuanya nonaktif = tab kosong. Alternatif: selalu kosong bila tanpa entri aktif.
-- **Export Excel** kini mengikuti scope tab (entri aktif). Sebelumnya tidak menyaring techstack sama sekali;
+- **Export Excel** hanya CVE yang dimonitor, sama dengan tab (keputusan user: "export hanya cve yang
+  termonitor"). Sebelumnya tidak menyaring techstack sama sekali;
   baris yatim (tech sudah dihapus) tidak lagi ikut export.
 - **`score.py`/`reference_data`** hanya memakai entri aktif (artikel dan scraper tidak lagi mencari/mencocokkan
   tech yang dinonaktifkan).
