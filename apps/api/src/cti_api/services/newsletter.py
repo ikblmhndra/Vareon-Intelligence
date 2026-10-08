@@ -28,7 +28,7 @@ from typing import Any
 from cti_core.config import platform_name
 from cti_core.db.models.article import Article
 from cti_core.db.repositories.article import AsyncArticleRepo
-from cti_core.db.repositories.cve import AsyncCveFalsePositiveRepo, AsyncCveTrackerRepo
+from cti_core.db.repositories.cve import AsyncCveTrackerRepo
 from cti_core.db.repositories.ioc import AsyncIOCRepo
 from cti_core.db.repositories.ioc_reference import AsyncIocAllowlistRepo
 from cti_core.db.repositories.newsletter import AsyncNewsletterRepo
@@ -219,14 +219,12 @@ async def generate_article_summary(article: dict[str, Any], body: str | None) ->
 
 
 async def _get_tp_cve_ids(session: AsyncSession) -> set[str]:
-    """True-positive CVE id set (semua CVE yang lagi ditrack, minus false
-    positive client "default") -- port `_get_tp_cve_ids()` lama."""
-    all_ids, fp_ids = await asyncio.gather(
-        AsyncCveTrackerRepo(session).list_all_distinct_cve_ids(),
-        AsyncCveFalsePositiveRepo(session).list_cve_ids("default"),
-    )
-    fp_set = set(fp_ids)
-    return {cid for cid in all_ids if cid not in fp_set}
+    """True-positive CVE id set: CVE yang masih dianggap valid oleh minimal satu client (FP itu
+    per `(cve_id, client_id)`, lihat `list_true_positive_cve_ids`). Newsletter bersifat global,
+    jadi bukan per client. Port `_get_tp_cve_ids()` lama, yang hanya mengecualikan FP client
+    "default": CVE yang FP di "default" tapi valid di client lain jadi tidak pernah ditandai, dan
+    CVE yang di-FP-kan semua client selain "default" tetap ditandai."""
+    return set(await AsyncCveTrackerRepo(session).list_true_positive_cve_ids())
 
 
 def _find_cve_mentions(title: str, body: str | None, tp_cve_set: set[str]) -> list[str]:

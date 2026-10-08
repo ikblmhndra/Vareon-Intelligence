@@ -252,9 +252,8 @@ class AsyncCveTrackerRepo:
         self.session = session
 
     async def list_all_distinct_cve_ids(self) -> list[str]:
-        """Lintas client, TANPA filter -- port `newsletter_service.
-        _get_tp_cve_ids()` (Fase 7.3 Bagian 4), yang butuh SEMUA cve_id
-        yang lagi ditrack buat nyaring "true positive" CVE mentions."""
+        """Lintas client, TANPA filter -- semua cve_id yang lagi ditrack, termasuk yang
+        ditandai FP. Buat "true positive" pakai `list_true_positive_cve_ids`."""
         result = await self.session.execute(select(CveTracker.cve_id).distinct())
         return list(result.scalars().all())
 
@@ -315,7 +314,8 @@ class AsyncCveTrackerRepo:
         return True
 
     async def list_true_positive_cve_ids(self, client_id: str | None = None) -> list[str]:
-        """CVE yang perlu di-enrich EPSS/KEV/exploit-db (`cve_lookup`).
+        """CVE yang masih true positive: dipakai enrichment EPSS/KEV/exploit-db (`cve_lookup`)
+        dan korelasi CVE di newsletter.
 
         `client_id=None` (default): CVE dianggap true positive selama ada SATU baris
         `cve_tracker` (client mana pun) yang tidak ditandai FP oleh clientnya sendiri. FP itu per

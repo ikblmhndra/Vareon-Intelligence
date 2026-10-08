@@ -206,6 +206,12 @@ Yang lain terkait CVE (tidak berubah):
 Digest dan alert artikel/laporan memakai nama techstack **gabungan semua client**, tidak per client; ringkasan
 CVE baru di atas adalah satu-satunya yang per client.
 
+Newsletter (`services/newsletter._enrich_articles`, global, bukan per client) juga mengkorelasikan artikel dengan
+tracker: artikel yang judul/badannya menyebut CVE yang masih **true positive untuk minimal satu client**
+(`list_true_positive_cve_ids()`; FP dinilai per baris client, bukan hanya `"default"`, diubah di PR #14) diberi
+`cve_mentions` dan `possibly_exploited_wild`. Mention-nya ditulis ke `cve_newsletter_mentions` pada **satu** baris
+tracker (client mana pun, urutan DB), dan tabel itu belum dibaca siapa pun.
+
 ## 8. Peta UI (`apps/web/src/app/(app)/cve/page.tsx`)
 
 Dua view: **CVEs** dan **Package Vulnerabilities** (`pkgvuln/`, tidak dipelajari di sini). Di dalam CVEs ada
