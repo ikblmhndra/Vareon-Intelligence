@@ -38,12 +38,12 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Literal
 
-from sqlalchemy import delete, select
+from sqlalchemy import Select, delete, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session, selectinload
 
 from cti_core.db.models.cve import CveTracker
-from cti_core.db.models.cve_mirror import CvePromotionShadow, CveRecord
+from cti_core.db.models.cve_mirror import CvePromotionShadow, CveRecord, CveRecordProduct
 from cti_core.db.models.techstack import TechStackEntry, TechStackTarget
 from cti_core.db.repositories.cve import CveTrackerRepo
 from cti_core.tech_match import relevant_techs
@@ -294,6 +294,57 @@ class PromoteSummary:
     per_specificity: Counter[str] = field(default_factory=Counter)
 
 
+def _tally(summary: PromoteSummary, out: PromoteOutcome) -> None:
+    if out.matched_clients:
+        summary.matched += 1
+    summary.created += out.created
+    summary.updated += out.updated
+    summary.unchanged += out.unchanged
+    summary.shadow += out.shadow
+    for choice in out.choices.values():
+        summary.per_entry[choice.entry.name] += 1
+        summary.per_specificity[choice.label] += 1
+
+
+def _promote_batches(
+    session: Session,
+    entries: Sequence[EntryView],
+    mode: Mode,
+    *,
+    only_cve_ids: Select[tuple[str]] | None,
+    batch_size: int,
+    limit: int | None,
+    progress: Callable[[PromoteSummary], None] | None,
+    progress_every: int,
+) -> PromoteSummary:
+    summary = PromoteSummary()
+    last = ""
+    while True:
+        stmt = (
+            select(CveRecord)
+            .where(CveRecord.cve_id > last)
+            .options(selectinload(CveRecord.products))
+            .order_by(CveRecord.cve_id)
+            .limit(batch_size)
+        )
+        if only_cve_ids is not None:
+            stmt = stmt.where(CveRecord.cve_id.in_(only_cve_ids))
+        batch = session.execute(stmt).scalars().all()
+        if not batch:
+            break
+        for rec in batch:
+            if limit is not None and summary.scanned >= limit:
+                return summary
+            summary.scanned += 1
+            _tally(summary, promote_record(session, rec, entries, mode))
+            if progress and summary.scanned % progress_every == 0:
+                progress(summary)
+        last = batch[-1].cve_id
+        session.flush()
+        session.expunge_all()  # 100 ribu+ record: jangan menahan semuanya di identity map
+    return summary
+
+
 def promote_all(
     session: Session,
     entries: Sequence[EntryView],
@@ -308,41 +359,55 @@ def promote_all(
     meng-commit: pemanggil yang memutuskan (laporan = rollback). Memanggil `expunge_all()` tiap
     batch (ratusan ribu record tak boleh menumpuk di identity map): jangan pegang objek ORM
     lintas panggilan ini."""
-    summary = PromoteSummary()
     if mode == "off" or not entries:
-        return summary
-    last = ""
-    while True:
-        batch = (
-            session.execute(
-                select(CveRecord)
-                .where(CveRecord.cve_id > last)
-                .options(selectinload(CveRecord.products))
-                .order_by(CveRecord.cve_id)
-                .limit(batch_size)
-            )
-            .scalars()
-            .all()
-        )
-        if not batch:
-            break
-        for rec in batch:
-            if limit is not None and summary.scanned >= limit:
-                return summary
-            summary.scanned += 1
-            out = promote_record(session, rec, entries, mode)
-            if out.matched_clients:
-                summary.matched += 1
-            summary.created += out.created
-            summary.updated += out.updated
-            summary.unchanged += out.unchanged
-            summary.shadow += out.shadow
-            for choice in out.choices.values():
-                summary.per_entry[choice.entry.name] += 1
-                summary.per_specificity[choice.label] += 1
-            if progress and summary.scanned % progress_every == 0:
-                progress(summary)
-        last = batch[-1].cve_id
-        session.flush()
-        session.expunge_all()  # 100 ribu+ record: jangan menahan semuanya di identity map
-    return summary
+        return PromoteSummary()
+    return _promote_batches(
+        session,
+        entries,
+        mode,
+        only_cve_ids=None,
+        batch_size=batch_size,
+        limit=limit,
+        progress=progress,
+        progress_every=progress_every,
+    )
+
+
+def promote_entry(
+    session: Session,
+    entry_id: int,
+    mode: Mode,
+    *,
+    batch_size: int = 500,
+    limit: int | None = None,
+) -> PromoteSummary:
+    """Satu entri baru di-Monitor / diaktifkan / dapat target baru: isi riwayatnya dari mirror.
+
+    Kandidat = record yang produknya cocok dengan target entri itu (satu query; murah). Entri
+    tanpa target (custom) harus memindai seluruh mirror lewat gate teks. Yang dievaluasi tetap
+    SEMUA entri aktif client itu: pemenang per (CVE, client) bisa berpindah ke atau dari entri ini.
+    Entri nonaktif/hilang = tidak ada yang dikerjakan. Tidak meng-commit."""
+    if mode == "off":
+        return PromoteSummary()
+    wanted = load_entries(session, entry_ids=[entry_id])
+    if not wanted:
+        return PromoteSummary()
+    entry = wanted[0]
+    candidates: Select[tuple[str]] | None = None
+    if entry.has_targets:
+        conds = []
+        if entry.family_ids:
+            conds.append(CveRecordProduct.family_id.in_(entry.family_ids))
+        if entry.vendor_ids:
+            conds.append(CveRecordProduct.vendor_id.in_(entry.vendor_ids))
+        candidates = select(CveRecordProduct.cve_id).where(or_(*conds))
+    return _promote_batches(
+        session,
+        load_entries(session, client_id=entry.client_id),
+        mode,
+        only_cve_ids=candidates,
+        batch_size=batch_size,
+        limit=limit,
+        progress=None,
+        progress_every=0,
+    )

@@ -81,3 +81,43 @@ def cve_mirror_purge(self: Any) -> dict[str, object]:
     with sync_session() as session:
         deleted = purge_expired(session, today)
     return {"status": "ok", "deleted": deleted}
+
+
+@app.task(bind=True, name="cve.promote_entry", queue=QUEUE_MAINTENANCE, max_retries=5)
+def cve_promote_entry(self: Any, entry_id: int) -> dict[str, object]:
+    """Satu entri baru di-Monitor / diaktifkan / dapat target: isi riwayatnya dari mirror
+    (`cti_core.cve_promotion.promote_entry`), dipicu API setelah commit. Tanpa notifikasi
+    Telegram (riwayat bukan "CVE baru"). Menunggu kunci ingest (`acquire_lock`): bila ingest
+    sedang jalan, coba lagi 1 menit kemudian."""
+    from cti_core.cve_mirror_sync import acquire_lock, release_lock
+    from cti_core.cve_promotion import promote_entry
+    from cti_core.db.engine import sync_session
+
+    cfg = get_settings().cve_mirror
+    if not cfg.enabled or cfg.promote == "off":
+        return {"status": "disabled"}
+    with sync_session() as session:
+        if not acquire_lock(session):
+            raise self.retry(countdown=60)
+        try:
+            summary = promote_entry(session, entry_id, cfg.promote)
+        finally:
+            release_lock(session)
+    log.info(
+        "cve_promote_entry",
+        entry_id=entry_id,
+        mode=cfg.promote,
+        scanned=summary.scanned,
+        matched=summary.matched,
+        created=summary.created,
+        shadow=summary.shadow,
+    )
+    return {
+        "status": "ok",
+        "mode": cfg.promote,
+        "scanned": summary.scanned,
+        "matched": summary.matched,
+        "created": summary.created,
+        "updated": summary.updated,
+        "shadow": summary.shadow,
+    }

@@ -23,6 +23,7 @@ from cti_core.cve_promotion import (
     forget_shadow,
     load_entries,
     promote_all,
+    promote_entry,
     promote_record,
 )
 from cti_core.db.models.auth import Client
@@ -494,3 +495,57 @@ def test_inactive_entries_are_not_searched_or_matched_by_reference_data(session:
     assert "visible" in _resolve_techstack(session) and "hidden" not in _resolve_techstack(session)
     by_client = _resolve_techstack_by_client(session)
     assert by_client["acme"] == ["visible"]
+
+
+# ── promote_entry (entri baru di-Monitor) ─────────────────────────────────────────────────────
+
+
+def test_promote_entry_only_visits_records_matching_its_targets(session: Session) -> None:
+    for i in range(1, 4):
+        add_record(session, f"CVE-2026-000{i}", FORTI)
+    add_record(session, "CVE-2026-0009", ("Juniper", "Junos OS"))
+    forti = add_entry(session, "fortigate", families=("fortios",))
+    out = promote_entry(session, forti.id, "live")
+    assert (out.scanned, out.created) == (3, 3)  # Juniper tak dikunjungi
+    assert tracker(session, "CVE-2026-0009") is None
+    assert out.per_entry == {"fortigate": 3}
+
+
+def test_promote_entry_lets_the_most_specific_entry_of_the_client_win(session: Session) -> None:
+    add_record(session, "CVE-2026-0001", FORTI)
+    broad = add_entry(session, "fortinet", vendors=("fortinet",))
+    promote_entry(session, broad.id, "live")
+    assert tracker(session).tech == "fortinet"  # type: ignore[union-attr]
+    narrow = add_entry(session, "fortigate", families=("fortios",))
+    out = promote_entry(session, narrow.id, "live")
+    assert out.updated == 1 and tracker(session).tech == "fortigate"  # type: ignore[union-attr]
+
+
+def test_promote_entry_is_a_noop_when_off_inactive_or_missing(session: Session) -> None:
+    add_record(session, "CVE-2026-0001", FORTI)
+    entry = add_entry(session, "fortigate", families=("fortios",))
+    assert promote_entry(session, entry.id, "off").scanned == 0
+    assert promote_entry(session, 999999, "live").scanned == 0
+    entry.active = False
+    session.flush()
+    assert promote_entry(session, entry.id, "live").scanned == 0
+    assert count(session, CveTracker) == 0
+
+
+def test_promote_entry_in_shadow_mode_writes_only_the_shadow(session: Session) -> None:
+    add_record(session, "CVE-2026-0001", FORTI)
+    entry = add_entry(session, "fortigate", families=("fortios",))
+    out = promote_entry(session, entry.id, "shadow")
+    assert out.shadow == 1 and count(session, CveTracker) == 0
+    assert shadow_rows(session) == [("CVE-2026-0001", "acme", "fortigate", "family")]
+
+
+def test_promote_entry_for_a_custom_entry_scans_the_whole_mirror_with_the_text_gate(
+    session: Session,
+) -> None:
+    add_record(session, "CVE-2026-0001", FORTI)
+    add_record(session, "CVE-2026-0002", ("Juniper", "Junos OS"))
+    custom = add_entry(session, "junos")  # tanpa target
+    out = promote_entry(session, custom.id, "live")
+    assert (out.scanned, out.created) == (2, 1)
+    assert tracker(session, "CVE-2026-0002").tech == "junos"  # type: ignore[union-attr]

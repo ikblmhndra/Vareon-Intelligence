@@ -27,10 +27,12 @@ from cti_api import __version__
 from cti_api.routers import articles as articles_router
 from cti_api.routers import attack as attack_router
 from cti_api.routers import auth as auth_router
+from cti_api.routers import catalog as catalog_router
 from cti_api.routers import changelog as changelog_router
 from cti_api.routers import clients as clients_router
 from cti_api.routers import crossref as crossref_router
 from cti_api.routers import cve as cve_router
+from cti_api.routers import cve_db as cve_db_router
 from cti_api.routers import exec_dashboard as exec_dashboard_router
 from cti_api.routers import filtered_articles as filtered_articles_router
 from cti_api.routers import health as health_router
@@ -113,6 +115,8 @@ def create_app() -> FastAPI:
     app.include_router(iocs_router.router)
     app.include_router(techstack_router.router)
     app.include_router(cve_router.router)
+    app.include_router(cve_db_router.router)
+    app.include_router(catalog_router.router)
     app.include_router(tweets_router.router)
     app.include_router(monitored_accounts_router.router)
     app.include_router(ransomware_router.router)

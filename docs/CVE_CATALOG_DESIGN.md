@@ -1,7 +1,7 @@
 # Rancangan: mirror CVE, katalog tech, dan Monitor (ROADMAP #19)
 
-Status: **irisan 1 (resolver), 2 (skema, model, repositori), 3 (ingest), dan 4 (promosi + mode
-bayangan) SELESAI di branch; irisan 5-7 masih rancangan** (2026-10-07). Diturunkan dari keputusan user, hasil spike di data
+Status: **irisan 1 (resolver), 2 (skema, model, repositori), 3 (ingest), 4 (promosi + mode
+bayangan), dan 5 (API) SELESAI di branch; irisan 6-7 masih rancangan** (2026-10-07). Diturunkan dari keputusan user, hasil spike di data
 penuh (`docs/spikes/2026-10-07_cve_catalog_report_v2.md`, tafsir di `docs/CVE_TECH_MATCHING.md` 7.1.3), dan
 alur CVE Tracker yang sekarang (`docs/CVE_TRACKER_FLOW.md`; **baca bagian 10-nya**, itu invarian yang
 harus dijaga). Hal yang belum diverifikasi ditandai **[asumsi]**; yang diverifikasi ditandai **[dicek]**.
@@ -274,8 +274,42 @@ dibuang tetap utuh. Statistik katalog tidak turun (kolom `*_seen_total`).
      hasil resolver (`vendor_raw`/`product_raw`/`product_norm`), bukan `packageName`/CPE mentah seperti
      `new_cve`: selisihnya akan terlihat di perbandingan bayangan.
 5. **API katalog/CVE DB/Monitor** + kontrak.
+   **SELESAI** (`docs/openapi.json` dan `schema.d.ts` diregenerasi, hanya penambahan; 8 operasi baru, 2 skema
+   bertambah/berubah):
+   - Katalog (baca-saja, global, status Monitor per client): `GET /api/catalog/vendors`,
+     `GET /api/catalog/vendors/{id}/families`, `GET /api/catalog/families?q=` (min 2 huruf). Jelajah
+     menyembunyikan keluarga `cve_seen_total < 2` dan vendor yang semua keluarganya begitu (`hidden` di respons
+     = berapa); `q` dan `show_all=true` tidak menyembunyikan; yang sudah dirujuk Monitor selalu tampil. Input
+     `q` diperlakukan literal (bukan pola LIKE). `page_size` maks 100. Vendor "(tanpa vendor)" muncul dengan
+     `monitorable=false`.
+   - CVE DB: `GET /api/cve-db?q=&vendor=&family=&severity=&date_start=&date_end=` dan `GET /api/cve-db/{cve_id}`;
+     tiap produk membawa `monitored`/`monitor_entry_id` (langsung atau lewat target vendor). Ringkasan di daftar
+     dipotong 400 karakter, detail utuh.
+   - Monitor: `POST /api/techstack` kini menerima `name` saja (entri **custom**, kontrak lama), atau
+     `vendor_id` / `family_id` (entri **katalog**, `name` opsional menimpa label bawaan; label harus unik per
+     client, `duplicate` bila bentrok). `POST /{id}/targets`, `DELETE /{id}/targets/{target_id}` (404/409/422
+     lewat status HTTP; **target terakhir tidak bisa dilepas**, karena entri tanpa target kembali dicocokkan
+     lewat teks), `PATCH /{id}` `{active}`, dan `GET /api/techstack?active=`. `TechStackOut` bertambah
+     `active`, `kind` (`catalog`/`custom`), `targets`.
+   - Pemicu promosi: tambah/aktifkan/target baru -> API mengirim tugas `cve.promote_entry` (setelah commit,
+     best effort, hanya bila `CVE_MIRROR__ENABLED` dan `CVE_MIRROR__PROMOTE` != off) yang mengisi riwayat entri
+     itu dari mirror (kandidat = record yang produknya cocok target; entri custom memindai seluruh mirror).
+   - Scope tab CVEs/stats/dashboard/export/`tech-list`/`purge-orphaned`: lihat 9.5.
+   - Tes: `tests/integration/test_catalog_api.py` (23), `test_cve_promotion.py` (+5 `promote_entry`),
+     `tests/unit/test_monitor_trigger.py`.
 6. **UI** All Tech / Monitored Tech / CVE DB.
 7. Pemetaan 34 entri + cutover.
+
+### 9.5 Keputusan irisan 5 yang perlu dikonfirmasi
+
+- **Techstack kosong**: client tanpa entri sama sekali = tab CVEs tanpa filter tech (tidak berubah); client
+  yang punya entri tapi semuanya nonaktif = tab kosong. Alternatif: selalu kosong bila tanpa entri aktif.
+- **Export Excel** kini mengikuti scope tab (entri aktif). Sebelumnya tidak menyaring techstack sama sekali;
+  baris yatim (tech sudah dihapus) tidak lagi ikut export.
+- **`score.py`/`reference_data`** hanya memakai entri aktif (artikel dan scraper tidak lagi mencari/mencocokkan
+  tech yang dinonaktifkan).
+- **Label entri katalog** = nama tampilan katalog (mis. "FortiOS"), harus unik per client; bentrok -> beri
+  `name` lain. Label tetap kunci join ke `cve_tracker.tech`.
 
 ## 10. Risiko dan hal terbuka
 

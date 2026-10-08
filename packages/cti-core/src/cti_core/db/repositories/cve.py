@@ -148,7 +148,7 @@ def _apply_filters(
     stmt = stmt.where(CveTracker.client_id == client_id)
     if exclude_cve_ids:
         stmt = stmt.where(CveTracker.cve_id.notin_(exclude_cve_ids))
-    if tech:
+    if tech is not None:
         stmt = stmt.where(CveTracker.tech.in_(tech))
     if severity:
         stmt = stmt.where(CveTracker.cve_severity.in_([s.upper() for s in severity]))
@@ -614,7 +614,7 @@ class AsyncCveTrackerRepo:
         )
         if exclude_cve_ids:
             stmt = stmt.where(CveTracker.cve_id.notin_(exclude_cve_ids))
-        if tech:
+        if tech is not None:
             stmt = stmt.where(CveTracker.tech.in_(tech))
         result = await self.session.execute(stmt.order_by(CveTracker.detected_on.asc()))
         return list(result.all())
@@ -634,7 +634,7 @@ class AsyncCveTrackerRepo:
         stmt = select(year).where(CveTracker.client_id == client_id).distinct()
         if exclude_cve_ids:
             stmt = stmt.where(CveTracker.cve_id.notin_(exclude_cve_ids))
-        if tech:
+        if tech is not None:
             stmt = stmt.where(CveTracker.tech.in_(tech))
         result = await self.session.execute(stmt)
         return sorted((int(y) for y in result.scalars().all()), reverse=True)
@@ -664,7 +664,7 @@ class AsyncCveTrackerRepo:
         stmt = select(CveTracker).where(CveTracker.client_id == client_id)
         if exclude_cve_ids:
             stmt = stmt.where(CveTracker.cve_id.notin_(exclude_cve_ids))
-        if tech:
+        if tech is not None:
             stmt = stmt.where(CveTracker.tech.in_(tech))
         if severity:
             stmt = stmt.where(CveTracker.cve_severity.in_([s.upper() for s in severity]))

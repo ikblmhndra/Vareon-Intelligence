@@ -17,7 +17,7 @@ from __future__ import annotations
 import datetime
 
 from sqlalchemy import BigInteger, Boolean, Date, ForeignKey, Integer, String, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from cti_core.db.base import Base, TimestampMixin
 
@@ -63,6 +63,8 @@ class CatalogFamily(TimestampMixin, Base):
     first_seen: Mapped[datetime.date | None] = mapped_column(Date)
     last_cve_at: Mapped[datetime.date | None] = mapped_column(Date)
     cve_seen_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    vendor: Mapped[CatalogVendor] = relationship(lazy="joined")
 
 
 class CatalogFamilyAlias(TimestampMixin, Base):

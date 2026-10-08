@@ -24,6 +24,15 @@ router `changelog.py`) -- parser-nya expect header persis
    skrip yang membaca file export per posisi kolom harus disesuaikan.
 
 ### Ditambah
+- **API katalog, CVE DB, dan Monitor berbasis katalog** (`docs/ROADMAP.md` #19, irisan 5; kontrak hanya
+  bertambah): `GET /api/catalog/vendors`, `/vendors/{id}/families`, `/families?q=` (jelajah menyembunyikan
+  keluarga ber-1 CVE; `q`/`show_all`/yang sudah di-Monitor selalu tampil; pagination maks 100),
+  `GET /api/cve-db` dan `/{cve_id}` (baca-saja atas mirror, tiap produk membawa status Monitor),
+  `POST /api/techstack` menerima `vendor_id`/`family_id` (entri katalog; `name` saja = custom seperti dulu),
+  `POST/DELETE /api/techstack/{id}/targets` (target terakhir tidak bisa dilepas), `PATCH /api/techstack/{id}`
+  `{active}`, `GET /api/techstack?active=`; `TechStackOut` + `active`/`kind`/`targets`. Tugas
+  `cve.promote_entry` mengisi riwayat entri yang baru di-Monitor dari mirror (hanya bila
+  `CVE_MIRROR__ENABLED` dan `CVE_MIRROR__PROMOTE` menyala). Tanpa migrasi baru.
 - **Promosi mirror -> `cve_tracker` dengan mode bayangan** (`docs/ROADMAP.md` #19, irisan 4):
   `cti_core.cve_promotion` mencocokkan tiap CVE mirror ke entri techstack aktif per client (target keluarga >
   target vendor > gate teks lama untuk entri tanpa target; satu baris per (CVE, client)). Flag
@@ -99,6 +108,12 @@ router `changelog.py`) -- parser-nya expect header persis
   `--yes`: downgrade DB tidak pernah otomatis). Setup dan batasan: `docs/CI_CD.md`.
 
 ### Diubah
+- **Entri techstack nonaktif (`active=false`) = disembunyikan, tidak dihapus** (irisan 5): tidak tampil di tab
+  CVEs, `/stats`, dashboard, export, dan `tech-list`; tidak ikut `reference_data`/`score.py`; `purge-orphaned`
+  tidak menghapus barisnya; ticket tetap. Client yang punya entri tapi semuanya nonaktif melihat tab kosong
+  (bukan "tanpa filter"); client tanpa entri sama sekali tetap tanpa filter. **`GET /api/cve/export` kini
+  mengikuti scope tab (entri aktif)**: sebelumnya tidak menyaring techstack, jadi baris yatim ikut export
+  dan sekarang tidak.
 - **Pencocok tech di `score.py` dan `cve_priority` kini kata utuh (sebelumnya substring).**
   Alert topik `tech_stack` (judul artikel/tweet dan vendor CVE) dan flag `in_tech_stack` di skor prioritas
   CVE tidak lagi cocok ke kata yang hanya mengandung nama tech (`go` ~ `google`, `edge` ~ `knowledge`), dan

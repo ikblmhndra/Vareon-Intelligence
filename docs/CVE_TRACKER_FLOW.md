@@ -118,8 +118,11 @@ Terkait: `trending_cve` (scraper) mengumpulkan mention CVE dari tweet ke `cve_me
 `routers/cve.py`. **"Hanya CVE untuk tech di-monitor" sebenarnya sudah begitu**, lewat dua lapis:
 1. Baris `cve_tracker` hanya dibuat untuk (client, tech) yang cocok saat ingest.
 2. Query list/stats/dashboard memakai `effective_tech = tech (param) or nama semua techstack client`
-   (`_active_tech_names`). **Kalau techstack client kosong, `effective_tech = None` = tanpa filter tech**
-   (semua baris client tampil). `purge_orphaned` justru menganggap tanpa techstack = semua CVE yatim.
+   (`_active_tech_names`). Sejak irisan 5 (#19) "semua techstack" = entri **aktif** (`techstack_entries.active`;
+   nonaktif = disembunyikan, barisnya tidak dihapus). **Client TANPA entri sama sekali: `effective_tech = None` =
+   tanpa filter tech** (semua baris tampil, perilaku lama). **Client yang punya entri tapi semuanya nonaktif:
+   `[]` = tab kosong** (bukan tanpa filter; kalau tidak, "disembunyikan" berbalik arti). `purge_orphaned` memakai
+   SEMUA nama (aktif + nonaktif): yang disembunyikan bukan yatim.
 
 Filter lain: `search` (cve_id/summary/tech, ILIKE), `severity`, rentang `published`, `ack_filter`
 (`acked`/`unacked` lewat `cve_tickets.acknowledged_by`), FP disembunyikan kecuali `include_fp`. Urutan
@@ -128,7 +131,9 @@ Filter lain: `search` (cve_id/summary/tech, ILIKE), `severity`, rentang `publish
 artikel yang menyebut CVE di judul (`get_article_mentions`, ILIKE), dan status FP.
 - `GET /stats`, `GET /dashboard?year=` (MTTD/MTTA/MTTR, `services/cve_dashboard.py`), `GET /export` (Excel
   dari template `CVE_Tracker_template.xlsx`, `services/cve_export.py`) memakai **scope yang sama** (client,
-  techstack aktif, tanpa FP) sehingga angkanya konsisten dengan tab CVEs.
+  techstack aktif, tanpa FP) sehingga angkanya konsisten dengan tab CVEs. (Koreksi: sebelum irisan 5 `/export`
+  TIDAK menyaring techstack sama sekali, hanya `tech` dari query; sekarang `tech or entri aktif`, jadi baris
+  yatim dan baris entri nonaktif tidak ikut export.)
 - `GET /tech-list`: tech distinct yang ada di tracker client (untuk dropdown filter).
 - `GET /prioritize`: skor prioritas (`services/cve_priority.py`): CVSS 30%, KEV 20%, exploited 20%, PoC
   10%, `in_tech_stack` 20% → label dan `patch_urgency`.
@@ -224,8 +229,9 @@ cocok", jadi menyatukannya adalah perubahan perilaku yang harus diputuskan.
    kalau baris tracker dibuang (retensi, `purge-orphaned`) ticketnya yatim. Promosi ke `cve_tracker` harus
    menjaga baris yang punya ticket/ACK.
 3. Satu baris tracker = **satu tech** per (CVE, client); `upsert` menimpa `tech` tiap run.
-4. **Techstack kosong = tab CVEs tanpa filter tech** (tapi `purge_orphaned` menganggap semua yatim). Perilaku
-   ini perlu diputuskan eksplisit di desain "hanya tech yang di-monitor".
+4. **Techstack kosong = tab CVEs tanpa filter tech** (tapi `purge_orphaned` menganggap semua yatim). **Diputuskan
+   irisan 5**: tanpa entri sama sekali tetap tanpa filter (tidak ada perubahan perilaku); ada entri tapi semuanya
+   nonaktif = kosong. Keputusan ini perlu dikonfirmasi user (lihat `docs/CVE_CATALOG_DESIGN.md` 9.5).
 5. Enrichment sweep bekerja **lintas client** dan tanpa penyaring kesegaran; skala "selalu di-enrich" untuk
    banyak tech perlu `*_checked_at` sebagai penyaring.
 6. `detected_on` diisi saat INSERT pertama; dasar KPI dashboard. CVE yang dipromosikan dari mirror harus

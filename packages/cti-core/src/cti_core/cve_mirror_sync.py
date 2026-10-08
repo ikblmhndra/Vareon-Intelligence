@@ -343,6 +343,19 @@ def _entries_to_process(
     return sorted(newer, key=lambda e: e.fetch_time)
 
 
+def acquire_lock(session: Session) -> bool:
+    """Kunci tingkat SESI (bukan `_xact_`): `COMMIT_EVERY` meng-commit di tengah batch. Dipakai
+    bersama `sync_once`, backfill, dan `cve.promote_entry` (semuanya menulis katalog/tracker)."""
+    return bool(session.scalar(select(func.pg_try_advisory_lock(LOCK_KEY))))
+
+
+def release_lock(session: Session) -> None:
+    try:
+        session.execute(select(func.pg_advisory_unlock(LOCK_KEY)))
+    except Exception:  # sesi sudah rusak: kunci lepas saat koneksinya ditutup
+        log.warning("cve_mirror_unlock_failed")
+
+
 def sync_once(
     session: Session,
     fetch: Fetcher,
@@ -354,16 +367,12 @@ def sync_once(
     """Satu siklus ingest. Tidak melempar untuk kegagalan jaringan: dilaporkan di `status="error"`
     dan state TIDAK berubah (siklus berikut mengulang). Siklus lain yang masih berjalan ->
     `status="locked"` (tidak melakukan apa pun)."""
-    # Kunci tingkat SESI (bukan `_xact_`): `COMMIT_EVERY` meng-commit di tengah batch.
-    if not session.scalar(select(func.pg_try_advisory_lock(LOCK_KEY))):
+    if not acquire_lock(session):
         return SyncReport(status="locked")
     try:
         return _sync_locked(session, fetch, now, max_files, promote)
     finally:
-        try:
-            session.execute(select(func.pg_advisory_unlock(LOCK_KEY)))
-        except Exception:  # sesi sudah rusak: kunci lepas saat koneksinya ditutup
-            log.warning("cve_mirror_unlock_failed")
+        release_lock(session)
 
 
 def _sync_locked(

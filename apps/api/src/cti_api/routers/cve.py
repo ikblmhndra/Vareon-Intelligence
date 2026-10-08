@@ -151,11 +151,12 @@ def _serialize(
 
 
 async def _active_tech_names(session: AsyncSession, client_id: str) -> list[str] | None:
-    entries, _ = await AsyncTechStackRepo(session).list_filtered(
-        client_id=client_id, page=1, page_size=10000
-    )
-    names = [e.name for e in entries]
-    return names or None
+    """Tech yang tampil di tab CVEs/stats/dashboard/export: entri AKTIF client ini.
+
+    `None` = client belum punya entri sama sekali (tanpa filter tech, perilaku lama). `[]` = punya
+    entri tapi semuanya nonaktif (disembunyikan, ROADMAP #19): tab kosong, BUKAN tanpa filter.
+    Baris `cve_tracker` entri nonaktif tidak dihapus; ticket-nya tetap."""
+    return await AsyncTechStackRepo(session).visible_names(client_id)
 
 
 @router.get("", response_model=CveListResponse)
@@ -275,7 +276,9 @@ async def tech_list(
     x_client_id: str | None = Header(None),
 ) -> list[str]:
     cid = effective_client_id(user, x_client_id)
-    return await AsyncCveTrackerRepo(session).get_tech_list(cid)
+    techs = await AsyncCveTrackerRepo(session).get_tech_list(cid)
+    hidden = await AsyncTechStackRepo(session).inactive_names(cid)
+    return [t for t in techs if t not in hidden]
 
 
 @router.post("/{cve_id}/false-positive")
@@ -357,7 +360,9 @@ async def purge_orphaned(
     `{"dry_run": false}` buat beneran eksekusi -- default preview doang."""
     dry_run = body.dry_run
     cid = effective_client_id(user, x_client_id)
-    active_names = await _active_tech_names(session, cid) or []
+    # Semua entri, termasuk yang nonaktif: yang disembunyikan BUKAN yatim, barisnya tidak boleh
+    # ikut terhapus. (`[]` = client tanpa entri: semua dianggap yatim, port perilaku lama.)
+    active_names = await AsyncTechStackRepo(session).all_names(cid)
     result = await AsyncCveTrackerRepo(session).purge_orphaned(
         client_id=cid, active_tech_names=active_names, dry_run=dry_run
     )
@@ -484,7 +489,9 @@ async def export_cves(
             date_end=date_end,
             search=search,
             severity=severity,
-            tech=tech,
+            # Scope SAMA dengan tab CVEs (`docs/CVE_TRACKER_FLOW.md` 10.8): entri nonaktif
+            # (disembunyikan) tidak ikut export. Dulu export tidak menyaring techstack sama sekali.
+            tech=tech or await _active_tech_names(session, cid),
             include_fp=include_fp,
             ack_filter=ack_filter,
         )

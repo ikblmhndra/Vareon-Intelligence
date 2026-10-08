@@ -22,9 +22,10 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from cti_core.db.base import Base, TimestampMixin
+from cti_core.db.models.catalog import CatalogFamily, CatalogVendor
 
 
 class TechStackEntry(TimestampMixin, Base):
@@ -46,6 +47,14 @@ class TechStackEntry(TimestampMixin, Base):
     )
     """Dipantau atau tidak (ROADMAP #19). False = disembunyikan, TIDAK dihapus (ticket tidak pernah
     hilang). Entri tanpa target (entri lama/custom) tetap aktif dan tetap dicocokkan lewat teks."""
+
+    targets: Mapped[list[TechStackTarget]] = relationship(
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="TechStackTarget.id",
+    )
+    """Sasaran katalog. Kosong = entri lama/custom (dicocokkan lewat teks)."""
 
 
 class TechStackTarget(Base):
@@ -84,3 +93,6 @@ class TechStackTarget(Base):
     family_id: Mapped[int | None] = mapped_column(
         ForeignKey("catalog_families.id", ondelete="RESTRICT"), index=True
     )
+
+    vendor: Mapped[CatalogVendor | None] = relationship(lazy="joined")
+    family: Mapped[CatalogFamily | None] = relationship(lazy="joined")

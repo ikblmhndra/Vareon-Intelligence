@@ -425,7 +425,13 @@ def score(title: str, body: str, session: Session) -> ScoreResult:
     docstring `ScrapeContext`) -- panggil `score_with_lists()` langsung
     dengan daftar dari `ctx.reference` (resolusi lewat `reference_data`,
     Fase 4)."""
-    techstack = sorted(session.execute(select(TechStackEntry.name).distinct()).scalars().all())
+    techstack = sorted(
+        session.execute(
+            select(TechStackEntry.name).where(TechStackEntry.active.is_(True)).distinct()
+        )
+        .scalars()
+        .all()
+    )
     group_list = list_threat_actor_groups(session)
     apac_people_list = list_monitored_people(session)
     return score_with_lists(
