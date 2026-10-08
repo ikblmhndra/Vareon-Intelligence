@@ -40,6 +40,7 @@ from cti_scraper.options import OptionError, resolve_options, validate_options
 from cti_scraper.queues import queue_for
 from cti_scraper.registry import discover
 from cti_scraper.registry import get as get_scraper_cls
+from cti_scraper.supersede import effective_enabled
 from fastapi import APIRouter, Depends, HTTPException, Request
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -176,7 +177,7 @@ async def list_scrapers(
         meta = cls.meta
         config = configs.get(scraper_id)
         run = latest_runs.get(scraper_id)
-        enabled = config.enabled if config is not None else meta.enabled
+        enabled = effective_enabled(meta, config)
         schedule = config.schedule if config is not None and config.schedule else meta.schedule
         nxt = next_run(schedule, now=now) if enabled else None
         items.append(

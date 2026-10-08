@@ -2,6 +2,9 @@
 
 Dokumen ini gabungan dua hal: **urutan cutover** dari sistem lama (Rundeck + Mongo + web lama)
 ke platform baru, dan **panduan operasi** sesudahnya (backup, rollback, health, hypercare).
+> Cutover pengisian CVE Tracker dari `new_cve` ke katalog + mirror CVE (ROADMAP #19) punya runbook sendiri:
+> `docs/CVE_CATALOG_CUTOVER.md`.
+
 Semua angka waktu di sini **terukur di latihan staging** kecuali yang ditandai *belum dilatih*.
 Bagian "Yang BELUM terbukti" di akhir sengaja jujur soal itu.
 

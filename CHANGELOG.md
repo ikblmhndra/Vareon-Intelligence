@@ -6,19 +6,96 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
-## [Unreleased] - 2026-10-06
+## [0.3.0] - 2026-10-08
+
+Katalog tech + mirror CVE (`docs/ROADMAP.md` #19), notifikasi Telegram CVE baru, satu pencocok nama tech
+bersama, dan Chromium di CI. Fitur katalog/mirror/cutover **mati secara default**: tanpa flag `CVE_MIRROR__*`
+perilaku pipeline CVE sama seperti 0.2.1. Ada 4 migrasi baru dan satu topik Telegram baru, `cve_new` (lihat di bawah).
 
 **Saat upgrade dari 0.2.1:**
 1. Jalankan migrasi (`up -d` sudah menjalankan service `migrate`): revisi baru `e8c2a4b6d1f3` (kolom
-   nullable `cve_tracker.published_at`, aman untuk data lama). Kontrak API hanya bertambah:
+   nullable `cve_tracker.published_at`, aman untuk data lama), `b7e3d9a1c5f2` (tabel katalog/mirror/target +
+   `techstack_entries.active`, semua entri tetap aktif) dan `d4a9c7e1b3f6` (`cvss_vector` jadi TEXT, hanya
+   mengubah metadata) dan `e5b2d8f4a7c1` (tabel `cve_promotion_shadow`, kosong). Kontrak API hanya bertambah:
    `GET /api/cve/dashboard`.
 2. Jalankan sekali `make backfill-published-at` (laporan dulu, lalu `ARGS='--apply'`;
    `docs/SCRAPER_MAINTENANCE.md` 4.H) supaya CVE lama punya jam di kolom "CVE Reported Date" export --
    tanpa itu mereka tampil tanggal saja.
-3. **Export Excel CVE Tracker: kolom bergeser satu ke kanan** mulai kolom E (lihat Diubah). Makro atau
+3. **Tambahkan topik `cve_new` ke `TELEGRAM__THREAD_IDS` di `.env` host** (`"cve_new": <thread id>`; `0` = chat
+   utama tanpa thread). `.env.example` dan `.env.prod.template` sudah memuatnya. Tanpa ini aplikasi tetap
+   jalan, hanya ringkasan CVE baru yang tidak terkirim.
+4. **Export Excel CVE Tracker: kolom bergeser satu ke kanan** mulai kolom E (lihat Diubah). Makro atau
    skrip yang membaca file export per posisi kolom harus disesuaikan.
 
 ### Ditambah
+- **Cutover katalog tech** (`docs/ROADMAP.md` #19, irisan 7): saat `CVE_MIRROR__PROMOTE=live` scraper `new_cve`
+  ditangguhkan (tidak dijadwalkan beat, `Runner` menolak, health `disabled`, tampil nonaktif); tracker diisi
+  pipeline mirror + ringkasan Telegram. Env baru opsional `CVE_MIRROR__KEEP_LEGACY_NEW_CVE` (default `false`;
+  `true` = jalan berdampingan). Rollback = `PROMOTE=off` + restart, tanpa migrasi. `tools/ops/catalog_mapping.py`
+  (`make catalog-mapping`): ekspor/impor pemetaan techstack->katalog lewat kunci stabil, plus `suggest`.
+  `promote_cve_mirror --since`. Runbook langkah demi langkah: `docs/CVE_CATALOG_CUTOVER.md`.
+- **UI katalog tech** (`docs/ROADMAP.md` #19, irisan 6; tanpa perubahan backend): halaman CVE Tracker, sub-view
+  "Tech Stack" diganti **Monitored Tech** (daftar entri + target, Pause/Resume, tanda "Unmapped" untuk entri lama
+  dan tombol **Map to catalog** untuk memetakannya ke katalog; target banyak per entri), **All Tech** (vendor ->
+  produk, search-first, produk ber-1 CVE disembunyikan kecuali dicari / "Show all", tombol Monitor) dan **CVE DB**
+  (penjelajah mirror CVE dengan aksi Monitor per produk).
+- **API katalog, CVE DB, dan Monitor berbasis katalog** (`docs/ROADMAP.md` #19, irisan 5; kontrak hanya
+  bertambah): `GET /api/catalog/vendors`, `/vendors/{id}/families`, `/families?q=` (jelajah menyembunyikan
+  keluarga ber-1 CVE; `q`/`show_all`/yang sudah di-Monitor selalu tampil; pagination maks 100),
+  `GET /api/cve-db` dan `/{cve_id}` (baca-saja atas mirror, tiap produk membawa status Monitor),
+  `POST /api/techstack` menerima `vendor_id`/`family_id` (entri katalog; `name` saja = custom seperti dulu),
+  `POST/DELETE /api/techstack/{id}/targets` (target terakhir tidak bisa dilepas), `PATCH /api/techstack/{id}`
+  `{active}`, `GET /api/techstack?active=`; `TechStackOut` + `active`/`kind`/`targets`. Tugas
+  `cve.promote_entry` mengisi riwayat entri yang baru di-Monitor dari mirror (hanya bila
+  `CVE_MIRROR__ENABLED` dan `CVE_MIRROR__PROMOTE` menyala). Tanpa migrasi baru.
+- **Promosi mirror -> `cve_tracker` dengan mode bayangan** (`docs/ROADMAP.md` #19, irisan 4):
+  `cti_core.cve_promotion` mencocokkan tiap CVE mirror ke entri techstack aktif per client (target keluarga >
+  target vendor > gate teks lama untuk entri tanpa target; satu baris per (CVE, client)). Flag
+  `CVE_MIRROR__PROMOTE=off|shadow|live` (default `off`, hanya berlaku bila `CVE_MIRROR__ENABLED=true`):
+  `shadow` menulis tabel baru `cve_promotion_shadow` (revisi `e5b2d8f4a7c1`) tanpa menyentuh `cve_tracker`;
+  `live` menulis `cve_tracker` (+ ringkasan Telegram CVE baru yang sudah ada). Tool `make promote-cve-mirror`
+  (seluruh mirror, laporan dulu) dan `make compare-promotion-shadow` (bayangan vs `new_cve`, dengan sebab
+  selisih). Gate teks `relevant_techs` pindah ke `cti_core.tech_match` (perilaku `new_cve` tidak berubah).
+  Entri techstack nonaktif (`active=false`) tidak lagi ikut `reference_data` (semua entri sekarang aktif,
+  jadi tidak ada perubahan perilaku). `new_cve` tetap jalan; mematikannya = irisan 7.
+  Tool perbandingan membedakan "mirror basi" (CVE terbit pada/setelah record mirror terbaru) dari "tidak ada di mirror".
+- **Ingest mirror CVE dari CVE List V5** (`docs/ROADMAP.md` #19, irisan 3): tugas `cve.mirror_sync` (tiap 5 menit,
+  kursor + catch-up lewat `deltaLog.json` + antrean percobaan ulang di `job_state`) dan `cve.mirror_purge`
+  (retensi tahun kalender, harian 03:30 UTC), skrip isi awal `tools/ops/backfill_cve_mirror.py`
+  (`make backfill-cve-mirror SOURCE=... [ARGS=--apply]`, default laporan saja). **Mati secara default**:
+  `CVE_MIRROR__ENABLED=false` di `.env.example` dan `.env.prod.template` (key opsional, aman bila belum
+  ada di `.env` host); mirror belum dipakai apa pun yang terlihat user (promosi ke `cve_tracker` = irisan 4).
+  Default tahun ID yang dipindai skrip backfill = `default_years` (2024-2026 di 2026), bukan hanya tahun
+  berjalan dan lalu: CVE berID 2024 yang terbit 2025+ (mis. CVE-2024-11741) harus ikut, retensi memakai
+  tanggal terbit.
+  Skrip backfill mencetak progress + ETA ke stderr tiap 2000 berkas (laju ukur lokal ~110 berkas/dtk,
+  jadi ~17 menit untuk 117 ribu CVE; tanpa progress ia diam sampai selesai).
+  Skrip backfill berhenti dengan kode 4 dan menampilkan isi sumber (folder, tahun yang ada) bila tidak ada
+  satu pun berkas CVE terbaca, bukan melapor "0" dengan sukses.
+  Parser record dipisah jadi `cti_core.cve_record.parse_cve_record`; `new_cve` memakainya tanpa
+  perubahan perilaku.
+- **Skema katalog tech, mirror CVE, dan target Monitor** (`docs/ROADMAP.md` #19, irisan 2; revisi `b7e3d9a1c5f2`):
+  tabel `catalog_vendors`/`catalog_families`/`catalog_family_aliases` (permanen, statistik hanya naik),
+  `cve_records`/`cve_record_products` (mirror, dibuang retensi tahun kalender), `techstack_targets`
+  (vendor ATAU keluarga per entri) dan kolom `techstack_entries.active` (default true). Repositori
+  `cti_core.db.repositories.catalog`. **Belum dipakai aplikasi**: semua entri techstack tetap aktif tanpa
+  target dan dicocokkan lewat teks seperti sebelumnya; migrasi aman untuk data lama.
+- **`cti_core.catalog_resolve`** (`docs/ROADMAP.md` #19, irisan 1): resolver murni (vendor, produk) mentah dari data
+  CNA -> (vendor, keluarga) katalog: normalisasi sadar-unicode, produk sampah tanpa identitas, kunci vendor
+  kompak tanpa akhiran legal, lipat versi/edisi jadi keluarga, CPE diutamakan, alias manual. **Belum dipakai
+  aplikasi** (tanpa migrasi, tanpa perubahan perilaku); rancangan: `docs/CVE_CATALOG_DESIGN.md`.
+- **`tools/ops/spike_cve_catalog.py`**: spike pengukuran katalog tech dari CVE List V5 (`docs/ROADMAP.md` #19, `docs/CVE_TECH_MATCHING.md` 7.1.2). Hanya baca, stdlib saja, jalan di luar image; melaporkan ukuran/kebersihan katalog, keluarga produk, duplikasi ejaan, vonis per tech, dan recall terhadap `cve_tracker` (lewat CSV). Tidak ada migrasi dan tidak mengubah perilaku aplikasi.
+- **Ringkasan Telegram CVE baru untuk tech yang di-monitor.** Sebelumnya tidak ada notifikasi otomatis saat CVE
+  masuk `cve_tracker`. Sekarang tiap baris tracker yang **baru dibuat** (bukan update) dikumpulkan sepanjang run
+  `new_cve` dan dikirim **sekali di akhir run, satu pesan per client**, ke topik Telegram baru `cve_new`:
+  maksimal 10 CVE (severity terparah dulu) + "dan N lainnya", selalu < 4096 karakter. Hanya CVE yang terbit
+  <= 3 hari (tech baru/backfill tidak membanjiri channel), bukan false positive client itu. Kegagalan kirim tidak
+  menggagalkan run (dicatat `cve_new_alert_failed`). Kode: `cti_scraper.cve_alert`, hook `sinks.finish_run`
+  dipanggil `Runner`; `CveTrackerRepo.upsert_with_status` mengembalikan penanda baru/update.
+- **`cti_core.tech_match`** (`docs/ROADMAP.md` #19): satu definisi "teks ini menyebut tech itu" (kata utuh,
+  angka versi menempel diterima, huruf menempel ditolak, istilah < 2 karakter tak pernah cocok), dipakai
+  gate dan filter Tenable `new_cve`, `score.py`, `cve_priority`, dan `reconcile_cve_tech`. Tidak ada
+  migrasi dan tidak ada kolom baru (kolom `aliases` yang sempat direncanakan dibuang).
 - **`docs/CVE_TECH_MATCHING.md`**: catatan satu topik soal kolom Tech di CVE Tracker (masalah, akar masalah,
   solusi 0.2.1, cara memverifikasi, batasan, dan rencana standarisasi techstack). Rencananya dicatat di
   `docs/ROADMAP.md` #19; belum dikerjakan.
@@ -46,6 +123,18 @@ router `changelog.py`) -- parser-nya expect header persis
   `--yes`: downgrade DB tidak pernah otomatis). Setup dan batasan: `docs/CI_CD.md`.
 
 ### Diubah
+- **Entri techstack nonaktif (`active=false`) = disembunyikan, tidak dihapus** (irisan 5): tidak tampil di tab
+  CVEs, `/stats`, dashboard, export, dan `tech-list`; tidak ikut `reference_data`/`score.py`; `purge-orphaned`
+  tidak menghapus barisnya; ticket tetap. Client yang punya entri tapi semuanya nonaktif melihat tab kosong
+  (bukan "tanpa filter"); client tanpa entri sama sekali tetap tanpa filter. **`GET /api/cve/export` kini
+  mengikuti scope tab (entri aktif)**: sebelumnya tidak menyaring techstack, jadi baris yatim ikut export
+  dan sekarang tidak.
+- **Pencocok tech di `score.py` dan `cve_priority` kini kata utuh (sebelumnya substring).**
+  Alert topik `tech_stack` (judul artikel/tweet dan vendor CVE) dan flag `in_tech_stack` di skor prioritas
+  CVE tidak lagi cocok ke kata yang hanya mengandung nama tech (`go` ~ `google`, `edge` ~ `knowledge`), dan
+  nama tech bertanda baca (`node.js`, `c++`) tidak lagi diperlakukan sebagai regex. Efeknya terlihat sebagai
+  alert/bobot prioritas yang berkurang untuk pasangan yang dulu cocok kebetulan. `reconcile_cve_tech`
+  memakai pencocok yang sama dengan scraper: **bangun ulang image worker sebelum menjalankannya**.
 - **Export Excel CVE Tracker (`GET /api/cve/export`)**: kolom baru **Reported by System** tepat di
   sebelah kanan **CVE Reported Date**. Isinya `detected_on`, kapan scraper pertama dapat CVE-nya.
   "CVE Reported Date" sekarang `HH:MM DD-MM-YYYY` (WIB, mis. `20:53 31-08-2026`) dan berisi jam publish
@@ -57,6 +146,10 @@ router `changelog.py`) -- parser-nya expect header persis
   Kolom "Date Acknowledged by CTI Team" tidak berubah (`YYYY-MM-DD HH:MM:SS`).
 
 ### Diperbaiki
+- **`cve_tracker.cvss_vector` dan `cve_records.cvss_vector` terlalu sempit (`VARCHAR(100)`)**: vektor CVSS dengan
+  metrik temporal/environmental mencapai 117-125 karakter (CVE-2025-1787, CVE-2025-27363) dan gagal
+  `StringDataRightTruncation`. Ketemu di backfill mirror pada data nyata; `new_cve` punya kerentanan yang sama
+  terhadap CVE seperti itu. Revisi `d4a9c7e1b3f6` mengubahnya jadi TEXT.
 - **Export CVE Tracker (`GET /api/cve/export`) tidak membawa logo.** Template `.xlsx` punya logo
   (`xl/media/image1.png`, di B1:H4), tetapi openpyxl hanya membaca gambar kalau Pillow terpasang dan
   `pillow` belum jadi dependency `cti-api`, jadi logo hilang tanpa error di file hasil export.

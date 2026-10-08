@@ -71,7 +71,25 @@ class CveTrackerRepo:
         affected: Sequence[str] = (),
         **fields: Any,
     ) -> CveTracker:
-        """`references`/`affected` SELALU diganti utuh (bukan di-merge) --
+        """Lihat `upsert_with_status` (sama, tanpa penanda baru/update)."""
+        row, _created = self.upsert_with_status(
+            cve_id=cve_id, client_id=client_id, references=references, affected=affected, **fields
+        )
+        return row
+
+    def upsert_with_status(
+        self,
+        *,
+        cve_id: str,
+        client_id: str,
+        references: Sequence[str] = (),
+        affected: Sequence[str] = (),
+        **fields: Any,
+    ) -> tuple[CveTracker, bool]:
+        """`(baris, dibuat)` -- `dibuat` True hanya kalau INSERT (CVE baru buat client ini);
+        dipakai sink buat notifikasi CVE baru (`cti_scraper.cve_alert`).
+
+        `references`/`affected` SELALU diganti utuh (bukan di-merge) --
         MITRE ngasih daftar lengkap tiap kali, bukan delta. Relationship-nya
         `cascade="all, delete-orphan"` (lihat model), jadi assign list baru
         otomatis buang baris anak yang lama."""
@@ -85,14 +103,14 @@ class CveTrackerRepo:
             row.affected = [CveAffected(affected=a) for a in affected]
             self.session.add(row)
             self.session.flush()
-            return row
+            return row, True
 
         for k, v in fields.items():
             setattr(existing, k, v)
         existing.references = [CveReference(url=u) for u in references]
         existing.affected = [CveAffected(affected=a) for a in affected]
         self.session.flush()
-        return existing
+        return existing, False
 
     def add_pocs(self, *, cve_id: str, pocs: list[dict[str, str]]) -> int:
         """Nambahin POC baru ke SEMUA baris `cve_tracker` yang `cve_id`-nya
@@ -139,7 +157,7 @@ def _apply_filters(
     stmt = stmt.where(CveTracker.client_id == client_id)
     if exclude_cve_ids:
         stmt = stmt.where(CveTracker.cve_id.notin_(exclude_cve_ids))
-    if tech:
+    if tech is not None:
         stmt = stmt.where(CveTracker.tech.in_(tech))
     if severity:
         stmt = stmt.where(CveTracker.cve_severity.in_([s.upper() for s in severity]))
@@ -642,7 +660,7 @@ class AsyncCveTrackerRepo:
         )
         if exclude_cve_ids:
             stmt = stmt.where(CveTracker.cve_id.notin_(exclude_cve_ids))
-        if tech:
+        if tech is not None:
             stmt = stmt.where(CveTracker.tech.in_(tech))
         result = await self.session.execute(stmt.order_by(CveTracker.detected_on.asc()))
         return list(result.all())
@@ -662,7 +680,7 @@ class AsyncCveTrackerRepo:
         stmt = select(year).where(CveTracker.client_id == client_id).distinct()
         if exclude_cve_ids:
             stmt = stmt.where(CveTracker.cve_id.notin_(exclude_cve_ids))
-        if tech:
+        if tech is not None:
             stmt = stmt.where(CveTracker.tech.in_(tech))
         result = await self.session.execute(stmt)
         return sorted((int(y) for y in result.scalars().all()), reverse=True)
@@ -692,7 +710,7 @@ class AsyncCveTrackerRepo:
         stmt = select(CveTracker).where(CveTracker.client_id == client_id)
         if exclude_cve_ids:
             stmt = stmt.where(CveTracker.cve_id.notin_(exclude_cve_ids))
-        if tech:
+        if tech is not None:
             stmt = stmt.where(CveTracker.tech.in_(tech))
         if severity:
             stmt = stmt.where(CveTracker.cve_severity.in_([s.upper() for s in severity]))

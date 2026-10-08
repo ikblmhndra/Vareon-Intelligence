@@ -18,12 +18,19 @@ if TYPE_CHECKING:
 
 
 def _resolve_techstack(session: Session) -> list[str]:
-    """Semua nama tech stack DISTINCT lintas client, urut alfabet --
-    setara `techstackStore.get_tech_list()` lama."""
+    """Semua nama tech stack AKTIF DISTINCT lintas client, urut alfabet --
+    setara `techstackStore.get_tech_list()` lama. Entri nonaktif (`active=False`, ROADMAP #19:
+    disembunyikan, bukan dihapus) tidak ikut dicari/dicocokkan."""
     from cti_core.db.models.techstack import TechStackEntry
     from sqlalchemy import select
 
-    rows = session.execute(select(TechStackEntry.name).distinct()).scalars().all()
+    rows = (
+        session.execute(
+            select(TechStackEntry.name).where(TechStackEntry.active.is_(True)).distinct()
+        )
+        .scalars()
+        .all()
+    )
     return sorted(rows)
 
 
@@ -41,7 +48,9 @@ def _resolve_techstack_by_client(session: Session) -> dict[str, list[str]]:
     from sqlalchemy import select
 
     result: dict[str, list[str]] = {}
-    rows = session.execute(select(TechStackEntry.client_id, TechStackEntry.name)).all()
+    rows = session.execute(
+        select(TechStackEntry.client_id, TechStackEntry.name).where(TechStackEntry.active.is_(True))
+    ).all()
     for client_id, name in rows:
         result.setdefault(client_id or "default", []).append(name)
     for client_id in result:

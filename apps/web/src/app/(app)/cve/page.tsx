@@ -6,7 +6,9 @@ import { cn } from "@/lib/utils";
 import { CveCoreView } from "@/components/cve/cve-core-view";
 import { CveDashboardView } from "@/components/cve/cve-dashboard-view";
 import { CveTicketingView } from "@/components/cve/cve-ticketing-view";
-import { TechStackPanel } from "@/components/cve/techstack-panel";
+import { AllTechView } from "@/components/cve/all-tech-view";
+import { CveDbView } from "@/components/cve/cve-db-view";
+import { MonitoredTechPanel } from "@/components/cve/monitored-tech-panel";
 import { PkgVulnView } from "@/components/cve/pkgvuln/pkgvuln-view";
 
 const VIEWS = [
@@ -19,7 +21,9 @@ const CVE_SUBVIEWS = [
   { id: "cves", label: "CVEs" },
   { id: "dashboard", label: "Dashboard" },
   { id: "ticketing", label: "Ticketing" },
-  { id: "techstack", label: "Tech Stack" },
+  { id: "monitored", label: "Monitored Tech" },
+  { id: "alltech", label: "All Tech" },
+  { id: "cvedb", label: "CVE DB" },
 ] as const;
 type CveSubview = (typeof CVE_SUBVIEWS)[number]["id"];
 
@@ -27,7 +31,7 @@ type CveSubview = (typeof CVE_SUBVIEWS)[number]["id"];
  * Port `tab_cvetracker.html`+`cve.js`+`techstack.js`+`pkgvuln.js`.
  * Area terbesar tunggal Fase 8 (Grup E) -- 2 level switch: view
  * (CVEs|Package Vulnerabilities, `cveSwitchView`) dan, di dalam CVEs,
- * sub-view (CVEs|Tech Stack, `cveSwitchTSVSubview`). Backend (ticket
+ * sub-view (CVEs|Dashboard|Ticketing|Monitored Tech|All Tech|CVE DB; tiga terakhir = katalog tech #19). Backend (ticket
  * workflow, 3 lookup eksternal, techstack, pkgvuln) SUDAH lengkap
  * diporting sejak Fase 7 -- ini murni build frontend.
  */
@@ -78,8 +82,12 @@ export default function CveTrackerPage() {
             <CveDashboardView />
           ) : subview === "ticketing" ? (
             <CveTicketingView />
+          ) : subview === "monitored" ? (
+            <MonitoredTechPanel />
+          ) : subview === "alltech" ? (
+            <AllTechView />
           ) : (
-            <TechStackPanel />
+            <CveDbView />
           )}
         </div>
       ) : (

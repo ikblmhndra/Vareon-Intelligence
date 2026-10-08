@@ -47,6 +47,7 @@ from cti_core.config import get_settings
 from cti_scraper.health import expected_interval
 from cti_scraper.queues import queue_for
 from cti_scraper.registry import discover
+from cti_scraper.supersede import effective_enabled
 
 from cti_worker.queues import QUEUE_MAINTENANCE, QUEUE_NOTIFY
 from cti_worker.reports.timeutil import local_to_utc_cron
@@ -159,6 +160,16 @@ def _periodic_schedule() -> dict[str, dict[str, object]]:
             "schedule": crontab(hour="*/3", minute=0),
             "options": {"queue": QUEUE_MAINTENANCE},
         },
+        "cve-mirror-sync": {
+            "task": "cve.mirror_sync",
+            "schedule": crontab(minute="*/5"),
+            "options": {"queue": QUEUE_MAINTENANCE},
+        },
+        "cve-mirror-purge": {
+            "task": "cve.mirror_purge",
+            "schedule": crontab(hour=3, minute=30),
+            "options": {"queue": QUEUE_MAINTENANCE},
+        },
         "scraper-purge-expired-items": {
             "task": "scraper.purge_expired_items",
             "schedule": crontab(hour=3, minute=0),
@@ -211,8 +222,8 @@ def build_beat_schedule() -> dict[str, dict[str, object]]:
         meta = cls.meta
         config = configs.get(scraper_id)
 
-        enabled = config.enabled if config is not None else meta.enabled
-        if not enabled:
+        # Control plane / meta DAN tidak digantikan mirror CVE (`cti_scraper.supersede`).
+        if not effective_enabled(meta, config):
             continue
 
         # Override CUMA kepake pas beat DI-BUILD (proses worker start) --

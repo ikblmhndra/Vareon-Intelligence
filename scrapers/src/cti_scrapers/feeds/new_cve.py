@@ -37,13 +37,22 @@ Bandingkan sama `ScraperNews/newCveThreat.py` asli (391 baris):
 
 from __future__ import annotations
 
-import re
 from collections.abc import Iterator
-from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import timedelta
 from typing import Any
 
 import lxml.html
+from cti_core.cve_record import (
+    MitreDetail,
+    affected_products,  # noqa: F401  (re-ekspor: dipakai tools/ops/reconcile_cve_tech.py)
+    mitre_datetime,  # noqa: F401  (re-ekspor: dipakai tools/ops/backfill_cve_published_at.py)
+    parse_cve_record,
+)
+from cti_core.tech_match import (
+    mentions,
+    relevant_techs,
+    usable_products,  # noqa: F401  (re-ekspor: dipakai tools/ops/reconcile_cve_tech.py)
+)
 from cti_scraper.base import BaseScraper, ScrapeContext, ScraperMeta
 from cti_scraper.errors import ParseError, ScraperError
 from cti_scraper.items import CveItem, Item
@@ -54,83 +63,6 @@ from cti_scrapers.feeds._pacing import get_waiting
 _NVD_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 _TENABLE_URL = "https://www.tenable.com/cve/search"
 _MITRE_URL = "https://cveawg.mitre.org/api/cve"
-
-
-def _mitre_date(raw: str | None) -> date | None:
-    if not raw or len(raw) < 10:
-        return None
-    try:
-        return date.fromisoformat(raw[:10])
-    except ValueError:
-        return None
-
-
-def mitre_datetime(raw: str | None) -> datetime | None:
-    """`cveMetadata.datePublished` lengkap dengan jam, tz-aware (UTC). MITRE menulisnya
-    `2026-08-31T13:53:00.000Z`; tanpa penanda zona dianggap UTC (format CVE JSON 5.x). Hanya
-    tanggal (`2026-08-31`) atau tak terbaca -> `None`: jam yang ditebak lebih buruk daripada kosong."""
-    if not raw or len(raw) < 16 or "T" not in raw:
-        return None
-    try:
-        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
-
-
-# Isian "produk" yang bukan nama produk -- CNA kadang mengisi ini kalau tak punya data.
-_PLACEHOLDER_PRODUCTS = frozenset({"", "n a", "na", "none", "unknown", "unspecified", "various"})
-
-
-def _tokens(text: str) -> str:
-    """Huruf kecil, semua non-alfanumerik jadi satu spasi -- "Palo_Alto-Networks" dan
-    "palo alto networks" jadi bentuk yang sama, dan `nginx` tidak cocok dengan `nginxy`."""
-    return " ".join(re.findall(r"[a-z0-9]+", text.lower()))
-
-
-def _mentions(tech: str, text: str) -> bool:
-    """`tech` muncul sebagai kata utuh di `text`. Angka yang menempel di ujung dianggap versi
-    mayor nama produk yang sama ("graylog2-server", "Log4j2", "Struts2" -> tech `graylog`, `log4j`,
-    `struts`); huruf yang menempel tidak ("nginxy" bukan `nginx`). Ditemukan dari laporan
-    `reconcile_cve_tech`: tanpa ini CVE Graylog yang sah ikut ditandai salah dan dibuang."""
-    needle = _tokens(tech)
-    if not needle:
-        return False
-    pattern = rf"(?<![a-z0-9]){re.escape(needle)}[0-9]{{0,4}}(?![a-z0-9])"
-    return re.search(pattern, _tokens(text)) is not None
-
-
-def usable_products(products: list[str]) -> list[str]:
-    """`products` tanpa isian placeholder ("n/a", "unknown", ...)."""
-    return [p for p in products if _tokens(p) not in _PLACEHOLDER_PRODUCTS]
-
-
-def relevant_techs(techs: list[str], summary: str, products: list[str]) -> list[str]:
-    """Subset `techs` yang beneran terdampak. `products` = vendor/product/packageName/CPE dari
-    record MITRE; kalau CNA tak mengisinya sama sekali baru jatuh ke ringkasan (satu-satunya
-    petunjuk yang tersisa). Dipakai juga `tools/ops/reconcile_cve_tech.py` -- satu definisi
-    "cocok" buat scraper dan pembersihan."""
-    haystacks = usable_products(products) or [summary]
-    return [t for t in techs if any(_mentions(t, h) for h in haystacks)]
-
-
-def affected_products(cna: dict[str, Any]) -> list[str]:
-    out: list[str] = []
-    for aff in cna.get("affected", []):
-        for key in ("vendor", "product", "packageName"):
-            value = aff.get(key)
-            if isinstance(value, str) and value:
-                out.append(value)
-        out.extend(c for c in aff.get("cpes", []) if isinstance(c, str))
-    return out
-
-
-@dataclass(frozen=True)
-class MitreDetail:
-    fields: dict[str, Any]
-    """Isian `CveItem` (tanpa `client_id`/`tech` -- tech ditentukan per client di `fetch()`)."""
-    products: list[str]
-    """Nama produk terdampak buat `relevant_techs`; BUKAN bagian dari `CveItem`."""
 
 
 class NewCve(BaseScraper):
@@ -278,7 +210,7 @@ class NewCve(BaseScraper):
 
                 # Tenable kadang balikin hasil yang gak beneran nyebut tech-nya --
                 # validasi tech-nya ada literal di summary sebelum dipakai.
-                if not _mentions(tech, cve_sum):
+                if not mentions(tech, cve_sum):
                     continue
                 self._add_candidate(
                     candidates,
@@ -301,63 +233,4 @@ class NewCve(BaseScraper):
         except Exception as e:  # MITRE kadang balikin bentuk gak terduga
             raise ParseError(f"MITRE detail gak kebaca buat {cand['id']}: {e}") from e
 
-        cna = data.get("containers", {}).get("cna", {})
-
-        references = [r["url"] for r in cna.get("references", []) if "url" in r]
-
-        affected: list[str] = []
-        seen_products: set[str] = set()
-        for aff in cna.get("affected", []):
-            product = aff.get("product")
-            if not product or product in seen_products:
-                continue
-            seen_products.add(product)
-            for version in aff.get("versions", []):
-                if version.get("status") != "affected":
-                    continue
-                if "lessThan" in version:
-                    constraint = f"< {version['lessThan']}"
-                elif "lessThanOrEqual" in version:
-                    constraint = f"<= {version['lessThanOrEqual']}"
-                elif "version" in version:
-                    constraint = f"<= {version['version']}"
-                else:
-                    continue
-                affected.append(f"{product}: {constraint}")
-
-        base_score = 0.0
-        severity = None
-        vector = ""
-        for metric_group in cna.get("metrics", []):
-            for key, metric in metric_group.items():
-                if key in ("scenarios", "format"):
-                    continue
-                score = metric.get("baseScore", 0)
-                if base_score <= score:
-                    base_score = score
-                    vector = metric.get("vectorString", "")
-                    severity = metric.get("baseSeverity")
-
-        solutions = (
-            "".join(s["value"] for s in cna.get("solutions", []) if s.get("lang") == "en")
-            or "No solution yet"
-        )
-
-        cve_meta = data.get("cveMetadata", {})
-
-        fields = {
-            "cve_id": cand["id"],
-            "link": cand["link"],
-            "summary": cand["summary"],
-            "published": _mitre_date(cve_meta.get("datePublished")),
-            "published_at": mitre_datetime(cve_meta.get("datePublished")),
-            "cve_modified_date": _mitre_date(cve_meta.get("dateUpdated"))
-            or _mitre_date(cve_meta.get("datePublished")),
-            "references": references,
-            "affected": affected,
-            "solutions": solutions,
-            "cve_score": base_score,
-            "cve_severity": severity,
-            "cvss_vector": vector,
-        }
-        return MitreDetail(fields=fields, products=affected_products(cna))
+        return parse_cve_record(data, cve_id=cand["id"], link=cand["link"], summary=cand["summary"])

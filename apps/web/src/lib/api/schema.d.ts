@@ -502,6 +502,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/catalog/families": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search Families
+         * @description Pencarian lintas vendor; tidak menyembunyikan keluarga ber-1 CVE.
+         */
+        get: operations["search_families_api_catalog_families_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/catalog/vendors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Vendors */
+        get: operations["list_vendors_api_catalog_vendors_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/catalog/vendors/{vendor_id}/families": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Vendor Families */
+        get: operations["list_vendor_families_api_catalog_vendors__vendor_id__families_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/changelog": {
         parameters: {
             query?: never;
@@ -700,6 +754,40 @@ export interface paths {
         };
         /** List Cves */
         get: operations["list_cves_api_cve_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cve-db": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Cve Db */
+        get: operations["list_cve_db_api_cve_db_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cve-db/{cve_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Cve Db */
+        get: operations["get_cve_db_api_cve_db__cve_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2898,7 +2986,13 @@ export interface paths {
         /** Get Techstack */
         get: operations["get_techstack_api_techstack_get"];
         put?: never;
-        /** Post Techstack */
+        /**
+         * Post Techstack
+         * @description Tiga bentuk (lihat `TechStackAdd`): `name` saja = entri custom (dicocokkan lewat teks, belum
+         *     terverifikasi katalog); `vendor_id` / `family_id` = tombol Monitor di All Tech (entri katalog
+         *     dengan satu target). Kegagalan bisnis tetap `200 {"success": false, "reason": ...}` (kontrak
+         *     lama): `duplicate`, `not_found`, `vendor_not_monitorable`, `invalid_target`.
+         */
         post: operations["post_techstack_api_techstack_post"];
         delete?: never;
         options?: never;
@@ -2920,7 +3014,13 @@ export interface paths {
         delete: operations["remove_techstack_api_techstack__tech_id__delete"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Patch Techstack
+         * @description Aktifkan / nonaktifkan entri. Nonaktif = disembunyikan (tidak dicocokkan, tidak tampil di tab
+         *     CVEs), TIDAK dihapus: baris `cve_tracker` dan ticket-nya tetap. Mengaktifkan kembali mengisi
+         *     riwayatnya dari mirror (bila promosi dinyalakan).
+         */
+        patch: operations["patch_techstack_api_techstack__tech_id__patch"];
         trace?: never;
     };
     "/api/techstack/{tech_id}/exposure": {
@@ -2955,6 +3055,49 @@ export interface paths {
         head?: never;
         /** Patch Hosting */
         patch: operations["patch_hosting_api_techstack__tech_id__hosting_patch"];
+        trace?: never;
+    };
+    "/api/techstack/{tech_id}/targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Techstack Target
+         * @description Tambah satu sasaran katalog (vendor ATAU keluarga) ke entri yang ada, mis. `junos` ->
+         *     tiga keluarga Juniper. Kegagalan memakai status HTTP (404/409/422), bukan `success: false`.
+         */
+        post: operations["add_techstack_target_api_techstack__tech_id__targets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/techstack/{tech_id}/targets/{target_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Techstack Target
+         * @description Lepas satu sasaran. Target TERAKHIR tidak bisa dilepas (409): entri tanpa target kembali
+         *     dicocokkan lewat teks nama, perubahan perilaku diam-diam. Baris `cve_tracker` yang sudah ada
+         *     tidak dihapus.
+         */
+        delete: operations["remove_techstack_target_api_techstack__tech_id__targets__target_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/tweets": {
@@ -3159,6 +3302,93 @@ export interface components {
             /** Cve Ids */
             cve_ids: string[];
         };
+        /** CatalogFamilyListResponse */
+        CatalogFamilyListResponse: {
+            /**
+             * Hidden
+             * @default 0
+             */
+            hidden: number;
+            /** Items */
+            items: components["schemas"]["CatalogFamilyOut"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Total */
+            total: number;
+        };
+        /** CatalogFamilyOut */
+        CatalogFamilyOut: {
+            /**
+             * Covered By Vendor
+             * @default false
+             */
+            covered_by_vendor: boolean;
+            /** Cve Seen Total */
+            cve_seen_total: number;
+            /** Display Name */
+            display_name: string;
+            /** First Seen */
+            first_seen?: string | null;
+            /** Id */
+            id: number;
+            /** Key */
+            key: string;
+            /** Last Cve At */
+            last_cve_at?: string | null;
+            /** Monitor Entry Id */
+            monitor_entry_id?: number | null;
+            /** Monitored */
+            monitored: boolean;
+            /** Source */
+            source: string;
+            /** Vendor Id */
+            vendor_id: number;
+            /** Vendor Name */
+            vendor_name: string;
+        };
+        /** CatalogVendorListResponse */
+        CatalogVendorListResponse: {
+            /**
+             * Hidden
+             * @default 0
+             */
+            hidden: number;
+            /** Items */
+            items: components["schemas"]["CatalogVendorOut"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Total */
+            total: number;
+        };
+        /** CatalogVendorOut */
+        CatalogVendorOut: {
+            /** Cve Seen Total */
+            cve_seen_total: number;
+            /** Display Name */
+            display_name: string;
+            /** Family Count */
+            family_count: number;
+            /** First Seen */
+            first_seen?: string | null;
+            /** Id */
+            id: number;
+            /** Key */
+            key: string;
+            /** Last Cve At */
+            last_cve_at?: string | null;
+            /** Monitor Entry Id */
+            monitor_entry_id?: number | null;
+            /** Monitorable */
+            monitorable: boolean;
+            /** Monitored */
+            monitored: boolean;
+            /** Visible Family Count */
+            visible_family_count: number;
+        };
         /** ChangePasswordRequest */
         ChangePasswordRequest: {
             /** Current Password */
@@ -3203,6 +3433,98 @@ export interface components {
             year: number;
             /** Years */
             years: number[];
+        };
+        /** CveDbDetail */
+        CveDbDetail: {
+            /**
+             * Affected Lines
+             * @default []
+             */
+            affected_lines: string[];
+            /** Cve Id */
+            cve_id: string;
+            /** Cvss Score */
+            cvss_score?: number | null;
+            /** Cvss Severity */
+            cvss_severity?: string | null;
+            /** Cvss Vector */
+            cvss_vector?: string | null;
+            /** Has Identity */
+            has_identity: boolean;
+            /** Link */
+            link?: string | null;
+            /** Modified At */
+            modified_at?: string | null;
+            /**
+             * Products
+             * @default []
+             */
+            products: components["schemas"]["CveDbProductOut"][];
+            /** Published At */
+            published_at?: string | null;
+            /**
+             * Published Date
+             * Format: date
+             */
+            published_date: string;
+            /**
+             * Reference Urls
+             * @default []
+             */
+            reference_urls: string[];
+            /** Solutions */
+            solutions?: string | null;
+            /** Summary */
+            summary: string;
+        };
+        /** CveDbListResponse */
+        CveDbListResponse: {
+            /** Items */
+            items: components["schemas"]["CveDbOut"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Total */
+            total: number;
+        };
+        /** CveDbOut */
+        CveDbOut: {
+            /** Cve Id */
+            cve_id: string;
+            /** Cvss Score */
+            cvss_score?: number | null;
+            /** Cvss Severity */
+            cvss_severity?: string | null;
+            /** Has Identity */
+            has_identity: boolean;
+            /**
+             * Products
+             * @default []
+             */
+            products: components["schemas"]["CveDbProductOut"][];
+            /**
+             * Published Date
+             * Format: date
+             */
+            published_date: string;
+            /** Summary */
+            summary: string;
+        };
+        /** CveDbProductOut */
+        CveDbProductOut: {
+            /** Family */
+            family: string;
+            /** Family Id */
+            family_id: number;
+            /** Monitor Entry Id */
+            monitor_entry_id?: number | null;
+            /** Monitored */
+            monitored: boolean;
+            /** Vendor */
+            vendor: string;
+            /** Vendor Id */
+            vendor_id: number;
         };
         /** CveListResponse */
         CveListResponse: {
@@ -4898,20 +5220,28 @@ export interface components {
             /** Team */
             team: string;
         };
-        /** TechStackAdd */
+        /**
+         * TechStackAdd
+         * @description Tiga bentuk: `name` saja (entri custom, perilaku lama), `vendor_id` atau `family_id` (entri
+         *     katalog; `name` opsional menimpa label bawaan = nama tampilan katalog).
+         */
         TechStackAdd: {
             /**
              * Exposure
              * @default internal
              */
             exposure: string;
+            /** Family Id */
+            family_id?: number | null;
             /**
              * Hosting Type
              * @default on_prem
              */
             hosting_type: string;
             /** Name */
-            name: string;
+            name?: string | null;
+            /** Vendor Id */
+            vendor_id?: number | null;
         };
         /** TechStackExposureUpdate */
         TechStackExposureUpdate: {
@@ -4937,6 +5267,11 @@ export interface components {
         /** TechStackOut */
         TechStackOut: {
             /**
+             * Active
+             * @default true
+             */
+            active: boolean;
+            /**
              * Added Date
              * @default
              */
@@ -4953,6 +5288,12 @@ export interface components {
             hosting_type: string;
             /** Id */
             id: number;
+            /**
+             * Kind
+             * @default custom
+             * @enum {string}
+             */
+            kind: "catalog" | "custom";
             /** Name */
             name: string;
             /**
@@ -4960,6 +5301,47 @@ export interface components {
              * @default
              */
             source: string;
+            /**
+             * Targets
+             * @default []
+             */
+            targets: components["schemas"]["TechStackTargetOut"][];
+        };
+        /** TechStackPatch */
+        TechStackPatch: {
+            /** Active */
+            active: boolean;
+        };
+        /** TechStackTargetAdd */
+        TechStackTargetAdd: {
+            /** Family Id */
+            family_id?: number | null;
+            /** Vendor Id */
+            vendor_id?: number | null;
+        };
+        /**
+         * TechStackTargetOut
+         * @description Satu sasaran katalog entri Monitor: vendor ATAU keluarga (tepat satu terisi).
+         */
+        TechStackTargetOut: {
+            /** Family Id */
+            family_id?: number | null;
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "vendor" | "family";
+            /** Label */
+            label: string;
+            /** Vendor Id */
+            vendor_id?: number | null;
+            /**
+             * Vendor Label
+             * @default
+             */
+            vendor_label: string;
         };
         /** ThreatActorBody */
         ThreatActorBody: {
@@ -6307,6 +6689,118 @@ export interface operations {
             };
         };
     };
+    search_families_api_catalog_families_get: {
+        parameters: {
+            query: {
+                q: string;
+                page?: number;
+                page_size?: number;
+            };
+            header?: {
+                "x-client-id"?: string | null;
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogFamilyListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_vendors_api_catalog_vendors_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                show_all?: boolean;
+                page?: number;
+                page_size?: number;
+            };
+            header?: {
+                "x-client-id"?: string | null;
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogVendorListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_vendor_families_api_catalog_vendors__vendor_id__families_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                show_all?: boolean;
+                page?: number;
+                page_size?: number;
+            };
+            header?: {
+                "x-client-id"?: string | null;
+                authorization?: string | null;
+            };
+            path: {
+                vendor_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogFamilyListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_versions_api_changelog_get: {
         parameters: {
             query?: never;
@@ -6802,6 +7296,83 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CveListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_cve_db_api_cve_db_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                /** @description id vendor katalog */
+                vendor?: number | null;
+                /** @description id keluarga katalog */
+                family?: number | null;
+                severity?: string[] | null;
+                date_start?: string | null;
+                date_end?: string | null;
+                page?: number;
+                page_size?: number;
+            };
+            header?: {
+                "x-client-id"?: string | null;
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CveDbListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_cve_db_api_cve_db__cve_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-client-id"?: string | null;
+                authorization?: string | null;
+            };
+            path: {
+                cve_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CveDbDetail"];
                 };
             };
             /** @description Validation Error */
@@ -11811,6 +12382,8 @@ export interface operations {
                 page_size?: number;
                 sort_by?: string;
                 sort_dir?: string;
+                /** @description true/false = hanya aktif/nonaktif; kosong = semua */
+                active?: boolean | null;
             };
             header?: {
                 "x-client-id"?: string | null;
@@ -11915,6 +12488,46 @@ export interface operations {
             };
         };
     };
+    patch_techstack_api_techstack__tech_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-client-id"?: string | null;
+                authorization?: string | null;
+            };
+            path: {
+                tech_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TechStackPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     patch_exposure_api_techstack__tech_id__exposure_patch: {
         parameters: {
             query?: never;
@@ -11981,6 +12594,83 @@ export interface operations {
                 content: {
                     "application/json": {
                         [key: string]: boolean;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_techstack_target_api_techstack__tech_id__targets_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-client-id"?: string | null;
+                authorization?: string | null;
+            };
+            path: {
+                tech_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TechStackTargetAdd"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_techstack_target_api_techstack__tech_id__targets__target_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-client-id"?: string | null;
+                authorization?: string | null;
+            };
+            path: {
+                tech_id: number;
+                target_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
                     };
                 };
             };

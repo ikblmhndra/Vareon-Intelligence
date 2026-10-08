@@ -3,12 +3,16 @@
   dict({
     'items': list([
       dict({
+        'active': True,
         'added_date': str,
         'exposure': 'internal',
         'hosting_type': 'cloud',
         'id': int,
+        'kind': 'custom',
         'name': 'WordPress',
         'source': 'manual',
+        'targets': list([
+        ]),
       }),
     ]),
     'page': 1,
@@ -29,12 +33,16 @@
 # name: test_post_techstack
   dict({
     'item': dict({
+      'active': True,
       'added_date': str,
       'exposure': 'internal',
       'hosting_type': 'on_prem',
       'id': int,
+      'kind': 'custom',
       'name': 'nginx',
       'source': 'manual',
+      'targets': list([
+      ]),
     }),
     'success': True,
   })

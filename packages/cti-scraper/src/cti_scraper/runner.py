@@ -43,7 +43,8 @@ from cti_scraper.http import ScraperHttpClient
 from cti_scraper.item_display import display_title_url
 from cti_scraper.items import ArticleItem, NoticeItem
 from cti_scraper.options import credential_for, resolve_options, validate_options
-from cti_scraper.sinks import dispatch
+from cti_scraper.sinks import dispatch, finish_run
+from cti_scraper.supersede import superseded_by_mirror
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
@@ -156,7 +157,7 @@ class Runner:
             run_repo = ScraperRunRepo(self.session)
             config = ScraperConfigRepo(self.session).get(self.meta.id)
 
-            if config is not None and not config.enabled:
+            if (config is not None and not config.enabled) or superseded_by_mirror(self.meta.id):
                 # Short-circuit SEBELUM `run_repo.start()` -- gak ada
                 # heartbeat "running" yang nyangkut, satu baris "disabled"
                 # langsung terminal, gak nyentuh HTTP/rate-limit/dedup
@@ -200,6 +201,8 @@ class Runner:
                 errors=result.errors,
             )
             self.session.commit()
+            # Ringkasan CVE baru (kalau ada) -- sesudah run tercatat; tidak pernah raise.
+            finish_run(self.session)
 
         result.duration_ms = int((time.monotonic() - started) * 1000)
         log.info(

@@ -1,3 +1,3 @@
 """cti-api -- FastAPI, port dari ScraperNewsWeb (Fase 7)."""
 
-__version__ = "0.2.1"
+__version__ = "0.3.0"
