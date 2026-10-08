@@ -34,6 +34,7 @@ router `changelog.py`) -- parser-nya expect header persis
   selisih). Gate teks `relevant_techs` pindah ke `cti_core.tech_match` (perilaku `new_cve` tidak berubah).
   Entri techstack nonaktif (`active=false`) tidak lagi ikut `reference_data` (semua entri sekarang aktif,
   jadi tidak ada perubahan perilaku). `new_cve` tetap jalan; mematikannya = irisan 7.
+  Tool perbandingan membedakan "mirror basi" (CVE terbit pada/setelah record mirror terbaru) dari "tidak ada di mirror".
 - **Ingest mirror CVE dari CVE List V5** (`docs/ROADMAP.md` #19, irisan 3): tugas `cve.mirror_sync` (tiap 5 menit,
   kursor + catch-up lewat `deltaLog.json` + antrean percobaan ulang di `job_state`) dan `cve.mirror_purge`
   (retensi tahun kalender, harian 03:30 UTC), skrip isi awal `tools/ops/backfill_cve_mirror.py`

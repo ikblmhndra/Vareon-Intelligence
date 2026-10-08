@@ -9,7 +9,8 @@ Per (CVE, client) terbit sejak `--since`:
     keyword search, ATAU riwayat yang terbit sebelum tech/tracker itu ada (jalankan dengan
     `--since` = tanggal `new_cve` mulai berjalan untuk memisahkan keduanya).
   - **hanya tracker**: `new_cve` membuatnya, bayangan tidak, dengan SEBAB: tidak ada di mirror
-    (di luar jendela/ingest belum menjangkau), entri nonaktif/hilang, entri bertarget yang tidak
+    (di luar jendela), MIRROR BASI (terbit pada/setelah record mirror terbaru: ingest belum jalan
+    atau clone backfill lebih tua dari CVE itu), entri nonaktif/hilang, entri bertarget yang tidak
     cocok CVE-nya (target salah atau kurang), atau entri teks yang gate-nya tak cocok di mirror.
 
 False positive per client disembunyikan seperti tab CVEs (`--include-fp` menampilkannya).
@@ -35,12 +36,13 @@ from cti_core.cve_promotion import SPEC_LABELS, load_entries
 from cti_core.db.engine import sync_session
 from cti_core.db.models.cve import CveFalsePositive, CveTracker
 from cti_core.db.models.cve_mirror import CvePromotionShadow, CveRecord
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 Key = tuple[str, str]  # (cve_id, client_id)
 
 REASON_NOT_IN_MIRROR = "tidak ada di mirror"
+REASON_MIRROR_STALE = "terbit pada/setelah record mirror terbaru (mirror basi?)"
 REASON_ENTRY_GONE = "entri nonaktif/hilang"
 REASON_TARGET_MISS = "entri bertarget tidak cocok CVE"
 REASON_TEXT_MISS = "gate teks tidak cocok di mirror"
@@ -70,9 +72,9 @@ def compare(
     client_id: str | None = None,
     include_fp: bool = False,
 ) -> Comparison:
-    tracker_q = select(CveTracker.cve_id, CveTracker.client_id, CveTracker.tech).where(
-        CveTracker.published >= since
-    )
+    tracker_q = select(
+        CveTracker.cve_id, CveTracker.client_id, CveTracker.tech, CveTracker.published
+    ).where(CveTracker.published >= since)
     shadow_q = select(
         CvePromotionShadow.cve_id,
         CvePromotionShadow.client_id,
@@ -91,7 +93,13 @@ def compare(
                 select(CveFalsePositive.cve_id, CveFalsePositive.client_id)
             )
         }
-    tracker = {(c, cl): (t or "") for c, cl, t in session.execute(tracker_q) if (c, cl) not in fp}
+    published: dict[Key, datetime.date | None] = {}
+    tracker: dict[Key, str] = {}
+    for c, cl, t, pub in session.execute(tracker_q):
+        if (c, cl) not in fp:
+            tracker[(c, cl)] = t or ""
+            published[(c, cl)] = pub
+    mirror_latest = session.scalar(select(func.max(CveRecord.published_date)))
     shadow = {(c, cl): (t, s) for c, cl, t, s in session.execute(shadow_q) if (c, cl) not in fp}
 
     in_mirror = {c for (c,) in session.execute(select(CveRecord.cve_id))}
@@ -110,7 +118,9 @@ def compare(
             cve_id, cl = key
             entry = entries.get((cl, tracker[key].lower()))
             if cve_id not in in_mirror:
-                reason = REASON_NOT_IN_MIRROR
+                pub = published[key]
+                stale = pub is not None and (mirror_latest is None or pub >= mirror_latest)
+                reason = REASON_MIRROR_STALE if stale else REASON_NOT_IN_MIRROR
             elif entry is None:  # `load_entries` hanya memuat entri aktif
                 reason = REASON_ENTRY_GONE
             elif entry.has_targets:

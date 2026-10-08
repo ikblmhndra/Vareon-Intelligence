@@ -215,7 +215,7 @@ def test_compare_categorises_every_row_and_explains_tracker_only(session: Sessio
     assert {k[0]: r for k, _, r in c.only_tracker} == {
         "CVE-2026-0003": cmp.REASON_TARGET_MISS,
         "CVE-2026-0006": cmp.REASON_TEXT_MISS,
-        "CVE-2026-0007": cmp.REASON_NOT_IN_MIRROR,
+        "CVE-2026-0007": cmp.REASON_MIRROR_STALE,
         "CVE-2026-0008": cmp.REASON_ENTRY_GONE,
     }
     assert c.total == 7  # FP dan CVE terbit sebelum --since tidak dihitung
@@ -235,7 +235,7 @@ def test_compare_render_and_csv(session: Session, tmp_path: Path) -> None:
     c = cmp.compare(session, since=SINCE)
     text_out = cmp.render(c, since=SINCE)
     assert "hanya bayangan     : 1" in text_out and "hanya tracker      : 1" in text_out
-    assert cmp.REASON_NOT_IN_MIRROR in text_out and "CVE-2026-0001" in text_out
+    assert cmp.REASON_MIRROR_STALE in text_out and "CVE-2026-0001" in text_out
     path = tmp_path / "cmp.csv"
     cmp.write_csv(c, path)
     rows = list(csv.DictReader(path.open()))
@@ -245,3 +245,16 @@ def test_compare_render_and_csv(session: Session, tmp_path: Path) -> None:
 
 def test_compare_main_exits_4_when_there_is_nothing_to_compare(_migrated_schema: None) -> None:
     assert cmp.main(["--since", "2026-03-01"]) == 4
+
+
+def test_not_in_mirror_is_plain_when_mirror_already_has_newer_records(session: Session) -> None:
+    mirror(session, "CVE-2026-0001", day=20)  # mirror sudah sampai tanggal 20
+    tracker_row(
+        session, "CVE-2026-0002", "x", day=5
+    )  # terbit lebih awal, tetap tak ada: bukan basi
+    tracker_row(session, "CVE-2026-0003", "x", day=25)  # terbit setelah record mirror terbaru
+    got = {k[0]: r for k, _, r in cmp.compare(session, since=SINCE).only_tracker}
+    assert got == {
+        "CVE-2026-0002": cmp.REASON_NOT_IN_MIRROR,
+        "CVE-2026-0003": cmp.REASON_MIRROR_STALE,
+    }
