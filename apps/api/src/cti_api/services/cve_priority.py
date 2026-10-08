@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from cti_core.db.models.cve import CveTracker
 from cti_core.db.repositories.cve import AsyncCveTrackerRepo
 from cti_core.db.repositories.techstack import AsyncTechStackRepo
 from cti_core.tech_match import mentions
@@ -65,7 +66,13 @@ async def prioritize_campaign_cves(
         return []
 
     rows = await AsyncCveTrackerRepo(session).list_by_cve_ids_any_client(cve_ids)
-    tracker_map = {r.cve_id.upper(): r for r in rows}
+    # Satu CVE bisa punya baris per client dengan `tech` berbeda. Baris client yang bertanya
+    # menang; baris client lain hanya cadangan kalau CVE-nya belum di-track client ini.
+    tracker_map: dict[str, CveTracker] = {}
+    for r in rows:
+        key = r.cve_id.upper()
+        if key not in tracker_map or r.client_id == client_id:
+            tracker_map[key] = r
 
     tech_entries, _total = await AsyncTechStackRepo(session).list_filtered(
         client_id=client_id, page=1, page_size=10000

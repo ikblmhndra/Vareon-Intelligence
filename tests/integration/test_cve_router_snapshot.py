@@ -182,6 +182,35 @@ async def test_purge_orphaned_dry_run(
     assert body == snapshot
 
 
+async def test_purge_orphaned_is_admin_only(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+) -> None:
+    """Endpoint ini menghapus CVE (dan penanda FP-nya) secara permanen, jadi hanya admin dan
+    superadmin. Analis ditolak 403 untuk dry run MAUPUN eksekusi, dan datanya tidak tersentuh
+    (client tanpa techstack: semua CVE dianggap yatim, jadi eksekusi akan menghapus semuanya)."""
+    await _seed_two_cves(api_session)
+    analyst = auth_header(role="analyst")
+    for dry_run in (True, False):
+        resp = await api_client.post(
+            "/api/cve/purge-orphaned", headers=analyst, json={"dry_run": dry_run}
+        )
+        assert resp.status_code == 403, f"dry_run={dry_run}"
+    assert (await api_client.get("/api/cve", headers=analyst)).json()["total"] == 2
+
+    admin = auth_header(role="admin")
+    preview = await api_client.post(
+        "/api/cve/purge-orphaned", headers=admin, json={"dry_run": True}
+    )
+    assert preview.status_code == 200 and preview.json()["would_delete"] == 2
+    executed = await api_client.post(
+        "/api/cve/purge-orphaned", headers=admin, json={"dry_run": False}
+    )
+    assert executed.status_code == 200 and executed.json()["deleted"] == 2
+    assert (await api_client.get("/api/cve", headers=admin)).json()["total"] == 0
+
+
 async def test_cisa_kev_lookup(
     api_client: AsyncClient,
     api_session: AsyncSession,
@@ -448,3 +477,27 @@ async def test_prioritize_cves(
     )
     assert resp.status_code == 200
     assert resp.json() == snapshot
+
+
+async def test_tickets_hide_false_positive_cves_unless_asked(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+) -> None:
+    """UI mewajibkan Acknowledge sebelum Mark FP, jadi tiap CVE FP punya ticket. Dashboard dan
+    export mengecualikan FP; Ticketing harus konsisten (sembunyikan, kecuali `include_fp`)."""
+    await _seed_two_cves(api_session)
+    for cve_id in ("CVE-2026-7001", "CVE-2026-7002"):
+        resp = await api_client.post(
+            f"/api/cve/{cve_id}/acknowledge", headers=auth_header(), json={"analyst_name": "a"}
+        )
+        assert resp.status_code == 200
+    await api_client.post("/api/cve/CVE-2026-7002/false-positive", headers=auth_header())
+
+    default = await api_client.get("/api/cve/tickets", headers=auth_header())
+    assert [t["cve_id"] for t in default.json()["tickets"]] == ["CVE-2026-7001"]
+    assert default.json()["total"] == 1
+
+    everything = await api_client.get("/api/cve/tickets?include_fp=true", headers=auth_header())
+    flags = {t["cve_id"]: t["false_positive"] for t in everything.json()["tickets"]}
+    assert flags == {"CVE-2026-7001": False, "CVE-2026-7002": True}

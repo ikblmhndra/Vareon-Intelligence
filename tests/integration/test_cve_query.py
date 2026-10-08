@@ -121,7 +121,7 @@ class TestAsyncCveTrackerRepo:
     ) -> None:
         await _seed(async_db_session)
         stats = await AsyncCveTrackerRepo(async_db_session).get_stats(client_id="default")
-        assert stats == {"total": 3, "critical": 1, "high": 1, "medium": 0, "low": 1}
+        assert stats == {"total": 3, "critical": 1, "high": 1, "medium": 0, "low": 1, "unrated": 0}
 
     async def test_get_stats_severity_filter_only_affects_total(
         self, async_db_session: AsyncSession
@@ -142,6 +142,63 @@ class TestAsyncCveTrackerRepo:
         await _seed(async_db_session)
         techs = await AsyncCveTrackerRepo(async_db_session).get_tech_list("default")
         assert techs == ["Linux", "WordPress", "nginx"]
+
+    async def test_get_stats_counts_cves_without_cvss_as_unrated(
+        self, async_db_session: AsyncSession
+    ) -> None:
+        """CNA yang tidak mengisi CVSS membuat scraper menulis skor 0.0 (atau NULL untuk baris
+        lama). Dulu CVE itu masuk `total` tapi tidak masuk bucket mana pun, jadi kartu stats tidak
+        pernah menjumlah ke total."""
+        await _ensure_clients(async_db_session)
+        async_db_session.add_all(
+            [
+                CveTracker(cve_id="CVE-2026-0801", client_id="default", tech="x", cve_score=9.5),
+                CveTracker(cve_id="CVE-2026-0802", client_id="default", tech="x", cve_score=0.0),
+                CveTracker(cve_id="CVE-2026-0803", client_id="default", tech="x", cve_score=None),
+            ]
+        )
+        await async_db_session.flush()
+
+        stats = await AsyncCveTrackerRepo(async_db_session).get_stats(client_id="default")
+        assert stats["total"] == 3
+        assert stats["unrated"] == 2
+        assert sum(stats[k] for k in ("critical", "high", "medium", "low", "unrated")) == 3
+
+    async def test_date_basis_decides_which_date_the_range_filters(
+        self, async_db_session: AsyncSession
+    ) -> None:
+        """List/stats dan export dulu memakai tanggal berbeda (published vs detected_on) di balik
+        input From/To yang sama. Kini dasarnya eksplisit (`date_basis`) dan "detected" dibaca
+        sebagai hari kalender WIB, sama dengan dashboard: 18.00 UTC 30 Sep = 01.00 WIB 1 Okt."""
+        await _ensure_clients(async_db_session)
+        async_db_session.add(
+            CveTracker(
+                cve_id="CVE-2026-0901",
+                client_id="default",
+                tech="x",
+                published=datetime.date(2026, 9, 15),
+                detected_on=datetime.datetime(2026, 9, 30, 18, 0, tzinfo=datetime.UTC),
+            )
+        )
+        await async_db_session.flush()
+        repo = AsyncCveTrackerRepo(async_db_session)
+        oct_1 = datetime.date(2026, 10, 1)
+
+        _, by_published = await repo.list_filtered(client_id="default", date_start=oct_1)
+        _, by_detected = await repo.list_filtered(
+            client_id="default", date_start=oct_1, date_basis="detected"
+        )
+        stats = await repo.get_stats(client_id="default", date_start=oct_1, date_basis="detected")
+        assert (by_published, by_detected, stats["total"]) == (0, 1, 1)
+
+        # export tetap default ke "detected" (laporan bulanan), dan bisa diganti ke "published"
+        assert len(await repo.list_for_export(client_id="default", date_start=oct_1)) == 1
+        assert (
+            await repo.list_for_export(
+                client_id="default", date_start=oct_1, date_basis="published"
+            )
+            == []
+        )
 
     async def test_get_article_mentions_matches_cve_id_in_title(
         self, async_db_session: AsyncSession
@@ -170,6 +227,27 @@ class TestAsyncCveTrackerRepo:
         assert len(mentions["CVE-2026-0001"]) == 1
         assert mentions["CVE-2026-0001"][0]["url"] == "https://example.com/a"
         assert mentions["CVE-2026-0002"] == []
+
+    async def test_get_article_mentions_does_not_match_longer_cve_number(
+        self, async_db_session: AsyncSession
+    ) -> None:
+        """`CVE-2026-1234` bukan penyebutan `CVE-2026-12345` -- hanya batas angka yang dicek,
+        tanda baca di sekitarnya tetap boleh."""
+        titles = {
+            "longer": "Mass exploitation of CVE-2026-12345 continues",
+            "exact": "Patch now: (CVE-2026-1234), says vendor",
+        }
+        for key, title in titles.items():
+            async_db_session.add(
+                Article(url=f"https://example.com/{key}", url_hash=key, title=title, source="t")
+            )
+        await async_db_session.flush()
+
+        mentions = await AsyncCveTrackerRepo(async_db_session).get_article_mentions(
+            ["CVE-2026-1234", "CVE-2026-12345"]
+        )
+        assert [m["url"] for m in mentions["CVE-2026-1234"]] == ["https://example.com/exact"]
+        assert [m["url"] for m in mentions["CVE-2026-12345"]] == ["https://example.com/longer"]
 
     async def test_get_article_mentions_empty_input_returns_empty_dict(
         self, async_db_session: AsyncSession

@@ -148,6 +148,7 @@ async def export_cves_to_excel(
     tech: list[str] | None = None,
     include_fp: bool = False,
     ack_filter: str | None = None,
+    date_basis: str = "detected",
 ) -> bytes:
     exclude_ids: list[str] = []
     if not include_fp:
@@ -162,6 +163,7 @@ async def export_cves_to_excel(
         date_end=date_end,
         exclude_cve_ids=exclude_ids,
         ack_filter=ack_filter,
+        date_basis=date_basis,
     )
     cve_ids = [c.cve_id for c in cves]
     tickets = await AsyncCveTicketRepo(session).get_by_cve_ids(cve_ids, client_id)

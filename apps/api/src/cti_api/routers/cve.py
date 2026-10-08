@@ -38,7 +38,14 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_api.deps import AuthedUser, effective_client_id, get_db, request_ip, require_auth
+from cti_api.deps import (
+    AuthedUser,
+    effective_client_id,
+    get_db,
+    request_ip,
+    require_admin,
+    require_auth,
+)
 from cti_api.schemas.cve import (
     AcknowledgeBody,
     BulkAcknowledgeBody,
@@ -63,6 +70,7 @@ from cti_api.services import cve_priority as cve_priority_service
 router = APIRouter(prefix="/api/cve", tags=["cve"])
 
 _ACK_FILTER_PATTERN = "^(acked|unacked)$"
+_DATE_BASIS_PATTERN = "^(published|detected)$"
 
 
 def _parse_date(value: str) -> datetime.date | None:
@@ -172,6 +180,7 @@ async def list_cves(
     sort_by: str = Query("published", pattern="^(tech|severity|published|epss)$"),
     sort_dir: str = Query("desc", pattern="^(asc|desc)$"),
     ack_filter: str | None = Query(None, pattern=_ACK_FILTER_PATTERN),
+    date_basis: str = Query("published", pattern=_DATE_BASIS_PATTERN),
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),
     x_client_id: str | None = Header(None),
@@ -196,6 +205,7 @@ async def list_cves(
         sort_by=sort_by,
         sort_dir=sort_dir,
         ack_filter=ack_filter,
+        date_basis=date_basis,
     )
 
     tp_ids = [c.cve_id for c in cves if c.cve_id not in fp_ids_set]
@@ -227,6 +237,7 @@ async def cve_stats(
     date_start: datetime.date | None = Query(None),
     date_end: datetime.date | None = Query(None),
     ack_filter: str | None = Query(None, pattern=_ACK_FILTER_PATTERN),
+    date_basis: str = Query("published", pattern=_DATE_BASIS_PATTERN),
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),
     x_client_id: str | None = Header(None),
@@ -243,6 +254,7 @@ async def cve_stats(
         date_end=date_end,
         exclude_cve_ids=fp_ids or None,
         ack_filter=ack_filter,
+        date_basis=date_basis,
     )
     return CveStats(**stats)
 
@@ -353,11 +365,14 @@ async def purge_orphaned(
     body: PurgeOrphanedBody,
     request: Request,
     session: AsyncSession = Depends(get_db),
-    user: AuthedUser = Depends(require_auth),
+    user: AuthedUser = Depends(require_admin),
     x_client_id: str | None = Header(None),
 ) -> dict[str, object]:
     """Hapus CVE yang tech-nya UDAH GAK ADA di techstack aktif client ini.
-    `{"dry_run": false}` buat beneran eksekusi -- default preview doang."""
+    `{"dry_run": false}` buat beneran eksekusi -- default preview doang.
+
+    **Hanya admin/superadmin**, termasuk preview-nya: eksekusi menghapus baris `cve_tracker` dan
+    penanda FP-nya secara permanen (client tanpa techstack: semua CVE dianggap yatim)."""
     dry_run = body.dry_run
     cid = effective_client_id(user, x_client_id)
     # Semua entri, termasuk yang nonaktif: yang disembunyikan BUKAN yatim, barisnya tidak boleh
@@ -473,6 +488,7 @@ async def export_cves(
     tech: list[str] | None = Query(None),
     include_fp: bool = Query(False),
     ack_filter: str | None = Query(None, pattern=_ACK_FILTER_PATTERN),
+    date_basis: str = Query("detected", pattern=_DATE_BASIS_PATTERN),
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),
     x_client_id: str | None = Header(None),
@@ -494,6 +510,7 @@ async def export_cves(
             tech=tech or await _active_tech_names(session, cid),
             include_fp=include_fp,
             ack_filter=ack_filter,
+            date_basis=date_basis,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -512,6 +529,7 @@ async def export_cves(
             "severity": severity,
             "tech": tech,
             "ack_filter": ack_filter,
+            "date_basis": date_basis,
         },
         ip_address=request_ip(request),
     )
@@ -546,12 +564,21 @@ async def create_draft_email(
     request: Request,
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),
+    x_client_id: str | None = Header(None),
 ) -> dict[str, object]:
     if not body.cve_ids:
         raise HTTPException(status_code=400, detail="cve_ids required")
-    ticket_id = body.ticket_id or await AsyncCveTicketRepo(session).get_next_ticket_id()
+    cid = effective_client_id(user, x_client_id)
+    ticket_repo = AsyncCveTicketRepo(session)
+    ticket_id = (
+        body.ticket_id
+        or await ticket_repo.tracking_id_for(body.cve_ids, cid)
+        or await ticket_repo.get_next_ticket_id()
+    )
     try:
-        result = await cve_email_service.draft_email_for_cves(session, body.cve_ids, ticket_id)
+        result = await cve_email_service.draft_email_for_cves(
+            session, body.cve_ids, ticket_id, client_id=cid
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
     await AsyncAuditLogRepo(session).write(
@@ -568,18 +595,28 @@ async def create_draft_email(
 async def list_cve_tickets(
     search: str | None = Query(None),
     status: str | None = Query(None),
+    include_fp: bool = False,
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),
     x_client_id: str | None = Header(None),
 ) -> dict[str, object]:
     """Daftar ticket client ini (view "Ticketing" di CVE Tracker) --
     `_serialize_ticket` + ringkasan CVE-nya (severity/score/tech/
-    detected_on) biar tabel gak perlu N request."""
+    detected_on) biar tabel gak perlu N request.
+
+    Ticket CVE false positive disembunyikan (konsisten dengan tab CVEs, dashboard, dan export)
+    kecuali `include_fp=true`; UI mewajibkan Acknowledge sebelum Mark FP, jadi tiap CVE FP punya
+    ticket."""
     cid = effective_client_id(user, x_client_id)
-    rows = await AsyncCveTicketRepo(session).list_with_cve(cid, search=search, status=status)
+    fp_ids = await AsyncCveFalsePositiveRepo(session).list_cve_ids(cid)
+    rows = await AsyncCveTicketRepo(session).list_with_cve(
+        cid, search=search, status=status, exclude_cve_ids=None if include_fp else fp_ids
+    )
+    fp_set = set(fp_ids)
     tickets: list[dict[str, object]] = []
     for ticket, cve in rows:
         item = _serialize_ticket(ticket)
+        item["false_positive"] = ticket.cve_id in fp_set
         item["cve_severity"] = (cve.cve_severity if cve else "") or ""
         item["cve_score"] = (cve.cve_score if cve else None) or 0.0
         item["tech"] = (cve.tech if cve else "") or ""

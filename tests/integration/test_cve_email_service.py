@@ -57,7 +57,7 @@ async def test_draft_email_for_cves_renders_and_dispatches(
         patch.object(svc, "create_graph_draft", MagicMock(return_value="graph-msg-123")),
     ):
         result = await svc.draft_email_for_cves(
-            async_db_session, ["CVE-2026-0001"], "CTI-2026-09-001"
+            async_db_session, ["CVE-2026-0001"], "CTI-2026-09-001", client_id="default"
         )
 
     assert result["email_id"] == "graph-msg-123"
@@ -73,7 +73,9 @@ async def test_draft_email_for_cves_raises_when_no_cves_found(
 ) -> None:
     await _ensure_clients(async_db_session)
     with pytest.raises(ValueError, match="No CVE documents found"):
-        await svc.draft_email_for_cves(async_db_session, ["CVE-DOES-NOT-EXIST"], "CTI-2026-09-001")
+        await svc.draft_email_for_cves(
+            async_db_session, ["CVE-DOES-NOT-EXIST"], "CTI-2026-09-001", client_id="default"
+        )
 
 
 async def test_draft_email_for_cves_deduplicates_vendor_advisory_urls(
@@ -105,8 +107,51 @@ async def test_draft_email_for_cves_deduplicates_vendor_advisory_urls(
         patch.object(svc, "create_graph_draft", MagicMock(return_value="graph-msg-456")),
     ):
         result = await svc.draft_email_for_cves(
-            async_db_session, ["CVE-2026-0002", "CVE-2026-0003"], "CTI-2026-09-002"
+            async_db_session,
+            ["CVE-2026-0002", "CVE-2026-0003"],
+            "CTI-2026-09-002",
+            client_id="default",
         )
 
     assert result["cve_count"] == 2
     assert captured_context["vendor_advisory_url"] == ["https://shared.example/advisory"]
+
+
+async def test_draft_email_is_scoped_to_the_callers_client(
+    async_db_session: AsyncSession,
+) -> None:
+    """CVE yang sama di-track dua client dengan tech berbeda: draft untuk acme hanya memuat baris
+    acme -- satu CVE, produk acme -- dan CVE yang tidak di-track client itu dianggap tidak ada."""
+    await _ensure_clients(async_db_session)
+    await AsyncClientRepo(async_db_session).create(client_id="acme", name="Acme", countries=[])
+    async_db_session.add_all(
+        [
+            CveTracker(cve_id="CVE-2026-0010", client_id="default", tech="nginx"),
+            CveTracker(cve_id="CVE-2026-0010", client_id="acme", tech="apache"),
+            CveTracker(cve_id="CVE-2026-0011", client_id="default", tech="nginx"),
+        ]
+    )
+    await async_db_session.flush()
+
+    llm_calls = MagicMock(return_value=_FAKE_VALIDATION)
+    with (
+        patch.object(svc, "_llm_cve_validator", llm_calls),
+        patch.object(
+            svc,
+            "_dedup_mitigation",
+            MagicMock(return_value={"alternative_remediation_action": []}),
+        ),
+        patch.object(svc, "_dedup_risk_context", MagicMock(return_value="")),
+        patch.object(svc, "create_graph_draft", MagicMock(return_value="graph-msg-789")),
+    ):
+        result = await svc.draft_email_for_cves(
+            async_db_session, ["CVE-2026-0010"], "CTI-2026-09-003", client_id="acme"
+        )
+        assert result["cve_count"] == 1
+        assert "Apache" in result["subject"]
+        assert llm_calls.call_count == 1
+
+        with pytest.raises(ValueError, match="No CVE documents found"):
+            await svc.draft_email_for_cves(
+                async_db_session, ["CVE-2026-0011"], "CTI-2026-09-004", client_id="acme"
+            )

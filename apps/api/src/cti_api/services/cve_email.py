@@ -171,9 +171,11 @@ def _highest_severity(cves: list[dict[str, Any]]) -> str:
 
 
 async def draft_email_for_cves(
-    session: AsyncSession, cve_ids: list[str], ticket_id: str
+    session: AsyncSession, cve_ids: list[str], ticket_id: str, *, client_id: str
 ) -> dict[str, Any]:
-    cves = await AsyncCveTrackerRepo(session).get_by_cve_ids(cve_ids)
+    """Hanya baris `cve_tracker` milik `client_id`: tanpa itu CVE yang di-track beberapa client
+    muncul dobel di email dan `product_name` (dari baris pertama) bisa milik client lain."""
+    cves = await AsyncCveTrackerRepo(session).get_by_cve_ids(cve_ids, client_id=client_id)
     if not cves:
         raise ValueError("No CVE documents found for provided IDs")
 

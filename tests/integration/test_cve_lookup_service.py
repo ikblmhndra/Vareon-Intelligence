@@ -19,6 +19,8 @@ from cti_core.db.repositories.auth import AsyncClientRepo
 from cti_core.db.repositories.cve import AsyncCveFalsePositiveRepo, AsyncCveTrackerRepo
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests.integration.cve_fp_scenario import TRUE_POSITIVES, seed_per_client_false_positives
+
 pytestmark = pytest.mark.asyncio
 
 
@@ -46,6 +48,18 @@ async def test_list_true_positive_cve_ids_excludes_default_client_fp(
 
     tp_ids = await AsyncCveTrackerRepo(async_db_session).list_true_positive_cve_ids()
     assert tp_ids == ["CVE-2026-1111"]
+
+
+async def test_list_true_positive_cve_ids_judges_false_positive_per_client_row(
+    async_db_session: AsyncSession,
+) -> None:
+    """FP itu per (cve_id, client_id). CVE masih true positive selama ada SATU client yang
+    men-track-nya tanpa menandai FP -- bukan cuma FP milik client "default" yang dihitung.
+    Skenarionya: `cve_fp_scenario`."""
+    await seed_per_client_false_positives(async_db_session)
+
+    tp_ids = await AsyncCveTrackerRepo(async_db_session).list_true_positive_cve_ids()
+    assert sorted(tp_ids) == TRUE_POSITIVES
 
 
 async def test_list_by_cve_ids_any_client_case_insensitive_multi_client(

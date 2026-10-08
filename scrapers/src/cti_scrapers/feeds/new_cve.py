@@ -40,6 +40,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from datetime import timedelta
 from typing import Any
+from urllib.parse import quote, quote_plus
 
 import lxml.html
 from cti_core.cve_record import (
@@ -159,10 +160,12 @@ class NewCve(BaseScraper):
         start_str = (ctx.now - timedelta(days=8)).strftime("%Y-%m-%dT%H:%M:%S.000")
 
         for tech in tech_list:
-            tech_enc = tech.replace(" ", "%20").strip()
+            tech_enc = quote(tech.strip(), safe="")
+            # `ctx.now` itu UTC naive, jadi offset-nya +00:00. Dulu `+07:00`: jam UTC dilabeli WIB,
+            # `pubEndDate` mundur 7 jam dan CVE yang baru terbit telat tercatat.
             url = (
                 f"{_NVD_URL}?keywordSearch={tech_enc}"
-                f"&pubStartDate={start_str}%2B07:00&pubEndDate={now_str}%2B07:00"
+                f"&pubStartDate={start_str}%2B00:00&pubEndDate={now_str}%2B00:00"
             )
             data = get_waiting(ctx, url).json()
 
@@ -187,7 +190,7 @@ class NewCve(BaseScraper):
         start_str = (ctx.now - timedelta(days=8)).strftime("%Y-%m-%d")
 
         for tech in tech_list:
-            tech_enc = tech.replace(" ", "+").strip()
+            tech_enc = quote_plus(tech.strip())
             url = (
                 f"{_TENABLE_URL}?q={tech_enc}+AND+publication_date%3A"
                 f"%28%5B{start_str}+TO+{now_str}%5D%29&sort=newest&page=1"

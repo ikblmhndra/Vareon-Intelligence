@@ -1021,6 +1021,9 @@ export interface paths {
          * Purge Orphaned
          * @description Hapus CVE yang tech-nya UDAH GAK ADA di techstack aktif client ini.
          *     `{"dry_run": false}` buat beneran eksekusi -- default preview doang.
+         *
+         *     **Hanya admin/superadmin**, termasuk preview-nya: eksekusi menghapus baris `cve_tracker` dan
+         *     penanda FP-nya secara permanen (client tanpa techstack: semua CVE dianggap yatim).
          */
         post: operations["purge_orphaned_api_cve_purge_orphaned_post"];
         delete?: never;
@@ -1075,6 +1078,10 @@ export interface paths {
          * @description Daftar ticket client ini (view "Ticketing" di CVE Tracker) --
          *     `_serialize_ticket` + ringkasan CVE-nya (severity/score/tech/
          *     detected_on) biar tabel gak perlu N request.
+         *
+         *     Ticket CVE false positive disembunyikan (konsisten dengan tab CVEs, dashboard, dan export)
+         *     kecuali `include_fp=true`; UI mewajibkan Acknowledge sebelum Mark FP, jadi tiap CVE FP punya
+         *     ticket.
          */
         get: operations["list_cve_tickets_api_cve_tickets_get"];
         put?: never;
@@ -3692,6 +3699,8 @@ export interface components {
             medium: number;
             /** Total */
             total: number;
+            /** Unrated */
+            unrated: number;
         };
         /** CveTicketBody */
         CveTicketBody: {
@@ -7277,6 +7286,7 @@ export interface operations {
                 sort_by?: string;
                 sort_dir?: string;
                 ack_filter?: string | null;
+                date_basis?: string;
             };
             header?: {
                 "x-client-id"?: string | null;
@@ -7565,6 +7575,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "x-client-id"?: string | null;
                 authorization?: string | null;
             };
             path?: never;
@@ -7674,6 +7685,7 @@ export interface operations {
                 tech?: string[] | null;
                 include_fp?: boolean;
                 ack_filter?: string | null;
+                date_basis?: string;
             };
             header?: {
                 "x-client-id"?: string | null;
@@ -7822,6 +7834,7 @@ export interface operations {
                 date_start?: string | null;
                 date_end?: string | null;
                 ack_filter?: string | null;
+                date_basis?: string;
             };
             header?: {
                 "x-client-id"?: string | null;
@@ -7889,6 +7902,7 @@ export interface operations {
             query?: {
                 search?: string | null;
                 status?: string | null;
+                include_fp?: boolean;
             };
             header?: {
                 "x-client-id"?: string | null;

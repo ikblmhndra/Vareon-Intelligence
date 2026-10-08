@@ -61,7 +61,8 @@ Perilaku `upsert` yang penting (`cti_core/db/repositories/cve.py`):
 - Scraper **tidak** memeriksa false-positive: baris yang ditandai FP tetap di-upsert, hanya disembunyikan
   di query (bagian 5).
 - Baris lama yang kemudian ditolak gate **tidak pernah dihapus** otomatis (scraper hanya upsert); pembersih
-  manual: `tools/ops/reconcile_cve_tech.py` dan `POST /api/cve/purge-orphaned`.
+  manual: `tools/ops/reconcile_cve_tech.py` dan `POST /api/cve/purge-orphaned` (**hanya admin/superadmin**,
+  termasuk dry run; default dry run).
 - Data awal sebelum cutover masuk dari dump Mongo lewat `tools/seed/fase10_cve_migrate.py` (satu kali).
 
 ## 3. Model data (`cti_core/db/models/cve.py`, `techstack.py`)
@@ -74,7 +75,7 @@ Perilaku `upsert` yang penting (`cti_core/db/repositories/cve.py`):
 | `cve_pocs` | `cve_tracker_id` | ditulis `github_poc_monitor` (dan exploit-db lookup). |
 | `cve_threat_actors`, `cve_ttps`, `cve_newsletter_mentions` | `cve_tracker_id` | anak lain (aktor/TTP lewat cross-reference, mention lewat newsletter). |
 | `cve_false_positives` | `(cve_id, client_id)` unik | ditandai analis. **Kunci pakai `cve_id`, bukan id tracker.** |
-| `cve_tickets` | `(cve_id, client_id)` unik | satu ticket per (CVE, client), `ticket_id` unik global (`CTI-2026-09-001`, urut per bulan, **lintas client**). Dibuat saat acknowledge atau edit manual. Juga **pakai `cve_id`, bukan id tracker**. |
+| `cve_tickets` | `(cve_id, client_id)` unik | satu ticket per (CVE, client), `ticket_id` unik global (`CTI-2026-09-001`, urut per bulan **WIB**, **lintas client**; penomoran diserialkan `pg_advisory_xact_lock` di jalur yang langsung menyimpan ticket). Dibuat saat acknowledge atau edit manual. Juga **pakai `cve_id`, bukan id tracker**. |
 
 `CveItem` menyimpan versi terdampak hanya sebagai teks di `cve_affected.affected`; ticket punya
 `affected_version`/`fixed_version` isian analis. **Tidak ada penyimpanan range versi terstruktur**, dan itu
@@ -100,8 +101,9 @@ yang sama dengan tombol manual di UI (`cti_api/services/cve_lookup.py`):
 - **EPSS** (FIRST.org): batch 100 → `epss_score`, `epss_percentile`, `epss_date`.
 
 Sifat yang perlu diketahui (bukan bug yang saya tulis, apa adanya):
-- Himpunan CVE = **semua `cve_id` distinct di tracker lintas client**, dikurangi yang ditandai FP oleh client
-  `"default"` saja (`list_true_positive_cve_ids(client_id="default")`). Hasilnya ditulis ke **semua baris
+- Himpunan CVE = `cve_id` yang masih **true positive untuk minimal satu client**: ada satu baris tracker yang
+  TIDAK ditandai FP oleh clientnya sendiri (`list_true_positive_cve_ids()`; FP dinilai per `(cve_id, client_id)`).
+  Dulu hanya FP client `"default"` yang dihitung (diubah di PR #14). Hasilnya ditulis ke **semua baris
   (lintas client)** untuk `cve_id` itu.
 - **Tidak ada penyaring kesegaran**: tiap 3 jam semuanya dicek ulang. Biayanya naik linear dengan ukuran
   tracker (Exploit-DB paling berat: ≥1 detik per 5 CVE + HTTP per CVE).
@@ -124,19 +126,25 @@ Terkait: `trending_cve` (scraper) mengumpulkan mention CVE dari tweet ke `cve_me
    `[]` = tab kosong** (bukan tanpa filter; kalau tidak, "disembunyikan" berbalik arti). `purge_orphaned` memakai
    SEMUA nama (aktif + nonaktif): yang disembunyikan bukan yatim.
 
-Filter lain: `search` (cve_id/summary/tech, ILIKE), `severity`, rentang `published`, `ack_filter`
+Filter lain: `search` (cve_id/summary/tech, ILIKE), `severity`, rentang tanggal (`date_basis`: `published` = default,
+atau `detected` = hari kalender WIB saat CVE pertama terdeteksi), `ack_filter`
 (`acked`/`unacked` lewat `cve_tickets.acknowledged_by`), FP disembunyikan kecuali `include_fp`. Urutan
 `published`/`tech`/`severity`/`epss`. Serialisasi (`_serialize`) menambah `adjusted_risk_score` =
 `cve_score × EXPOSURE_MULTIPLIER × HOSTING_MULTIPLIER` (dari `techstack_entries` lewat nama huruf kecil), jumlah dan daftar
-artikel yang menyebut CVE di judul (`get_article_mentions`, ILIKE), dan status FP.
+artikel yang menyebut CVE di judul (`get_article_mentions`: ILIKE hanya penyaring kasar, lalu cocok persis dengan batas
+angka, jadi `CVE-2026-1234` bukan `CVE-2026-12345`), dan status FP.
 - `GET /stats`, `GET /dashboard?year=` (MTTD/MTTA/MTTR, `services/cve_dashboard.py`), `GET /export` (Excel
   dari template `CVE_Tracker_template.xlsx`, `services/cve_export.py`) memakai **scope yang sama** (client,
   techstack aktif, tanpa FP) sehingga angkanya konsisten dengan tab CVEs. (Koreksi: sebelum irisan 5 `/export`
   TIDAK menyaring techstack sama sekali, hanya `tech` dari query; sekarang `tech or entri aktif`, jadi baris
   yatim dan baris entri nonaktif tidak ikut export.)
+- `GET /stats` punya bucket `unrated` (skor CVSS 0/NULL: CNA tidak mengisi CVSS) supaya critical + high + medium +
+  low + unrated = total. `date_basis` juga ada di `/stats` dan `/export`. Default API: `published` untuk list/stats,
+  `detected` untuk export (laporan bulanan); UI mengirim dasar yang sama ke ketiganya (default Published).
 - `GET /tech-list`: tech distinct yang ada di tracker client (untuk dropdown filter).
 - `GET /prioritize`: skor prioritas (`services/cve_priority.py`): CVSS 30%, KEV 20%, exploited 20%, PoC
-  10%, `in_tech_stack` 20% → label dan `patch_urgency`.
+  10%, `in_tech_stack` 20% → label dan `patch_urgency`. Kalau satu CVE punya baris di beberapa client, baris client
+  pemanggil yang dipakai (baris client lain hanya cadangan saat CVE belum di-track client itu).
 - Multi-tenant: `X-Client-ID` → `effective_client_id`.
 
 ## 6. Ticket, acknowledge, false positive
@@ -151,9 +159,13 @@ artikel yang menyebut CVE di judul (`get_article_mentions`, ILIKE), dan status F
   `(cve_id, client_id)`, dicatat di audit log.
 - Aksi tulis yang dibaca (false-positive, ticket, bulk-acknowledge, purge) memanggil
   `AsyncAuditLogRepo.write` lalu `commit`.
-- **Ticketing view** = `GET /tickets` (ticket + ringkasan CVE: severity, skor, tech, `detected_on`).
+- **Ticketing view** = `GET /tickets` (ticket + ringkasan CVE: severity, skor, tech, `detected_on`, `false_positive`).
+  Ticket CVE FP disembunyikan kecuali `include_fp=true` (UI mewajibkan Acknowledge sebelum Mark FP, jadi tiap CVE FP
+  punya ticket).
 - **Draft email** (`POST /draft-email`): 3 panggilan LLM + template `cve_notification_email.html`, membuat
-  draft lewat Microsoft Graph. **Manual**, dipicu analis.
+  draft lewat Microsoft Graph. **Manual**, dipicu analis. Hanya baris tracker milik client aktif (`X-Client-ID`) yang
+  dipakai. Tracking ID = nomor ticket yang sudah ada untuk CVE-nya (dipisah koma); nomor "intipan" berikutnya (tidak
+  disimpan) hanya dipakai kalau belum ada ticket sama sekali.
 
 ## 7. Notifikasi: apa yang ADA
 
@@ -193,6 +205,12 @@ Yang lain terkait CVE (tidak berubah):
 
 Digest dan alert artikel/laporan memakai nama techstack **gabungan semua client**, tidak per client; ringkasan
 CVE baru di atas adalah satu-satunya yang per client.
+
+Newsletter (`services/newsletter._enrich_articles`, global, bukan per client) juga mengkorelasikan artikel dengan
+tracker: artikel yang judul/badannya menyebut CVE yang masih **true positive untuk minimal satu client**
+(`list_true_positive_cve_ids()`; FP dinilai per baris client, bukan hanya `"default"`, diubah di PR #14) diberi
+`cve_mentions` dan `possibly_exploited_wild`. Mention-nya ditulis ke `cve_newsletter_mentions` pada **satu** baris
+tracker (client mana pun, urutan DB), dan tabel itu belum dibaca siapa pun.
 
 ## 8. Peta UI (`apps/web/src/app/(app)/cve/page.tsx`)
 

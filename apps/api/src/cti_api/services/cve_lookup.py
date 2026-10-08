@@ -63,7 +63,7 @@ async def _fetch_epss_scores(cve_ids: list[str]) -> dict[str, dict[str, Any]]:
     return results
 
 
-async def run_epss_lookup(session: AsyncSession, *, client_id: str = "default") -> dict[str, Any]:
+async def run_epss_lookup(session: AsyncSession, *, client_id: str | None = None) -> dict[str, Any]:
     """Fetch skor EPSS buat semua CVE true-positive di DB, simpen hasilnya."""
     repo = AsyncCveTrackerRepo(session)
     tp_ids = await repo.list_true_positive_cve_ids(client_id)
@@ -102,7 +102,7 @@ async def _fetch_cisa_kev() -> dict[str, dict[str, Any]]:
 
 
 async def run_cisa_kev_lookup(
-    session: AsyncSession, *, client_id: str = "default"
+    session: AsyncSession, *, client_id: str | None = None
 ) -> dict[str, Any]:
     """Cross-reference semua CVE true-positive di DB vs katalog KEV penuh."""
     repo = AsyncCveTrackerRepo(session)
@@ -187,7 +187,7 @@ async def run_exploit_db_single_lookup(session: AsyncSession, cve_id: str) -> di
 
 
 async def run_exploit_db_bulk_lookup(
-    session: AsyncSession, *, client_id: str = "default"
+    session: AsyncSession, *, client_id: str | None = None
 ) -> dict[str, Any]:
     """Exploit-db lookup buat SEMUA CVE true-positive, batch 5 + jeda 1
     detik antar-batch -- port rate-limit lama (situs exploit-db gak

@@ -1195,6 +1195,10 @@
           "total": {
             "title": "Total",
             "type": "integer"
+          },
+          "unrated": {
+            "title": "Unrated",
+            "type": "integer"
           }
         },
         "required": [
@@ -1202,7 +1206,8 @@
           "critical",
           "high",
           "medium",
-          "low"
+          "low",
+          "unrated"
         ],
         "title": "CveStats",
         "type": "object"
@@ -9521,6 +9526,17 @@
             }
           },
           {
+            "in": "query",
+            "name": "date_basis",
+            "required": false,
+            "schema": {
+              "default": "published",
+              "pattern": "^(published|detected)$",
+              "title": "Date Basis",
+              "type": "string"
+            }
+          },
+          {
             "in": "header",
             "name": "x-client-id",
             "required": false,
@@ -10214,6 +10230,22 @@
         "parameters": [
           {
             "in": "header",
+            "name": "x-client-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Client-Id"
+            }
+          },
+          {
+            "in": "header",
             "name": "authorization",
             "required": false,
             "schema": {
@@ -10494,6 +10526,17 @@
             }
           },
           {
+            "in": "query",
+            "name": "date_basis",
+            "required": false,
+            "schema": {
+              "default": "detected",
+              "pattern": "^(published|detected)$",
+              "title": "Date Basis",
+              "type": "string"
+            }
+          },
+          {
             "in": "header",
             "name": "x-client-id",
             "required": false,
@@ -10686,7 +10729,7 @@
     },
     "/api/cve/purge-orphaned": {
       "post": {
-        "description": "Hapus CVE yang tech-nya UDAH GAK ADA di techstack aktif client ini.\n`{\"dry_run\": false}` buat beneran eksekusi -- default preview doang.",
+        "description": "Hapus CVE yang tech-nya UDAH GAK ADA di techstack aktif client ini.\n`{\"dry_run\": false}` buat beneran eksekusi -- default preview doang.\n\n**Hanya admin/superadmin**, termasuk preview-nya: eksekusi menghapus baris `cve_tracker` dan\npenanda FP-nya secara permanen (client tanpa techstack: semua CVE dianggap yatim).",
         "operationId": "purge_orphaned_api_cve_purge_orphaned_post",
         "parameters": [
           {
@@ -10882,6 +10925,17 @@
             }
           },
           {
+            "in": "query",
+            "name": "date_basis",
+            "required": false,
+            "schema": {
+              "default": "published",
+              "pattern": "^(published|detected)$",
+              "title": "Date Basis",
+              "type": "string"
+            }
+          },
+          {
             "in": "header",
             "name": "x-client-id",
             "required": false,
@@ -11013,7 +11067,7 @@
     },
     "/api/cve/tickets": {
       "get": {
-        "description": "Daftar ticket client ini (view \"Ticketing\" di CVE Tracker) --\n`_serialize_ticket` + ringkasan CVE-nya (severity/score/tech/\ndetected_on) biar tabel gak perlu N request.",
+        "description": "Daftar ticket client ini (view \"Ticketing\" di CVE Tracker) --\n`_serialize_ticket` + ringkasan CVE-nya (severity/score/tech/\ndetected_on) biar tabel gak perlu N request.\n\nTicket CVE false positive disembunyikan (konsisten dengan tab CVEs, dashboard, dan export)\nkecuali `include_fp=true`; UI mewajibkan Acknowledge sebelum Mark FP, jadi tiap CVE FP punya\nticket.",
         "operationId": "list_cve_tickets_api_cve_tickets_get",
         "parameters": [
           {
@@ -11046,6 +11100,16 @@
                 }
               ],
               "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_fp",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Fp",
+              "type": "boolean"
             }
           },
           {

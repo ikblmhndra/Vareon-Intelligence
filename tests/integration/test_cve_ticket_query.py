@@ -4,13 +4,17 @@ Postgres REAL (testcontainers). Fase 7.4 Grup C (2026-09-23)."""
 
 from __future__ import annotations
 
+import asyncio
 import datetime
+import zoneinfo
 
 import pytest
-from cti_core.db.models.cve import CveTracker
+from cti_core.db.models.auth import Client
+from cti_core.db.models.cve import CveTicket, CveTracker
 from cti_core.db.repositories.auth import AsyncClientRepo
 from cti_core.db.repositories.cve import AsyncCveTicketRepo, AsyncCveTrackerRepo
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import delete
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 pytestmark = pytest.mark.asyncio
 
@@ -43,9 +47,114 @@ async def test_get_returns_none_when_missing(async_db_session: AsyncSession) -> 
 
 async def test_get_next_ticket_id_starts_at_001(async_db_session: AsyncSession) -> None:
     repo = AsyncCveTicketRepo(async_db_session)
-    now = datetime.datetime.now(datetime.UTC)
+    now = datetime.datetime.now(zoneinfo.ZoneInfo("Asia/Jakarta"))
     ticket_id = await repo.get_next_ticket_id()
     assert ticket_id == f"CTI-{now.year}-{now.month:02d}-001"
+
+
+async def test_get_next_ticket_id_month_follows_wib_not_utc(
+    async_db_session: AsyncSession,
+) -> None:
+    """01.00 WIB tgl 1 Oktober masih 30 September di UTC. Dashboard dan export membaca hari
+    kalender WIB, jadi nomor ticketnya juga harus bulan WIB."""
+    repo = AsyncCveTicketRepo(async_db_session)
+    utc_evening = datetime.datetime(2026, 9, 30, 18, 0, tzinfo=datetime.UTC)  # 01.00 WIB 1 Okt
+    assert await repo.get_next_ticket_id(now=utc_evening) == "CTI-2026-10-001"
+
+
+async def test_tracking_id_for_joins_existing_ticket_ids_of_the_clients_cves(
+    async_db_session: AsyncSession,
+) -> None:
+    """Email CVE harus memuat nomor ticket yang sudah ada di CVE-nya, bukan nomor 'intipan' baru
+    yang tidak pernah disimpan."""
+    await _ensure_clients(async_db_session)
+    repo = AsyncCveTicketRepo(async_db_session)
+    first = await repo.acknowledge("CVE-2026-0601", "default", "analyst1")
+    second = await repo.acknowledge("CVE-2026-0602", "default", "analyst1")
+    await repo.acknowledge("CVE-2026-0603", "acme", "analyst1")  # client lain, diabaikan
+
+    tracking = await repo.tracking_id_for(
+        ["CVE-2026-0601", "CVE-2026-0602", "CVE-2026-0603", "CVE-2026-0604"], "default"
+    )
+    assert tracking == f"{first.ticket_id}, {second.ticket_id}"
+    assert await repo.tracking_id_for(["CVE-2026-0604"], "default") is None
+
+
+async def _overlap_transactions(first_op, second_op, cve_ids):  # type: ignore[no-untyped-def]
+    """Jalankan dua operasi ticket di dua transaksi yang benar-benar commit dan saling tumpang
+    tindih: yang pertama sudah flush tapi belum commit saat yang kedua mulai. Mengembalikan hasil
+    keduanya (exception ikut naik). Fixture lain di-rollback, jadi bersih-bersih di sini."""
+    from cti_core.db.engine import get_async_engine
+
+    maker = async_sessionmaker(get_async_engine(), expire_on_commit=False)
+    async with maker() as setup:
+        created_default = await AsyncClientRepo(setup).get("default") is None
+        await AsyncClientRepo(setup).ensure_default()
+        await setup.commit()
+
+    first_flushed = asyncio.Event()
+    release_first = asyncio.Event()
+
+    async def first():  # type: ignore[no-untyped-def]
+        async with maker() as s:
+            result = await first_op(AsyncCveTicketRepo(s))
+            first_flushed.set()
+            await release_first.wait()  # tahan commit: yang kedua harus menunggu, bukan menyalip
+            await s.commit()
+            return result
+
+    async def second():  # type: ignore[no-untyped-def]
+        await first_flushed.wait()
+        async with maker() as s:
+            result = await second_op(AsyncCveTicketRepo(s))
+            await s.commit()
+            return result
+
+    try:
+        t1, t2 = asyncio.create_task(first()), asyncio.create_task(second())
+        await first_flushed.wait()
+        await asyncio.sleep(0.3)
+        release_first.set()
+        return await asyncio.gather(t1, t2)
+    finally:
+        async with maker() as cleanup:
+            await cleanup.execute(delete(CveTicket).where(CveTicket.cve_id.in_(cve_ids)))
+            if created_default:
+                await cleanup.execute(delete(Client).where(Client.client_id == "default"))
+            await cleanup.commit()
+
+
+async def test_concurrent_ticket_creation_gets_distinct_ids(_migrated_schema: None) -> None:
+    """Dua transaksi yang membuat ticket bersamaan tidak boleh mendapat nomor yang sama (dulu:
+    keduanya membaca max yang sama, lalu yang kedua gagal `IntegrityError` -> 500)."""
+    first, second = await _overlap_transactions(
+        lambda repo: repo.acknowledge("CVE-2099-0001", "default", "a"),
+        lambda repo: repo.acknowledge("CVE-2099-0002", "default", "b"),
+        ("CVE-2099-0001", "CVE-2099-0002"),
+    )
+    assert first.ticket_id != second.ticket_id
+
+
+_FIRST_TIME_OPS = {
+    "ack": lambda repo: repo.acknowledge("CVE-2099-0003", "default", "x"),
+    "save": lambda repo: repo.upsert(cve_id="CVE-2099-0003", client_id="default", owner_team="t"),
+    "bulk": lambda repo: repo.bulk_acknowledge(["CVE-2099-0003"], "default", "x"),
+}
+
+
+@pytest.mark.parametrize("second", ["ack", "save", "bulk"])
+@pytest.mark.parametrize("first", ["ack", "save", "bulk"])
+async def test_concurrent_first_time_ticket_for_same_cve_does_not_collide(
+    _migrated_schema: None, first: str, second: str
+) -> None:
+    """Pemeriksaan 'ticket sudah ada' harus diulang SETELAH lock penomoran didapat: transaksi
+    kedua menunggu lock, dan ticket yang dibuat transaksi pertama sudah ada saat ia lanjut. Tanpa
+    itu keduanya menyisipkan baris `(cve_id, client_id)` sama dan satu kena `IntegrityError`."""
+    results = await _overlap_transactions(
+        _FIRST_TIME_OPS[first], _FIRST_TIME_OPS[second], ("CVE-2099-0003",)
+    )
+    ticket_ids = {r.ticket_id for r in results if isinstance(r, CveTicket)}
+    assert len(ticket_ids) <= 1
 
 
 async def test_get_next_ticket_id_increments_and_is_global_across_clients(

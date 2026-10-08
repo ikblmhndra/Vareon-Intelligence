@@ -76,6 +76,8 @@ class CveStats(BaseModel):
     high: int
     medium: int
     low: int
+    unrated: int
+    """CVE tanpa skor CVSS (0 / NULL) -- masuk `total`, tapi bukan bucket critical..low."""
 
 
 class BulkFalsePositiveBody(BaseModel):
