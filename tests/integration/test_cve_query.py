@@ -121,7 +121,7 @@ class TestAsyncCveTrackerRepo:
     ) -> None:
         await _seed(async_db_session)
         stats = await AsyncCveTrackerRepo(async_db_session).get_stats(client_id="default")
-        assert stats == {"total": 3, "critical": 1, "high": 1, "medium": 0, "low": 1}
+        assert stats == {"total": 3, "critical": 1, "high": 1, "medium": 0, "low": 1, "unrated": 0}
 
     async def test_get_stats_severity_filter_only_affects_total(
         self, async_db_session: AsyncSession
@@ -142,6 +142,27 @@ class TestAsyncCveTrackerRepo:
         await _seed(async_db_session)
         techs = await AsyncCveTrackerRepo(async_db_session).get_tech_list("default")
         assert techs == ["Linux", "WordPress", "nginx"]
+
+    async def test_get_stats_counts_cves_without_cvss_as_unrated(
+        self, async_db_session: AsyncSession
+    ) -> None:
+        """CNA yang tidak mengisi CVSS membuat scraper menulis skor 0.0 (atau NULL untuk baris
+        lama). Dulu CVE itu masuk `total` tapi tidak masuk bucket mana pun, jadi kartu stats tidak
+        pernah menjumlah ke total."""
+        await _ensure_clients(async_db_session)
+        async_db_session.add_all(
+            [
+                CveTracker(cve_id="CVE-2026-0801", client_id="default", tech="x", cve_score=9.5),
+                CveTracker(cve_id="CVE-2026-0802", client_id="default", tech="x", cve_score=0.0),
+                CveTracker(cve_id="CVE-2026-0803", client_id="default", tech="x", cve_score=None),
+            ]
+        )
+        await async_db_session.flush()
+
+        stats = await AsyncCveTrackerRepo(async_db_session).get_stats(client_id="default")
+        assert stats["total"] == 3
+        assert stats["unrated"] == 2
+        assert sum(stats[k] for k in ("critical", "high", "medium", "low", "unrated")) == 3
 
     async def test_get_article_mentions_matches_cve_id_in_title(
         self, async_db_session: AsyncSession

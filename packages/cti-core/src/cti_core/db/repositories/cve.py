@@ -19,10 +19,11 @@ from __future__ import annotations
 
 import datetime
 import re
+import zoneinfo
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import Row, Select, func, or_, select
+from sqlalchemy import Row, Select, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -38,6 +39,13 @@ from cti_core.db.models.cve import (
     CveTracker,
     CveTTP,
 )
+
+_TICKET_TZ = zoneinfo.ZoneInfo("Asia/Jakarta")
+"""Zona nomor ticket -- sama dengan dashboard dan export (hari/bulan yang dilihat analis)."""
+
+_TICKET_ID_LOCK = 7_241_001
+"""Kunci `pg_advisory_xact_lock` yang menserialkan pembuatan nomor ticket (lihat
+`AsyncCveTicketRepo.get_next_ticket_id`)."""
 
 _SORT_FIELDS = {
     "tech": CveTracker.tech,
@@ -533,7 +541,8 @@ class AsyncCveTrackerRepo:
         """`severity` SENGAJA cuma dipakai buat query `total` -- port perilaku
         lama: bucket critical/high/medium/low tetap ngitung SEMUA severity
         biar tetap bermakna dibandingin (filter severity bikin bucket lain
-        selalu 0, gak ada gunanya)."""
+        selalu 0, gak ada gunanya). `unrated` (tanpa skor CVSS) mengikuti bucket,
+        bukan `total`."""
         base_no_severity = _apply_filters(
             select(CveTracker),
             client_id=client_id,
@@ -572,7 +581,19 @@ class AsyncCveTrackerRepo:
         low = await _count(
             base_no_severity.where(CveTracker.cve_score > 0, CveTracker.cve_score < 4.0)
         )
-        return {"total": total, "critical": critical, "high": high, "medium": medium, "low": low}
+        # Skor 0.0 (CNA tidak mengisi CVSS) dan NULL (baris lama) tidak masuk bucket mana pun di
+        # atas; tanpa ini kartu critical..low tidak akan pernah menjumlah ke `total`.
+        unrated = await _count(
+            base_no_severity.where(or_(CveTracker.cve_score.is_(None), CveTracker.cve_score <= 0))
+        )
+        return {
+            "total": total,
+            "critical": critical,
+            "high": high,
+            "medium": medium,
+            "low": low,
+            "unrated": unrated,
+        }
 
     async def list_dashboard_rows(
         self,
@@ -791,6 +812,12 @@ class AsyncCveTicketRepo:
         )
         return {t.cve_id: t for t in result.scalars().all()}
 
+    async def tracking_id_for(self, cve_ids: Sequence[str], client_id: str) -> str | None:
+        """Nomor ticket yang SUDAH ada untuk CVE-CVE ini (urut, dipisah koma), `None` kalau belum
+        ada satu pun. Dipakai draft email supaya Tracking ID-nya nomor ticket sungguhan."""
+        tickets = await self.get_by_cve_ids(cve_ids, client_id)
+        return ", ".join(sorted({t.ticket_id for t in tickets.values()})) or None
+
     async def list_with_cve(
         self,
         client_id: str,
@@ -832,14 +859,26 @@ class AsyncCveTicketRepo:
         result = await self.session.execute(stmt)
         return [(t, c) for t, c in result.all()]
 
-    async def get_next_ticket_id(self) -> str:
+    async def get_next_ticket_id(
+        self, *, now: datetime.datetime | None = None, reserve: bool = False
+    ) -> str:
         """`"CTI-{tahun}-{bulan:02d}-{urut:03d}"` -- scan GLOBAL lintas
         SEMUA client (legacy: query tanpa filter client_id sama sekali),
         port apa adanya (lihat docstring `CveTicket`). Urutan dari suffix
         numerik terbesar yang match prefix bulan ini + 1, bukan row
         count (gap dari ticket yang kehapus gak bikin nomor kepake
-        ulang)."""
-        now = datetime.datetime.now(datetime.UTC)
+        ulang). Bulan dibaca di WIB.
+
+        `reserve=True` WAJIB untuk jalur yang langsung menyimpan ticket: ambil advisory lock
+        sampai transaksi selesai, supaya transaksi lain menunggu dan membaca max yang sudah
+        ter-commit (tanpa ini dua request bersamaan dapat nomor sama dan satu kena
+        `IntegrityError`). Jalur 'intip' (`/next-ticket-id`, draft email) tidak mengunci -- lock
+        tidak boleh ditahan selama panggilan LLM."""
+        if reserve:
+            await self.session.execute(
+                text("SELECT pg_advisory_xact_lock(:key)"), {"key": _TICKET_ID_LOCK}
+            )
+        now = (now or datetime.datetime.now(datetime.UTC)).astimezone(_TICKET_TZ)
         prefix = f"CTI-{now.year}-{now.month:02d}-"
         result = await self.session.execute(
             select(CveTicket.ticket_id).where(CveTicket.ticket_id.like(f"{prefix}%"))
@@ -884,7 +923,9 @@ class AsyncCveTicketRepo:
         yang nyentuh dua field itu."""
         existing = await self.get(cve_id, client_id)
         existing_ticket_id = existing.ticket_id if existing else None
-        resolved_ticket_id = ticket_id or existing_ticket_id or await self.get_next_ticket_id()
+        resolved_ticket_id = (
+            ticket_id or existing_ticket_id or await self.get_next_ticket_id(reserve=True)
+        )
 
         if existing is None:
             ticket = CveTicket(cve_id=cve_id, client_id=client_id, ticket_id=resolved_ticket_id)
@@ -928,7 +969,9 @@ class AsyncCveTicketRepo:
 
     async def acknowledge(self, cve_id: str, client_id: str, analyst_name: str) -> CveTicket:
         existing = await self.get(cve_id, client_id)
-        ticket_id = (existing.ticket_id if existing else None) or await self.get_next_ticket_id()
+        ticket_id = (existing.ticket_id if existing else None) or await self.get_next_ticket_id(
+            reserve=True
+        )
         now = datetime.datetime.now(datetime.UTC)
 
         if existing is None:
@@ -970,7 +1013,7 @@ class AsyncCveTicketRepo:
                 ticket = CveTicket(
                     cve_id=cve_id,
                     client_id=client_id,
-                    ticket_id=await self.get_next_ticket_id(),
+                    ticket_id=await self.get_next_ticket_id(reserve=True),
                 )
                 self.session.add(ticket)
             ticket.acknowledged_by = analyst_name

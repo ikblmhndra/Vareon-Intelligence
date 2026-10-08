@@ -544,7 +544,12 @@ async def create_draft_email(
     if not body.cve_ids:
         raise HTTPException(status_code=400, detail="cve_ids required")
     cid = effective_client_id(user, x_client_id)
-    ticket_id = body.ticket_id or await AsyncCveTicketRepo(session).get_next_ticket_id()
+    ticket_repo = AsyncCveTicketRepo(session)
+    ticket_id = (
+        body.ticket_id
+        or await ticket_repo.tracking_id_for(body.cve_ids, cid)
+        or await ticket_repo.get_next_ticket_id()
+    )
     try:
         result = await cve_email_service.draft_email_for_cves(
             session, body.cve_ids, ticket_id, client_id=cid

@@ -686,6 +686,10 @@
           "total": {
             "title": "Total",
             "type": "integer"
+          },
+          "unrated": {
+            "title": "Unrated",
+            "type": "integer"
           }
         },
         "required": [
@@ -693,7 +697,8 @@
           "critical",
           "high",
           "medium",
-          "low"
+          "low",
+          "unrated"
         ],
         "title": "CveStats",
         "type": "object"

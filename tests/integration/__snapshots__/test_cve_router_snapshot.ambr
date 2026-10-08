@@ -57,6 +57,7 @@
     'low': 1,
     'medium': 0,
     'total': 2,
+    'unrated': 0,
   })
 # ---
 # name: test_draft_email

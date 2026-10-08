@@ -3370,6 +3370,8 @@ export interface components {
             medium: number;
             /** Total */
             total: number;
+            /** Unrated */
+            unrated: number;
         };
         /** CveTicketBody */
         CveTicketBody: {
