@@ -32,10 +32,16 @@ menghitungnya `disabled` (tidak muncul `stale`/`dead` di digest), tampil nonakti
 3. **Isi mirror + katalog** dari clone CVE List V5 (`git clone` / `git pull` di mesin yang bisa ke
    github.com), ~10 menit untuk 114 ribu berkas:
    `make backfill-cve-mirror SOURCE=cvelistV5/` (laporan) lalu `ARGS=--apply`. Aman diulang.
-4. **Nyalakan ingest**: `CVE_MIRROR__ENABLED=true`, `CVE_MIRROR__PROMOTE=off`, restart `worker`. Pantau
-   `docker compose logs worker | grep cve_mirror_synced`: `status=ok|noop`, `failed=0`,
-   `gap_unrecoverable=False`. Jalankan backfill ulang bila clone lebih tua dari saat ingest dinyalakan
-   (menutup celah di antaranya).
+4. **Nyalakan ingest**: `CVE_MIRROR__ENABLED=true`, `CVE_MIRROR__PROMOTE=off`, restart `worker`. Tunggu
+   sampai 5 menit (jadwal `cve.mirror_sync`), lalu pantau lognya (perintah di bawah, tanpa teks tambahan):
+
+   ```bash
+   docker compose logs worker | grep cve_mirror_synced | tail -n 3
+   ```
+
+   Yang diharapkan di tiap baris: `status` bernilai `ok` atau `noop`, `failed` bernilai `0`, dan
+   `gap_unrecoverable` bernilai `False`. Jalankan backfill ulang bila clone lebih tua dari saat ingest
+   dinyalakan (menutup celah di antaranya).
 
 ## Tahap 1: pemetaan 34 entri (manusia, di dev)
 
