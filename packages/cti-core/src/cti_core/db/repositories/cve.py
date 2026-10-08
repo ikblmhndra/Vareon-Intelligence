@@ -47,6 +47,16 @@ _TICKET_ID_LOCK = 7_241_001
 """Kunci `pg_advisory_xact_lock` yang menserialkan pembuatan nomor ticket (lihat
 `AsyncCveTicketRepo.get_next_ticket_id`)."""
 
+
+def _date_column(basis: str) -> Any:
+    """Kolom tanggal yang difilter From/To. "published" = tanggal terbit CVE (kolom Published di
+    tabel); "detected" = hari kalender WIB saat scraper pertama menemukannya (sama dengan dashboard
+    dan export, bukan tanggal UTC)."""
+    if basis == "detected":
+        return func.date(func.timezone(_TICKET_TZ.key, CveTracker.detected_on))
+    return CveTracker.published
+
+
 _SORT_FIELDS = {
     "tech": CveTracker.tech,
     "severity": CveTracker.cve_score,
@@ -153,6 +163,7 @@ def _apply_filters(
     date_end: datetime.date | None,
     exclude_cve_ids: Sequence[str] | None,
     ack_filter: str | None = None,
+    date_basis: str = "published",
 ) -> Select[tuple[CveTracker]]:
     stmt = stmt.where(CveTracker.client_id == client_id)
     if exclude_cve_ids:
@@ -169,10 +180,11 @@ def _apply_filters(
                 CveTracker.tech.ilike(f"%{search}%"),
             )
         )
+    date_column = _date_column(date_basis)
     if date_start is not None:
-        stmt = stmt.where(CveTracker.published >= date_start)
+        stmt = stmt.where(date_column >= date_start)
     if date_end is not None:
-        stmt = stmt.where(CveTracker.published <= date_end)
+        stmt = stmt.where(date_column <= date_end)
     if ack_filter in ("acked", "unacked"):
         acked_subq = select(CveTicket.cve_id).where(
             CveTicket.client_id == client_id, CveTicket.acknowledged_by.is_not(None)
@@ -516,6 +528,7 @@ class AsyncCveTrackerRepo:
         sort_by: str = "published",
         sort_dir: str = "desc",
         ack_filter: str | None = None,
+        date_basis: str = "published",
     ) -> tuple[list[CveTracker], int]:
         base = _apply_filters(
             select(CveTracker),
@@ -527,6 +540,7 @@ class AsyncCveTrackerRepo:
             date_end=date_end,
             exclude_cve_ids=exclude_cve_ids,
             ack_filter=ack_filter,
+            date_basis=date_basis,
         )
         total = (
             await self.session.execute(select(func.count()).select_from(base.subquery()))
@@ -555,6 +569,7 @@ class AsyncCveTrackerRepo:
         date_end: datetime.date | None = None,
         exclude_cve_ids: Sequence[str] | None = None,
         ack_filter: str | None = None,
+        date_basis: str = "published",
     ) -> dict[str, int]:
         """`severity` SENGAJA cuma dipakai buat query `total` -- port perilaku
         lama: bucket critical/high/medium/low tetap ngitung SEMUA severity
@@ -571,6 +586,7 @@ class AsyncCveTrackerRepo:
             date_end=date_end,
             exclude_cve_ids=exclude_cve_ids,
             ack_filter=ack_filter,
+            date_basis=date_basis,
         )
         base_with_severity = _apply_filters(
             select(CveTracker),
@@ -582,6 +598,7 @@ class AsyncCveTrackerRepo:
             date_end=date_end,
             exclude_cve_ids=exclude_cve_ids,
             ack_filter=ack_filter,
+            date_basis=date_basis,
         )
 
         async def _count(stmt: Select[tuple[CveTracker]]) -> int:
@@ -696,15 +713,15 @@ class AsyncCveTrackerRepo:
         date_end: datetime.date | None = None,
         exclude_cve_ids: Sequence[str] | None = None,
         ack_filter: str | None = None,
+        date_basis: str = "detected",
     ) -> list[CveTracker]:
         """Port `cve_export_service.export_cves_to_excel()`'s query --
-        filter tanggal di `detected_on`, BUKAN `published` kayak
-        `list_filtered()`/`get_stats()` di atas. Ini asimetri yang UDAH
-        ADA di legacy sendiri (`cve_export_service.py` filter
-        `detected_on`, `cve_service.py` filter `published`) -- port apa
-        adanya, bukan penyimpangan baru, makanya metode terpisah alih-
-        alih numpang `_apply_filters()`. Fallback-ke-`published` lama
-        (buat dokumen Mongo tanpa `detected_on`) gak relevan lagi --
+        filter tanggal default ke `detected_on` (laporan bulanan), BUKAN `published` kayak
+        `list_filtered()`/`get_stats()` di atas. Asimetri default ini UDAH ADA di legacy
+        (`cve_export_service.py` filter `detected_on`, `cve_service.py` filter `published`);
+        `date_basis` membuatnya eksplisit supaya UI bisa memakai dasar yang sama untuk list,
+        stats, dan export. "detected" dibaca sebagai hari WIB (`_date_column`).
+        Fallback-ke-`published` lama (buat dokumen Mongo tanpa `detected_on`) gak relevan lagi --
         `detected_on` NOT NULL di skema baru (`server_default=now()`),
         kasusnya struktural gak mungkin kejadian."""
         stmt = select(CveTracker).where(CveTracker.client_id == client_id)
@@ -722,10 +739,11 @@ class AsyncCveTrackerRepo:
                     CveTracker.tech.ilike(f"%{search}%"),
                 )
             )
+        date_column = _date_column(date_basis)
         if date_start is not None:
-            stmt = stmt.where(func.date(CveTracker.detected_on) >= date_start)
+            stmt = stmt.where(date_column >= date_start)
         if date_end is not None:
-            stmt = stmt.where(func.date(CveTracker.detected_on) <= date_end)
+            stmt = stmt.where(date_column <= date_end)
         if ack_filter in ("acked", "unacked"):
             acked_subq = select(CveTicket.cve_id).where(
                 CveTicket.client_id == client_id, CveTicket.acknowledged_by.is_not(None)
@@ -842,6 +860,7 @@ class AsyncCveTicketRepo:
         *,
         search: str | None = None,
         status: str | None = None,
+        exclude_cve_ids: Sequence[str] | None = None,
     ) -> list[tuple[CveTicket, CveTracker | None]]:
         """Semua ticket client ini + CVE-nya (outer join -- ticket bisa
         yatim kalau CVE-nya udah dipurge), terbaru dulu. Buat view
@@ -856,6 +875,8 @@ class AsyncCveTicketRepo:
             )
             .where(CveTicket.client_id == client_id)
         )
+        if exclude_cve_ids:
+            stmt = stmt.where(CveTicket.cve_id.notin_(exclude_cve_ids))
         if search:
             like = f"%{search}%"
             stmt = stmt.where(

@@ -3,12 +3,22 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 
+export type DateBasis = "published" | "detected";
+
+export const DATE_BASIS_LABELS: Record<DateBasis, string> = {
+  published: "Published",
+  detected: "Detected",
+};
+
 export interface CveFilters {
   search: string;
   severity: string;
   tech: string;
   dateStart: string;
   dateEnd: string;
+  /** Dasar tanggal From/To: tanggal terbit CVE, atau hari (WIB) CVE pertama terdeteksi. Dipakai
+   * sama oleh list, stats, dan export Excel supaya angka dan isi file selalu cocok. */
+  dateBasis: DateBasis;
   includeFp: boolean;
   unackedOnly: boolean;
 }
@@ -20,6 +30,7 @@ export function defaultCveFilters(): CveFilters {
     tech: "",
     dateStart: "",
     dateEnd: "",
+    dateBasis: "published",
     includeFp: false,
     unackedOnly: false,
   };

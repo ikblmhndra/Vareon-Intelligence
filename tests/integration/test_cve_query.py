@@ -164,6 +164,42 @@ class TestAsyncCveTrackerRepo:
         assert stats["unrated"] == 2
         assert sum(stats[k] for k in ("critical", "high", "medium", "low", "unrated")) == 3
 
+    async def test_date_basis_decides_which_date_the_range_filters(
+        self, async_db_session: AsyncSession
+    ) -> None:
+        """List/stats dan export dulu memakai tanggal berbeda (published vs detected_on) di balik
+        input From/To yang sama. Kini dasarnya eksplisit (`date_basis`) dan "detected" dibaca
+        sebagai hari kalender WIB, sama dengan dashboard: 18.00 UTC 30 Sep = 01.00 WIB 1 Okt."""
+        await _ensure_clients(async_db_session)
+        async_db_session.add(
+            CveTracker(
+                cve_id="CVE-2026-0901",
+                client_id="default",
+                tech="x",
+                published=datetime.date(2026, 9, 15),
+                detected_on=datetime.datetime(2026, 9, 30, 18, 0, tzinfo=datetime.UTC),
+            )
+        )
+        await async_db_session.flush()
+        repo = AsyncCveTrackerRepo(async_db_session)
+        oct_1 = datetime.date(2026, 10, 1)
+
+        _, by_published = await repo.list_filtered(client_id="default", date_start=oct_1)
+        _, by_detected = await repo.list_filtered(
+            client_id="default", date_start=oct_1, date_basis="detected"
+        )
+        stats = await repo.get_stats(client_id="default", date_start=oct_1, date_basis="detected")
+        assert (by_published, by_detected, stats["total"]) == (0, 1, 1)
+
+        # export tetap default ke "detected" (laporan bulanan), dan bisa diganti ke "published"
+        assert len(await repo.list_for_export(client_id="default", date_start=oct_1)) == 1
+        assert (
+            await repo.list_for_export(
+                client_id="default", date_start=oct_1, date_basis="published"
+            )
+            == []
+        )
+
     async def test_get_article_mentions_matches_cve_id_in_title(
         self, async_db_session: AsyncSession
     ) -> None:

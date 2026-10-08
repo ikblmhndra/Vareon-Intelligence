@@ -63,6 +63,7 @@ from cti_api.services import cve_priority as cve_priority_service
 router = APIRouter(prefix="/api/cve", tags=["cve"])
 
 _ACK_FILTER_PATTERN = "^(acked|unacked)$"
+_DATE_BASIS_PATTERN = "^(published|detected)$"
 
 
 def _parse_date(value: str) -> datetime.date | None:
@@ -172,6 +173,7 @@ async def list_cves(
     sort_by: str = Query("published", pattern="^(tech|severity|published|epss)$"),
     sort_dir: str = Query("desc", pattern="^(asc|desc)$"),
     ack_filter: str | None = Query(None, pattern=_ACK_FILTER_PATTERN),
+    date_basis: str = Query("published", pattern=_DATE_BASIS_PATTERN),
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),
     x_client_id: str | None = Header(None),
@@ -196,6 +198,7 @@ async def list_cves(
         sort_by=sort_by,
         sort_dir=sort_dir,
         ack_filter=ack_filter,
+        date_basis=date_basis,
     )
 
     tp_ids = [c.cve_id for c in cves if c.cve_id not in fp_ids_set]
@@ -227,6 +230,7 @@ async def cve_stats(
     date_start: datetime.date | None = Query(None),
     date_end: datetime.date | None = Query(None),
     ack_filter: str | None = Query(None, pattern=_ACK_FILTER_PATTERN),
+    date_basis: str = Query("published", pattern=_DATE_BASIS_PATTERN),
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),
     x_client_id: str | None = Header(None),
@@ -243,6 +247,7 @@ async def cve_stats(
         date_end=date_end,
         exclude_cve_ids=fp_ids or None,
         ack_filter=ack_filter,
+        date_basis=date_basis,
     )
     return CveStats(**stats)
 
@@ -473,6 +478,7 @@ async def export_cves(
     tech: list[str] | None = Query(None),
     include_fp: bool = Query(False),
     ack_filter: str | None = Query(None, pattern=_ACK_FILTER_PATTERN),
+    date_basis: str = Query("detected", pattern=_DATE_BASIS_PATTERN),
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),
     x_client_id: str | None = Header(None),
@@ -494,6 +500,7 @@ async def export_cves(
             tech=tech or await _active_tech_names(session, cid),
             include_fp=include_fp,
             ack_filter=ack_filter,
+            date_basis=date_basis,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -512,6 +519,7 @@ async def export_cves(
             "severity": severity,
             "tech": tech,
             "ack_filter": ack_filter,
+            "date_basis": date_basis,
         },
         ip_address=request_ip(request),
     )
@@ -577,18 +585,28 @@ async def create_draft_email(
 async def list_cve_tickets(
     search: str | None = Query(None),
     status: str | None = Query(None),
+    include_fp: bool = False,
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),
     x_client_id: str | None = Header(None),
 ) -> dict[str, object]:
     """Daftar ticket client ini (view "Ticketing" di CVE Tracker) --
     `_serialize_ticket` + ringkasan CVE-nya (severity/score/tech/
-    detected_on) biar tabel gak perlu N request."""
+    detected_on) biar tabel gak perlu N request.
+
+    Ticket CVE false positive disembunyikan (konsisten dengan tab CVEs, dashboard, dan export)
+    kecuali `include_fp=true`; UI mewajibkan Acknowledge sebelum Mark FP, jadi tiap CVE FP punya
+    ticket."""
     cid = effective_client_id(user, x_client_id)
-    rows = await AsyncCveTicketRepo(session).list_with_cve(cid, search=search, status=status)
+    fp_ids = await AsyncCveFalsePositiveRepo(session).list_cve_ids(cid)
+    rows = await AsyncCveTicketRepo(session).list_with_cve(
+        cid, search=search, status=status, exclude_cve_ids=None if include_fp else fp_ids
+    )
+    fp_set = set(fp_ids)
     tickets: list[dict[str, object]] = []
     for ticket, cve in rows:
         item = _serialize_ticket(ticket)
+        item["false_positive"] = ticket.cve_id in fp_set
         item["cve_severity"] = (cve.cve_severity if cve else "") or ""
         item["cve_score"] = (cve.cve_score if cve else None) or 0.0
         item["tech"] = (cve.tech if cve else "") or ""

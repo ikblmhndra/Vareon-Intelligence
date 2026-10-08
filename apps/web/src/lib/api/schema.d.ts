@@ -1075,6 +1075,10 @@ export interface paths {
          * @description Daftar ticket client ini (view "Ticketing" di CVE Tracker) --
          *     `_serialize_ticket` + ringkasan CVE-nya (severity/score/tech/
          *     detected_on) biar tabel gak perlu N request.
+         *
+         *     Ticket CVE false positive disembunyikan (konsisten dengan tab CVEs, dashboard, dan export)
+         *     kecuali `include_fp=true`; UI mewajibkan Acknowledge sebelum Mark FP, jadi tiap CVE FP punya
+         *     ticket.
          */
         get: operations["list_cve_tickets_api_cve_tickets_get"];
         put?: never;
@@ -7279,6 +7283,7 @@ export interface operations {
                 sort_by?: string;
                 sort_dir?: string;
                 ack_filter?: string | null;
+                date_basis?: string;
             };
             header?: {
                 "x-client-id"?: string | null;
@@ -7677,6 +7682,7 @@ export interface operations {
                 tech?: string[] | null;
                 include_fp?: boolean;
                 ack_filter?: string | null;
+                date_basis?: string;
             };
             header?: {
                 "x-client-id"?: string | null;
@@ -7825,6 +7831,7 @@ export interface operations {
                 date_start?: string | null;
                 date_end?: string | null;
                 ack_filter?: string | null;
+                date_basis?: string;
             };
             header?: {
                 "x-client-id"?: string | null;
@@ -7892,6 +7899,7 @@ export interface operations {
             query?: {
                 search?: string | null;
                 status?: string | null;
+                include_fp?: boolean;
             };
             header?: {
                 "x-client-id"?: string | null;
