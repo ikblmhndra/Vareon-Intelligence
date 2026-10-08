@@ -228,9 +228,11 @@ class NewCve(BaseScraper):
 
         for tech in tech_list:
             tech_enc = tech.replace(" ", "%20").strip()
+            # `ctx.now` itu UTC naive, jadi offset-nya +00:00. Dulu `+07:00`: jam UTC dilabeli WIB,
+            # `pubEndDate` mundur 7 jam dan CVE yang baru terbit telat tercatat.
             url = (
                 f"{_NVD_URL}?keywordSearch={tech_enc}"
-                f"&pubStartDate={start_str}%2B07:00&pubEndDate={now_str}%2B07:00"
+                f"&pubStartDate={start_str}%2B00:00&pubEndDate={now_str}%2B00:00"
             )
             data = get_waiting(ctx, url).json()
 

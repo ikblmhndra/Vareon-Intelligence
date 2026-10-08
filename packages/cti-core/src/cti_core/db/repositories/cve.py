@@ -18,6 +18,7 @@ subquery lawan `cve_tickets.acknowledged_by`."""
 from __future__ import annotations
 
 import datetime
+import re
 from collections.abc import Sequence
 from typing import Any
 
@@ -275,14 +276,35 @@ class AsyncCveTrackerRepo:
         await self.session.flush()
         return True
 
-    async def list_true_positive_cve_ids(self, client_id: str = "default") -> list[str]:
-        """Port `get_fp_cve_ids()`-based filtering lama (`epss_service.py`/
-        `cisa_kev_service.py`/`exploit_db_service.py::lookup_all_true_
-        positives()`, dipanggil TANPA argumen -- default client "default",
-        sama kayak `newsletter._get_tp_cve_ids()` (Fase 7.3 Bagian 4)."""
-        all_ids = await self.list_all_distinct_cve_ids()
-        fp_ids = set(await AsyncCveFalsePositiveRepo(self.session).list_cve_ids(client_id))
-        return [cid for cid in all_ids if cid not in fp_ids]
+    async def list_true_positive_cve_ids(self, client_id: str | None = None) -> list[str]:
+        """CVE yang perlu di-enrich EPSS/KEV/exploit-db (`cve_lookup`).
+
+        `client_id=None` (default): CVE dianggap true positive selama ada SATU baris
+        `cve_tracker` (client mana pun) yang tidak ditandai FP oleh clientnya sendiri. FP itu per
+        `(cve_id, client_id)`, dan hasil lookup ditulis ke semua baris CVE-nya, jadi yang
+        menentukan adalah apakah masih ada client yang membutuhkannya. Dulu: hanya FP client
+        "default" yang dihitung (port `lookup_all_true_positives()` Mongo, yang memang tak peduli
+        client), sehingga CVE yang FP di "default" tapi valid di client lain tak pernah di-enrich,
+        dan sebaliknya.
+
+        `client_id` eksplisit: perilaku lama -- semua CVE minus FP client itu."""
+        if client_id is not None:
+            all_ids = await self.list_all_distinct_cve_ids()
+            fp_ids = set(await AsyncCveFalsePositiveRepo(self.session).list_cve_ids(client_id))
+            return [cid for cid in all_ids if cid not in fp_ids]
+
+        is_fp = (
+            select(CveFalsePositive.id)
+            .where(
+                CveFalsePositive.cve_id == CveTracker.cve_id,
+                CveFalsePositive.client_id == CveTracker.client_id,
+            )
+            .exists()
+        )
+        result = await self.session.execute(
+            select(CveTracker.cve_id).where(~is_fp).distinct().order_by(CveTracker.cve_id)
+        )
+        return list(result.scalars().all())
 
     async def list_by_cve_ids_any_client(self, cve_ids: Sequence[str]) -> list[CveTracker]:
         """Semua baris (lintas client) buat sekumpulan cve_id, case-
@@ -434,8 +456,10 @@ class AsyncCveTrackerRepo:
         result = await self.session.execute(stmt)
         return list(result.scalars().unique().all())
 
-    async def get_by_cve_ids(self, cve_ids: Sequence[str]) -> list[CveTracker]:
-        """Lintas client, TANPA filter `client_id` -- port apa adanya dari
+    async def get_by_cve_ids(
+        self, cve_ids: Sequence[str], *, client_id: str | None = None
+    ) -> list[CveTracker]:
+        """Lintas client, TANPA filter `client_id` kecuali diisi -- port apa adanya dari
         `cross_reference_service.py`/`ta_profile_service.py` lama
         (`cve_col.find({"cve_id": {"$in": ...}})`, gak pernah nge-scope
         client). Dipakai `crossref`/`ta_groups` (Bagian 3), bukan
@@ -445,9 +469,10 @@ class AsyncCveTrackerRepo:
         diselesaikan diam-diam di sini."""
         if not cve_ids:
             return []
-        result = await self.session.execute(
-            select(CveTracker).where(CveTracker.cve_id.in_(cve_ids))
-        )
+        stmt = select(CveTracker).where(CveTracker.cve_id.in_(cve_ids))
+        if client_id is not None:
+            stmt = stmt.where(CveTracker.client_id == client_id)
+        result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
     async def list_filtered(
@@ -685,17 +710,24 @@ class AsyncCveTrackerRepo:
 
     async def get_article_mentions(self, cve_ids: Sequence[str]) -> dict[str, list[dict[str, str]]]:
         """Port `get_article_mentions()` -- CVE ID nyebut di judul artikel
-        mana aja. Query SATU kali (OR ilike per cve_id), bukan N query."""
+        mana aja. Query SATU kali (OR ilike per cve_id), bukan N query.
+
+        `ilike` cuma penyaring kasar; kecocokan sebenarnya dicek per ID dengan batas angka,
+        supaya `CVE-2026-1234` tidak ikut menghitung artikel `CVE-2026-12345`."""
         result: dict[str, list[dict[str, str]]] = {cid: [] for cid in cve_ids}
         if not cve_ids:
             return result
+        patterns = {
+            cid: re.compile(rf"(?<![0-9a-z]){re.escape(cid)}(?![0-9])", re.IGNORECASE)
+            for cid in cve_ids
+        }
         stmt = select(Article.title, Article.url).where(
             or_(*[Article.title.ilike(f"%{cid}%") for cid in cve_ids])
         )
         rows = (await self.session.execute(stmt)).all()
         for title, url in rows:
-            for cid in cve_ids:
-                if cid.upper() in title.upper():
+            for cid, pattern in patterns.items():
+                if pattern.search(title):
                     result[cid].append({"title": title, "url": url})
         return result
 

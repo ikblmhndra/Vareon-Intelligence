@@ -6994,6 +6994,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "x-client-id"?: string | null;
                 authorization?: string | null;
             };
             path?: never;

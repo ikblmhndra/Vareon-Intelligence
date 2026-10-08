@@ -105,3 +105,29 @@ async def test_prioritize_sorts_by_score_descending(async_db_session: AsyncSessi
         async_db_session, ["CVE-2026-0003", "CVE-2026-0004"], client_id="default"
     )
     assert [r["cve_id"] for r in result] == ["CVE-2026-0004", "CVE-2026-0003"]
+
+
+async def test_prioritize_prefers_the_callers_own_tracker_row(
+    async_db_session: AsyncSession,
+) -> None:
+    """CVE yang sama bisa punya baris per client dengan `tech` berbeda. `in_tech_stack` harus
+    dihitung dari baris client yang bertanya, bukan baris client lain yang kebetulan terambil."""
+    await AsyncClientRepo(async_db_session).ensure_default()
+    await AsyncClientRepo(async_db_session).create(client_id="acme", name="Acme", countries=[])
+    async_db_session.add_all(
+        [
+            CveTracker(cve_id="CVE-2026-0005", client_id="acme", tech="Joomla", cve_score=5.0),
+            CveTracker(
+                cve_id="CVE-2026-0005", client_id="default", tech="WordPress", cve_score=5.0
+            ),
+            TechStackEntry(name="Joomla", client_id="acme"),
+            TechStackEntry(name="WordPress", client_id="default"),
+        ]
+    )
+    await async_db_session.flush()
+
+    for client_id in ("acme", "default"):
+        result = await svc.prioritize_campaign_cves(
+            async_db_session, ["CVE-2026-0005"], client_id=client_id
+        )
+        assert result[0]["in_tech_stack"] is True, client_id

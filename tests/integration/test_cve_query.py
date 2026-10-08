@@ -171,6 +171,27 @@ class TestAsyncCveTrackerRepo:
         assert mentions["CVE-2026-0001"][0]["url"] == "https://example.com/a"
         assert mentions["CVE-2026-0002"] == []
 
+    async def test_get_article_mentions_does_not_match_longer_cve_number(
+        self, async_db_session: AsyncSession
+    ) -> None:
+        """`CVE-2026-1234` bukan penyebutan `CVE-2026-12345` -- hanya batas angka yang dicek,
+        tanda baca di sekitarnya tetap boleh."""
+        titles = {
+            "longer": "Mass exploitation of CVE-2026-12345 continues",
+            "exact": "Patch now: (CVE-2026-1234), says vendor",
+        }
+        for key, title in titles.items():
+            async_db_session.add(
+                Article(url=f"https://example.com/{key}", url_hash=key, title=title, source="t")
+            )
+        await async_db_session.flush()
+
+        mentions = await AsyncCveTrackerRepo(async_db_session).get_article_mentions(
+            ["CVE-2026-1234", "CVE-2026-12345"]
+        )
+        assert [m["url"] for m in mentions["CVE-2026-1234"]] == ["https://example.com/exact"]
+        assert [m["url"] for m in mentions["CVE-2026-12345"]] == ["https://example.com/longer"]
+
     async def test_get_article_mentions_empty_input_returns_empty_dict(
         self, async_db_session: AsyncSession
     ) -> None:

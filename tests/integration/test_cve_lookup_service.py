@@ -48,6 +48,37 @@ async def test_list_true_positive_cve_ids_excludes_default_client_fp(
     assert tp_ids == ["CVE-2026-1111"]
 
 
+async def test_list_true_positive_cve_ids_judges_false_positive_per_client_row(
+    async_db_session: AsyncSession,
+) -> None:
+    """FP itu per (cve_id, client_id). CVE masih true positive selama ada SATU client yang
+    men-track-nya tanpa menandai FP -- bukan cuma FP milik client "default" yang dihitung."""
+    await _ensure_clients(async_db_session)
+    async_db_session.add_all(
+        [
+            # A: FP di default, tapi acme masih menganggapnya valid -> TP
+            CveTracker(cve_id="CVE-2026-0101", client_id="default", tech="nginx"),
+            CveTracker(cve_id="CVE-2026-0101", client_id="acme", tech="nginx"),
+            # B: hanya acme yang track, tidak ada FP -> TP
+            CveTracker(cve_id="CVE-2026-0102", client_id="acme", tech="nginx"),
+            # C: FP di kedua client -> bukan TP
+            CveTracker(cve_id="CVE-2026-0103", client_id="default", tech="nginx"),
+            CveTracker(cve_id="CVE-2026-0103", client_id="acme", tech="nginx"),
+            # D: hanya acme yang track dan acme menandainya FP -> bukan TP
+            CveTracker(cve_id="CVE-2026-0104", client_id="acme", tech="nginx"),
+        ]
+    )
+    await async_db_session.flush()
+    fp = AsyncCveFalsePositiveRepo(async_db_session)
+    await fp.mark("CVE-2026-0101", "default")
+    await fp.mark("CVE-2026-0103", "default")
+    await fp.mark("CVE-2026-0103", "acme")
+    await fp.mark("CVE-2026-0104", "acme")
+
+    tp_ids = await AsyncCveTrackerRepo(async_db_session).list_true_positive_cve_ids()
+    assert sorted(tp_ids) == ["CVE-2026-0101", "CVE-2026-0102"]
+
+
 async def test_list_by_cve_ids_any_client_case_insensitive_multi_client(
     async_db_session: AsyncSession,
 ) -> None:
