@@ -877,6 +877,23 @@ class AsyncCveTicketRepo:
         result = await self.session.execute(stmt)
         return [(t, c) for t, c in result.all()]
 
+    async def _lock_ticket_numbering(self) -> None:
+        """Advisory lock sampai transaksi selesai; boleh dipanggil berulang di transaksi yang
+        sama."""
+        await self.session.execute(
+            text("SELECT pg_advisory_xact_lock(:key)"), {"key": _TICKET_ID_LOCK}
+        )
+
+    async def _get_for_create(self, cve_id: str, client_id: str) -> CveTicket | None:
+        """`get()` untuk jalur yang akan membuat ticket kalau belum ada. Kalau belum ada, ambil
+        lock penomoran LALU cek lagi: transaksi lain bisa saja membuat ticket yang sama selagi kita
+        menunggu lock, dan menyisipkan baris `(cve_id, client_id)` kedua kena `IntegrityError`."""
+        existing = await self.get(cve_id, client_id)
+        if existing is not None:
+            return existing
+        await self._lock_ticket_numbering()
+        return await self.get(cve_id, client_id)
+
     async def get_next_ticket_id(
         self, *, now: datetime.datetime | None = None, reserve: bool = False
     ) -> str:
@@ -893,9 +910,7 @@ class AsyncCveTicketRepo:
         `IntegrityError`). Jalur 'intip' (`/next-ticket-id`, draft email) tidak mengunci -- lock
         tidak boleh ditahan selama panggilan LLM."""
         if reserve:
-            await self.session.execute(
-                text("SELECT pg_advisory_xact_lock(:key)"), {"key": _TICKET_ID_LOCK}
-            )
+            await self._lock_ticket_numbering()
         now = (now or datetime.datetime.now(datetime.UTC)).astimezone(_TICKET_TZ)
         prefix = f"CTI-{now.year}-{now.month:02d}-"
         result = await self.session.execute(
@@ -939,7 +954,7 @@ class AsyncCveTicketRepo:
         ticket bakal nabrak constraint itu. `acknowledged_by`/
         `acknowledge_time` TETAP -- cuma `acknowledge()`/`bulk_acknowledge()`
         yang nyentuh dua field itu."""
-        existing = await self.get(cve_id, client_id)
+        existing = await self._get_for_create(cve_id, client_id)
         existing_ticket_id = existing.ticket_id if existing else None
         resolved_ticket_id = (
             ticket_id or existing_ticket_id or await self.get_next_ticket_id(reserve=True)
@@ -986,7 +1001,7 @@ class AsyncCveTicketRepo:
         return {cve_id: acked_by for cve_id, acked_by in result.all() if acked_by}
 
     async def acknowledge(self, cve_id: str, client_id: str, analyst_name: str) -> CveTicket:
-        existing = await self.get(cve_id, client_id)
+        existing = await self._get_for_create(cve_id, client_id)
         ticket_id = (existing.ticket_id if existing else None) or await self.get_next_ticket_id(
             reserve=True
         )
@@ -1013,7 +1028,9 @@ class AsyncCveTicketRepo:
         query berikutnya biar 2 CVE baru dalam satu batch gak kebagian
         nomor ticket sama (legacy Mongo aman dari ini otomatis karena
         tiap `update_one` langsung commit; SQLAlchemy session butuh
-        flush eksplisit)."""
+        flush eksplisit). Lock penomoran diambil SEBELUM membaca ticket yang ada, supaya
+        pembacaan itu tidak basi terhadap transaksi lain yang sedang membuat ticket."""
+        await self._lock_ticket_numbering()
         result = await self.session.execute(
             select(CveTicket).where(CveTicket.client_id == client_id, CveTicket.cve_id.in_(cve_ids))
         )

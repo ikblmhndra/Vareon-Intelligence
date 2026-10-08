@@ -80,16 +80,13 @@ async def test_tracking_id_for_joins_existing_ticket_ids_of_the_clients_cves(
     assert await repo.tracking_id_for(["CVE-2026-0604"], "default") is None
 
 
-async def test_concurrent_ticket_creation_gets_distinct_ids(_migrated_schema: None) -> None:
-    """Dua transaksi yang membuat ticket bersamaan tidak boleh mendapat nomor yang sama (dulu:
-    keduanya membaca max yang sama, lalu yang kedua gagal `IntegrityError` -> 500).
-
-    Pakai sesi yang benar-benar commit (fixture lain di-rollback), jadi bersih-bersih sendiri."""
+async def _overlap_transactions(first_op, second_op, cve_ids):  # type: ignore[no-untyped-def]
+    """Jalankan dua operasi ticket di dua transaksi yang benar-benar commit dan saling tumpang
+    tindih: yang pertama sudah flush tapi belum commit saat yang kedua mulai. Mengembalikan hasil
+    keduanya (exception ikut naik). Fixture lain di-rollback, jadi bersih-bersih di sini."""
     from cti_core.db.engine import get_async_engine
 
     maker = async_sessionmaker(get_async_engine(), expire_on_commit=False)
-    cve_ids = ("CVE-2099-0001", "CVE-2099-0002")
-
     async with maker() as setup:
         created_default = await AsyncClientRepo(setup).get("default") is None
         await AsyncClientRepo(setup).ensure_default()
@@ -98,34 +95,66 @@ async def test_concurrent_ticket_creation_gets_distinct_ids(_migrated_schema: No
     first_flushed = asyncio.Event()
     release_first = asyncio.Event()
 
-    async def first() -> str:
+    async def first():  # type: ignore[no-untyped-def]
         async with maker() as s:
-            ticket = await AsyncCveTicketRepo(s).acknowledge(cve_ids[0], "default", "a")
+            result = await first_op(AsyncCveTicketRepo(s))
             first_flushed.set()
             await release_first.wait()  # tahan commit: yang kedua harus menunggu, bukan menyalip
             await s.commit()
-            return ticket.ticket_id
+            return result
 
-    async def second() -> str:
+    async def second():  # type: ignore[no-untyped-def]
         await first_flushed.wait()
         async with maker() as s:
-            ticket = await AsyncCveTicketRepo(s).acknowledge(cve_ids[1], "default", "b")
+            result = await second_op(AsyncCveTicketRepo(s))
             await s.commit()
-            return ticket.ticket_id
+            return result
 
     try:
         t1, t2 = asyncio.create_task(first()), asyncio.create_task(second())
         await first_flushed.wait()
         await asyncio.sleep(0.3)
         release_first.set()
-        ids = await asyncio.gather(t1, t2)
-        assert len(set(ids)) == 2
+        return await asyncio.gather(t1, t2)
     finally:
         async with maker() as cleanup:
             await cleanup.execute(delete(CveTicket).where(CveTicket.cve_id.in_(cve_ids)))
             if created_default:
                 await cleanup.execute(delete(Client).where(Client.client_id == "default"))
             await cleanup.commit()
+
+
+async def test_concurrent_ticket_creation_gets_distinct_ids(_migrated_schema: None) -> None:
+    """Dua transaksi yang membuat ticket bersamaan tidak boleh mendapat nomor yang sama (dulu:
+    keduanya membaca max yang sama, lalu yang kedua gagal `IntegrityError` -> 500)."""
+    first, second = await _overlap_transactions(
+        lambda repo: repo.acknowledge("CVE-2099-0001", "default", "a"),
+        lambda repo: repo.acknowledge("CVE-2099-0002", "default", "b"),
+        ("CVE-2099-0001", "CVE-2099-0002"),
+    )
+    assert first.ticket_id != second.ticket_id
+
+
+_FIRST_TIME_OPS = {
+    "ack": lambda repo: repo.acknowledge("CVE-2099-0003", "default", "x"),
+    "save": lambda repo: repo.upsert(cve_id="CVE-2099-0003", client_id="default", owner_team="t"),
+    "bulk": lambda repo: repo.bulk_acknowledge(["CVE-2099-0003"], "default", "x"),
+}
+
+
+@pytest.mark.parametrize("second", ["ack", "save", "bulk"])
+@pytest.mark.parametrize("first", ["ack", "save", "bulk"])
+async def test_concurrent_first_time_ticket_for_same_cve_does_not_collide(
+    _migrated_schema: None, first: str, second: str
+) -> None:
+    """Pemeriksaan 'ticket sudah ada' harus diulang SETELAH lock penomoran didapat: transaksi
+    kedua menunggu lock, dan ticket yang dibuat transaksi pertama sudah ada saat ia lanjut. Tanpa
+    itu keduanya menyisipkan baris `(cve_id, client_id)` sama dan satu kena `IntegrityError`."""
+    results = await _overlap_transactions(
+        _FIRST_TIME_OPS[first], _FIRST_TIME_OPS[second], ("CVE-2099-0003",)
+    )
+    ticket_ids = {r.ticket_id for r in results if isinstance(r, CveTicket)}
+    assert len(ticket_ids) <= 1
 
 
 async def test_get_next_ticket_id_increments_and_is_global_across_clients(
