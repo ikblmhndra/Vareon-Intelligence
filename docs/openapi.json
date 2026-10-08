@@ -276,6 +276,249 @@
         "title": "BulkFalsePositiveBody",
         "type": "object"
       },
+      "CatalogFamilyListResponse": {
+        "properties": {
+          "hidden": {
+            "default": 0,
+            "title": "Hidden",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogFamilyOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "CatalogFamilyListResponse",
+        "type": "object"
+      },
+      "CatalogFamilyOut": {
+        "properties": {
+          "covered_by_vendor": {
+            "default": false,
+            "title": "Covered By Vendor",
+            "type": "boolean"
+          },
+          "cve_seen_total": {
+            "title": "Cve Seen Total",
+            "type": "integer"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "first_seen": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Seen"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "last_cve_at": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Cve At"
+          },
+          "monitor_entry_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monitor Entry Id"
+          },
+          "monitored": {
+            "title": "Monitored",
+            "type": "boolean"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "vendor_id": {
+            "title": "Vendor Id",
+            "type": "integer"
+          },
+          "vendor_name": {
+            "title": "Vendor Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "vendor_id",
+          "vendor_name",
+          "key",
+          "display_name",
+          "source",
+          "cve_seen_total",
+          "monitored"
+        ],
+        "title": "CatalogFamilyOut",
+        "type": "object"
+      },
+      "CatalogVendorListResponse": {
+        "properties": {
+          "hidden": {
+            "default": 0,
+            "title": "Hidden",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CatalogVendorOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "CatalogVendorListResponse",
+        "type": "object"
+      },
+      "CatalogVendorOut": {
+        "properties": {
+          "cve_seen_total": {
+            "title": "Cve Seen Total",
+            "type": "integer"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "family_count": {
+            "title": "Family Count",
+            "type": "integer"
+          },
+          "first_seen": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Seen"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "last_cve_at": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Cve At"
+          },
+          "monitor_entry_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monitor Entry Id"
+          },
+          "monitorable": {
+            "title": "Monitorable",
+            "type": "boolean"
+          },
+          "monitored": {
+            "title": "Monitored",
+            "type": "boolean"
+          },
+          "visible_family_count": {
+            "title": "Visible Family Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "key",
+          "display_name",
+          "monitorable",
+          "family_count",
+          "visible_family_count",
+          "cve_seen_total",
+          "monitored"
+        ],
+        "title": "CatalogVendorOut",
+        "type": "object"
+      },
       "ChangePasswordRequest": {
         "properties": {
           "current_password": {
@@ -431,6 +674,272 @@
           "slowest"
         ],
         "title": "CveDashboard",
+        "type": "object"
+      },
+      "CveDbDetail": {
+        "properties": {
+          "affected_lines": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Affected Lines",
+            "type": "array"
+          },
+          "cve_id": {
+            "title": "Cve Id",
+            "type": "string"
+          },
+          "cvss_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cvss Score"
+          },
+          "cvss_severity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cvss Severity"
+          },
+          "cvss_vector": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cvss Vector"
+          },
+          "has_identity": {
+            "title": "Has Identity",
+            "type": "boolean"
+          },
+          "link": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Link"
+          },
+          "modified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modified At"
+          },
+          "products": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CveDbProductOut"
+            },
+            "title": "Products",
+            "type": "array"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "published_date": {
+            "format": "date",
+            "title": "Published Date",
+            "type": "string"
+          },
+          "reference_urls": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Reference Urls",
+            "type": "array"
+          },
+          "solutions": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Solutions"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cve_id",
+          "summary",
+          "published_date",
+          "has_identity"
+        ],
+        "title": "CveDbDetail",
+        "type": "object"
+      },
+      "CveDbListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CveDbOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "CveDbListResponse",
+        "type": "object"
+      },
+      "CveDbOut": {
+        "properties": {
+          "cve_id": {
+            "title": "Cve Id",
+            "type": "string"
+          },
+          "cvss_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cvss Score"
+          },
+          "cvss_severity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cvss Severity"
+          },
+          "has_identity": {
+            "title": "Has Identity",
+            "type": "boolean"
+          },
+          "products": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CveDbProductOut"
+            },
+            "title": "Products",
+            "type": "array"
+          },
+          "published_date": {
+            "format": "date",
+            "title": "Published Date",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cve_id",
+          "summary",
+          "published_date",
+          "has_identity"
+        ],
+        "title": "CveDbOut",
+        "type": "object"
+      },
+      "CveDbProductOut": {
+        "properties": {
+          "family": {
+            "title": "Family",
+            "type": "string"
+          },
+          "family_id": {
+            "title": "Family Id",
+            "type": "integer"
+          },
+          "monitor_entry_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monitor Entry Id"
+          },
+          "monitored": {
+            "title": "Monitored",
+            "type": "boolean"
+          },
+          "vendor": {
+            "title": "Vendor",
+            "type": "string"
+          },
+          "vendor_id": {
+            "title": "Vendor Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "vendor_id",
+          "vendor",
+          "family_id",
+          "family",
+          "monitored"
+        ],
+        "title": "CveDbProductOut",
         "type": "object"
       },
       "CveListResponse": {
@@ -4524,11 +5033,23 @@
         "type": "object"
       },
       "TechStackAdd": {
+        "description": "Tiga bentuk: `name` saja (entri custom, perilaku lama), `vendor_id` atau `family_id` (entri\nkatalog; `name` opsional menimpa label bawaan = nama tampilan katalog).",
         "properties": {
           "exposure": {
             "default": "internal",
             "title": "Exposure",
             "type": "string"
+          },
+          "family_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Family Id"
           },
           "hosting_type": {
             "default": "on_prem",
@@ -4536,13 +5057,28 @@
             "type": "string"
           },
           "name": {
-            "title": "Name",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "vendor_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor Id"
           }
         },
-        "required": [
-          "name"
-        ],
         "title": "TechStackAdd",
         "type": "object"
       },
@@ -4605,6 +5141,11 @@
       },
       "TechStackOut": {
         "properties": {
+          "active": {
+            "default": true,
+            "title": "Active",
+            "type": "boolean"
+          },
           "added_date": {
             "default": "",
             "title": "Added Date",
@@ -4624,6 +5165,15 @@
             "title": "Id",
             "type": "integer"
           },
+          "kind": {
+            "default": "custom",
+            "enum": [
+              "catalog",
+              "custom"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -4632,6 +5182,14 @@
             "default": "",
             "title": "Source",
             "type": "string"
+          },
+          "targets": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/TechStackTargetOut"
+            },
+            "title": "Targets",
+            "type": "array"
           }
         },
         "required": [
@@ -4639,6 +5197,102 @@
           "name"
         ],
         "title": "TechStackOut",
+        "type": "object"
+      },
+      "TechStackPatch": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "active"
+        ],
+        "title": "TechStackPatch",
+        "type": "object"
+      },
+      "TechStackTargetAdd": {
+        "properties": {
+          "family_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Family Id"
+          },
+          "vendor_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor Id"
+          }
+        },
+        "title": "TechStackTargetAdd",
+        "type": "object"
+      },
+      "TechStackTargetOut": {
+        "description": "Satu sasaran katalog entri Monitor: vendor ATAU keluarga (tepat satu terisi).",
+        "properties": {
+          "family_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Family Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "vendor",
+              "family"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "vendor_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vendor Id"
+          },
+          "vendor_label": {
+            "default": "",
+            "title": "Vendor Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "label"
+        ],
+        "title": "TechStackTargetOut",
         "type": "object"
       },
       "ThreatActorBody": {
@@ -7517,6 +8171,345 @@
         ]
       }
     },
+    "/api/catalog/families": {
+      "get": {
+        "description": "Pencarian lintas vendor; tidak menyembunyikan keluarga ber-1 CVE.",
+        "operationId": "search_families_api_catalog_families_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "maxLength": 100,
+              "minLength": 2,
+              "title": "Q",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-client-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Client-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogFamilyListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search Families",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/catalog/vendors": {
+      "get": {
+        "operationId": "list_vendors_api_catalog_vendors_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "show_all",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Show All",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-client-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Client-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogVendorListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Vendors",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/catalog/vendors/{vendor_id}/families": {
+      "get": {
+        "operationId": "list_vendor_families_api_catalog_vendors__vendor_id__families_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "vendor_id",
+            "required": true,
+            "schema": {
+              "title": "Vendor Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "show_all",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Show All",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-client-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Client-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogFamilyListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Vendor Families",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
     "/api/changelog": {
       "get": {
         "operationId": "list_versions_api_changelog_get",
@@ -8585,6 +9578,274 @@
         "summary": "List Cves",
         "tags": [
           "cve"
+        ]
+      }
+    },
+    "/api/cve-db": {
+      "get": {
+        "operationId": "list_cve_db_api_cve_db_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "description": "id vendor katalog",
+            "in": "query",
+            "name": "vendor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "id vendor katalog",
+              "title": "Vendor"
+            }
+          },
+          {
+            "description": "id keluarga katalog",
+            "in": "query",
+            "name": "family",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "id keluarga katalog",
+              "title": "Family"
+            }
+          },
+          {
+            "in": "query",
+            "name": "severity",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Severity"
+            }
+          },
+          {
+            "in": "query",
+            "name": "date_start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date Start"
+            }
+          },
+          {
+            "in": "query",
+            "name": "date_end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date End"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-client-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Client-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CveDbListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Cve Db",
+        "tags": [
+          "cve-db"
+        ]
+      }
+    },
+    "/api/cve-db/{cve_id}": {
+      "get": {
+        "operationId": "get_cve_db_api_cve_db__cve_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cve_id",
+            "required": true,
+            "schema": {
+              "title": "Cve Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-client-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Client-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CveDbDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Cve Db",
+        "tags": [
+          "cve-db"
         ]
       }
     },
@@ -18882,6 +20143,24 @@
             }
           },
           {
+            "description": "true/false = hanya aktif/nonaktif; kosong = semua",
+            "in": "query",
+            "name": "active",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "true/false = hanya aktif/nonaktif; kosong = semua",
+              "title": "Active"
+            }
+          },
+          {
             "in": "header",
             "name": "x-client-id",
             "required": false,
@@ -18942,6 +20221,7 @@
         ]
       },
       "post": {
+        "description": "Tiga bentuk (lihat `TechStackAdd`): `name` saja = entri custom (dicocokkan lewat teks, belum\nterverifikasi katalog); `vendor_id` / `family_id` = tombol Monitor di All Tech (entri katalog\ndengan satu target). Kegagalan bisnis tetap `200 {\"success\": false, \"reason\": ...}` (kontrak\nlama): `duplicate`, `not_found`, `vendor_not_monitorable`, `invalid_target`.",
         "operationId": "post_techstack_api_techstack_post",
         "parameters": [
           {
@@ -19090,6 +20370,91 @@
           }
         },
         "summary": "Remove Techstack",
+        "tags": [
+          "techstack"
+        ]
+      },
+      "patch": {
+        "description": "Aktifkan / nonaktifkan entri. Nonaktif = disembunyikan (tidak dicocokkan, tidak tampil di tab\nCVEs), TIDAK dihapus: baris `cve_tracker` dan ticket-nya tetap. Mengaktifkan kembali mengisi\nriwayatnya dari mirror (bila promosi dinyalakan).",
+        "operationId": "patch_techstack_api_techstack__tech_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tech_id",
+            "required": true,
+            "schema": {
+              "title": "Tech Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-client-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Client-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TechStackPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Patch Techstack Api Techstack  Tech Id  Patch",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Patch Techstack",
         "tags": [
           "techstack"
         ]
@@ -19266,6 +20631,179 @@
           }
         },
         "summary": "Patch Hosting",
+        "tags": [
+          "techstack"
+        ]
+      }
+    },
+    "/api/techstack/{tech_id}/targets": {
+      "post": {
+        "description": "Tambah satu sasaran katalog (vendor ATAU keluarga) ke entri yang ada, mis. `junos` ->\ntiga keluarga Juniper. Kegagalan memakai status HTTP (404/409/422), bukan `success: false`.",
+        "operationId": "add_techstack_target_api_techstack__tech_id__targets_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tech_id",
+            "required": true,
+            "schema": {
+              "title": "Tech Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-client-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Client-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TechStackTargetAdd"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Add Techstack Target Api Techstack  Tech Id  Targets Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Techstack Target",
+        "tags": [
+          "techstack"
+        ]
+      }
+    },
+    "/api/techstack/{tech_id}/targets/{target_id}": {
+      "delete": {
+        "description": "Lepas satu sasaran. Target TERAKHIR tidak bisa dilepas (409): entri tanpa target kembali\ndicocokkan lewat teks nama, perubahan perilaku diam-diam. Baris `cve_tracker` yang sudah ada\ntidak dihapus.",
+        "operationId": "remove_techstack_target_api_techstack__tech_id__targets__target_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tech_id",
+            "required": true,
+            "schema": {
+              "title": "Tech Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "target_id",
+            "required": true,
+            "schema": {
+              "title": "Target Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-client-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Client-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Remove Techstack Target Api Techstack  Tech Id  Targets  Target Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Techstack Target",
         "tags": [
           "techstack"
         ]

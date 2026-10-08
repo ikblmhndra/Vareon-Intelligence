@@ -105,3 +105,26 @@ async def test_prioritize_sorts_by_score_descending(async_db_session: AsyncSessi
         async_db_session, ["CVE-2026-0003", "CVE-2026-0004"], client_id="default"
     )
     assert [r["cve_id"] for r in result] == ["CVE-2026-0004", "CVE-2026-0003"]
+
+
+async def test_prioritize_does_not_match_by_substring(async_db_session: AsyncSession) -> None:
+    """Dulu substring dua arah: tracker `go` dianggap ada di techstack berisi `google`."""
+    await _ensure_clients(async_db_session)
+    async_db_session.add_all(
+        [
+            TechStackEntry(name="google", client_id="default"),
+            TechStackEntry(name="jira service management", client_id="default"),
+            CveTracker(cve_id="CVE-2026-1001", client_id="default", tech="go", cve_score=5.0),
+            CveTracker(cve_id="CVE-2026-1002", client_id="default", tech="jira", cve_score=5.0),
+        ]
+    )
+    await async_db_session.flush()
+
+    result = await svc.prioritize_campaign_cves(
+        async_db_session, ["CVE-2026-1001", "CVE-2026-1002"], client_id="default"
+    )
+
+    assert {r["cve_id"]: r["in_tech_stack"] for r in result} == {
+        "CVE-2026-1001": False,
+        "CVE-2026-1002": True,
+    }

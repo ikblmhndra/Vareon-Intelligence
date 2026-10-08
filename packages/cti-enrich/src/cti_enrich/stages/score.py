@@ -60,6 +60,7 @@ from cti_core.db.repositories.threat_reference import (
     list_monitored_people,
     list_threat_actor_groups,
 )
+from cti_core.tech_match import mentions_any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -378,9 +379,10 @@ class ScoreResult:
 
 
 def check_tech_stack(tech_name: str, techstack: list[str]) -> bool:
-    """Port `cveValidator.checkTechStack`."""
-    lowered = tech_name.lower()
-    return any(re.search(re.escape(tech.lower().strip()), lowered) for tech in techstack)
+    """Port `cveValidator.checkTechStack` -- `tech_name` di sini nama VENDOR dari record CVE.
+    Dulu substring tanpa batas kata (tech `go` cocok ke vendor `google`); sekarang kata utuh,
+    satu aturan dengan pencocok lain (`cti_core.tech_match`)."""
+    return mentions_any(techstack, tech_name)
 
 
 def _check_cve_vendor(cve_id: str, techstack: list[str]) -> bool:
@@ -423,7 +425,13 @@ def score(title: str, body: str, session: Session) -> ScoreResult:
     docstring `ScrapeContext`) -- panggil `score_with_lists()` langsung
     dengan daftar dari `ctx.reference` (resolusi lewat `reference_data`,
     Fase 4)."""
-    techstack = sorted(session.execute(select(TechStackEntry.name).distinct()).scalars().all())
+    techstack = sorted(
+        session.execute(
+            select(TechStackEntry.name).where(TechStackEntry.active.is_(True)).distinct()
+        )
+        .scalars()
+        .all()
+    )
     group_list = list_threat_actor_groups(session)
     apac_people_list = list_monitored_people(session)
     return score_with_lists(
@@ -467,9 +475,8 @@ def score_with_lists(
 
     result.cve_list_title = re.findall(_RE_CVE_MENTION, title.lower())
 
-    for tech in techstack:
-        if re.search(rf"\b{tech.lower()}\b", title.lower()):
-            result.related_tech_status = True
+    if mentions_any(techstack, title):
+        result.related_tech_status = True
 
     result.databreach_list = _find_hits(_DATABREACH_KEYWORD, title)
     result.zero_day_list = re.findall(r"\b(zero|0)[-.]day\b", title.lower())

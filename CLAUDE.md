@@ -85,6 +85,18 @@ One `cti_core.config.Settings` (pydantic-settings, `extra="forbid"` at every nes
 
 Same Postgres, two drivers: async (`asyncpg`, FastAPI) and sync (`psycopg`, Celery/CLI). Only the compose `migrate` service runs `alembic upgrade head`; API and workers never migrate. Migrations are often hand-written, and `tests/integration/test_migrations_match_models.py` fails on any drift between migrations and models, so new columns need both.
 
+### CVE Tracker
+
+Alur lengkap yang sekarang (ingest `new_cve`, upsert, enrichment, scope tab CVEs, ticket, notifikasi, tujuh
+pencocok nama tech, dan checklist invarian saat mengubah desain) ada di `docs/CVE_TRACKER_FLOW.md`; baca itu
+sebelum menyentuh `cve_tracker`, `techstack_entries`, atau `new_cve`. Rencana katalog tech + mirror CVE:
+`docs/ROADMAP.md` #19; rancangan teknis: `docs/CVE_CATALOG_DESIGN.md` (irisan 1-5 sudah ada di kode:
+resolver, skema katalog/mirror, ingest `cve.mirror_sync` dan promosi ke `cve_tracker` (keduanya mati secara
+default: `CVE_MIRROR__ENABLED`, `CVE_MIRROR__PROMOTE`), serta API katalog/CVE DB/Monitor dan UI-nya (Monitored Tech /
+All Tech / CVE DB). Entri techstack `active=false` disembunyikan dari tab CVEs; pemetaan entri lama ke katalog
+lewat "Map to catalog"). Cutover (`PROMOTE=live` menangguhkan `new_cve`; rollback = flag): runbook
+`docs/CVE_CATALOG_CUTOVER.md`.
+
 ### API (`apps/api/src/cti_api`)
 
 `routers/` (thin) → `services/` (logic, "session-first" async functions) → `cti_core` repositories. Auth: JWT bearer with Redis-backed revocation (Redis must be up for any authenticated request); multi-tenant via the `X-Client-ID` header (`deps.effective_client_id` / `ensure_client_access`). `lifespan` bootstraps reference rows under a Postgres advisory lock because uvicorn runs several processes.

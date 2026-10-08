@@ -25,7 +25,9 @@ import datetime
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_core.db.models.techstack import TechStackEntry
+from cti_core.catalog_resolve import VENDOR_NONE_KEY
+from cti_core.db.models.catalog import CatalogFamily, CatalogVendor
+from cti_core.db.models.techstack import TechStackEntry, TechStackTarget
 
 _VALID_EXPOSURE = frozenset({"public", "internal", "both"})
 _VALID_HOSTING = frozenset({"on_prem", "cloud", "saas"})
@@ -51,8 +53,11 @@ class AsyncTechStackRepo:
         page_size: int = 50,
         sort_by: str = "name",
         sort_dir: str = "asc",
+        active: bool | None = None,
     ) -> tuple[list[TechStackEntry], int]:
         stmt = select(TechStackEntry).where(TechStackEntry.client_id == client_id)
+        if active is not None:
+            stmt = stmt.where(TechStackEntry.active.is_(active))
         if search:
             stmt = stmt.where(TechStackEntry.name.ilike(f"%{search}%"))
 
@@ -101,6 +106,7 @@ class AsyncTechStackRepo:
             hosting_type=hosting_type if hosting_type in _VALID_HOSTING else "on_prem",
             source="manual",
             added_date=datetime.date.today(),
+            targets=[],  # entri custom; tanpa ini akses `.targets` memicu lazy-load async
         )
         self.session.add(entry)
         await self.session.flush()
@@ -133,6 +139,154 @@ class AsyncTechStackRepo:
         await self.session.delete(entry)
         await self.session.flush()
         return True
+
+    # ── scope tab CVEs: aktif vs semua ────────────────────────────────────────────────────────
+
+    async def visible_names(self, client_id: str) -> list[str] | None:
+        """Nama entri AKTIF client ini, untuk menyaring tab CVEs/stats/dashboard/export.
+
+        `None` = client belum punya entri sama sekali (perilaku lama: tanpa filter tech).
+        `[]` = punya entri tapi semuanya nonaktif: tab tidak menampilkan apa pun. Dibedakan dengan
+        sengaja; "kosong" yang tadinya berarti "tanpa filter" akan membalik arti "disembunyikan"."""
+        rows = (
+            await self.session.execute(
+                select(TechStackEntry.name, TechStackEntry.active).where(
+                    TechStackEntry.client_id == client_id
+                )
+            )
+        ).all()
+        if not rows:
+            return None
+        return [name for name, active in rows if active]
+
+    async def all_names(self, client_id: str) -> list[str]:
+        """Semua nama entri, aktif maupun nonaktif (`purge-orphaned`: yang disembunyikan BUKAN
+        yatim, barisnya tidak boleh ikut terhapus)."""
+        result = await self.session.execute(
+            select(TechStackEntry.name).where(TechStackEntry.client_id == client_id)
+        )
+        return list(result.scalars().all())
+
+    async def inactive_names(self, client_id: str) -> set[str]:
+        result = await self.session.execute(
+            select(TechStackEntry.name).where(
+                TechStackEntry.client_id == client_id, TechStackEntry.active.is_(False)
+            )
+        )
+        return set(result.scalars().all())
+
+    # ── Monitor berbasis katalog (ROADMAP #19) ────────────────────────────────────────────────
+
+    async def _target_ref(
+        self, vendor_id: int | None, family_id: int | None
+    ) -> tuple[CatalogVendor | None, CatalogFamily | None, str]:
+        """Validasi satu rujukan katalog -> (vendor, keluarga, alasan). Tepat satu id harus diisi;
+        vendor tanpa identitas (`~none`) tidak bisa di-Monitor di tingkat vendor."""
+        if (vendor_id is None) == (family_id is None):
+            return None, None, "invalid_target"
+        if vendor_id is not None:
+            vendor = await self.session.get(CatalogVendor, vendor_id)
+            if vendor is None:
+                return None, None, "not_found"
+            if not vendor.monitorable or vendor.key == VENDOR_NONE_KEY:
+                return None, None, "vendor_not_monitorable"
+            return vendor, None, "ok"
+        assert family_id is not None
+        family = await self.session.get(CatalogFamily, family_id)
+        if family is None:
+            return None, None, "not_found"
+        return None, family, "ok"
+
+    async def create_from_target(
+        self,
+        *,
+        client_id: str,
+        vendor_id: int | None = None,
+        family_id: int | None = None,
+        name: str | None = None,
+        exposure: str = "internal",
+        hosting_type: str = "on_prem",
+    ) -> tuple[TechStackEntry | None, str]:
+        """Tombol Monitor di All Tech: entri baru (label = nama tampilan katalog, atau `name`
+        bila diberikan) dengan SATU target. Label tetap kunci join ke `cve_tracker.tech`, jadi
+        harus unik per client (`duplicate` bila sudah dipakai: beri `name` lain)."""
+        vendor, family, reason = await self._target_ref(vendor_id, family_id)
+        if reason != "ok":
+            return None, reason
+        label = name or (vendor.display_name if vendor else family.display_name if family else "")
+        label = label.strip()
+        if not label:
+            return None, "invalid_target"
+        if await self.get_by_name_ci(label, client_id) is not None:
+            return None, "duplicate"
+        entry = TechStackEntry(
+            name=label,
+            client_id=client_id,
+            exposure=exposure if exposure in _VALID_EXPOSURE else "internal",
+            hosting_type=hosting_type if hosting_type in _VALID_HOSTING else "on_prem",
+            source="catalog",
+            added_date=datetime.date.today(),
+        )
+        self.session.add(entry)
+        await self.session.flush()
+        self.session.add(
+            TechStackTarget(entry_id=entry.id, vendor_id=vendor_id, family_id=family_id)
+        )
+        await self.session.flush()
+        await self.session.refresh(entry, ["targets"])
+        return entry, "ok"
+
+    async def add_target(
+        self,
+        tech_id: int,
+        client_id: str,
+        *,
+        vendor_id: int | None = None,
+        family_id: int | None = None,
+    ) -> tuple[TechStackEntry | None, str]:
+        entry = await self.get_by_id(tech_id, client_id)
+        if entry is None:
+            return None, "entry_not_found"
+        _vendor, _family, reason = await self._target_ref(vendor_id, family_id)
+        if reason != "ok":
+            return None, reason
+        if any(t.vendor_id == vendor_id and t.family_id == family_id for t in entry.targets):
+            return None, "target_duplicate"
+        self.session.add(
+            TechStackTarget(entry_id=entry.id, vendor_id=vendor_id, family_id=family_id)
+        )
+        await self.session.flush()
+        await self.session.refresh(entry, ["targets"])
+        return entry, "ok"
+
+    async def remove_target(
+        self, tech_id: int, target_id: int, client_id: str
+    ) -> tuple[TechStackEntry | None, str]:
+        """Entri tidak boleh kehilangan target TERAKHIR: tanpa target ia kembali dicocokkan lewat
+        teks (`docs/CVE_CATALOG_DESIGN.md` 3.4), perubahan perilaku diam-diam. Hapus entrinya atau
+        nonaktifkan."""
+        entry = await self.get_by_id(tech_id, client_id)
+        if entry is None:
+            return None, "entry_not_found"
+        target = next((t for t in entry.targets if t.id == target_id), None)
+        if target is None:
+            return None, "target_not_found"
+        if len(entry.targets) == 1:
+            return None, "last_target"
+        await self.session.delete(target)
+        await self.session.flush()
+        await self.session.refresh(entry, ["targets"])
+        return entry, "ok"
+
+    async def set_active(self, tech_id: int, client_id: str, active: bool) -> TechStackEntry | None:
+        """Aktifkan/nonaktifkan (sembunyikan) entri. Tidak menghapus apa pun: baris `cve_tracker`
+        dan ticket-nya tetap, hanya tidak muncul di tab CVEs."""
+        entry = await self.get_by_id(tech_id, client_id)
+        if entry is None:
+            return None
+        entry.active = active
+        await self.session.flush()
+        return entry
 
     async def get_risk_context(self, client_id: str) -> dict[str, dict[str, str]]:
         """`{name_lower: {exposure, hosting_type}}` -- port `get_tech_risk_context()`,
