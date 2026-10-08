@@ -291,6 +291,21 @@ async def test_bulk_acknowledge_assigns_sequential_ids_for_multiple_new_tickets(
     assert t1.ticket_id != t2.ticket_id
 
 
+async def test_bulk_acknowledge_ignores_duplicate_cve_ids(async_db_session: AsyncSession) -> None:
+    """`cve_ids` yang sama dua kali (mis. `CVE-X` dan `cve-x` setelah dinormalisasi) dihitung
+    sekali: dulu iterasi kedua menyisipkan ticket `(cve_id, client_id)` kedua dan kena
+    `IntegrityError`."""
+    await _ensure_clients(async_db_session)
+    repo = AsyncCveTicketRepo(async_db_session)
+
+    acknowledged = await repo.bulk_acknowledge(
+        ["CVE-2026-0701", "CVE-2026-0701", "CVE-2026-0702"], "default", "analyst1"
+    )
+
+    assert acknowledged == 2
+    assert sorted(await repo.get_acked_cve_ids("default")) == ["CVE-2026-0701", "CVE-2026-0702"]
+
+
 async def test_bulk_acknowledge_returns_zero_when_all_already_acked(
     async_db_session: AsyncSession,
 ) -> None:

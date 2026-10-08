@@ -240,7 +240,9 @@ class AsyncCveFalsePositiveRepo:
         self, cve_ids: Sequence[str], client_id: str, marked_by: str | None = None
     ) -> int:
         existing = set(await self.list_cve_ids(client_id))
-        to_add = [cid for cid in cve_ids if cid not in existing]
+        # `dict.fromkeys`: id kembar dalam satu permintaan cukup dihitung sekali (dua baris
+        # `(cve_id, client_id)` yang sama = IntegrityError).
+        to_add = [cid for cid in dict.fromkeys(cve_ids) if cid not in existing]
         for cid in to_add:
             self.session.add(CveFalsePositive(cve_id=cid, client_id=client_id, marked_by=marked_by))
         await self.session.flush()
@@ -1050,7 +1052,10 @@ class AsyncCveTicketRepo:
         nomor ticket sama (legacy Mongo aman dari ini otomatis karena
         tiap `update_one` langsung commit; SQLAlchemy session butuh
         flush eksplisit). Lock penomoran diambil SEBELUM membaca ticket yang ada, supaya
-        pembacaan itu tidak basi terhadap transaksi lain yang sedang membuat ticket."""
+        pembacaan itu tidak basi terhadap transaksi lain yang sedang membuat ticket. `cve_ids`
+        kembar dihitung sekali (iterasi kedua akan menyisipkan ticket `(cve_id, client_id)` yang
+        sama dan kena IntegrityError)."""
+        cve_ids = list(dict.fromkeys(cve_ids))
         await self._lock_ticket_numbering()
         result = await self.session.execute(
             select(CveTicket).where(CveTicket.client_id == client_id, CveTicket.cve_id.in_(cve_ids))

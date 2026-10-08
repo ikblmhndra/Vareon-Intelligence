@@ -50,6 +50,7 @@ from cti_api.schemas.cve import (
     AcknowledgeBody,
     BulkAcknowledgeBody,
     BulkFalsePositiveBody,
+    CveId,
     CveListResponse,
     CveOut,
     CvePocOut,
@@ -295,7 +296,7 @@ async def tech_list(
 
 @router.post("/{cve_id}/false-positive")
 async def set_false_positive(
-    cve_id: str,
+    cve_id: CveId,
     request: Request,
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),
@@ -315,7 +316,7 @@ async def set_false_positive(
 
 @router.delete("/{cve_id}/false-positive")
 async def remove_false_positive(
-    cve_id: str,
+    cve_id: CveId,
     request: Request,
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),
@@ -459,7 +460,7 @@ async def bulk_exploit_lookup(
 
 @router.post("/{cve_id}/exploit-lookup")
 async def single_exploit_lookup(
-    cve_id: str,
+    cve_id: CveId,
     request: Request,
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),
@@ -627,7 +628,7 @@ async def list_cve_tickets(
 
 @router.get("/{cve_id}/ticket")
 async def get_cve_ticket(
-    cve_id: str,
+    cve_id: CveId,
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),
     x_client_id: str | None = Header(None),
@@ -639,7 +640,7 @@ async def get_cve_ticket(
 
 @router.put("/{cve_id}/ticket")
 async def update_cve_ticket(
-    cve_id: str,
+    cve_id: CveId,
     body: CveTicketBody,
     request: Request,
     session: AsyncSession = Depends(get_db),
@@ -709,7 +710,7 @@ async def bulk_acknowledge(
 
 @router.post("/{cve_id}/acknowledge")
 async def acknowledge(
-    cve_id: str,
+    cve_id: CveId,
     body: AcknowledgeBody,
     request: Request,
     session: AsyncSession = Depends(get_db),

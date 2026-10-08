@@ -339,6 +339,17 @@ class TestAsyncCveFalsePositiveRepo:
             "CVE-2026-0003",
         }
 
+    async def test_bulk_mark_ignores_duplicate_cve_ids(
+        self, async_db_session: AsyncSession
+    ) -> None:
+        await _seed(async_db_session)
+        repo = AsyncCveFalsePositiveRepo(async_db_session)
+
+        count = await repo.bulk_mark(["CVE-2026-0001", "CVE-2026-0001", "CVE-2026-0002"], "default")
+
+        assert count == 2
+        assert sorted(await repo.list_cve_ids("default")) == ["CVE-2026-0001", "CVE-2026-0002"]
+
     async def test_fp_scoped_per_client(self, async_db_session: AsyncSession) -> None:
         await _seed(async_db_session, "default")
         await _seed(async_db_session, "acme")
