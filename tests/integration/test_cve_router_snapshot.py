@@ -182,6 +182,35 @@ async def test_purge_orphaned_dry_run(
     assert body == snapshot
 
 
+async def test_purge_orphaned_is_admin_only(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+) -> None:
+    """Endpoint ini menghapus CVE (dan penanda FP-nya) secara permanen, jadi hanya admin dan
+    superadmin. Analis ditolak 403 untuk dry run MAUPUN eksekusi, dan datanya tidak tersentuh
+    (client tanpa techstack: semua CVE dianggap yatim, jadi eksekusi akan menghapus semuanya)."""
+    await _seed_two_cves(api_session)
+    analyst = auth_header(role="analyst")
+    for dry_run in (True, False):
+        resp = await api_client.post(
+            "/api/cve/purge-orphaned", headers=analyst, json={"dry_run": dry_run}
+        )
+        assert resp.status_code == 403, f"dry_run={dry_run}"
+    assert (await api_client.get("/api/cve", headers=analyst)).json()["total"] == 2
+
+    admin = auth_header(role="admin")
+    preview = await api_client.post(
+        "/api/cve/purge-orphaned", headers=admin, json={"dry_run": True}
+    )
+    assert preview.status_code == 200 and preview.json()["would_delete"] == 2
+    executed = await api_client.post(
+        "/api/cve/purge-orphaned", headers=admin, json={"dry_run": False}
+    )
+    assert executed.status_code == 200 and executed.json()["deleted"] == 2
+    assert (await api_client.get("/api/cve", headers=admin)).json()["total"] == 0
+
+
 async def test_cisa_kev_lookup(
     api_client: AsyncClient,
     api_session: AsyncSession,

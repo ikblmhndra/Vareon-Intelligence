@@ -38,7 +38,14 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_api.deps import AuthedUser, effective_client_id, get_db, request_ip, require_auth
+from cti_api.deps import (
+    AuthedUser,
+    effective_client_id,
+    get_db,
+    request_ip,
+    require_admin,
+    require_auth,
+)
 from cti_api.schemas.cve import (
     AcknowledgeBody,
     BulkAcknowledgeBody,
@@ -358,11 +365,14 @@ async def purge_orphaned(
     body: PurgeOrphanedBody,
     request: Request,
     session: AsyncSession = Depends(get_db),
-    user: AuthedUser = Depends(require_auth),
+    user: AuthedUser = Depends(require_admin),
     x_client_id: str | None = Header(None),
 ) -> dict[str, object]:
     """Hapus CVE yang tech-nya UDAH GAK ADA di techstack aktif client ini.
-    `{"dry_run": false}` buat beneran eksekusi -- default preview doang."""
+    `{"dry_run": false}` buat beneran eksekusi -- default preview doang.
+
+    **Hanya admin/superadmin**, termasuk preview-nya: eksekusi menghapus baris `cve_tracker` dan
+    penanda FP-nya secara permanen (client tanpa techstack: semua CVE dianggap yatim)."""
     dry_run = body.dry_run
     cid = effective_client_id(user, x_client_id)
     # Semua entri, termasuk yang nonaktif: yang disembunyikan BUKAN yatim, barisnya tidak boleh

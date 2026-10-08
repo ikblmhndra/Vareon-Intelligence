@@ -1021,6 +1021,9 @@ export interface paths {
          * Purge Orphaned
          * @description Hapus CVE yang tech-nya UDAH GAK ADA di techstack aktif client ini.
          *     `{"dry_run": false}` buat beneran eksekusi -- default preview doang.
+         *
+         *     **Hanya admin/superadmin**, termasuk preview-nya: eksekusi menghapus baris `cve_tracker` dan
+         *     penanda FP-nya secara permanen (client tanpa techstack: semua CVE dianggap yatim).
          */
         post: operations["purge_orphaned_api_cve_purge_orphaned_post"];
         delete?: never;

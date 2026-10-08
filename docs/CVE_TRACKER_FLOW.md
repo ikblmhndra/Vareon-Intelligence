@@ -61,7 +61,8 @@ Perilaku `upsert` yang penting (`cti_core/db/repositories/cve.py`):
 - Scraper **tidak** memeriksa false-positive: baris yang ditandai FP tetap di-upsert, hanya disembunyikan
   di query (bagian 5).
 - Baris lama yang kemudian ditolak gate **tidak pernah dihapus** otomatis (scraper hanya upsert); pembersih
-  manual: `tools/ops/reconcile_cve_tech.py` dan `POST /api/cve/purge-orphaned`.
+  manual: `tools/ops/reconcile_cve_tech.py` dan `POST /api/cve/purge-orphaned` (**hanya admin/superadmin**,
+  termasuk dry run; default dry run).
 - Data awal sebelum cutover masuk dari dump Mongo lewat `tools/seed/fase10_cve_migrate.py` (satu kali).
 
 ## 3. Model data (`cti_core/db/models/cve.py`, `techstack.py`)
