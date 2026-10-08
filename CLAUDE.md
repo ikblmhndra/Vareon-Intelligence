@@ -94,7 +94,8 @@ sebelum menyentuh `cve_tracker`, `techstack_entries`, atau `new_cve`. Rencana ka
 resolver, skema katalog/mirror, ingest `cve.mirror_sync` dan promosi ke `cve_tracker` (keduanya mati secara
 default: `CVE_MIRROR__ENABLED`, `CVE_MIRROR__PROMOTE`), serta API katalog/CVE DB/Monitor dan UI-nya (Monitored Tech /
 All Tech / CVE DB). Entri techstack `active=false` disembunyikan dari tab CVEs; pemetaan entri lama ke katalog
-lewat "Map to catalog").
+lewat "Map to catalog"). Cutover (`PROMOTE=live` menangguhkan `new_cve`; rollback = flag): runbook
+`docs/CVE_CATALOG_CUTOVER.md`.
 
 ### API (`apps/api/src/cti_api`)
 

@@ -37,6 +37,8 @@ from typing import TYPE_CHECKING, Literal
 
 from croniter import croniter
 
+from cti_scraper.supersede import effective_enabled
+
 if TYPE_CHECKING:
     from cti_core.db.models.scraper import ScraperConfig, ScraperRun
 
@@ -93,8 +95,7 @@ def compute_health(
     # meta.enabled`): scraper yang dimatikan di KODE (`meta.enabled=False`, mis. waiver census
     # 2026-10-01) gak pernah dijadwalkan beat, jadi tanpa ini dia nongol `degraded` lalu `dead`
     # selamanya di sweep + digest Telegram padahal gak ada yang salah.
-    enabled = config.enabled if config is not None else meta.enabled
-    if not enabled:
+    if not effective_enabled(meta, config):  # + digantikan mirror CVE (`supersede`)
         return "disabled"
 
     if not recent_runs:

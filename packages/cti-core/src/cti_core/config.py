@@ -173,6 +173,11 @@ class CveMirrorSettings(_StrictModel):
     `off` = hanya mirror; `shadow` = tulis `cve_promotion_shadow` untuk dibandingkan dengan
     `new_cve`, `cve_tracker` tidak disentuh; `live` = tulis `cve_tracker` (+ ringkasan Telegram).
     Hanya berlaku bila `enabled`. Jangan `live` sebelum perbandingan bayangan ditinjau."""
+    keep_legacy_new_cve: bool = False
+    """Saat `promote="live"`, scraper `new_cve` lama DITANGGUHKAN (tracker diisi pipeline mirror;
+    keduanya meng-upsert baris yang sama). `true` = biarkan jalan berdampingan (masa tumpang
+    tindih / cadangan; `tech` bisa bergantian, tidak ada data hilang). Lihat
+    `cti_scraper.supersede`."""
     max_files_per_run: int = 3000
     """Batas unduhan record per siklus (kelebihan dibawa ke siklus berikut lewat state). Hari
     biasa ratusan sampai ~2.000 berkas; catch-up setelah mati lama bisa lebih besar."""

@@ -113,10 +113,11 @@ web, Gmail, dan mobile; tes render lulus.
 
 ## 3. Tombol "Populate now" di CVE Tracker
 
-> **Kemungkinan tergantikan oleh #19 (arah baru 2026-10-07).** Kalau mirror CVE + tombol Monitor jadi
-> dibangun, tech baru yang di-monitor langsung terisi riwayatnya dari mirror, sehingga tombol ini, jendela
-> 8 hari, backfill 180 hari, dan masalah pacing MITRE di bawah tidak relevan lagi. Bagian di bawah dibiarkan
-> sebagai catatan keadaan sekarang; jangan dikerjakan sebelum #19 diputuskan.
+> **Tergantikan oleh #19 (kode selesai 2026-10-08, belum di `main`).** Tech yang di-Monitor (tombol Monitor,
+> "Map to catalog", Resume, atau target baru) langsung terisi riwayatnya dari mirror lewat tugas
+> `cve.promote_entry` (hanya bila `CVE_MIRROR__ENABLED` dan `CVE_MIRROR__PROMOTE` menyala), sehingga tombol ini,
+> jendela 8 hari, backfill 180 hari, dan masalah pacing MITRE di bawah tidak relevan lagi KALAU cutover
+> dilakukan. **Jangan dikerjakan**; bagian di bawah catatan keadaan sebelum cutover.
 
 **Diminta**: tombol **Populate now** untuk mengisi CVE, dengan pilihan **populate all** atau **hanya
 techstack/package yang baru ditambahkan**. Menggantikan teks petunjuk lama di tab kosong.
@@ -550,8 +551,10 @@ branch) dipertahankan; istilahnya kelak diturunkan dari katalog.
 (ingest `cve.mirror_sync` + retensi + skrip backfill, flag `CVE_MIRROR__ENABLED` default mati), dan irisan 4
 (promosi mirror -> `cve_tracker` dengan mode bayangan, flag `CVE_MIRROR__PROMOTE` default `off`), irisan 5
 (API katalog / CVE DB / Monitor + kontrak, scope entri nonaktif), dan irisan 6 (UI: Monitored Tech, All Tech,
-CVE DB, pemetaan entri lewat "Map to catalog") selesai di branch**; irisan 7 (pemetaan 34 entri oleh user
-lewat UI, mode bayangan, cutover) belum. Keputusan 2026-10-07: picker
+CVE DB, pemetaan entri lewat "Map to catalog"), dan irisan 7 (sakelar cutover: `new_cve` ditangguhkan saat
+`CVE_MIRROR__PROMOTE=live`, ekspor/impor pemetaan antar-lingkungan, `--since` untuk riwayat live, runbook) selesai
+di branch. **Semua kode #19 sudah ada; yang tersisa operasional, dikerjakan user**: pemetaan 34 entri di dev,
+mode bayangan, lalu cutover dev dan prod. Langkah persisnya: `docs/CVE_CATALOG_CUTOVER.md`.** Keputusan 2026-10-07: picker
 menyembunyikan keluarga ber-1 CVE (pencarian tetap menampilkan semuanya).
 
 ### Fase
@@ -571,6 +574,8 @@ menyembunyikan keluarga ber-1 CVE (pencarian tetap menampilkan semuanya).
 Semuanya diuji di **server dev dulu**, baru produksi.
 
 ### Terbuka (butuh konfirmasi user)
+- **Status 2026-10-08**: kode selesai; tersisa pemetaan manual, mode bayangan, dan cutover (runbook). Butir di
+  bawah yang belum ditandai DIPUTUSKAN masih terbuka.
 - **Sumber data**: CVE List V5 sebagai utama; spike mendukungnya (ADP menyelamatkan hanya 0,1% CVE dan CPE
   hanya ada di 7,5% data CNA, jadi NVD/CPE tidak bisa jadi sumber identitas; NVD tetap berguna sebagai
   pelengkap untuk CVSS/KEV). Menunggu konfirmasi user.

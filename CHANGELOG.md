@@ -24,6 +24,12 @@ router `changelog.py`) -- parser-nya expect header persis
    skrip yang membaca file export per posisi kolom harus disesuaikan.
 
 ### Ditambah
+- **Cutover katalog tech** (`docs/ROADMAP.md` #19, irisan 7): saat `CVE_MIRROR__PROMOTE=live` scraper `new_cve`
+  ditangguhkan (tidak dijadwalkan beat, `Runner` menolak, health `disabled`, tampil nonaktif); tracker diisi
+  pipeline mirror + ringkasan Telegram. Env baru opsional `CVE_MIRROR__KEEP_LEGACY_NEW_CVE` (default `false`;
+  `true` = jalan berdampingan). Rollback = `PROMOTE=off` + restart, tanpa migrasi. `tools/ops/catalog_mapping.py`
+  (`make catalog-mapping`): ekspor/impor pemetaan techstack->katalog lewat kunci stabil, plus `suggest`.
+  `promote_cve_mirror --since`. Runbook langkah demi langkah: `docs/CVE_CATALOG_CUTOVER.md`.
 - **UI katalog tech** (`docs/ROADMAP.md` #19, irisan 6; tanpa perubahan backend): halaman CVE Tracker, sub-view
   "Tech Stack" diganti **Monitored Tech** (daftar entri + target, Pause/Resume, tanda "Unmapped" untuk entri lama
   dan tombol **Map to catalog** untuk memetakannya ke katalog; target banyak per entri), **All Tech** (vendor ->

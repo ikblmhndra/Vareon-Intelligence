@@ -1,7 +1,8 @@
 # Rancangan: mirror CVE, katalog tech, dan Monitor (ROADMAP #19)
 
 Status: **irisan 1 (resolver), 2 (skema, model, repositori), 3 (ingest), 4 (promosi + mode
-bayangan), 5 (API), dan 6 (UI) SELESAI di branch; irisan 7 (pemetaan + cutover) masih rancangan** (2026-10-07). Diturunkan dari keputusan user, hasil spike di data
+bayangan), 5 (API), 6 (UI), dan 7 (sakelar cutover + alat pemetaan + runbook) SELESAI di branch; yang tersisa
+operasional (pemetaan manual 34 entri, mode bayangan, cutover) mengikuti `docs/CVE_CATALOG_CUTOVER.md`** (2026-10-07). Diturunkan dari keputusan user, hasil spike di data
 penuh (`docs/spikes/2026-10-07_cve_catalog_report_v2.md`, tafsir di `docs/CVE_TECH_MATCHING.md` 7.1.3), dan
 alur CVE Tracker yang sekarang (`docs/CVE_TRACKER_FLOW.md`; **baca bagian 10-nya**, itu invarian yang
 harus dijaga). Hal yang belum diverifikasi ditandai **[asumsi]**; yang diverifikasi ditandai **[dicek]**.
@@ -320,6 +321,20 @@ dibuang tetap utuh. Statistik katalog tidak turun (kolom `*_seen_total`).
      entri baru muncul di Monitored Tech; nol respons 4xx/5xx dari tab baru. Skrip E2E tidak di-commit (repo tidak
      punya test runner web).
 7. Pemetaan 34 entri + cutover.
+   **SELESAI sisi kode** (langkah manusianya di `docs/CVE_CATALOG_CUTOVER.md`):
+   - **Sakelar**: `CVE_MIRROR__PROMOTE=live` menangguhkan `new_cve` (`cti_scraper.supersede`): tidak dijadwalkan
+     beat, `Runner` menolak (status `disabled`), health = `disabled` (tidak mengotori digest), daftar scraper
+     nonaktif. `CVE_MIRROR__KEEP_LEGACY_NEW_CVE=true` membiarkannya jalan berdampingan (tumpang tindih /
+     cadangan). **Rollback = ubah flag + restart, tanpa migrasi**; control plane tetap menang.
+   - **Pemetaan antar-lingkungan** (`tools/ops/catalog_mapping.py`, `make catalog-mapping`): `export` dari dev
+     ke JSON dengan kunci katalog stabil (bukan ID), `import` ke prod (laporan dulu; idempoten; kunci yang belum
+     ada di katalog dilaporkan, tidak dibuat; status aktif tidak disalin kecuali `--with-active`), `suggest`
+     (kandidat katalog untuk entri yang belum dipetakan).
+   - **`--since`** pada `promote_cve_mirror` / `promote_all` / `promote_entry`: membatasi riwayat yang di-live-kan
+     ke CVE terbit sejak tanggal itu. Tanpa ini riwayat lama masuk tracker dengan `detected_on` = sekarang dan
+     merusak MTTD dashboard.
+   - Tes: `tests/unit/test_supersede.py`, `tests/integration/test_supersede_runner.py`,
+     `test_catalog_mapping.py`, dan tambahan `--since` di `test_promotion_tools.py`.
 
 ### 9.5 Keputusan irisan 5 (DIKONFIRMASI user 2026-10-08)
 

@@ -312,6 +312,7 @@ def _promote_batches(
     mode: Mode,
     *,
     only_cve_ids: Select[tuple[str]] | None,
+    since: datetime.date | None,
     batch_size: int,
     limit: int | None,
     progress: Callable[[PromoteSummary], None] | None,
@@ -329,6 +330,8 @@ def _promote_batches(
         )
         if only_cve_ids is not None:
             stmt = stmt.where(CveRecord.cve_id.in_(only_cve_ids))
+        if since is not None:
+            stmt = stmt.where(CveRecord.published_date >= since)
         batch = session.execute(stmt).scalars().all()
         if not batch:
             break
@@ -352,10 +355,13 @@ def promote_all(
     *,
     batch_size: int = 500,
     limit: int | None = None,
+    since: datetime.date | None = None,
     progress: Callable[[PromoteSummary], None] | None = None,
     progress_every: int = 5000,
 ) -> PromoteSummary:
-    """Terapkan `mode` ke SELURUH mirror (entri baru di-Monitor: riwayat langsung terisi). Tidak
+    """Terapkan `mode` ke SELURUH mirror (entri baru di-Monitor: riwayat langsung terisi). `since`
+    membatasi ke CVE terbit pada/setelah tanggal itu (mis. saat cutover `live`, supaya riwayat lama
+    tidak membanjiri tracker dengan `detected_on` = sekarang dan merusak MTTD). Tidak
     meng-commit: pemanggil yang memutuskan (laporan = rollback). Memanggil `expunge_all()` tiap
     batch (ratusan ribu record tak boleh menumpuk di identity map): jangan pegang objek ORM
     lintas panggilan ini."""
@@ -366,6 +372,7 @@ def promote_all(
         entries,
         mode,
         only_cve_ids=None,
+        since=since,
         batch_size=batch_size,
         limit=limit,
         progress=progress,
@@ -380,6 +387,7 @@ def promote_entry(
     *,
     batch_size: int = 500,
     limit: int | None = None,
+    since: datetime.date | None = None,
 ) -> PromoteSummary:
     """Satu entri baru di-Monitor / diaktifkan / dapat target baru: isi riwayatnya dari mirror.
 
@@ -406,6 +414,7 @@ def promote_entry(
         load_entries(session, client_id=entry.client_id),
         mode,
         only_cve_ids=candidates,
+        since=since,
         batch_size=batch_size,
         limit=limit,
         progress=None,

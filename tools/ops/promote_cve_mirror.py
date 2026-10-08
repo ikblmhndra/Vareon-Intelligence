@@ -16,6 +16,9 @@ Sifat:
     umur 3 hari).
   - Memakai kunci advisory yang sama dengan `cve.mirror_sync` dan backfill: bila ingest sedang
     jalan, skrip berhenti dan minta diulang.
+  - `--since YYYY-MM-DD` membatasi ke CVE terbit pada/setelah tanggal itu. Saat cutover `live`
+    WAJIB dipakai (mis. tanggal mulai bayangan): riwayat lama yang baru ketemu masuk tracker dengan
+    `detected_on` = sekarang, dan itu merusak MTTD dashboard.
   - `--entry` (boleh diulang) membatasi ke entri tertentu (nama, huruf kecil) -- jalur "entri baru
     di-Monitor"; `--client` membatasi ke satu client.
 
@@ -31,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import datetime
 import sys
 import time
 from collections.abc import Sequence
@@ -93,6 +97,7 @@ def run(
     mode: str,
     apply: bool,
     limit: int | None = None,
+    since: datetime.date | None = None,
     batch_size: int = 500,
     verbose: bool = False,
 ) -> tuple[PromoteSummary, float]:
@@ -116,6 +121,7 @@ def run(
             mode,  # type: ignore[arg-type]
             batch_size=batch_size,
             limit=limit,
+            since=since,
             progress=progress,
         )
         if apply:
@@ -137,6 +143,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--entry", action="append", default=[], help="hanya entri ini (nama; boleh diulang)"
     )
     ap.add_argument("--limit", type=int, default=None, help="berhenti setelah N record (uji coba)")
+    ap.add_argument(
+        "--since",
+        type=datetime.date.fromisoformat,
+        default=None,
+        help="hanya CVE terbit pada/setelah tanggal ini (YYYY-MM-DD); disarankan saat cutover live",
+    )
     ap.add_argument("--batch-size", type=int, default=500)
     args = ap.parse_args(argv)
 
@@ -163,6 +175,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 mode=args.mode,
                 apply=args.apply,
                 limit=args.limit,
+                since=args.since,
                 batch_size=args.batch_size,
                 verbose=True,
             )

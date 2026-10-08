@@ -1,6 +1,6 @@
 # Jalan pintas operasional. Detail: README.md dan docs/CUTOVER_RUNBOOK.md.
 .PHONY: help fresh-deploy fresh-status deploy backfill-published-at backfill-cve-mirror
-.PHONY: promote-cve-mirror compare-promotion-shadow
+.PHONY: promote-cve-mirror compare-promotion-shadow catalog-mapping
 
 help:
 	@echo "make fresh-deploy [ARGS='--skip-build --skip-nginx']  deploy dari nol di host ini (idempoten)"
@@ -10,6 +10,7 @@ help:
 	@echo "make backfill-cve-mirror SOURCE=/data/cvelistV5 [ARGS='--apply']  isi mirror CVE + katalog tech dari clone/zip CVE List V5 (laporan saja tanpa --apply)"
 	@echo "make promote-cve-mirror MODE=shadow|live [ARGS='--apply --entry fortigate']  promosi mirror -> techstack ke seluruh mirror (laporan saja tanpa --apply)"
 	@echo "make compare-promotion-shadow SINCE=2026-09-01 [ARGS='--client acme']  bandingkan bayangan dengan cve_tracker (hanya baca)"
+	@echo "make catalog-mapping CMD=export|import|suggest [ARGS='--file /work/mapping.json --apply']  pemetaan techstack->katalog sebagai berkas (import = laporan saja tanpa --apply)"
 	@echo "make backfill-published-at [ARGS='--apply --client acme']  isi jam publish MITRE CVE lama (laporan saja tanpa --apply)"
 
 fresh-deploy:
@@ -55,3 +56,16 @@ compare-promotion-shadow:
 	docker compose --env-file docker/stack.env --profile app run --rm --no-deps -T \
 	  -v "$(CURDIR)/tools:/tools:ro" --entrypoint python worker \
 	  /tools/ops/compare_promotion_shadow.py --since $(SINCE) $(ARGS)
+
+# Pemetaan techstack -> katalog sebagai berkas (ROADMAP #19 irisan 7): export dari dev, import ke prod
+# (kunci katalog stabil, bukan ID). MAPPING_DIR (default: direktori ini) di-mount ke /work, jadi berkas
+# ditulis/dibaca sebagai /work/<nama>. import tanpa --apply = laporan (di-rollback).
+# Contoh: make catalog-mapping CMD=export ARGS='--out /work/mapping.json'
+#         make catalog-mapping CMD=import ARGS='--file /work/mapping.json --apply'
+MAPPING_DIR ?= $(CURDIR)
+catalog-mapping:
+	@test -n "$(CMD)" || { echo "CMD=export|import|suggest wajib diisi"; exit 2; }
+	docker compose --env-file docker/stack.env --profile app run --rm --no-deps -T \
+	  -v "$(CURDIR)/tools:/tools:ro" -v "$(abspath $(MAPPING_DIR)):/work" --entrypoint python worker \
+	  /tools/ops/catalog_mapping.py $(CMD) $(ARGS)
+
