@@ -24,6 +24,11 @@ router `changelog.py`) -- parser-nya expect header persis
    skrip yang membaca file export per posisi kolom harus disesuaikan.
 
 ### Ditambah
+- **UI katalog tech** (`docs/ROADMAP.md` #19, irisan 6; tanpa perubahan backend): halaman CVE Tracker, sub-view
+  "Tech Stack" diganti **Monitored Tech** (daftar entri + target, Pause/Resume, tanda "Unmapped" untuk entri lama
+  dan tombol **Map to catalog** untuk memetakannya ke katalog; target banyak per entri), **All Tech** (vendor ->
+  produk, search-first, produk ber-1 CVE disembunyikan kecuali dicari / "Show all", tombol Monitor) dan **CVE DB**
+  (penjelajah mirror CVE dengan aksi Monitor per produk).
 - **API katalog, CVE DB, dan Monitor berbasis katalog** (`docs/ROADMAP.md` #19, irisan 5; kontrak hanya
   bertambah): `GET /api/catalog/vendors`, `/vendors/{id}/families`, `/families?q=` (jelajah menyembunyikan
   keluarga ber-1 CVE; `q`/`show_all`/yang sudah di-Monitor selalu tampil; pagination maks 100),

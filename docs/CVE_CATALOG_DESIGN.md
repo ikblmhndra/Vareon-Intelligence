@@ -1,7 +1,7 @@
 # Rancangan: mirror CVE, katalog tech, dan Monitor (ROADMAP #19)
 
 Status: **irisan 1 (resolver), 2 (skema, model, repositori), 3 (ingest), 4 (promosi + mode
-bayangan), dan 5 (API) SELESAI di branch; irisan 6-7 masih rancangan** (2026-10-07). Diturunkan dari keputusan user, hasil spike di data
+bayangan), 5 (API), dan 6 (UI) SELESAI di branch; irisan 7 (pemetaan + cutover) masih rancangan** (2026-10-07). Diturunkan dari keputusan user, hasil spike di data
 penuh (`docs/spikes/2026-10-07_cve_catalog_report_v2.md`, tafsir di `docs/CVE_TECH_MATCHING.md` 7.1.3), dan
 alur CVE Tracker yang sekarang (`docs/CVE_TRACKER_FLOW.md`; **baca bagian 10-nya**, itu invarian yang
 harus dijaga). Hal yang belum diverifikasi ditandai **[asumsi]**; yang diverifikasi ditandai **[dicek]**.
@@ -298,6 +298,27 @@ dibuang tetap utuh. Statistik katalog tidak turun (kolom `*_seen_total`).
    - Tes: `tests/integration/test_catalog_api.py` (23), `test_cve_promotion.py` (+5 `promote_entry`),
      `tests/unit/test_monitor_trigger.py`.
 6. **UI** All Tech / Monitored Tech / CVE DB.
+   **SELESAI** (`apps/web`, halaman CVE Tracker; sub-view "Tech Stack" lama diganti tiga sub-view):
+   - **Monitored Tech** (`monitored-tech-panel.tsx`, menggantikan `techstack-panel.tsx`): daftar entri dengan
+     target, status Active/Paused, exposure/hosting, filter status. Entri lama ditandai **"Unmapped · name text"**
+     dengan tombol **"Map to catalog"**; entri katalog punya **"Targets"**. "Pause"/"Resume" = nonaktif/aktif.
+     "Remove" menjelaskan bahwa CVE-nya jadi yatim dan menawarkan Pause. "Add custom (unmapped)" tetap ada.
+   - **Map to catalog / Targets** (`map-tech-dialog.tsx`): editor target satu entri. Pencarian katalog terisi nama
+     entri; hasil dipisah **Products** (paling presisi) dan **Vendors** (semua produk vendor); dialog tetap
+     terbuka supaya beberapa target ditambahkan berurutan (mis. `junos` -> tiga produk); target terakhir tidak
+     bisa dilepas (tombol nonaktif, backend juga menolak). Hasil kosong menampilkan petunjuk bahwa katalog memakai
+     nama yang CNA terbitkan (FortiGate = FortiOS), karena label entri sering beda dari nama produk.
+   - **All Tech** (`all-tech-view.tsx`): pohon vendor -> produk, search-first. Jelajah menyembunyikan produk
+     ber-1 CVE (tampil catatan "N hidden"; centang "Show all"); pencarian menampilkan semuanya, terpisah
+     Vendors dan Products. Tombol Monitor vendor / Monitor produk.
+   - **CVE DB** (`cve-db-view.tsx`): daftar CVE mirror (cari, severity, tanggal, filter produk) dan dialog detail
+     dengan aksi Monitor per produk/vendor dan "Filter DB".
+   - Bersama: `src/lib/cve/catalog.ts` (`useMonitorActions`, `useDebounced`, tipe).
+   - Verifikasi: `eslint`, `tsc`, `next build` bersih, DAN dijalankan E2E sungguhan (API asli + Postgres + Chromium):
+     login, petakan `fortigate`, tiga target untuk `junos`, target terakhir tak bisa dilepas, Pause/Resume, All
+     Tech (jelajah, buka vendor, cari produk ber-1 CVE, Monitor), CVE DB (daftar, detail, Monitor produk),
+     entri baru muncul di Monitored Tech; nol respons 4xx/5xx dari tab baru. Skrip E2E tidak di-commit (repo tidak
+     punya test runner web).
 7. Pemetaan 34 entri + cutover.
 
 ### 9.5 Keputusan irisan 5 (DIKONFIRMASI user 2026-10-08)

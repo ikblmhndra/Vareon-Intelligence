@@ -548,9 +548,10 @@ branch) dipertahankan; istilahnya kelak diturunkan dari katalog.
 `docs/CVE_CATALOG_DESIGN.md`. **Irisan 1 (resolver murni `cti_core.catalog_resolve` + 58 tes) dan irisan 2
 (skema + model + repositori katalog/mirror/target, revisi `b7e3d9a1c5f2`, 21 tes Postgres), irisan 3
 (ingest `cve.mirror_sync` + retensi + skrip backfill, flag `CVE_MIRROR__ENABLED` default mati), dan irisan 4
-(promosi mirror -> `cve_tracker` dengan mode bayangan, flag `CVE_MIRROR__PROMOTE` default `off`), dan irisan 5
-(API katalog / CVE DB / Monitor + kontrak, scope entri nonaktif) selesai di branch**; irisan 6-7 (UI, pemetaan
-34 entri + cutover) belum. Keputusan 2026-10-07: picker
+(promosi mirror -> `cve_tracker` dengan mode bayangan, flag `CVE_MIRROR__PROMOTE` default `off`), irisan 5
+(API katalog / CVE DB / Monitor + kontrak, scope entri nonaktif), dan irisan 6 (UI: Monitored Tech, All Tech,
+CVE DB, pemetaan entri lewat "Map to catalog") selesai di branch**; irisan 7 (pemetaan 34 entri oleh user
+lewat UI, mode bayangan, cutover) belum. Keputusan 2026-10-07: picker
 menyembunyikan keluarga ber-1 CVE (pencarian tetap menampilkan semuanya).
 
 ### Fase

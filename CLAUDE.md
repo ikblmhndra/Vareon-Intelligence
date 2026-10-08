@@ -92,8 +92,9 @@ pencocok nama tech, dan checklist invarian saat mengubah desain) ada di `docs/CV
 sebelum menyentuh `cve_tracker`, `techstack_entries`, atau `new_cve`. Rencana katalog tech + mirror CVE:
 `docs/ROADMAP.md` #19; rancangan teknis: `docs/CVE_CATALOG_DESIGN.md` (irisan 1-5 sudah ada di kode:
 resolver, skema katalog/mirror, ingest `cve.mirror_sync` dan promosi ke `cve_tracker` (keduanya mati secara
-default: `CVE_MIRROR__ENABLED`, `CVE_MIRROR__PROMOTE`), serta API katalog/CVE DB/Monitor; UI belum. Entri
-techstack `active=false` disembunyikan dari tab CVEs).
+default: `CVE_MIRROR__ENABLED`, `CVE_MIRROR__PROMOTE`), serta API katalog/CVE DB/Monitor dan UI-nya (Monitored Tech /
+All Tech / CVE DB). Entri techstack `active=false` disembunyikan dari tab CVEs; pemetaan entri lama ke katalog
+lewat "Map to catalog").
 
 ### API (`apps/api/src/cti_api`)
 
