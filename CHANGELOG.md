@@ -6,7 +6,11 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
-## [Unreleased] - 2026-10-06
+## [0.3.0] - 2026-10-08
+
+Katalog tech + mirror CVE (`docs/ROADMAP.md` #19), notifikasi Telegram CVE baru, satu pencocok nama tech
+bersama, dan Chromium di CI. Fitur katalog/mirror/cutover **mati secara default**: tanpa flag `CVE_MIRROR__*`
+perilaku pipeline CVE sama seperti 0.2.1. Ada 4 migrasi baru dan satu topik Telegram baru, `cve_new` (lihat di bawah).
 
 **Saat upgrade dari 0.2.1:**
 1. Jalankan migrasi (`up -d` sudah menjalankan service `migrate`): revisi baru `e8c2a4b6d1f3` (kolom
