@@ -1101,7 +1101,13 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Acknowledge */
+        /**
+         * Acknowledge
+         * @description `acknowledged_by` = username yang login, BUKAN isian dari body. Dulu body wajib memuat
+         *     `analyst_name` (warisan UI lama: kata sandi bersama + nama ketikan), sehingga siapa pun yang
+         *     login bisa mengatasnamakan analis lain dan audit log mencatat dua nama untuk satu aksi.
+         *     Klien lama yang masih mengirim `analyst_name` tetap diterima; field itu diabaikan.
+         */
         post: operations["acknowledge_api_cve__cve_id__acknowledge_post"];
         delete?: never;
         options?: never;
@@ -3162,11 +3168,6 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /** AcknowledgeBody */
-        AcknowledgeBody: {
-            /** Analyst Name */
-            analyst_name: string;
-        };
         /** AddAccountRequest */
         AddAccountRequest: {
             /**
@@ -3292,10 +3293,11 @@ export interface components {
             /** File */
             file: string;
         };
-        /** BulkAcknowledgeBody */
+        /**
+         * BulkAcknowledgeBody
+         * @description Tanpa nama analis: `acknowledged_by` selalu username yang login (lihat `acknowledge`).
+         */
         BulkAcknowledgeBody: {
-            /** Analyst Name */
-            analyst_name: string;
             /** Cve Ids */
             cve_ids: string[];
         };
@@ -7947,11 +7949,7 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AcknowledgeBody"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

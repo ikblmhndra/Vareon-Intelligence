@@ -149,8 +149,11 @@ angka, jadi `CVE-2026-1234` bukan `CVE-2026-12345`), dan status FP.
 
 ## 6. Ticket, acknowledge, false positive
 
-- **Acknowledge** (`POST /{cve_id}/acknowledge`, `bulk-acknowledge` maks 100): wajib `analyst_name`;
-  membuat/menyentuh `cve_tickets` (isi `acknowledged_by`, `acknowledge_time`, `ticket_id` bila belum ada).
+- **Acknowledge** (`POST /{cve_id}/acknowledge`, `bulk-acknowledge` maks 100): tanpa nama analis di body;
+  `acknowledged_by` = **username yang login** (sama dengan FP `marked_by` dan audit log). Dulu `analyst_name` di
+  body wajib dan disimpan apa adanya (warisan UI lama: kata sandi bersama + nama ketikan), jadi siapa pun yang
+  login bisa mengatasnamakan analis lain; klien lama yang masih mengirimnya tetap diterima, field-nya diabaikan.
+  Membuat/menyentuh `cve_tickets` (isi `acknowledged_by`, `acknowledge_time`, `ticket_id` bila belum ada).
 - **Ticket** (`PUT /{cve_id}/ticket`): `affected_asset`/`affected_version`/`fixed_version`, `asset_owner`,
   `owner_email`/`owner_team`, `active_exploitation` (isian analis, beda dari bool mesin),
   `remediation_status`/`remediation_date_plan`/`actual_remediation_date`, `escalation_required`, `comments`,

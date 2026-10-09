@@ -105,13 +105,10 @@ class CveTicketBody(BaseModel):
     closure_date: str = ""
 
 
-class AcknowledgeBody(BaseModel):
-    analyst_name: str
-
-
 class BulkAcknowledgeBody(BaseModel):
+    """Tanpa nama analis: `acknowledged_by` selalu username yang login (lihat `acknowledge`)."""
+
     cve_ids: list[str]
-    analyst_name: str
 
 
 class DraftEmailBody(BaseModel):

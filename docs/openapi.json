@@ -1,19 +1,6 @@
 {
   "components": {
     "schemas": {
-      "AcknowledgeBody": {
-        "properties": {
-          "analyst_name": {
-            "title": "Analyst Name",
-            "type": "string"
-          }
-        },
-        "required": [
-          "analyst_name"
-        ],
-        "title": "AcknowledgeBody",
-        "type": "object"
-      },
       "AddAccountRequest": {
         "properties": {
           "display_name": {
@@ -224,11 +211,8 @@
         "type": "object"
       },
       "BulkAcknowledgeBody": {
+        "description": "Tanpa nama analis: `acknowledged_by` selalu username yang login (lihat `acknowledge`).",
         "properties": {
-          "analyst_name": {
-            "title": "Analyst Name",
-            "type": "string"
-          },
           "cve_ids": {
             "items": {
               "type": "string"
@@ -238,8 +222,7 @@
           }
         },
         "required": [
-          "cve_ids",
-          "analyst_name"
+          "cve_ids"
         ],
         "title": "BulkAcknowledgeBody",
         "type": "object"
@@ -11177,6 +11160,7 @@
     },
     "/api/cve/{cve_id}/acknowledge": {
       "post": {
+        "description": "`acknowledged_by` = username yang login, BUKAN isian dari body. Dulu body wajib memuat\n`analyst_name` (warisan UI lama: kata sandi bersama + nama ketikan), sehingga siapa pun yang\nlogin bisa mengatasnamakan analis lain dan audit log mencatat dua nama untuk satu aksi.\nKlien lama yang masih mengirim `analyst_name` tetap diterima; field itu diabaikan.",
         "operationId": "acknowledge_api_cve__cve_id__acknowledge_post",
         "parameters": [
           {
@@ -11221,16 +11205,6 @@
             }
           }
         ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AcknowledgeBody"
-              }
-            }
-          },
-          "required": true
-        },
         "responses": {
           "200": {
             "content": {
