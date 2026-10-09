@@ -142,6 +142,21 @@ angka, jadi `CVE-2026-1234` bukan `CVE-2026-12345`), dan status FP.
   low + unrated = total. `date_basis` juga ada di `/stats` dan `/export`. Default API: `published` untuk list/stats,
   `detected` untuk export (laporan bulanan); UI mengirim dasar yang sama ke ketiganya (default Published).
 - `GET /tech-list`: tech distinct yang ada di tracker client (untuk dropdown filter).
+- **`GET /freshness`** ("diupdate per kapan", `services/cve_check.py`): kapan tracker terakhir dicek, per jalur yang
+  sedang mengisinya. Jalur = scraper `new_cve` (waktu dari `scraper_runs`) atau mirror CVE List V5 (`polled_at` di
+  `job_state` `cve_mirror.state`) bila promosi `live`; keduanya saat `KEEP_LEGACY_NEW_CVE` (aturannya sama dengan
+  `cti_scraper.supersede`, dikunci test). `last_checked_at` = run **sukses** terakhir (`ok`/`empty`/`partial`);
+  percobaan terakhir yang gagal (`rate_limited`, dst.) dilaporkan terpisah (`last_run_status`) supaya tidak tampak
+  seperti data baru saja diperbarui. Run `running` lebih tua dari 30 menit dianggap nyangkut (worker mati), bukan
+  sedang berjalan. Juga `newest_detected_at` dan, bila `new_since` (ISO) diberikan, `new_since` = jumlah CVE baru
+  tercatat (`detected_on`) sejak itu, di lingkup yang sama dengan tab CVEs (client aktif, tech dimonitor, tanpa FP).
+- **`POST /check-new`** (tombol cek manual; **admin**, audit `check_new_cves`): mengirim tugas cek rutin ke jalur
+  yang aktif: `scrape.run(new_cve, trigger=manual)` ke queue scraper atau `cve.mirror_sync` ke `maintenance`
+  (API hanya mengirim lewat nama, pola `services/monitor.py`). Ditolak **409** bila run masih berjalan atau scraper
+  dimatikan di control plane, **429** selama cooldown 120 dtk (`Retry-After` = sisa waktu; penolakan 409 tidak
+  memakai cooldown), **503** bila broker mati (cooldown dilepas). Catatan: cek `new_cve` memproses **semua client**
+  sekaligus (satu run global); yang per client hanya hitungan "CVE baru". Ini BUKAN "Populate now" (ROADMAP #3,
+  backfill riwayat): hanya menjalankan cek rutin sekarang juga.
 - `GET /prioritize`: skor prioritas (`services/cve_priority.py`): CVSS 30%, KEV 20%, exploited 20%, PoC
   10%, `in_tech_stack` 20% → label dan `patch_urgency`. Kalau satu CVE punya baris di beberapa client, baris client
   pemanggil yang dipakai (baris client lain hanya cadangan saat CVE belum di-track client itu).
@@ -222,7 +237,8 @@ tracker (client mana pun, urutan DB), dan tabel itu belum dibaca siapa pun.
 ## 8. Peta UI (`apps/web/src/app/(app)/cve/page.tsx`)
 
 Dua view: **CVEs** dan **Package Vulnerabilities** (`pkgvuln/`, tidak dipelajari di sini). Di dalam CVEs ada
-empat sub-view: **CVEs** (`cve-core-view`: filter bar, toolbar lookup KEV/EPSS/Exploit-DB + Export Excel,
+empat sub-view: **CVEs** (`cve-core-view`: filter bar, baris "Updated ... + Check for new CVEs" (`cve-check-new`:
+waktu cek terakhir, tombol admin yang polling sampai cek selesai lalu melaporkan jumlah CVE baru), toolbar lookup KEV/EPSS/Exploit-DB + Export Excel,
 list, `cve-detail-modal` dengan tab Ticket), **Dashboard** (`cve-dashboard-view`), **Ticketing**
 (`cve-ticketing-view`), **Tech Stack** (`techstack-panel`: tambah, hapus, ubah exposure/hosting; input teks
 "Tech name..." tanpa validasi). Browser tidak memanggil API langsung; lewat `/api/proxy/[...path]`.

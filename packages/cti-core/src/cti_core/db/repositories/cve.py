@@ -152,8 +152,8 @@ class CveTrackerRepo:
         return updated
 
 
-def _apply_filters(
-    stmt: Select[tuple[CveTracker]],
+def _apply_filters[S: Select[Any]](
+    stmt: S,
     *,
     client_id: str,
     tech: Sequence[str] | None,
@@ -164,7 +164,7 @@ def _apply_filters(
     exclude_cve_ids: Sequence[str] | None,
     ack_filter: str | None = None,
     date_basis: str = "published",
-) -> Select[tuple[CveTracker]]:
+) -> S:
     stmt = stmt.where(CveTracker.client_id == client_id)
     if exclude_cve_ids:
         stmt = stmt.where(CveTracker.cve_id.notin_(exclude_cve_ids))
@@ -757,6 +757,51 @@ class AsyncCveTrackerRepo:
         stmt = stmt.order_by(CveTracker.detected_on.asc(), CveTracker.cve_id.asc()).limit(50000)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    async def newest_detected_on(
+        self,
+        *,
+        client_id: str,
+        tech: Sequence[str] | None = None,
+        exclude_cve_ids: Sequence[str] | None = None,
+    ) -> datetime.datetime | None:
+        """`detected_on` terbaru di lingkup yang sama dengan tab CVEs (client, tech yang dimonitor,
+        tanpa FP): kapan CVE terbaru yang terlihat analis tercatat."""
+        stmt = _apply_filters(
+            select(func.max(CveTracker.detected_on)),
+            client_id=client_id,
+            tech=tech,
+            severity=None,
+            search=None,
+            date_start=None,
+            date_end=None,
+            exclude_cve_ids=exclude_cve_ids,
+        )
+        newest: datetime.datetime | None = (await self.session.execute(stmt)).scalar_one()
+        return newest
+
+    async def count_detected_since(
+        self,
+        since: datetime.datetime,
+        *,
+        client_id: str,
+        tech: Sequence[str] | None = None,
+        exclude_cve_ids: Sequence[str] | None = None,
+    ) -> int:
+        """Jumlah CVE yang tercatat (`detected_on`) sejak `since`, lingkup sama dengan
+        `newest_detected_on`. Baris yang cuma di-upsert ulang tidak ikut: `detected_on` hanya
+        diisi saat INSERT."""
+        stmt = _apply_filters(
+            select(func.count()).select_from(CveTracker),
+            client_id=client_id,
+            tech=tech,
+            severity=None,
+            search=None,
+            date_start=None,
+            date_end=None,
+            exclude_cve_ids=exclude_cve_ids,
+        ).where(CveTracker.detected_on >= since)
+        return int((await self.session.execute(stmt)).scalar_one())
 
     async def get_tech_list(self, client_id: str) -> list[str]:
         result = await self.session.execute(
