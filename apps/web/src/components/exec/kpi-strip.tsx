@@ -34,7 +34,7 @@ export function KpiStrip({ d }: { d: ExecDashboardV2 }) {
         value={uniqueTas}
         sub={<TrendSub current={uniqueTas} prev={d.prev_unique_ta} fallback="—" />}
       />
-      <StatBox label="Critical CVEs" value={critCves} sub="cisa_kev flagged" />
+      <StatBox label="Critical CVEs" value={critCves} sub="by CVSS severity" />
       <StatBox
         label="Highest-Risk Sector"
         value={topRisk ? topRisk.sector : "—"}
