@@ -822,7 +822,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Bulk Acknowledge */
+        /**
+         * Bulk Acknowledge
+         * @description `404` kalau salah satu CVE tidak ada di tracker client ini, kecuali sudah punya ticket;
+         *     tidak ada yang di-ack.
+         */
         post: operations["bulk_acknowledge_api_cve_bulk_acknowledge_post"];
         delete?: never;
         options?: never;
@@ -839,7 +843,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Set Bulk False Positive */
+        /**
+         * Set Bulk False Positive
+         * @description `404` kalau salah satu CVE tidak ada di tracker client ini; tidak ada yang ditandai.
+         */
         post: operations["set_bulk_false_positive_api_cve_bulk_false_positive_post"];
         delete?: never;
         options?: never;
@@ -1164,6 +1171,8 @@ export interface paths {
          *     `analyst_name` (warisan UI lama: kata sandi bersama + nama ketikan), sehingga siapa pun yang
          *     login bisa mengatasnamakan analis lain dan audit log mencatat dua nama untuk satu aksi.
          *     Klien lama yang masih mengirim `analyst_name` tetap diterima; field itu diabaikan.
+         *
+         *     `404` kalau CVE-nya tidak ada di tracker client ini, kecuali sudah punya ticket.
          */
         post: operations["acknowledge_api_cve__cve_id__acknowledge_post"];
         delete?: never;
@@ -1201,7 +1210,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Set False Positive */
+        /**
+         * Set False Positive
+         * @description `404` kalau CVE-nya tidak ada di tracker client ini.
+         */
         post: operations["set_false_positive_api_cve__cve_id__false_positive_post"];
         /** Remove False Positive */
         delete: operations["remove_false_positive_api_cve__cve_id__false_positive_delete"];
@@ -1219,7 +1231,11 @@ export interface paths {
         };
         /** Get Cve Ticket */
         get: operations["get_cve_ticket_api_cve__cve_id__ticket_get"];
-        /** Update Cve Ticket */
+        /**
+         * Update Cve Ticket
+         * @description `404` kalau CVE-nya tidak ada di tracker client ini, kecuali sudah punya ticket (ticket yang
+         *     ada tetap boleh diubah).
+         */
         put: operations["update_cve_ticket_api_cve__cve_id__ticket_put"];
         post?: never;
         delete?: never;

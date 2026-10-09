@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import datetime
 import io
+from collections.abc import Sequence
 
 from cti_core.db.models.cve import CveTicket, CveTracker
 from cti_core.db.repositories.auth import AsyncAuditLogRepo
@@ -364,6 +365,32 @@ async def tech_list(
     return [t for t in techs if t in shown]
 
 
+async def _require_tracked(
+    session: AsyncSession,
+    client_id: str,
+    cve_ids: Sequence[str],
+    *,
+    unless_ticketed: bool = False,
+) -> None:
+    """`404` bila ada CVE di `cve_ids` yang tidak di-track client ini; tidak ada yang ditulis.
+
+    FP, ticket, dan ack berkunci `(cve_id, client_id)` tanpa FK ke tracker, jadi tanpa pemeriksaan
+    ini id apa pun yang formatnya valid bisa dibuatkan baris: ticket yatim sejak lahir, atau
+    penanda FP untuk CVE yang tidak pernah di-track client itu. `unless_ticketed`: CVE yang SUDAH
+    punya ticket (mis. yatim sesudah purge) tetap boleh diubah, supaya ticket yang ada tidak
+    terkunci."""
+    wanted = list(dict.fromkeys(cve_ids))
+    tracked = await AsyncCveTrackerRepo(session).tracked_cve_ids(wanted, client_id)
+    missing = [c for c in wanted if c not in tracked]
+    if missing and unless_ticketed:
+        ticketed = await AsyncCveTicketRepo(session).get_by_cve_ids(missing, client_id)
+        missing = [c for c in missing if c not in ticketed]
+    if missing:
+        raise HTTPException(
+            status_code=404, detail=f"CVE not tracked by this client: {', '.join(missing)}"
+        )
+
+
 @router.post("/{cve_id}/false-positive")
 async def set_false_positive(
     cve_id: CveId,
@@ -372,7 +399,9 @@ async def set_false_positive(
     user: AuthedUser = Depends(require_auth),
     x_client_id: str | None = Header(None),
 ) -> dict[str, bool]:
+    """`404` kalau CVE-nya tidak ada di tracker client ini."""
     cid = effective_client_id(user, x_client_id)
+    await _require_tracked(session, cid, [cve_id])
     await AsyncCveFalsePositiveRepo(session).mark(cve_id, cid, marked_by=user["username"])
     await AsyncAuditLogRepo(session).write(
         username=user["username"],
@@ -412,12 +441,14 @@ async def set_bulk_false_positive(
     user: AuthedUser = Depends(require_auth),
     x_client_id: str | None = Header(None),
 ) -> dict[str, object]:
+    """`404` kalau salah satu CVE tidak ada di tracker client ini; tidak ada yang ditandai."""
     cve_ids = body.cve_ids
     if not cve_ids:
         return {"ok": False, "detail": "cve_ids required"}
     if len(cve_ids) > 100:
         return {"ok": False, "detail": "max 100 CVEs per bulk operation"}
     cid = effective_client_id(user, x_client_id)
+    await _require_tracked(session, cid, cve_ids)
     marked = await AsyncCveFalsePositiveRepo(session).bulk_mark(
         cve_ids, cid, marked_by=user["username"]
     )
@@ -725,7 +756,10 @@ async def update_cve_ticket(
     user: AuthedUser = Depends(require_auth),
     x_client_id: str | None = Header(None),
 ) -> dict[str, bool]:
+    """`404` kalau CVE-nya tidak ada di tracker client ini, kecuali sudah punya ticket (ticket yang
+    ada tetap boleh diubah)."""
     cid = effective_client_id(user, x_client_id)
+    await _require_tracked(session, cid, [cve_id], unless_ticketed=True)
     await AsyncCveTicketRepo(session).upsert(
         cve_id=cve_id,
         client_id=cid,
@@ -762,11 +796,14 @@ async def bulk_acknowledge(
     user: AuthedUser = Depends(require_auth),
     x_client_id: str | None = Header(None),
 ) -> dict[str, object]:
+    """`404` kalau salah satu CVE tidak ada di tracker client ini, kecuali sudah punya ticket;
+    tidak ada yang di-ack."""
     if not body.cve_ids:
         raise HTTPException(status_code=400, detail="cve_ids required")
     if len(body.cve_ids) > 100:
         raise HTTPException(status_code=400, detail="max 100 CVEs per bulk operation")
     cid = effective_client_id(user, x_client_id)
+    await _require_tracked(session, cid, body.cve_ids, unless_ticketed=True)
     acknowledged = await AsyncCveTicketRepo(session).bulk_acknowledge(
         body.cve_ids, cid, user["username"]
     )
@@ -791,8 +828,11 @@ async def acknowledge(
     """`acknowledged_by` = username yang login, BUKAN isian dari body. Dulu body wajib memuat
     `analyst_name` (warisan UI lama: kata sandi bersama + nama ketikan), sehingga siapa pun yang
     login bisa mengatasnamakan analis lain dan audit log mencatat dua nama untuk satu aksi.
-    Klien lama yang masih mengirim `analyst_name` tetap diterima; field itu diabaikan."""
+    Klien lama yang masih mengirim `analyst_name` tetap diterima; field itu diabaikan.
+
+    `404` kalau CVE-nya tidak ada di tracker client ini, kecuali sudah punya ticket."""
     cid = effective_client_id(user, x_client_id)
+    await _require_tracked(session, cid, [cve_id], unless_ticketed=True)
     await AsyncCveTicketRepo(session).acknowledge(cve_id, cid, user["username"])
     await AsyncAuditLogRepo(session).write(
         username=user["username"],
