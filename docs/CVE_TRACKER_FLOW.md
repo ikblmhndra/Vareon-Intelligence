@@ -141,7 +141,9 @@ angka, jadi `CVE-2026-1234` bukan `CVE-2026-12345`), dan status FP.
 - `GET /stats` punya bucket `unrated` (skor CVSS 0/NULL: CNA tidak mengisi CVSS) supaya critical + high + medium +
   low + unrated = total. `date_basis` juga ada di `/stats` dan `/export`. Default API: `published` untuk list/stats,
   `detected` untuk export (laporan bulanan); UI mengirim dasar yang sama ke ketiganya (default Published).
-- `GET /tech-list`: tech distinct yang ada di tracker client (untuk dropdown filter).
+- `GET /tech-list`: tech distinct di tracker client yang BISA tampil di tab CVEs (untuk dropdown filter): entri
+  aktif saja. Baris yatim (entri techstack-nya sudah dihapus) dan baris entri nonaktif tidak ditawarkan; client
+  tanpa entri sama sekali = tanpa filter (semua tech di tracker), sama dengan tab.
 - `GET /prioritize`: skor prioritas (`services/cve_priority.py`): CVSS 30%, KEV 20%, exploited 20%, PoC
   10%, `in_tech_stack` 20% → label dan `patch_urgency`. Kalau satu CVE punya baris di beberapa client, baris client
   pemanggil yang dipakai (baris client lain hanya cadangan saat CVE belum di-track client itu).
