@@ -251,6 +251,9 @@
       'CVE-2026-7002',
     ]),
     'dry_run': True,
+    'protected': 0,
+    'protected_cve_ids': list([
+    ]),
     'would_delete': 2,
   })
 # ---

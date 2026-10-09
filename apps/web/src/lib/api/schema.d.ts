@@ -1071,6 +1071,10 @@ export interface paths {
          *
          *     **Hanya admin/superadmin**, termasuk preview-nya: eksekusi menghapus baris `cve_tracker` dan
          *     penanda FP-nya secara permanen (client tanpa techstack: semua CVE dianggap yatim).
+         *
+         *     Baris yang sudah punya ticket (tersimpan atau di-ack) tidak pernah dihapus, supaya ticket-nya
+         *     tidak yatim dan riwayat remediasi tetap ada di dashboard. Baris itu dilaporkan di `protected`
+         *     dan `protected_cve_ids`; `would_delete`/`deleted` hanya menghitung yang benar-benar dibuang.
          */
         post: operations["purge_orphaned_api_cve_purge_orphaned_post"];
         delete?: never;

@@ -11033,7 +11033,7 @@
     },
     "/api/cve/purge-orphaned": {
       "post": {
-        "description": "Hapus CVE yang tech-nya UDAH GAK ADA di techstack aktif client ini.\n`{\"dry_run\": false}` buat beneran eksekusi -- default preview doang.\n\n**Hanya admin/superadmin**, termasuk preview-nya: eksekusi menghapus baris `cve_tracker` dan\npenanda FP-nya secara permanen (client tanpa techstack: semua CVE dianggap yatim).",
+        "description": "Hapus CVE yang tech-nya UDAH GAK ADA di techstack aktif client ini.\n`{\"dry_run\": false}` buat beneran eksekusi -- default preview doang.\n\n**Hanya admin/superadmin**, termasuk preview-nya: eksekusi menghapus baris `cve_tracker` dan\npenanda FP-nya secara permanen (client tanpa techstack: semua CVE dianggap yatim).\n\nBaris yang sudah punya ticket (tersimpan atau di-ack) tidak pernah dihapus, supaya ticket-nya\ntidak yatim dan riwayat remediasi tetap ada di dashboard. Baris itu dilaporkan di `protected`\ndan `protected_cve_ids`; `would_delete`/`deleted` hanya menghitung yang benar-benar dibuang.",
         "operationId": "purge_orphaned_api_cve_purge_orphaned_post",
         "parameters": [
           {

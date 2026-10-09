@@ -443,7 +443,11 @@ async def purge_orphaned(
     `{"dry_run": false}` buat beneran eksekusi -- default preview doang.
 
     **Hanya admin/superadmin**, termasuk preview-nya: eksekusi menghapus baris `cve_tracker` dan
-    penanda FP-nya secara permanen (client tanpa techstack: semua CVE dianggap yatim)."""
+    penanda FP-nya secara permanen (client tanpa techstack: semua CVE dianggap yatim).
+
+    Baris yang sudah punya ticket (tersimpan atau di-ack) tidak pernah dihapus, supaya ticket-nya
+    tidak yatim dan riwayat remediasi tetap ada di dashboard. Baris itu dilaporkan di `protected`
+    dan `protected_cve_ids`; `would_delete`/`deleted` hanya menghitung yang benar-benar dibuang."""
     dry_run = body.dry_run
     cid = effective_client_id(user, x_client_id)
     # Semua entri, termasuk yang nonaktif: yang disembunyikan BUKAN yatim, barisnya tidak boleh
@@ -456,7 +460,11 @@ async def purge_orphaned(
         await AsyncAuditLogRepo(session).write(
             username=user["username"],
             action="purge_orphaned_cves",
-            detail={"deleted": result.get("deleted", 0), "by_tech": result.get("by_tech")},
+            detail={
+                "deleted": result["deleted"],
+                "by_tech": result["by_tech"],
+                "protected": result["protected"],
+            },
             ip_address=request_ip(request),
         )
     await session.commit()
