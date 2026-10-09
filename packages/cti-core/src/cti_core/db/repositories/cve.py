@@ -845,28 +845,47 @@ class AsyncCveTrackerRepo:
     ) -> dict[str, Any]:
         """Port `purge_orphaned_cves()`. `active_tech_names` kosong = SEMUA
         CVE client ini dianggap orphan (port perilaku lama persis --
-        client tanpa tech stack sama sekali gak punya CVE yang "sah")."""
-        stmt = select(CveTracker).where(CveTracker.client_id == client_id)
+        client tanpa tech stack sama sekali gak punya CVE yang "sah").
+
+        Baris yang sudah punya ticket (tersimpan atau di-ack; definisi yang sama dengan
+        `tools/ops/reconcile_cve_tech.py`) TIDAK pernah dibuang: ticket berkunci
+        `(cve_id, client_id)` tanpa FK ke tracker, jadi membuang barisnya meninggalkan ticket
+        yatim dan menghapus riwayat remediasi dari dashboard (MTTA/MTTR). Baris itu dilaporkan di
+        `protected`/`protected_cve_ids`; `would_delete`/`deleted`, `by_tech`, dan `cve_ids` hanya
+        memuat baris yang (akan) dibuang. Penanda FP baris yang dilindungi juga dibiarkan: barisnya
+        tetap ada, dan tanpa penanda itu CVE-nya muncul lagi sebagai bukan-FP."""
+        has_ticket = (
+            select(CveTicket.id)
+            .where(
+                CveTicket.cve_id == CveTracker.cve_id, CveTicket.client_id == CveTracker.client_id
+            )
+            .exists()
+        )
+        stmt = select(CveTracker, has_ticket).where(CveTracker.client_id == client_id)
         if active_tech_names:
             stmt = stmt.where(CveTracker.tech.notin_(active_tech_names))
-        rows = (await self.session.execute(stmt)).scalars().all()
+        rows = (await self.session.execute(stmt)).all()
 
+        deletable = [row for row, ticketed in rows if not ticketed]
         by_tech: dict[str, int] = {}
-        cve_ids: list[str] = []
-        for row in rows:
+        for row in deletable:
             t = row.tech or "(no tech)"
             by_tech[t] = by_tech.get(t, 0) + 1
-            cve_ids.append(row.cve_id)
+        cve_ids = [row.cve_id for row in deletable]
+        protected_cve_ids = [row.cve_id for row, ticketed in rows if ticketed]
 
-        if dry_run or not rows:
-            return {
-                "dry_run": True,
-                "would_delete": len(cve_ids),
-                "by_tech": by_tech,
-                "cve_ids": cve_ids,
-            }
+        report: dict[str, Any] = {"dry_run": dry_run}
+        report["would_delete" if dry_run else "deleted"] = len(cve_ids)
+        report |= {
+            "by_tech": by_tech,
+            "cve_ids": cve_ids,
+            "protected": len(protected_cve_ids),
+            "protected_cve_ids": protected_cve_ids,
+        }
+        if dry_run or not deletable:
+            return report
 
-        for row in rows:
+        for row in deletable:
             await self.session.delete(row)
         fp_stmt = select(CveFalsePositive).where(
             CveFalsePositive.client_id == client_id, CveFalsePositive.cve_id.in_(cve_ids)
@@ -874,7 +893,7 @@ class AsyncCveTrackerRepo:
         for fp in (await self.session.execute(fp_stmt)).scalars().all():
             await self.session.delete(fp)
         await self.session.flush()
-        return {"dry_run": False, "deleted": len(cve_ids), "by_tech": by_tech, "cve_ids": cve_ids}
+        return report
 
 
 class AsyncCveTicketRepo:

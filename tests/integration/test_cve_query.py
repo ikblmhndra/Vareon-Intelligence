@@ -9,7 +9,11 @@ import pytest
 from cti_core.db.models.article import Article
 from cti_core.db.models.cve import CveTracker
 from cti_core.db.repositories.auth import AsyncClientRepo
-from cti_core.db.repositories.cve import AsyncCveFalsePositiveRepo, AsyncCveTrackerRepo
+from cti_core.db.repositories.cve import (
+    AsyncCveFalsePositiveRepo,
+    AsyncCveTicketRepo,
+    AsyncCveTrackerRepo,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 pytestmark = pytest.mark.asyncio
@@ -57,6 +61,17 @@ async def _seed(session: AsyncSession, client_id: str = "default") -> dict[str, 
         session.add(row)
     await session.flush()
     return {"critical": "CVE-2026-0001", "high": "CVE-2026-0002", "low": "CVE-2026-0003"}
+
+
+async def _seed_with_ticketed_orphans(session: AsyncSession) -> None:
+    """Tech aktif hanya WordPress. Yatim: 0002 (ticket tersimpan), 0003 (di-ack), dan 0004 (tanpa
+    ticket). Hanya 0004 yang boleh dibuang."""
+    await _seed(session)
+    session.add(CveTracker(cve_id="CVE-2026-0004", client_id="default", tech="Windows"))
+    await session.flush()
+    tickets = AsyncCveTicketRepo(session)
+    await tickets.upsert(cve_id="CVE-2026-0002", client_id="default", comments="saved only")
+    await tickets.acknowledge("CVE-2026-0003", "default", "analyst1")
 
 
 class TestAsyncCveTrackerRepo:
@@ -299,6 +314,84 @@ class TestAsyncCveTrackerRepo:
             client_id="default", active_tech_names=["WordPress"], dry_run=False
         )
         assert await fp_repo.list_cve_ids("default") == []
+
+    async def test_purge_orphaned_never_deletes_rows_that_have_a_ticket(
+        self, async_db_session: AsyncSession
+    ) -> None:
+        """Ticket (tersimpan atau di-ack) berkunci `(cve_id, client_id)` dan tidak ber-FK ke
+        tracker: membuang barisnya membuat ticket yatim, dan riwayat remediasi/ack (dasar MTTA dan
+        MTTR di dashboard) ikut hilang. Hanya baris tanpa ticket yang dibuang."""
+        await _seed_with_ticketed_orphans(async_db_session)
+        repo = AsyncCveTrackerRepo(async_db_session)
+
+        result = await repo.purge_orphaned(
+            client_id="default", active_tech_names=["WordPress"], dry_run=False
+        )
+
+        assert (result["deleted"], result["cve_ids"]) == (1, ["CVE-2026-0004"])
+        rows, _ = await repo.list_filtered(client_id="default")
+        assert {r.cve_id for r in rows} == {"CVE-2026-0001", "CVE-2026-0002", "CVE-2026-0003"}
+
+    async def test_purge_orphaned_dry_run_reports_what_it_keeps(
+        self, async_db_session: AsyncSession
+    ) -> None:
+        await _seed_with_ticketed_orphans(async_db_session)
+
+        result = await AsyncCveTrackerRepo(async_db_session).purge_orphaned(
+            client_id="default", active_tech_names=["WordPress"], dry_run=True
+        )
+
+        assert (result["would_delete"], result["cve_ids"], result["by_tech"]) == (
+            1,
+            ["CVE-2026-0004"],
+            {"Windows": 1},
+        )
+        assert result["protected"] == 2
+        assert sorted(result["protected_cve_ids"]) == ["CVE-2026-0002", "CVE-2026-0003"]
+
+    async def test_purge_orphaned_keeps_the_false_positive_mark_of_a_protected_row(
+        self, async_db_session: AsyncSession
+    ) -> None:
+        """Barisnya tetap ada, jadi penandanya juga: kalau terhapus, CVE itu muncul lagi sebagai
+        bukan-FP."""
+        await _seed_with_ticketed_orphans(async_db_session)
+        fp_repo = AsyncCveFalsePositiveRepo(async_db_session)
+        await fp_repo.mark("CVE-2026-0002", "default")
+        await fp_repo.mark("CVE-2026-0004", "default")
+
+        await AsyncCveTrackerRepo(async_db_session).purge_orphaned(
+            client_id="default", active_tech_names=["WordPress"], dry_run=False
+        )
+
+        assert await fp_repo.list_cve_ids("default") == ["CVE-2026-0002"]
+
+    async def test_purge_orphaned_judges_tickets_per_client(
+        self, async_db_session: AsyncSession
+    ) -> None:
+        await _seed(async_db_session)
+        await AsyncCveTicketRepo(async_db_session).acknowledge("CVE-2026-0002", "acme", "analyst1")
+
+        result = await AsyncCveTrackerRepo(async_db_session).purge_orphaned(
+            client_id="default", active_tech_names=["WordPress"], dry_run=False
+        )
+
+        assert (result["deleted"], result["protected"]) == (2, 0)
+
+    async def test_purge_orphaned_execute_with_nothing_deletable_says_so(
+        self, async_db_session: AsyncSession
+    ) -> None:
+        """Semua yatim dilindungi: eksekusi tetap dilaporkan sebagai eksekusi (dulu hasil kosong
+        dilaporkan sebagai `dry_run: true`)."""
+        await _seed(async_db_session)
+        tickets = AsyncCveTicketRepo(async_db_session)
+        await tickets.upsert(cve_id="CVE-2026-0002", client_id="default", comments="saved")
+        await tickets.acknowledge("CVE-2026-0003", "default", "analyst1")
+
+        result = await AsyncCveTrackerRepo(async_db_session).purge_orphaned(
+            client_id="default", active_tech_names=["WordPress"], dry_run=False
+        )
+
+        assert (result["dry_run"], result["deleted"], result["protected"]) == (False, 0, 2)
 
 
 class TestAsyncCveFalsePositiveRepo:

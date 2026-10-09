@@ -62,7 +62,8 @@ Perilaku `upsert` yang penting (`cti_core/db/repositories/cve.py`):
   di query (bagian 5).
 - Baris lama yang kemudian ditolak gate **tidak pernah dihapus** otomatis (scraper hanya upsert); pembersih
   manual: `tools/ops/reconcile_cve_tech.py` dan `POST /api/cve/purge-orphaned` (**hanya admin/superadmin**,
-  termasuk dry run; default dry run).
+  termasuk dry run; default dry run). Keduanya **tidak pernah menghapus baris yang punya ticket/ACK**; di
+  `purge-orphaned` baris itu dilaporkan di `protected`/`protected_cve_ids`.
 - Data awal sebelum cutover masuk dari dump Mongo lewat `tools/seed/fase10_cve_migrate.py` (satu kali).
 
 ## 3. Model data (`cti_core/db/models/cve.py`, `techstack.py`)
@@ -85,7 +86,8 @@ Hubungan penting:
 - `cve_tracker.tech` ↔ `techstack_entries.name` **dibandingkan sebagai teks huruf kecil** (`get_risk_context`
   memetakan `name.lower()`), bukan foreign key. Mengganti nama entri memutus join.
 - Hapus `cve_tracker` → anaknya ikut (cascade). Ticket dan FP **tidak** ikut (tidak ber-FK ke tracker):
-  `purge_orphaned` menghapus FP-nya sendiri, tidak ticket-nya.
+  `purge_orphaned` menghapus FP baris yang dibuangnya, bukan ticket-nya, karena baris yang punya ticket
+  tidak pernah dibuang (jalur ini tidak membuat ticket yatim).
 - Hapus entri techstack **tidak** menghapus CVE-nya (router sengaja tidak cascade); baris tracker tetap ada
   tapi tersembunyi dari tab CVEs sampai `purge-orphaned` dijalankan (bagian 5).
 
@@ -281,10 +283,10 @@ tidak diubah.
    filter `tech`, `purge_orphaned`, dan dashboard bergantung padanya. Kalau katalog menggantikan nama, label
    tampilan harus tetap jadi `name` (atau join diganti sekaligus di semua tempat itu).
 2. **Ticket dan FP berkunci `(cve_id, client_id)`, tidak ber-FK ke tracker**: aman dari cascade, tapi artinya
-   kalau baris tracker dibuang (retensi, `purge-orphaned`) ticketnya yatim. Promosi ke `cve_tracker` harus
-   menjaga baris yang punya ticket/ACK.
+   kalau baris tracker dibuang (retensi) ticketnya yatim. `purge-orphaned` dan `reconcile_cve_tech` sudah
+   melindungi baris yang punya ticket/ACK; promosi ke `cve_tracker` dan jalur pembuang lain harus menjaganya.
 3. Satu baris tracker = **satu tech** per (CVE, client); `upsert` menimpa `tech` tiap run.
-4. **Techstack kosong = tab CVEs tanpa filter tech** (tapi `purge_orphaned` menganggap semua yatim). **Diputuskan
+4. **Techstack kosong = tab CVEs tanpa filter tech** (tapi `purge_orphaned` menganggap semua yatim, kecuali yang punya ticket). **Diputuskan
    irisan 5**: tanpa entri sama sekali tetap tanpa filter (tidak ada perubahan perilaku); ada entri tapi semuanya
    nonaktif = kosong. Dikonfirmasi user 2026-10-08 (`docs/CVE_CATALOG_DESIGN.md` 9.5).
 5. Enrichment sweep bekerja **lintas client** dan tanpa penyaring kesegaran; skala "selalu di-enrich" untuk
