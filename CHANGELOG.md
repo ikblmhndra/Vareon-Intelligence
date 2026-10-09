@@ -6,6 +6,45 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
+## [0.4.1] - 2026-10-09
+
+Perbaikan kecil hasil pemeriksaan 0.4.0 di server dev: teks versi terdampak (`affected`) yang diawali `<=` dua kali, dua
+keterangan di UI yang tidak sesuai isinya, dan satu perbaikan runbook. **Tanpa migrasi, tanpa kunci `.env` baru, tanpa
+perubahan dependensi, tanpa perubahan kontrak API.**
+
+**Saat upgrade dari 0.4.0:**
+1. Deploy biasa (bangun ulang image api, worker, dan web). Tidak ada revisi migrasi baru.
+2. **Perbaiki teks `affected` yang sudah tersimpan, SESUDAH deploy** (kode 0.4.0 menulis ulang teks rusak untuk CVE 8 hari
+   terakhir di tiap run `new_cve`, jadi menjalankannya sebelum deploy percuma). Cek jumlahnya dulu:
+   `SELECT count(*) FROM cve_affected WHERE affected ~ '^.*?: <= [<>=!]';`. Lalu jalankan skrip (idempoten, satu transaksi
+   yang batal sendiri bila jumlah baris tidak cocok; cadangannya backup Postgres dari `make deploy` tepat sebelumnya):
+   `docker compose --env-file docker/stack.env --profile app exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -X -q' < tools/ops/fix_affected_double_operator.sql`.
+   Di dev terukur 46 baris `cve_affected` dan 14.378 record mirror `cve_records` (12% dari 117.898) yang rusak.
+   **Wajib sebelum cutover `CVE_MIRROR__PROMOTE=live`**: promosi menyalin `affected_lines` apa adanya ke tracker.
+
+### Diperbaiki
+- **Teks versi terdampak diawali `<=` dua kali** (mis. `mariadb-connector-nodejs: <= >= 3.3.0, < 3.5.4`): CNA seperti GitHub
+  menulis rentang versinya sendiri di `versions[].version`, dan parser meng-awali semuanya dengan `<=`. Teks itu tampil di
+  tab Details dan CVE DB serta mengisi Affected Version di form Ticket. Sekarang hanya versi polos (`1.12.0`, `22.7R2.4`) yang
+  diberi `<=`; teks bebas dipakai apa adanya dan `version` kosong dilewati. `lessThan` dan `lessThanOrEqual` tidak berubah.
+  Berlaku untuk `new_cve` dan sinkronisasi mirror. Baris yang sudah tersimpan: langkah upgrade 2.
+- **Exec: keterangan kartu "Critical CVEs"** tertulis "cisa_kev flagged", padahal angkanya jumlah CVE berseverity critical
+  (di dev 12, yang KEV hanya 1). Keterangannya kini "by CVSS severity"; angkanya tidak berubah.
+- **Dashboard CVE: tile "CVEs detected"** tidak menyebut CVE tanpa skor CVSS, sehingga rinciannya (89) tidak menjumlah ke total
+  (101). Kini ditutup ` · N unrated` bila ada.
+- **Runbook cutover** (`docs/CVE_CATALOG_CUTOVER.md`): perintah pantau `cve_mirror_synced` dipindah ke blok kode sendiri
+  (disalin utuh ke shell, `ok|noop` terbaca sebagai pipe), dan Tahap 3 memuat langkah membersihkan teks `affected` di mirror.
+
+### Diketahui / belum dikerjakan
+- Batas bawah rentang `lessThan` tidak ikut ditulis (`version: "3.3.0", lessThan: "3.5.4"` menjadi `< 3.5.4`, jadi rentang
+  tertutup terbaca seperti "semua versi sebelum 3.5.4"). Menambahkannya mengubah hampir semua teks `affected` tersimpan
+  (193 dari 333 di dev), jadi dipisahkan sebagai keputusan sendiri.
+- KPI "Critical CVEs" dan tabel CVE exposure di Exec menghitung tracker **semua client** (tanpa filter `client_id`) dan hanya
+  10 tech teratas (diurut jumlah critical). Apakah angkanya harus per client, atau berbasis KEV, menunggu keputusan produk.
+- Tabel "Mean time metrics by severity" dan "Monthly CVE volume by severity" di Dashboard CVE belum menyebut CVE unrated
+  (API belum mengirim bucket-nya).
+- Butir "Diketahui" 0.4.0 lainnya masih berlaku.
+
 ## [0.4.0] - 2026-10-09
 
 Perbaikan logic CVE Tracker hasil analisa end to end (scraper, repo, API, UI), ditambah info "diupdate per kapan" dan

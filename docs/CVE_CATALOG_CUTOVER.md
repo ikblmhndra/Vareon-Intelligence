@@ -73,6 +73,10 @@ menghitungnya `disabled` (tidak muncul `stale`/`dead` di digest), tampil nonakti
 1. Prod: impor pemetaan: `make catalog-mapping CMD=import ARGS='--file /work/mapping.json'` (laporan; periksa
    "masalah" = kunci katalog yang belum ada di mirror prod), lalu `--apply`.
 2. Prod: lakukan Tahap 2 singkat (bayangan + bandingkan) bila belum pernah di prod.
+   **Khusus mirror yang diisi sebelum 0.4.1**: bersihkan dulu teks `affected_lines` yang diawali `<=` ganda, karena promosi
+   menyalinnya apa adanya ke tracker (idempoten; satu transaksi dengan pengaman; mirror yang di-backfill dengan kode 0.4.1
+   ke atas sudah bersih):
+   `docker compose --env-file docker/stack.env --profile app exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -X -q' < tools/ops/fix_affected_double_operator.sql`.
 3. **Sakelar**: `CVE_MIRROR__PROMOTE=live`, restart `worker`, `beat`, `api`. `new_cve` berhenti dijadwalkan;
    `cve.mirror_sync` mulai menulis `cve_tracker` dan mengirim ringkasan Telegram untuk CVE baru <= 3 hari.
 4. Isi riwayat TANPA membanjiri: `make promote-cve-mirror MODE=live ARGS='--since <tanggal mulai bayangan>'`
