@@ -9,6 +9,7 @@ import pytest
 from cti_core.db.models.cve import CveTracker
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.auth import AsyncClientRepo
+from cti_core.db.repositories.cve import AsyncCveFalsePositiveRepo
 from cti_core.db.repositories.dashboard import AsyncDashboardRepo
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -213,13 +214,14 @@ async def test_cve_tech_severity_breakdown_unscoped(async_db_session: AsyncSessi
     await async_db_session.flush()
 
     repo = AsyncDashboardRepo(async_db_session)
-    rows = await repo.cve_tech_severity_breakdown(exclude_cve_ids=[])
+    rows = await repo.cve_tech_severity_breakdown()
     wp = next(r for r in rows if r["tech"] == "WordPress")
     assert wp["total"] == 2
     assert wp["critical"] == 1
     assert wp["high"] == 1
 
-    rows_excluded = await repo.cve_tech_severity_breakdown(exclude_cve_ids=["CVE-2026-1111"])
+    await AsyncCveFalsePositiveRepo(async_db_session).mark("CVE-2026-1111", "default")
+    rows_excluded = await repo.cve_tech_severity_breakdown()
     wp2 = next(r for r in rows_excluded if r["tech"] == "WordPress")
     assert wp2["total"] == 1
 

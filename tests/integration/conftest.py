@@ -196,6 +196,7 @@ class _FakeRedis:
 
     def __init__(self) -> None:
         self._counts: dict[str, int] = {}
+        self._ttl: dict[str, int] = {}
         self.values: dict[str, str] = {}
         """`get` -- heartbeat beat (`GET /api/scraper`); test isi langsung lewat
         `fake_redis.values[...]`."""
@@ -214,7 +215,17 @@ class _FakeRedis:
         if nx and key in self._counts:
             return False
         self._counts[key] = int(value)
+        if ex is not None:
+            self._ttl[key] = ex
         return True
+
+    async def ttl(self, key: str) -> int:
+        """Sisa umur kunci; fake ini tidak menjalankan waktu: = `ex` terakhir, -2 bila tak ada."""
+        return self._ttl.get(key, -2) if key in self._counts else -2
+
+    async def delete(self, key: str) -> int:
+        self._ttl.pop(key, None)
+        return 1 if self._counts.pop(key, None) is not None else 0
 
     async def mget(self, *keys: str) -> list[int | None]:
         return [self._counts.get(k) for k in keys]

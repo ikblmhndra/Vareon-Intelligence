@@ -167,14 +167,6 @@ class AsyncTechStackRepo:
         )
         return list(result.scalars().all())
 
-    async def inactive_names(self, client_id: str) -> set[str]:
-        result = await self.session.execute(
-            select(TechStackEntry.name).where(
-                TechStackEntry.client_id == client_id, TechStackEntry.active.is_(False)
-            )
-        )
-        return set(result.scalars().all())
-
     # ── Monitor berbasis katalog (ROADMAP #19) ────────────────────────────────────────────────
 
     async def _target_ref(

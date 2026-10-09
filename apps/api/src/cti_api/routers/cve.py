@@ -36,12 +36,14 @@ from cti_core.db.repositories.cve import (
 from cti_core.db.repositories.techstack import AsyncTechStackRepo
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_api.deps import (
     AuthedUser,
     effective_client_id,
     get_db,
+    get_redis,
     request_ip,
     require_admin,
     require_auth,
@@ -49,6 +51,7 @@ from cti_api.deps import (
 from cti_api.schemas.cve import (
     BulkAcknowledgeBody,
     BulkFalsePositiveBody,
+    CveId,
     CveListResponse,
     CveOut,
     CvePocOut,
@@ -58,8 +61,10 @@ from cti_api.schemas.cve import (
     DraftEmailBody,
     PurgeOrphanedBody,
 )
+from cti_api.schemas.cve_check import CveCheckTriggered, CveFreshness
 from cti_api.schemas.cve_dashboard import CveDashboard
 from cti_api.schemas.techstack import EXPOSURE_MULTIPLIER, HOSTING_MULTIPLIER
+from cti_api.services import cve_check as cve_check_service
 from cti_api.services import cve_dashboard as cve_dashboard_service
 from cti_api.services import cve_email as cve_email_service
 from cti_api.services import cve_export as cve_export_service
@@ -280,21 +285,88 @@ async def cve_dashboard(
     )
 
 
+@router.get("/freshness", response_model=CveFreshness)
+async def cve_freshness(
+    new_since: datetime.datetime | None = Query(None),
+    session: AsyncSession = Depends(get_db),
+    user: AuthedUser = Depends(require_auth),
+    x_client_id: str | None = Header(None),
+) -> CveFreshness:
+    """ "Diupdate per kapan" untuk tab CVEs: kapan cek terakhir yang sukses (scraper `new_cve`, atau
+    mirror CVE List V5 bila `live`), apakah ada cek yang sedang berjalan, dan CVE terbaru yang
+    tercatat. `new_since` (ISO) menambah jumlah CVE baru sejak waktu itu: dipakai UI untuk
+    melaporkan hasil cek manual. Lingkup CVE = tab CVEs (client aktif, tech dimonitor, tanpa FP)."""
+    cid = effective_client_id(user, x_client_id)
+    fp_ids = await AsyncCveFalsePositiveRepo(session).list_cve_ids(cid)
+    return await cve_check_service.get_freshness(
+        session,
+        client_id=cid,
+        tech=await _active_tech_names(session, cid),
+        exclude_cve_ids=fp_ids or None,
+        new_since=new_since,
+    )
+
+
+@router.post("/check-new", response_model=CveCheckTriggered)
+async def check_new_cves(
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(get_redis),
+    user: AuthedUser = Depends(require_admin),
+) -> CveCheckTriggered:
+    """Cek CVE terbaru SEKARANG untuk tech yang dimonitor: mengirim tugas cek rutin (scraper
+    `new_cve`, atau `cve.mirror_sync` bila mirror `live`) ke worker; hasilnya tampil lewat
+    `GET /freshness`. Hanya admin (kuota NVD/MITRE, sama dengan trigger scraper). Ditolak 409 bila
+    cek sedang berjalan atau scraper dimatikan, 429 selama cooldown, 503 bila worker tak
+    terjangkau."""
+    try:
+        result = await cve_check_service.trigger_check(session, redis)
+    except cve_check_service.CheckAlreadyRunning:
+        raise HTTPException(status_code=409, detail="A CVE check is already running") from None
+    except cve_check_service.CheckUnavailable as e:
+        raise HTTPException(status_code=409, detail=str(e)) from None
+    except cve_check_service.CheckCooldown as e:
+        raise HTTPException(
+            status_code=429,
+            detail=f"A check was triggered recently, try again in {e.seconds} seconds",
+            headers={"Retry-After": str(e.seconds)},
+        ) from None
+    except cve_check_service.CheckBrokerError:
+        raise HTTPException(
+            status_code=503, detail="Worker is unreachable (broker down), try again shortly"
+        ) from None
+    await AsyncAuditLogRepo(session).write(
+        username=user["username"],
+        action="check_new_cves",
+        detail={"sources": result.sources},
+        ip_address=request_ip(request),
+    )
+    await session.commit()
+    return result
+
+
 @router.get("/tech-list")
 async def tech_list(
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),
     x_client_id: str | None = Header(None),
 ) -> list[str]:
+    """Pilihan dropdown filter tech: tech di tracker yang BISA tampil di tab CVEs (entri aktif,
+    `_active_tech_names`). Menghapus entri techstack tidak menghapus baris `cve_tracker`-nya, dan
+    tab menyembunyikan baris yatim itu; dropdown yang menawarkannya menyesatkan karena memilihnya
+    (`tech=` eksplisit) justru memunculkan baris yatim tersebut."""
     cid = effective_client_id(user, x_client_id)
     techs = await AsyncCveTrackerRepo(session).get_tech_list(cid)
-    hidden = await AsyncTechStackRepo(session).inactive_names(cid)
-    return [t for t in techs if t not in hidden]
+    visible = await _active_tech_names(session, cid)
+    if visible is None:  # client belum punya entri: tab tanpa filter tech, dropdown juga
+        return techs
+    shown = set(visible)  # `[]` (semua nonaktif) BUKAN "tanpa filter": tidak ada yang ditawarkan
+    return [t for t in techs if t in shown]
 
 
 @router.post("/{cve_id}/false-positive")
 async def set_false_positive(
-    cve_id: str,
+    cve_id: CveId,
     request: Request,
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),
@@ -314,7 +386,7 @@ async def set_false_positive(
 
 @router.delete("/{cve_id}/false-positive")
 async def remove_false_positive(
-    cve_id: str,
+    cve_id: CveId,
     request: Request,
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),
@@ -458,7 +530,7 @@ async def bulk_exploit_lookup(
 
 @router.post("/{cve_id}/exploit-lookup")
 async def single_exploit_lookup(
-    cve_id: str,
+    cve_id: CveId,
     request: Request,
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),
@@ -626,7 +698,7 @@ async def list_cve_tickets(
 
 @router.get("/{cve_id}/ticket")
 async def get_cve_ticket(
-    cve_id: str,
+    cve_id: CveId,
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),
     x_client_id: str | None = Header(None),
@@ -638,7 +710,7 @@ async def get_cve_ticket(
 
 @router.put("/{cve_id}/ticket")
 async def update_cve_ticket(
-    cve_id: str,
+    cve_id: CveId,
     body: CveTicketBody,
     request: Request,
     session: AsyncSession = Depends(get_db),
@@ -702,7 +774,7 @@ async def bulk_acknowledge(
 
 @router.post("/{cve_id}/acknowledge")
 async def acknowledge(
-    cve_id: str,
+    cve_id: CveId,
     request: Request,
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),

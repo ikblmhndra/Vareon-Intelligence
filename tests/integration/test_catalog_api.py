@@ -547,6 +547,48 @@ async def test_all_entries_inactive_shows_nothing_but_no_entries_at_all_stays_un
     # punya entri tapi semuanya nonaktif: kosong, BUKAN tanpa filter
     assert await cve_ids(api_client, h) == []
     assert (await api_client.get("/api/cve/stats", headers=h)).json()["total"] == 0
+    assert (await api_client.get("/api/cve/tech-list", headers=h)).json() == []
+
+
+async def tab_techs(client: AsyncClient, h: dict[str, str]) -> list[str]:
+    cves = (await client.get("/api/cve", headers=h)).json()["cves"]
+    return sorted({c["tech"] for c in cves})
+
+
+async def test_tech_list_offers_only_techs_the_tab_can_show(
+    api_client: AsyncClient, api_session: AsyncSession, h: dict[str, str]
+) -> None:
+    """Dropdown filter tech = tech yang bisa muncul di tab CVEs tanpa filter. Menghapus entri
+    techstack tidak menghapus baris `cve_tracker`-nya: tab menyembunyikan baris yatim itu, tapi
+    dulu dropdown tetap menawarkannya dan memilihnya memunculkan baris yatim tersebut."""
+    alpha = (await api_client.post("/api/techstack", headers=h, json={"name": "alpha"})).json()[
+        "item"
+    ]
+    await api_client.post("/api/techstack", headers=h, json={"name": "bravo"})
+    await add_tracker(api_session, "CVE-2026-0001", "alpha")
+    await add_tracker(api_session, "CVE-2026-0002", "bravo")
+    await add_tracker(api_session, "CVE-2026-0003", "never-in-stack")
+
+    tech_list = (await api_client.get("/api/cve/tech-list", headers=h)).json()
+    assert tech_list == ["alpha", "bravo"]
+    assert tech_list == await tab_techs(api_client, h)
+
+    await api_client.delete(f"/api/techstack/{alpha['id']}", headers=h)
+    tech_list = (await api_client.get("/api/cve/tech-list", headers=h)).json()
+    assert tech_list == ["bravo"]
+    assert tech_list == await tab_techs(api_client, h)
+
+
+async def test_tech_list_without_any_entry_stays_unfiltered_like_the_tab(
+    api_client: AsyncClient, api_session: AsyncSession, h: dict[str, str]
+) -> None:
+    """Client tanpa entri techstack = tab tanpa filter tech (perilaku lama), jadi dropdown juga
+    menawarkan semua tech di tracker, bukan daftar kosong."""
+    await add_tracker(api_session, "CVE-2026-0001", "legacy-a")
+    await add_tracker(api_session, "CVE-2026-0002", "legacy-b")
+    tech_list = (await api_client.get("/api/cve/tech-list", headers=h)).json()
+    assert tech_list == ["legacy-a", "legacy-b"]
+    assert tech_list == await tab_techs(api_client, h)
 
 
 async def test_export_follows_the_same_scope_as_the_tab(

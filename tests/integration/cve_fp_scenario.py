@@ -28,7 +28,7 @@ milik `default`)."""
 TRUE_POSITIVES = [FP_IN_DEFAULT_ONLY, ONLY_IN_ACME]
 """Terurut, supaya bisa dibandingkan langsung dengan `sorted(...)`."""
 
-_TRACKED = [
+TRACKED = [
     (FP_IN_DEFAULT_ONLY, "default"),
     (FP_IN_DEFAULT_ONLY, "acme"),
     (ONLY_IN_ACME, "acme"),
@@ -36,7 +36,7 @@ _TRACKED = [
     (FP_IN_BOTH, "acme"),
     (FP_IN_ITS_ONLY_CLIENT, "acme"),
 ]
-_MARKED_FP = [
+MARKED_FP = [
     (FP_IN_DEFAULT_ONLY, "default"),
     (FP_IN_BOTH, "default"),
     (FP_IN_BOTH, "acme"),
@@ -49,8 +49,8 @@ async def seed_per_client_false_positives(session: AsyncSession) -> None:
     clients = AsyncClientRepo(session)
     await clients.ensure_default()
     await clients.create(client_id="acme", name="Acme", countries=[])
-    session.add_all(CveTracker(cve_id=c, client_id=cl, tech="nginx") for c, cl in _TRACKED)
+    session.add_all(CveTracker(cve_id=c, client_id=cl, tech="nginx") for c, cl in TRACKED)
     await session.flush()
     fp = AsyncCveFalsePositiveRepo(session)
-    for cve_id, client_id in _MARKED_FP:
+    for cve_id, client_id in MARKED_FP:
         await fp.mark(cve_id, client_id)

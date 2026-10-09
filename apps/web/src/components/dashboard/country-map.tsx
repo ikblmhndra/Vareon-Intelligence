@@ -48,8 +48,12 @@ export function CountryMap({ data, unit = "articles" }: { data: CountryDatum[]; 
     const fc = feature(topo, topo.objects.countries as GeometryCollection);
     const projection = geoNaturalEarth1().fitSize([W, H], { type: "Sphere" });
     const path = geoPath(projection);
-    return fc.features.map((f) => ({
-      id: String(f.id),
+    return fc.features.map((f, i) => ({
+      // N. Cyprus, Somaliland, dan Kosovo tidak punya `id` numerik di world-atlas. `String(undefined)`
+      // membuat ketiganya berkunci "undefined" dan React protes key kembar tiap peta dirender. Id
+      // pengganti tidak pernah cocok dengan kode ISO di `numericToCode`, jadi ketiganya tetap abu-abu
+      // seperti sebelumnya.
+      id: f.id === undefined ? `no-id-${i}` : String(f.id),
       d: path(f) ?? "",
     }));
   }, []);

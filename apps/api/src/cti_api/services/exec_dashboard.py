@@ -36,7 +36,6 @@ from collections import defaultdict
 from itertools import combinations
 from typing import Any, TypedDict
 
-from cti_core.db.repositories.cve import AsyncCveFalsePositiveRepo
 from cti_core.db.repositories.dashboard import AsyncDashboardRepo
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -118,8 +117,7 @@ async def get_exec_dashboard(
     prev_active_sectors = await repo.unique_industry_count(**prev_base)
     total = await repo.count_articles(**base)
     prev_total = await repo.count_articles(**prev_base)
-    fp_ids = await AsyncCveFalsePositiveRepo(session).list_all_cve_ids()
-    cve_raw = await repo.cve_tech_severity_breakdown(exclude_cve_ids=fp_ids, limit=10)
+    cve_raw = await repo.cve_tech_severity_breakdown(limit=10)
 
     months_set = {mo for _, mo, _ in sector_trend_raw}
     months = sorted(months_set)
@@ -404,10 +402,7 @@ async def get_exec_dashboard_v2(
     )
     prev_ta_names = await repo.distinct_threat_actors(**prev_base)
 
-    fp_ids = await AsyncCveFalsePositiveRepo(session).list_all_cve_ids()
-    cve_v2_raw = await repo.cve_tech_severity_breakdown(
-        exclude_cve_ids=fp_ids, limit=10, with_extras=True
-    )
+    cve_v2_raw = await repo.cve_tech_severity_breakdown(limit=10, with_extras=True)
 
     spike_data = await spike_service.get_spikes(
         session,
