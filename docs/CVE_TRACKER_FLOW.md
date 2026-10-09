@@ -295,6 +295,10 @@ tidak diubah.
 7. Notifikasi CVE baru bergantung pada **INSERT baris tracker** (bagian 7): jalur apa pun yang membuat baris
    (promosi dari mirror) harus lewat `upsert_with_status` + `finish_run`, bukan insert langsung.
 8. Export, `/stats`, dan dashboard harus tetap memakai **scope yang sama** dengan tab CVEs.
+9. **Ack pertama menang**: `acknowledge` (tunggal) dan `bulk_acknowledge` tidak mengubah ticket yang sudah di-ack
+   (nama, `acknowledge_time`, `ticket_id`); ack ulang tetap `200` tanpa efek. `acknowledge_time` adalah dasar MTTA di
+   dashboard. Keduanya mengambil lock penomoran SEBELUM membaca ticket, supaya dua ack bersamaan berurutan (yang
+   kedua melihat ack yang pertama). Dulu ack tunggal menimpa ketiganya.
 
 ## 11. Belum diverifikasi (jujur)
 

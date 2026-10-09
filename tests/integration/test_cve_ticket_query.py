@@ -80,16 +80,19 @@ async def test_tracking_id_for_joins_existing_ticket_ids_of_the_clients_cves(
     assert await repo.tracking_id_for(["CVE-2026-0604"], "default") is None
 
 
-async def _overlap_transactions(first_op, second_op, cve_ids):  # type: ignore[no-untyped-def]
+async def _overlap_transactions(first_op, second_op, cve_ids, before=None):  # type: ignore[no-untyped-def]
     """Jalankan dua operasi ticket di dua transaksi yang benar-benar commit dan saling tumpang
     tindih: yang pertama sudah flush tapi belum commit saat yang kedua mulai. Mengembalikan hasil
-    keduanya (exception ikut naik). Fixture lain di-rollback, jadi bersih-bersih di sini."""
+    keduanya (exception ikut naik). Fixture lain di-rollback, jadi bersih-bersih di sini.
+    `before` (opsional): di-commit lebih dulu, mis. menyimpan ticket yang kemudian di-ack."""
     from cti_core.db.engine import get_async_engine
 
     maker = async_sessionmaker(get_async_engine(), expire_on_commit=False)
     async with maker() as setup:
         created_default = await AsyncClientRepo(setup).get("default") is None
         await AsyncClientRepo(setup).ensure_default()
+        if before is not None:
+            await before(AsyncCveTicketRepo(setup))
         await setup.commit()
 
     first_flushed = asyncio.Event()
@@ -155,6 +158,23 @@ async def test_concurrent_first_time_ticket_for_same_cve_does_not_collide(
     )
     ticket_ids = {r.ticket_id for r in results if isinstance(r, CveTicket)}
     assert len(ticket_ids) <= 1
+
+
+async def test_concurrent_acknowledgements_of_one_ticket_keep_the_first(
+    _migrated_schema: None,
+) -> None:
+    """Dua analis meng-ack CVE yang sama bersamaan (ticket sudah disimpan, belum di-ack): yang
+    pertama menang. Transaksi kedua harus menunggu lock lalu melihat ack yang sudah ter-commit;
+    kalau ia membaca 'belum di-ack' sebelum yang pertama commit, ia menimpanya."""
+    first, second = await _overlap_transactions(
+        lambda repo: repo.acknowledge("CVE-2099-0004", "default", "first"),
+        lambda repo: repo.acknowledge("CVE-2099-0004", "default", "second"),
+        ("CVE-2099-0004",),
+        before=lambda repo: repo.upsert(
+            cve_id="CVE-2099-0004", client_id="default", comments="saved"
+        ),
+    )
+    assert (first.acknowledged_by, second.acknowledged_by) == ("first", "first")
 
 
 async def test_get_next_ticket_id_increments_and_is_global_across_clients(
@@ -241,6 +261,31 @@ async def test_acknowledge_reuses_ticket_id_from_existing_ticket(
     acked = await repo.acknowledge("CVE-2026-0001", "default", "analyst1")
     assert acked.ticket_id == manual.ticket_id
     assert acked.comments == "pre-ack"
+
+
+async def test_acknowledging_again_keeps_the_first_acknowledgement(
+    async_db_session: AsyncSession,
+) -> None:
+    """Ack pertama menang (sama dengan `bulk_acknowledge`): nama, waktu ack (dasar MTTA), dan nomor
+    ticket tidak berubah. Dulu ack ulang menimpa ketiganya."""
+    await _ensure_clients(async_db_session)
+    repo = AsyncCveTicketRepo(async_db_session)
+
+    ticket = await repo.acknowledge("CVE-2026-0001", "default", "analyst1")
+    kept = (ticket.acknowledged_by, ticket.acknowledge_time, ticket.ticket_id)
+    again = await repo.acknowledge("CVE-2026-0001", "default", "analyst2")
+
+    assert (again.acknowledged_by, again.acknowledge_time, again.ticket_id) == kept
+
+
+async def test_acknowledge_is_judged_per_client(async_db_session: AsyncSession) -> None:
+    await _ensure_clients(async_db_session)
+    repo = AsyncCveTicketRepo(async_db_session)
+
+    await repo.acknowledge("CVE-2026-0001", "default", "analyst1")
+    other = await repo.acknowledge("CVE-2026-0001", "acme", "analyst2")
+
+    assert other.acknowledged_by == "analyst2"
 
 
 async def test_get_acked_cve_ids_and_ack_statuses(async_db_session: AsyncSession) -> None:
