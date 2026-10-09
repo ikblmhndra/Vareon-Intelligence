@@ -1022,7 +1022,18 @@ class AsyncCveTicketRepo:
         return {cve_id: acked_by for cve_id, acked_by in result.all() if acked_by}
 
     async def acknowledge(self, cve_id: str, client_id: str, analyst_name: str) -> CveTicket:
-        existing = await self._get_for_create(cve_id, client_id)
+        """Ack pertama menang: ticket yang UDAH di-ack (`acknowledged_by` keisi) dikembalikan apa
+        adanya, jadi nama, waktu ack, dan nomor ticket-nya tidak berubah -- sama dengan
+        `bulk_acknowledge`. Dulu ack ulang menimpa ketiganya: user lain bisa mengambil alih ack
+        analis lain, dan `acknowledge_time` (dasar MTTA di dashboard) ikut bergeser.
+
+        Lock penomoran diambil SEBELUM ticket dibaca (bukan lewat `_get_for_create`, yang
+        melewatinya kalau ticket sudah ada): dua ack bersamaan atas ticket yang sama-sama belum
+        di-ack harus berurutan, supaya yang kedua melihat ack yang pertama dan tidak menimpanya."""
+        await self._lock_ticket_numbering()
+        existing = await self.get(cve_id, client_id)
+        if existing is not None and existing.acknowledged_by:
+            return existing
         ticket_id = (existing.ticket_id if existing else None) or await self.get_next_ticket_id(
             reserve=True
         )
