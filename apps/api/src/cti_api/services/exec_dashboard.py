@@ -403,6 +403,7 @@ async def get_exec_dashboard_v2(
     prev_ta_names = await repo.distinct_threat_actors(**prev_base)
 
     cve_v2_raw = await repo.cve_tech_severity_breakdown(limit=10, with_extras=True)
+    cve_kpis = await repo.cve_kpi_counts()
 
     spike_data = await spike_service.get_spikes(
         session,
@@ -497,6 +498,7 @@ async def get_exec_dashboard_v2(
         "prev_ta_names": prev_ta_names,
         "sector_risk_scores": sector_risk_scores,
         "cve_exposure_v2": cve_exposure_v2,
+        "cve_kpis": cve_kpis,
         "industry_spikes": industry_spikes,
         "victim_country_trend": victim_country_trend,
         "top_ttps": top_ttps,

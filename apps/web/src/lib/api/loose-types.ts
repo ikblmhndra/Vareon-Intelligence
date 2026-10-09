@@ -407,6 +407,10 @@ export interface ExecDashboardV2 extends ExecDashboardV1 {
   prev_ta_names: string[];
   sector_risk_scores: { sector: string; risk_score: number }[];
   cve_exposure_v2: ExecCveExposureRow[];
+  /** Total UTUH buat dua kartu KPI (BUKAN jumlah 10 tech di `cve_exposure_v2`): CVE berseverity
+   * critical, dan CVE ber-flag KEV (semua severity). Cakupannya sama dengan tabel exposure
+   * (lintas client, tanpa baris FP). */
+  cve_kpis: { critical: number; kev: number };
   industry_spikes: {
     entity: string;
     date: string;

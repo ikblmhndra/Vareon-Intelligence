@@ -54,7 +54,6 @@ function csvRow(cells: (string | number | null | undefined)[]): string {
 /** Port `exportExecCsv()` (`exec.js:687-728`). */
 export function buildExecCsv(d: import("@/lib/api/loose-types").ExecDashboardV2): string {
   const prevSet = new Set(d.prev_ta_names.map((n) => n.toLowerCase()));
-  const critCves = d.cve_exposure_v2.reduce((s, r) => s + r.critical, 0);
   const rows: string[] = [
     csvRow(["=== SECTOR RISK MATRIX ==="]),
     csvRow(["Sector", "Risk Score"]),
@@ -77,7 +76,8 @@ export function buildExecCsv(d: import("@/lib/api/loose-types").ExecDashboardV2)
     csvRow(["Total Incidents", d.total_incidents]),
     csvRow(["Active Sectors", d.active_sectors ?? d.top_sectors.length]),
     csvRow(["Unique Threat Actors", d.unique_ta_count ?? d.ta_leaderboard.length]),
-    csvRow(["Critical CVEs", critCves]),
+    csvRow(["Critical CVEs", d.cve_kpis.critical]),
+    csvRow(["KEV CVEs", d.cve_kpis.kev]),
     csvRow(["Highest Risk Sector", d.sector_risk_scores[0]?.sector ?? ""]),
     csvRow(["Highest Risk Score", d.sector_risk_scores[0]?.risk_score ?? 0]),
     csvRow(["Active Spikes", d.industry_spikes.length]),
