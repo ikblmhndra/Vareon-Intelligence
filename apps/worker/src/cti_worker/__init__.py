@@ -1,4 +1,4 @@
 """cti_worker -- Celery app: task scrape terjadwal + enrichment artikel.
 Fase 6."""
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"

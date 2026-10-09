@@ -6,6 +6,109 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
+## [0.4.0] - 2026-10-09
+
+Perbaikan logic CVE Tracker hasil analisa end to end (scraper, repo, API, UI), ditambah info "diupdate per kapan" dan
+tombol cek manual CVE baru di tab CVEs. **Tanpa migrasi, tanpa kunci `.env` baru, tanpa perubahan dependensi.**
+Beberapa perilaku API berubah dan bisa memutus skrip (lihat langkah upgrade dan Diubah). Alur lengkap CVE Tracker:
+`docs/CVE_TRACKER_FLOW.md` (ikut diperbarui).
+
+**Saat upgrade dari 0.3.0:**
+1. Tidak ada langkah khusus selain deploy biasa (bangun ulang image api, worker, dan web). Tidak ada revisi migrasi baru.
+2. **Skrip dan klien API yang memanggil CVE Tracker** perlu dicek terhadap perubahan di bawah: FP, ticket, dan ack atas
+   CVE yang tidak ada di tracker client kini `404`; ID CVE yang formatnya salah `422`; `analyst_name` di body
+   acknowledge diabaikan (nama = user yang login); `purge-orphaned` hanya admin/superadmin.
+3. **Export Excel CVE Tracker dari UI** memfilter tanggal menurut pilihan **Date by** (default *Published*). Laporan
+   bulanan berbasis tanggal deteksi harus memilih *Detected* (sebelumnya export dari UI selalu memakai tanggal deteksi).
+4. Digest `recap`, tabel CVE exposure di Exec, `crossref`, dan daftar CVE untuk monitor PoC GitHub kini menilai false
+   positive **per client**, jadi CVE yang dulu hilang karena satu client menandainya FP bisa muncul lagi (lihat Diubah).
+
+### Ditambah
+- **Info "diupdate per kapan" dan tombol cek manual CVE baru** di tab CVEs: baris di bawah filter menampilkan kapan sumber
+  terakhir dicek dengan sukses (WIB), CVE terbaru yang terdeteksi, dan kapan cek otomatis berikutnya; percobaan terakhir
+  yang gagal (mis. `rate_limited`) dilaporkan terpisah supaya data tidak tampak baru. Tombol **Check for new CVEs**
+  (admin saja) mengirim tugas yang sama dengan jadwal ke jalur yang aktif, yaitu scraper `new_cve` (default) atau mirror
+  CVE List V5 bila promosi `live`; UI menunggu hasilnya sendiri dan melaporkan "N new CVEs" (menyerah setelah 15 menit).
+  API: `GET /api/cve/freshness` dan `POST /api/cve/check-new` (audit `check_new_cves`; `409` kalau run masih berjalan
+  atau scraper dimatikan, `429` + `Retry-After` selama cooldown 120 detik, `503` kalau broker mati). Cek `new_cve`
+  memproses **semua client** sekaligus; yang per client hanya hitungan "CVE baru". Ini bukan "Populate now"
+  (`docs/ROADMAP.md` #3).
+- **Pilihan "Date by"** (`published` | `detected`, parameter `date_basis`) di `GET /api/cve`, `/stats`, dan `/export`;
+  "detected" = hari kalender WIB. UI memakainya sama untuk list, stats, dan Export Excel. Default API tidak berubah
+  (list/stats `published`, export `detected`).
+- **Ticketing**: `GET /api/cve/tickets?include_fp=` (default `false`) + field `false_positive`, checkbox **Show FP**, dan
+  badge FP.
+- **`unrated` di `GET /api/cve/stats`** (CVE tanpa skor CVSS: 0 atau NULL) dan kartu **Unrated**, supaya
+  critical + high + medium + low + unrated = total.
+- **`POST /api/cve/purge-orphaned` melaporkan `protected` dan `protected_cve_ids`** (baris yang dilewati karena punya ticket).
+- **`POST /api/cve/draft-email` menerima header `X-Client-ID`** (lihat Diubah).
+
+### Diubah
+- **False positive dinilai per baris client `(cve_id, client_id)` di semua tempat yang tidak ber-scope satu client**: lookup
+  KEV/EPSS/Exploit-DB (dulu hanya FP client `default` yang dihitung, port perilaku legacy), korelasi CVE di newsletter,
+  digest `recap`, tabel CVE exposure di `exec_dashboard`, `crossref` (CVE, PIR, TA), dan daftar CVE monitor PoC GitHub.
+  CVE hilang dari digest itu hanya bila **semua** barisnya di-FP oleh pemiliknya masing-masing, dan FP dari client yang
+  tidak men-track CVE-nya tidak berlaku untuk client lain. Efeknya: CVE dan hitungan yang dulu tersembunyi karena satu
+  client menandai FP kini tampil, dan monitor PoC melakukan beberapa pencarian GitHub tambahan.
+- **`acknowledged_by` selalu username yang login.** `analyst_name` dihapus dari body `POST /{cve_id}/acknowledge` (tanpa body)
+  dan `bulk-acknowledge` (hanya `cve_ids`); klien lama yang masih mengirimnya diterima, field-nya diabaikan. Audit tidak
+  lagi memuat nama kedua. Data lama tidak dimigrasi.
+- **Ack pertama menang**: ack tunggal tidak lagi menimpa ack yang sudah ada (nama, `acknowledge_time`, nomor ticket);
+  ack ulang tetap `200` tanpa efek, dan dua ack bersamaan berurutan. Dulu ack ulang menggeser `acknowledge_time` (dasar MTTA).
+- **FP, ticket, dan ack hanya untuk CVE yang ada di tracker client pemanggil** (`POST /{cve_id}/false-positive`,
+  `bulk-false-positive`, `PUT /{cve_id}/ticket`, `POST /{cve_id}/acknowledge`, `bulk-acknowledge`): selain itu `404`
+  (`CVE not tracked by this client: ...`; bulk semua-atau-tidak-sama-sekali). Pengecualian: CVE yang sudah punya ticket
+  (mis. yatim sesudah purge) tetap boleh diubah. `DELETE /{cve_id}/false-positive` dan `GET /{cve_id}/ticket` tidak diperiksa.
+- **`purge-orphaned`**: hanya admin/superadmin (termasuk dry run; sebelumnya analis biasa bisa mengeksekusi penghapusan
+  permanen), dan **tidak pernah menghapus baris tracker yang punya ticket atau ack** (definisi sama dengan
+  `reconcile_cve_tech`); penanda FP baris yang dilindungi dibiarkan. Eksekusi tanpa yang bisa dihapus dilaporkan
+  `dry_run: false`, `deleted: 0` (dulu `dry_run: true`).
+- **List, stats, dan Export Excel dari UI memakai satu pilihan "Date by"** (default Published); lihat langkah upgrade 3.
+- **Ticketing menyembunyikan CVE FP secara default** (mengikuti tab CVEs, dashboard, dan export); aturan UI "Acknowledge
+  dulu sebelum Mark FP" tidak berubah.
+- **Nomor ticket**: bulan dibaca dalam WIB (dulu UTC) dan penomoran diserialkan dengan `pg_advisory_xact_lock`. Tracking ID
+  di draft email memakai nomor ticket yang sudah ada (multi-CVE: dipisah koma), bukan nomor "intipan" yang tidak pernah
+  disimpan. Tab Ticket melabeli nomor sebelum disimpan sebagai pratinjau.
+- **`draft-email` dan `GET /api/cve/prioritize` ber-scope client pemanggil** (baris client lain tidak lagi memberi CVE dobel,
+  `product_name`, atau `in_tech_stack`). CVE yang belum di-track client pemanggil di `/prioritize` tetap jatuh ke baris client lain.
+- **ID CVE divalidasi dan dinormalisasi** di path dan body FP, ticket, acknowledge, exploit-lookup, dan draft-email: huruf
+  besar, spasi pinggir dibuang, format `CVE-YYYY-NNNN` (4-11 digit ASCII); selain itu `422` dan tidak ada yang ditulis
+  (satu id salah menggagalkan seluruh daftar bulk). Id kembar di bulk dihitung sekali.
+- **Dropdown Tech di tab CVEs** (`GET /api/cve/tech-list`) hanya menawarkan tech yang bisa tampil di tab (entri aktif);
+  baris yatim dan entri nonaktif tidak lagi ditawarkan. Client tanpa entri techstack tetap tanpa filter.
+
+### Diperbaiki
+- **`new_cve` melabeli jam UTC dengan `+07:00`**: `pubEndDate` mundur 7 jam, CVE baru telat tercatat dan MTTD membengkak.
+  Sekarang offset `+00:00`.
+- **Mention artikel memakai substring**: `CVE-2026-1234` cocok ke `CVE-2026-12345`. Sekarang batas angka.
+- **Nomor ticket bisa kembar**: dua request bersamaan membaca nomor maksimum yang sama dan yang kedua gagal
+  `IntegrityError` (500); ack pertama atas ticket yang sama-sama belum ada juga bisa bertabrakan.
+- **`bulk-acknowledge` dan `bulk-false-positive` dengan id kembar** kena `IntegrityError`.
+- **`/stats`: jumlah bucket tidak sama dengan `total`** untuk CVE tanpa skor CVSS (kini bucket `unrated`).
+- **Korelasi CVE di newsletter** (`cve_mentions`, `possibly_exploited_wild`) memakai FP client `default` saja; kini
+  true positive per baris client, sama dengan lookup KEV/EPSS/Exploit-DB.
+- **Dashboard: console React "two children with the same key"**: peta negara memberi key `"undefined"` untuk N. Cyprus,
+  Somaliland, dan Kosovo (tanpa id numerik di `world-atlas`).
+- **Form Ticket**: Acknowledge me-remount form sehingga isian yang belum disimpan hilang; ticket kosong yang baru dibuat
+  menghapus prefill Affected Asset/Version; Save/Acknowledge tidak me-refresh Ticketing, dashboard, dan list CVE;
+  Ticketing salah menampilkan "CVE sudah di-purge" untuk CVE yang techstack-nya dihapus; tautan "NVD" bisa mengarah
+  ke Tenable (label kini mengikuti host).
+
+### Diketahui / belum dikerjakan
+- Lookup KEV, EPSS, dan Exploit-DB masih terbuka untuk semua analis (`require_auth`); Exploit-DB bulk berat dan bisa
+  dipicu analis mana pun.
+- "Severity" punya tiga versi di UI (mentah, "effective" yang naik satu tingkat bila ada PoC, dan `adjusted_risk_score`);
+  `cisa_kev_detail` (termasuk `due_date`) tersimpan tapi tidak ditampilkan.
+- Flag `cisa_kev`/`active_exploitation` tidak pernah dikembalikan ke `false` kalau CISA menghapus entri dari katalog KEV.
+- `trending_cve` hanya mencari `CVE-<tahun berjalan>-`; CVE tahun lalu yang sedang ramai tidak tertangkap (menambahkannya
+  menambah biaya tweet di X API dan sintaks query perlu divalidasi ke API asli).
+- Tidak ada kode yang menulis `cve_threat_actors` dan `cve_ttps`, jadi cabang TA/TTP di `crossref` tanpa data.
+- `recap` dan `crossref` mengembalikan satu baris per client: CVE yang di-track dua client muncul dua kali.
+- Status "Resolved" tanpa `actual_remediation_date` tidak masuk MTTR (terlihat dari `n` di dashboard); validasi isian ticket:
+  `docs/ROADMAP.md` #18.
+- Ticket yatim dari `purge-orphaned` versi lama tidak dibersihkan otomatis (cek: ticket tanpa baris tracker).
+- `cve_newsletter_mentions` hanya ditulis ke satu baris tracker (client mana pun) dan belum dibaca siapa pun.
+
 ## [0.3.0] - 2026-10-08
 
 Katalog tech + mirror CVE (`docs/ROADMAP.md` #19), notifikasi Telegram CVE baru, satu pencocok nama tech
