@@ -352,10 +352,17 @@ async def tech_list(
     user: AuthedUser = Depends(require_auth),
     x_client_id: str | None = Header(None),
 ) -> list[str]:
+    """Pilihan dropdown filter tech: tech di tracker yang BISA tampil di tab CVEs (entri aktif,
+    `_active_tech_names`). Menghapus entri techstack tidak menghapus baris `cve_tracker`-nya, dan
+    tab menyembunyikan baris yatim itu; dropdown yang menawarkannya menyesatkan karena memilihnya
+    (`tech=` eksplisit) justru memunculkan baris yatim tersebut."""
     cid = effective_client_id(user, x_client_id)
     techs = await AsyncCveTrackerRepo(session).get_tech_list(cid)
-    hidden = await AsyncTechStackRepo(session).inactive_names(cid)
-    return [t for t in techs if t not in hidden]
+    visible = await _active_tech_names(session, cid)
+    if visible is None:  # client belum punya entri: tab tanpa filter tech, dropdown juga
+        return techs
+    shown = set(visible)  # `[]` (semua nonaktif) BUKAN "tanpa filter": tidak ada yang ditawarkan
+    return [t for t in techs if t in shown]
 
 
 @router.post("/{cve_id}/false-positive")

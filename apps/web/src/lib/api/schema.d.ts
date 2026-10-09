@@ -1103,7 +1103,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Tech List */
+        /**
+         * Tech List
+         * @description Pilihan dropdown filter tech: tech di tracker yang BISA tampil di tab CVEs (entri aktif,
+         *     `_active_tech_names`). Menghapus entri techstack tidak menghapus baris `cve_tracker`-nya, dan
+         *     tab menyembunyikan baris yatim itu; dropdown yang menawarkannya menyesatkan karena memilihnya
+         *     (`tech=` eksplisit) justru memunculkan baris yatim tersebut.
+         */
         get: operations["tech_list_api_cve_tech_list_get"];
         put?: never;
         post?: never;

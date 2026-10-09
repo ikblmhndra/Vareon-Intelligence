@@ -11319,6 +11319,7 @@
     },
     "/api/cve/tech-list": {
       "get": {
+        "description": "Pilihan dropdown filter tech: tech di tracker yang BISA tampil di tab CVEs (entri aktif,\n`_active_tech_names`). Menghapus entri techstack tidak menghapus baris `cve_tracker`-nya, dan\ntab menyembunyikan baris yatim itu; dropdown yang menawarkannya menyesatkan karena memilihnya\n(`tech=` eksplisit) justru memunculkan baris yatim tersebut.",
         "operationId": "tech_list_api_cve_tech_list_get",
         "parameters": [
           {
