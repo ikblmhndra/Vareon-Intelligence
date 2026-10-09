@@ -37,6 +37,7 @@ from cti_core.db.models.article import (
 )
 from cti_core.db.models.cve import CveTracker
 from cti_core.db.models.ioc import IOC
+from cti_core.db.repositories.cve import is_false_positive_row
 from cti_core.db.repositories.ttp_catalog import canonical_ttp_name
 
 
@@ -497,12 +498,13 @@ class AsyncDashboardRepo:
     # ── CVE tech/severity breakdown (unscoped, exec_dashboard) ─────────────
 
     async def cve_tech_severity_breakdown(
-        self, *, exclude_cve_ids: Sequence[str], limit: int = 10, with_extras: bool = False
+        self, *, limit: int = 10, with_extras: bool = False
     ) -> list[dict[str, Any]]:
         """Lintas client, TANPA filter `client_id` -- port apa adanya dari
         `exec_dashboard_service.py`/`exec_dashboard_v2_service.py` lama
         (dua-duanya query `cve_tracker` polos, gak pernah nge-scope client
-        buat widget dashboard eksekutif ini)."""
+        buat widget dashboard eksekutif ini). Baris yang ditandai FP oleh
+        clientnya sendiri tidak dihitung (`is_false_positive_row`)."""
         upper_sev = func.upper(CveTracker.cve_severity)
         cols: list[Any] = [
             CveTracker.tech,
@@ -516,9 +518,7 @@ class AsyncDashboardRepo:
                 func.max(CveTracker.cve_score),
                 func.sum(cast(CveTracker.poc_available, Integer)),
             ]
-        stmt = select(*cols)
-        if exclude_cve_ids:
-            stmt = stmt.where(CveTracker.cve_id.not_in(exclude_cve_ids))
+        stmt = select(*cols).where(~is_false_positive_row())
         stmt = stmt.group_by(CveTracker.tech).order_by(cols[2].desc(), cols[1].desc()).limit(limit)
         rows = (await self.session.execute(stmt)).all()
         out = []

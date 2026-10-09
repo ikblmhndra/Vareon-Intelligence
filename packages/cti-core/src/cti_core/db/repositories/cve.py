@@ -23,7 +23,7 @@ import zoneinfo
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import Row, Select, func, or_, select, text
+from sqlalchemy import ColumnElement, Row, Select, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -55,6 +55,23 @@ def _date_column(basis: str) -> Any:
     if basis == "detected":
         return func.date(func.timezone(_TICKET_TZ.key, CveTracker.detected_on))
     return CveTracker.published
+
+
+def is_false_positive_row() -> ColumnElement[bool]:
+    """EXISTS: baris `cve_tracker` ini ditandai FP oleh client PEMILIK barisnya.
+
+    FP berkunci `(cve_id, client_id)`, jadi yang menentukan penanda milik client baris itu sendiri.
+    Penanda client lain, termasuk client yang tidak men-track CVE-nya, tidak berlaku. Dipakai query
+    LINTAS client (digest global, enrichment, monitor PoC) lewat `~is_false_positive_row()`; query
+    per client cukup memakai `AsyncCveFalsePositiveRepo.list_cve_ids(client_id)`."""
+    return (
+        select(CveFalsePositive.id)
+        .where(
+            CveFalsePositive.cve_id == CveTracker.cve_id,
+            CveFalsePositive.client_id == CveTracker.client_id,
+        )
+        .exists()
+    )
 
 
 _SORT_FIELDS = {
@@ -206,14 +223,6 @@ class AsyncCveFalsePositiveRepo:
         )
         return list(result.scalars().all())
 
-    async def list_all_cve_ids(self) -> list[str]:
-        """Lintas client, TANPA filter -- port apa adanya dari
-        `cross_reference_service.py` (`db[FP_COLLECTION].distinct("cve_id")`,
-        gak pernah nge-scope client). Dipakai `crossref` (Bagian 3) doang,
-        endpoint FP utama (`cve.py`) tetap per-client via `list_cve_ids`."""
-        result = await self.session.execute(select(CveFalsePositive.cve_id).distinct())
-        return list(result.scalars().all())
-
     async def mark(self, cve_id: str, client_id: str, marked_by: str | None = None) -> None:
         existing = await self.session.execute(
             select(CveFalsePositive).where(
@@ -257,37 +266,40 @@ class AsyncCveTrackerRepo:
         result = await self.session.execute(select(CveTracker.cve_id).distinct())
         return list(result.scalars().all())
 
-    async def list_registered_on(
-        self, day: datetime.date, *, exclude_cve_ids: Sequence[str], limit: int = 50
-    ) -> list[CveTracker]:
+    async def list_registered_on(self, day: datetime.date, *, limit: int = 50) -> list[CveTracker]:
         """Port `_collect_cves()` (`recap_service.py`, Fase 7.3 router
         `recap`, Bagian 5) -- CVE yang PERTAMA ke-track/kedetek/dipublish
         tanggal ini (OR tiga kolom tanggal, port apa adanya dari kode
         lama), lintas client (recap emang digest GLOBAL, bukan per-client).
-        `exclude_cve_ids` global juga (bukan per-client) -- `recap` gak
-        pernah nge-scope client sama sekali."""
+        Baris yang ditandai FP oleh clientnya sendiri tidak ikut (`is_false_positive_row`);
+        baris client lain untuk CVE yang sama tetap ikut."""
         stmt = select(CveTracker).where(
             or_(
                 func.date(CveTracker.registered_date) == day,
                 func.date(CveTracker.detected_on) == day,
                 CveTracker.published == day,
-            )
+            ),
+            ~is_false_positive_row(),
         )
-        if exclude_cve_ids:
-            stmt = stmt.where(CveTracker.cve_id.not_in(exclude_cve_ids))
         stmt = stmt.limit(limit)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
-    async def get_by_cve_id_any_client(self, cve_id: str) -> CveTracker | None:
+    async def get_by_cve_id_any_client(
+        self, cve_id: str, *, exclude_false_positives: bool = False
+    ) -> CveTracker | None:
         """Case-insensitive, lintas client, ambil SATU baris pertama yang
         cocok -- port apa adanya dari `cross_reference_service.get_cve_crossrefs()`
         (`find_one` tanpa client filter). Kalau CVE yang sama ke-track di
         lebih dari satu client, baris yang kepilih arbitrer (tergantung
-        urutan default DB) -- sama ambiguitas kayak kode lama."""
-        result = await self.session.execute(
-            select(CveTracker).where(func.lower(CveTracker.cve_id) == cve_id.lower())
-        )
+        urutan default DB) -- sama ambiguitas kayak kode lama.
+
+        `exclude_false_positives`: hanya baris yang TIDAK ditandai FP oleh clientnya sendiri,
+        jadi baris yang kepilih tak pernah baris yang sudah dianggap salah oleh pemiliknya."""
+        stmt = select(CveTracker).where(func.lower(CveTracker.cve_id) == cve_id.lower())
+        if exclude_false_positives:
+            stmt = stmt.where(~is_false_positive_row())
+        result = await self.session.execute(stmt)
         return result.scalars().first()
 
     async def add_newsletter_mention(
@@ -331,16 +343,11 @@ class AsyncCveTrackerRepo:
             fp_ids = set(await AsyncCveFalsePositiveRepo(self.session).list_cve_ids(client_id))
             return [cid for cid in all_ids if cid not in fp_ids]
 
-        is_fp = (
-            select(CveFalsePositive.id)
-            .where(
-                CveFalsePositive.cve_id == CveTracker.cve_id,
-                CveFalsePositive.client_id == CveTracker.client_id,
-            )
-            .exists()
-        )
         result = await self.session.execute(
-            select(CveTracker.cve_id).where(~is_fp).distinct().order_by(CveTracker.cve_id)
+            select(CveTracker.cve_id)
+            .where(~is_false_positive_row())
+            .distinct()
+            .order_by(CveTracker.cve_id)
         )
         return list(result.scalars().all())
 
@@ -438,18 +445,18 @@ class AsyncCveTrackerRepo:
                         )  # port apa adanya: exploit-db bisa balikin URL kembar
         await self.session.flush()
 
-    async def get_by_threat_actor_exact(
-        self, actor_name: str, *, exclude_cve_ids: Sequence[str]
-    ) -> list[CveTracker]:
+    async def get_by_threat_actor_exact(self, actor_name: str) -> list[CveTracker]:
         """Exact-match (case-insensitive) `threat_actors`, urut `cve_score`
-        desc, limit 30 -- port `cross_reference_service.get_ta_crossrefs()`."""
+        desc, limit 30 -- port `cross_reference_service.get_ta_crossrefs()`.
+        Baris yang ditandai FP oleh clientnya sendiri tidak ikut (`is_false_positive_row`)."""
         stmt = (
             select(CveTracker)
             .join(CveThreatActor)
-            .where(func.lower(CveThreatActor.threat_actor) == actor_name.lower())
+            .where(
+                func.lower(CveThreatActor.threat_actor) == actor_name.lower(),
+                ~is_false_positive_row(),
+            )
         )
-        if exclude_cve_ids:
-            stmt = stmt.where(CveTracker.cve_id.notin_(exclude_cve_ids))
         stmt = stmt.order_by(CveTracker.cve_score.desc().nulls_last()).limit(30)
         result = await self.session.execute(stmt)
         return list(result.scalars().unique().all())
@@ -460,14 +467,14 @@ class AsyncCveTrackerRepo:
         threat_actors: Sequence[str],
         ttp_ids: Sequence[str],
         tech_list: Sequence[str],
-        exclude_cve_ids: Sequence[str],
     ) -> list[CveTracker]:
         """CVE yang overlap TA/TTP/industri PIR -- port
         `cross_reference_service.get_pir_crossrefs()`. Kosongin ketiga
         kriteria (`threat_actors`/`ttp_ids`/`tech_list`) -> gak ada OR
-        clause -> query balik ke `cve_id NOT IN fp` doang (match-all),
-        port perilaku sama persis `cve_conditions = []` -> `$or` gak
-        keisi di kode lama."""
+        clause -> query balik ke "bukan FP" doang (match-all), port
+        perilaku sama persis `cve_conditions = []` -> `$or` gak keisi di
+        kode lama. FP = baris yang ditandai FP oleh clientnya sendiri
+        (`is_false_positive_row`)."""
         conditions = []
         if threat_actors:
             lowered = [t.lower() for t in threat_actors]
@@ -485,9 +492,7 @@ class AsyncCveTrackerRepo:
         if tech_list:
             conditions.append(CveTracker.tech.in_(tech_list))
 
-        stmt = select(CveTracker)
-        if exclude_cve_ids:
-            stmt = stmt.where(CveTracker.cve_id.notin_(exclude_cve_ids))
+        stmt = select(CveTracker).where(~is_false_positive_row())
         if conditions:
             stmt = stmt.where(or_(*conditions))
         stmt = stmt.order_by(CveTracker.cve_score.desc().nulls_last()).limit(50)
