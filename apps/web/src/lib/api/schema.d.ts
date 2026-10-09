@@ -847,6 +847,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cve/check-new": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check New Cves
+         * @description Cek CVE terbaru SEKARANG untuk tech yang dimonitor: mengirim tugas cek rutin (scraper
+         *     `new_cve`, atau `cve.mirror_sync` bila mirror `live`) ke worker; hasilnya tampil lewat
+         *     `GET /freshness`. Hanya admin (kuota NVD/MITRE, sama dengan trigger scraper). Ditolak 409 bila
+         *     cek sedang berjalan atau scraper dimatikan, 429 selama cooldown, 503 bila worker tak
+         *     terjangkau.
+         */
+        post: operations["check_new_cves_api_cve_check_new_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/cve/cisa-lookup": {
         parameters: {
             query?: never;
@@ -963,6 +987,29 @@ export interface paths {
          *     (legacy: bug, gak pernah nge-scope sama sekali).
          */
         get: operations["export_cves_api_cve_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cve/freshness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cve Freshness
+         * @description "Diupdate per kapan" untuk tab CVEs: kapan cek terakhir yang sukses (scraper `new_cve`, atau
+         *     mirror CVE List V5 bila `live`), apakah ada cek yang sedang berjalan, dan CVE terbaru yang
+         *     tercatat. `new_since` (ISO) menambah jumlah CVE baru sejak waktu itu: dipakai UI untuk
+         *     melaporkan hasil cek manual. Lingkup CVE = tab CVEs (client aktif, tech dimonitor, tanpa FP).
+         */
+        get: operations["cve_freshness_api_cve_freshness_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3425,6 +3472,47 @@ export interface components {
             /** Name */
             name: string;
         };
+        /**
+         * CveCheckSource
+         * @description Satu jalur yang mengisi `cve_tracker`: scraper `new_cve` (default) atau mirror CVE List V5
+         *     (bila promosi mirror `live`).
+         */
+        CveCheckSource: {
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Id
+             * @enum {string}
+             */
+            id: "new_cve" | "mirror";
+            /** Label */
+            label: string;
+            /** Last Checked At */
+            last_checked_at: string | null;
+            /** Last Run Finished At */
+            last_run_finished_at: string | null;
+            /** Last Run Status */
+            last_run_status: string | null;
+            /** Next Check At */
+            next_check_at: string | null;
+            /** Running */
+            running: boolean;
+        };
+        /** CveCheckTriggered */
+        CveCheckTriggered: {
+            /** Sources */
+            sources: ("new_cve" | "mirror")[];
+            /**
+             * Status
+             * @constant
+             */
+            status: "queued";
+            /**
+             * Triggered At
+             * Format: date-time
+             */
+            triggered_at: string;
+        };
         /** CveDashboard */
         CveDashboard: {
             /** By Severity */
@@ -3538,6 +3626,21 @@ export interface components {
             vendor: string;
             /** Vendor Id */
             vendor_id: number;
+        };
+        /** CveFreshness */
+        CveFreshness: {
+            /** Last Checked At */
+            last_checked_at: string | null;
+            /** Last Run Finished At */
+            last_run_finished_at: string | null;
+            /** New Since */
+            new_since: number | null;
+            /** Newest Detected At */
+            newest_detected_at: string | null;
+            /** Running */
+            running: boolean;
+            /** Sources */
+            sources: components["schemas"]["CveCheckSource"][];
         };
         /** CveListResponse */
         CveListResponse: {
@@ -7510,6 +7613,37 @@ export interface operations {
             };
         };
     };
+    check_new_cves_api_cve_check_new_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CveCheckTriggered"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     cisa_kev_lookup_api_cve_cisa_lookup_post: {
         parameters: {
             query?: never;
@@ -7709,6 +7843,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cve_freshness_api_cve_freshness_get: {
+        parameters: {
+            query?: {
+                new_since?: string | null;
+            };
+            header?: {
+                "x-client-id"?: string | null;
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CveFreshness"];
                 };
             };
             /** @description Validation Error */

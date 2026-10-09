@@ -152,8 +152,8 @@ class CveTrackerRepo:
         return updated
 
 
-def _apply_filters(
-    stmt: Select[tuple[CveTracker]],
+def _apply_filters[S: Select[Any]](
+    stmt: S,
     *,
     client_id: str,
     tech: Sequence[str] | None,
@@ -164,7 +164,7 @@ def _apply_filters(
     exclude_cve_ids: Sequence[str] | None,
     ack_filter: str | None = None,
     date_basis: str = "published",
-) -> Select[tuple[CveTracker]]:
+) -> S:
     stmt = stmt.where(CveTracker.client_id == client_id)
     if exclude_cve_ids:
         stmt = stmt.where(CveTracker.cve_id.notin_(exclude_cve_ids))
@@ -240,7 +240,9 @@ class AsyncCveFalsePositiveRepo:
         self, cve_ids: Sequence[str], client_id: str, marked_by: str | None = None
     ) -> int:
         existing = set(await self.list_cve_ids(client_id))
-        to_add = [cid for cid in cve_ids if cid not in existing]
+        # `dict.fromkeys`: id kembar dalam satu permintaan cukup dihitung sekali (dua baris
+        # `(cve_id, client_id)` yang sama = IntegrityError).
+        to_add = [cid for cid in dict.fromkeys(cve_ids) if cid not in existing]
         for cid in to_add:
             self.session.add(CveFalsePositive(cve_id=cid, client_id=client_id, marked_by=marked_by))
         await self.session.flush()
@@ -756,6 +758,51 @@ class AsyncCveTrackerRepo:
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
+    async def newest_detected_on(
+        self,
+        *,
+        client_id: str,
+        tech: Sequence[str] | None = None,
+        exclude_cve_ids: Sequence[str] | None = None,
+    ) -> datetime.datetime | None:
+        """`detected_on` terbaru di lingkup yang sama dengan tab CVEs (client, tech yang dimonitor,
+        tanpa FP): kapan CVE terbaru yang terlihat analis tercatat."""
+        stmt = _apply_filters(
+            select(func.max(CveTracker.detected_on)),
+            client_id=client_id,
+            tech=tech,
+            severity=None,
+            search=None,
+            date_start=None,
+            date_end=None,
+            exclude_cve_ids=exclude_cve_ids,
+        )
+        newest: datetime.datetime | None = (await self.session.execute(stmt)).scalar_one()
+        return newest
+
+    async def count_detected_since(
+        self,
+        since: datetime.datetime,
+        *,
+        client_id: str,
+        tech: Sequence[str] | None = None,
+        exclude_cve_ids: Sequence[str] | None = None,
+    ) -> int:
+        """Jumlah CVE yang tercatat (`detected_on`) sejak `since`, lingkup sama dengan
+        `newest_detected_on`. Baris yang cuma di-upsert ulang tidak ikut: `detected_on` hanya
+        diisi saat INSERT."""
+        stmt = _apply_filters(
+            select(func.count()).select_from(CveTracker),
+            client_id=client_id,
+            tech=tech,
+            severity=None,
+            search=None,
+            date_start=None,
+            date_end=None,
+            exclude_cve_ids=exclude_cve_ids,
+        ).where(CveTracker.detected_on >= since)
+        return int((await self.session.execute(stmt)).scalar_one())
+
     async def get_tech_list(self, client_id: str) -> list[str]:
         result = await self.session.execute(
             select(CveTracker.tech)
@@ -1050,7 +1097,10 @@ class AsyncCveTicketRepo:
         nomor ticket sama (legacy Mongo aman dari ini otomatis karena
         tiap `update_one` langsung commit; SQLAlchemy session butuh
         flush eksplisit). Lock penomoran diambil SEBELUM membaca ticket yang ada, supaya
-        pembacaan itu tidak basi terhadap transaksi lain yang sedang membuat ticket."""
+        pembacaan itu tidak basi terhadap transaksi lain yang sedang membuat ticket. `cve_ids`
+        kembar dihitung sekali (iterasi kedua akan menyisipkan ticket `(cve_id, client_id)` yang
+        sama dan kena IntegrityError)."""
+        cve_ids = list(dict.fromkeys(cve_ids))
         await self._lock_ticket_numbering()
         result = await self.session.execute(
             select(CveTicket).where(CveTicket.client_id == client_id, CveTicket.cve_id.in_(cve_ids))

@@ -17,6 +17,7 @@ aggregate lain yang beneran independen.
 from __future__ import annotations
 
 import datetime
+from collections.abc import Sequence
 from typing import Any, cast
 
 from sqlalchemy import delete, func, select
@@ -222,6 +223,35 @@ class AsyncScraperRunRepo:
     async def get_by_run_id(self, run_id: str) -> ScraperRun | None:
         result = await self.session.execute(select(ScraperRun).where(ScraperRun.run_id == run_id))
         return result.scalar_one_or_none()
+
+    async def latest_finished(
+        self, scraper_id: str, *, statuses: Sequence[str] | None = None
+    ) -> ScraperRun | None:
+        """Run terbaru `scraper_id` yang SUDAH selesai (`finished_at` terisi), opsional dibatasi ke
+        `statuses`. Beda dari `list_recent_by_scraper()[0]`: tidak terpengaruh run yang sedang
+        berjalan, dan bisa melompati run gagal untuk mencari yang terakhir sukses."""
+        stmt = select(ScraperRun).where(
+            ScraperRun.scraper_id == scraper_id, ScraperRun.finished_at.is_not(None)
+        )
+        if statuses is not None:
+            stmt = stmt.where(ScraperRun.status.in_(statuses))
+        result = await self.session.execute(stmt.order_by(ScraperRun.finished_at.desc()).limit(1))
+        return result.scalar_one_or_none()
+
+    async def has_running(self, scraper_id: str, *, started_after: datetime.datetime) -> bool:
+        """Ada run `running` yang mulai sesudah `started_after`? Worker yang mati meninggalkan baris
+        `running` selamanya, jadi caller memberi batas umur (`started_after`) supaya yang nyangkut
+        tidak dianggap berjalan."""
+        stmt = (
+            select(ScraperRun.id)
+            .where(
+                ScraperRun.scraper_id == scraper_id,
+                ScraperRun.status == "running",
+                ScraperRun.started_at > started_after,
+            )
+            .limit(1)
+        )
+        return (await self.session.execute(stmt)).first() is not None
 
     async def latest_per_scraper(self) -> dict[str, ScraperRun]:
         """SATU run terbaru per `scraper_id` -- `DISTINCT ON` Postgres

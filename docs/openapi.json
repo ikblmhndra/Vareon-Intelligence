@@ -598,6 +598,122 @@
         "title": "ClientUpdate",
         "type": "object"
       },
+      "CveCheckSource": {
+        "description": "Satu jalur yang mengisi `cve_tracker`: scraper `new_cve` (default) atau mirror CVE List V5\n(bila promosi mirror `live`).",
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "id": {
+            "enum": [
+              "new_cve",
+              "mirror"
+            ],
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "last_checked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Checked At"
+          },
+          "last_run_finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run Finished At"
+          },
+          "last_run_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run Status"
+          },
+          "next_check_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Check At"
+          },
+          "running": {
+            "title": "Running",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "enabled",
+          "last_checked_at",
+          "last_run_finished_at",
+          "last_run_status",
+          "running",
+          "next_check_at"
+        ],
+        "title": "CveCheckSource",
+        "type": "object"
+      },
+      "CveCheckTriggered": {
+        "properties": {
+          "sources": {
+            "items": {
+              "enum": [
+                "new_cve",
+                "mirror"
+              ],
+              "type": "string"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "status": {
+            "const": "queued",
+            "title": "Status",
+            "type": "string"
+          },
+          "triggered_at": {
+            "format": "date-time",
+            "title": "Triggered At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "triggered_at",
+          "sources"
+        ],
+        "title": "CveCheckTriggered",
+        "type": "object"
+      },
       "CveDashboard": {
         "properties": {
           "by_severity": {
@@ -940,6 +1056,78 @@
           "monitored"
         ],
         "title": "CveDbProductOut",
+        "type": "object"
+      },
+      "CveFreshness": {
+        "properties": {
+          "last_checked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Checked At"
+          },
+          "last_run_finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run Finished At"
+          },
+          "new_since": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Since"
+          },
+          "newest_detected_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Newest Detected At"
+          },
+          "running": {
+            "title": "Running",
+            "type": "boolean"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/CveCheckSource"
+            },
+            "title": "Sources",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sources",
+          "last_checked_at",
+          "last_run_finished_at",
+          "running",
+          "newest_detected_at",
+          "new_since"
+        ],
+        "title": "CveFreshness",
         "type": "object"
       },
       "CveListResponse": {
@@ -10088,6 +10276,56 @@
         ]
       }
     },
+    "/api/cve/check-new": {
+      "post": {
+        "description": "Cek CVE terbaru SEKARANG untuk tech yang dimonitor: mengirim tugas cek rutin (scraper\n`new_cve`, atau `cve.mirror_sync` bila mirror `live`) ke worker; hasilnya tampil lewat\n`GET /freshness`. Hanya admin (kuota NVD/MITRE, sama dengan trigger scraper). Ditolak 409 bila\ncek sedang berjalan atau scraper dimatikan, 429 selama cooldown, 503 bila worker tak\nterjangkau.",
+        "operationId": "check_new_cves_api_cve_check_new_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CveCheckTriggered"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Check New Cves",
+        "tags": [
+          "cve"
+        ]
+      }
+    },
     "/api/cve/cisa-lookup": {
       "post": {
         "description": "Cross-reference semua CVE true-positive vs katalog CISA Known\nExploited Vulnerabilities.",
@@ -10590,6 +10828,89 @@
           }
         },
         "summary": "Export Cves",
+        "tags": [
+          "cve"
+        ]
+      }
+    },
+    "/api/cve/freshness": {
+      "get": {
+        "description": "\"Diupdate per kapan\" untuk tab CVEs: kapan cek terakhir yang sukses (scraper `new_cve`, atau\nmirror CVE List V5 bila `live`), apakah ada cek yang sedang berjalan, dan CVE terbaru yang\ntercatat. `new_since` (ISO) menambah jumlah CVE baru sejak waktu itu: dipakai UI untuk\nmelaporkan hasil cek manual. Lingkup CVE = tab CVEs (client aktif, tech dimonitor, tanpa FP).",
+        "operationId": "cve_freshness_api_cve_freshness_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "new_since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "New Since"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-client-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Client-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CveFreshness"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cve Freshness",
         "tags": [
           "cve"
         ]
