@@ -67,17 +67,21 @@ def _resolve_true_positive_cves(session: Session) -> list[dict[str, Any]]:
     sama. Script lama TIDAK nge-dedup ini (iterasi mentah per dokumen
     Mongo, bisa search API yang sama 2-3x kalau CVE-nya dipantau banyak
     client) -- itu pemborosan rate-limit GitHub yang gak disengaja, bukan
-    perilaku yang mau dipertahankan."""
-    from cti_core.db.models.cve import CveFalsePositive, CveTracker
+    perilaku yang mau dipertahankan.
+
+    FP dinilai per BARIS client (`is_false_positive_row`): CVE yang ditandai FP oleh satu client
+    tapi masih valid di client lain tetap dicari PoC-nya. Dulu himpunan FP dari client mana pun
+    membuangnya, jadi PoC CVE itu tak pernah dicari selama satu client menandainya FP."""
+    from cti_core.db.models.cve import CveTracker
+    from cti_core.db.repositories.cve import is_false_positive_row
     from sqlalchemy import select
 
-    fp_ids = set(session.execute(select(CveFalsePositive.cve_id)).scalars().all())
-    rows = session.execute(select(CveTracker)).scalars().unique().all()
+    rows = (
+        session.execute(select(CveTracker).where(~is_false_positive_row())).scalars().unique().all()
+    )
 
     merged: dict[str, set[str]] = {}
     for row in rows:
-        if row.cve_id in fp_ids:
-            continue
         merged.setdefault(row.cve_id, set()).update(p.url for p in row.pocs)
     return [{"cve_id": cve_id, "poc_urls": urls} for cve_id, urls in sorted(merged.items())]
 

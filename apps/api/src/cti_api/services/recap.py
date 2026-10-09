@@ -43,7 +43,7 @@ import datetime
 from typing import Any
 
 from cti_core.db.repositories.article import AsyncArticleRepo
-from cti_core.db.repositories.cve import AsyncCveFalsePositiveRepo, AsyncCveTrackerRepo
+from cti_core.db.repositories.cve import AsyncCveTrackerRepo
 from cti_core.db.repositories.ioc import AsyncIOCRepo
 from cti_core.db.repositories.recap import AsyncRecapRepo
 from cti_core.db.repositories.ta import AsyncTARepo
@@ -129,10 +129,7 @@ async def _collect_iocs(session: AsyncSession, day: datetime.date) -> list[Any]:
 
 
 async def _collect_cves(session: AsyncSession, day: datetime.date) -> list[Any]:
-    fp_ids = await AsyncCveFalsePositiveRepo(session).list_all_cve_ids()
-    return await AsyncCveTrackerRepo(session).list_registered_on(
-        day, exclude_cve_ids=fp_ids, limit=50
-    )
+    return await AsyncCveTrackerRepo(session).list_registered_on(day, limit=50)
 
 
 async def _collect_new_threat_actors(session: AsyncSession, day: datetime.date) -> list[Any]:

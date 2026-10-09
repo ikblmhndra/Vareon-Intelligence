@@ -7,7 +7,11 @@ nyambungin CVE/PIR/TA lewat overlap threat_actors/TTPs. Fase 7.3 (router
 apa adanya, kode lama juga gak nge-scope (`cross_reference_service.py`
 gak pernah baca `client_id` sama sekali). Endpoint `crossref` gak punya
 konsep client di request-nya sendiri, beda dari `cve.py`/`pir.py` utama
-yang emang per-client."""
+yang emang per-client.
+
+False positive dinilai per BARIS client (`is_false_positive_row`): CVE baru ditolak/disembunyikan
+bila SEMUA barisnya ditandai FP oleh clientnya masing-masing. Dulu himpunan FP dari client mana
+pun dipakai, sehingga satu client yang menandai FP menyembunyikan CVE itu dari client lain."""
 
 from __future__ import annotations
 
@@ -15,7 +19,7 @@ from typing import Any
 
 from cti_core.db.models.pir import PIRRequirement
 from cti_core.db.repositories.article import AsyncArticleRepo
-from cti_core.db.repositories.cve import AsyncCveFalsePositiveRepo, AsyncCveTrackerRepo
+from cti_core.db.repositories.cve import AsyncCveTrackerRepo
 from cti_core.db.repositories.pir import AsyncPIRRepo
 from cti_core.db.repositories.ta import AsyncTAProfileRepo
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -47,12 +51,11 @@ def _profile_summary(actor_name: str, profile: dict[str, Any]) -> dict[str, Any]
 
 
 async def get_cve_crossrefs(session: AsyncSession, cve_id: str) -> dict[str, Any]:
-    cve = await AsyncCveTrackerRepo(session).get_by_cve_id_any_client(cve_id)
+    repo = AsyncCveTrackerRepo(session)
+    cve = await repo.get_by_cve_id_any_client(cve_id, exclude_false_positives=True)
     if cve is None:
-        return {"error": "CVE not found"}
-
-    fp_ids = {c.upper() for c in await AsyncCveFalsePositiveRepo(session).list_all_cve_ids()}
-    if cve_id.upper() in fp_ids:
+        if await repo.get_by_cve_id_any_client(cve_id) is None:
+            return {"error": "CVE not found"}
         return {"error": "CVE is a false positive"}
 
     cve_tas = {t.threat_actor for t in cve.threat_actors}
@@ -115,12 +118,8 @@ async def get_pir_crossrefs(session: AsyncSession, pir_id: int) -> dict[str, Any
     pir_ttps = set(criteria.get("ttps", []))
     pir_industries: list[str] = criteria.get("industries", [])
 
-    fp_ids = await AsyncCveFalsePositiveRepo(session).list_all_cve_ids()
     matched_cves_rows = await AsyncCveTrackerRepo(session).search_crossref(
-        threat_actors=pir_tas,
-        ttp_ids=list(pir_ttps),
-        tech_list=pir_industries,
-        exclude_cve_ids=fp_ids,
+        threat_actors=pir_tas, ttp_ids=list(pir_ttps), tech_list=pir_industries
     )
 
     matched_cves = []
@@ -166,10 +165,7 @@ async def get_pir_crossrefs(session: AsyncSession, pir_id: int) -> dict[str, Any
 
 
 async def get_ta_crossrefs(session: AsyncSession, actor_name: str) -> dict[str, Any]:
-    fp_ids = await AsyncCveFalsePositiveRepo(session).list_all_cve_ids()
-    cves = await AsyncCveTrackerRepo(session).get_by_threat_actor_exact(
-        actor_name, exclude_cve_ids=fp_ids
-    )
+    cves = await AsyncCveTrackerRepo(session).get_by_threat_actor_exact(actor_name)
     active_pirs = await AsyncPIRRepo(session).list_active_unscoped()
     pirs = [p for p in active_pirs if actor_name in p.criteria.get("threat_actors", [])]
     articles, _ = await AsyncArticleRepo(session).list_filtered(

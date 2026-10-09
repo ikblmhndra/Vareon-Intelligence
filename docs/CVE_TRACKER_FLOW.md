@@ -174,7 +174,13 @@ angka, jadi `CVE-2026-1234` bukan `CVE-2026-12345`), dan status FP.
   `remediation_status`/`remediation_date_plan`/`actual_remediation_date`, `escalation_required`, `comments`,
   `risk_acceptance`, `closure_date`. Nilai status "soft enum" **tanpa validasi** (ROADMAP #18).
 - **False positive** (`POST/DELETE /{cve_id}/false-positive`, `bulk-false-positive` maks 100): per
-  `(cve_id, client_id)`, dicatat di audit log.
+  `(cve_id, client_id)`, dicatat di audit log. Baris tracker hanya dianggap FP kalau **client pemilik barisnya**
+  yang menandainya (`is_false_positive_row`); penanda client lain, termasuk client yang tidak men-track CVE itu,
+  tidak berlaku. Aturan ini dipakai di semua tempat yang tidak ber-scope satu client: enrichment dan newsletter
+  (`list_true_positive_cve_ids`), digest `recap`, tabel CVE exposure di `exec_dashboard`, `crossref`, dan daftar CVE
+  untuk monitor PoC GitHub (`reference_data`). CVE baru hilang dari digest itu bila **semua** barisnya di-FP oleh
+  pemiliknya masing-masing. Dulu mereka memakai himpunan FP dari client mana pun, jadi satu client yang menandai FP
+  menyembunyikan CVE itu dari client lain.
 - Aksi tulis yang dibaca (false-positive, ticket, bulk-acknowledge, purge) memanggil
   `AsyncAuditLogRepo.write` lalu `commit`.
 - **`cve_id` di request dinormalisasi dan divalidasi** (`schemas/cve.py::CveId`): path `/{cve_id}/...` (FP, ticket,
@@ -290,7 +296,9 @@ tidak diubah.
 ## 11. Belum diverifikasi (jujur)
 
 Tidak dibaca sampai tuntas: `pkgvuln` (view Package Vulnerabilities), isi `cve_export.py`, `cve_email.py`,
-`campaign_analysis`/`crossref` (siapa yang benar-benar menulis `cve_threat_actors`/`cve_ttps` sekarang),
+`campaign_analysis`/`crossref` (isinya; satu hal sudah dipastikan lewat grep di `apps`, `packages`, `scrapers`,
+`tools`: **tidak ada kode yang menulis `cve_threat_actors`/`cve_ttps`**, hanya `crossref` yang membacanya, jadi
+cabang TA/TTP-nya tidak punya data kecuali ada penulis di luar repo ini),
 detail UI `cve-detail-modal`/`cve-ticket-tab`, `tools/seed/fase10_cve_migrate.py`, task `scrape.run`
 (pemicu manual `POST /api/scraper/{id}/trigger`). Perilaku `new_cve` di produksi (berapa kandidat per run,
 berapa yang lolos gate) hanya diketahui dari laporan `reconcile_cve_tech` 2026-10-07 di
