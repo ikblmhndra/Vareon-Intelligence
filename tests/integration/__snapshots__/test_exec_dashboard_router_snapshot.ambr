@@ -40,6 +40,10 @@
     ]),
     'cve_exposure_v2': list([
     ]),
+    'cve_kpis': dict({
+      'critical': 0,
+      'kev': 0,
+    }),
     'heatmap_max': 0,
     'industry_spikes': list([
     ]),

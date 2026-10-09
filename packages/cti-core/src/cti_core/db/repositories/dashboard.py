@@ -536,6 +536,22 @@ class AsyncDashboardRepo:
             out.append(entry)
         return out
 
+    async def cve_kpi_counts(self) -> dict[str, int]:
+        """Total UTUH untuk dua KPI Exec: CVE berseverity CRITICAL dan CVE yang ditandai KEV
+        (`cisa_kev`, semua severity -- arti "known exploited", bukan subset critical).
+
+        Cakupannya sama dengan `cve_tech_severity_breakdown`: lintas client tanpa filter
+        `client_id`, dan baris yang ditandai FP oleh clientnya sendiri tidak dihitung. Bedanya,
+        tanpa `limit`: kartu KPI dulu menjumlah kolom `critical` dari tabel exposure yang hanya
+        10 tech teratas, sehingga mengecil bila lebih dari 10 tech punya CVE critical."""
+        upper_sev = func.upper(CveTracker.cve_severity)
+        stmt = select(
+            func.sum(cast(upper_sev == "CRITICAL", Integer)),
+            func.sum(cast(CveTracker.cisa_kev, Integer)),
+        ).where(~is_false_positive_row())
+        critical, kev = (await self.session.execute(stmt)).one()
+        return {"critical": critical or 0, "kev": kev or 0}
+
     async def critical_cves(self, *, client_id: str, limit: int = 20) -> list[CveTracker]:
         """`epss_score >= 0.5` OR `cisa_kev` lama -- cabang EPSS gak ada
         (kolomnya gak ada di skema baru, lihat docstring `routers/cve.py`
