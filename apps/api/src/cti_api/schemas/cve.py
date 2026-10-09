@@ -21,7 +21,28 @@ server-side (`AsyncCveTicketRepo.upsert`), `acknowledged_by`/
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+import re
+from typing import Annotated
+
+from pydantic import AfterValidator, BaseModel
+
+_CVE_ID = re.compile(r"cve-[0-9]{4}-[0-9]{4,11}", re.ASCII | re.IGNORECASE)
+"""`CVE-YYYY-NNNN...`, maksimum 11 digit supaya muat di kolom `String(20)` (9 karakter awalan).
+`[0-9]` + `re.ASCII`, bukan `\\d`: digit Unicode (mis. fullwidth) bukan CVE ID."""
+
+
+def normalize_cve_id(value: str) -> str:
+    """Huruf besar, spasi pinggir dibuang; `ValueError` kalau bukan CVE ID. Semua pencocokan
+    `cve_id` di DB itu persis, jadi `cve-2026-1234` tanpa ini menjadi baris FP/ticket tersendiri
+    yang tidak pernah ketemu, dan id yang kepanjangan untuk kolom berujung 500."""
+    candidate = value.strip()
+    if not _CVE_ID.fullmatch(candidate):
+        raise ValueError(f"bukan CVE ID yang valid: {value!r}")
+    return candidate.upper()
+
+
+CveId = Annotated[str, AfterValidator(normalize_cve_id)]
+"""Tipe untuk `cve_id` di path dan body request: sudah dinormalisasi dan divalidasi (422)."""
 
 
 class CveReferenceOut(BaseModel):
@@ -81,7 +102,7 @@ class CveStats(BaseModel):
 
 
 class BulkFalsePositiveBody(BaseModel):
-    cve_ids: list[str]
+    cve_ids: list[CveId]
 
 
 class PurgeOrphanedBody(BaseModel):
@@ -110,10 +131,10 @@ class AcknowledgeBody(BaseModel):
 
 
 class BulkAcknowledgeBody(BaseModel):
-    cve_ids: list[str]
+    cve_ids: list[CveId]
     analyst_name: str
 
 
 class DraftEmailBody(BaseModel):
-    cve_ids: list[str]
+    cve_ids: list[CveId]
     ticket_id: str = ""

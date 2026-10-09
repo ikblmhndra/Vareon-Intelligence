@@ -159,6 +159,13 @@ angka, jadi `CVE-2026-1234` bukan `CVE-2026-12345`), dan status FP.
   `(cve_id, client_id)`, dicatat di audit log.
 - Aksi tulis yang dibaca (false-positive, ticket, bulk-acknowledge, purge) memanggil
   `AsyncAuditLogRepo.write` lalu `commit`.
+- **`cve_id` di request dinormalisasi dan divalidasi** (`schemas/cve.py::CveId`): path `/{cve_id}/...` (FP, ticket,
+  acknowledge, exploit-lookup) dan `cve_ids` di body `bulk-false-positive`, `bulk-acknowledge`, `draft-email`.
+  Huruf besar, spasi pinggir dibuang, format `CVE-YYYY-NNNN` (4-11 digit ASCII); selain itu **422** dan tidak ada
+  yang ditulis (satu id salah menggagalkan seluruh daftar bulk). Pencocokan `cve_id` di DB itu persis, jadi tanpa
+  ini `cve-2026-1234` jadi baris FP/ticket tersendiri. Id kembar di daftar bulk dihitung sekali.
+  **Belum ada pengecekan keberadaan**: FP/ticket masih bisa dibuat untuk CVE yang tidak di-track client itu
+  (keputusan produk, lihat catatan di PR).
 - **Ticketing view** = `GET /tickets` (ticket + ringkasan CVE: severity, skor, tech, `detected_on`, `false_positive`).
   Ticket CVE FP disembunyikan kecuali `include_fp=true` (UI mewajibkan Acknowledge sebelum Mark FP, jadi tiap CVE FP
   punya ticket).
