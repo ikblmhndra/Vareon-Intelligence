@@ -7,11 +7,13 @@ mirror (`cti_core.cve_mirror_sync`, yang `summary`-nya dari `descriptions[en]`).
 
 Murni: tanpa jaringan, tanpa DB. Yang di sini sengaja dipertahankan persis seperti parser lama
 (termasuk `cvss_score=0.0` bila tak ada metrik dan `"No solution yet"`), karena `new_cve` menulis
-nilai-nilai itu ke `cve_tracker`; mirror yang butuh `None` mengonversinya sendiri.
+nilai-nilai itu ke `cve_tracker`; mirror yang butuh `None` mengonversinya sendiri. Satu pengecualian
+sadar: teks bebas di `versions[].version` dipakai apa adanya (lihat `_version_constraint`).
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import Any
@@ -19,6 +21,10 @@ from typing import Any
 from cti_core.catalog_resolve import AffectedEntry, entries_from_cna
 
 STATE_PUBLISHED = "PUBLISHED"
+
+_BARE_VERSION = re.compile(r"[vV]?\d[\w.+:~-]*")
+"""Satu token versi polos (`1.12.0`, `22.7R2.4`, `v2.0.1-rc.1`, `0`). Selain itu
+(`>= 3.3.0, < 3.5.4`, `All other versions`) adalah teks bebas dari CNA."""
 
 
 def mitre_date(raw: str | None) -> date | None:
@@ -42,6 +48,18 @@ def mitre_datetime(raw: str | None) -> datetime | None:
     except ValueError:
         return None
     return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
+
+
+def _version_constraint(raw: object) -> str:
+    """Constraint untuk `versions[].version` yang tidak punya `lessThan*`; kosong bila tak bermakna.
+
+    Versi polos tetap `<= X` (perilaku parser lama). Teks bebas dipakai apa adanya: CNA seperti
+    GitHub menulis rentangnya sendiri di field ini (`">= 3.3.0, < 3.5.4"`, `"< 3.2.5"`), dan
+    meng-awalinya dengan `<=` memberi `<= >= 3.3.0, < 3.5.4` (46 dari 333 teks di dev, 2026-10-09),
+    yang lalu ikut mengisi Affected Version di form Ticket. Teks kosong tetap kosong; pemanggil
+    melewatinya."""
+    text = str(raw).strip()
+    return f"<= {text}" if _BARE_VERSION.fullmatch(text) else text
 
 
 def affected_products(cna: dict[str, Any]) -> list[str]:
@@ -106,7 +124,9 @@ def parse_cve_record(data: dict[str, Any], *, cve_id: str, link: str, summary: s
             elif "lessThanOrEqual" in version:
                 constraint = f"<= {version['lessThanOrEqual']}"
             elif "version" in version:
-                constraint = f"<= {version['version']}"
+                constraint = _version_constraint(version["version"])
+                if not constraint:
+                    continue
             else:
                 continue
             affected.append(f"{product}: {constraint}")

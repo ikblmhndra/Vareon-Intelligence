@@ -72,7 +72,7 @@ Perilaku `upsert` yang penting (`cti_core/db/repositories/cve.py`):
 |---|---|---|
 | `techstack_entries` | `(name, client_id)` unik | `name` teks bebas (**label sekaligus kunci join**), `exposure` (`public`/`internal`/`both`), `hosting_type` (`on_prem`/`cloud`/`saas`), `source`, `added_date`. Ditulis UI/API (`routers/techstack.py`). Tidak ada flag aktif: ada = dipantau. |
 | `cve_tracker` | `(cve_id, client_id)` unik | metadata CVE (ditulis `new_cve`), `tech` (satu nilai, teks), `cisa_kev`/`active_exploitation` (bool mesin), `epss_*`, `cisa_kev_detail`/`exploit_db_hits` (JSONB), `poc_available`, `detected_on`, `registered_date`. |
-| `cve_references`, `cve_affected` | `cve_tracker_id` | anak, diganti utuh tiap upsert. `affected` = **satu string per baris** (mis. `Zabbix: < 7.0`), bukan data terstruktur. |
+| `cve_references`, `cve_affected` | `cve_tracker_id` | anak, diganti utuh tiap upsert. `affected` = **satu string per baris** (mis. `Zabbix: < 7.0`), bukan data terstruktur. Bentuknya `produk: constraint`; constraint = `< X` (`lessThan`), `<= X` (`lessThanOrEqual` atau versi polos), atau teks bebas CNA apa adanya (`>= 3.3.0, < 3.5.4`; dulu ikut diawali `<=` sehingga jadi `<= >= 3.3.0, < 3.5.4`). |
 | `cve_pocs` | `cve_tracker_id` | ditulis `github_poc_monitor` (dan exploit-db lookup). |
 | `cve_threat_actors`, `cve_ttps`, `cve_newsletter_mentions` | `cve_tracker_id` | anak lain (aktor/TTP lewat cross-reference, mention lewat newsletter). |
 | `cve_false_positives` | `(cve_id, client_id)` unik | ditandai analis. **Kunci pakai `cve_id`, bukan id tracker.** |
