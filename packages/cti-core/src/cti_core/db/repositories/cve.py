@@ -268,6 +268,17 @@ class AsyncCveTrackerRepo:
         result = await self.session.execute(select(CveTracker.cve_id).distinct())
         return list(result.scalars().all())
 
+    async def tracked_cve_ids(self, cve_ids: Sequence[str], client_id: str) -> set[str]:
+        """Bagian dari `cve_ids` yang punya baris `cve_tracker` untuk client ini (satu query)."""
+        if not cve_ids:
+            return set()
+        result = await self.session.execute(
+            select(CveTracker.cve_id).where(
+                CveTracker.client_id == client_id, CveTracker.cve_id.in_(cve_ids)
+            )
+        )
+        return set(result.scalars().all())
+
     async def list_registered_on(self, day: datetime.date, *, limit: int = 50) -> list[CveTracker]:
         """Port `_collect_cves()` (`recap_service.py`, Fase 7.3 router
         `recap`, Bagian 5) -- CVE yang PERTAMA ke-track/kedetek/dipublish

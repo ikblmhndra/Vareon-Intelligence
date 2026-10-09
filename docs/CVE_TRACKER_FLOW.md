@@ -184,6 +184,13 @@ angka, jadi `CVE-2026-1234` bukan `CVE-2026-12345`), dan status FP.
   untuk monitor PoC GitHub (`reference_data`). CVE baru hilang dari digest itu bila **semua** barisnya di-FP oleh
   pemiliknya masing-masing. Dulu mereka memakai himpunan FP dari client mana pun, jadi satu client yang menandai FP
   menyembunyikan CVE itu dari client lain.
+- **Tulis hanya untuk CVE yang ada di tracker client pemanggil**: `POST /{cve_id}/false-positive`,
+  `bulk-false-positive`, `PUT /{cve_id}/ticket`, `POST /{cve_id}/acknowledge`, dan `bulk-acknowledge` membalas **404**
+  (`CVE not tracked by this client: ...`) kalau CVE-nya tidak punya baris `cve_tracker` untuk client aktif; satu id
+  tak dikenal menggagalkan seluruh daftar bulk dan tidak ada yang ditulis. Pengecualian untuk ticket dan ack: CVE
+  yang SUDAH punya ticket (mis. yatim sesudah purge) tetap boleh diubah. `DELETE /{cve_id}/false-positive`
+  (membersihkan penanda lama) dan `GET /{cve_id}/ticket` (`{}`) tidak diperiksa. Pemeriksaannya ada di router
+  (`_require_tracked`), bukan di repo, jadi alat dan tes yang memanggil repo langsung tidak terpengaruh.
 - Aksi tulis yang dibaca (false-positive, ticket, bulk-acknowledge, purge) memanggil
   `AsyncAuditLogRepo.write` lalu `commit`.
 - **`cve_id` di request dinormalisasi dan divalidasi** (`schemas/cve.py::CveId`): path `/{cve_id}/...` (FP, ticket,
@@ -299,6 +306,9 @@ tidak diubah.
    (nama, `acknowledge_time`, `ticket_id`); ack ulang tetap `200` tanpa efek. `acknowledge_time` adalah dasar MTTA di
    dashboard. Keduanya mengambil lock penomoran SEBELUM membaca ticket, supaya dua ack bersamaan berurutan (yang
    kedua melihat ack yang pertama). Dulu ack tunggal menimpa ketiganya.
+10. **FP, ticket, dan ack hanya untuk CVE ter-track**: ketiganya berkunci `(cve_id, client_id)` tanpa FK ke tracker,
+    jadi keberadaan baris tracker diperiksa di router (`_require_tracked`); tanpanya id valid apa pun melahirkan
+    ticket yatim atau penanda FP untuk CVE yang tidak pernah di-track.
 
 ## 11. Belum diverifikasi (jujur)
 

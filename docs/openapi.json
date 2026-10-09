@@ -10107,6 +10107,7 @@
     },
     "/api/cve/bulk-acknowledge": {
       "post": {
+        "description": "`404` kalau salah satu CVE tidak ada di tracker client ini, kecuali sudah punya ticket;\ntidak ada yang di-ack.",
         "operationId": "bulk_acknowledge_api_cve_bulk_acknowledge_post",
         "parameters": [
           {
@@ -10184,6 +10185,7 @@
     },
     "/api/cve/bulk-false-positive": {
       "post": {
+        "description": "`404` kalau salah satu CVE tidak ada di tracker client ini; tidak ada yang ditandai.",
         "operationId": "set_bulk_false_positive_api_cve_bulk_false_positive_post",
         "parameters": [
           {
@@ -11482,7 +11484,7 @@
     },
     "/api/cve/{cve_id}/acknowledge": {
       "post": {
-        "description": "`acknowledged_by` = username yang login, BUKAN isian dari body. Dulu body wajib memuat\n`analyst_name` (warisan UI lama: kata sandi bersama + nama ketikan), sehingga siapa pun yang\nlogin bisa mengatasnamakan analis lain dan audit log mencatat dua nama untuk satu aksi.\nKlien lama yang masih mengirim `analyst_name` tetap diterima; field itu diabaikan.",
+        "description": "`acknowledged_by` = username yang login, BUKAN isian dari body. Dulu body wajib memuat\n`analyst_name` (warisan UI lama: kata sandi bersama + nama ketikan), sehingga siapa pun yang\nlogin bisa mengatasnamakan analis lain dan audit log mencatat dua nama untuk satu aksi.\nKlien lama yang masih mengirim `analyst_name` tetap diterima; field itu diabaikan.\n\n`404` kalau CVE-nya tidak ada di tracker client ini, kecuali sudah punya ticket.",
         "operationId": "acknowledge_api_cve__cve_id__acknowledge_post",
         "parameters": [
           {
@@ -11698,6 +11700,7 @@
         ]
       },
       "post": {
+        "description": "`404` kalau CVE-nya tidak ada di tracker client ini.",
         "operationId": "set_false_positive_api_cve__cve_id__false_positive_post",
         "parameters": [
           {
@@ -11850,6 +11853,7 @@
         ]
       },
       "put": {
+        "description": "`404` kalau CVE-nya tidak ada di tracker client ini, kecuali sudah punya ticket (ticket yang\nada tetap boleh diubah).",
         "operationId": "update_cve_ticket_api_cve__cve_id__ticket_put",
         "parameters": [
           {
