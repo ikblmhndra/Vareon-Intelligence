@@ -49,7 +49,6 @@ from cti_api.deps import (
     require_auth,
 )
 from cti_api.schemas.cve import (
-    AcknowledgeBody,
     BulkAcknowledgeBody,
     BulkFalsePositiveBody,
     CveId,
@@ -757,22 +756,16 @@ async def bulk_acknowledge(
 ) -> dict[str, object]:
     if not body.cve_ids:
         raise HTTPException(status_code=400, detail="cve_ids required")
-    if not body.analyst_name.strip():
-        raise HTTPException(status_code=400, detail="analyst_name required")
     if len(body.cve_ids) > 100:
         raise HTTPException(status_code=400, detail="max 100 CVEs per bulk operation")
     cid = effective_client_id(user, x_client_id)
     acknowledged = await AsyncCveTicketRepo(session).bulk_acknowledge(
-        body.cve_ids, cid, body.analyst_name
+        body.cve_ids, cid, user["username"]
     )
     await AsyncAuditLogRepo(session).write(
         username=user["username"],
         action="bulk_acknowledge_cve",
-        detail={
-            "cve_ids": body.cve_ids,
-            "analyst_name": body.analyst_name,
-            "acknowledged": acknowledged,
-        },
+        detail={"cve_ids": body.cve_ids, "acknowledged": acknowledged},
         ip_address=request_ip(request),
     )
     await session.commit()
@@ -782,21 +775,21 @@ async def bulk_acknowledge(
 @router.post("/{cve_id}/acknowledge")
 async def acknowledge(
     cve_id: CveId,
-    body: AcknowledgeBody,
     request: Request,
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),
     x_client_id: str | None = Header(None),
 ) -> dict[str, bool]:
-    if not body.analyst_name.strip():
-        raise HTTPException(status_code=400, detail="analyst_name required")
+    """`acknowledged_by` = username yang login, BUKAN isian dari body. Dulu body wajib memuat
+    `analyst_name` (warisan UI lama: kata sandi bersama + nama ketikan), sehingga siapa pun yang
+    login bisa mengatasnamakan analis lain dan audit log mencatat dua nama untuk satu aksi.
+    Klien lama yang masih mengirim `analyst_name` tetap diterima; field itu diabaikan."""
     cid = effective_client_id(user, x_client_id)
-    await AsyncCveTicketRepo(session).acknowledge(cve_id, cid, body.analyst_name)
+    await AsyncCveTicketRepo(session).acknowledge(cve_id, cid, user["username"])
     await AsyncAuditLogRepo(session).write(
         username=user["username"],
         action="acknowledge_cve",
         target_id=cve_id,
-        detail={"analyst_name": body.analyst_name},
         ip_address=request_ip(request),
     )
     await session.commit()

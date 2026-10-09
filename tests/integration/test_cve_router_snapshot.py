@@ -441,7 +441,7 @@ async def test_bulk_acknowledge(
     resp = await api_client.post(
         "/api/cve/bulk-acknowledge",
         headers=auth_header(),
-        json={"cve_ids": ["CVE-2026-7001", "CVE-2026-7002"], "analyst_name": "Analyst A"},
+        json={"cve_ids": ["CVE-2026-7001", "CVE-2026-7002"]},
     )
     assert resp.status_code == 200
     assert resp.json() == snapshot
@@ -454,11 +454,7 @@ async def test_acknowledge(
     snapshot: SnapshotAssertion,
 ) -> None:
     await _seed_two_cves(api_session)
-    resp = await api_client.post(
-        "/api/cve/CVE-2026-7001/acknowledge",
-        headers=auth_header(),
-        json={"analyst_name": "Analyst A"},
-    )
+    resp = await api_client.post("/api/cve/CVE-2026-7001/acknowledge", headers=auth_header())
     assert resp.status_code == 200
     assert resp.json() == snapshot
 
@@ -488,9 +484,7 @@ async def test_tickets_hide_false_positive_cves_unless_asked(
     export mengecualikan FP; Ticketing harus konsisten (sembunyikan, kecuali `include_fp`)."""
     await _seed_two_cves(api_session)
     for cve_id in ("CVE-2026-7001", "CVE-2026-7002"):
-        resp = await api_client.post(
-            f"/api/cve/{cve_id}/acknowledge", headers=auth_header(), json={"analyst_name": "a"}
-        )
+        resp = await api_client.post(f"/api/cve/{cve_id}/acknowledge", headers=auth_header())
         assert resp.status_code == 200
     await api_client.post("/api/cve/CVE-2026-7002/false-positive", headers=auth_header())
 

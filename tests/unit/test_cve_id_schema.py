@@ -60,7 +60,7 @@ def test_id_lists_in_request_bodies_are_normalized(body: type) -> None:
 
 
 def test_bulk_acknowledge_body_normalizes_ids() -> None:
-    body = BulkAcknowledgeBody(cve_ids=["cve-2026-1234"], analyst_name="a")
+    body = BulkAcknowledgeBody(cve_ids=["cve-2026-1234"])
     assert body.cve_ids == ["CVE-2026-1234"]
 
 

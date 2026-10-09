@@ -41,12 +41,10 @@ async def test_lowercase_id_in_the_path_acts_on_the_canonical_row(
     auth_header: Callable[..., dict[str, str]],
 ) -> None:
     await _seed(api_session)
-    h = auth_header()
+    h = auth_header(username="a")  # `acknowledged_by` = username yang login
     lower = CVE.lower()
 
-    ack = await api_client.post(
-        f"/api/cve/{lower}/acknowledge", headers=h, json={"analyst_name": "a"}
-    )
+    ack = await api_client.post(f"/api/cve/{lower}/acknowledge", headers=h)
     assert ack.status_code == 200
     for spelling in (CVE, lower):
         ticket = (await api_client.get(f"/api/cve/{spelling}/ticket", headers=h)).json()
@@ -75,7 +73,7 @@ async def test_malformed_id_is_rejected_before_anything_is_written(
         ("delete", f"/api/cve/{bad}/false-positive", {}),
         ("get", f"/api/cve/{bad}/ticket", {}),
         ("put", f"/api/cve/{bad}/ticket", {"json": {"comments": "x"}}),
-        ("post", f"/api/cve/{bad}/acknowledge", {"json": {"analyst_name": "a"}}),
+        ("post", f"/api/cve/{bad}/acknowledge", {}),
         ("post", f"/api/cve/{bad}/exploit-lookup", {}),
     ]
 
@@ -103,9 +101,7 @@ async def test_bulk_endpoints_normalize_dedupe_and_validate_the_whole_list(
     both_spellings = [CVE, CVE.lower()]
 
     ack = await api_client.post(
-        "/api/cve/bulk-acknowledge",
-        headers=h,
-        json={"cve_ids": both_spellings, "analyst_name": "a"},
+        "/api/cve/bulk-acknowledge", headers=h, json={"cve_ids": both_spellings}
     )
     assert (ack.status_code, ack.json()["acknowledged"]) == (200, 1)
     fp = await api_client.post(
@@ -115,9 +111,7 @@ async def test_bulk_endpoints_normalize_dedupe_and_validate_the_whole_list(
 
     # satu id tidak valid menggagalkan seluruh permintaan: tidak ada yang tersentuh
     bad = [OTHER, "nope"]
-    ack_bad = await api_client.post(
-        "/api/cve/bulk-acknowledge", headers=h, json={"cve_ids": bad, "analyst_name": "a"}
-    )
+    ack_bad = await api_client.post("/api/cve/bulk-acknowledge", headers=h, json={"cve_ids": bad})
     fp_bad = await api_client.post("/api/cve/bulk-false-positive", headers=h, json={"cve_ids": bad})
     assert (ack_bad.status_code, fp_bad.status_code) == (422, 422)
     assert list((await api_client.get("/api/cve/ack-statuses", headers=h)).json()) == [CVE]
