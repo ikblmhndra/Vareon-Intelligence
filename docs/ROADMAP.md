@@ -747,11 +747,13 @@ formally; order = a suggestion.
 - Storage: `daily_recaps` is keyed by one day, so add `kind` (`weekly` | `daily`) and `period_start`/`period_end`
   (hand-written migration, `test_migrations_match_models` updated). Weekly rows are the scheduled ones; `daily` rows
   exist only when someone triggers a day by hand. History/list/latest endpoints and the UI show the kind and the range.
-- **Week boundary (proposal, to confirm): Monday to Sunday, generated Monday 07:15 WIB** (Monday 00:15 UTC; the collectors use UTC calendar dates, so the week is only complete once Sunday ends in UTC, and a 00:15 WIB run would miss Sunday 17:00-24:00 UTC). The earlier proposal (Friday to Thursday) existed only so two
-  recaps would match a 14-day newsletter window; the newsletter (#22) is now monthly and takes the weekly recaps whose
-  week overlaps the month, so that reason is gone and the usual Monday-Sunday week is simpler to read. It also fits a newsletter built on the first
+- **Week boundary (proposal, to confirm): Monday to Sunday, generated Monday 07:15 WIB** (Monday 00:15 UTC). The
+  collectors use UTC calendar dates, so a week is only complete once Sunday ends in UTC; a 00:15 WIB run would miss
+  Sunday 17:00-24:00 UTC. The earlier proposal (Friday to Thursday) existed only so two recaps would match a 14-day
+  newsletter window; the newsletter (#22) is now monthly and takes the weekly recaps whose week overlaps the month, so
+  that reason is gone and the usual Monday-Sunday week is simpler to read. It also fits a newsletter built on the first
   working day: the recap of the last week of the month (which ends on Sunday) is generated Monday 07:15 WIB, before the
-  newsletter is prepared that morning.
+  newsletter is prepared that morning (09:00 WIB).
 - A week is about 7x the volume of a day, so the weekly prompt is built from **aggregates**, not from a wider date range:
   top N per category ranked by signal (confidence/score, confirmed incident, KEV/PoC, source reliability, cluster size),
   per-category counts, clusters collapsed to one line each. Forecast horizon becomes 1-2 weeks.
