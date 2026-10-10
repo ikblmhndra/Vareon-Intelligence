@@ -11,6 +11,8 @@ Each item contains: **what** was asked, **the current state** (facts from the re
 
 | # | Item | Needs from the user | Depends on |
 |---|---|---|---|
+| 21 | **PRIORITY (team feedback 2026-10-10)** -- **Improve the Recap feature**: weekly instead of daily, fewer/cheaper LLM calls, plus extra improvements proposed in the item | keep or replace the daily recap; day/time/timezone; where the weekly recap is delivered | -- |
+| 22 | **PRIORITY (team feedback 2026-10-10)** -- **Newsletter**: biweekly, Indonesian content, redesigned template, content recommendations, plus extra improvements proposed in the item | what "recommendations" means (see the item); a template design reference; the send day | #21 (shares the weekly recap content and LLM usage logging) |
 | 1 | Rebranding the platform name + UI (colour palette, typography, animation) -- **DONE 2026-10-02, the SVG logo remains** | brand assets | -- |
 | 2 | Rebranding the `newsletter_email` and `cve_notification_email` templates -- **code done 2026-10-02, email client verification not yet** | (the same assets as #1) | #1 |
 | 3 | (probably superseded by #19) A "Populate now" button in the CVE Tracker (all / only newly added) | a small decision (see the item) | -- |
@@ -34,6 +36,15 @@ Each item contains: **what** was asked, **the current state** (facts from the re
 
 ---
 
+## Priority queue (team feedback 2026-10-10)
+
+The team asked for two items to be treated as priorities; they go before everything that is still open. Suggested
+order: **#21 Recap first** (it introduces LLM usage logging and the weekly content that #22 reuses), then **#22
+Newsletter**. Both are scoped in detail at the end of this file; the questions that block work are listed in each item
+under **Needed**.
+
+---
+
 ## Delivered so far (as of 2026-10-10)
 
 PRs #2-#31 are all merged into `main` (release tags in `CHANGELOG.md`: 0.2.0, 0.2.1, 0.3.0, 0.4.0, 0.4.1).
@@ -48,6 +59,7 @@ PRs #2-#31 are all merged into `main` (release tags in `CHANGELOG.md`: 0.2.0, 0.
 | 13 | Partly done | PR #11 (CI green on `main`, run #23) | one Deploy that passes: runs #8-#10 were all `cancelled`; check the prod host state |
 | 14 | Done | PR #9 (pillow), CI image build green in PR #12 | nothing |
 | 19 | Code done, merged | PR #12 (release 0.3.0), PR #27 (cutover runbook fix) | operational only: map 34 entries on dev, shadow mode, cutover dev then prod |
+| 21, 22 | Open, **priority** | -- | scoped 2026-10-10, waiting on the answers listed in each item |
 | 4-12, 15-18 | Open | -- | not started; only prerequisites exist (e.g. the `raw_enrichment` audit trail for #12, the `published_at` column for #15). See each item |
 
 **Merged PRs by release**
@@ -694,3 +706,189 @@ formally; order = a suggestion.
   X API tweets and the query syntax must be validated against the real API).
 
 **Done when**: each point is either fixed (with a test) or dropped with a one-line reason here.
+
+---
+
+## 21. Improve the Recap feature (PRIORITY)
+
+> **Priority item, requested by the team on 2026-10-10.** Nothing is built yet; this section records the current state,
+> a proposal for each request, and the decisions that block work.
+
+**Asked (team feedback 2026-10-10)**
+1. Make the recap **weekly**.
+2. **Optimise the LLM call(s)**.
+3. "Any more suggestions to improve the Recap feature?" (answered in "Proposed additions" below.)
+
+**Current state** (read from the code on 2026-10-10)
+- One recap per **day**: beat task `recap.generate_daily` runs at 06:00 **UTC** (`beat.py`, `app.conf.timezone = "UTC"`),
+  and `generate_daily_recap()` (`apps/api/src/cti_api/services/recap.py`) summarises **yesterday** plus a 1-3 day forecast.
+  Stored in `daily_recaps` (`date` is a unique `YYYY-MM-DD` string key; JSONB `yesterday`, `forecast`, `counts`,
+  `token_usage`). Any logged-in user can regenerate with `POST /api/recap/generate?date=&force=`.
+- **One LLM call per recap** (`temperature=0`, free-form JSON, parsed with `parse_json_response`). The prompt is built
+  from up to 60 articles, 50 tweets, 30 CVEs, an IOC count line, new threat actors and 8 campaign clusters (collected
+  from up to 200 / 150 / 50 / 200 rows first, then cut). The system prompt asks for a strict JSON schema.
+- **Nothing measures the cost**: `token_usage` is always stored as `{}` (the completion's `usage` is never read), and
+  `LlmSettings.rate_limit` ("global spend throttle, Redis token bucket") is declared in `config.py` but has no consumer.
+  Failures: the client retries twice (`max_retries=2`, 60 s timeout), then the task fails; a reply that is not JSON is
+  stored as an empty recap with the text in `raw_llm`.
+- **Delivery is the web page only** (`/recap`, plus `GET /api/recap/latest|list|{date}`). Nothing is sent to Telegram
+  or email, and the recap is not scoped per client: `_collect_cves` uses `list_registered_on`, i.e. the tracker rows of
+  every client, capped at 50 rows by `limit(50)` **without an ORDER BY**, so on a busy day which 50 reach the prompt is arbitrary.
+
+**Proposal: weekly (request 1)**
+- Window = the previous **Monday-Sunday** (ISO week) in **WIB**, generated Monday morning; forecast horizon 1-2 weeks
+  instead of 1-3 days. (Open decision: ISO week in UTC or WIB; WIB Monday 06:00 is Sunday 23:00 UTC.)
+- Storage: `daily_recaps.date` is a unique day key, so a weekly recap needs a period key. Options: add `kind`
+  (`daily|weekly`) and `period_start`/`period_end` columns (one hand-written migration plus the
+  `test_migrations_match_models` update), or key weekly rows as `YYYY-Www`. Recommendation: the columns, because the UI
+  and the newsletter both need the date range.
+- The raw volume of a week (about 7x) does not fit the current prompt caps, so weekly must **aggregate before it
+  prompts** (see request 2), not just widen the date range.
+- **Keep or replace the daily recap?** Replacing it removes about 6 of 7 LLM calls per week. Keeping it makes the
+  weekly recap cheaper still (it can be built from the seven stored daily recaps, see below) but keeps a daily call.
+  This is the decision that shapes everything else.
+
+**Proposal: LLM optimisation (request 2)**
+1. **Measure first**: store `completion.usage` (prompt/completion tokens) and the wall time in `token_usage`, per
+   recap, and log it. Record a baseline before changing anything so the saving is a number, not a feeling.
+2. **Shrink the input**: rank within each category (confidence/score, KEV, confirmed incident, source reliability,
+   cluster size) and send the top N plus per-category counts, instead of the first 60 titles sorted by source name
+   heuristics; collapse duplicate stories by cluster; drop low-signal tweets.
+3. **Weekly from the dailies (map-reduce)**: if the daily recap stays, generate the weekly recap from the seven stored
+   daily JSON recaps plus the weekly counts (a few thousand tokens), not from 300+ raw rows. If the daily recap goes, the
+   weekly prompt uses the aggregated top-N above.
+4. **Skip the call when there is nothing to say** (no articles/tweets/CVEs in the window): store the deterministic
+   "no notable activity" result the prompt already asks the model to produce.
+5. **Never pay twice**: today `force=true` re-runs the full call; keep the date cache, add a cheap "regenerate only the
+   forecast" path if the forecast is what analysts re-run.
+6. Provider-side options to evaluate after the baseline: a smaller model for the recap (it summarises given text; the
+   classification model is not needed), JSON mode / `response_format` to stop JSON parse failures, and provider prompt
+   caching for the static system prompt. Wire `LlmSettings.rate_limit` or delete the dead setting.
+
+**Proposed additions (request 3)**, in my suggested order
+1. **Deliver it**: a Telegram topic (`recap`, same mechanism as `cve_new`) and an email draft through the existing Graph
+   mailer, with a link to the web page. A weekly summary nobody opens is the main risk to the feature.
+2. **"What hit our stack" section**: the CVEs of the period for **monitored techs only** (the `cve_tracker` data from
+   #19), with KEV/PoC flags and ticket status, per client. Today's CVE list is global.
+3. **Week-over-week deltas**: `counts` is already stored per recap, so show up/down arrows and "new this week" for
+   threat actors and campaigns. This is cheap (no LLM) and makes the recap comparable.
+4. **Grounding check after the model answers**: verify every CVE id, threat actor and campaign name in the output exists
+   in the input, drop or flag the ones that do not (the prompt only *asks* the model not to invent them), and link each
+   top story to its article id/URL instead of a title and a source name.
+5. **Forecast scorecard**: store the forecast items, and next week mark each as happened/not happened. It gives a real
+   accuracy number and feedback for the prompt (same idea as the audit trail in #12).
+6. **Failure visibility**: retry once on a non-JSON reply, and alert (Telegram `notify`) when the Monday run fails, so a
+   missing recap is noticed on Monday and not on Thursday.
+
+**Touch points**: `services/recap.py`, `routers/recap.py`, `tasks/periodic.py`, `beat.py`, `db/models/recap.py` +
+migration, `repositories/recap.py`, `apps/web/src/components/recap/*`, `schemas`/`openapi.json`/`schema.d.ts`,
+`cti-alerts` (Telegram topic, `.env.example` + `.env.prod.template` for the new thread id).
+**Needed from the user**: (1) keep or replace the daily recap; (2) week boundary and generation time (WIB?); (3) where
+the weekly recap is delivered (web only, plus Telegram, plus email?); (4) is the recap content English or Indonesian
+(see #22, the newsletter is going Indonesian); (5) which of the additions above to include.
+**Done when**: a weekly recap is generated on schedule and shown in the UI with its date range; each run records its
+token usage; the measured input size/tokens per recap is lower than the recorded baseline (numbers written in this
+item); a run with no activity makes no LLM call; the chosen delivery channel receives the recap; tests cover the weekly
+window, the aggregation, and the no-activity path.
+
+---
+
+## 22. Newsletter: biweekly, Indonesian, redesign, recommendations (PRIORITY)
+
+> **Priority item, requested by the team on 2026-10-10.** Nothing is built yet. Depends on #21 for the shared weekly
+> content and LLM usage logging.
+
+**Asked (team feedback 2026-10-10)**
+1. Make the newsletter **biweekly**.
+2. **Translate the newsletter content to Indonesian**.
+3. **Redesign the newsletter template**.
+4. **Add recommendations** for the newsletter content.
+5. "Any more suggestions to improve the Newsletter feature?" (answered in "Proposed additions" below.)
+
+**Current state** (read from the code on 2026-10-10)
+- The newsletter is **composed by hand**, there is no schedule. An analyst queues articles from the Newsroom
+  ("+ Newsletter", kept in browser `localStorage`), assigns them to **Highlight** (1) and the sections **APAC**,
+  **Global**, **Indonesia** (max 5 each, enforced by `routers/newsletter.py`), optionally adds an intro, footer, custom
+  CSS, per-article analyst notes and campaign clusters (7 days by default), then previews it and creates an **Outlook
+  draft through Microsoft Graph** (`create_graph_draft`; nobody is emailed automatically). Subject:
+  `[CTI Newsletter] Threat Intelligence Digest — Week N, YYYY`. The numbering is the ISO week of the generation time.
+- Per article (up to 16), `build_newsletter_context()` runs **sequentially**: a Playwright page fetch of the article body,
+  one LLM call for `key_points` + `summary` (English prompt, "weekly newsletter" wording; from the body, or from metadata
+  when the page is paywalled), IOC extraction and CVE-mention detection. `articles` has no summary column, so nothing
+  is reused between runs.
+- **`preview` and `draft-email` both rebuild everything** (fetch + LLM + IOC extraction again) and **both save a new
+  `newsletters` row**, so one send can leave two or more history rows. The rebuild also **writes IOCs and CVE mentions
+  into the database** as a side effect of what looks like a preview.
+- Template: `apps/api/src/cti_api/templates/newsletter_email.html` (233 lines) extends `_base_email.html`; all labels,
+  headings and the title are hardcoded English. The rebranded email templates were never checked in real email clients
+  (#2, "email client verification not yet").
+- The saved row has `week`/`year` (small integers), `generated_at` (string), the rendered `html` and a `sections`
+  JSON; there is no period range and no edition number.
+
+**Proposal: biweekly (request 1)**
+- Decide what "biweekly" changes. The composer is manual, so the cadence only exists if the system **prepares the
+  edition**: a beat task builds a **draft candidate list every second Monday** (window = the last 14 days; clusters
+  `cluster_days` 14), notifies the analysts on Telegram, and the analyst reviews and sends. Without that, "biweekly" is
+  just a label.
+- Replace "Week N" with an **edition number and a date range** ("Edition 12, 6-19 Oct 2026"): add
+  `period_start`/`period_end` (and `edition`) to `newsletters` (migration), keep `week`/`year` for the old rows.
+  Section caps (5 per section) probably need to go up for a two-week window.
+- Which weeks: every other ISO week by parity, or counted from a fixed first edition date (needs to be written down).
+
+**Proposal: Indonesian content (request 2)**
+- Generate `key_points` and `summary` **in Indonesian in the same LLM call** (change the prompt; no second translation
+  call, no extra cost per article). Keep CVE ids, product names, threat actor names, ATT&CK technique names and IOCs
+  untranslated; give the model a short glossary for recurring terms so the wording is consistent between editions.
+- Translate the **template labels**, section headings, subject and footer. Add a `language` field (default `id`, `en`
+  still possible) to the build request so the English edition is not lost.
+- Open: article **titles** (keep the original, or add a translated line under it) and whether analyst-written intro and
+  notes stay as typed. Quality check: have an Indonesian reader review the first two editions and keep a list of wording
+  corrections for the glossary.
+
+**Proposal: redesign (request 3)**
+- Outlook desktop (the Graph draft is opened in Outlook) renders with the Word engine: table-based layout, inline
+  CSS, no flex/grid, a font fallback stack. The redesign should be built and tested for that first, not for Gmail
+  only. Include a plain-text/preheader line, a mobile width and the brand tokens from #1.
+- Proposed structure: header with edition + date range; an **executive summary** (3-5 lines) at the top; "Highlight";
+  the sections; a "CVEs to act on" block; footer with contact. Everything above is fixed text in the template except the
+  summary, which can reuse the weekly recap headline (see Proposed additions).
+- Needed: a **design reference or mockup from the team**, otherwise the redesign is my guess at their taste.
+
+**Recommendations (request 4): two readings, please confirm**
+- (a) **Recommended articles**: when the composer opens (or when the biweekly draft is built), suggest which articles to
+  include in each section, ranked by signals we already store: `confidence_score`, `confirmed_incident`, KEV/PoC on the
+  CVEs mentioned, hit on a **monitored tech** (#19) or a customer industry/country, source reliability, cluster size, APAC
+  / Indonesia relevance, and duplicates collapsed. The analyst keeps the final say. This also feeds the biweekly
+  draft above.
+- (b) **Recommended actions** inside the newsletter: a short "What to do" for the highlight and each major item (patch X,
+  block these IOCs, hunt for technique Y), generated from the article's CVEs/IOCs/TTPs and the monitored techs, and
+  grounded in those inputs (no invented fixes).
+- My recommendation: do **(a) first** (it makes the biweekly draft useful), then **(b)** for the highlight only.
+
+**Proposed additions (request 5)**, in my suggested order
+1. **Fix the rebuild problem first**: cache each article's summary/key points (a table keyed by article id and
+   language, or persist them at enrichment time) so `preview` and `draft-email` do not redo Playwright + LLM; make
+   `draft-email` reuse the previewed edition instead of saving a second row; move the IOC/CVE-mention writes out of
+   `preview`. This is also the main LLM saving for #22.
+2. **Draft -> approved -> sent status** on `newsletters` with the audit log, so the history shows what was actually sent
+   (today it shows every build).
+3. **Reuse the weekly recap (#21)** for the executive summary and the "period in numbers" block instead of a separate LLM call.
+4. **"CVEs to act on"** for the period: monitored-tech CVEs with KEV/PoC and ticket status (the #19 tracker data), per
+   client.
+5. **Per-client editions or segments**: the platform is multi-tenant; today there is one global newsletter.
+6. **Delivery beyond a Graph draft**: sending to a distribution list from the app, an archive page with a stable link and
+   a PDF copy. Larger scope; only if the team wants to stop sending by hand.
+7. **Feedback loop**: record which suggested articles the analyst removed or added, and use it to tune the ranking.
+
+**Touch points**: `services/newsletter.py`, `routers/newsletter.py`, `schemas/newsletter.py`,
+`templates/newsletter_email.html` (+ `_base_email.html`), `db/models/newsletter.py` + migration,
+`repositories/newsletter.py`, `beat.py` + a new task, `cti-alerts` (Telegram notice), `apps/web/src/components/newsletter/*`,
+`openapi.json`/`schema.d.ts`.
+**Needed from the user**: (1) the meaning of "recommendations" (a, b or both); (2) a design reference for the template;
+(3) the biweekly rhythm (first edition date, send day/time, WIB) and whether the system should prepare the draft;
+(4) titles in Indonesian or original; (5) which additions to include; (6) who reviews the Indonesian wording.
+**Done when**: an edition is prepared on the biweekly schedule with an edition number and date range; its summaries and
+labels are in Indonesian (with the English option still available); the redesigned template renders correctly in
+Outlook desktop, Outlook web and Gmail (screenshots attached to this item); the composer shows recommendations; one
+send creates exactly one history row; a second preview of the same articles makes no new LLM or Playwright calls;
+tests cover the language switch, the period/edition numbering and the no-duplicate-row case.
