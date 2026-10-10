@@ -18,6 +18,13 @@ Dua short-circuit dipertahankan APA ADANYA dari kode lama:
    `extract_iocs` TETAP jalan (udah kepanggil sebelum percabangan ini di
    kode lama, line 314 vs 343).
 
+Satu pemeriksaan BARU di depan (bukan dari kode lama): URL yang sudah jadi artikel
+tidak diproses ulang (`_known_article`). Dedup scraper (`scraper_seen`) di-namespace
+per `scraper_id`, jadi URL yang sama dari dua feed -- atau dari feed yang sama
+sesudah TTL dedup habis -- dua-duanya sampai ke sini. Dulu tiap kedatangan
+menjalankan klasifikasi + TTP lewat LLM lagi, menimpa enrichment pertama, dan
+mengirim alert Telegram KEDUA; sekarang cuma `seen_count`/`last_seen_at` yang naik.
+
 `update_cve_mention` (tracking mention CVE, `nlp.py:721-726`) DIPORT di Fase
 10.E (`_track_cve_mentions`, tabel `cve_mentions`) buat laporan Top CVE mingguan.
 `_trackingNews`/`_counterNews` (file `.txt` counter lokal) juga gak diport --
@@ -34,8 +41,11 @@ from dataclasses import dataclass
 import structlog
 from cti_core.db.models.article import Article
 from cti_core.db.models.report_state import SCOPE_NEWS
+from cti_core.db.repositories.article import ArticleRepo
 from cti_core.db.repositories.report_state import CveMentionRepo
 from cti_core.db.repositories.ttp_catalog import load_catalog
+from cti_core.urlkit import url_hash
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from cti_enrich import routing
@@ -74,8 +84,8 @@ def _track_cve_mentions(session: Session, article: Article, score_result: ScoreR
     bahan laporan Top CVE mingguan. Aturan yang sengaja dijaga:
 
       - HANYA untuk artikel BARU (`seen_count == 1`). Kalau alert gagal dan task
-        di-retry, pipeline jalan ulang atas artikel yang sama; tanpa cek ini tiap
-        retry menggandakan hitungannya.
+        di-retry, retry-nya sekarang berhenti di `_known_article`; cek ini lapis
+        kedua supaya hitungan tidak pernah dobel.
       - Sesudah `commit()` artikel dan di SAVEPOINT sendiri, dan kegagalannya cuma
         di-log: statistik gak boleh membatalkan artikel atau menahan alert.
       - Cabang `security_tech_best_practice` gak sampai sini (return lebih awal),
@@ -94,6 +104,27 @@ def _track_cve_mentions(session: Session, article: Article, score_result: ScoreR
         log.warning("cve_mention_tracking_failed", article_id=article.id, error=str(e))
 
 
+_URL_LOCK_NAMESPACE = 7_311_001
+"""Kunci pertama `pg_advisory_xact_lock(int4, int4)` per URL (yang kedua `hashtext(url_hash)`).
+Ruang kunci dua-int TIDAK bertabrakan dengan kunci satu-bigint di tempat lain (bootstrap API,
+`/auth/init`, nomor ticket, mirror CVE). Tabrakan `hashtext` antar URL berbeda hanya membuat
+dua task saling menunggu sebentar, tidak salah hasil."""
+
+
+def _known_article(session: Session, url: str) -> Article | None:
+    """Kunci URL ini lalu cari artikelnya. Pemeriksaan "sudah ada?" saja kalah balapan:
+    dua task untuk URL yang sama bisa jalan bersamaan di `worker-nlp` (concurrency > 1), dan
+    artikel baru ditulis di akhir pipeline. Kunci transaksi menahan task kedua sampai task
+    pertama commit (sesudah `persist`, atau di akhir jalur tolak) atau rollback, lalu task
+    kedua melihat artikelnya. Konsekuensinya transaksi sesi terbuka sejak sini, selama
+    panggilan LLM klasifikasi (sebelumnya baru terbuka di `extract_iocs`)."""
+    h = url_hash(url)
+    session.execute(
+        text("SELECT pg_advisory_xact_lock(:ns, hashtext(:h))"), {"ns": _URL_LOCK_NAMESPACE, "h": h}
+    )
+    return ArticleRepo(session).get_by_url_hash(h)
+
+
 @dataclass
 class PipelineOutcome:
     accepted: bool
@@ -105,6 +136,9 @@ class PipelineOutcome:
     article_id: int | None = None
     news_type: str | None = None
     classify_result: ClassifyResult | None = None
+    duplicate: bool = False
+    """True kalau URL ini sudah jadi artikel: tidak ada LLM, persist, maupun alert;
+    hanya `seen_count`/`last_seen_at` artikel lama yang naik."""
 
 
 def run_pipeline(
@@ -116,6 +150,22 @@ def run_pipeline(
     scraper_id: str | None,
     session: Session,
 ) -> PipelineOutcome:
+    known = _known_article(session, url)
+    if known is not None:
+        # Hanya `articles` yang menghentikan pipeline. URL yang pernah DITOLAK tetap
+        # diklasifikasi ulang: penilaian dari judul, dan feed lain bisa memberi judul berbeda.
+        ArticleRepo(session).mark_seen(known)
+        log.info(
+            "enrich_skipped_known_article",
+            url=url,
+            article_id=known.id,
+            source=source,
+            seen_count=known.seen_count,
+        )
+        return PipelineOutcome(
+            accepted=True, article_id=known.id, news_type=known.news_type, duplicate=True
+        )
+
     classify_result = classify(title)
     if not classify_result.related_cyber:
         persist_rejected(

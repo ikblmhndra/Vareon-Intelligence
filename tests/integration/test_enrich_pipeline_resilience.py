@@ -200,7 +200,8 @@ def test_a_new_article_bumps_every_cve_it_mentions(
 def test_retrying_an_article_does_not_double_count_its_cves(
     session: Session, alerts: list[object], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Alert gagal -> task di-retry -> pipeline jalan ulang atas artikel yang SAMA."""
+    """Alert gagal -> task di-retry atas artikel yang SAMA. Retry berhenti di depan
+    (`_known_article`); guard `seen_count` di `_track_cve_mentions` lapis kedua."""
     _with_cves(monkeypatch, ["cve-2026-0001"], [])
 
     _run(session)
@@ -212,17 +213,22 @@ def test_retrying_an_article_does_not_double_count_its_cves(
 def test_a_failing_alert_still_keeps_the_mention_counted_once(
     session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Alert gagal SESUDAH artikel di-commit. Percobaan ulang atas URL yang sama tidak
+    menjalankan pipeline lagi (artikel sudah ada), jadi alert tidak dicoba ulang --
+    alert yang gagal hilang, bukan terkirim dobel -- dan mention tetap terhitung sekali."""
     _with_cves(monkeypatch, ["cve-2026-0001"], [])
+    attempted: list[object] = []
 
-    def telegram_down(_result: object) -> None:
+    def telegram_down(result: object) -> None:
+        attempted.append(result)
         raise ConnectionError("telegram down")
 
     monkeypatch.setattr(pipeline, "route_alerts", telegram_down)
     with pytest.raises(ConnectionError):
         _run(session)
-    with pytest.raises(ConnectionError):
-        _run(session)  # retry
+    assert _run(session).duplicate  # retry
 
+    assert len(attempted) == 1
     assert _mentions(session) == {"CVE-2026-0001": 1}
 
 
