@@ -1,53 +1,53 @@
-# Fase 0 — Salvage & Prep
+# Phase 0 — Salvage & Prep
 
-**Status: `[~]` jalan · Blocking — jangan mulai Fase 1 sebelum ini kelar.**
+**Status: `[~]` in progress · Blocking — do not start Phase 1 before this is done.**
 
-## Kenapa fase ini blocking
+## Why this phase is blocking
 
-Lu milih **big-bang rewrite**. Big-bang cuma aman kalau ada cara ngebuktiin
-hasil rewrite masih bener. Ada tiga hal yang cuma hidup di server produksi dan
-**gak bisa direkonstruksi dari source**:
+You chose a **big-bang rewrite**. A big-bang is only safe if there is a way to prove
+the rewrite is still correct. Three things live only on the production server and
+**cannot be reconstructed from source**:
 
-| Aset | Kenapa gak bisa direkonstruksi | Kalau hilang |
+| Asset | Why it cannot be reconstructed | If lost |
 |---|---|---|
-| `ScraperNewsWeb/static/` | Ke-gitignore, 27 file JS, gak ada di repo | Seluruh frontend hilang — dan itu spesifikasi perilaku buat rewrite Next.js |
-| Crontab | Gak pernah ada di repo | Gak tahu scraper mana yang live dan tiap berapa lama |
-| `ScraperNews/config/config.yml` | Ke-gitignore | Gak tahu nama DB/collection dan struktur config asli |
+| `ScraperNewsWeb/static/` | Gitignored, 27 JS files, not in the repo | The entire frontend is gone — and it is the behavioural spec for the Next.js rewrite |
+| Crontab | Was never in the repo | No way to know which scrapers are live and how often they run |
+| `ScraperNews/config/config.yml` | Gitignored | No way to know the DB/collection names and the real config structure |
 
-Plus satu hal yang harus direkam **selagi scraper lama masih jalan**:
-**fixture** — output scraper lama, buat dibandingin sama hasil rewrite.
-Begitu script lama dihapus, baseline-nya hilang selamanya.
+Plus one thing that has to be recorded **while the old scrapers are still running**:
+**fixtures** — the old scrapers' output, to compare against the rewrite's results.
+Once the old scripts are deleted, that baseline is gone forever.
 
-> **Prioritas #1 hari ini: `pull_static.sh`.** Kalau host prod mati sebelum itu
-> ditarik, frontend lu hilang. Ini ngalahin semua risiko teknis lain di plan.
+> **Priority #1 today: `pull_static.sh`.** If the prod host dies before that is
+> pulled, your frontend is gone. This outranks every other technical risk in the plan.
 
 ---
 
-## Prasyarat
+## Prerequisites
 
 ```bash
-export CTI_PROD_HOST=user@prod-server        # sesuaikan
+export CTI_PROD_HOST=user@prod-server        # adjust
 export CTI_PROD_WEB=/opt/ScraperNewsWeb
-export CTI_PROD_SCRAPER=/opt/ScraperNewsRevamp   # NB: nama dir beda dari nama repo
+export CTI_PROD_SCRAPER=/opt/ScraperNewsRevamp   # NB: the dir name differs from the repo name
 ```
 
-Cek dulu path-nya bener:
+Check the paths first:
 ```bash
 ssh "$CTI_PROD_HOST" 'ls -d /opt/ScraperNewsWeb /opt/ScraperNewsRevamp 2>&1'
 ```
 
-> **Catatan transport.** Dua hal yang udah ketemu di lapangan:
+> **Transport notes.** Two things already found in the field:
 >
-> - `/usr/bin/rsync` di macOS itu **openrsync** (kompatibel rsync 2.6.9), bukan
->   rsync 3.x — flag `--info=progress2` ditolak. Script-nya probe dan fallback
->   ke `--progress`. Mau rsync asli: `brew install rsync`.
-> - **Host prod gak punya rsync.** `pull_static.sh` otomatis turun ke
->   tar-over-ssh (`tar -czf - | tar -xzf -`), dan kalau tar juga gak ada,
->   ke `scp -r`. Gak ada yang perlu di-install di prod.
+> - `/usr/bin/rsync` on macOS is **openrsync** (rsync 2.6.9 compatible), not
+>   rsync 3.x — the `--info=progress2` flag is rejected. The script probes and falls back
+>   to `--progress`. For real rsync: `brew install rsync`.
+> - **The prod host has no rsync.** `pull_static.sh` automatically falls back to
+>   tar-over-ssh (`tar -czf - | tar -xzf -`), and if tar is missing too,
+>   to `scp -r`. Nothing needs to be installed on prod.
 >
-> Host ini masih pakai **password auth**, jadi script pakai SSH ControlMaster
-> biar password cuma ditanya sekali per run. Buat ngilangin prompt sama sekali
-> (dan bikin script fase 0 lain lebih enak):
+> This host still uses **password auth**, so the scripts use SSH ControlMaster
+> so the password is asked only once per run. To remove the prompt entirely
+> (and make the other Phase 0 scripts nicer):
 >
 > ```bash
 > ssh-copy-id "$CTI_PROD_HOST"
@@ -55,235 +55,235 @@ ssh "$CTI_PROD_HOST" 'ls -d /opt/ScraperNewsWeb /opt/ScraperNewsRevamp 2>&1'
 
 ---
 
-## 0.1 — Tarik `static/` `[ ]`
+## 0.1 — Pull `static/` `[ ]`
 
 ```bash
 ./tools/salvage/pull_static.sh
 ```
 
-Nyalin `$CTI_PROD_WEB/static/` ke `legacy/static/`. Harusnya dapet ~27 file JS
-(`api.js`, `core.js`, `newsroom/*.js`, dst) plus CSS.
+Copies `$CTI_PROD_WEB/static/` to `legacy/static/`. It should get ~27 JS files
+(`api.js`, `core.js`, `newsroom/*.js`, etc.) plus CSS.
 
-**Verifikasi:**
+**Verification:**
 ```bash
-find legacy/static -name '*.js' | wc -l      # harapkan ~27
+find legacy/static -name '*.js' | wc -l      # expect ~27
 ```
 
-**Langsung commit.** Jangan nunggu sampai fase ini kelar.
+**Commit immediately.** Do not wait for the phase to finish.
 
 ---
 
-## 0.2 — Rekam crontab `[ ]`
+## 0.2 — Record the crontab `[ ]`
 
 ```bash
 ./tools/salvage/dump_crontab.sh
 ```
 
-Nangkep crontab semua user, `/etc/crontab`, `/etc/cron.d/*`, dan systemd timer
-ke `docs/legacy/crontab.txt`.
+Captures every user's crontab, `/etc/crontab`, `/etc/cron.d/*`, and systemd timers
+into `docs/legacy/crontab.txt`.
 
-**Verifikasi:** file berisi baris-baris yang mirip
+**Verification:** the file contains lines like
 `*/15 * * * * cd /opt/... && .../python3 bleepcompThreat.py`
 
-**Kalau crontab udah gak ada**, cadangannya: rekonstruksi cadence dari data —
-`threatintel.offsets.seen_at` di-group per `script`, ambil median jarak antar
-cluster run. Ini lower bound yang lumayan. Cadangan terakhir: default per family
-(RSS 15m, XPath statis 30m, browser 2j) lewat `spread()`.
+**If the crontab is already gone**, the fallback: reconstruct the cadence from data —
+group `threatintel.offsets.seen_at` by `script` and take the median gap between run
+clusters. That is a decent lower bound. The last resort: per-family defaults
+(RSS 15m, static XPath 30m, browser 2h) through `spread()`.
 
 ---
 
-## 0.3 — Ambil `config.yml` `[ ]`
+## 0.3 — Fetch `config.yml` `[ ]`
 
 ```bash
 ./tools/salvage/pull_config.sh
 ```
 
-Ditaruh di `legacy/config.yml` — **jangan di-commit** (ada kredensial; udah
-masuk `.gitignore`). Gunanya buat mastiin nama DB/collection asli sebelum
-skema Postgres dirancang.
+Stored at `legacy/config.yml` — **do not commit it** (it contains credentials; already
+in `.gitignore`). Its purpose is to confirm the real DB/collection names before
+the Postgres schema is designed.
 
 ---
 
-## 0.4 — Backup Mongo + tes restore `[ ]`
+## 0.4 — Mongo backup + restore test `[ ]`
 
 ```bash
 ./tools/salvage/backup_mongo.sh
 ```
 
-Dump `news_db` + `threatintel`, lalu **restore ke container scratch** dan
-bandingin jumlah dokumen per collection. Script-nya udah ngelakuin ini —
-backup yang belum dites restore itu bukan backup.
+Dumps `news_db` + `threatintel`, then **restores into a scratch container** and
+compares document counts per collection. The script already does this —
+a backup whose restore has not been tested is not a backup.
 
-Karena cutover mulai dari DB kosong, dump ini jadi **satu-satunya** arsip data
-historis. Simpan di luar host prod.
+Since the cutover starts from an empty DB, this dump is the **only** archive of historical
+data. Keep it off the prod host.
 
 ---
 
-## 0.5–0.7 — Rekam fixture (3 hari) `[ ]`
+## 0.5–0.7 — Record fixtures (3 days) `[ ]`
 
 ```bash
 ./tools/salvage/record_fixtures.py --scrapers-dir ../ScraperNews --out ../cti-platform/tests/fixtures
 ```
 
-Buat tiap scraper lama, script ini:
-1. Nge-patch `push_job` dan `is_new_and_mark` biar **gak nulis apa-apa** —
-   cuma ngumpulin `(title, url)`
-2. Nyimpen byte HTTP mentahnya → `<scraper>/<tanggal>.input.*`
-3. Nyimpen item yang dihasilkan → `<scraper>/expected_items.json`
+For each old scraper, this script:
+1. Patches `push_job` and `is_new_and_mark` so they **write nothing** —
+   they only collect `(title, url)`
+2. Saves the raw HTTP bytes → `<scraper>/<date>.input.*`
+3. Saves the produced items → `<scraper>/expected_items.json`
 
-Nanti di Fase 4, plugin baru dikasih byte yang sama dan **harus** ngeluarin
-item yang sama. Ini gate cutover-nya.
+Later, in Phase 4, the new plugin is given the same bytes and **must** produce
+the same items. That is the cutover gate.
 
-**Kenapa 3 hari:** feed itu muter. Snapshot sehari bikin ngerasa cakupannya
-udah cukup padahal belum — parser yang cuma jalan di satu bentuk item bakal
-lolos di hari 1 dan gagal di produksi.
+**Why 3 days:** feeds rotate. A one-day snapshot makes coverage feel
+sufficient when it is not — a parser that only works on one item shape will
+pass on day 1 and fail in production.
 
-**Verifikasi:**
+**Verification:**
 ```bash
-ls tests/fixtures | wc -l                    # harapkan ≥200
+ls tests/fixtures | wc -l                    # expect ≥200
 ```
 
-### Prasyarat: venv perekam
+### Prerequisite: the recorder venv
 
-Script lama butuh dependency fetch/parse-nya. Tapi **tidak** butuh stack NLP
-(spacy/sumy) karena `modules.nlp` di-stub, jadi env-nya ringan:
+The old scripts need their fetch/parse dependencies. But they do **not** need the NLP stack
+(spacy/sumy) because `modules.nlp` is stubbed, so the env is light:
 
 ```bash
-./tools/salvage/setup_legacy_env.sh      # bikin .venv-legacy
+./tools/salvage/setup_legacy_env.sh      # creates .venv-legacy
 .venv-legacy/bin/python tools/salvage/record_fixtures.py ...
 ```
 
-### Prasyarat: context file
+### Prerequisite: the context file
 
-Sebagian scraper baca konfigurasi dari MongoDB. Kalau itu kosong, mereka
-ngehasilkan **0 item dan fixture-nya bohong**. Ambil datanya dari prod:
+Some scrapers read their configuration from MongoDB. If that is empty, they
+produce **0 items and the fixture lies**. Pull the data from prod:
 
 ```bash
 mongosh "$MONGO_URI" --quiet --eval \
   'JSON.stringify(db.getSiblingDB("threatintel").techstack.distinct("name"))'
 ```
 
-Masukin ke file bergaya `tools/salvage/fixture_context.example.json`, lalu:
+Put it into a file shaped like `tools/salvage/fixture_context.example.json`, then:
 
 ```bash
 ... record_fixtures.py --context tools/salvage/fixture_context.json ...
 ```
 
-Kena ke `cisacatalogThreat`, `newCveThreat`, `techstackNPM`, `monitorX`.
-File ini juga jadi basis **seed data referensi di Fase 10.1** — karena cutover
-mulai dari DB kosong, `techstack` wajib di-seed atau pipeline CVE mati.
+Affects `cisacatalogThreat`, `newCveThreat`, `techstackNPM`, `monitorX`.
+This file also becomes the basis for the **reference data seed in Phase 10.1** — since the cutover
+starts from an empty DB, `techstack` must be seeded or the CVE pipeline is dead.
 
 ---
 
-## Realitas lapangan (dari uji coba harness)
+## Field reality (from trial runs of the harness)
 
-Harness-nya udah diuji ke scraper beneran. Tiga mode kegagalan yang bakal lu
-temuin, dan cara ngebedainnya:
+The harness has been tested against real scrapers. There are three failure modes you will
+run into, and how to tell them apart:
 
-### 1. Diblokir situsnya — fixture TIDAK valid
+### 1. Blocked by the site — the fixture is NOT valid
 
 ```
 [  2/3] gbHackerThreat            0 item  BLOCKED
   gbHackerThreat    https://gbhackers.com/feed/
 ```
 
-`gbhackers.com` balikin halaman challenge Cloudflare, bukan RSS. Scraper lama
-masuk cabang `else`, print error, selesai — diam-diam nol item. Persis jenis
-kegagalan yang selama ini gak kedeteksi.
+`gbhackers.com` returns a Cloudflare challenge page, not RSS. The old scraper
+takes the `else` branch, prints an error, and finishes — silently zero items. Exactly the kind of
+failure that has gone undetected all along.
 
-**Artinya: rekam fixture dari IP yang sama dengan host produksi**, karena di
-situlah scraper lama beneran jalan. Ngerekam dari laptop bakal ngasih fixture
-palsu buat semua situs yang mem-filter berdasarkan IP/geo. Cara paling gampang:
-rsync repo ke host prod, jalanin perekam di sana, tarik hasilnya.
+**This means: record fixtures from the same IP as the production host**, because that is
+where the old scrapers actually run. Recording from a laptop gives fake
+fixtures for every site that filters by IP/geo. The easiest way:
+rsync the repo to the prod host, run the recorder there, pull the results.
 
-Perekam nandain ini `BLOCKED` (403/429/5xx) dan nyimpen `http_status` +
-`blocked_urls` ke `meta.json`, jadi fixture jelek gak diam-diam kepake.
+The recorder flags this as `BLOCKED` (403/429/5xx) and stores `http_status` +
+`blocked_urls` in `meta.json`, so a bad fixture is not used silently.
 
-### 2. Nol item yang SAH — feed lagi sepi
+### 2. A LEGITIMATE zero items — the feed is quiet
 
 ```
 [  1/3] cisacatalogThreat         0 item  EMPTY
 ```
 
-`cisacatalogThreat` nyaring `dateAdded` ke hari ini/kemarin. Katalog CISA
-terakhir rilis beberapa hari lalu, jadi nol itu **benar**.
+`cisacatalogThreat` filters `dateAdded` to today/yesterday. The CISA catalog's
+last release was a few days ago, so zero is **correct**.
 
-**Ini alasan perekaman 3 hari itu wajib.** "EMPTY" gak bisa dibedain dari
-"rusak" cuma dari satu hari — dan ketidakmampuan ngebedain dua hal ini persis
-masalah #2 yang mau dibenerin revamp ini.
+**This is why recording for 3 days is mandatory.** "EMPTY" cannot be told apart from
+"broken" from a single day — and being unable to tell these two apart is exactly
+problem #2 this revamp is meant to fix.
 
-### 3. Script yang emang rusak — temuan gratis
+### 3. Scripts that really are broken — free findings
 
 ```
 securityaffairsThreat    NameError: name 'html' is not defined
 theRecordThreat          5 item, lalu NameError: name 'message_list' is not defined
 ```
 
-`securityaffairsThreat` udah dikenali sebelumnya (`lxml.html` gak di-import).
-`theRecordThreat` **temuan baru** — dia push 5 item terus crash, jadi selama
-ini jalan separuh tanpa ada yang tahu.
+`securityaffairsThreat` was already known (`lxml.html` is not imported).
+`theRecordThreat` is a **new finding** — it pushes 5 items and then crashes, so all
+along it has been running halfway without anyone knowing.
 
-Catat semuanya di `KNOWN_BROKEN.md`. Script yang rusak **gak butuh golden
-test** — gak ada perilaku benar yang mau dipertahankan. Yang perlu diputuskan
-per script: diperbaiki waktu rewrite, atau dibuang.
-
----
-
-## 0.8 — Rotasi secret `[ ]`
-
-Lihat **[../SECRETS_ROTATION.md](../SECRETS_ROTATION.md)**.
-
-Rotasi **sebelum** repo lama di-import ke monorepo, biar blob yang ke-import
-cuma berisi nilai mati.
+Record all of them in `KNOWN_BROKEN.md`. Broken scripts **do not need a golden
+test** — there is no correct behaviour to preserve. What needs deciding
+per script: fix it during the rewrite, or drop it.
 
 ---
 
-## 0.9 — Verifikasi `torch` `[x]` SELESAI
+## 0.8 — Secret rotation `[ ]`
+
+See **[../SECRETS_ROTATION.md](../SECRETS_ROTATION.md)**.
+
+Rotate **before** the old repos are imported into the monorepo, so the imported blobs
+contain only dead values.
+
+---
+
+## 0.9 — Verify `torch` `[x]` DONE
 
 ```
-torch                   → 0 importer
-bert-extractive-summarizer → 0 importer
-transformers            → 0 importer
-sumy                    → dipakai (nlp.py, nlp_worker.py)
+torch                   → 0 importers
+bert-extractive-summarizer → 0 importers
+transformers            → 0 importers
+sumy                    → used (nlp.py, nlp_worker.py)
 ```
 
-**Kesimpulan:** `torch` dan `bert-extractive-summarizer` dead weight di
-`requirements.txt`. Buang. Image enrich turun ~2.5 GB, jadi pemisahan image
-bukan lagi kendala berat — tetap dilakukan (Chromium & spaCy gak ada urusan
-di image API), tapi jauh lebih murah dari perkiraan awal di plan.
+**Conclusion:** `torch` and `bert-extractive-summarizer` are dead weight in
+`requirements.txt`. Remove them. The enrich image shrinks by ~2.5 GB, so splitting the images
+is no longer a heavy constraint — it is still done (Chromium & spaCy have no business
+in the API image), but it is much cheaper than first estimated in the plan.
 
 ---
 
-## 0.10 — Verifikasi bug regex `\b` `[x]` SELESAI
+## 0.10 — Verify the `\b` regex bug `[x]` DONE
 
 ```python
-# nlp.py:35,396,400,414 — f-string NON-raw → "\\b" jadi \b → BENAR
+# nlp.py:35,396,400,414 — NON-raw f-string → "\\b" becomes \b → CORRECT
 if re.search(f"\\b{str(keyword).lower()}\\b", ...)
 
-# nlp.py:421 — raw string → "\\b" tetap literal backslash+b → RUSAK
+# nlp.py:421 — raw string → "\\b" stays a literal backslash+b → BROKEN
 zero_day_list = re.findall(r"\\b(zero|0)[-.]day\\b", ...)
 ```
 
-**Kesimpulan:** cuma **L421** yang rusak. Deteksi zero-day gak pernah cocok.
-Empat baris lainnya sudah benar — **jangan ikut "diperbaiki"**, nanti malah
-merusak yang jalan. Plan udah dikoreksi.
+**Conclusion:** only **L421** is broken. Zero-day detection has never matched.
+The other four lines are already correct — **do not "fix" them too**, that would break
+what works. The plan has been corrected.
 
 ---
 
 ## Exit criteria
 
-Fase 0 selesai kalau semua ini benar:
+Phase 0 is done when all of these hold:
 
-- [ ] `legacy/static/` ke-commit, ~27 file JS
-- [ ] `docs/legacy/crontab.txt` ke-commit, isinya jadwal beneran
-- [ ] `legacy/config.yml` ada di lokal (gak di-commit)
-- [ ] Dump Mongo ada, **restore udah dites**, disimpan off-host
-- [ ] Fixture ≥200 scraper × 3 hari
-- [ ] 7 secret dirotasi, `gitleaks` bersih
-- [x] Temuan `torch` terverifikasi
-- [x] Cakupan bug `\b` terverifikasi
+- [ ] `legacy/static/` committed, ~27 JS files
+- [ ] `docs/legacy/crontab.txt` committed, containing the real schedule
+- [ ] `legacy/config.yml` present locally (not committed)
+- [ ] Mongo dump exists, **restore tested**, stored off-host
+- [ ] Fixtures for ≥200 scrapers × 3 days
+- [ ] 7 secrets rotated, `gitleaks` clean
+- [x] `torch` finding verified
+- [x] Scope of the `\b` bug verified
 
-**Kalau 0.5–0.7 gak bisa dituntasin** (host udah gak keakses, feed di balik
-auth), stop dan kabarin. Tanpa fixture, gak ada cara ngebuktiin 206 parser
-hasil rewrite masih bener, dan strateginya harus turun jadi per-family — lama
-dihapus satu family sekaligus, sambil stack lama tetap jalan buat pembanding.
+**If 0.5–0.7 cannot be completed** (host no longer reachable, feeds behind
+auth), stop and say so. Without fixtures there is no way to prove the 206 rewritten parsers
+are still correct, and the strategy has to drop to per-family — the old one
+removed one family at a time, while the old stack keeps running for comparison.

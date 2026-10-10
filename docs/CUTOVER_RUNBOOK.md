@@ -1,347 +1,349 @@
-# Runbook Cutover & Operasi (Fase 10.G)
+# Cutover & Operations Runbook (Phase 10.G)
 
-Dokumen ini gabungan dua hal: **urutan cutover** dari sistem lama (Rundeck + Mongo + web lama)
-ke platform baru, dan **panduan operasi** sesudahnya (backup, rollback, health, hypercare).
-> Cutover pengisian CVE Tracker dari `new_cve` ke katalog + mirror CVE (ROADMAP #19) punya runbook sendiri:
+This document combines two things: the **cutover sequence** from the old system (Rundeck + Mongo + old web)
+to the new platform, and the **operations guide** afterwards (backup, rollback, health, hypercare).
+> The cutover of CVE Tracker filling from `new_cve` to the catalog + CVE mirror (ROADMAP #19) has its own runbook:
 > `docs/CVE_CATALOG_CUTOVER.md`.
 
-Semua angka waktu di sini **terukur di latihan staging** kecuali yang ditandai *belum dilatih*.
-Bagian "Yang BELUM terbukti" di akhir sengaja jujur soal itu.
+Every timing here was **measured in a staging drill** except where marked *not yet drilled*.
+The "What is NOT yet proven" section at the end is deliberately honest about that.
 
-> Aturan main: jangan pernah menempel/menyalin isi `.env` atau secret ke chat, tiket, atau log.
-> Cek keberadaan dengan `grep -q "^KEY=." .env`, bukan dengan mencetak nilainya.
+> Ground rules: never paste/copy the contents of `.env` or any secret into chat, tickets, or logs.
+> Check that something exists with `grep -q "^KEY=." .env`, not by printing its value.
 
 ---
 
-## 0. Peta singkat
+## 0. Quick map
 
 ```
-     nginx (compose; TLS, XFF)                 Rundeck lama (100 job aktif)  ── DIMATIKAN saat cutover
+     nginx (compose; TLS, XFF)                 old Rundeck (100 active jobs)  ── SWITCHED OFF at cutover
                     │                          cti-web.service, nlp_worker, iocSyncer, mongod
-                    ▼                                   (jangan dihapus -- untuk rollback)
+                    ▼                                   (do not delete -- needed for rollback)
         web (Next.js BFF :3000)
                     │  /api/proxy/*
                     ▼
         api (FastAPI :8000)  ── postgres ── redis
                                    ▲           ▲
    beat ──(cron)──► queue ─────────┴───────────┘
-        scrape.rss/api/notify/maintenance → worker          (RSS, API, laporan, health digest)
-        scrape.browser                    → worker-browser   (Chromium, 25 scraper)
+        scrape.rss/api/notify/maintenance → worker          (RSS, API, reports, health digest)
+        scrape.browser                    → worker-browser   (Chromium, 25 scrapers)
         enrich                            → worker-nlp       (spaCy + LLM)
 ```
 
-| Yang | Nilai |
+For the data flows and code paths behind this picture, see `docs/ARCHITECTURE.md`.
+
+| What | Value |
 |---|---|
 | Deploy | 1 VM, `docker compose --profile app` (postgres, redis, migrate, api, worker, worker-browser, worker-nlp, beat, web, **nginx**) |
-| TLS / akses luar | service **`nginx`** di compose (bagian 2.4): sertifikat self-signed otomatis atau sertifikat sendiri; **cuma nginx** yang dibuka ke luar (80/443), api/web/postgres/redis hanya `127.0.0.1`. Pakai nginx host sendiri? template: `docker/ops/nginx-cti.conf.example` |
-| Secret | `.env` (chmod 600) sekarang; Vault sesudah cutover (`docs/SECRETS_ROTATION.md`) |
-| Tag image | `CTI_TAG` di `docker/stack.env` (mis. `v20260927`); simpan tag sebelumnya untuk rollback |
-| Zona waktu laporan | `WORKER__REPORT_UTC_OFFSET_HOURS=7` (WIB) |
+| TLS / external access | the **`nginx`** service in compose (section 2.4): an automatic self-signed certificate or your own certificate; **only nginx** is exposed (80/443), api/web/postgres/redis only on `127.0.0.1`. Using your own host nginx? Template: `docker/ops/nginx-cti.conf.example` |
+| Secrets | `.env` (chmod 600) for now; Vault after cutover (`docs/SECRETS_ROTATION.md`) |
+| Image tag | `CTI_TAG` in `docker/stack.env` (e.g. `v20260927`); keep the previous tag for rollback |
+| Report time zone | `WORKER__REPORT_UTC_OFFSET_HOURS=7` (WIB) |
 
 ---
 
-## 1. Prasyarat (semua wajib hijau sebelum T-0)
+## 1. Prerequisites (all must be green before T-0)
 
-Checklist gate ada di `docs/PROGRESS.md` ("Checklist cutover"). Ringkasan yang harus dipegang
-orang yang menjalankan cutover. **Empat item yang butuh tangan manual di host produksi (backup
-Mongo+drill restore, snapshot Rundeck, latihan rollback ke stack lama, timer backup Postgres +
-off-host) punya panduan langkah-per-langkah di `docs/PROD_PREP.md`** -- kerjakan itu duluan.
+The gate checklist is in `docs/PROGRESS.md` ("Checklist cutover"). A summary the person running the cutover
+must hold on to. **The four items that need manual work on the production host (Mongo backup
++ restore drill, Rundeck snapshot, rollback drill to the old stack, Postgres backup timer +
+off-host copy) have step-by-step guides in `docs/PROD_PREP.md`** -- do those first.
 
-- [x] **13 secret LEGACY dirotasi** (10.F, lihat `docs/SECRETS_ROTATION.md`) -- **didelegasikan ke tim ops
-      user 2026-09-30**, dieksekusi tim tersebut. Ini soal token/kredensial app LAMA yang bocor
-      (ScraperNews/ScraperNewsWeb/techstackLibrary + `legacy/config.yml`), BUKAN secret platform baru.
-- [ ] **`tools/ops/check_secrets.py` hijau dengan `.env` PROD** (read-only: LLM `/models`, Telegram
-      `getMe`/`getChat`, NVD, GitHub, twitterapi.io, X bearer bila diisi) -- ini beda dari item di atas:
-      mengecek secret BARU (dari `.env.prod.template` yang sudah diisi) bekerja, bukan mengecek yang lama
-      sudah dicabut. Di host tanpa `uv`: `docker run --rm --env-file .env -v "$PWD/tools:/tools:ro"
+- [x] **13 LEGACY secrets rotated** (10.F, see `docs/SECRETS_ROTATION.md`) -- **delegated to the user's ops
+      team 2026-09-30**, executed by that team. This is about leaked tokens/credentials of the OLD apps
+      (ScraperNews/ScraperNewsWeb/techstackLibrary + `legacy/config.yml`), NOT the new platform's secrets.
+- [ ] **`tools/ops/check_secrets.py` is green with the PROD `.env`** (read-only: LLM `/models`, Telegram
+      `getMe`/`getChat`, NVD, GitHub, twitterapi.io, the X bearer if set) -- this differs from the item above:
+      it checks that the NEW secrets (from the filled-in `.env.prod.template`) work, not that the old ones have been
+      revoked. On a host without `uv`: `docker run --rm --env-file .env -v "$PWD/tools:/tools:ro"
       cti-worker:$CTI_TAG python /tools/ops/check_secrets.py`.
-- [ ] `.env` prod lengkap. Yang paling sering terlupa:
-  - `TELEGRAM__THREAD_IDS` memuat **semua 22 topik**: `global apac apac_indo apt ot zero_day
+- [ ] The prod `.env` is complete. The most often forgotten:
+  - `TELEGRAM__THREAD_IDS` contains **all 22 topics**: `global apac apac_indo apt ot zero_day
     data_breach data_breach_indo vendor_report tech_stack tech_stack_unrelated best_practice darkweb
-    pir scraper_health notd debug library_advisory logbook top_ta github_poc feed_twitter`. Topik yang dipakai kode
-    tapi tak ada di sini = `UnknownAlertTopic` (kegagalan keras, bukan diam-diam salah channel).
-    **`github_poc` dan `feed_twitter` baru (2026-10-02)**: env yang dibuat sebelum itu belum punya --
-    tambahkan, kalau tidak alert PoC GitHub / tweet umum gagal tiap run (data PoC-nya tetap tersimpan).
-    `feed_twitter` = thread khusus tweet "umum" (dulu `global`/`apac`/`apac_indo`/`apt`); tweet kategori
-    khusus tetap ke `zero_day`/`data_breach*`/`vendor_report`/`ot`/`tech_stack*`. Kunci dedup notice tweet
-    berubah (`<id>:global` -> `<id>:feed_twitter`): tweet yang masih di jendela pencarian saat deploy
-    pertama bisa terkirim ulang SEKALI ke `feed_twitter`. `thread_id` 0 = tanpa thread (masuk chat
-    utama): kalau SEMUA 0, semua topik menumpuk di satu tempat. `check_secrets.py` memberi NOTE
-    (`telegram_threads`). Cara dapat `thread_id`: klik kanan topik > Copy Link, angka terakhir pada
-    `https://t.me/c/<chat>/<thread_id>`; chat harus grup forum (Topics aktif).
-  - `TWITTER__API_KEY` (twitterapi.io = sumber Twitter UTAMA). `X__BEARER_TOKEN` hanya kalau
-    cadangan X resmi mau disiapkan -- **satu underscore** antara `BEARER` dan `TOKEN`; nama salah =
-    container gagal start (`extra="forbid"`).
-  - `WORKER__REPORT_UTC_OFFSET_HOURS` (asumsi 7 = WIB; set 0 kalau server Rundeck lama ternyata UTC).
-  - Variabel level compose (`BIND_ADDR`, `*_PORT`, `POSTGRES_*`, `CTI_TAG`, `TRUSTED_PROXY_HOPS`,
-    `*_CONCURRENCY`, `NGINX_*`) di `docker/stack.env`, **bukan** di `.env`.
-- [ ] **nginx (bagian 2.4)**: `NGINX_TLS_HOSTS` di `docker/stack.env` berisi nama/IP yang benar-benar dipakai
-      orang untuk membuka platform; port 80/443 di host **bebas** (`ss -ltnp | grep -E ':(80|443)\b'`,
-      kosong). Header `X-Forwarded-For` sudah benar di config image. Kalau memakai nginx host sendiri,
-      dialah yang wajib memasangnya (`docker/ops/nginx-cti.conf.example`) -- tanpa itu rate limit login
-      mengunci semua orang sekaligus.
-- [~] **Census feed** -- diulang dari staging 2026-09-30 setelah `warp-cli`/`warp-svc` (Cloudflare WARP)
-      dimatikan (IP publik staging balik ke ISP asli, Moratelindo -- bukan range Cloudflare lagi). Hasil:
-      **24 dari 94 gagal** (turun dari 30/92), dan perbandingannya informatif -- lihat `docs/PROGRESS.md`
-      untuk rincian. **5 kegagalan sebelumnya HILANG** setelah WARP dimatikan (kuat diduga itu efek
-      IP Cloudflare, bukan situs beneran berubah): `monitor_x`/`new_cve` (rate-limit, juga dibantu
-      perbaikan pacing 10.G2) + `ecrime` (timeout) + `cybersecnews`/`exploitdb`/`threatmon` (dulu
-      "XML tak valid" -- kemungkinan halaman blokir/CAPTCHA yang keliru diparsing sebagai feed).
-      **18 XPath tak cocok PERSIS SAMA** sebelum/sesudah -- ini genuinely selector situs berubah,
-      bukan IP, dan butuh perbaikan kode per scraper. **Diperbaiki 2026-09-30 s/d 2026-10-01** (rincian
-      `docs/PROGRESS.md` 10.I, tabel akar masalah `docs/KNOWN_BROKEN.md`): 9 scraper pindah ke
-      `RSSScraper`, 8 pakai `link_card_xpaths`, filter kategori `sentinel`/`crowdstrike` diperbarui,
-      `github_poc_monitor`/`new_cve` sekarang menunggu jendela rate-limit, `monitor_x` gagal keras saat
-      kredit habis. **5 WAIVER tertulis** (`enabled=False`): `blackberry`, `koisec`, `google`, `cisa`
-      (WAF Akamai 403, tidak dilewati), `nquiring_minds`. Sisa: `intel471` belum stabil (Vercel 429), 5
-      scraper flaky sesekali (retry beat). Scraper yang di-waive tampil `disabled` di health sweep.
-      **Belum diulang dari IP PRODUKSI SUNGGUHAN** -- staging sekarang cukup dipercaya (WARP mati),
-      tapi produksi tetap boleh dites ulang kalau egress-nya beda lagi. **Health sweep sesudah semalam penuh
-      (2026-10-02):** ok 85 / disabled 5 / zero_yield 2 (sah) / degraded 4 (semua Twitter, kredit habis).
-- [ ] **Backup Mongo < 24 jam** + sudah dites restore (user; dump lama = satu-satunya arsip historis).
-- [ ] **Snapshot stack lama** (lihat 2.3) sudah diambil -- tanpa itu rollback ke stack lama tidak bisa
-      dijamin <5 menit.
-- [ ] Rehearsal di staging bersih dari ujung ke ujung (seed, warm start, prime, beat) dengan sampel besar.
-- [ ] Backup Postgres terjadwal (bagian 6) dan **satu kali `verify` sukses**.
-- [ ] Orang kedua tahu di mana runbook ini dan siapa yang memutuskan rollback.
+    pir scraper_health notd debug library_advisory logbook top_ta github_poc feed_twitter`. A topic used by the code
+    but missing here = `UnknownAlertTopic` (a hard failure, not a silent wrong channel).
+    **`github_poc` and `feed_twitter` are new (2026-10-02)**: env files created before then do not have them --
+    add them, otherwise GitHub PoC / general tweet alerts fail on every run (the PoC data itself is still stored).
+    `feed_twitter` = a dedicated thread for "general" tweets (formerly `global`/`apac`/`apac_indo`/`apt`); tweets in
+    specific categories still go to `zero_day`/`data_breach*`/`vendor_report`/`ot`/`tech_stack*`. The tweet notice dedup key
+    changed (`<id>:global` -> `<id>:feed_twitter`): tweets still within the search window at the first deploy
+    may be re-sent ONCE to `feed_twitter`. `thread_id` 0 = no thread (goes to the main
+    chat): if they are ALL 0, every topic piles up in one place. `check_secrets.py` prints a NOTE
+    (`telegram_threads`). How to get a `thread_id`: right-click the topic > Copy Link, the last number in
+    `https://t.me/c/<chat>/<thread_id>`; the chat must be a forum group (Topics enabled).
+  - `TWITTER__API_KEY` (twitterapi.io = the PRIMARY Twitter source). `X__BEARER_TOKEN` only if the
+    official X fallback is to be prepared -- **one underscore** between `BEARER` and `TOKEN`; a wrong name =
+    the container fails to start (`extra="forbid"`).
+  - `WORKER__REPORT_UTC_OFFSET_HOURS` (assumed 7 = WIB; set 0 if the old Rundeck server turns out to be UTC).
+  - Compose-level variables (`BIND_ADDR`, `*_PORT`, `POSTGRES_*`, `CTI_TAG`, `TRUSTED_PROXY_HOPS`,
+    `*_CONCURRENCY`, `NGINX_*`) go in `docker/stack.env`, **not** in `.env`.
+- [ ] **nginx (section 2.4)**: `NGINX_TLS_HOSTS` in `docker/stack.env` holds the names/IPs people really use
+      to open the platform; ports 80/443 on the host are **free** (`ss -ltnp | grep -E ':(80|443)\b'`,
+      empty). The `X-Forwarded-For` header is already correct in the image config. If you use your own host nginx,
+      it must set it (`docker/ops/nginx-cti.conf.example`) -- without it the login rate limit
+      locks everyone out at once.
+- [~] **Feed census** -- repeated from staging on 2026-09-30 after `warp-cli`/`warp-svc` (Cloudflare WARP)
+      was switched off (staging's public IP went back to the real ISP, Moratelindo -- no longer a Cloudflare range). Result:
+      **24 of 94 failed** (down from 30/92), and the comparison is informative -- see `docs/PROGRESS.md`
+      for the details. **5 earlier failures DISAPPEARED** after WARP was switched off (strongly suspected to be an effect of the
+      Cloudflare IP, not the sites actually changing): `monitor_x`/`new_cve` (rate limit, also helped by
+      the 10.G2 pacing fix) + `ecrime` (timeout) + `cybersecnews`/`exploitdb`/`threatmon` (formerly
+      "XML tak valid" (invalid XML) -- probably a block/CAPTCHA page wrongly parsed as a feed).
+      **18 XPath mismatches EXACTLY THE SAME** before/after -- these are genuinely changed site selectors,
+      not the IP, and need a code fix per scraper. **Fixed 2026-09-30 to 2026-10-01** (details in
+      `docs/PROGRESS.md` 10.I, root-cause table in `docs/KNOWN_BROKEN.md`): 9 scrapers moved to
+      `RSSScraper`, 8 use `link_card_xpaths`, the `sentinel`/`crowdstrike` category filters updated,
+      `github_poc_monitor`/`new_cve` now wait for the rate-limit window, `monitor_x` fails hard when
+      credit runs out. **5 written WAIVERS** (`enabled=False`): `blackberry`, `koisec`, `google`, `cisa`
+      (Akamai WAF 403, not bypassed), `nquiring_minds`. Remaining: `intel471` not yet stable (Vercel 429), 5
+      occasionally flaky scrapers (beat retry). Waived scrapers show as `disabled` in the health sweep.
+      **Not yet repeated from the REAL PRODUCTION IP** -- staging is now trustworthy enough (WARP off),
+      but production may still be re-tested if its egress differs again. **Health sweep after a full night
+      (2026-10-02):** ok 85 / disabled 5 / zero_yield 2 (legitimate) / degraded 4 (all Twitter, credit exhausted).
+- [ ] **Mongo backup < 24 hours old** + restore tested (user; the old dump = the only historical archive).
+- [ ] **Old stack snapshot** (see 2.3) taken -- without it, rolling back to the old stack cannot be
+      guaranteed in <5 minutes.
+- [ ] A clean end-to-end rehearsal on staging (seed, warm start, prime, beat) with a large sample.
+- [ ] Scheduled Postgres backup (section 6) and **one successful `verify`**.
+- [ ] A second person knows where this runbook is and who decides on a rollback.
 
 ---
 
-## 2. Persiapan H-1
+## 2. D-1 preparation
 
-### 2.1 Build dan beri tag
+### 2.1 Build and tag
 
 ```bash
-export CTI_TAG=v20260927                 # tag rilis; catat tag rilis SEBELUMNYA untuk rollback
+export CTI_TAG=v20260927                 # release tag; note the PREVIOUS release tag for rollback
 docker compose --env-file docker/stack.env --profile app build
 docker images | grep -E "cti-(api|worker|worker-nlp|web):$CTI_TAG"
-docker images | grep cti-nginx          # edge: tag TETAP (cti-nginx:1), TIDAK ikut CTI_TAG
+docker images | grep cti-nginx          # edge: a FIXED tag (cti-nginx:1), NOT part of CTI_TAG
 ```
 
-Bangun sekali per rilis. Pada box shared, build berulang menumpuk cache -- kalau disk mepet:
-`docker builder prune -f --filter until=6h` (lihat bagian 9, "Disk penuh").
+Build once per release. On a shared box, repeated builds pile up cache -- if disk is tight:
+`docker builder prune -f --filter until=6h` (see section 9, "Disk full").
 
-### 2.2 Verifikasi secret dan konfigurasi
+### 2.2 Verify secrets and configuration
 
 ```bash
 docker run --rm --env-file .env -v "$PWD/tools:/tools:ro" cti-worker:$CTI_TAG python /tools/ops/check_secrets.py
-docker compose --env-file docker/stack.env --profile app config -q   # sintaks compose
+docker compose --env-file docker/stack.env --profile app config -q   # compose syntax
 ```
 
-### 2.3 Snapshot stack lama (untuk rollback)
+### 2.3 Old stack snapshot (for rollback)
 
-Ambil **tepat sebelum** cutover, bukan H-7 (rekaman Fase 0 di `docs/legacy/` bisa sudah basi):
+Take it **right before** the cutover, not at D-7 (the Phase 0 recording in `docs/legacy/` may be stale):
 
 ```bash
-export RD_URL=http://10.8.20.78:4440 RD_PROJECT=Threat-Information RD_TOKEN=...   # token TIDAK di history:
+export RD_URL=http://10.8.20.78:4440 RD_PROJECT=Threat-Information RD_TOKEN=...   # keep the token OUT of history:
 python3 tools/ops/rundeck_schedule.py snapshot --out rundeck-before-cutover.json  # `read -s RD_TOKEN`
-# di server lama:
-systemctl is-active mongod cti-web nlp_worker iocSyncer | paste - - - -   # catat mana yang aktif
+# on the old server:
+systemctl is-active mongod cti-web nlp_worker iocSyncer | paste - - - -   # note which are active
 ```
 
-Simpan `rundeck-before-cutover.json` **di luar** host lama dan di luar repo (isinya nama job, bukan secret,
-tetap jangan di-commit).
+Keep `rundeck-before-cutover.json` **off** the old host and out of the repo (it holds job names, not secrets,
+but still do not commit it).
 
-### 2.4 nginx dan sertifikat TLS
+### 2.4 nginx and the TLS certificate
 
-Service `nginx` ikut `docker compose --profile app up -d`. Yang perlu diisi hanya `docker/stack.env`:
+The `nginx` service comes with `docker compose --profile app up -d`. Only `docker/stack.env` needs filling in:
 
 ```bash
-NGINX_TLS_HOSTS=cti.perusahaan.internal,10.20.30.40   # SEMUA nama/IPv4 yang dipakai orang, pisah koma
-NGINX_BIND_ADDR=0.0.0.0                               # default; satu-satunya service yang dibuka keluar
+NGINX_TLS_HOSTS=cti.company.internal,10.20.30.40      # EVERY name/IPv4 people use, comma-separated
+NGINX_BIND_ADDR=0.0.0.0                               # default; the only service exposed externally
 NGINX_HTTP_PORT=80
 NGINX_HTTPS_PORT=443
 ```
 
-- **Sertifikat self-signed dibuat sendiri** saat container pertama start (SAN = `localhost`, `127.0.0.1` +
-  `NGINX_TLS_HOSTS`, RSA 2048, berlaku 365 hari), disimpan di `docker/nginx/tls/` (di-gitignore + di-dockerignore:
-  ada kunci privatnya). Fingerprint-nya dicetak ke log: `docker compose ... logs nginx | grep 05-selfsigned`.
-- **Dibuat ulang otomatis** kalau `NGINX_TLS_HOSTS` berubah, kunci tidak cocok, atau sisa masa berlaku <= 30 hari
-  (dicek saat start dan tiap 24 jam, lalu `nginx -s reload`). Selain itu **fingerprint tetap** antar restart.
-- **Browser akan memperingatkan** ("tidak aman"/`ERR_CERT_AUTHORITY_INVALID`) -- itu wajar untuk self-signed. Agar
-  bersih, percayakan sertifikatnya sekali per perangkat:
-  `docker compose ... cp nginx:/etc/nginx/tls/cti.crt ./cti.crt`, lalu impor ke OS/browser (macOS: Keychain Access ->
-  Always Trust; Windows: Trusted Root Certification Authorities). Kalau muncul "**nama tidak cocok**"
-  (`ERR_CERT_COMMON_NAME_INVALID`), alamat yang dibuka tidak ada di `NGINX_TLS_HOSTS`: tambahkan, `up -d nginx`.
-- **Sertifikat sendiri (CA internal)**: taruh `cti.crt` + `cti.key` di `docker/nginx/tls/` (atau `NGINX_TLS_DIR`)
-  sebelum `up`. Generator **tidak pernah menyentuhnya**, apa pun setelan lainnya. Ganti file, lalu
+- **A self-signed certificate is created automatically** when the container first starts (SAN = `localhost`, `127.0.0.1` +
+  `NGINX_TLS_HOSTS`, RSA 2048, valid 365 days), stored in `docker/nginx/tls/` (gitignored + dockerignored:
+  it holds the private key). Its fingerprint is printed to the log: `docker compose ... logs nginx | grep 05-selfsigned`.
+- **Re-created automatically** if `NGINX_TLS_HOSTS` changes, the key does not match, or the remaining validity is <= 30 days
+  (checked at start-up and every 24 hours, then `nginx -s reload`). Otherwise **the fingerprint is stable** across restarts.
+- **Browsers will warn** ("not secure"/`ERR_CERT_AUTHORITY_INVALID`) -- expected for self-signed. To get a
+  clean result, trust the certificate once per device:
+  `docker compose ... cp nginx:/etc/nginx/tls/cti.crt ./cti.crt`, then import it into the OS/browser (macOS: Keychain Access ->
+  Always Trust; Windows: Trusted Root Certification Authorities). If you see "**name mismatch**"
+  (`ERR_CERT_COMMON_NAME_INVALID`), the address you opened is not in `NGINX_TLS_HOSTS`: add it, `up -d nginx`.
+- **Your own certificate (internal CA)**: put `cti.crt` + `cti.key` in `docker/nginx/tls/` (or `NGINX_TLS_DIR`)
+  before `up`. The generator **never touches them**, whatever the other settings. Replace the files, then
   `docker compose ... restart nginx`.
-- Sengaja **tanpa HSTS**: dengan self-signed, HSTS bikin browser menolak tombol "lanjutkan" sama sekali saat
-  sertifikat berganti. Tambahkan setelah pakai sertifikat CA.
-- Edge tidak ikut `CTI_TAG`: rollback aplikasi (bagian 7.1) tidak menyentuhnya, dan `web` yang di-recreate
-  ditemukan nginx dalam <= 10 detik tanpa restart.
-- Healthcheck memakai HTTP polos di listener loopback `127.0.0.1:8081` (tak terjangkau dari luar container), bukan
-  https: `wget` busybox lewat TLS meninggalkan proses yatim yang membuat nginx menulis 2 baris `notice` tiap 15 dtk
-  (~11.500 baris/hari). Log nginx sekarang hanya berisi access log permintaan nyata.
-- IPv6 belum didukung generator sertifikat (pakai sertifikat sendiri).
+- Deliberately **no HSTS**: with self-signed, HSTS makes the browser refuse the "proceed" button entirely when
+  the certificate changes. Add it once you use a CA certificate.
+- The edge is not part of `CTI_TAG`: an application rollback (section 7.1) does not touch it, and a re-created `web`
+  is found by nginx within <= 10 seconds without a restart.
+- The healthcheck uses plain HTTP on the loopback listener `127.0.0.1:8081` (unreachable from outside the container), not
+  https: busybox `wget` over TLS left orphan processes that made nginx write 2 `notice` lines every 15 s
+  (~11,500 lines/day). The nginx log now contains only access logs of real requests.
+- IPv6 is not yet supported by the certificate generator (use your own certificate).
 
 ---
 
 ## 3. Cutover (T-0)
 
-Urutan ini dari catatan 10.C/10.E. **Titik tanpa-balik-mudah** ditandai ⚠️: sebelum itu, rollback = nyalakan
-lagi Rundeck; sesudahnya platform baru sudah menulis data yang tidak ikut kembali ke Mongo.
+This order comes from the 10.C/10.E notes. **The point of no easy return** is marked ⚠️: before it, rollback = turn
+Rundeck back on; after it, the new platform has already written data that does not flow back to Mongo.
 
-| # | Langkah | Perintah / catatan | Estimasi |
+| # | Step | Command / notes | Estimate |
 |---|---|---|---|
-| 1 | Umumkan jendela cutover | Telegram + tim | -- |
-| 2 | **Matikan jadwal Rundeck** | `python3 tools/ops/rundeck_schedule.py disable --snapshot rundeck-before-cutover.json` lalu `... status` harus `0/N`. Job yang sedang berjalan biarkan selesai. | <1 mnt |
-| 3 | **Stop** (bukan disable/mask) unit lama | `sudo systemctl stop cti-web nlp_worker iocSyncer` (yang aktif di snapshot). `mongod` **tetap nyala** (dump + rollback butuh). | <1 mnt |
-| 4 | Dump Mongo terakhir (10.4) | `mongodump` ke direktori di luar host; catat nama/waktunya. Ini sekaligus sumber warm start. | ~menit |
-| 5 | Nyalakan fondasi | `docker compose ... up -d postgres redis` lalu `up -d migrate api web` (tanpa worker/beat!). `curl -f localhost:$API_PORT/healthz` | ~1 mnt |
-| 6 | Seed data referensi | `tools/seed/fase10_reference_data.py --dry-run` lalu tanpa `--dry-run` (idempoten; cara menjalankan: 3.2). Script mencetak **daftar user lama**: buat ulang lewat UI dengan password baru (hash lama sengaja tidak dibawa). Sejak QA 2026-10-01 ikut mengisi `threat_actor_groups` (~4000), `monitored_people`, `ioc_allowlist_entries` -- tanpa `threat_actor_groups` TIDAK ADA artikel yang dapat threat actor (dropdown TA kosong, PIR berbasis TA 0 match). Cek: baris `threat_actor_groups` di output > 0. | ~menit |
-| 7 | Warm start dedup | `tools/seed/fase10_warm_start.py --dry-run` lalu sungguhan (cara menjalankan: 3.2), dengan `--dump-dir <dump langkah 4>` dan `--legacy-dir <salinan segar /opt/ScraperNews/offset + /opt/techstackLibrary/offset>`. Tanpa ini tiap scraper mulai dingin (hanya cap 5 item, alert tetap terkirim). | ~menit |
-| 8 | Migrasi CVE tracker (Fase 10.F, opsional tapi disarankan) | `tools/seed/fase10_cve_migrate.py --dry-run` lalu sungguhan (cara menjalankan: 3.2), dengan `--dump-dir <dump langkah 4>`. Isi `cve_tracker`/`cve_false_positives`/`cve_tickets` dari riwayat Mongo lama, supaya tab CVE TIDAK kosong di hari pertama (`new_cve` sendiri cuma menjangkau 8 hari ke belakang). Idempoten, aman diulang; CVE yang sudah ada (mis. `new_cve` sudah sempat jalan) tidak ditimpa. | ~menit |
-| 9 | **Prime** watcher yang riwayatnya tak bisa dibawa | `docker compose ... exec -T worker cti-scraper run <id> --prime` untuk `github_ttps sophoslabs_github mitre_github` dan `techstack_npm techstack_pypi techstack_go` (yang tidak punya file offset). Prime = fetch sungguhan, tandai SEMUA seen, **tanpa** kirim apa pun. | ~menit |
-| 10 | ⚠️ Nyalakan worker, lalu beat | `up -d worker worker-browser worker-nlp` tunggu healthy, **terakhir** `up -d beat`. Beat itu penembak: begitu nyala scraper mulai jalan. | ~2 mnt |
-| 11 | Smoke test | Lihat 3.1 | ~5 mnt |
-| 12 | Buka platform baru ke pengguna | pastikan 80/443 host bebas (matikan nginx/proxy lama yang memegangnya), lalu `docker compose ... up -d nginx`; uji login dari **laptop lain** dan cek `audit_log` (3.1) | ~2 mnt |
-| 13 | Umumkan selesai; mulai **pantau 4 jam** (bagian 4) | | -- |
+| 1 | Announce the cutover window | Telegram + team | -- |
+| 2 | **Disable the Rundeck schedule** | `python3 tools/ops/rundeck_schedule.py disable --snapshot rundeck-before-cutover.json` then `... status` must be `0/N`. Let running jobs finish. | <1 min |
+| 3 | **Stop** (not disable/mask) the old units | `sudo systemctl stop cti-web nlp_worker iocSyncer` (those active in the snapshot). `mongod` **stays up** (the dump + rollback need it). | <1 min |
+| 4 | Final Mongo dump (10.4) | `mongodump` to a directory off the host; note its name/time. This is also the warm start source. | ~minutes |
+| 5 | Bring up the foundation | `docker compose ... up -d postgres redis` then `up -d migrate api web` (no worker/beat!). `curl -f localhost:$API_PORT/healthz` | ~1 min |
+| 6 | Seed reference data | `tools/seed/fase10_reference_data.py --dry-run` then without `--dry-run` (idempotent; how to run it: 3.2). The script prints the **list of old users**: re-create them through the UI with new passwords (old hashes are deliberately not carried over). Since QA 2026-10-01 it also fills `threat_actor_groups` (~4000), `monitored_people`, `ioc_allowlist_entries` -- without `threat_actor_groups` NO article gets a threat actor (empty TA dropdown, TA-based PIRs 0 matches). Check: the `threat_actor_groups` row count in the output > 0. | ~minutes |
+| 7 | Dedup warm start | `tools/seed/fase10_warm_start.py --dry-run` then for real (how to run it: 3.2), with `--dump-dir <dump from step 4>` and `--legacy-dir <a fresh copy of /opt/ScraperNews/offset + /opt/techstackLibrary/offset>`. Without it every scraper starts cold (only the 5-item cap, alerts are still sent). | ~minutes |
+| 8 | CVE tracker migration (Phase 10.F, optional but recommended) | `tools/seed/fase10_cve_migrate.py --dry-run` then for real (how to run it: 3.2), with `--dump-dir <dump from step 4>`. Fills `cve_tracker`/`cve_false_positives`/`cve_tickets` from the old Mongo history, so the CVE tab is NOT empty on day one (`new_cve` itself only reaches 8 days back). Idempotent, safe to repeat; CVEs that already exist (e.g. `new_cve` already ran) are not overwritten. | ~minutes |
+| 9 | **Prime** watchers whose history cannot be carried over | `docker compose ... exec -T worker cti-scraper run <id> --prime` for `github_ttps sophoslabs_github mitre_github` and `techstack_npm techstack_pypi techstack_go` (those without offset files). Prime = a real fetch, marks EVERYTHING seen, **without** sending anything. | ~minutes |
+| 10 | ⚠️ Bring up the workers, then beat | `up -d worker worker-browser worker-nlp`, wait until healthy, **last** `up -d beat`. Beat is the trigger: as soon as it is up, scrapers start running. | ~2 min |
+| 11 | Smoke test | See 3.1 | ~5 min |
+| 12 | Open the new platform to users | make sure host ports 80/443 are free (stop the old nginx/proxy holding them), then `docker compose ... up -d nginx`; test login from **another laptop** and check `audit_log` (3.1) | ~2 min |
+| 13 | Announce completion; start the **4-hour watch** (section 4) | | -- |
 
-### 3.0 Dua langkah yang tidak ada di tabel itu tapi wajib di database KOSONG
+### 3.0 Two steps not in that table but mandatory on an EMPTY database
 
-Tabel di atas mengasumsikan database sudah pernah dipakai (staging). Di host yang benar-benar baru:
+The table above assumes a database that has been used before (staging). On a truly new host:
 
-- **Admin pertama**: `POST /api/auth/init` membuat superadmin pertama dan hanya jalan selama belum ada user
-  (409 sesudahnya; tanpa autentikasi, jadi panggil SEBELUM nginx dibuka ke jaringan). Tanpa ini tidak ada yang bisa
-  login untuk "membuat ulang user lewat UI" (langkah 6).
-- **Sinkron katalog ATT&CK** (tombol Sync di Intelligence > ATT&CK DB, atau
-  `AsyncAttackSyncRepo.sync_all_domains()` dari dalam container `api`). Task periodik `attack_sync_check`
-  akan mengisinya sendiri (status domain "never"), tapi lakukan SEBELUM beat supaya artikel pertama sudah
-  mendapat TTP yang dinormalisasi.
+- **First admin**: `POST /api/auth/init` creates the first superadmin and only works while there are no users
+  (409 afterwards; unauthenticated, so call it BEFORE nginx is opened to the network). Without it nobody can
+  log in to "re-create users through the UI" (step 6).
+- **ATT&CK catalog sync** (the Sync button in Intelligence > ATT&CK DB, or
+  `AsyncAttackSyncRepo.sync_all_domains()` from inside the `api` container). The periodic task `attack_sync_check`
+  will fill it on its own (domain status "never"), but do it BEFORE beat so the first articles already
+  get normalised TTPs.
 
-Untuk deploy dari NOL tanpa stack lama, jangan susun tabel ini manual: `make fresh-deploy`
-(`tools/ops/fresh_deploy.sh`, langkah-langkahnya di `README.md`) mengerjakan keduanya otomatis, ditambah seed
-data referensi bawaan (`tools/seed/reference/`) sebagai pengganti dump Mongo untuk tiga tabel referensi.
+For a deploy from ZERO without an old stack, do not assemble this table by hand: `make fresh-deploy`
+(`tools/ops/fresh_deploy.sh`, steps in `README.md`) does both automatically, plus seeding the default
+reference data (`tools/seed/reference/`) in place of a Mongo dump for the three reference tables.
 
-### 3.1 Smoke test (langkah 10)
+### 3.1 Smoke test (step 10)
 
 ```bash
 curl -fs localhost:$API_PORT/healthz                                  # {"status":"ok"}
-docker compose ... ps                                                # semua healthy
-docker compose ... logs beat | grep -E "beat_leader|beat_standby"      # tepat SATU beat_leader
-docker compose ... exec -T worker cti-scraper dry-run bleepcomp         # satu scraper, tanpa tulis DB
-docker compose ... exec -T worker celery -A cti_worker.celery_app call scraper.health_digest   # digest sekali
-python3 tools/ops/notify_telegram.py --env-file .env --topic debug --text "cutover: tes notifikasi"
-curl -ks https://localhost/nginx-health                                # edge hidup ("ok"); port sesuai NGINX_HTTPS_PORT
-docker compose ... exec -T worker cti-scraper run new_cve               # isi awal tab CVE (lihat catatan di bawah)
+docker compose ... ps                                                # all healthy
+docker compose ... logs beat | grep -E "beat_leader|beat_standby"      # exactly ONE beat_leader
+docker compose ... exec -T worker cti-scraper dry-run bleepcomp         # one scraper, no DB writes
+docker compose ... exec -T worker celery -A cti_worker.celery_app call scraper.health_digest   # one digest
+python3 tools/ops/notify_telegram.py --env-file .env --topic debug --text "cutover: notification test"
+curl -ks https://localhost/nginx-health                                # edge alive ("ok"); port per NGINX_HTTPS_PORT
+docker compose ... exec -T worker cti-scraper run new_cve               # initial fill of the CVE tab (see the note below)
 ```
 
-Lalu di UI (/scrapers): tarik **Trigger** satu scraper dan lihat run masuk dengan status `ok`/`empty`.
+Then in the UI (/scrapers): **Trigger** one scraper and watch the run arrive with status `ok`/`empty`.
 
-**Tab CVE tidak lagi kosong di awal** kalau langkah 8 (migrasi CVE tracker) dijalankan -- riwayat dari Mongo
-lama (`cve_tracker`/`cve_false_positives`/`cve_tickets`) sudah masuk. Kalau langkah 8 DILEWATI: tab kosong sampai
-tick per-jam pertama `new_cve`, dan riwayatnya cuma 8 hari ke belakang (jendela pencarian NVD/Tenable per techstack)
--- techstack yang ditambah SETELAH cutover tetap kena keterbatasan ini, itu `docs/ROADMAP.md` item 3. Kalau
-`new_cve` berstatus `rate_limited` (batas 60/menit domain MITRE), jalankan lagi; item yang sudah tersimpan
-tidak hilang.
+**The CVE tab is no longer empty at the start** if step 8 (CVE tracker migration) was run -- the history from the old
+Mongo (`cve_tracker`/`cve_false_positives`/`cve_tickets`) is already in. If step 8 was SKIPPED: the tab is empty until
+`new_cve`'s first hourly tick, and its history only reaches 8 days back (the NVD/Tenable search window per techstack)
+-- techstacks added AFTER the cutover hit the same limitation, that is `docs/ROADMAP.md` item 3. If
+`new_cve` shows `rate_limited` (the 60/minute limit on the MITRE domain), run it again; items already stored
+are not lost.
 
-**IP klien harus asli** (kalau tidak, rate limit login mengunci semua orang): login SEKALI dari laptop lain lewat
-`https://<host>`, lalu
+**Client IPs must be real** (otherwise the login rate limit locks everyone out): log in ONCE from another laptop through
+`https://<host>`, then
 
 ```bash
 docker compose ... exec -T postgres psql -U cti -d cti -c \
   "select username, action, ip_address, at from audit_log order by id desc limit 3"
 ```
 
-`ip_address` harus **IP laptop itu**, bukan `172.x.0.1` (gateway Docker; lihat baris troubleshooting).
+`ip_address` must be **that laptop's IP**, not `172.x.0.1` (the Docker gateway; see the troubleshooting row).
 
-### 3.2 Menjalankan script seed dari host tanpa `uv`
+### 3.2 Running the seed scripts from a host without `uv`
 
-Script seed butuh `pymongo` (tidak ada di image runtime). Lewat container worker, pymongo dipasang sementara
-(pola yang dipakai di rehearsal staging, `seed_run.sh`):
+The seed scripts need `pymongo` (not in the runtime image). Through the worker container, pymongo is installed temporarily
+(the pattern used in the staging rehearsal, `seed_run.sh`):
 
 ```bash
 docker run --rm --network <project>_default --env-file .env \
-  -v "$PWD/tools:/tools:ro" -v /path/ke/dump-mongo:/dump:ro -v /path/ke/offset-lama:/legacy-offsets:ro \
+  -v "$PWD/tools:/tools:ro" -v /path/to/mongo-dump:/dump:ro -v /path/to/old-offsets:/legacy-offsets:ro \
   --entrypoint sh cti-worker:$CTI_TAG -c '
     pip install --target /tmp/pm -q pymongo &&
     PYTHONPATH=/tmp/pm python /tools/seed/fase10_reference_data.py --dump-dir /dump --dry-run'
-# lalu tanpa --dry-run; warm start: fase10_warm_start.py --dump-dir /dump --legacy-dir /legacy-offsets
-# migrasi CVE tracker: fase10_cve_migrate.py --dump-dir /dump (gak butuh --legacy-dir)
+# then without --dry-run; warm start: fase10_warm_start.py --dump-dir /dump --legacy-dir /legacy-offsets
+# CVE tracker migration: fase10_cve_migrate.py --dump-dir /dump (does not need --legacy-dir)
 ```
 
-### 3.2a Backfill enrichment artikel yang sudah masuk (sekali, setelah seed)
+### 3.2a Backfilling the enrichment of articles already stored (once, after the seed)
 
-Untuk DB yang sudah menerima artikel SEBELUM `threat_actor_groups` di-seed / sebelum fix role negara
-`mentioned` (staging 2026-10): threat actor dicocokkan ulang ke **judul** artikel lama (ringkasan tidak
-tersimpan, jadi artikel lama hanya dapat TA yang disebut di judul) dan negara `victim`/`actor` diberi baris
-`mentioned` (Risk Matrix, filter negara). Tanpa LLM, tanpa alert; hanya menambah baris, idempoten.
+For a DB that already received articles BEFORE `threat_actor_groups` was seeded / before the
+`mentioned` country role fix (staging 2026-10): threat actors are re-matched against the **titles** of old articles (summaries were not
+stored, so old articles only get TAs named in the title) and `victim`/`actor` countries get
+`mentioned` rows (Risk Matrix, country filter). No LLM, no alerts; it only adds rows, idempotent.
 
 ```bash
-docker compose ... exec -T worker python -m cti_enrich.backfill --dry-run   # angka + contoh, di-rollback
+docker compose ... exec -T worker python -m cti_enrich.backfill --dry-run   # numbers + examples, rolled back
 docker compose ... exec -T worker python -m cti_enrich.backfill
 ```
 
-Menolak jalan (exit 1, tidak menulis apa pun) kalau `threat_actor_groups` masih kosong. Risk Matrix di-cache
-15 menit per proses API -- hasil baru muncul setelah itu (atau restart `api`).
+It refuses to run (exit 1, writes nothing) while `threat_actor_groups` is still empty. The Risk Matrix is cached
+for 15 minutes per API process -- new results appear after that (or restart `api`).
 
-### 3.3 Yang tidak boleh dilakukan saat cutover
+### 3.3 What must not be done during the cutover
 
-- Jangan `systemctl disable`/`mask`/hapus unit lama, jangan hapus job Rundeck, jangan hapus Mongo --
-  itu semua bahan rollback.
-- Jangan nyalakan `beat` sebelum warm start + prime selesai (scraper yang jalan duluan sudah lewat fase
-  dingin; baris warm start yang bentrok di-skip, item yang terlanjur di-cap tidak terselamatkan).
-- Jangan jalankan dua beat sekaligus di dua host (lock singleton di Redis melindungi, tapi jangan andalkan).
+- Do not `systemctl disable`/`mask`/delete the old units, do not delete Rundeck jobs, do not delete Mongo --
+  all of these are rollback material.
+- Do not start `beat` before the warm start + prime are done (scrapers that run first are already past the cold
+  phase; conflicting warm-start rows are skipped, and items already capped cannot be saved).
+- Do not run two beats at once on two hosts (the Redis singleton lock protects, but do not rely on it).
 
 ---
 
-## 4. Pantau 4 jam pertama (10.6)
+## 4. Watching the first 4 hours (10.6)
 
-| Cek | Cara | Wajar | Tindakan bila tidak |
+| Check | How | Normal | Action if not |
 |---|---|---|---|
-| Queue `enrich` | `docker compose ... exec -T redis redis-cli llen enrich` | naik-turun; **ambang backpressure 2000** | terus naik: LLM lambat/quota habis -> cek `worker-nlp` log, turunkan beban |
-| Queue `scrape.*` / `notify` | `llen scrape.rss` dst | ~0 | menumpuk = worker mati/macet |
-| Digest health | thread `scraper_health` | awalnya banyak `stale` (belum sempat jalan) -> menyusut | `dead`/`degraded` yang menetap = lihat run terakhir di /scrapers |
-| Error log | `docker compose ... logs --since 30m worker worker-nlp \| grep -E "ERROR\|Traceback"` | nol atau sedikit | investigasi per pola |
-| Banjir Telegram | thread global/apt/... | scraper dingin maks **5** item/scraper | jauh lebih banyak = warm start bermasalah: **hentikan beat** (`stop beat`), periksa |
-| LLM | log `OpenAIQuotaExhausted`, `[enrichment_failed]` di /filtered-articles | tidak ada | quota/gateway; artikel gagal dicatat, bukan hilang |
-| Resource | `docker stats --no-stream`, `df -h /` | RAM `worker-nlp` stabil | naikkan/turunkan `NLP_WORKER_CONCURRENCY` |
+| `enrich` queue | `docker compose ... exec -T redis redis-cli llen enrich` | goes up and down; **backpressure threshold 2000** | keeps rising: slow LLM/quota exhausted -> check the `worker-nlp` log, reduce load |
+| `scrape.*` / `notify` queues | `llen scrape.rss` etc. | ~0 | piling up = worker dead/stuck |
+| Health digest | the `scraper_health` thread | many `stale` at first (not run yet) -> shrinking | `dead`/`degraded` that persists = look at the last run in /scrapers |
+| Error log | `docker compose ... logs --since 30m worker worker-nlp \| grep -E "ERROR\|Traceback"` | zero or a few | investigate per pattern |
+| Telegram flood | the global/apt/... threads | cold scrapers max **5** items/scraper | far more = warm start problem: **stop beat** (`stop beat`), investigate |
+| LLM | `OpenAIQuotaExhausted` log, `[enrichment_failed]` in /filtered-articles | none | quota/gateway; failed articles are recorded, not lost |
+| Resources | `docker stats --no-stream`, `df -h /` | `worker-nlp` RAM stable | raise/lower `NLP_WORKER_CONCURRENCY` |
 
-Perilaku yang **normal tapi mengejutkan**:
-- **Digest health dikirim ulang tiap 30 menit selama masih ada masalah** (tidak ada dedupe; "diam = sehat").
-  Di jam-jam awal isinya panjang. Ini disengaja sederhana; kalau mengganggu, dedupe/cooldown bisa ditambah.
-- Scraper yang **run terakhirnya lama** tampil `dead` sampai slot cron berikutnya menembak, walau
-  infrastrukturnya sehat (terlihat di staging tepat setelah beat dinyalakan).
-- Scraper Twitter di twitterapi.io free tier kena `429` lalu retry 6 detik (run 30-35 dtk, bukan gagal).
-- **Beat yang di-`stop` manual TIDAK nyala sendiri** (`restart: unless-stopped`), dan deploy parsial
-  (`up -d worker web`) juga gak nyalain dia. Insiden staging 2026-09-26 15:42 -> 09-30 17:17 UTC: beat
-  di-stop habis rehearsal, jadwal mati ~97 jam tanpa ada yang sadar (digest health ikut mati karena
-  dijadwalkan beat). Sekarang: banner merah di `/scrapers` + alert Telegram (thread `scraper_health`)
-  dari **watchdog di container worker** kalau heartbeat beat basi > `WORKER__BEAT_HEARTBEAT_STALE_S`
-  (300 dtk), diulang tiap `WORKER__BEAT_STALE_ALERT_REPEAT_MIN` (60), plus pesan "PULIH". Kalau beat
-  SENGAJA dimatikan (warm start, langkah 5-8), alert itu memang akan datang -- abaikan sampai beat dinyalakan.
-- Beat yang nyala lagi sesudah mati lama **tidak** menembak semua jadwal sekaligus: slot yang terlewat
-  lebih dari `WORKER__BEAT_CATCHUP_GRACE_S` (600 dtk) dilompati ke slot berikutnya (log
-  `beat_stale_catchup_skipped` berisi daftar entrinya). Restart singkat tetap di-catch-up.
-- Run hasil retry (fetch_error/rate_limited) tercatat `trigger=beat_retry`/`manual_retry`, jeda 60/120/240 dtk.
+Behaviour that is **normal but surprising**:
+- **The health digest is re-sent every 30 minutes while problems remain** (no dedupe; "silence = healthy").
+  In the first hours it is long. This is deliberately simple; if it is annoying, dedupe/cooldown can be added.
+- Scrapers whose **last run was long ago** show as `dead` until their next cron slot fires, even though
+  the infrastructure is healthy (seen on staging right after beat was started).
+- Twitter scrapers on the twitterapi.io free tier hit `429` and retry after 6 seconds (runs of 30-35 s, not failures).
+- **A beat that was `stop`ped manually does NOT come back on its own** (`restart: unless-stopped`), and a partial deploy
+  (`up -d worker web`) does not start it either. Staging incident 2026-09-26 15:42 -> 09-30 17:17 UTC: beat
+  was stopped after a rehearsal, the schedule was dead for ~97 hours without anyone noticing (the health digest died too because
+  beat schedules it). Now: a red banner on `/scrapers` + a Telegram alert (the `scraper_health` thread)
+  from the **watchdog in the worker container** when the beat heartbeat is older than `WORKER__BEAT_HEARTBEAT_STALE_S`
+  (300 s), repeated every `WORKER__BEAT_STALE_ALERT_REPEAT_MIN` (60), plus a "PULIH" (recovered) message. If beat
+  is DELIBERATELY off (warm start, steps 5-8), that alert will indeed arrive -- ignore it until beat is started.
+- A beat that comes back after a long outage does **not** fire every schedule at once: slots missed by
+  more than `WORKER__BEAT_CATCHUP_GRACE_S` (600 s) are skipped to the next slot (the log
+  `beat_stale_catchup_skipped` lists the entries). A short restart is still caught up.
+- Retried runs (fetch_error/rate_limited) are recorded as `trigger=beat_retry`/`manual_retry`, with 60/120/240 s pauses.
 
 ---
 
-## 5. Hypercare 1 minggu (10.7)
+## 5. One-week hypercare (10.7)
 
-Harian (5 menit): /scrapers (jumlah `dead`/`degraded`/`zero_yield`), digest health, queue depth, disk, backup semalam
-(`ls -la /var/backups/cti`), thread `debug`.
+Daily (5 minutes): /scrapers (number of `dead`/`degraded`/`zero_yield`), the health digest, queue depth, disk, last night's backup
+(`ls -la /var/backups/cti`), the `debug` thread.
 
-Terjadwal yang bisa dilihat hasilnya (WIB):
+Scheduled outputs you can check (WIB):
 
-| Laporan | Kapan | Topik |
+| Report | When | Topic |
 |---|---|---|
-| Counter harian | tiap hari 23:55 | `debug` |
-| News of the day | tiap hari 23:58 | `notd` |
-| Logbook (Excel) | dicek tiap hari 07:00, terkirim tiap 14 hari (panggilan PERTAMA hanya mencatat tanggal) | `logbook` |
-| Top CVE mingguan | Minggu 07:01 | `tech_stack` |
-| Top CVE tweet | 00/06/12/18 | `tech_stack` / `tech_stack_unrelated` + `vendor_report` |
-| Tren threat actor | **Senin 13:00** | `top_ta` |
+| Daily counter | every day 23:55 | `debug` |
+| News of the day | every day 23:58 | `notd` |
+| Logbook (Excel) | checked every day at 07:00, sent every 14 days (the FIRST call only records the date) | `logbook` |
+| Weekly top CVE | Sunday 07:01 | `tech_stack` |
+| Top CVE tweets | 00/06/12/18 | `tech_stack` / `tech_stack_unrelated` + `vendor_report` |
+| Threat actor trend | **Monday 13:00** | `top_ta` |
 
-Laporan yang terlewat bisa diulang manual, mis.
+A missed report can be re-run by hand, e.g.
 `celery -A cti_worker.celery_app call report.daily_counters --args='["2026-09-25"]'`.
 
 ---
 
-## 6. Backup & restore Postgres
+## 6. Postgres backup & restore
 
-Alat: `tools/ops/pg_backup.py` (stdlib; perintah Postgres dijalankan di container lewat `docker compose exec`).
+Tool: `tools/ops/pg_backup.py` (stdlib; Postgres commands run in the container via `docker compose exec`).
 
 ```bash
 PG="docker compose --env-file docker/stack.env --profile app exec -T postgres"
@@ -351,153 +353,153 @@ python3 tools/ops/pg_backup.py --pg-exec "$PG" restore --file <dump> --to-db cti
 python3 tools/ops/pg_backup.py --pg-exec "$PG" prune   --dir /var/backups/cti --keep-days 14 --keep-min 3
 ```
 
-- **Jadwal**: `docker/ops/cti-pg-backup.{service,timer}` (harian 02:30, `Persistent=true`), gagal -> alarm
-  Telegram topik `debug` (`tools/ops/notify_telegram.py`).
-- **Retensi**: 14 hari, dan 3 backup terbaru **selalu** dipertahankan (backup yang berhenti jalan tidak
-  menghabiskan stok). Umur dihitung dari NAMA berkas, bukan mtime.
-- **Off-host**: salin ke luar mesin (rsync/rclone) -- belum diotomasi; backup di disk yang sama bukan backup.
-- **Pindah host dengan DB dari backup**: `make fresh-deploy ARGS='--restore-from <dump>'` (README.md, bagian
-  "Deploy memakai DB dari backup"). `pg_backup.py` jalan di python3 HOST >= 3.9.
-- **Verifikasi mingguan**: `verify` me-restore dump ke DB scratch, membandingkan `alembic_version` dan jumlah
-  baris tabel kunci dengan DB live, lalu DROP scratch. Dump yang tak pernah dites restore belum backup.
-- **Pengaman `restore`**: menolak DB live kecuali `--force-live`; menolak DB yang sudah berisi kecuali
-  `--replace`; memeriksa checksum + `pg_restore --list` SEBELUM menyentuh DB apa pun.
+- **Schedule**: `docker/ops/cti-pg-backup.{service,timer}` (daily 02:30, `Persistent=true`), failure -> a Telegram
+  alarm on the `debug` topic (`tools/ops/notify_telegram.py`).
+- **Retention**: 14 days, and the 3 most recent backups are **always** kept (a backup job that stops running does not
+  use up the stock). Age is computed from the file NAME, not mtime.
+- **Off-host**: copy off the machine (rsync/rclone) -- not automated yet; a backup on the same disk is not a backup.
+- **Moving hosts with a DB from a backup**: `make fresh-deploy ARGS='--restore-from <dump>'` (README.md, section
+  "Deploy with a database from a backup"). `pg_backup.py` runs on the HOST's python3 >= 3.9.
+- **Weekly verification**: `verify` restores the dump into a scratch DB, compares `alembic_version` and the row counts
+  of key tables with the live DB, then DROPs the scratch. A dump never test-restored is not a backup yet.
+- **`restore` safeguards**: refuses the live DB unless `--force-live`; refuses a non-empty DB unless
+  `--replace`; checks the checksum + `pg_restore --list` BEFORE touching any DB.
 
-Hasil latihan staging (DB kecil, 1,1 MB; DB produksi akan lebih lama, skalakan sesuai ukuran):
+Staging drill results (a small DB, 1.1 MB; the production DB will take longer, scale accordingly):
 
-| Operasi | Waktu |
+| Operation | Time |
 |---|---|
-| `backup` (dump + validasi TOC + checksum) | 0,45 dtk |
-| `verify` (restore ke scratch + banding + drop) | 3,4 dtk |
-| `restore` ke DB bernama | 1,2 dtk |
-| Penolakan restore ke DB live / DB berisi / kegagalan -> alarm | terbukti, exit 1 |
+| `backup` (dump + TOC validation + checksum) | 0.45 s |
+| `verify` (restore into scratch + compare + drop) | 3.4 s |
+| `restore` into a named DB | 1.2 s |
+| Refusing a restore into the live DB / a non-empty DB / failure -> alarm | proven, exit 1 |
 
-**Restore penuh ke DB live** (skenario terburuk: data rusak) -- *belum dilatih di staging* (butuh izin
-karena destruktif). Prosedur: hentikan penulis (`stop api worker worker-browser worker-nlp beat web`),
-`restore --file <dump> --to-db cti --force-live --replace`, nyalakan lagi (`up -d`), cek jumlah baris.
-Latih di staging sebelum go-live dan tulis waktunya di sini.
+**Full restore into the live DB** (worst case: corrupted data) -- *not yet drilled on staging* (needs permission
+because it is destructive). Procedure: stop the writers (`stop api worker worker-browser worker-nlp beat web`),
+`restore --file <dump> --to-db cti --force-live --replace`, start again (`up -d`), check the row counts.
+Drill it on staging before go-live and write the time down here.
 
 ---
 
 ## 7. Rollback
 
-Tiga tingkat, dari yang paling ringan. **Tentukan tingkatnya dulu**, jangan langsung loncat ke yang terberat.
+Three levels, from the lightest. **Decide the level first**, do not jump straight to the heaviest.
 
-### 7.1 Rollback versi platform (kode salah, data baik) -- 19-23 detik
+### 7.1 Platform version rollback (bad code, good data) -- 19-23 seconds
 
 ```bash
 python3 tools/ops/rollback.py --current-tag v20260927 --tag v20260920 \
     --compose "docker compose --env-file docker/stack.env --profile app" \
     --env-file .env --network <project>_default --api-url http://127.0.0.1:8000/healthz
-# tambahkan --yes bila pre-flight bilang perlu downgrade DB; --dry-run untuk melihat rencananya dulu
+# add --yes if the pre-flight says a DB downgrade is needed; --dry-run to see the plan first
 ```
 
-Yang dilakukan (dan kenapa tidak boleh dilakukan manual seenaknya):
+What it does (and why it must not be done casually by hand):
 
-> ⚠️ **`CTI_TAG=<lama> docker compose up -d` saja itu BERBAHAYA.** Service `migrate` menjalankan
-> `alembic upgrade head` di setiap `up`. Kalau DB sudah di revisi yang lebih baru dari yang dikenal image
-> lama -> `Can't locate revision` -> `migrate` gagal -> compose sudah terlanjur **menghentikan** api/worker
-> yang jalan (mereka bergantung pada `migrate`) -> **outage**. Terbukti di latihan staging (API mati).
+> ⚠️ **`CTI_TAG=<old> docker compose up -d` alone is DANGEROUS.** The `migrate` service runs
+> `alembic upgrade head` on every `up`. If the DB is already at a revision newer than the old image knows
+> -> `Can't locate revision` -> `migrate` fails -> compose has already **stopped** the running api/worker
+> (they depend on `migrate`) -> **outage**. Proven in the staging drill (the API went down).
 
-Alat ini: (1) membaca revisi DB dan head image target, (2) menggabungkan riwayat migrasi KEDUA image
-(image lama tidak kenal revisi baru), (3) kalau DB lebih baru dari target -> `alembic downgrade` dengan image
-**sekarang** (hanya dia yang kenal revisi barunya), butuh `--yes` karena downgrade bisa menghapus
-kolom/tabel, (4) `up -d` dengan `CTI_TAG=<target>`, tunggu API + semua healthy, verifikasi revisi akhir.
-Menolak (tanpa mengubah apa pun) bila riwayat bercabang, revisi tidak dikenal, atau `--yes` tidak ada.
-**Ambil backup dulu** (`pg_backup.py backup`) bila akan downgrade.
+This tool: (1) reads the DB revision and the target image's head, (2) merges the migration history of BOTH images
+(the old image does not know the new revisions), (3) if the DB is newer than the target -> `alembic downgrade` with the
+**current** image (only it knows the new revisions), needing `--yes` because a downgrade can drop
+columns/tables, (4) `up -d` with `CTI_TAG=<target>`, waits for the API + everything healthy, verifies the final revision.
+It refuses (changing nothing) when the history branches, a revision is unknown, or `--yes` is missing.
+**Take a backup first** (`pg_backup.py backup`) when a downgrade is coming.
 
-Waktu terukur di staging (image sudah lokal): rollback 19,2-23,1 dtk (termasuk downgrade), roll-forward
-22,3 dtk, satu siklus mundur+maju 41,9 dtk. Menarik image dari registry menambah waktu.
+Measured on staging (images already local): rollback 19.2-23.1 s (including the downgrade), roll-forward
+22.3 s, a full back+forward cycle 41.9 s. Pulling images from a registry adds time.
 
-### 7.2 Restore data dari backup (data rusak)
+### 7.2 Restoring data from a backup (corrupted data)
 
-Bagian 6, "Restore penuh ke DB live". Kehilangan data = sejak backup terakhir (harian) -- putuskan bersama.
+Section 6, "Full restore into the live DB". Data loss = since the last backup (daily) -- decide together.
 
-### 7.3 Kembali ke STACK LAMA (platform baru dibatalkan) -- target <5 menit, *belum dilatih di produksi*
+### 7.3 Back to the OLD STACK (the new platform is called off) -- target <5 minutes, *not yet drilled in production*
 
-Prasyarat: langkah 2.3 (snapshot) dan tidak ada yang dihapus di 3.3.
+Prerequisites: step 2.3 (snapshot) and nothing deleted in 3.3.
 
 ```bash
-# 1. hentikan penulis platform baru (supaya tidak dobel-alert dengan sistem lama)
-docker compose ... stop beat worker worker-browser worker-nlp nginx    # nginx: membebaskan 80/443 untuk proxy lama
-# 2. nyalakan stack lama (yang aktif di snapshot)
-sudo systemctl start mongod cti-web            # + nlp_worker iocSyncer bila aktif di snapshot
-# 3. nyalakan lagi jadwal Rundeck persis yang dulu menyala
+# 1. stop the new platform's writers (to avoid duplicate alerts with the old system)
+docker compose ... stop beat worker worker-browser worker-nlp nginx    # nginx: frees 80/443 for the old proxy
+# 2. start the old stack (what was active in the snapshot)
+sudo systemctl start mongod cti-web            # + nlp_worker iocSyncer if active in the snapshot
+# 3. re-enable exactly the Rundeck schedules that were on before
 python3 tools/ops/rundeck_schedule.py enable --snapshot rundeck-before-cutover.json
-python3 tools/ops/rundeck_schedule.py status --snapshot rundeck-before-cutover.json   # harus N/N
-# 4. nyalakan lagi proxy/nginx LAMA yang tadi memegang 80/443 (systemctl start nginx; nginx -t dulu)
+python3 tools/ops/rundeck_schedule.py status --snapshot rundeck-before-cutover.json   # must be N/N
+# 4. start the OLD proxy/nginx that held 80/443 (systemctl start nginx; nginx -t first)
 ```
 
-Yang harus diterima (putuskan sebelum cutover): data yang ditulis platform baru **tidak kembali ke Mongo**;
-offset scraper lama tertinggal selama jendela cutover sehingga beberapa alert bisa terkirim ulang. Karena itu
-jendela cutover dibuat pendek dan waktu mulai/selesainya dicatat. **Latih ini di produksi minimal sekali**
-(nyalakan-matikan dengan pengukur waktu) sebelum go-live; tulis waktunya: `____ menit` (target <5).
+What has to be accepted (decide before the cutover): data written by the new platform **does not flow back to Mongo**;
+the old scrapers' offsets fall behind during the cutover window, so some alerts may be re-sent. That is why
+the cutover window is kept short and its start/end times are recorded. **Drill this in production at least once**
+(on and off with a stopwatch) before go-live; write the time: `____ minutes` (target <5).
 
 ---
 
-## 8. Sumber data Twitter: utama dan cadangan
+## 8. Twitter data source: primary and fallback
 
-Kebijakan (keputusan user 2026-09-27): **twitterapi.io = utama dan dipaksa duluan; API resmi X = cadangan**,
-dipakai hanya kalau twitterapi.io memang tidak bisa. Pindah **manual**, per-scraper.
+Policy (user decision 2026-09-27): **twitterapi.io = primary and forced first; the official X API = fallback**,
+used only when twitterapi.io really cannot be used. Switching is **manual**, per scraper.
 
-- **Kapan pindah** (usulan, belum dikonfirmasi user): kunci ditolak / kredit habis / layanan mati -- tampak
-  sebagai `fetch_error`/`parse_error` berulang di `tweet_alerts_1h`, `tweet_alerts_30m`, `trending_cve`, atau
-  health `degraded`/`dead`. **Bukan** alasan pindah: 429 free tier (ada retry+backoff, hanya lambat),
-  selisih beberapa tweet antar provider.
-- **Cara**: /scrapers -> pilih scraper -> "Sumber data Twitter/X" -> `X API resmi (cadangan)` -> Save Config.
-  Berlaku di run berikutnya. Kembali: pilih `twitterapi.io (utama)` atau **Reset to Defaults**.
-- **Biaya X resmi** (pay-per-use): ~$0,005 per tweet yang dibaca; tweet yang sama di hari UTC yang sama tidak
-  ditagih dua kali. **`trending_cve` sebaiknya TETAP di twitterapi.io**: ia mencari semua tweet "CVE-<tahun>-"
-  di seluruh X (ribuan/hari). Pasang **batas belanja** di X Developer Console sebelum memakainya.
-- Ganti sumber tidak menyebabkan alert dobel (kunci dedup = id tweet, sama di kedua API; terbukti di staging).
-- Uji sebelum pindah: `cti-scraper dry-run tweet_alerts_1h --option provider=x_official` (tanpa mengubah konfigurasi).
+- **When to switch** (a proposal, not yet confirmed by the user): key rejected / credit exhausted / service down -- visible
+  as repeated `fetch_error`/`parse_error` on `tweet_alerts_1h`, `tweet_alerts_30m`, `trending_cve`, or a
+  health status of `degraded`/`dead`. **Not** a reason to switch: free-tier 429s (there is retry+backoff, it is only slow),
+  a difference of a few tweets between providers.
+- **How**: /scrapers -> pick the scraper -> "Sumber data Twitter/X" (Twitter/X data source) -> `X API resmi (cadangan)` (official X API, fallback) -> Save Config.
+  Applies from the next run. To go back: pick `twitterapi.io (utama)` (primary) or **Reset to Defaults**.
+- **Official X cost** (pay-per-use): ~$0.005 per tweet read; the same tweet on the same UTC day is not
+  billed twice. **`trending_cve` should STAY on twitterapi.io**: it searches every "CVE-<year>-" tweet
+  across all of X (thousands/day). Set a **spending limit** in the X Developer Console before using it.
+- Switching source does not cause duplicate alerts (dedup key = tweet id, the same in both APIs; proven on staging).
+- Test before switching: `cti-scraper dry-run tweet_alerts_1h --option provider=x_official` (without changing the configuration).
 
 ---
 
-## 9. Troubleshooting (semua ini pernah terjadi di rehearsal)
+## 9. Troubleshooting (all of these have happened in rehearsals)
 
-| Gejala | Penyebab | Tindakan |
+| Symptom | Cause | Action |
 |---|---|---|
-| Semua orang terkunci login setelah satu orang salah password | proxy tidak mengirim `X-Forwarded-For` (nginx compose sudah benar; ini terjadi pada nginx host sendiri) atau `TRUSTED_PROXY_HOPS` tidak sama dengan jumlah proxy | pasang header (bagian 1); cek `TRUSTED_PROXY_HOPS` |
-| Browser: "koneksi tidak aman" / `ERR_CERT_AUTHORITY_INVALID` | sertifikat self-signed (wajar) | percayakan `cti.crt` (2.4) atau pasang sertifikat CA |
-| Browser: "nama tidak cocok" / `ERR_CERT_COMMON_NAME_INVALID` | alamat yang dibuka tidak ada di `NGINX_TLS_HOSTS` | tambahkan nama/IP itu, `docker compose ... up -d nginx` (sertifikat dibuat ulang; percayakan lagi yang baru) |
-| nginx tidak mau start: `address already in use` | 80/443 dipakai proses lain (nginx/Apache host, stack lama) | `ss -ltnp \| grep -E ':(80\|443)\b'`; hentikan, atau ganti `NGINX_HTTP_PORT`/`NGINX_HTTPS_PORT` |
-| nginx: 502 Bad Gateway | `web` mati/belum sehat | `docker compose ... ps web` + `logs web`; nginx menemukan `web` yang baru dalam <= 10 dtk, tak perlu restart nginx |
-| `audit_log.ip_address` sama untuk semua klien (mis. `172.x.0.1`) | (a) diuji dari **host yang sama** (localhost lewat docker-proxy selalu tampil sebagai gateway Docker -- terlihat di staging); (b) Docker Desktop/rootless meng-NAT semua koneksi; (c) load balancer/firewall di depan host melakukan SNAT | uji dari **laptop lain**. Kalau ada LB di depan nginx: LB harus mengirim `X-Forwarded-For` dan `TRUSTED_PROXY_HOPS` dinaikkan jadi 2 (`docker/stack.env`). Selama IP-nya sama untuk semua, rate limit login global -- jangan go-live sebelum ini beres |
-| Container gagal start, log menyebut field tak dikenal | env var salah ketik (`extra="forbid"`), mis. `X__BEARER__TOKEN`, `TELEGRAM__BOTTOKEN` | perbaiki namanya; `__` = pemisah nesting |
-| `.env` rusak setelah `echo "X=1" >> .env` | file tidak berakhir newline -> baris menempel ke nilai sebelumnya (mis. **token**) | `printf "\nKEY=val\n" >> .env`; selalu verifikasi setelahnya |
-| `alembic` gagal `SyntaxError: null bytes` saat build dari Mac | tar macOS membawa file `._*` (AppleDouble) | `COPYFILE_DISABLE=1 tar ...`; cek `find . -name "._*"` |
-| Rollback `up -d` bikin API mati | `migrate` menolak revisi DB yang lebih baru | pakai `tools/ops/rollback.py` (bagian 7.1) |
-| `no space left on device` saat build | build cache Docker menumpuk (pernah 30 GB) | `docker image prune -f && docker builder prune -f --filter until=6h`; jangan sentuh volume |
-| Alert Telegram gagal `UnknownAlertTopic` | topik tak ada di `TELEGRAM__THREAD_IDS` | tambahkan (thread 0 = channel utama) |
-| Artikel `[enrichment_failed]` menumpuk | LLM gateway 401/kuota/persona non-JSON | cek `python3 tools/ops/check_secrets.py`; `tools/llm/probe_json.py` |
-| Scraper `stale` padahal beat nyala | belum sempat menembak sejak beat start / dinonaktifkan | tunggu slot cron; `enabled`? cek /scrapers |
-| Scraper `dead` sesudah beat baru nyala | run terakhir lama (dari sebelum) | wajar sampai slot cron berikutnya |
-| Setelah worker mati lama, sekali nyala terjadi lonjakan run | tick beat menumpuk | sudah diatasi: tick scrape kedaluwarsa 1 interval (`expires`) |
-| Digest health datang terus-menerus | tidak ada dedupe, masalah masih ada | perbaiki masalahnya, atau tambahkan dedupe |
-| `monitor_x` (tab X Intel) `fetch_error`/`rate_limited`, terus `degraded` | twitterapi.io **free tier** ~1 request/5-6 dtk untuk seluruh key, dibagi 4 scraper (`monitor_x`+`tweet_alerts_1h`+`tweet_alerts_30m`+`trending_cve`) yang semua mukul domain sama | **2026-09-30**: diperbaiki -- `rate_limit` ke-4 scraper disamakan jadi `10/minute` (sebelumnya `monitor_x` beda sendiri, `15/minute`, melanggar invarian domain-dibagi-rata `cti_scraper.ratelimit`), jeda PROAKTIF `window_s/capacity` (6 dtk) di antara AKUN (bukan cuma reaktif sesudah kena limit), dan `_get_with_backoff` sekarang menunggu jendela reset kalau BUDGET LOKAL kita sendiri (bukan cuma 429 server) yang habis duluan. **Terbukti live di staging 2026-10-01** (kunci twitterapi.io baru): `monitor_x` `ok` 385 dtk / 30 item (sebelumnya `empty` ~108 dtk tanpa pesan error karena kredit habis), `tweet_alerts_30m`/`trending_cve` `ok`; sejak itu 401/402/403 gagal keras (`parse_error` dengan pesan HTTP-nya). **Kredit kunci baru itu habis lagi dalam ~3 jam** (402 mulai 14:53 UTC; 120 run gagal semalam, 4 scraper `degraded`) -- jangan pasang kunci berkredit kecil di produksi; hitung dulu kebutuhan kredit empat scraper yang berbagi saldo itu. **Penyebabnya: default `monitor_x` `*/15` padahal legacy tiap 3 jam -- sudah dibetulkan ke `8 */3 * * *` 2026-10-02** (cadence ke-4 scraper Twitter sekarang dikunci test ke legacy). Kalau masih `rate_limited`/`degraded` di produksi, opsi lama masih berlaku: key twitterapi.io berbayar, atau redesign satu query OR per run (kehilangan `since_id` per akun) |
-| `new_cve` status `rate_limited` | batas 60/menit domain MITRE terlewati (banyak kandidat CVE) | wajar sesekali; kalau menetap, kandidat > 60/run: naikkan `rate_limit` scraper via /scrapers atau kurangi cakupan techstack |
-| `alembic current` di image lama gagal | DB di revisi yang tak dikenal image itu | jalankan dengan image yang lebih baru / `rollback.py` |
+| Everyone locked out of login after one person mistyped a password | the proxy does not send `X-Forwarded-For` (the compose nginx is already correct; this happens with your own host nginx) or `TRUSTED_PROXY_HOPS` does not equal the number of proxies | set the header (section 1); check `TRUSTED_PROXY_HOPS` |
+| Browser: "connection not secure" / `ERR_CERT_AUTHORITY_INVALID` | self-signed certificate (expected) | trust `cti.crt` (2.4) or install a CA certificate |
+| Browser: "name mismatch" / `ERR_CERT_COMMON_NAME_INVALID` | the address opened is not in `NGINX_TLS_HOSTS` | add that name/IP, `docker compose ... up -d nginx` (the certificate is re-created; trust the new one again) |
+| nginx will not start: `address already in use` | 80/443 used by another process (host nginx/Apache, the old stack) | `ss -ltnp \| grep -E ':(80\|443)\b'`; stop it, or change `NGINX_HTTP_PORT`/`NGINX_HTTPS_PORT` |
+| nginx: 502 Bad Gateway | `web` down/not healthy yet | `docker compose ... ps web` + `logs web`; nginx finds the new `web` within <= 10 s, no nginx restart needed |
+| `audit_log.ip_address` is the same for every client (e.g. `172.x.0.1`) | (a) tested from **the same host** (localhost through docker-proxy always shows as the Docker gateway -- seen on staging); (b) Docker Desktop/rootless NATs every connection; (c) a load balancer/firewall in front of the host does SNAT | test from **another laptop**. If there is an LB in front of nginx: the LB must send `X-Forwarded-For` and `TRUSTED_PROXY_HOPS` raised to 2 (`docker/stack.env`). While the IP is the same for everyone, the login rate limit is global -- do not go live before this is fixed |
+| A container fails to start, the log mentions an unknown field | a mistyped env var (`extra="forbid"`), e.g. `X__BEARER__TOKEN`, `TELEGRAM__BOTTOKEN` | fix the name; `__` = the nesting separator |
+| `.env` broken after `echo "X=1" >> .env` | the file did not end with a newline -> the line got glued to the previous value (e.g. a **token**) | `printf "\nKEY=val\n" >> .env`; always verify afterwards |
+| `alembic` fails with `SyntaxError: null bytes` when building from a Mac | macOS tar carries `._*` files (AppleDouble) | `COPYFILE_DISABLE=1 tar ...`; check `find . -name "._*"` |
+| A rollback `up -d` takes the API down | `migrate` rejects a newer DB revision | use `tools/ops/rollback.py` (section 7.1) |
+| `no space left on device` during a build | Docker build cache piled up (once 30 GB) | `docker image prune -f && docker builder prune -f --filter until=6h`; do not touch volumes |
+| A Telegram alert fails with `UnknownAlertTopic` | the topic is not in `TELEGRAM__THREAD_IDS` | add it (thread 0 = the main channel) |
+| `[enrichment_failed]` articles pile up | LLM gateway 401/quota/a non-JSON persona | check `python3 tools/ops/check_secrets.py`; `tools/llm/probe_json.py` |
+| A scraper is `stale` although beat is running | it has not fired since beat started / it is disabled | wait for the cron slot; `enabled`? check /scrapers |
+| A scraper is `dead` right after beat was started | its last run was long ago (from before) | expected until the next cron slot |
+| After a long worker outage, a burst of runs on start-up | beat ticks piled up | already handled: scrape ticks expire after 1 interval (`expires`) |
+| The health digest keeps coming | no dedupe, the problem is still there | fix the problem, or add dedupe |
+| `monitor_x` (the X Intel tab) `fetch_error`/`rate_limited`, then `degraded` | the twitterapi.io **free tier** allows ~1 request/5-6 s for the whole key, shared by 4 scrapers (`monitor_x`+`tweet_alerts_1h`+`tweet_alerts_30m`+`trending_cve`) that all hit the same domain | **2026-09-30**: fixed -- the `rate_limit` of all 4 scrapers aligned to `10/minute` (before, `monitor_x` alone differed at `15/minute`, violating the `cti_scraper.ratelimit` invariant that a domain is shared evenly), a PROACTIVE `window_s/capacity` (6 s) pause between ACCOUNTS (not just reactively after hitting the limit), and `_get_with_backoff` now waits for the window to reset when OUR OWN LOCAL budget (not just a server 429) runs out first. **Proven live on staging 2026-10-01** (a new twitterapi.io key): `monitor_x` `ok` 385 s / 30 items (before: `empty` ~108 s without an error message because the credit was exhausted), `tweet_alerts_30m`/`trending_cve` `ok`; since then 401/402/403 fail hard (`parse_error` with the HTTP message). **That new key's credit ran out again within ~3 hours** (402 from 14:53 UTC; 120 failed runs overnight, 4 scrapers `degraded`) -- do not install a low-credit key in production; first work out the credit needs of the four scrapers sharing that balance. **The cause: `monitor_x` defaulted to `*/15` while legacy ran every 3 hours -- corrected to `8 */3 * * *` on 2026-10-02** (the cadence of all 4 Twitter scrapers is now locked to legacy by a test). If it is still `rate_limited`/`degraded` in production, the old options still apply: a paid twitterapi.io key, or a redesign to one OR query per run (losing the per-account `since_id`) |
+| `new_cve` status `rate_limited` | the 60/minute limit on the MITRE domain exceeded (many CVE candidates) | normal occasionally; if persistent, candidates > 60/run: raise the scraper's `rate_limit` via /scrapers or reduce the techstack scope |
+| `alembic current` fails on an old image | the DB is at a revision that image does not know | run it with a newer image / `rollback.py` |
 
-**Blind spot yang disadari** (jangan diasumsikan tertutup):
-- Digest health dikirim lewat queue `notify` yang dilayani container **`worker`** -- kalau `worker` sendiri yang
-  mati, digest tidak bisa melaporkannya (alarm ikut mati). Pantau container dari luar (monitor uptime yang sudah
-  ada di host, atau cron `docker ps` + `notify_telegram.py`).
-- Feed yang fetch-nya sukses tapi isinya beku (semua item sudah pernah terlihat) tidak ditandai (`zero_yield`
-  hanya bila fetch balik 0 item). Pengganti `offsetAlert` lama tidak mendeteksi ini.
-- Backup off-host belum otomatis.
+**Known blind spots** (do not assume they are covered):
+- The health digest is sent through the `notify` queue served by the **`worker`** container -- if `worker` itself
+  dies, the digest cannot report it (the alarm dies with it). Monitor the containers from outside (an uptime monitor already
+  on the host, or a cron `docker ps` + `notify_telegram.py`).
+- A feed whose fetch succeeds but whose content is frozen (every item already seen) is not flagged (`zero_yield`
+  only when the fetch returns 0 items). The replacement for the old `offsetAlert` does not detect this.
+- Off-host backup is not automated yet.
 
 ---
 
-## 10. Yang BELUM terbukti (jujur)
+## 10. What is NOT yet proven (honestly)
 
 | Item | Status |
 |---|---|
-| Rollback ke **stack lama** <5 menit di produksi | *belum dilatih* -- butuh Rundeck/host lama (user). `rundeck_schedule.py` hanya diuji dengan API palsu, belum ke Rundeck asli |
-| Restore penuh ke **DB live** | *belum dilatih* -- destruktif, butuh izin; guard-nya teruji unit + live (penolakan), langkah destruktifnya belum |
-| Census feed dari **IP produksi** | belum (egress staging beda) |
-| **Deploy dari nol** (`make fresh-deploy`) | terbukti 2026-10-02 di Docker lokal (arm64), clean-room dari salinan repo: build dari nol, seed 3991/30/9, admin dibuat, ATT&CK 943 teknik, login lewat nginx 200 (salah 401), tepat satu `beat_leader`, 0 traceback, dijalankan ulang tidak mengubah apa pun, 4 jalur gagal prasyarat. **Belum**: host Linux amd64 sungguhan, probe `check_secrets` dengan key asli (di latihan: secret dummy + `--skip-secret-check`; jalur gagalnya terbukti), beban nyata, scraper yang menembak dari IP host itu |
-| Beban produksi: `NLP_WORKER_CONCURRENCY` > 1 dengan LLM asli, volume asli | belum; bug concurrency baru muncul dengan LLM asli + paralel (pelajaran 10.B) |
-| nginx (compose) + sertifikat self-signed di **produksi** | teruji di staging (login, cookie `Secure`, redirect, sertifikat, `web` di-recreate) **termasuk klien eksternal**: login dari laptop lewat port yang di-publish tercatat di `audit_log` dengan IP laptop itu, bukan gateway Docker; + 44 test otomatis (`tests/edge`, 62 mutasi: 0 selamat). **Belum** dipasang di host produksi |
-| Backup Postgres: penjadwalan systemd dan salinan off-host | unit file siap, belum dipasang/diuji di host produksi |
-| Vault | pasca-cutover (`docs/SECRETS_ROTATION.md`) |
+| Rollback to the **old stack** in <5 minutes in production | *not yet drilled* -- needs Rundeck/the old host (user). `rundeck_schedule.py` has only been tested against a fake API, not the real Rundeck |
+| Full restore into the **live DB** | *not yet drilled* -- destructive, needs permission; its guards are unit + live tested (the refusals), the destructive step is not |
+| Feed census from the **production IP** | not yet (staging egress differs) |
+| **Deploy from zero** (`make fresh-deploy`) | proven 2026-10-02 on local Docker (arm64), clean-room from a copy of the repo: build from scratch, seed 3991/30/9, admin created, ATT&CK 943 techniques, login through nginx 200 (wrong password 401), exactly one `beat_leader`, 0 tracebacks, re-running changes nothing, 4 prerequisite failure paths. **Not yet**: a real Linux amd64 host, the `check_secrets` probe with real keys (in the drill: dummy secrets + `--skip-secret-check`; its failure path is proven), real load, scrapers firing from that host's IP |
+| Production load: `NLP_WORKER_CONCURRENCY` > 1 with the real LLM, real volume | not yet; concurrency bugs only show up with the real LLM + parallelism (lesson from 10.B) |
+| nginx (compose) + self-signed certificate in **production** | tested on staging (login, `Secure` cookie, redirect, certificate, `web` re-created) **including external clients**: a login from a laptop through the published port is recorded in `audit_log` with that laptop's IP, not the Docker gateway; + 44 automated tests (`tests/edge`, 62 mutations: 0 survived). **Not yet** installed on the production host |
+| Postgres backup: systemd scheduling and the off-host copy | unit files ready, not yet installed/tested on the production host |
+| Vault | post-cutover (`docs/SECRETS_ROTATION.md`) |

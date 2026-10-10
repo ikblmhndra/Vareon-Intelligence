@@ -1,79 +1,79 @@
 # CI/CD
 
-**CI** (`.github/workflows/ci.yml`): tiap push ke `main` dan tiap PR menjalankan lint, mypy, pytest
-(termasuk integration), build web, cek kontrak API, validasi compose, dan build + smoke image.
+**CI** (`.github/workflows/ci.yml`): every push to `main` and every PR runs lint, mypy, pytest
+(including integration), the web build, the API contract check, compose validation, and an image build + smoke.
 
-**CD** (`.github/workflows/deploy.yml`): begitu CI untuk **push ke `main`** hijau, produksi di-update
-otomatis. Bisa juga dipicu manual (Actions > Deploy > Run workflow).
+**CD** (`.github/workflows/deploy.yml`): as soon as CI for a **push to `main`** is green, production is updated
+automatically. It can also be triggered manually (Actions > Deploy > Run workflow).
 
 ```
-merge PR -> main --CI hijau--> Deploy (runner self-hosted di host produksi)
-                                 git merge --ff-only <sha> di checkout produksi
+merge PR -> main --CI green--> Deploy (self-hosted runner on the production host)
+                                 git merge --ff-only <sha> in the production checkout
                                  tools/ops/deploy.sh:
-                                   backup Postgres -> tandai image berjalan :prev -> build
-                                   -> up -d (migrate dulu) -> tunggu sehat
-                                   -> gagal: rollback.py ke :prev + alarm Telegram
+                                   backup Postgres -> tag running images :prev -> build
+                                   -> up -d (migrate first) -> wait until healthy
+                                   -> on failure: rollback.py to :prev + Telegram alarm
 ```
 
-Kenapa runner self-hosted: host produksi (`10.8.20.78`) IP privat, runner cloud GitHub tidak bisa
-menjangkaunya. Runner mengambil pekerjaan dari GitHub lewat koneksi **keluar** (HTTPS), jadi tidak ada
-port masuk/SSH yang perlu dibuka.
+Why a self-hosted runner: the production host (`10.8.20.78`) has a private IP, and GitHub's cloud runners cannot
+reach it. The runner pulls jobs from GitHub over an **outbound** connection (HTTPS), so no inbound port or
+SSH needs to be opened.
 
-## Setup (sekali)
+## Setup (once)
 
-1. **Runner di host produksi.** Runner yang dipakai: **`nameless.selfhosted`** (Settings > Actions >
-   Runners), label bawaan `self-hosted`, `Linux`, `X64`. `runs-on` memilih berdasarkan **label**, bukan nama
-   runner, jadi job deploy meminta `[self-hosted, Linux, X64]`. Syaratnya:
-   - runner terpasang **di host produksi** (bukan mesin lain: skrip deploy memakai Docker lokal dan
-     checkout produksi di sana);
-   - jalan sebagai user yang memiliki checkout produksi dan ada di grup `docker` (harus bisa
-     `docker compose` tanpa sudo).
-   Kalau nanti ada runner self-hosted kedua di repo ini, tambahkan label khusus (mis. `cti-prod`) ke runner
-   ini lewat Settings > Actions > Runners > runner > Labels, lalu tambahkan juga ke `runs-on` di
-   `deploy.yml` dan `tests/unit/test_deploy_pipeline.py`; kalau tidak, job deploy bisa jatuh ke runner lain.
-   Runner baru: ikuti perintah dari tombol *New self-hosted runner*; token tidak boleh ditempel ke
-   chat/tiket.
-2. **Variabel repo** `CTI_PROD_DIR` = path checkout produksi (mis. `/opt/cti-platform`), di Settings >
-   Secrets and variables > Actions > *Variables*. Checkout itu berisi `.env`, `docker/stack.env`, dan
-   `secrets/` (tidak ada di git).
-3. **Checkout produksi harus bisa `git fetch origin` tanpa interaksi** oleh user runner (deploy key atau
-   credential helper) dan bersih di branch `main`. `--ff-only` menolak kalau checkout itu menyimpang.
-4. **Environment `production`** (Settings > Environments). Opsional tapi dianjurkan: *Required reviewers*,
-   supaya setiap deploy menunggu persetujuan satu klik.
-5. **Branch protection untuk `main`**: wajibkan status check CI dan PR review. Tanpa ini, siapa pun yang
-   bisa push ke `main` otomatis bisa men-deploy ke produksi.
-6. **Uji sebelum mengandalkannya**, di host produksi:
+1. **Runner on the production host.** The runner in use is **`nameless.selfhosted`** (Settings > Actions >
+   Runners), with the default labels `self-hosted`, `Linux`, `X64`. `runs-on` selects by **label**, not by runner
+   name, so the deploy job asks for `[self-hosted, Linux, X64]`. Requirements:
+   - the runner is installed **on the production host** (not another machine: the deploy script uses the local
+     Docker and the production checkout there);
+   - it runs as the user that owns the production checkout and is in the `docker` group (it must be able to run
+     `docker compose` without sudo).
+   If a second self-hosted runner is ever added to this repo, add a dedicated label (e.g. `cti-prod`) to this
+   runner via Settings > Actions > Runners > runner > Labels, and add it to `runs-on` in `deploy.yml` and
+   `tests/unit/test_deploy_pipeline.py` too; otherwise the deploy job may land on the other runner.
+   New runner: follow the commands behind the *New self-hosted runner* button; never paste the token into
+   chat/tickets.
+2. **Repo variable** `CTI_PROD_DIR` = path of the production checkout (e.g. `/opt/cti-platform`), under Settings >
+   Secrets and variables > Actions > *Variables*. That checkout holds `.env`, `docker/stack.env`, and
+   `secrets/` (none of them are in git).
+3. **The production checkout must be able to `git fetch origin` non-interactively** as the runner user (deploy key
+   or credential helper) and be clean on the `main` branch. `--ff-only` refuses if the checkout has diverged.
+4. **`production` environment** (Settings > Environments). Optional but recommended: *Required reviewers*,
+   so every deploy waits for a one-click approval.
+5. **Branch protection for `main`**: require the CI status check and PR review. Without it, anyone who
+   can push to `main` can deploy to production automatically.
+6. **Test it before relying on it**, on the production host:
    ```bash
-   make deploy ARGS='--dry-run'     # cetak rencana, tidak mengubah apa pun
+   make deploy ARGS='--dry-run'     # prints the plan, changes nothing
    ```
-   lalu jalankan workflow secara manual satu kali dan awasi.
+   then run the workflow manually once and watch it.
 
-## Yang dilakukan `deploy.sh` (juga bisa manual: `make deploy`)
+## What `deploy.sh` does (also runnable by hand: `make deploy`)
 
-| Langkah | Gagal -> |
+| Step | On failure -> |
 |---|---|
-| backup Postgres (`/var/backups/cti`, ubah dengan `CTI_BACKUP_DIR`) | deploy dibatalkan, belum ada yang berubah |
-| tandai image container yang **sedang berjalan** sebagai `:prev` | -- |
-| `docker compose build` | dibatalkan, stack lama tidak disentuh |
-| `docker compose up -d` (service `migrate` menaikkan skema dulu) | rollback ke `:prev` + alarm |
-| tunggu `/healthz` dan semua container sehat (maks 300 dtk) | rollback ke `:prev` + alarm |
+| back up Postgres (`/var/backups/cti`, change with `CTI_BACKUP_DIR`) | deploy aborted, nothing has changed yet |
+| tag the images of the **currently running** containers as `:prev` | -- |
+| `docker compose build` | aborted, the old stack is untouched |
+| `docker compose up -d` (the `migrate` service upgrades the schema first) | rollback to `:prev` + alarm |
+| wait for `/healthz` and all containers to be healthy (max 300 s) | rollback to `:prev` + alarm |
 
-- `:prev` diambil dari container yang berjalan, bukan dari tag `latest`, supaya deploy yang gagal tidak
-  menimpa jangkar rollback dengan image yang rusak.
-- Rollback otomatis memakai `tools/ops/rollback.py` **tanpa `--yes`**: kalau rollback butuh
-  `alembic downgrade` (bisa menghapus kolom/tabel), skrip berhenti dan mengalarm Telegram (topik
-  `debug`) dengan petunjuk manual (`docs/CUTOVER_RUNBOOK.md` bagian 7). Downgrade DB selalu keputusan manusia.
-- Hasil deploy (OK atau gagal) dikabarkan ke Telegram topik `debug` lewat `.env` di checkout produksi.
+- `:prev` is taken from the running containers, not from the `latest` tag, so a failed deploy does not
+  overwrite the rollback anchor with a broken image.
+- Automatic rollback uses `tools/ops/rollback.py` **without `--yes`**: if the rollback would need
+  `alembic downgrade` (which can drop columns/tables), the script stops and raises a Telegram alarm (topic
+  `debug`) with manual instructions (`docs/CUTOVER_RUNBOOK.md` section 7). A DB downgrade is always a human decision.
+- The deploy result (OK or failed) is reported to the Telegram `debug` topic using the `.env` in the production checkout.
 
-## Batasan yang perlu diketahui
+## Limitations to know about
 
-- **Tidak ada staging.** Yang divalidasi sebelum produksi hanya CI. Migrasi yang merusak data tidak
-  tertangkap di sini; backup otomatis sebelum deploy adalah jaring pengamannya.
-- **`.env` / `docker/stack.env` tidak ikut git.** Kalau sebuah PR menambah key baru, isi dulu di host
-  produksi **sebelum** merge, kalau tidak aplikasi menolak start (dan deploy akan rollback).
-- **Runner self-hosted = kode berjalan di host produksi.** Jangan pernah memakai runner ini
-  (`runs-on: self-hosted`) di workflow yang terpicu PR, dan jangan membuka repo ini ke kontributor yang tidak dipercaya tanpa branch
-  protection. User runner di grup `docker` setara root di host itu.
-- Satu deploy dalam satu waktu (`concurrency` + `flock`). Deploy yang sedang berjalan tidak dibatalkan
-  oleh commit baru; commit berikutnya menunggu giliran.
-- Matikan CD sementara: Actions > Deploy > *Disable workflow* (atau hentikan service runner).
+- **There is no staging.** The only validation before production is CI. A migration that corrupts data is not
+  caught here; the automatic backup before each deploy is the safety net.
+- **`.env` / `docker/stack.env` are not in git.** If a PR adds a new key, set it on the production host
+  **before** merging, otherwise the application refuses to start (and the deploy rolls back).
+- **Self-hosted runner = code running on the production host.** Never use this runner
+  (`runs-on: self-hosted`) in a workflow triggered by PRs, and never open this repo to untrusted contributors without branch
+  protection. A runner user in the `docker` group is equivalent to root on that host.
+- One deploy at a time (`concurrency` + `flock`). A running deploy is not cancelled by a new commit;
+  the next commit waits its turn.
+- To disable CD temporarily: Actions > Deploy > *Disable workflow* (or stop the runner service).

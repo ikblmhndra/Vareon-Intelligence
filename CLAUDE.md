@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Vareon Intelligence: a cyber threat intelligence platform. ~95 scrapers (RSS, HTML, APIs, X/Twitter, GitHub) feed an NLP + LLM enrichment pipeline; results are served by a FastAPI API and a Next.js UI, and pushed to Telegram. It replaces the older `ScraperNews` + `ScraperNewsWeb` systems, and many modules are ports of that code (docstrings say so). The product was renamed, but the Python packages are still `cti_*` (`cti_core`, `cti_api`, ...).
 
-Code identifiers are English, but **comments, docstrings, docs and commit messages are mostly Indonesian**. Match the surrounding language when editing. Docstrings are often long and explain *why* (past incidents, phase numbers like "Fase 10.B"); keep that habit.
+Code identifiers are English, but **comments, docstrings and commit messages are mostly Indonesian**. Match the surrounding language when editing. **Docs are English**: everything under `docs/` and the READMEs, except `docs/PROGRESS.md` (historical work log) and `CHANGELOG.md` (shown in the UI), which stay Indonesian. Literal program strings quoted in docs (error messages, UI labels, tool output) stay verbatim, with an English gloss. Docstrings are often long and explain *why* (past incidents, phase numbers like "Fase 10.B"); keep that habit.
 
 ## Commands
 
@@ -47,6 +47,8 @@ Scraper CLI (`cti-scraper`, typer): `list`, `dry-run <id>`, `verify <id> [--reco
 Local services: `docker compose up -d` starts only Postgres + Redis (app runs on the host via uv/pnpm). `docker compose --profile app up -d --build` is the full stack. Run the API with `uvicorn cti_api.main:app`; migrations with `alembic upgrade head`. Ops: `make fresh-deploy`, `make deploy` (see Deployment).
 
 ## Architecture
+
+Full write-up (data flows, access patterns, code paths, design decisions, known risks): `docs/ARCHITECTURE.md`.
 
 ### Workspace layout (uv workspace: `packages/*`, `scrapers`, `apps/worker`, `apps/api`)
 

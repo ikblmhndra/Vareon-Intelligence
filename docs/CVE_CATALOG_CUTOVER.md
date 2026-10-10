@@ -1,107 +1,109 @@
-# Runbook cutover: katalog tech + mirror CVE (ROADMAP #19, irisan 7)
+# Cutover runbook: tech catalog + CVE mirror (ROADMAP #19, slice 7)
 
-Memindahkan pengisian `cve_tracker` dari scraper `new_cve` (pencarian kata kunci NVD/Tenable) ke
-pipeline mirror: `cve.mirror_sync` -> katalog -> promosi (`docs/CVE_CATALOG_DESIGN.md`). **Tidak ada
-staging**: dev dulu, prod sesudahnya dengan langkah yang sama. Tiap langkah punya cara kembali; tidak
-ada yang menurunkan skema DB.
+Moves the filling of `cve_tracker` from the `new_cve` scraper (NVD/Tenable keyword search) to the
+mirror pipeline: `cve.mirror_sync` -> catalog -> promotion (`docs/CVE_CATALOG_DESIGN.md`). **There is no
+staging**: dev first, then prod with the same steps. Every step has a way back; none of them downgrades
+the DB schema.
 
-Semua fitur baru **mati secara default** (`CVE_MIRROR__ENABLED=false`, `CVE_MIRROR__PROMOTE=off`).
-Men-deploy kodenya TIDAK mengubah perilaku apa pun.
+All new features are **off by default** (`CVE_MIRROR__ENABLED=false`, `CVE_MIRROR__PROMOTE=off`).
+Deploying the code does NOT change any behaviour.
 
-## Peta keadaan (satu sakelar: env, lalu restart)
+## State map (one switch: env, then restart)
 
-| `ENABLED` | `PROMOTE` | Mirror terisi | Bayangan | Tracker diisi oleh | `new_cve` |
+| `ENABLED` | `PROMOTE` | Mirror filled | Shadow | Tracker filled by | `new_cve` |
 |---|---|---|---|---|---|
-| false | (apa pun) | tidak | tidak | `new_cve` | jalan |
-| true | off | ya | tidak | `new_cve` | jalan |
-| true | shadow | ya | ya (`cve_promotion_shadow`) | `new_cve` | jalan |
-| true | **live** | ya | tidak | **mirror** + ringkasan Telegram | **ditangguhkan** |
-| true | live + `KEEP_LEGACY_NEW_CVE=true` | ya | tidak | mirror **dan** `new_cve` | jalan (tumpang tindih) |
+| false | (any) | no | no | `new_cve` | runs |
+| true | off | yes | no | `new_cve` | runs |
+| true | shadow | yes | yes (`cve_promotion_shadow`) | `new_cve` | runs |
+| true | **live** | yes | no | **mirror** + Telegram summary | **suspended** |
+| true | live + `KEEP_LEGACY_NEW_CVE=true` | yes | no | mirror **and** `new_cve` | runs (overlapping) |
 
-Env dibaca sekali per proses: setelah mengubahnya restart `worker`, `beat`, dan `api`.
-`new_cve` yang ditangguhkan: tidak dijadwalkan beat, `Runner` menolaknya (status `disabled`), health
-menghitungnya `disabled` (tidak muncul `stale`/`dead` di digest), tampil nonaktif di halaman scraper.
+Env is read once per process: after changing it, restart `worker`, `beat`, and `api`.
+A suspended `new_cve`: beat does not schedule it, `Runner` refuses it (status `disabled`), health
+counts it as `disabled` (it does not show up as `stale`/`dead` in the digest), and it shows as inactive on the scrapers page.
 
-## Prasyarat (satu kali, per lingkungan)
+## Prerequisites (once, per environment)
 
-1. **Env**: `TELEGRAM__THREAD_IDS` memuat `"cve_new": <thread id>` (`0` = chat utama). Tanpa itu ingest
-   tetap jalan, hanya ringkasan CVE baru tidak terkirim. Key `CVE_MIRROR__*` opsional (default mati).
-2. **Deploy kode** (CD menjalankan migrasi lebih dulu): revisi `b7e3d9a1c5f2` (katalog/mirror/target,
-   `techstack_entries.active`), `d4a9c7e1b3f6` (`cvss_vector` jadi TEXT: **memperbaiki `new_cve` yang gagal
-   pada vektor CVSS > 100 karakter**), `e5b2d8f4a7c1` (tabel bayangan). Semuanya aman untuk data lama.
-3. **Isi mirror + katalog** dari clone CVE List V5 (`git clone` / `git pull` di mesin yang bisa ke
-   github.com), ~10 menit untuk 114 ribu berkas:
-   `make backfill-cve-mirror SOURCE=cvelistV5/` (laporan) lalu `ARGS=--apply`. Aman diulang.
-4. **Nyalakan ingest**: `CVE_MIRROR__ENABLED=true`, `CVE_MIRROR__PROMOTE=off`, restart `worker`. Tunggu
-   sampai 5 menit (jadwal `cve.mirror_sync`), lalu pantau lognya (perintah di bawah, tanpa teks tambahan):
+1. **Env**: `TELEGRAM__THREAD_IDS` contains `"cve_new": <thread id>` (`0` = main chat). Without it ingest
+   still runs, only the new-CVE summary is not sent. The `CVE_MIRROR__*` keys are optional (default off).
+2. **Deploy the code** (CD runs the migrations first): revisions `b7e3d9a1c5f2` (catalog/mirror/targets,
+   `techstack_entries.active`), `d4a9c7e1b3f6` (`cvss_vector` becomes TEXT: **fixes `new_cve` failing
+   on CVSS vectors > 100 characters**), `e5b2d8f4a7c1` (shadow table). All are safe for existing data.
+3. **Fill the mirror + catalog** from a clone of CVE List V5 (`git clone` / `git pull` on a machine that can reach
+   github.com), ~10 minutes for 114 thousand files:
+   `make backfill-cve-mirror SOURCE=cvelistV5/` (report) then `ARGS=--apply`. Safe to repeat.
+4. **Turn on ingest**: `CVE_MIRROR__ENABLED=true`, `CVE_MIRROR__PROMOTE=off`, restart `worker`. Wait
+   up to 5 minutes (the `cve.mirror_sync` schedule), then watch its log (command below, nothing extra):
 
    ```bash
    docker compose logs worker | grep cve_mirror_synced | tail -n 3
    ```
 
-   Yang diharapkan di tiap baris: `status` bernilai `ok` atau `noop`, `failed` bernilai `0`, dan
-   `gap_unrecoverable` bernilai `False`. Jalankan backfill ulang bila clone lebih tua dari saat ingest
-   dinyalakan (menutup celah di antaranya).
+   Expected on every line: `status` is `ok` or `noop`, `failed` is `0`, and
+   `gap_unrecoverable` is `False`. Re-run the backfill if the clone is older than the moment ingest
+   was turned on (it closes the gap in between).
 
-## Tahap 1: pemetaan 34 entri (manusia, di dev)
+## Stage 1: mapping the 34 entries (human, on dev)
 
-1. UI: CVE Tracker -> **Monitored Tech** -> tiap entri "Unmapped" -> **Map to catalog**. Draf usulan:
-   `docs/CVE_CATALOG_DESIGN.md` 8.3 (mis. `fortigate` = produk FortiOS, `junos` = tiga produk Juniper).
-   Label sering beda dari nama CNA (fortigate != FortiOS): dialog memberi petunjuk. Bantuan kandidat:
+1. UI: CVE Tracker -> **Monitored Tech** -> each "Unmapped" entry -> **Map to catalog**. Draft proposal:
+   `docs/CVE_CATALOG_DESIGN.md` 8.3 (e.g. `fortigate` = the FortiOS product, `junos` = three Juniper products).
+   Labels often differ from the CNA name (fortigate != FortiOS): the dialog gives hints. Candidate helper:
    `make catalog-mapping CMD=suggest`.
-2. Keputusan yang perlu diambil per entri: vendor-level (semua produk vendor; jaring luas, bisa membawa
-   produk yang tidak dipakai) atau produk (presisi). Entri yang sengaja dibiarkan "Unmapped" tetap
-   dicocokkan lewat teks seperti dulu.
-3. Ekspor: `make catalog-mapping CMD=export ARGS='--out /work/mapping.json'`.
+2. The decision per entry: vendor-level (every product of the vendor; a wide net that can pull in
+   products that are not used) or product (precise). Entries deliberately left "Unmapped" are still
+   matched by text, as before.
+3. Export: `make catalog-mapping CMD=export ARGS='--out /work/mapping.json'`.
 
-## Tahap 2: mode bayangan di dev (beberapa hari)
+## Stage 2: shadow mode on dev (a few days)
 
 1. `CVE_MIRROR__PROMOTE=shadow`, restart `worker`.
-2. Isi riwayat bayangan: `make promote-cve-mirror MODE=shadow` (laporan) lalu `ARGS=--apply`.
-3. Bandingkan: `make compare-promotion-shadow SINCE=<tanggal new_cve mulai berjalan>`.
-4. **Kriteria go** (semuanya):
-   - bayangan terisi >= 7 hari dan mirror tidak basi (tidak ada "mirror basi?" pada "hanya tracker");
-   - "hanya tracker" semuanya terjelaskan: sebab "entri bertarget tidak cocok CVE" berarti target salah/
-     kurang (perbaiki di UI), "gate teks" berarti nama entri teks tak muncul di vendor/produk CNA;
-   - "hanya bayangan" sudah ditinjau (benar = CVE yang dulu kelewat keyword search; salah = target terlalu
-     luas atau gate teks terlalu longgar, mis. plugin pihak ketiga yang menyebut nama produk);
-   - "tech beda" dipahami (bayangan memilih entri paling spesifik, `new_cve` memilih abjad);
-   - semua entri yang dipakai sudah dipetakan, atau sengaja dibiarkan teks.
+2. Fill the shadow history: `make promote-cve-mirror MODE=shadow` (report) then `ARGS=--apply`.
+3. Compare: `make compare-promotion-shadow SINCE=<date new_cve started running>`.
+4. **Go criteria** (all of them). The report labels are quoted as printed by the tool:
+   - the shadow has been filled for >= 7 days and the mirror is not stale (no "mirror basi?" (stale mirror?) reason under
+     "hanya tracker" (tracker only));
+   - every "hanya tracker" row is explained: the reason "entri bertarget tidak cocok CVE" (targeted entry does not match
+     the CVE) means a wrong/missing target (fix it in the UI), "gate teks" (text gate) means the text entry's name does not
+     appear in the CNA vendor/product;
+   - "hanya bayangan" (shadow only) has been reviewed (correct = CVEs that keyword search used to miss; wrong = target
+     too wide or text gate too loose, e.g. a third-party plugin that mentions the product name);
+   - "tech beda" (different tech) is understood (the shadow picks the most specific entry, `new_cve` picks alphabetically);
+   - every entry in use is mapped, or deliberately left as text.
 
-## Tahap 3: cutover `live` (dev dulu, lalu prod)
+## Stage 3: `live` cutover (dev first, then prod)
 
-1. Prod: impor pemetaan: `make catalog-mapping CMD=import ARGS='--file /work/mapping.json'` (laporan; periksa
-   "masalah" = kunci katalog yang belum ada di mirror prod), lalu `--apply`.
-2. Prod: lakukan Tahap 2 singkat (bayangan + bandingkan) bila belum pernah di prod.
-   **Khusus mirror yang diisi sebelum 0.4.1**: bersihkan dulu teks `affected_lines` yang diawali `<=` ganda, karena promosi
-   menyalinnya apa adanya ke tracker (idempoten; satu transaksi dengan pengaman; mirror yang di-backfill dengan kode 0.4.1
-   ke atas sudah bersih):
+1. Prod: import the mapping: `make catalog-mapping CMD=import ARGS='--file /work/mapping.json'` (report; check
+   "masalah" (problems) = catalog keys that are not yet in the prod mirror), then `--apply`.
+2. Prod: do a short Stage 2 (shadow + compare) if it has never been done on prod.
+   **Only for a mirror filled before 0.4.1**: first clean up `affected_lines` text that starts with a doubled `<=`, because promotion
+   copies it as-is into the tracker (idempotent; one transaction with a safeguard; a mirror backfilled with code 0.4.1
+   or later is already clean):
    `docker compose --env-file docker/stack.env --profile app exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -X -q' < tools/ops/fix_affected_double_operator.sql`.
-3. **Sakelar**: `CVE_MIRROR__PROMOTE=live`, restart `worker`, `beat`, `api`. `new_cve` berhenti dijadwalkan;
-   `cve.mirror_sync` mulai menulis `cve_tracker` dan mengirim ringkasan Telegram untuk CVE baru <= 3 hari.
-4. Isi riwayat TANPA membanjiri: `make promote-cve-mirror MODE=live ARGS='--since <tanggal mulai bayangan>'`
-   (laporan dulu, lalu `--apply`). **Wajib `--since`**: riwayat lama yang baru ketemu masuk tracker dengan
-   `detected_on` = sekarang, yang merusak MTTD dashboard. (Entri yang di-Monitor lewat UI mengisi riwayatnya
-   sendiri dari seluruh mirror, sesuai keputusan "riwayat langsung terisi"; `detected_on`-nya juga = saat itu.)
-5. Verifikasi (hari pertama): log `cve_mirror_synced` (`promoted_new`), ringkasan Telegram topik `cve_new`
-   sampai, tab CVEs terisi, dashboard tidak aneh, halaman Scrapers menampilkan `new_cve` nonaktif, digest
-   kesehatan tidak melaporkan `new_cve`.
+3. **Switch**: `CVE_MIRROR__PROMOTE=live`, restart `worker`, `beat`, `api`. `new_cve` stops being scheduled;
+   `cve.mirror_sync` starts writing `cve_tracker` and sending a Telegram summary for new CVEs <= 3 days old.
+4. Fill the history WITHOUT flooding: `make promote-cve-mirror MODE=live ARGS='--since <shadow start date>'`
+   (report first, then `--apply`). **`--since` is mandatory**: newly found old history enters the tracker with
+   `detected_on` = now, which ruins the dashboard MTTD. (Entries Monitored through the UI fill their own history
+   from the whole mirror, per the "history is filled immediately" decision; their `detected_on` is also = that moment.)
+5. Verify (first day): `cve_mirror_synced` log (`promoted_new`), the Telegram summary on the `cve_new` topic
+   arrives, the CVEs tab is filled, the dashboard looks sane, the Scrapers page shows `new_cve` as inactive, the health
+   digest does not report `new_cve`.
 
-## Rollback (kapan saja, tanpa migrasi)
+## Rollback (any time, no migration)
 
-- **Kembali ke `new_cve`**: `CVE_MIRROR__PROMOTE=off` (atau `shadow`), restart `worker`, `beat`, `api`.
-  `new_cve` dijadwalkan lagi. Baris tracker yang sudah dibuat mirror tetap ada (ticket/ACK aman); run
-  `new_cve` berikutnya meng-upsert baris yang sama.
-- **Tumpang tindih / cadangan**: `CVE_MIRROR__KEEP_LEGACY_NEW_CVE=true` menjalankan keduanya; hanya
-  `tech` yang bisa bergantian (mirror memilih paling spesifik, `new_cve` memilih abjad), tidak ada data hilang.
-- **Matikan semuanya**: `CVE_MIRROR__ENABLED=false`. Mirror dan katalog tetap di DB (tidak dibaca apa pun).
+- **Back to `new_cve`**: `CVE_MIRROR__PROMOTE=off` (or `shadow`), restart `worker`, `beat`, `api`.
+  `new_cve` is scheduled again. Tracker rows already created by the mirror stay (tickets/ACKs are safe); the next
+  `new_cve` run upserts the same rows.
+- **Overlap / fallback**: `CVE_MIRROR__KEEP_LEGACY_NEW_CVE=true` runs both; only
+  `tech` can flip back and forth (the mirror picks the most specific, `new_cve` picks alphabetically), no data is lost.
+- **Turn everything off**: `CVE_MIRROR__ENABLED=false`. The mirror and catalog stay in the DB (nothing reads them).
 
-## Catatan operasional
+## Operational notes
 
-- **Retensi**: `cve.mirror_purge` (03:30 UTC) membuang mirror terbit sebelum 1 Januari tahun lalu; mulai
-  2027-01-01 CVE terbitan 2025 hilang dari mirror. `cve_tracker`, ticket, dan katalog (statistik) tidak
-  tersentuh.
-- **Entri nonaktif** (Pause) = disembunyikan, tidak dihapus; mengaktifkan lagi mengisi riwayatnya.
-- **Mirror basi**: bila `cve_mirror_synced` berhenti atau `gap_unrecoverable=True` (worker mati lebih lama dari
-  30 hari log delta), jalankan `make backfill-cve-mirror` dengan clone segar.
-- **Notifikasi** hanya untuk CVE baru <= 3 hari, per client, satu pesan per siklus ingest.
+- **Retention**: `cve.mirror_purge` (03:30 UTC) drops mirror records published before 1 January of the previous year; from
+  2027-01-01 CVEs published in 2025 disappear from the mirror. `cve_tracker`, tickets, and the catalog (statistics) are not
+  touched.
+- **Inactive entries** (Pause) = hidden, not deleted; reactivating one fills its history.
+- **Stale mirror**: if `cve_mirror_synced` stops or `gap_unrecoverable=True` (the worker was down longer than
+  the 30 days of delta log), run `make backfill-cve-mirror` with a fresh clone.
+- **Notifications** only for new CVEs <= 3 days old, per client, one message per ingest cycle.

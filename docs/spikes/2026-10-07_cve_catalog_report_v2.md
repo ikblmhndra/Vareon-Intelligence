@@ -1,21 +1,28 @@
-# Spike katalog tech dari CVE List V5
+# Tech catalog spike from CVE List V5
 
-> **Catatan pembaca.** Keluaran skrip spike **versi yang sudah diperbaiki** (nama non-Latin tetap identitas;
-> hanya placeholder/generik/versi/angka/URL yang dianggap sampah), data dan jendela sama dengan laporan
-> pertama (`2026-10-07_cve_catalog_report.md`, yang digantikan oleh ini). Bagian 7 (recall) **identik**
-> dengan laporan pertama: dijalankan dengan `--since 2025-01-01` dan `tracker.csv` yang sama (73 baris), jadi
-> pemisahan "kelewat pipeline" vs "riwayat sebelum tracker ada" **belum terjadi**. Tafsir:
-> `docs/CVE_TECH_MATCHING.md` 7.1.3; rancangan: `docs/CVE_CATALOG_DESIGN.md`.
+> **Reader's note.** Output of the **fixed version** of the spike script (non-Latin names remain identities;
+> only placeholder/generic/version/digits/URL count as junk), same data and window as the first
+> report (`2026-10-07_cve_catalog_report.md`, which this one supersedes). Section 7 (recall) is **identical**
+> to the first report: it was run with `--since 2025-01-01` and the same `tracker.csv` (73 rows), so
+> separating "missed by the pipeline" from "history from before the tracker existed" **has not happened yet**. Interpretation:
+> `docs/CVE_TECH_MATCHING.md` 7.1.3; design: `docs/CVE_CATALOG_DESIGN.md`.
+>
+> **Label legend.** Labels in `code` and in the tables are the values the spike script prints and are kept
+> as-is: junk kinds `placeholder`, `generik` (generic), `multi-produk` (multi-product), `url-atau-repo`
+> (URL or repo), `url`, `terlalu-panjang` (too long), `angka-saja` (digits only), `mirip-versi` (version-like);
+> name shapes `memuat-and-atau-titik-koma` (contains "and" or a semicolon), `judul-panjang` (long title),
+> `owner/repo`; verdicts `bersih` (clean), `satu vendor, banyak produk` (one vendor, many products), `ambigu`
+> (ambiguous), `tidak ada` (none); recall buckets `hanya-tracker` (tracker only), `hanya-katalog` (catalog only).
 
 
-Dibuat 2026-10-07. Jendela: terbit >= 2025-01-01.
+Created 2026-10-07. Window: published >= 2025-01-01.
 
-## 1. Korpus
+## 1. Corpus
 
-- Berkas CVE dibaca: **153413** (gagal parse: 0; bukan PUBLISHED: 3531; tanpa tanggal terbit: 0; terbit sebelum jendela: 32662).
-- **CVE dianalisis: 117220**
+- CVE files read: **153413** (parse failures: 0; not PUBLISHED: 3531; no publish date: 0; published before the window: 32662).
+- **CVEs analysed: 117220**
 
-| Bulan terbit | CVE |
+| Publish month | CVE |
 |---|---|
 | 2025-01 | 4023 |
 | 2025-02 | 2852 |
@@ -40,27 +47,27 @@ Dibuat 2026-10-07. Jendela: terbit >= 2025-01-01.
 | 2026-09 | 14862 |
 | 2026-10 | 2494 |
 
-## 2. Cakupan data produk (CNA)
+## 2. Product data coverage (CNA)
 
 | | CVE | % |
 |---|---|---|
-| punya >= 1 produk yang layak jadi identitas | 109988 | 93.8% |
-| hanya produk sampah (placeholder/generik/...) | 7232 | 6.2% |
-| tanpa `affected` sama sekali | 0 | 0.0% |
-| diselamatkan data ADP (CNA tak berguna) | 42 | 0.0% |
-| memuat CPE di data CNA | 8829 | 7.5% |
+| has >= 1 product fit to be an identity | 109988 | 93.8% |
+| only junk products (placeholder/generic/...) | 7232 | 6.2% |
+| no `affected` at all | 0 | 0.0% |
+| rescued by ADP data (CNA unusable) | 42 | 0.0% |
+| contains CPE in the CNA data | 8829 | 7.5% |
 
-CVE tanpa produk layak (CNA maupun ADP) = yang di gate `new_cve` sekarang jatuh ke ringkasan teks; di desain baru mereka TIDAK punya identitas dan perlu jalur sendiri.
+CVEs without a usable product (CNA or ADP) = the ones that the `new_cve` gate currently sends to the text summary; in the new design they have NO identity and need their own path.
 
-## 3. Ukuran dan kebersihan katalog
+## 3. Catalog size and cleanliness
 
-- Pasangan (vendor, produk) **mentah**: 42710
-- Identitas **ternormalisasi** (huruf kecil, tanda baca jadi spasi, sampah dibuang): **41507** (15290 vendor)
-- Setelah **menggabung ejaan** (tanpa spasi, `Palo Alto` = `PaloAlto`): **41265** -> normalisasi saja menyisakan 242 duplikat yang bisa digabung otomatis
-- Perkiraan **keluarga produk** (token versi di ujung dibuang; kasar): **39979** -- selisihnya dengan angka di atas adalah varian versi yang menggelembungkan katalog (mis. tiap versi Windows = satu produk)
-- Entri produk sampah: **7286**
+- **Raw** (vendor, product) pairs: 42710
+- **Normalised** identities (lower case, punctuation to spaces, junk dropped): **41507** (15290 vendors)
+- After **merging spellings** (no spaces, `Palo Alto` = `PaloAlto`): **41265** -> normalisation alone leaves 242 duplicates that can be merged automatically
+- Estimated **product families** (trailing version tokens dropped; rough): **39979** -- the difference from the number above is version variants inflating the catalog (e.g. every Windows version = one product)
+- Junk product entries: **7286**
 
-| Jenis sampah | Entri | Contoh |
+| Junk kind | Entries | Examples |
 |---|---|---|
 | placeholder | 7000 | n/a; _ |
 | generik | 217 | Web Application; firmware; Server; platform; Mobile Application |
@@ -68,28 +75,28 @@ CVE tanpa produk layak (CNA maupun ADP) = yang di gate `new_cve` sekarang jatuh 
 | angka-saja | 26 | 4769; 0752-8303-8000-0002; 777; 0852-1322; 0852-1328 |
 | mirip-versi | 3 | 130.8005 |
 
-**Bentuk nama yang janggal tapi TETAP identitas** (bukan sampah; sulit untuk picker, dan `owner/repo` biasanya proyek open-source yang namanya ditulis sebagai path repo):
+**Odd name shapes that are STILL identities** (not junk; hard for a picker, and `owner/repo` is usually an open-source project whose name is written as a repo path):
 
-| Bentuk | Entri | Contoh |
+| Shape | Entries | Examples |
 |---|---|---|
 | memuat-and-atau-titik-koma | 4008 | RAPIDS cuDF and cuML; User Activity Tracking and Log; Giveaways and Contests by RafflePress; MB Custom Post Types & Custom Taxonomies; Social Media Share Buttons & Social Sharing Icons |
 | judul-panjang | 1256 | Jetson AGX Orin series (including Jetson Orin NX series, Jetson Orin N; MWB HubSpot for WooCommerce – CRM, Abandoned Cart, Email Marketing, Ma; Content Control – The Ultimate Content Restriction Plugin! Restrict Co; ClickWhale – Link Manager, Link Shortener and Click Tracker for Affili; s2Member – Excellent for All Kinds of Memberships, Content Restriction |
 | owner/repo | 996 | hamza417/inure; chatwoot/chatwoot; parisneo/lollms-webui; shaunwei/realchar; mintplex-labs/anything-llm |
 
-**Ekor panjang** (identitas menurut jumlah CVE di jendela):
+**Long tail** (identities by number of CVEs in the window):
 
-| Jumlah CVE | Identitas |
+| CVE count | Identities |
 |---|---|
 | 1 CVE | 26117 |
 | 2-4 CVE | 9844 |
 | 5-19 CVE | 4665 |
 | >=20 CVE | 881 |
 
-Kalau picker hanya menampilkan identitas dengan >= 5 CVE, ukuran katalog = 5546; sisanya ekor yang sebagian besar noise atau produk sekali-lewat.
+If the picker only shows identities with >= 5 CVEs, the catalog size = 5546; the rest is a tail that is mostly noise or one-off products.
 
-**Keluarga dengan varian terbanyak** (kandidat digabung atau disembunyikan di picker):
+**Families with the most variants** (candidates for merging or hiding in the picker):
 
-| Vendor | Keluarga | Varian | CVE |
+| Vendor | Family | Variants | CVE |
 |---|---|---|---|
 | dell | latitude | 47 | 49 |
 | siemens | industrial edge device kit | 42 | 52 |
@@ -107,11 +114,11 @@ Kalau picker hanya menampilkan identitas dengan >= 5 CVE, ukuran katalog = 5546;
 | dell | xps | 13 | 13 |
 | dlink | dsl | 13 | 15 |
 
-## 4. Duplikasi ejaan (kandidat merge), 25 teratas
+## 4. Spelling duplicates (merge candidates), top 25
 
-Ejaan MENTAH berbeda yang dikompaksi (tanpa spasi/tanda baca) jadi kunci yang sama. Banyak yang sudah satu identitas sejak normalisasi huruf/tanda baca (mis. `Version`/`version`); yang BENAR-BENAR tersisa untuk digabung = selisih "ternormalisasi" dan "digabung ejaan" di bagian 3.
+Different RAW spellings that compact (no spaces/punctuation) to the same key. Many are already one identity after case/punctuation normalisation (e.g. `Version`/`version`); what REALLY remains to be merged = the difference between "normalised" and "merged spellings" in section 3.
 
-| Kunci | CVE | Ejaan (jumlah) |
+| Key | CVE | Spellings (count) |
 |---|---|---|
 | `microsoft|windows11version23h2` | 2887 | Microsoft | Windows 11 Version 23H2 (1860); Microsoft | Windows 11 version 23H2 (1027) |
 | `microsoft|windows11version26h1` | 1582 | Microsoft | Windows 11 version 26H1 (1558); Microsoft | Windows 11 Version 26H1 (24) |
@@ -139,9 +146,9 @@ Ejaan MENTAH berbeda yang dikompaksi (tanpa spasi/tanda baca) jadi kunci yang sa
 | `wazuh|wazuh` | 56 | wazuh | wazuh (55); Wazuh | Wazuh (1) |
 | `paloaltonetworks|globalprotectapp` | 54 | palo_alto_networks | globalprotect_app (27); Palo Alto Networks | GlobalProtect App (18); paloaltonetworks | globalprotect_app (8); Palo Alto Networks | Global Protect App (1) |
 
-## 5. 40 identitas dengan CVE terbanyak
+## 5. The 40 identities with the most CVEs
 
-| Vendor | Produk | CVE | Pertama | Terakhir | Ejaan mentah |
+| Vendor | Product | CVE | First | Last | Raw spellings |
 |---|---|---|---|---|---|
 | linux | linux | 10064 | 2025-01-06 | 2026-10-06 | 1 |
 | google | chrome | 3388 | 2025-01-08 | 2026-10-06 | 1 |
@@ -184,11 +191,11 @@ Ejaan MENTAH berbeda yang dikompaksi (tanpa spasi/tanda baca) jadi kunci yang sa
 | microsoft | windows 10 version 1507 | 448 | 2025-01-14 | 2025-12-09 | 1 |
 | qualcomm inc | snapdragon | 425 | 2025-01-06 | 2026-10-06 | 1 |
 
-## 6. 34 tech produksi terhadap katalog
+## 6. The 34 production techs against the catalog
 
-`hit` = CVE yang vendor/produk/paket/CPE CNA-nya menyebut tech itu (kata utuh), sama dengan gate `new_cve`. **Vonis**: `bersih` = satu vendor DAN satu produk menguasai >= 80% hit; `satu vendor, banyak produk` = vendor jelas tapi produknya tersebar (kasus hierarki: satu tech harus dipetakan ke beberapa produk); `ambigu` = vendor pun tersebar (perlu keputusan manusia saat memetakan); `tidak ada` = tak ada hit (nama tech bukan nama yang dipakai CNA, atau memang tak ada CVE di jendela).
+`hit` = CVEs whose CNA vendor/product/package/CPE names that tech (whole word), the same as the `new_cve` gate. **Verdict**: `bersih` (clean) = one vendor AND one product hold >= 80% of hits; `satu vendor, banyak produk` (one vendor, many products) = clear vendor but the products are spread out (the hierarchy case: one tech must map to several products); `ambigu` (ambiguous) = even the vendor is spread out (needs a human decision when mapping); `tidak ada` (none) = no hits (the tech name is not a name CNAs use, or there really is no CVE in the window).
 
-| Tech | Hit | Vonis | Vendor teratas | Produk teratas | Identitas teratas (CVE) |
+| Tech | Hit | Verdict | Top vendor | Top product | Top identities (CVE) |
 |---|---|---|---|---|---|
 | anydesk | 3 | bersih | 100% | 100% | anydesk | anydesk (3) |
 | burp suite | 1 | bersih | 100% | 100% | portswigger | burp suite dast (1) |
@@ -225,13 +232,13 @@ Ejaan MENTAH berbeda yang dikompaksi (tanpa spasi/tanda baca) jadi kunci yang sa
 | thales | 2 | ambigu | 50% | 50% | thales cert | suspicious (1); thales | sconnect (1) |
 | wazuh | 67 | bersih | 100% | 81% | wazuh | wazuh (56); wazuh | wazuh manager (8); wazuh | wazuh agent (2) |
 
-Ringkas: bersih 10, satu vendor banyak produk 9, ambigu 10, tidak ada 5 dari 34.
+Summary: clean 10, one vendor many products 9, ambiguous 10, none 5, out of 34.
 
-## 7. Recall terhadap tracker
+## 7. Recall against the tracker
 
-Per tech, hanya CVE yang terbit di jendela (`di luar` = baris tracker yang terbit sebelum jendela, tidak bisa dinilai). `hanya-tracker` = ditemukan keyword search tapi TIDAK oleh pencocokan identitas (salah-cocok lama, atau nama CNA beda); `hanya-katalog` = ditemukan identitas tapi TIDAK ada di tracker. HATI-HATI: ini campuran (a) CVE yang kelewat pipeline dan (b) riwayat yang terbit SEBELUM tracker/tech itu ada. Untuk mengukur kelewatan pipeline saja, jalankan ulang dengan `--since` = tanggal `new_cve` mulai berjalan (dan tracker diambil dari DB yang sama).
+Per tech, only CVEs published in the window (`di luar` (outside) = tracker rows published before the window, which cannot be assessed). `hanya-tracker` = found by keyword search but NOT by identity matching (an old false match, or a different CNA name); `hanya-katalog` = found by identity but NOT in the tracker. CAREFUL: this mixes (a) CVEs the pipeline missed and (b) history published BEFORE the tracker/tech existed. To measure only what the pipeline missed, re-run with `--since` = the date `new_cve` started running (and the tracker taken from the same DB).
 
-| Tech | Tracker | Di luar | Di jendela | Keduanya | Hanya tracker | Hanya katalog |
+| Tech | Tracker | Outside | In window | Both | Tracker only | Catalog only |
 |---|---|---|---|---|---|---|
 | anydesk | 0 | 0 | 0 | 0 | 0 | 3 |
 | burp suite | 0 | 0 | 0 | 0 | 0 | 1 |
@@ -263,9 +270,9 @@ Per tech, hanya CVE yang terbit di jendela (`di luar` = baris tracker yang terbi
 | thales | 0 | 0 | 0 | 0 | 0 | 2 |
 | wazuh | 2 | 0 | 2 | 2 | 0 | 65 |
 
-**Tracker yang juga ditemukan katalog: 65/66 (98.5%).**
+**Tracker rows also found by the catalog: 65/66 (98.5%).**
 
-Contoh untuk ditinjau manual (maks 8 per tech):
+Examples for manual review (max 8 per tech):
 
 - **anydesk** hanya-tracker: - | hanya-katalog: CVE-2025-34499, CVE-2026-15681, CVE-2026-15682
 - **burp suite** hanya-tracker: - | hanya-katalog: CVE-2026-90481
@@ -297,10 +304,10 @@ Contoh untuk ditinjau manual (maks 8 per tech):
 - **thales** hanya-tracker: - | hanya-katalog: CVE-2026-13014, CVE-2026-18397
 - **wazuh** hanya-tracker: - | hanya-katalog: CVE-2024-1243, CVE-2024-35177, CVE-2024-47770, CVE-2025-15612, CVE-2025-15615, CVE-2025-15616, CVE-2025-15617, CVE-2025-24016
 
-## 8. Batas pengukuran
+## 8. Measurement limits
 
-- Pencocokan tech memakai data CNA saja (ADP hanya menyelamatkan CVE tanpa produk layak). NVD/CPE yang diperkaya belakangan TIDAK ikut dihitung.
-- `hit` mengukur kecocokan NAMA, bukan kebenaran; vonis `bersih` berarti identitasnya konsisten, bukan bahwa itu produk yang dimaksud client. Tinjau manusia tetap wajib.
-- Gate `new_cve` juga jatuh ke ringkasan teks bila produk kosong; spike ini tidak meniru fallback itu.
-- CVE terbit sebelum jendela tidak dihitung; tahun ID di luar `--id-years` tidak dipindai.
-- Duplikat hanya yang lolos normalisasi sederhana; kemiripan yang butuh pengetahuan (`PAN-OS` vs `Palo Alto`) tidak terdeteksi. 'Keluarga produk' adalah perkiraan kasar.
+- Tech matching uses CNA data only (ADP only rescues CVEs without a usable product). NVD/CPE enrichment added later is NOT counted.
+- `hit` measures a NAME match, not correctness; a `bersih` verdict means the identity is consistent, not that it is the product the client means. Human review is still mandatory.
+- The `new_cve` gate also falls back to the text summary when the product is empty; this spike does not imitate that fallback.
+- CVEs published before the window are not counted; ID years outside `--id-years` are not scanned.
+- Duplicates are only those caught by simple normalisation; similarities that need knowledge (`PAN-OS` vs `Palo Alto`) are not detected. 'Product families' is a rough estimate.

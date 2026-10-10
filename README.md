@@ -1,163 +1,170 @@
 # Vareon Intelligence
 
-Platform Cyber Threat Intelligence: mengumpulkan berita dan sinyal ancaman dari ~90 sumber (RSS, situs web,
-API, X/Twitter, GitHub), memperkaya dengan NLP + LLM (klasifikasi, threat actor, TTP MITRE ATT&CK, negara),
-lalu menyajikannya lewat web UI dan alert Telegram. Pengganti sistem lama `ScraperNews` + `ScraperNewsWeb`.
+A Cyber Threat Intelligence platform: it collects news and threat signals from ~90 sources (RSS, websites,
+APIs, X/Twitter, GitHub), enriches them with NLP + LLM (classification, threat actors, MITRE ATT&CK TTPs,
+countries), and serves them through a web UI and Telegram alerts. It replaces the old `ScraperNews` +
+`ScraperNewsWeb` systems.
 
-| Bagian | Isi |
+| Part | Contents |
 |---|---|
-| `apps/api` | FastAPI (REST, auth, kontrol scraper) |
+| `apps/api` | FastAPI (REST, auth, scraper control) |
 | `apps/web` | Next.js (UI) |
-| `apps/worker` | Celery: `worker` (RSS/API), `worker-browser` (Playwright), `worker-nlp` (spaCy), `beat` (jadwal) |
-| `packages/*`, `scrapers/` | inti DB/enrich, framework scraper, daftar scraper |
-| `docker/`, `docker-compose.yml` | image, nginx (TLS), contoh env tingkat compose |
-| `tools/ops`, `tools/seed` | skrip operasi (deploy, backup, rollback) dan seed |
-| `docs/` | runbook, catatan fase, daftar scraper yang rusak |
+| `apps/worker` | Celery: `worker` (RSS/API), `worker-browser` (Playwright), `worker-nlp` (spaCy), `beat` (schedule) |
+| `packages/*`, `scrapers/` | DB/enrichment core, scraper framework, the scrapers |
+| `docker/`, `docker-compose.yml` | images, nginx (TLS), example compose-level env |
+| `tools/ops`, `tools/seed` | operations scripts (deploy, backup, rollback) and seeding |
+| `docs/` | architecture, runbooks, phase notes, list of broken scrapers |
 
-## Deploy dari nol
+## Deploy from scratch
 
-Untuk host baru tanpa data lama. Skrip deploy-nya idempoten: aman dijalankan ulang dan **tidak pernah**
-menghapus volume atau data.
+For a new host with no existing data. The deploy script is idempotent: it is safe to re-run and **never**
+deletes volumes or data.
 
-### Prasyarat
+### Prerequisites
 
-- Linux dengan **Docker + plugin `docker compose`**, `python3` (>= 3.9), `curl`, `git`.
-- Akses keluar internet: registry image (base image, PyPI saat seed), `raw.githubusercontent.com`/GitHub
-  (katalog ATT&CK), situs sumber scraper, endpoint LLM, `api.telegram.org`.
-- Disk lapang untuk image (~6 GB; build di staging memakai ~9 GB termasuk cache) dan RAM untuk `worker-nlp`
-  (spaCy) + `worker-browser` (Chromium). Latihan 2026-10-02: seluruh stack naik sehat di Docker dengan RAM 4 GB
-  pada `*_CONCURRENCY=1` (idle). Concurrency bawaan (4/2/2) dan beban nyata belum diuji di mesin sekecil itu.
+- Linux with **Docker + the `docker compose` plugin**, `python3` (>= 3.9), `curl`, `git`.
+- Outbound internet access: image registries (base images, PyPI during seeding), `raw.githubusercontent.com`/
+  GitHub (ATT&CK catalog), scraper source sites, the LLM endpoint, `api.telegram.org`.
+- Enough disk for the images (~6 GB; the staging build used ~9 GB including cache) and RAM for `worker-nlp`
+  (spaCy) + `worker-browser` (Chromium). Drill on 2026-10-02: the whole stack came up healthy in Docker with
+  4 GB of RAM at `*_CONCURRENCY=1` (idle). The default concurrency (4/2/2) and real load have not been tested
+  on a machine that small.
 
-### Langkah
+### Steps
 
 ```bash
 git clone https://github.com/ikblmhndra/Niskala-Intelligence.git cti-platform && cd cti-platform
 
-cp .env.prod.template .env              # 1. isi nilainya (tabel key di bawah); chmod 600 .env
-cp docker/stack.env.example docker/stack.env   # 2. ganti POSTGRES_PASSWORD, NGINX_TLS_HOSTS, port
+cp .env.prod.template .env              # 1. fill in the values (key table below); chmod 600 .env
+cp docker/stack.env.example docker/stack.env   # 2. change POSTGRES_PASSWORD, NGINX_TLS_HOSTS, ports
 
-make fresh-deploy                       # 3. build + cek secret + migrasi + seed + admin + worker + beat + web + nginx
+make fresh-deploy                       # 3. build + secret check + migrations + seed + admin + workers + beat + web + nginx
 ```
 
-Aturan isi file:
+Rules for the files:
 
-- `.env` = konfigurasi **aplikasi**; `docker/stack.env` = variabel level **compose** (port, tag, password
-  Postgres). Jangan dicampur: aplikasi menolak key asing dan gagal start.
-- Password Postgres di `docker/stack.env` **harus sama** dengan yang ada di `DATABASE__URL` dan
-  `DATABASE__SYNC_URL`. Ganti semua `GANTI_INI` di `.env`. Skrip memeriksa ini sebelum build.
-- Jangan tempel nilai secret ke chat/tiket/log; isi langsung di editor di server.
-- `AUTH__JWT_SECRET` dan `AUTH__SESSION_SECRET_KEY` boleh dibiarkan kosong: skrip membangkitkannya acak.
+- `.env` = **application** configuration; `docker/stack.env` = **compose**-level variables (ports, tags,
+  Postgres password). Do not mix them: the application rejects unknown keys and fails to start.
+- The Postgres password in `docker/stack.env` **must match** the one in `DATABASE__URL` and
+  `DATABASE__SYNC_URL`. Replace every `GANTI_INI` in `.env`. The script checks this before building.
+- Never paste secret values into chat, tickets or logs; type them directly in an editor on the server.
+- `AUTH__JWT_SECRET` and `AUTH__SESSION_SECRET_KEY` may be left empty: the script generates random values.
 
-Opsi: `make fresh-deploy ARGS='--skip-build'` (image sudah dibangun), `--skip-secret-check`,
-`--skip-nginx` (kalau sudah punya reverse proxy sendiri; template: `docker/ops/nginx-cti.conf.example`).
-`make fresh-status` menampilkan status container.
+Options: `make fresh-deploy ARGS='--skip-build'` (images already built), `--skip-secret-check`,
+`--skip-nginx` (if you already have your own reverse proxy; template: `docker/ops/nginx-cti.conf.example`).
+`make fresh-status` shows the container status.
 
-### Key yang dibutuhkan
+### Required keys
 
-| Key di `.env` | Status | Catatan |
+| Key in `.env` | Status | Notes |
 |---|---|---|
-| `LLM__API_KEY`, `LLM__URL`, `LLM__MODEL` | **wajib** | endpoint kompatibel OpenAI; diuji `GET /models` (tanpa generate) |
-| `TELEGRAM__BOT_TOKEN`, `TELEGRAM__CHAT_ID`, `TELEGRAM__THREAD_IDS` | **wajib** | diuji `getMe`/`getChat` (tidak mengirim pesan). `THREAD_IDS` = 22 topik (termasuk `github_poc` dan `feed_twitter`, thread khusus tweet umum); `thread_id` 0 = masuk chat utama, jadi isi id masing-masing topik (Copy Link pada topik di Telegram, angka terakhir) kalau mau terpisah. `check_secrets` memberi NOTE kalau masih menumpuk |
-| `NVD__API_KEY` | opsional | tanpa key kena batas publik NVD yang jauh lebih kecil |
-| `GITHUB__TOKEN` | opsional | scraper GitHub (PoC, TTP) memakainya |
-| `TWITTER__API_KEY` | opsional | twitterapi.io, dipakai 4 scraper Twitter yang **berbagi satu saldo kredit** (lihat `docs/CUTOVER_RUNBOOK.md` bagian 8) |
-| `X__BEARER_TOKEN` | opsional | X API resmi, hanya cadangan twitterapi.io |
-| `OTX__API_KEY` | opsional | |
-| `GRAPH__*` | opsional | pengiriman email (newsletter, CVE) lewat Microsoft Graph |
-| `OIDC__*` | opsional | SSO |
+| `LLM__API_KEY`, `LLM__URL`, `LLM__MODEL` | **required** | OpenAI-compatible endpoint; tested with `GET /models` (no generation) |
+| `TELEGRAM__BOT_TOKEN`, `TELEGRAM__CHAT_ID`, `TELEGRAM__THREAD_IDS` | **required** | tested with `getMe`/`getChat` (no message is sent). `THREAD_IDS` = 22 topics (including `github_poc` and `feed_twitter`, a dedicated thread for general tweets); `thread_id` 0 = the main chat, so fill in each topic's id (Copy Link on the topic in Telegram, the last number) if you want them separate. `check_secrets` prints a NOTE if they are still piled together |
+| `NVD__API_KEY` | optional | without a key you hit NVD's much lower public limit |
+| `GITHUB__TOKEN` | optional | used by the GitHub scrapers (PoC, TTP) |
+| `TWITTER__API_KEY` | optional | twitterapi.io, used by 4 Twitter scrapers that **share one credit balance** (see `docs/CUTOVER_RUNBOOK.md` section 8) |
+| `X__BEARER_TOKEN` | optional | official X API, only a fallback for twitterapi.io |
+| `OTX__API_KEY` | optional | |
+| `GRAPH__*` | optional | email delivery (newsletter, CVE) via Microsoft Graph |
+| `OIDC__*` | optional | SSO |
 
-Skrip menjalankan `tools/ops/check_secrets.py` (probe baca-doang ke tiap provider, tidak mencetak secret)
-sebelum menyalakan apa pun. Key opsional yang kosong dilaporkan `SKIP`, bukan gagal.
+The script runs `tools/ops/check_secrets.py` (a read-only probe against each provider that never prints a
+secret) before starting anything. Empty optional keys are reported as `SKIP`, not as failures.
 
-### Yang dilakukan skrip
+### What the script does
 
-1. Cek prasyarat dan isi `.env`/`docker/stack.env`. 2. Build image. 3. Cek secret. 4. Postgres + Redis, migrasi
-skema, API. 5. Seed data referensi bawaan (`tools/seed/reference/`: ~4000 nama threat actor, demonym APAC,
-allowlist IOC). 6. Admin pertama lewat `POST /api/auth/init`, password acak ditulis ke
-`secrets/admin_password` (mode 600, tidak pernah dicetak). 7. Sinkron katalog MITRE ATT&CK. 8. Worker, lalu
-**beat terakhir** (beat yang menembak jadwal). 9. Web + nginx (sertifikat self-signed otomatis).
+1. Checks prerequisites and the contents of `.env`/`docker/stack.env`. 2. Builds the images. 3. Checks
+secrets. 4. Postgres + Redis, schema migration, API. 5. Seeds the default reference data
+(`tools/seed/reference/`: ~4000 threat actor names, APAC demonyms, IOC allowlist). 6. Creates the first admin
+through `POST /api/auth/init`; the random password is written to `secrets/admin_password` (mode 600, never
+printed). 7. Syncs the MITRE ATT&CK catalog. 8. Workers, then **beat last** (beat is what fires the schedule).
+9. Web + nginx (self-signed certificate generated automatically).
 
-### Sesudah naik
+### After it is up
 
-1. Buka `https://<host pertama di NGINX_TLS_HOSTS>`, login `admin` dengan password di `secrets/admin_password`,
-   **ganti password lewat UI lalu hapus file itu**. Endpoint `auth/init` hanya bisa dipakai selama belum ada
-   user; jalankan skrip sebelum host dibuka ke jaringan.
-2. Isi data lewat UI. Tanpa ini beberapa scraper sengaja idle:
-   - **Admin**: client + negara, user lain;
-   - **CVE → Techstack**: tanpa techstack, `new_cve` tidak menghasilkan apa-apa;
-   - **X Intel → Monitored Accounts**: tanpa akun, `monitor_x` melewati run.
-3. Scraper pertama kali jalan memakai mode *cold start* (maks 5 item per scraper). Tab Scrapers
-   menampilkan status tiap scraper; scraper tanpa data wajibnya (poin 2) akan terlihat `empty`/idle, itu wajar.
-4. Pasang timer backup Postgres (`docs/PROD_PREP.md`, `docker/ops/cti-pg-backup.*`) dan jalankan satu kali
-   `verify`. Belum ada backup terjadwal secara bawaan.
-5. Pantau: `docs/CUTOVER_RUNBOOK.md` bagian 4 (jam pertama), 5 (minggu pertama), 9 (troubleshooting).
+1. Open `https://<first host in NGINX_TLS_HOSTS>`, log in as `admin` with the password from
+   `secrets/admin_password`, **change the password in the UI, then delete that file**. The `auth/init`
+   endpoint only works while there are no users; run the script before the host is exposed to the network.
+2. Enter data through the UI. Without it some scrapers are idle by design:
+   - **Admin**: clients + countries, other users;
+   - **CVE → Techstack**: without a techstack, `new_cve` produces nothing;
+   - **X Intel → Monitored Accounts**: without accounts, `monitor_x` skips its runs.
+3. The first time a scraper runs it uses *cold start* mode (at most 5 items per scraper). The Scrapers tab
+   shows each scraper's status; scrapers missing their required data (point 2) show as `empty`/idle, which is
+   expected.
+4. Install the Postgres backup timer (`docs/PROD_PREP.md`, `docker/ops/cti-pg-backup.*`) and run `verify`
+   once. There is no scheduled backup by default.
+5. Monitor: `docs/CUTOVER_RUNBOOK.md` sections 4 (first hour), 5 (first week), 9 (troubleshooting).
 
-### Deploy memakai DB dari backup (mis. pindah dari staging)
+### Deploy with a database from a backup (e.g. moving from staging)
 
-Untuk host baru yang database-nya mau diisi dari backup `tools/ops/pg_backup.py`, bukan DB kosong:
+For a new host whose database should be filled from a `tools/ops/pg_backup.py` backup instead of starting
+empty:
 
 ```bash
-# di host lama: buat backup (dump + .sha256, mode 600) lalu verifikasi
+# on the old host: create a backup (dump + .sha256, mode 600) and verify it
 PG="docker compose --env-file docker/stack.env --profile app exec -T postgres"
 python3 tools/ops/pg_backup.py --pg-exec "$PG" backup --dir ~/backups
 python3 tools/ops/pg_backup.py --pg-exec "$PG" verify --file ~/backups/cti-<UTC>.dump
 
-# salin dump DAN .sha256-nya ke host baru (dump berisi hash password: jangan lewat kanal terbuka)
-scp ~/backups/cti-<UTC>.dump* user@host-baru:/path/aman/
+# copy the dump AND its .sha256 to the new host (the dump contains password hashes: never over an open channel)
+scp ~/backups/cti-<UTC>.dump* user@new-host:/secure/path/
 
-# di host baru, setelah .env dan docker/stack.env diisi:
-make fresh-deploy ARGS='--restore-from /path/aman/cti-<UTC>.dump'
+# on the new host, after .env and docker/stack.env are filled in:
+make fresh-deploy ARGS='--restore-from /secure/path/cti-<UTC>.dump'
 ```
 
-- Restore berjalan di langkah 3, sesudah Postgres naik dan **sebelum** API. Dump dari revisi migrasi yang
-  lebih lama otomatis dinaikkan ke versi terbaru saat API start. Dump dari revisi yang LEBIH BARU dari kode
-  ditolak oleh migrasi (jalankan kode yang sama atau lebih baru dari yang membuat dump).
-- Hanya jalan di database **kosong**. Kalau sudah berisi, skrip berhenti tanpa mengubah apa pun. Menimpa
-  database yang ada: tambahkan `--replace-db` (menghapus semua data; minta ketikan `timpa` kalau dijalankan
-  interaktif).
-- Admin baru **tidak** dibuat: login dengan user dari backup. Skrip mencetak daftar username-nya.
-- Yang ikut terbawa apa adanya: password lama, data uji, dan override scraper (`scraper_config`: jadwal,
-  `max_items`). Ganti password dan bersihkan data uji sebelum dipakai produksi.
-- Dedup scraper (`scraper_seen`) ada di Postgres dan ikut, jadi tidak ada banjir item "cold start". Redis
-  tidak ikut backup (isinya sementara).
-- Password Postgres di host baru bebas berbeda dari host lama: backup tidak membawa role/password database.
+- The restore runs at step 3, after Postgres is up and **before** the API. A dump from an older migration
+  revision is upgraded to the latest automatically when the API starts. A dump from a revision NEWER than the
+  code is rejected by the migrations (run the same or newer code than the one that created the dump).
+- It only runs against an **empty** database. If the database already has data, the script stops without
+  changing anything. To overwrite an existing database add `--replace-db` (deletes all data; when run
+  interactively it asks you to type `timpa`).
+- No new admin is created: log in with a user from the backup. The script prints the list of usernames.
+- Carried over as-is: old passwords, test data, and scraper overrides (`scraper_config`: schedule,
+  `max_items`). Change passwords and clean up test data before production use.
+- Scraper dedup (`scraper_seen`) lives in Postgres and is carried over, so there is no flood of "cold start"
+  items. Redis is not part of the backup (its contents are transient).
+- The Postgres password on the new host may differ from the old one: the backup does not carry database
+  roles or passwords.
 
-### Reset total (menghapus SEMUA data)
+### Full reset (deletes ALL data)
 
-Tidak ada target `make` untuk ini, sengaja. Kalau memang perlu mengulang dari nol di host latihan:
+There is deliberately no `make` target for this. If you really need to start over on a practice host:
 
 ```bash
-docker compose --env-file docker/stack.env --profile app down -v   # -v = hapus volume Postgres/Redis
-rm -rf secrets                                                     # password admin lama
+docker compose --env-file docker/stack.env --profile app down -v   # -v = delete the Postgres/Redis volumes
+rm -rf secrets                                                     # old admin password
 ```
 
-## Migrasi dari sistem lama (bukan deploy dari nol)
+## Migrating from the old system (not a fresh deploy)
 
-Butuh dump Mongo + file offset dedup dari server lama, warm start, dan cutover bertahap:
-`docs/CUTOVER_RUNBOOK.md` bagian 3. Untuk membandingkan dengan sistem lama selama paralel:
+Requires the Mongo dump + dedup offset files from the old server, a warm start, and a staged cutover:
+`docs/CUTOVER_RUNBOOK.md` section 3. To compare with the old system while both run in parallel:
 `docs/PARALLEL_RUN_COMPARISON.md`.
 
-## Dokumentasi
+## Documentation
 
-| File | Untuk apa |
+| File | What it is for |
 |---|---|
-| `docs/CUTOVER_RUNBOOK.md` | cutover, pantau, backup/restore, rollback, troubleshooting, **yang belum terbukti** (bagian 10) |
-| `docs/PROD_PREP.md` | backup Mongo lama, timer backup Postgres, latihan rollback |
-| `docs/CI_CD.md` | CI dan **CD otomatis ke produksi** (runner self-hosted, `make deploy`, rollback otomatis) |
-| `docs/SECRETS_ROTATION.md` | daftar secret dan status rotasinya |
-| `docs/ADDING_A_SCRAPER.md` | menambah scraper baru |
-| `docs/KNOWN_BROKEN.md` | scraper yang rusak/di-waive dan akar masalahnya |
-| `docs/CVE_TECH_MATCHING.md` | kolom Tech di CVE Tracker: masalah, akar masalah, solusi, batasan, rencana standarisasi techstack |
-| `docs/PROGRESS.md` | catatan kerja per fase |
+| `docs/ARCHITECTURE.md` | runtime topology, data flows, access patterns, code paths, design decisions and known risks |
+| `docs/CUTOVER_RUNBOOK.md` | cutover, monitoring, backup/restore, rollback, troubleshooting, **what is not yet proven** (section 10) |
+| `docs/PROD_PREP.md` | old Mongo backup, Postgres backup timer, rollback drill |
+| `docs/CI_CD.md` | CI and **automatic CD to production** (self-hosted runner, `make deploy`, automatic rollback) |
+| `docs/SECRETS_ROTATION.md` | list of secrets and their rotation status |
+| `docs/ADDING_A_SCRAPER.md` | adding a new scraper |
+| `docs/KNOWN_BROKEN.md` | broken/waived scrapers and their root causes |
+| `docs/CVE_TECH_MATCHING.md` | the Tech column in the CVE Tracker: problem, root cause, solution, limits, techstack standardisation plan |
+| `docs/PROGRESS.md` | work log per phase (Indonesian) |
 
-## Pengembangan lokal
+## Local development
 
 ```bash
 uv sync --extra dev --locked
-uv run pytest tests/unit tests/contract packages      # cepat
-uv run pytest tests/integration                       # butuh Docker (testcontainers: Postgres/Redis sementara), ~7 menit
+uv run pytest tests/unit tests/contract packages      # fast
+uv run pytest tests/integration                       # needs Docker (testcontainers: throwaway Postgres/Redis), ~7 minutes
 uv run ruff check . && uv run ruff format --check .
-uv run mypy packages/cti-core/src packages/cti-scraper/src   # --strict hanya untuk dua paket ini (sama dengan CI)
+uv run mypy packages/cti-core/src packages/cti-scraper/src   # --strict only for these two packages (same as CI)
 ```
 
-Pre-commit memasang `gitleaks` (`.pre-commit-config.yaml`): commit yang berisi pola secret ditolak.
+Pre-commit installs `gitleaks` (`.pre-commit-config.yaml`): commits containing secret patterns are rejected.
