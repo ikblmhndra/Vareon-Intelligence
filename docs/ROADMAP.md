@@ -11,8 +11,8 @@ Each item contains: **what** was asked, **the current state** (facts from the re
 
 | # | Item | Needs from the user | Depends on |
 |---|---|---|---|
-| 21 | **PRIORITY (team feedback 2026-10-10)** -- **Improve the Recap feature**: weekly instead of daily (a manual daily trigger stays), fewer/cheaper LLM calls, week-over-week comparison, grounding check, forecast scorecard -- **scope decided 2026-10-10, not built** | the week boundary and generation time (WIB); recap language | -- |
-| 22 | **PRIORITY (team feedback 2026-10-10)** -- **Newsletter**: monthly (early in the month, Friday midday WIB), Indonesian content, redesigned template (mockup drawn, `docs/mockups/newsletter-redesign.html`), recommended articles in the composer, executive summary reused from the weekly recap, per-article summary cache and one history row per send -- **scope decided 2026-10-10, not built** | which day "early in the month" means (assumed: the first Friday); confirm the preparation time of the suggested draft (assumed 09:00 WIB) | #21 (the executive summary reuses the weekly recap; shared LLM usage logging) |
+| 21 | **PRIORITY (team feedback 2026-10-10)** -- **Improve the Recap feature**: weekly instead of daily (a manual daily trigger stays), fewer/cheaper LLM calls, week-over-week comparison, grounding check, forecast scorecard -- **scope decided 2026-10-10, not built** | the week boundary and generation time (WIB) | -- |
+| 22 | **PRIORITY (team feedback 2026-10-10)** -- **Newsletter**: monthly (first working day of the month), Indonesian article summaries under English headings, redesigned template with the company logo (mockup drawn, `docs/mockups/newsletter-redesign.html`), recommended articles in the composer, denser layout (full cards plus a compact list), executive summary paragraph from the weekly recaps, per-article summary cache and one history row per send -- **scope decided 2026-10-10, not built** | the logo file (the sandbox cannot reach its URL); confirm the "By the Numbers" / "Campaigns" headings and the 09:00 WIB preparation time | #21 (the executive summary reads the weekly recaps; shared LLM usage logging) |
 | 1 | Rebranding the platform name + UI (colour palette, typography, animation) -- **DONE 2026-10-02, the SVG logo remains** | brand assets | -- |
 | 2 | Rebranding the `newsletter_email` and `cve_notification_email` templates -- **code done 2026-10-02, email client verification not yet** | (the same assets as #1) | #1 |
 | 3 | (probably superseded by #19) A "Populate now" button in the CVE Tracker (all / only newly added) | a small decision (see the item) | -- |
@@ -749,13 +749,14 @@ formally; order = a suggestion.
 - **Week boundary (proposal, to confirm): Monday to Sunday, generated Monday 00:15 WIB** (Sunday 17:15 UTC; the beat
   entry must use WIB because `crontab` is UTC today). The earlier proposal (Friday to Thursday) existed only so two
   recaps would match a 14-day newsletter window; the newsletter (#22) is now monthly and takes the weekly recaps whose
-  week overlaps the month, so that reason is gone and the usual Monday-Sunday week is simpler to read.
+  week overlaps the month, so that reason is gone and the usual Monday-Sunday week is simpler to read. It also fits a newsletter built on the first
+  working day: the recap of the last week of the month (which ends on Sunday) is generated Monday 00:15 WIB, before the
+  newsletter is prepared that morning.
 - A week is about 7x the volume of a day, so the weekly prompt is built from **aggregates**, not from a wider date range:
   top N per category ranked by signal (confidence/score, confirmed incident, KEV/PoC, source reliability, cluster size),
   per-category counts, clusters collapsed to one line each. Forecast horizon becomes 1-2 weeks.
-- **Language**: the newsletter (#22) is going Indonesian and reuses this content for its executive summary, so generate the
-  weekly recap **in Indonesian directly** (a prompt change, no extra call), keeping the JSON keys English. This changes the
-  language of the Recap page; if the team wants it to stay English, the newsletter would need a translation call.
+- **Language: the recap stays English** (decided by the user, 2026-10-10), so the Recap page and the prompt language do not
+  change. The newsletter (#22) writes its Indonesian executive summary in its own single call from the stored recaps.
 
 **Design: LLM optimisation**
 1. **Measure first**: store `completion.usage` (prompt/completion tokens) and the wall time in `token_usage` for every
@@ -789,8 +790,7 @@ formally; order = a suggestion.
 `repositories/recap.py`, `schemas` + `openapi.json` + `schema.d.ts`, `apps/web/src/components/recap/*`
 (range/kind, deltas, scorecard, article links), `tests/` (unit for grounding/comparison/window, integration for the
 repository and the router snapshot).
-**Needed from the user**: (1) confirm the week boundary and time (proposal: Monday-Sunday, Monday 00:15 WIB); (2)
-confirm the recap becomes Indonesian (changes the Recap page language).
+**Needed from the user**: confirm the week boundary and time (proposal: Monday-Sunday, Monday 00:15 WIB).
 **Done when**: a weekly recap is generated on schedule and shown with its date range; a day can still be generated by
 hand; every run records its token usage; the measured input size/tokens per recap is lower than the recorded baseline
 (numbers written here); a run with no activity makes no LLM call; the page shows the week-over-week deltas, the
@@ -805,19 +805,24 @@ comparison, grounding and the no-activity path.
 > yet** (the template is only drawn: `docs/mockups/newsletter-redesign.html`). Depends on #21 for the executive summary
 > and for LLM usage logging.
 
-**Asked (team feedback 2026-10-10)**: (1) biweekly (changed to **monthly** by the user later the same day); (2) translate the content to Indonesian; (3) redesign the template;
+**Asked (team feedback 2026-10-10)**: (1) biweekly (changed to **monthly** the same day); (2) translate the content to Indonesian; (3) redesign the template;
 (4) add recommendations for the newsletter content; (5) "any more suggestions?"
 
 **Decided (user, 2026-10-10)**
-- **Monthly, early in the month, Friday midday WIB** (corrected by the user on 2026-10-10: first biweekly, then monthly).
-  There is no fixed send time: the Outlook draft is created by an analyst, and "Friday midday" is when the edition is
-  expected out. **Assumption to confirm: "early in the month" = the first Friday of the month**, so the first edition
-  (covering October 2026) comes out on **Friday 6 Nov 2026**.
-- **Edition label = the month it covers** ("Edisi Oktober 2026"); there is no running number and no "minggu N". The window is
-  the **previous full calendar month** (1 to the last day), and the label is derived from it, so nothing is counted or
-  stored for numbering and no first-edition date needs configuring.
-- **Mockup approved** (2026-10-10); it was then adjusted for a monthly edition (month label, month range, one executive
-  summary line per week instead of two week blocks).
+- **Monthly, on the first working day of the month** (corrected twice by the user: biweekly, then monthly, then the day
+  was set). The last edition went out on 1 Oct 2026 (the September edition), so the next is the **October edition on
+  Monday 2 Nov 2026**. There is no fixed send time: an analyst creates the Outlook draft and sends it when ready.
+- **Edition label = the month it covers** ("October 2026 Edition"), which matches current practice (the September edition
+  went out on 1 Oct). No running number, no "week N". The window is the **previous full calendar month**; the label is
+  derived from it, so nothing is counted or configured for numbering.
+- **Headings are English** (user, 2026-10-10): Executive Summary, By the Numbers, Highlights, Asia Pacific, Global,
+  Indonesia, Campaigns, Analyst Note. The article summaries and key points under them are Indonesian. The current
+  template's labels are already English, so no label translation is needed.
+- **Executive summary is a paragraph, not a timeline.** The weekly recaps stay English (#21), so the paragraph needs one
+  LLM call per edition to condense them into Indonesian (see Design).
+- **Company logo** in the header: `https://privy.zmidevelopment.com/_ipx/_/images/Privy_Logo_Red.png` (red logo).
+- **Content must stay dense**: the user rejected a small fixed cap per section; see Design: density.
+- **Mockup approved** (2026-10-10) and then adjusted for the points above.
 - **Reviewer = the analysts**, inside the existing flow. Today: (1) the team picks articles by hand in the Newsroom,
   (2) maps them to the categories, (3) previews or sends the draft email. Wanted: (1) the composer already holds the
   **recommended content, already mapped to the categories**; the team **reviews it** before clicking preview or send
@@ -847,79 +852,112 @@ comparison, grounding and the no-activity path.
 - Template: `apps/api/src/cti_api/templates/newsletter_email.html` (233 lines) extends `_base_email.html`; headings,
   labels and the title are hardcoded English. It uses `display:flex`, which Outlook desktop (the Word rendering engine)
   does not support, and its rendering in real email clients was never checked (#2, "email client verification not yet").
+- `create_graph_draft` (`cti_alerts/mailer.py`) posts only `subject`, an HTML body and CC recipients: no attachments.
 - The saved row has `week`/`year` (small integers), `generated_at` (string), the rendered `html` and a `sections` JSON;
-  there is no period range and no edition number.
+  there is no period range and no edition label.
 
-**Design: monthly**
-- A beat task runs on the first Friday of each month and **prepares the suggested content**: the recommended articles
-  (below) already placed in Highlight / APAC / Global / Indonesia, plus the executive summary from the recaps. Assumed
-  time **09:00 WIB (02:00 UTC)**, which leaves a few hours of review before Friday midday. The analyst opens the
-  Newsletter page, reviews and edits, and previews or creates the Outlook draft as today. No Telegram notice and no
-  automatic sending. If the first Friday is not the right day, only the beat entry changes.
+**Design: monthly schedule**
+- **First working day** = the first Monday-Friday of the month that is not a public holiday. Indonesian holidays change
+  every year (1 Jan is one), so the holidays come from a **configured date list** (`NEWSLETTER__HOLIDAYS`, ISO dates,
+  default empty, updated once a year); a package such as `holidays` is the alternative if the team prefers no manual list.
+  A new `Settings` field means `.env.example` and `.env.prod.template` change in the same commit.
+- A beat entry runs **every weekday at an assumed 09:00 WIB (02:00 UTC)**; the task does nothing unless today is the first
+  working day **or** the previous month has no suggestion yet. The second condition is the catch-up: if the worker was
+  down on the day, the next weekday builds it, so the edition is late rather than missing. One suggestion per window
+  makes the task idempotent.
+- The task **prepares the suggested content**: the recommended articles (below) already placed in Highlights / Asia
+  Pacific / Global / Indonesia, the Executive Summary paragraph and the numbers. The analyst opens the Newsletter page,
+  reviews and edits, and previews or creates the Outlook draft as today. No Telegram notice and no automatic sending.
 - The suggestion is stored **server-side** (a `newsletter_suggestions` row per window: period, the placed article ids with
-  their section and reasons), because the composer queue today lives only in the browser's `localStorage`. When the
-  composer opens and its queue is empty it loads the suggestion; when the analyst already has a queue it shows a banner
-  ("rekomendasi tersedia") with "pakai rekomendasi" / "gabungkan" instead of overwriting their work. Articles added from
-  the Newsroom ("+ Newsletter") keep working as now. There is no draft/approved/sent status (not selected).
-- Window = the previous calendar month; `cluster_days` follows the window length (28-31) instead of 7. A month holds
-  many more candidate articles than a week, so the **ranking matters more** and the section cap (5) is probably too small:
-  decide the cap (and whether Highlight takes more than one) with the first real edition.
-- **Executive summary and numbers**: the summary block lists the headline of each weekly recap whose week **overlaps** the
-  month (5-6 lines, each labelled with its own week range, so an edge week that touches the neighbouring month is
-  shown honestly; from stored recaps, no LLM call; left out if a recap is missing). The weekly boundary does not match
-  the month edges, so the **"Periode dalam Angka" figures are counted from the database for the exact calendar month**
-  (articles, new CVEs, new IOCs, active campaigns), with the delta against the previous month, instead of summing weekly
-  recaps.
-- Replace "Week N" by the **month label and its range**: add `period_start` and `period_end` to `newsletters`
-  (migration); the label ("Oktober 2026") is derived, old rows keep `week`/`year`. The subject becomes
-  `[CTI Newsletter] Buletin Intelijen Ancaman: Oktober 2026`.
+  their section, tier and reasons, the summary paragraph), because the composer queue today lives only in the browser's
+  `localStorage`. When the composer opens and its queue is empty it loads the suggestion; when the analyst already has a
+  queue it shows a banner with "use suggestion" / "merge" instead of overwriting their work. Articles added from the
+  Newsroom ("+ Newsletter") keep working as now. There is no draft/approved/sent status (not selected).
+- Window = the previous calendar month; `cluster_days` follows the window length (28-31) instead of 7. Replace
+  "Week N" by the **month label and its range**: add `period_start` and `period_end` to `newsletters` (migration); the
+  label is derived, old rows keep `week`/`year`. Subject: `[CTI Newsletter] Threat Intelligence Digest — October 2026`.
+
+**Design: density (a month of content without a long email)**
+- Replace the fixed "max 5 per section" with **depth by rank**: in each section the top few articles (default 4; the
+  Highlights block up to 3) get the **full card** (key points + summary), and the rest go into a **compact list**
+  ("Also Noted": one row per article with title link, source, date and type, up to about 15 per section). The analyst can
+  promote a row to a full card or demote a card, and the numbers above are starting values to tune on the first edition.
+- Compact rows need **no Playwright fetch and no LLM call** (title and stored metadata only; a cached summary is used if
+  one exists), so a denser newsletter costs fewer calls than today, where every item costs a fetch and an LLM call.
+- Size guard: Gmail clips a message whose HTML is larger than about 102 KB, and inline styles make the HTML heavy. The
+  build measures the rendered size and the composer warns above about 90 KB before the draft is created.
+- `routers/newsletter.py` swaps the 5-per-section check for these two limits (full cards and compact rows per section).
+
+**Design: executive summary and numbers**
+- **Executive Summary** = one paragraph (about 100-130 words, Indonesian) condensing the weekly recaps whose week
+  **overlaps** the month. It is **one LLM call per edition**, which reverses the earlier "no extra call" idea: the recaps
+  stay English and the user wants a paragraph, so something has to condense and translate. Input is only the stored
+  recap texts; no recommended actions in the output (not selected); the same **grounding check** as #21 (CVE ids, actor
+  names and campaign names must appear in the input) runs on it. The paragraph is saved in the suggestion and shown in
+  an **editable field** in the composer, so the analyst corrects it like the rest of the draft. Missing recaps: the
+  field is left empty, not generated from raw articles. The call is logged with its token usage (#21).
+- **By the Numbers** (articles, new CVEs, new IOCs, active campaigns, each with the change against the previous month)
+  is **counted from the database for the exact calendar month**, because the weekly boundary does not match the month
+  edges; it is not a sum of the recaps and costs no LLM call.
 
 **Design: Indonesian content**
 - Generate `key_points` and `summary` **in Indonesian in the same LLM call** as today (prompt change; no second
   translation call, no extra cost per article). Keep CVE ids, product names, threat actor names, ATT&CK technique names
   and IOCs untranslated; give the prompt a short glossary of recurring terms so wording stays consistent between
-  editions. Translate the template labels, section headings, subject and footer. A `language` field (default `id`, `en`
-  still possible) goes on the build request so the English edition is not lost.
+  editions. Headings, labels, subject and footer stay English. A `language` field (default `id`, `en` still possible)
+  goes on the build request and into the cache key, so an English edition is not lost.
 - Article **titles** keep their original wording by default (links, searching); a translated line under the title is
-  possible later. The analyst's own intro and notes are used as typed. Quality check: the analyst who reviews the suggested draft also
-  reads the Indonesian wording; corrections go into the glossary so later editions improve.
+  possible later. The analyst's own intro and notes are used as typed. Quality check: the analyst who reviews the
+  suggested draft also reads the Indonesian wording; corrections go into the glossary so later editions improve.
 
 **Design: template redesign**
-- Drawn in `docs/mockups/newsletter-redesign.html` (sample data, Indonesian, brand palette). It is built the way the real
-  template must be built: a `table` layout with inline styles, a 640 px container, a fallback font stack, solid colours
-  instead of the CSS gradient, a hidden preheader line, and a stacked layout under 480 px, so it can become
-  `newsletter_email.html` without a second redesign.
-- Structure: header with edition and date range; **executive summary** and **period in numbers** (with the
-  week-over-week deltas from #21), the first from the weekly recaps and the second counted for the month; the highlight; the APAC / Global / Indonesia
-  sections; campaign clusters; footer. The colour coding per section is kept (APAC blue, Global purple, Indonesia red).
+- Drawn in `docs/mockups/newsletter-redesign.html` (sample data, brand palette). It is built the way the real template
+  must be built: a `table` layout with inline styles, a 640 px container, a fallback font stack, solid colours instead of
+  the CSS gradient, a hidden preheader line, and a stacked layout under 480 px, so it can become `newsletter_email.html`
+  without a second redesign.
+- Structure: header with the **company logo**, the edition label and the date range; **Executive Summary** (paragraph);
+  **By the Numbers** (with deltas); **Highlights**; **Asia Pacific**, **Global** and **Indonesia** sections (full cards
+  plus the compact "Also Noted" list); **Campaigns**; footer. The colour coding per section is kept (Asia Pacific blue,
+  Global purple, Indonesia red).
+- **Logo**: the logo is red, so on the burgundy header it sits on a white rounded panel to keep its contrast. For the real
+  email, prefer an **inline (CID) attachment** on the Graph draft over a link to the company domain: Outlook blocks
+  linked images until the reader allows them, and a link breaks if that domain changes. That means the PNG lives in the
+  repo (a static file next to the template) and `create_graph_draft` gains an inline attachment parameter
+  (`fileAttachment` with `isInline` and `contentId`). Email clients do not render SVG, so a PNG is needed even if an SVG
+  logo exists (#1). **The sandbox cannot reach the logo URL** (network policy), so the file is not in the repo yet and
+  the mockup links the URL directly (it shows when opened in a normal browser).
 - Acceptance includes screenshots from Outlook desktop, Outlook web and Gmail attached to this item.
 
 **Design: recommended articles (request 4)**
 - When the composer opens, and when the monthly draft is built, rank the candidate articles of the window with signals
   already stored: `confidence_score`, `confirmed_incident`, KEV/PoC on the CVEs they mention, a hit on a **monitored
   tech** (#19) or on a customer industry/country, source reliability, cluster size, APAC / Indonesia relevance, with
-  duplicate stories collapsed. Suggest a Highlight and up to N per section, show **why** each was suggested (the signals),
-  and let the analyst accept, swap or remove. The suggestion never sends anything by itself.
+  duplicate stories collapsed. Suggest the Highlights, the full cards and the compact rows per section (the rank decides
+  the tier), show **why** each was suggested (the signals), and let the analyst accept, swap or remove. The suggestion
+  never sends anything by itself.
 
 **Design: approved additions**
-- **Executive summary from the weekly recap**: the summary block and the "period in numbers" are read from the weekly
-  recaps inside the window (headline, summary, counts with deltas); no separate LLM call. If a recap is missing for the
-  window the block is left out, not generated on the spot.
+- **Executive summary from the weekly recap**: see Design: executive summary and numbers.
 - **Summary cache and one row per send**: cache each article's `key_points` / `summary` (a table keyed by article id and
   language, or persisted at enrichment time) so `preview` and `draft-email` never redo Playwright + LLM; `preview` does
   not save a row and does not write IOCs/CVE mentions; the single save happens when the Outlook draft is created, and a
   second preview of the same articles makes no new LLM or Playwright calls.
 
 **Touch points**: `services/newsletter.py`, `routers/newsletter.py`, `schemas/newsletter.py`,
-`templates/newsletter_email.html` (+ `_base_email.html`), `db/models/newsletter.py` + migration (and a summary cache
-table), `repositories/newsletter.py`, `beat.py` + a new task, a new ranking service, `apps/web/src/components/newsletter/*`
-(suggestions, edition/range), `openapi.json` + `schema.d.ts`, and a `newsletter_suggestions` table (no new setting: the schedule is code).
-**Needed from the user**: (1) which day "early in the month" means (assumed: the **first Friday**; the alternative is the
-1st or the first working day); (2) the section cap for a month (assumed 5 to start, review after the first edition).
-**Done when**: suggested content is prepared on the monthly schedule, already placed in the sections, and the composer
-loads it for review while the Newsroom picking flow still works; every edition carries the month label and its date range; summaries and
-labels are in Indonesian (English still selectable); the new template renders correctly in Outlook desktop, Outlook web
-and Gmail (screenshots attached here); the composer shows recommended articles with their reasons; one send creates
-exactly one history row; a second preview of the same articles makes no new LLM or Playwright call; the executive
-summary comes from the weekly recaps; tests cover the language switch, edition/period numbering, the ranking, the cache
-and the no-duplicate-row case.
+`templates/newsletter_email.html` (+ `_base_email.html`) and the logo file, `cti_alerts/mailer.py` (inline attachment),
+`db/models/newsletter.py` + migration (a summary cache table and `newsletter_suggestions`),
+`repositories/newsletter.py`, `beat.py` + a new task, a new ranking service, `cti_core/config.py` +
+`.env.example` + `.env.prod.template` (`NEWSLETTER__HOLIDAYS`), `apps/web/src/components/newsletter/*` (suggestions,
+tiers, editable summary, size warning), `openapi.json` + `schema.d.ts`.
+**Needed from the user**: (1) the **logo file** (put the PNG in the repo, or add `privy.zmidevelopment.com` to the
+environment's allowed domains so it can be fetched); (2) confirm the wording **By the Numbers** (for "periode dalam
+angka") and **Campaigns** (you wrote "Campaign"); (3) confirm the executive-summary paragraph is **Indonesian** like the
+rest of the content, and the **09:00 WIB** preparation time; (4) holidays: a configured date list, as proposed.
+**Done when**: suggested content is prepared on the first working day of each month, already placed in the sections
+and tiers, and the composer loads it for review while the Newsroom picking flow still works; every edition carries the
+month label and its date range and the company logo; summaries are in Indonesian, headings in English; the new template
+renders correctly in Outlook desktop, Outlook web and Gmail (screenshots attached here) and stays under the size limit;
+the composer shows recommended articles with their reasons; one send creates exactly one history row; a second preview
+of the same articles makes no new LLM or Playwright call; the Executive Summary is one grounded paragraph and editable;
+tests cover the language switch, the first-working-day and catch-up logic, the period label, the ranking and tiers, the
+cache, the grounding check and the no-duplicate-row case.

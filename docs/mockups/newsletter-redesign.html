@@ -1,12 +1,16 @@
 <!DOCTYPE html>
 <!--
-  MOCKUP, bukan template produksi. Roadmap #22 (docs/ROADMAP.md): rancangan awal newsletter bulanan.
+  MOCKUP, bukan template produksi. Roadmap #22 (docs/ROADMAP.md): rancangan newsletter bulanan.
   - Semua isi di bawah adalah DATA CONTOH (organisasi, angka, dan insiden fiktif).
   - Dibangun seperti template email sungguhan: layout <table>, CSS inline, kontainer 640px, font cadangan,
     warna solid (tanpa gradient/flex/grid), preheader tersembunyi. Satu-satunya CSS di <style> adalah
     media query untuk layar sempit; klien yang membuangnya tetap menampilkan versi desktop.
   - Warna panah perubahan: merah = memburuk (CVE naik), hijau = membaik (kampanye aktif turun), abu = netral
     (volume artikel/IOC). Aturan ini bagian dari rancangan, bukan kebetulan.
+  - Judul bagian/label = bahasa Inggris (keputusan tim); ringkasan artikel = bahasa Indonesia.
+  - Logo perusahaan dimuat dari URL aslinya. Logo berwarna merah, jadi diberi panel putih di header agar kontras
+    di atas burgundy. Template sungguhan sebaiknya memakai lampiran inline (cid:) pada draft Graph, bukan tautan.
+  - Padat: tiap bagian punya kartu penuh untuk artikel peringkat atas dan daftar ringkas "Also Noted" untuk sisanya.
   - Palet = brand Vareon (docs/ROADMAP.md #1): burgundy #430a23, merah #d0002f, beige #f2e8dd / #fbf6f1 / #e8dacb,
     aksen peach #fbbfa1. Warna per bagian dipertahankan dari template lama (APAC biru, Global ungu, Indonesia merah).
 -->
@@ -16,7 +20,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="color-scheme" content="light">
 <meta name="supported-color-schemes" content="light">
-<title>Vareon Intelligence | Buletin Intelijen Ancaman, Edisi Oktober 2026</title>
+<title>Vareon Intelligence | Threat Intelligence Newsletter, October 2026</title>
 <style>
   @media only screen and (max-width: 480px) {
     .container { width: 100% !important; }
@@ -30,7 +34,7 @@
 
 <!-- Preheader: teks pratinjau di daftar inbox -->
 <div style="display:none;max-height:0;overflow:hidden;font-size:1px;line-height:1px;color:#f2e8dd;opacity:0;">
-  Edisi Oktober 2026: ransomware menargetkan penyedia layanan terkelola di Asia Pasifik, 342 CVE baru, 9 kampanye aktif.
+  October 2026: ransomware menargetkan penyedia layanan terkelola di Asia Pasifik, 342 CVE baru, 9 kampanye aktif.
 </div>
 
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f2e8dd" style="background:#f2e8dd;">
@@ -43,14 +47,18 @@
       <td class="px" bgcolor="#430a23" style="background:#430a23;padding:30px 36px 26px;border-radius:10px 10px 0 0;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
           <tr>
-            <td style="font-size:11px;letter-spacing:2.5px;text-transform:uppercase;color:#fbbfa1;font-weight:700;">Vareon Intelligence</td>
-            <td align="right" style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#e6cfd6;">Edisi Oktober 2026</td>
+            <td valign="middle">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="background:#ffffff;border-radius:6px;">
+                <tr><td style="padding:8px 12px;"><img src="https://privy.zmidevelopment.com/_ipx/_/images/Privy_Logo_Red.png" alt="Company logo" height="28" style="display:block;height:28px;width:auto;border:0;"></td></tr>
+              </table>
+            </td>
+            <td align="right" valign="middle" style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#e6cfd6;">October 2026 Edition</td>
           </tr>
           <tr>
-            <td colspan="2" class="h1" style="padding-top:14px;font-size:28px;line-height:1.2;font-weight:700;color:#ffffff;">Buletin Intelijen Ancaman</td>
+            <td colspan="2" class="h1" style="padding-top:14px;font-size:28px;line-height:1.2;font-weight:700;color:#ffffff;">Threat Intelligence Newsletter</td>
           </tr>
           <tr>
-            <td colspan="2" style="padding-top:8px;font-size:13px;color:#e6cfd6;">Periode 1 &ndash; 31 Oktober 2026 &nbsp;&middot;&nbsp; Terbit Jumat, 6 November 2026</td>
+            <td colspan="2" style="padding-top:8px;font-size:13px;color:#e6cfd6;">Period 1 &ndash; 31 October 2026 &nbsp;&middot;&nbsp; Published Monday, 2 November 2026</td>
           </tr>
         </table>
       </td>
@@ -61,92 +69,63 @@
     <tr>
       <td class="px" bgcolor="#ffffff" style="background:#ffffff;padding:8px 36px 32px;">
 
-        <!-- Ringkasan eksekutif (dari rekap mingguan) -->
+        <!-- Executive Summary (satu paragraf; 1 panggilan LLM per edisi dari rekap mingguan, bisa diedit analis) -->
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-          <tr><td style="padding:24px 0 10px;font-size:12px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:#430a23;border-bottom:2px solid #e8dacb;">Ringkasan Eksekutif</td></tr>
+          <tr><td style="padding:24px 0 10px;font-size:12px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:#430a23;border-bottom:2px solid #e8dacb;">Executive Summary</td></tr>
           <tr>
             <td style="padding:16px 0 4px;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#fbf6f1" style="background:#fbf6f1;border:1px solid #e8dacb;border-radius:8px;">
-                <tr><td style="padding:16px 18px 0;">
-                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-                    <td width="112" valign="top" style="font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#6b4452;padding-right:8px;">28 Sep &ndash; 4 Okt</td>
-                    <td valign="top" style="font-size:13px;line-height:1.55;color:#4a2a36;">Kampanye pencurian kredensial lewat aplikasi SaaS palsu mendominasi.</td>
-                  </tr></table>
-                </td></tr>
-                <tr><td style="padding:10px 18px 0;">
-                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-                    <td width="112" valign="top" style="font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#6b4452;padding-right:8px;">5 &ndash; 11 Okt</td>
-                    <td valign="top" style="font-size:13px;line-height:1.55;color:#4a2a36;">Satu kerentanan kritis pada perangkat lunak manajemen akses diperbaiki vendor.</td>
-                  </tr></table>
-                </td></tr>
-                <tr><td style="padding:10px 18px 0;">
-                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-                    <td width="112" valign="top" style="font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#6b4452;padding-right:8px;">12 &ndash; 18 Okt</td>
-                    <td valign="top" style="font-size:13px;line-height:1.55;color:#4a2a36;">Rantai pasok paket sumber terbuka disusupi lewat akun pengelola yang diambil alih.</td>
-                  </tr></table>
-                </td></tr>
-                <tr><td style="padding:10px 18px 0;">
-                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-                    <td width="112" valign="top" style="font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#6b4452;padding-right:8px;">19 &ndash; 25 Okt</td>
-                    <td valign="top" style="font-size:13px;line-height:1.55;color:#4a2a36;">Ransomware terhadap penyedia layanan terkelola meningkat; dua eksploitasi aktif pada perangkat VPN.</td>
-                  </tr></table>
-                </td></tr>
-                <tr><td style="padding:10px 18px 16px;">
-                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-                    <td width="112" valign="top" style="font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#6b4452;padding-right:8px;">26 Okt &ndash; 1 Nov</td>
-                    <td valign="top" style="font-size:13px;line-height:1.55;color:#4a2a36;">Kampanye phishing bertema pajak menyasar instansi di Asia Tenggara.</td>
-                  </tr></table>
-                </td></tr>
+                <tr><td style="padding:16px 18px;font-size:14px;line-height:1.7;color:#4a2a36;">Oktober didominasi aktivitas ransomware terhadap penyedia layanan terkelola di Asia Pasifik. Kelompok-kelompok yang terlibat masuk lewat kredensial VPN yang bocor tanpa autentikasi multifaktor, sehingga satu akses yang jatuh membuka banyak jaringan pelanggan. Pada saat yang sama, dua CVE pada perangkat VPN populer masuk daftar KEV dan dipindai secara massal dari internet. Pencurian kredensial lewat aplikasi SaaS palsu serta phishing bertema pajak terus menyasar instansi di Asia Tenggara, dan satu pustaka sumber terbuka sempat disusupi lewat akun pengelola yang diambil alih.</td></tr>
               </table>
             </td>
           </tr>
-          <tr><td style="padding:0 0 2px;font-size:11px;color:#6b4452;">Diringkas dari rekap mingguan Vareon Intelligence; setiap baris memakai rentang pekannya sendiri.</td></tr>
+          <tr><td style="padding:6px 0 2px;font-size:11px;color:#6b4452;">Summarised from the weekly recaps.</td></tr>
         </table>
 
-        <!-- Periode dalam angka -->
+        <!-- By the Numbers -->
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-          <tr><td style="padding:24px 0 10px;font-size:12px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:#430a23;border-bottom:2px solid #e8dacb;">Periode dalam Angka</td></tr>
+          <tr><td style="padding:24px 0 10px;font-size:12px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:#430a23;border-bottom:2px solid #e8dacb;">By the Numbers</td></tr>
           <tr>
             <td style="padding-top:14px;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e8dacb;border-radius:8px;">
                 <tr>
                   <td class="stat" width="25%" align="center" style="padding:14px 6px;border-right:1px solid #e8dacb;">
                     <div style="font-size:24px;font-weight:700;color:#430a23;line-height:1.1;">1.684</div>
-                    <div style="font-size:11px;color:#6b4452;padding-top:3px;">Artikel</div>
+                    <div style="font-size:11px;color:#6b4452;padding-top:3px;">Articles</div>
                     <div style="font-size:11px;font-weight:700;color:#6b4452;padding-top:3px;">&#9650; 9%</div>
                   </td>
                   <td class="stat" width="25%" align="center" style="padding:14px 6px;border-right:1px solid #e8dacb;">
                     <div style="font-size:24px;font-weight:700;color:#430a23;line-height:1.1;">342</div>
-                    <div style="font-size:11px;color:#6b4452;padding-top:3px;">CVE baru</div>
+                    <div style="font-size:11px;color:#6b4452;padding-top:3px;">New CVEs</div>
                     <div style="font-size:11px;font-weight:700;color:#8a0c2f;padding-top:3px;">&#9650; 18%</div>
                   </td>
                   <td class="stat" width="25%" align="center" style="padding:14px 6px;border-right:1px solid #e8dacb;">
                     <div style="font-size:24px;font-weight:700;color:#430a23;line-height:1.1;">5.118</div>
-                    <div style="font-size:11px;color:#6b4452;padding-top:3px;">IOC baru</div>
+                    <div style="font-size:11px;color:#6b4452;padding-top:3px;">New IOCs</div>
                     <div style="font-size:11px;font-weight:700;color:#6b4452;padding-top:3px;">&#9644; 2%</div>
                   </td>
                   <td class="stat" width="25%" align="center" style="padding:14px 6px;">
                     <div style="font-size:24px;font-weight:700;color:#430a23;line-height:1.1;">9</div>
-                    <div style="font-size:11px;color:#6b4452;padding-top:3px;">Kampanye aktif</div>
+                    <div style="font-size:11px;color:#6b4452;padding-top:3px;">Active Campaigns</div>
                     <div style="font-size:11px;font-weight:700;color:#17703f;padding-top:3px;">&#9660; 2</div>
                   </td>
                 </tr>
               </table>
             </td>
           </tr>
-          <tr><td style="padding:6px 0 0;font-size:11px;color:#6b4452;">Dihitung untuk 1 &ndash; 31 Oktober; perubahan dibanding September.</td></tr>
+          <tr><td style="padding:6px 0 0;font-size:11px;color:#6b4452;">Counted for 1 &ndash; 31 October; change versus September.</td></tr>
         </table>
 
         <!-- ===== SOROTAN ===== -->
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
           <tr><td style="padding:26px 0 12px;border-bottom:2px solid #e8dacb;">
             <span style="display:inline-block;width:6px;height:16px;background:#d0002f;vertical-align:middle;">&nbsp;</span>
-            <span style="font-size:13px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:#856404;vertical-align:middle;padding-left:8px;">Sorotan Bulan Ini</span>
+            <span style="font-size:13px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:#856404;vertical-align:middle;padding-left:8px;">Highlights</span>
           </td></tr>
           <tr><td style="padding-top:16px;">
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#430a23" style="background:#430a23;border-radius:8px;">
               <tr><td style="padding:22px 24px 6px;font-size:18px;line-height:1.35;font-weight:700;"><a href="#" style="color:#fbbfa1;text-decoration:none;">Kelompok ransomware contoh menargetkan penyedia layanan terkelola di Asia Pasifik</a></td></tr>
-              <tr><td style="padding:0 24px 14px;font-size:11px;color:#e6cfd6;">Contoh Sumber &nbsp;&middot;&nbsp; 20 Okt 2026 &nbsp;&middot;&nbsp; Ransomware</td></tr>
+              <tr><td style="padding:0 24px 14px;font-size:11px;color:#e6cfd6;">Contoh Sumber &nbsp;&middot;&nbsp; 20 Oct 2026 &nbsp;&middot;&nbsp; Ransomware</td></tr>
               <tr><td style="padding:0 24px 12px;font-size:13px;line-height:1.6;color:#f2e8dd;">
                 <span style="color:#fbbfa1;">&#9656;</span>&nbsp; Akses awal lewat kredensial VPN yang bocor, tanpa autentikasi multifaktor.<br>
                 <span style="color:#fbbfa1;">&#9656;</span>&nbsp; Data dicuri sebelum enkripsi, lalu dipakai untuk pemerasan ganda.<br>
@@ -162,7 +141,7 @@
               </td></tr>
               <tr><td style="padding:0 24px 22px;">
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#fffbe6" style="background:#fffbe6;border-left:3px solid #f59e0b;">
-                  <tr><td style="padding:9px 12px;font-size:12px;line-height:1.55;color:#4a2a36;"><span style="font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#b45309;">Catatan Analis</span><br>Periksa akun layanan pihak ketiga yang masih aktif di VPN kita.</td></tr>
+                  <tr><td style="padding:9px 12px;font-size:12px;line-height:1.55;color:#4a2a36;"><span style="font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#b45309;">Analyst Note</span><br>Periksa akun layanan pihak ketiga yang masih aktif di VPN kita.</td></tr>
                 </table>
               </td></tr>
             </table>
@@ -173,13 +152,13 @@
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
           <tr><td style="padding:26px 0 12px;border-bottom:2px solid #e8dacb;">
             <span style="display:inline-block;width:6px;height:16px;background:#256a8a;vertical-align:middle;">&nbsp;</span>
-            <span style="font-size:13px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:#256a8a;vertical-align:middle;padding-left:8px;">Asia Pasifik</span>
+            <span style="font-size:13px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:#256a8a;vertical-align:middle;padding-left:8px;">Asia Pacific</span>
           </td></tr>
 
           <tr><td style="padding-top:14px;">
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#fbf6f1" style="background:#fbf6f1;border:1px solid #e8dacb;border-radius:8px;">
               <tr><td style="padding:16px 18px 4px;font-size:15px;line-height:1.4;font-weight:700;"><a href="#" style="color:#430a23;text-decoration:none;">Kampanye phishing bertema pajak menyasar instansi di Asia Tenggara</a></td></tr>
-              <tr><td style="padding:0 18px 10px;font-size:11px;color:#6b4452;">Contoh Sumber B &nbsp;&middot;&nbsp; 19 Okt 2026 &nbsp;&middot;&nbsp; Phishing</td></tr>
+              <tr><td style="padding:0 18px 10px;font-size:11px;color:#6b4452;">Contoh Sumber B &nbsp;&middot;&nbsp; 19 Oct 2026 &nbsp;&middot;&nbsp; Phishing</td></tr>
               <tr><td style="padding:0 18px 10px;font-size:12px;line-height:1.6;color:#4a2a36;">
                 <span style="color:#d0002f;">&bull;</span>&nbsp; Email berisi tautan ke halaman login palsu portal pajak.<br>
                 <span style="color:#d0002f;">&bull;</span>&nbsp; Domain didaftarkan kurang dari seminggu sebelum kampanye.
@@ -195,11 +174,32 @@
           <tr><td style="padding-top:10px;">
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#fbf6f1" style="background:#fbf6f1;border:1px solid #e8dacb;border-radius:8px;">
               <tr><td style="padding:16px 18px 4px;font-size:15px;line-height:1.4;font-weight:700;"><a href="#" style="color:#430a23;text-decoration:none;">Eksploitasi aktif pada perangkat VPN populer, CVE masuk daftar KEV</a></td></tr>
-              <tr><td style="padding:0 18px 10px;font-size:11px;color:#6b4452;">Contoh Sumber C &nbsp;&middot;&nbsp; 21 Okt 2026 &nbsp;&middot;&nbsp; Kerentanan</td></tr>
+              <tr><td style="padding:0 18px 10px;font-size:11px;color:#6b4452;">Contoh Sumber C &nbsp;&middot;&nbsp; 21 Oct 2026 &nbsp;&middot;&nbsp; Kerentanan</td></tr>
               <tr><td style="padding:0 18px 14px;font-size:12px;line-height:1.6;color:#4a2a36;">Vendor merilis pembaruan darurat. Perangkat yang belum diperbarui sudah dipindai secara massal dari internet.</td></tr>
               <tr><td style="padding:0 18px 16px;">
                 <span style="display:inline-block;padding:2px 8px;border-radius:3px;font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;background:#def2e5;color:#17703f;">CVE-2026-00000</span>
                 <span style="display:inline-block;padding:2px 8px;border-radius:3px;font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;background:#fbe0e6;color:#8a0c2f;">KEV</span>
+              </td></tr>
+            </table>
+          </td></tr>
+          <tr><td style="padding-top:10px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e8dacb;border-radius:8px;">
+              <tr><td bgcolor="#f2e8dd" style="background:#f2e8dd;padding:8px 18px;font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6b4452;border-radius:8px 8px 0 0;">Also Noted &nbsp;&middot;&nbsp; Asia Pacific</td></tr>
+              <tr><td style="padding:9px 18px;border-bottom:1px solid #e8dacb;">
+                <div style="font-size:13px;line-height:1.4;font-weight:700;"><a href="#" style="color:#430a23;text-decoration:none;">Peretas menargetkan penyedia telekomunikasi regional lewat perangkat tepi</a></div>
+                <div style="font-size:11px;color:#6b4452;padding-top:2px;">Contoh Sumber F &nbsp;&middot;&nbsp; 22 Oct 2026 &nbsp;&middot;&nbsp; Intrusion</div>
+              </td></tr>
+              <tr><td style="padding:9px 18px;border-bottom:1px solid #e8dacb;">
+                <div style="font-size:13px;line-height:1.4;font-weight:700;"><a href="#" style="color:#430a23;text-decoration:none;">Pemerintah mengumumkan aturan baru pelaporan insiden siber</a></div>
+                <div style="font-size:11px;color:#6b4452;padding-top:2px;">Contoh Sumber G &nbsp;&middot;&nbsp; 15 Oct 2026 &nbsp;&middot;&nbsp; Regulasi</div>
+              </td></tr>
+              <tr><td style="padding:9px 18px;border-bottom:1px solid #e8dacb;">
+                <div style="font-size:13px;line-height:1.4;font-weight:700;"><a href="#" style="color:#430a23;text-decoration:none;">Kelompok pemeras mengklaim data sebuah rumah sakit di Asia Tenggara</a></div>
+                <div style="font-size:11px;color:#6b4452;padding-top:2px;">Contoh Sumber H &nbsp;&middot;&nbsp; 12 Oct 2026 &nbsp;&middot;&nbsp; Ransomware</div>
+              </td></tr>
+              <tr><td style="padding:9px 18px;">
+                <div style="font-size:13px;line-height:1.4;font-weight:700;"><a href="#" style="color:#430a23;text-decoration:none;">Pembaruan keamanan bulanan vendor perangkat jaringan menutup 14 celah</a></div>
+                <div style="font-size:11px;color:#6b4452;padding-top:2px;">Contoh Sumber I &nbsp;&middot;&nbsp; 8 Oct 2026 &nbsp;&middot;&nbsp; Kerentanan</div>
               </td></tr>
             </table>
           </td></tr>
@@ -214,12 +214,29 @@
           <tr><td style="padding-top:14px;">
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#fbf6f1" style="background:#fbf6f1;border:1px solid #e8dacb;border-radius:8px;">
               <tr><td style="padding:16px 18px 4px;font-size:15px;line-height:1.4;font-weight:700;"><a href="#" style="color:#430a23;text-decoration:none;">Rantai pasok paket sumber terbuka disusupi lewat akun pengelola yang diambil alih</a></td></tr>
-              <tr><td style="padding:0 18px 10px;font-size:11px;color:#6b4452;">Contoh Sumber D &nbsp;&middot;&nbsp; 17 Okt 2026 &nbsp;&middot;&nbsp; Rantai pasok</td></tr>
+              <tr><td style="padding:0 18px 10px;font-size:11px;color:#6b4452;">Contoh Sumber D &nbsp;&middot;&nbsp; 17 Oct 2026 &nbsp;&middot;&nbsp; Rantai pasok</td></tr>
               <tr><td style="padding:0 18px 14px;font-size:12px;line-height:1.6;color:#4a2a36;">Versi berbahaya dari sebuah pustaka populer sempat tersedia beberapa jam dan mencuri token build dari lingkungan CI.</td></tr>
               <tr><td style="padding:0 18px 16px;">
                 <span style="display:inline-block;padding:2px 8px;border-radius:3px;font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;background:#def2e5;color:#17703f;">Perangkat Lunak</span>
               </td></tr>
+              <tr><td style="padding-top:10px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e8dacb;border-radius:8px;">
+              <tr><td bgcolor="#f2e8dd" style="background:#f2e8dd;padding:8px 18px;font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6b4452;border-radius:8px 8px 0 0;">Also Noted &nbsp;&middot;&nbsp; Global</td></tr>
+              <tr><td style="padding:9px 18px;border-bottom:1px solid #e8dacb;">
+                <div style="font-size:13px;line-height:1.4;font-weight:700;"><a href="#" style="color:#430a23;text-decoration:none;">Botnet baru memanfaatkan kamera IP yang belum diperbarui</a></div>
+                <div style="font-size:11px;color:#6b4452;padding-top:2px;">Contoh Sumber J &nbsp;&middot;&nbsp; 24 Oct 2026 &nbsp;&middot;&nbsp; Malware</div>
+              </td></tr>
+              <tr><td style="padding:9px 18px;border-bottom:1px solid #e8dacb;">
+                <div style="font-size:13px;line-height:1.4;font-weight:700;"><a href="#" style="color:#430a23;text-decoration:none;">Operasi penegak hukum internasional membongkar layanan phishing-as-a-service</a></div>
+                <div style="font-size:11px;color:#6b4452;padding-top:2px;">Contoh Sumber K &nbsp;&middot;&nbsp; 16 Oct 2026 &nbsp;&middot;&nbsp; Penindakan</div>
+              </td></tr>
+              <tr><td style="padding:9px 18px;">
+                <div style="font-size:13px;line-height:1.4;font-weight:700;"><a href="#" style="color:#430a23;text-decoration:none;">Laporan tahunan menyebut kredensial curian sebagai penyebab utama pelanggaran</a></div>
+                <div style="font-size:11px;color:#6b4452;padding-top:2px;">Contoh Sumber L &nbsp;&middot;&nbsp; 9 Oct 2026 &nbsp;&middot;&nbsp; Riset</div>
+              </td></tr>
             </table>
+          </td></tr>
+        </table>
           </td></tr>
         </table>
 
@@ -232,7 +249,7 @@
           <tr><td style="padding-top:14px;">
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#fbf6f1" style="background:#fbf6f1;border:1px solid #e8dacb;border-radius:8px;">
               <tr><td style="padding:16px 18px 4px;font-size:15px;line-height:1.4;font-weight:700;"><a href="#" style="color:#430a23;text-decoration:none;">Kebocoran data sebuah layanan daring dilaporkan, data pengguna dijual di forum</a></td></tr>
-              <tr><td style="padding:0 18px 10px;font-size:11px;color:#6b4452;">Contoh Sumber E &nbsp;&middot;&nbsp; 18 Okt 2026 &nbsp;&middot;&nbsp; Kebocoran data</td></tr>
+              <tr><td style="padding:0 18px 10px;font-size:11px;color:#6b4452;">Contoh Sumber E &nbsp;&middot;&nbsp; 18 Oct 2026 &nbsp;&middot;&nbsp; Kebocoran data</td></tr>
               <tr><td style="padding:0 18px 14px;font-size:12px;line-height:1.6;color:#4a2a36;">Pelaku mengklaim memegang jutaan catatan pengguna. Pihak layanan belum memberi konfirmasi resmi.</td></tr>
               <tr><td style="padding:0 18px 16px;">
                 <span style="display:inline-block;padding:2px 8px;border-radius:3px;font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;background:#dcebf2;color:#256a8a;">Indonesia</span>
@@ -246,12 +263,12 @@
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
           <tr><td style="padding:26px 0 12px;border-bottom:2px solid #e8dacb;">
             <span style="display:inline-block;width:6px;height:16px;background:#430a23;vertical-align:middle;">&nbsp;</span>
-            <span style="font-size:13px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:#430a23;vertical-align:middle;padding-left:8px;">Klaster Kampanye</span>
+            <span style="font-size:13px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:#430a23;vertical-align:middle;padding-left:8px;">Campaigns</span>
           </td></tr>
           <tr><td style="padding-top:14px;">
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#fbf6f1" style="background:#fbf6f1;border:1px solid #e8dacb;border-radius:8px;">
               <tr><td style="padding:14px 18px 2px;font-size:14px;font-weight:700;color:#430a23;">Ransomware terhadap penyedia layanan terkelola</td></tr>
-              <tr><td style="padding:0 18px 8px;font-size:11px;color:#6b4452;">31 artikel &nbsp;&middot;&nbsp; 6 &ndash; 27 Okt 2026</td></tr>
+              <tr><td style="padding:0 18px 8px;font-size:11px;color:#6b4452;">31 articles &nbsp;&middot;&nbsp; 6 &ndash; 27 Oct 2026</td></tr>
               <tr><td style="padding:0 18px 14px;">
                 <span style="display:inline-block;padding:2px 8px;border-radius:3px;font-size:10px;font-weight:700;background:#fbe0e6;color:#8a0c2f;">Contoh Group</span>
                 <span style="display:inline-block;padding:2px 8px;border-radius:3px;font-size:10px;font-weight:700;background:#ebe3f5;color:#6b4a9e;">T1486</span>
@@ -269,8 +286,8 @@
     <tr>
       <td class="px" bgcolor="#430a23" align="center" style="background:#430a23;padding:20px 36px;border-radius:0 0 10px 10px;font-size:11px;line-height:1.7;color:#e6cfd6;">
         <strong style="color:#fbbfa1;letter-spacing:1.5px;text-transform:uppercase;">Vareon Intelligence</strong><br>
-        Buletin Intelijen Ancaman &nbsp;&middot;&nbsp; Edisi Oktober 2026 &nbsp;&middot;&nbsp; 1 &ndash; 31 Oktober 2026<br>
-        Internal &mdash; Rahasia
+        Threat Intelligence Newsletter &nbsp;&middot;&nbsp; October 2026 Edition &nbsp;&middot;&nbsp; 1 &ndash; 31 October 2026<br>
+        Internal &mdash; Confidential
       </td>
     </tr>
 
