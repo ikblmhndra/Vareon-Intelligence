@@ -12,7 +12,7 @@ Each item contains: **what** was asked, **the current state** (facts from the re
 | # | Item | Needs from the user | Depends on |
 |---|---|---|---|
 | 21 | **PRIORITY (team feedback 2026-10-10)** -- **Improve the Recap feature**: weekly instead of daily (a manual daily trigger stays), fewer/cheaper LLM calls, week-over-week comparison, grounding check, forecast scorecard -- **scope decided 2026-10-10, not built** | the week boundary and generation time (WIB); recap language | -- |
-| 22 | **PRIORITY (team feedback 2026-10-10)** -- **Newsletter**: biweekly (Fridays, WIB), Indonesian content, redesigned template (mockup drawn, `docs/mockups/newsletter-redesign.html`), recommended articles in the composer, executive summary reused from the weekly recap, per-article summary cache and one history row per send -- **scope decided 2026-10-10, not built** | confirm "jam 1" (01:00 or 13:00) and the first edition date; approve the mockup | #21 (the executive summary reuses the weekly recap; shared LLM usage logging) |
+| 22 | **PRIORITY (team feedback 2026-10-10)** -- **Newsletter**: biweekly (Fridays, WIB), Indonesian content, redesigned template (mockup drawn, `docs/mockups/newsletter-redesign.html`), recommended articles in the composer, executive summary reused from the weekly recap, per-article summary cache and one history row per send -- **scope decided 2026-10-10, not built** | the first edition date; confirm the preparation time of the suggested draft (assumed Friday 09:00 WIB) | #21 (the executive summary reuses the weekly recap; shared LLM usage logging) |
 | 1 | Rebranding the platform name + UI (colour palette, typography, animation) -- **DONE 2026-10-02, the SVG logo remains** | brand assets | -- |
 | 2 | Rebranding the `newsletter_email` and `cve_notification_email` templates -- **code done 2026-10-02, email client verification not yet** | (the same assets as #1) | #1 |
 | 3 | (probably superseded by #19) A "Populate now" button in the CVE Tracker (all / only newly added) | a small decision (see the item) | -- |
@@ -810,7 +810,17 @@ comparison, grounding and the no-activity path.
 (4) add recommendations for the newsletter content; (5) "any more suggestions?"
 
 **Decided (user, 2026-10-10)**
-- **Biweekly, every other Friday, "jam 1" WIB** (01:00 or 13:00 still to be confirmed, see Needed).
+- **Biweekly, every other Friday, 13:00 WIB** ("jam 1" = 13:00, confirmed). 13:00 WIB is read as the **time the edition
+  is due out**; the suggested draft is prepared before it so the analyst can review in time (see Design: biweekly).
+- **Edition label "Bulan X minggu N"** (for example "Oktober, minggu 4") instead of "Week N" or a running edition
+  number. **N = the ordinal of the publishing Friday inside its month** (1-5); the date range of the window stays next
+  to it, so the label is never ambiguous.
+- **Mockup approved** (2026-10-10), with the edition label changed to the one above.
+- **Reviewer = the analysts**, inside the existing flow. Today: (1) the team picks articles by hand in the Newsroom,
+  (2) maps them to the categories, (3) previews or sends the draft email. Wanted: (1) the composer already holds the
+  **recommended content, already mapped to the categories**; the team **reviews it** before clicking preview or send
+  draft; (2) the team can **still pick content from the Newsroom** and add it, swap it or remove it. No separate
+  language reviewer and no approval step: the analyst's review of the draft is the quality check.
 - **"Recommendations" = recommended articles to include** (not an actions section inside the email).
 - Design: the user asked for the redesign to be **drawn first**; the colours follow the brand palette already in use
   (`#430a23` burgundy, `#d0002f` red, `#f2e8dd` / `#fbf6f1` / `#e8dacb` beige, `#fbbfa1` peach accent).
@@ -839,15 +849,24 @@ comparison, grounding and the no-activity path.
   there is no period range and no edition number.
 
 **Design: biweekly**
-- A beat task (WIB) runs every second Friday and **prepares a draft edition**: the recommended articles (below) already
-  placed in the sections, plus the executive summary from the recaps; the analyst opens it in the Newsletter page,
-  edits, and creates the Outlook draft as today. No Telegram notice and no automatic sending unless asked.
+- A beat task runs every second Friday and **prepares the suggested content**: the recommended articles (below) already
+  placed in Highlight / APAC / Global / Indonesia, plus the executive summary from the recaps. The weekly recap is
+  generated Friday 00:15 WIB (#21), so the task runs after it: **assumed Friday 09:00 WIB (02:00 UTC)**, which leaves
+  about four hours of review before the 13:00 WIB target (06:00 UTC). The analyst opens the Newsletter page, reviews and
+  edits, and previews or creates the Outlook draft as today. No Telegram notice and no automatic sending.
+- The suggestion is stored **server-side** (a `newsletter_suggestions` row per window: period, the placed article ids with
+  their section and reasons), because the composer queue today lives only in the browser's `localStorage`. When the
+  composer opens and its queue is empty it loads the suggestion; when the analyst already has a queue it shows a banner
+  ("rekomendasi tersedia") with "pakai rekomendasi" / "gabungkan" instead of overwriting their work. Articles added from
+  the Newsroom ("+ Newsletter") keep working as now. There is no draft/approved/sent status (not selected).
 - Window = the last 14 days (Friday to Thursday), the same range as the two latest weekly recaps (#21);
   `cluster_days` becomes 14. "Every second Friday" is counted from a **first edition date** written in the config, not
   from ISO-week parity, so it survives a year change. Section caps (5) are probably too small for two weeks: decide with
   the first real edition.
-- Replace "Week N" by an **edition number and a date range** ("Edisi 12, 9-22 Okt 2026"): add `edition`, `period_start`,
-  `period_end` to `newsletters` (migration); old rows keep `week`/`year`.
+- Replace "Week N" by the **"Bulan X minggu N" label and a date range** ("Oktober, minggu 4, 9-22 Okt 2026"): add
+  `period_start`, `period_end` to `newsletters` (migration); the label is derived from the publishing date, so no edition
+  counter is stored. Old rows keep `week`/`year`. The subject becomes `[CTI Newsletter] Buletin Intelijen Ancaman: Oktober,
+  minggu 4`.
 
 **Design: Indonesian content**
 - Generate `key_points` and `summary` **in Indonesian in the same LLM call** as today (prompt change; no second
@@ -856,8 +875,8 @@ comparison, grounding and the no-activity path.
   editions. Translate the template labels, section headings, subject and footer. A `language` field (default `id`, `en`
   still possible) goes on the build request so the English edition is not lost.
 - Article **titles** keep their original wording by default (links, searching); a translated line under the title is
-  possible later. The analyst's own intro and notes are used as typed. Quality check: an Indonesian reader reviews the
-  first two editions and the corrections go into the glossary.
+  possible later. The analyst's own intro and notes are used as typed. Quality check: the analyst who reviews the suggested draft also
+  reads the Indonesian wording; corrections go into the glossary so later editions improve.
 
 **Design: template redesign**
 - Drawn in `docs/mockups/newsletter-redesign.html` (sample data, Indonesian, brand palette). It is built the way the real
@@ -889,10 +908,12 @@ comparison, grounding and the no-activity path.
 `templates/newsletter_email.html` (+ `_base_email.html`), `db/models/newsletter.py` + migration (and a summary cache
 table), `repositories/newsletter.py`, `beat.py` + a new task, a new ranking service, `apps/web/src/components/newsletter/*`
 (suggestions, edition/range), `openapi.json` + `schema.d.ts`, `.env.example` + `.env.prod.template` for the first edition
-date.
-**Needed from the user**: (1) "jam 1" on Friday: **01:00 or 13:00 WIB**; (2) the first edition date and number; (3) approve
-the mockup or list the changes; (4) who reviews the Indonesian wording of the first editions.
-**Done when**: a draft edition is prepared on the biweekly schedule with an edition number and date range; summaries and
+date, and a `newsletter_suggestions` table.
+**Needed from the user**: (1) the **first edition date** (assumed Friday 23 Oct 2026, as in the mockup; the second Friday
+after it is the next); (2) confirm the suggested content is prepared **Friday 09:00 WIB** and 13:00 WIB is the due time, not
+the preparation time.
+**Done when**: suggested content is prepared on the biweekly schedule, already placed in the sections, and the composer
+loads it for review while the Newsroom picking flow still works; every edition carries the "Bulan X minggu N" label and a date range; summaries and
 labels are in Indonesian (English still selectable); the new template renders correctly in Outlook desktop, Outlook web
 and Gmail (screenshots attached here); the composer shows recommended articles with their reasons; one send creates
 exactly one history row; a second preview of the same articles makes no new LLM or Playwright call; the executive
