@@ -1,324 +1,323 @@
-# Alur CVE Tracker yang sekarang (as-is)
+# The current CVE Tracker flow (as-is)
 
-Catatan **keadaan nyata** CVE Tracker per 2026-10-07, ditulis sebelum merancang katalog tech + mirror CVE
-(`docs/ROADMAP.md` #19) supaya rancangan baru tidak merusak apa yang sudah berjalan. Semua isi di sini
-dibaca dari kode, bukan dari ingatan; yang **tidak** sempat diverifikasi ada di bagian 10. Kalau kode
-berubah, perbarui file ini (bukan sebaliknya).
+A record of the CVE Tracker's **actual state** as of 2026-10-07, written before designing the tech catalog + CVE
+mirror (`docs/ROADMAP.md` #19) so the new design does not break what already works. Everything here was
+read from the code, not from memory; what **could not** be verified is in section 10. If the code
+changes, update this file (not the other way round).
 
-Dokumen terkait: `docs/CVE_TECH_MATCHING.md` (kenapa kolom Tech salah-cocok, solusi 0.2.1),
-`docs/ROADMAP.md` #13-#19, `docs/SCRAPER_MAINTENANCE.md` 4.G-4.H (tool ops).
+Related documents: `docs/CVE_TECH_MATCHING.md` (why the Tech column mismatched, the 0.2.1 fix),
+`docs/ROADMAP.md` #13-#19, `docs/SCRAPER_MAINTENANCE.md` 4.G-4.H (ops tools).
 
-## 1. Gambaran satu halaman
+## 1. One-page overview
 
 ```
-beat (tiap jam)                                         analis (UI /cve)
-  └─ scrape.run new_cve  ──► NVD keywordSearch ┐          ├─ tab CVEs: filter, lookup KEV/EPSS/Exploit-DB, export Excel
-       (queue scrape.api)    Tenable (XPath)   ├─ kandidat ├─ detail modal: tab Ticket (acknowledge, isi ticket)
-                             MITRE per kandidat┘          ├─ sub-view Dashboard (MTTD/MTTA/MTTR), Ticketing
-                                  │ gate relevansi (nama tech ~ vendor/produk CNA)
-                                  ▼                       └─ sub-view Tech Stack (tambah/hapus/exposure/hosting)
+beat (hourly)                                           analyst (UI /cve)
+  └─ scrape.run new_cve  ──► NVD keywordSearch ┐          ├─ CVEs tab: filters, KEV/EPSS/Exploit-DB lookup, Excel export
+       (queue scrape.api)    Tenable (XPath)   ├─ candidates ├─ detail modal: Ticket tab (acknowledge, fill in the ticket)
+                             MITRE per candidate┘          ├─ Dashboard sub-view (MTTD/MTTA/MTTR), Ticketing
+                                  │ relevance gate (tech name ~ CNA vendor/product)
+                                  ▼                       └─ Tech Stack sub-view (add/remove/exposure/hosting)
                     CveItem(client_id, tech, ...) ──► sink ──► cve_tracker  (+ references, affected)
                                                                   ▲   ▲   ▲
-   cve.enrichment_sweep (tiap 3 jam, maintenance) ── KEV/EPSS/Exploit-DB ┘   │   │
+   cve.enrichment_sweep (every 3 h, maintenance) ── KEV/EPSS/Exploit-DB ┘   │   │
    github_poc_monitor (scraper) ── CvePocItem ── cve_pocs + poc_available ───┘   │
    ticket/ack/false-positive (API) ── cve_tickets, cve_false_positives ──────────┘
 ```
 
-Intinya: **`techstack_entries` (per client) menentukan CVE apa yang masuk `cve_tracker`**, lewat satu
-scraper (`new_cve`). Semua yang lain (enrichment, ticket, dashboard, export) bekerja di atas baris tracker.
+The gist: **`techstack_entries` (per client) decides which CVEs enter `cve_tracker`**, through a single
+scraper (`new_cve`). Everything else (enrichment, tickets, dashboard, export) works on top of the tracker rows.
 
-## 2. Ingest: scraper `new_cve`
+## 2. Ingest: the `new_cve` scraper
 
-`scrapers/src/cti_scrapers/feeds/new_cve.py`. `meta`: `id="new_cve"`, jadwal `spread("0 * * * *")` (tiap jam,
-menit digeser), `rate_limit="60/minute"`, `max_items=300`, `credential="nvd"` (jadi masuk queue `scrape.api`),
+`scrapers/src/cti_scrapers/feeds/new_cve.py`. `meta`: `id="new_cve"`, schedule `spread("0 * * * *")` (hourly,
+minute shifted), `rate_limit="60/minute"`, `max_items=300`, `credential="nvd"` (so it goes to the `scrape.api` queue),
 `reference_data=("techstack", "techstack_by_client")`, `dedup_key()` = `None`
-(**selalu upsert ulang**, karena MITRE bisa memperbarui skor).
+(**always re-upserts**, because MITRE can update scores).
 
-Langkah satu run (`NewCve.fetch`):
-1. Baca `ctx.reference`: daftar nama tech (distinct lintas client) dan `{client_id: [nama tech]}`.
-2. **Cari kandidat** per nama tech: (a) NVD `keywordSearch=<nama>` dengan `pubStartDate`..`pubEndDate` =
-   **8 hari terakhir** (berdasarkan tanggal publish), (b) Tenable `cve/search` (XPath di-hardcode, hanya 6
-   baris pertama; hasil dibuang kalau ringkasannya tidak menyebut nama tech). Per tech = 2 request;
-   34 tech = 68 request/jam, dipacu `get_waiting` (batas 60/menit).
-3. **Satu CVE = satu kandidat** (dikelompokkan per `cve_id`, membawa semua tech yang memunculkannya).
-4. **Detail dari MITRE** (`cveawg.mitre.org/api/cve/<id>`), satu panggilan per kandidat: vendor, produk,
-   `affected` + range versi (jadi teks), referensi, solusi, CVSS (hanya dari CNA), tanggal modifikasi.
-5. **Gate relevansi** (`relevant_techs`, 0.2.1): kandidat dipakai hanya kalau nama tech muncul di
-   vendor/product/packageName/CPE milik CNA; kalau CNA tidak mengisi produk (atau placeholder `n/a`...)
-   jatuh ke ringkasan. Yang ditolak dicatat di log `cve_candidate_tech_not_affected`.
-6. **Proyeksi ke client**: untuk tiap client yang punya salah satu tech terdampak, satu `CveItem`. Kalau
-   satu client punya beberapa tech yang kena, dipakai **yang paling awal menurut abjad**. Berhenti di
+The steps of one run (`NewCve.fetch`):
+1. Read `ctx.reference`: the list of tech names (distinct across clients) and `{client_id: [tech names]}`.
+2. **Find candidates** per tech name: (a) NVD `keywordSearch=<name>` with `pubStartDate`..`pubEndDate` =
+   **the last 8 days** (by publish date), (b) Tenable `cve/search` (hardcoded XPath, only the first 6
+   rows; results are dropped if their summary does not mention the tech name). 2 requests per tech;
+   34 techs = 68 requests/hour, paced by `get_waiting` (limit 60/minute).
+3. **One CVE = one candidate** (grouped by `cve_id`, carrying every tech that surfaced it).
+4. **Detail from MITRE** (`cveawg.mitre.org/api/cve/<id>`), one call per candidate: vendor, product,
+   `affected` + version ranges (as text), references, solution, CVSS (from the CNA only), modification date.
+5. **Relevance gate** (`relevant_techs`, 0.2.1): a candidate is used only if the tech name appears in the
+   CNA's vendor/product/packageName/CPE; if the CNA did not fill in a product (or a placeholder `n/a`...)
+   it falls back to the summary. Rejections are logged as `cve_candidate_tech_not_affected`.
+6. **Projection to clients**: for each client that has one of the affected techs, one `CveItem`. If
+   a client has several affected techs, the **alphabetically first** one is used. Stops at
    `max_items` (300).
 7. `CveItem` (`cti_scraper/items.py`) → sink (`cti_scraper/sinks.py::_cve_sink`) → `CveTrackerRepo.upsert`.
 
-Perilaku `upsert` yang penting (`cti_core/db/repositories/cve.py`):
-- Kunci `(cve_id, client_id)`. Baris baru: `INSERT`. Baris ada: **semua field yang dikirim ditimpa** (termasuk
-  `tech`, `summary`, skor), `references` dan `affected` **diganti utuh** (bukan di-merge).
-- `detected_on` diisi `server_default now()` hanya saat INSERT, jadi = waktu scraper pertama menemukannya
-  (dasar MTTD/MTTA/MTTR); update tidak mengubahnya.
-- `published_at` (jam publish MITRE) hanya ikut kalau MITRE memberinya, jadi tidak menimpa hasil backfill
-  dengan `NULL`.
-- Scraper **tidak** memeriksa false-positive: baris yang ditandai FP tetap di-upsert, hanya disembunyikan
-  di query (bagian 5).
-- Baris lama yang kemudian ditolak gate **tidak pernah dihapus** otomatis (scraper hanya upsert); pembersih
-  manual: `tools/ops/reconcile_cve_tech.py` dan `POST /api/cve/purge-orphaned` (**hanya admin/superadmin**,
-  termasuk dry run; default dry run). Keduanya **tidak pernah menghapus baris yang punya ticket/ACK**; di
-  `purge-orphaned` baris itu dilaporkan di `protected`/`protected_cve_ids`.
-- Data awal sebelum cutover masuk dari dump Mongo lewat `tools/seed/fase10_cve_migrate.py` (satu kali).
+Important `upsert` behaviour (`cti_core/db/repositories/cve.py`):
+- Key `(cve_id, client_id)`. New row: `INSERT`. Existing row: **every field sent is overwritten** (including
+  `tech`, `summary`, scores); `references` and `affected` are **replaced whole** (not merged).
+- `detected_on` is set by `server_default now()` only on INSERT, so = when the scraper first found it
+  (the basis of MTTD/MTTA/MTTR); updates do not change it.
+- `published_at` (MITRE's publish time) is only included when MITRE provides it, so it does not overwrite a
+  backfilled value with `NULL`.
+- The scraper does **not** check false positives: rows marked FP are still upserted, only hidden
+  in queries (section 5).
+- Old rows that are later rejected by the gate are **never deleted** automatically (the scraper only upserts); manual
+  cleaners: `tools/ops/reconcile_cve_tech.py` and `POST /api/cve/purge-orphaned` (**admin/superadmin only**,
+  including the dry run; dry run by default). Neither **ever deletes rows that have a ticket/ACK**; in
+  `purge-orphaned` those rows are reported in `protected`/`protected_cve_ids`.
+- The initial data before cutover came from the Mongo dump via `tools/seed/fase10_cve_migrate.py` (one time).
 
-## 3. Model data (`cti_core/db/models/cve.py`, `techstack.py`)
+## 3. Data model (`cti_core/db/models/cve.py`, `techstack.py`)
 
-| Tabel | Kunci | Isi / penulis |
+| Table | Key | Contents / writer |
 |---|---|---|
-| `techstack_entries` | `(name, client_id)` unik | `name` teks bebas (**label sekaligus kunci join**), `exposure` (`public`/`internal`/`both`), `hosting_type` (`on_prem`/`cloud`/`saas`), `source`, `added_date`. Ditulis UI/API (`routers/techstack.py`). Tidak ada flag aktif: ada = dipantau. |
-| `cve_tracker` | `(cve_id, client_id)` unik | metadata CVE (ditulis `new_cve`), `tech` (satu nilai, teks), `cisa_kev`/`active_exploitation` (bool mesin), `epss_*`, `cisa_kev_detail`/`exploit_db_hits` (JSONB), `poc_available`, `detected_on`, `registered_date`. |
-| `cve_references`, `cve_affected` | `cve_tracker_id` | anak, diganti utuh tiap upsert. `affected` = **satu string per baris** (mis. `Zabbix: < 7.0`), bukan data terstruktur. Bentuknya `produk: constraint`; constraint = `< X` (`lessThan`), `<= X` (`lessThanOrEqual` atau versi polos), atau teks bebas CNA apa adanya (`>= 3.3.0, < 3.5.4`; dulu ikut diawali `<=` sehingga jadi `<= >= 3.3.0, < 3.5.4`). |
-| `cve_pocs` | `cve_tracker_id` | ditulis `github_poc_monitor` (dan exploit-db lookup). |
-| `cve_threat_actors`, `cve_ttps`, `cve_newsletter_mentions` | `cve_tracker_id` | anak lain (aktor/TTP lewat cross-reference, mention lewat newsletter). |
-| `cve_false_positives` | `(cve_id, client_id)` unik | ditandai analis. **Kunci pakai `cve_id`, bukan id tracker.** |
-| `cve_tickets` | `(cve_id, client_id)` unik | satu ticket per (CVE, client), `ticket_id` unik global (`CTI-2026-09-001`, urut per bulan **WIB**, **lintas client**; penomoran diserialkan `pg_advisory_xact_lock` di jalur yang langsung menyimpan ticket). Dibuat saat acknowledge atau edit manual. Juga **pakai `cve_id`, bukan id tracker**. |
+| `techstack_entries` | `(name, client_id)` unique | `name` free text (**both the label and the join key**), `exposure` (`public`/`internal`/`both`), `hosting_type` (`on_prem`/`cloud`/`saas`), `source`, `added_date`. Written by the UI/API (`routers/techstack.py`). No active flag: present = monitored. |
+| `cve_tracker` | `(cve_id, client_id)` unique | CVE metadata (written by `new_cve`), `tech` (a single text value), `cisa_kev`/`active_exploitation` (machine bools), `epss_*`, `cisa_kev_detail`/`exploit_db_hits` (JSONB), `poc_available`, `detected_on`, `registered_date`. |
+| `cve_references`, `cve_affected` | `cve_tracker_id` | children, replaced whole on every upsert. `affected` = **one string per row** (e.g. `Zabbix: < 7.0`), not structured data. Its shape is `product: constraint`; constraint = `< X` (`lessThan`), `<= X` (`lessThanOrEqual` or a plain version), or the CNA's free text as-is (`>= 3.3.0, < 3.5.4`; it used to be prefixed with `<=` too, giving `<= >= 3.3.0, < 3.5.4`). |
+| `cve_pocs` | `cve_tracker_id` | written by `github_poc_monitor` (and the exploit-db lookup). |
+| `cve_threat_actors`, `cve_ttps`, `cve_newsletter_mentions` | `cve_tracker_id` | other children (actors/TTPs via cross-reference, mentions via the newsletter). |
+| `cve_false_positives` | `(cve_id, client_id)` unique | marked by analysts. **Keyed by `cve_id`, not the tracker id.** |
+| `cve_tickets` | `(cve_id, client_id)` unique | one ticket per (CVE, client), `ticket_id` globally unique (`CTI-2026-09-001`, sequential per **WIB** month, **across clients**; numbering is serialised by `pg_advisory_xact_lock` on the path that saves the ticket directly). Created on acknowledge or manual edit. Also **keyed by `cve_id`, not the tracker id**. |
 
-`CveItem` menyimpan versi terdampak hanya sebagai teks di `cve_affected.affected`; ticket punya
-`affected_version`/`fixed_version` isian analis. **Tidak ada penyimpanan range versi terstruktur**, dan itu
-keputusan yang dipertahankan (user 2026-10-07: versi ikut yang sudah ada).
+`CveItem` stores affected versions only as text in `cve_affected.affected`; tickets have
+analyst-filled `affected_version`/`fixed_version`. **There is no structured version-range storage**, and that is a
+deliberate decision (user 2026-10-07: versions stay as they are).
 
-Hubungan penting:
-- `cve_tracker.tech` ↔ `techstack_entries.name` **dibandingkan sebagai teks huruf kecil** (`get_risk_context`
-  memetakan `name.lower()`), bukan foreign key. Mengganti nama entri memutus join.
-- Hapus `cve_tracker` → anaknya ikut (cascade). Ticket dan FP **tidak** ikut (tidak ber-FK ke tracker):
-  `purge_orphaned` menghapus FP baris yang dibuangnya, bukan ticket-nya, karena baris yang punya ticket
-  tidak pernah dibuang (jalur ini tidak membuat ticket yatim).
-- Hapus entri techstack **tidak** menghapus CVE-nya (router sengaja tidak cascade); baris tracker tetap ada
-  tapi tersembunyi dari tab CVEs sampai `purge-orphaned` dijalankan (bagian 5).
+Important relationships:
+- `cve_tracker.tech` ↔ `techstack_entries.name` are **compared as lower-case text** (`get_risk_context`
+  maps `name.lower()`), not a foreign key. Renaming an entry breaks the join.
+- Deleting a `cve_tracker` row → its children go too (cascade). Tickets and FPs do **not** (they have no FK to the tracker):
+  `purge_orphaned` deletes the FPs of the rows it drops, not their tickets, because rows with a ticket are
+  never dropped (this path does not create orphan tickets).
+- Deleting a techstack entry does **not** delete its CVEs (the router deliberately does not cascade); the tracker rows stay
+  but are hidden from the CVEs tab until `purge-orphaned` is run (section 5).
 
-## 4. Enrichment sesudah ingest
+## 4. Enrichment after ingest
 
-**`cve.enrichment_sweep`** (`apps/worker/.../tasks/periodic.py`), beat tiap 3 jam, queue `maintenance`.
-Tiga langkah, masing-masing try/except sendiri (gagal satu tidak menghentikan yang lain), memakai fungsi
-yang sama dengan tombol manual di UI (`cti_api/services/cve_lookup.py`):
-- **CISA KEV**: unduh seluruh katalog, cocokkan dengan semua CVE → `cisa_kev=True`,
+**`cve.enrichment_sweep`** (`apps/worker/.../tasks/periodic.py`), beat every 3 hours, `maintenance` queue.
+Three steps, each in its own try/except (one failing does not stop the others), using
+the same functions as the manual buttons in the UI (`cti_api/services/cve_lookup.py`):
+- **CISA KEV**: download the whole catalog, match it against all CVEs → `cisa_kev=True`,
   `active_exploitation=True`, `cisa_kev_detail`.
-- **Exploit-DB**: scraping situs (tanpa API), batch 5 + jeda 1 detik, **per CVE**, tulis `exploit_db_hits`
-  dan menambah `cve_pocs`.
-- **EPSS** (FIRST.org): batch 100 → `epss_score`, `epss_percentile`, `epss_date`.
+- **Exploit-DB**: site scraping (no API), batches of 5 + a 1-second pause, **per CVE**, writes `exploit_db_hits`
+  and adds `cve_pocs`.
+- **EPSS** (FIRST.org): batches of 100 → `epss_score`, `epss_percentile`, `epss_date`.
 
-Sifat yang perlu diketahui (bukan bug yang saya tulis, apa adanya):
-- Himpunan CVE = `cve_id` yang masih **true positive untuk minimal satu client**: ada satu baris tracker yang
-  TIDAK ditandai FP oleh clientnya sendiri (`list_true_positive_cve_ids()`; FP dinilai per `(cve_id, client_id)`).
-  Dulu hanya FP client `"default"` yang dihitung (diubah di PR #14). Hasilnya ditulis ke **semua baris
-  (lintas client)** untuk `cve_id` itu.
-- **Tidak ada penyaring kesegaran**: tiap 3 jam semuanya dicek ulang. Biayanya naik linear dengan ukuran
-  tracker (Exploit-DB paling berat: ≥1 detik per 5 CVE + HTTP per CVE).
-- Tombol "KEV/EPSS/Exploit-DB" di tab CVEs menjalankan lookup yang sama (tidak di-scope client).
+Properties worth knowing (not bugs I wrote, just how it is):
+- The CVE set = `cve_id`s that are still **true positive for at least one client**: there is a tracker row that is
+  NOT marked FP by its own client (`list_true_positive_cve_ids()`; FP is judged per `(cve_id, client_id)`).
+  It used to count only the `"default"` client's FPs (changed in PR #14). The result is written to **every row
+  (across clients)** for that `cve_id`.
+- **There is no freshness filter**: everything is re-checked every 3 hours. The cost grows linearly with the
+  tracker's size (Exploit-DB is the heaviest: ≥1 second per 5 CVEs + an HTTP call per CVE).
+- The "KEV/EPSS/Exploit-DB" buttons on the CVEs tab run the same lookup (not client-scoped).
 
-**`github_poc_monitor`** (scraper, `CvePocItem` → `cve_pocs`, set `poc_available`): dua strategi
-(broad: repo `cve-<tahun>-*` disaring lewat vendor/produk MITRE terhadap techstack; targeted: tiap CVE
-true-positive). Alert Telegram topik `github_poc` hanya dari strategi broad.
+**`github_poc_monitor`** (scraper, `CvePocItem` → `cve_pocs`, sets `poc_available`): two strategies
+(broad: `cve-<year>-*` repos filtered through MITRE vendor/product against the techstack; targeted: each
+true-positive CVE). The Telegram alert on the `github_poc` topic comes only from the broad strategy.
 
-Terkait: `trending_cve` (scraper) mengumpulkan mention CVE dari tweet ke `cve_mentions` (bukan `cve_tracker`).
+Related: `trending_cve` (scraper) collects CVE mentions from tweets into `cve_mentions` (not `cve_tracker`).
 
-## 5. Scope tab CVEs, statistik, dashboard, export
+## 5. CVEs tab scope, statistics, dashboard, export
 
-`routers/cve.py`. **"Hanya CVE untuk tech di-monitor" sebenarnya sudah begitu**, lewat dua lapis:
-1. Baris `cve_tracker` hanya dibuat untuk (client, tech) yang cocok saat ingest.
-2. Query list/stats/dashboard memakai `effective_tech = tech (param) or nama semua techstack client`
-   (`_active_tech_names`). Sejak irisan 5 (#19) "semua techstack" = entri **aktif** (`techstack_entries.active`;
-   nonaktif = disembunyikan, barisnya tidak dihapus). **Client TANPA entri sama sekali: `effective_tech = None` =
-   tanpa filter tech** (semua baris tampil, perilaku lama). **Client yang punya entri tapi semuanya nonaktif:
-   `[]` = tab kosong** (bukan tanpa filter; kalau tidak, "disembunyikan" berbalik arti). `purge_orphaned` memakai
-   SEMUA nama (aktif + nonaktif): yang disembunyikan bukan yatim.
+`routers/cve.py`. **"Only CVEs for monitored techs" is in fact already the case**, through two layers:
+1. `cve_tracker` rows are only created for (client, tech) pairs that matched at ingest.
+2. The list/stats/dashboard queries use `effective_tech = tech (param) or the names of all of the client's techstack`
+   (`_active_tech_names`). Since slice 5 (#19) "all techstack" = **active** entries (`techstack_entries.active`;
+   inactive = hidden, the rows are not deleted). **A client with NO entries at all: `effective_tech = None` =
+   no tech filter** (all rows shown, the old behaviour). **A client that has entries but all of them inactive:
+   `[]` = an empty tab** (not "no filter"; otherwise "hidden" would mean the opposite). `purge_orphaned` uses
+   ALL names (active + inactive): hidden rows are not orphans.
 
-Filter lain: `search` (cve_id/summary/tech, ILIKE), `severity`, rentang tanggal (`date_basis`: `published` = default,
-atau `detected` = hari kalender WIB saat CVE pertama terdeteksi), `ack_filter`
-(`acked`/`unacked` lewat `cve_tickets.acknowledged_by`), FP disembunyikan kecuali `include_fp`. Urutan
-`published`/`tech`/`severity`/`epss`. Serialisasi (`_serialize`) menambah `adjusted_risk_score` =
-`cve_score × EXPOSURE_MULTIPLIER × HOSTING_MULTIPLIER` (dari `techstack_entries` lewat nama huruf kecil), jumlah dan daftar
-artikel yang menyebut CVE di judul (`get_article_mentions`: ILIKE hanya penyaring kasar, lalu cocok persis dengan batas
-angka, jadi `CVE-2026-1234` bukan `CVE-2026-12345`), dan status FP.
+Other filters: `search` (cve_id/summary/tech, ILIKE), `severity`, date range (`date_basis`: `published` = default,
+or `detected` = the WIB calendar day on which the CVE was first detected), `ack_filter`
+(`acked`/`unacked` via `cve_tickets.acknowledged_by`), FPs hidden unless `include_fp`. Sorting:
+`published`/`tech`/`severity`/`epss`. Serialisation (`_serialize`) adds `adjusted_risk_score` =
+`cve_score × EXPOSURE_MULTIPLIER × HOSTING_MULTIPLIER` (from `techstack_entries` via the lower-case name), the count and list
+of articles that mention the CVE in their title (`get_article_mentions`: ILIKE is only a rough filter, followed by an exact match with a number
+boundary, so `CVE-2026-1234` is not `CVE-2026-12345`), and the FP status.
 - `GET /stats`, `GET /dashboard?year=` (MTTD/MTTA/MTTR, `services/cve_dashboard.py`), `GET /export` (Excel
-  dari template `CVE_Tracker_template.xlsx`, `services/cve_export.py`) memakai **scope yang sama** (client,
-  techstack aktif, tanpa FP) sehingga angkanya konsisten dengan tab CVEs. (Koreksi: sebelum irisan 5 `/export`
-  TIDAK menyaring techstack sama sekali, hanya `tech` dari query; sekarang `tech or entri aktif`, jadi baris
-  yatim dan baris entri nonaktif tidak ikut export.)
-- `GET /stats` punya bucket `unrated` (skor CVSS 0/NULL: CNA tidak mengisi CVSS) supaya critical + high + medium +
-  low + unrated = total. `date_basis` juga ada di `/stats` dan `/export`. Default API: `published` untuk list/stats,
-  `detected` untuk export (laporan bulanan); UI mengirim dasar yang sama ke ketiganya (default Published).
-- `GET /tech-list`: tech distinct di tracker client yang BISA tampil di tab CVEs (untuk dropdown filter): entri
-  aktif saja. Baris yatim (entri techstack-nya sudah dihapus) dan baris entri nonaktif tidak ditawarkan; client
-  tanpa entri sama sekali = tanpa filter (semua tech di tracker), sama dengan tab.
-- `GET /tech-list`: tech distinct yang ada di tracker client (untuk dropdown filter).
-- **`GET /freshness`** ("diupdate per kapan", `services/cve_check.py`): kapan tracker terakhir dicek, per jalur yang
-  sedang mengisinya. Jalur = scraper `new_cve` (waktu dari `scraper_runs`) atau mirror CVE List V5 (`polled_at` di
-  `job_state` `cve_mirror.state`) bila promosi `live`; keduanya saat `KEEP_LEGACY_NEW_CVE` (aturannya sama dengan
-  `cti_scraper.supersede`, dikunci test). `last_checked_at` = run **sukses** terakhir (`ok`/`empty`/`partial`);
-  percobaan terakhir yang gagal (`rate_limited`, dst.) dilaporkan terpisah (`last_run_status`) supaya tidak tampak
-  seperti data baru saja diperbarui. Run `running` lebih tua dari 30 menit dianggap nyangkut (worker mati), bukan
-  sedang berjalan. Juga `newest_detected_at` dan, bila `new_since` (ISO) diberikan, `new_since` = jumlah CVE baru
-  tercatat (`detected_on`) sejak itu, di lingkup yang sama dengan tab CVEs (client aktif, tech dimonitor, tanpa FP).
-- **`POST /check-new`** (tombol cek manual; **admin**, audit `check_new_cves`): mengirim tugas cek rutin ke jalur
-  yang aktif: `scrape.run(new_cve, trigger=manual)` ke queue scraper atau `cve.mirror_sync` ke `maintenance`
-  (API hanya mengirim lewat nama, pola `services/monitor.py`). Ditolak **409** bila run masih berjalan atau scraper
-  dimatikan di control plane, **429** selama cooldown 120 dtk (`Retry-After` = sisa waktu; penolakan 409 tidak
-  memakai cooldown), **503** bila broker mati (cooldown dilepas). Catatan: cek `new_cve` memproses **semua client**
-  sekaligus (satu run global); yang per client hanya hitungan "CVE baru". Ini BUKAN "Populate now" (ROADMAP #3,
-  backfill riwayat): hanya menjalankan cek rutin sekarang juga.
-- `GET /prioritize`: skor prioritas (`services/cve_priority.py`): CVSS 30%, KEV 20%, exploited 20%, PoC
-  10%, `in_tech_stack` 20% → label dan `patch_urgency`. Kalau satu CVE punya baris di beberapa client, baris client
-  pemanggil yang dipakai (baris client lain hanya cadangan saat CVE belum di-track client itu).
+  from the `CVE_Tracker_template.xlsx` template, `services/cve_export.py`) use **the same scope** (client,
+  active techstack, no FPs), so their numbers are consistent with the CVEs tab. (Correction: before slice 5 `/export`
+  did NOT filter by techstack at all, only by the `tech` query param; now it is `tech or active entries`, so orphan
+  rows and rows of inactive entries are not exported.)
+- `GET /stats` has an `unrated` bucket (CVSS score 0/NULL: the CNA did not fill in CVSS) so that critical + high + medium +
+  low + unrated = total. `date_basis` is also on `/stats` and `/export`. API defaults: `published` for list/stats,
+  `detected` for export (the monthly report); the UI sends the same basis to all three (default Published).
+- `GET /tech-list`: the distinct techs in the client's tracker that CAN show up on the CVEs tab (for the filter dropdown): active
+  entries only. Orphan rows (their techstack entry was deleted) and rows of inactive entries are not offered; a client
+  with no entries at all = no filter (every tech in the tracker), same as the tab.
+- **`GET /freshness`** ("updated as of when", `services/cve_check.py`): when the tracker was last checked, per the path
+  currently filling it. Path = the `new_cve` scraper (time from `scraper_runs`) or the CVE List V5 mirror (`polled_at` in
+  `job_state` `cve_mirror.state`) when promotion is `live`; both when `KEEP_LEGACY_NEW_CVE` (the same rule as
+  `cti_scraper.supersede`, locked by a test). `last_checked_at` = the last **successful** run (`ok`/`empty`/`partial`);
+  a failed last attempt (`rate_limited`, etc.) is reported separately (`last_run_status`) so it does not look
+  like the data was just refreshed. A `running` run older than 30 minutes is treated as stuck (worker dead), not
+  in progress. Also `newest_detected_at` and, when `new_since` (ISO) is given, `new_since` = the number of new CVEs
+  recorded (`detected_on`) since then, in the same scope as the CVEs tab (active client, monitored techs, no FPs).
+- **`POST /check-new`** (the manual check button; **admin**, audit `check_new_cves`): sends the routine check task to
+  the active path: `scrape.run(new_cve, trigger=manual)` to the scraper queue or `cve.mirror_sync` to `maintenance`
+  (the API only sends by name, the `services/monitor.py` pattern). Rejected with **409** while a run is still in progress or the scraper
+  is disabled in the control plane, **429** during the 120 s cooldown (`Retry-After` = the time left; a 409 rejection does not
+  use the cooldown), **503** when the broker is down (the cooldown is released). Note: the `new_cve` check processes **all clients**
+  at once (one global run); only the "new CVEs" count is per client. This is NOT "Populate now" (ROADMAP #3,
+  history backfill): it only runs the routine check right now.
+- `GET /prioritize`: priority score (`services/cve_priority.py`): CVSS 30%, KEV 20%, exploited 20%, PoC
+  10%, `in_tech_stack` 20% → a label and `patch_urgency`. If a CVE has rows for several clients, the calling
+  client's row is used (other clients' rows are only a fallback when the CVE is not yet tracked by that client).
 - Multi-tenant: `X-Client-ID` → `effective_client_id`.
 
-## 6. Ticket, acknowledge, false positive
+## 6. Tickets, acknowledge, false positive
 
-- **Acknowledge** (`POST /{cve_id}/acknowledge`, `bulk-acknowledge` maks 100): tanpa nama analis di body;
-  `acknowledged_by` = **username yang login** (sama dengan FP `marked_by` dan audit log). Dulu `analyst_name` di
-  body wajib dan disimpan apa adanya (warisan UI lama: kata sandi bersama + nama ketikan), jadi siapa pun yang
-  login bisa mengatasnamakan analis lain; klien lama yang masih mengirimnya tetap diterima, field-nya diabaikan.
-  Membuat/menyentuh `cve_tickets` (isi `acknowledged_by`, `acknowledge_time`, `ticket_id` bila belum ada).
+- **Acknowledge** (`POST /{cve_id}/acknowledge`, `bulk-acknowledge` max 100): no analyst name in the body;
+  `acknowledged_by` = **the logged-in username** (same as FP `marked_by` and the audit log). `analyst_name` in the
+  body used to be mandatory and stored as-is (a legacy of the old UI: a shared password + a typed name), so anyone
+  logged in could act in another analyst's name; old clients that still send it are accepted, the field is ignored.
+  Creates/touches `cve_tickets` (sets `acknowledged_by`, `acknowledge_time`, `ticket_id` if not set yet).
 - **Ticket** (`PUT /{cve_id}/ticket`): `affected_asset`/`affected_version`/`fixed_version`, `asset_owner`,
-  `owner_email`/`owner_team`, `active_exploitation` (isian analis, beda dari bool mesin),
+  `owner_email`/`owner_team`, `active_exploitation` (analyst input, distinct from the machine bool),
   `remediation_status`/`remediation_date_plan`/`actual_remediation_date`, `escalation_required`, `comments`,
-  `risk_acceptance`, `closure_date`. Nilai status "soft enum" **tanpa validasi** (ROADMAP #18).
-- **False positive** (`POST/DELETE /{cve_id}/false-positive`, `bulk-false-positive` maks 100): per
-  `(cve_id, client_id)`, dicatat di audit log. Baris tracker hanya dianggap FP kalau **client pemilik barisnya**
-  yang menandainya (`is_false_positive_row`); penanda client lain, termasuk client yang tidak men-track CVE itu,
-  tidak berlaku. Aturan ini dipakai di semua tempat yang tidak ber-scope satu client: enrichment dan newsletter
-  (`list_true_positive_cve_ids`), digest `recap`, tabel CVE exposure di `exec_dashboard`, `crossref`, dan daftar CVE
-  untuk monitor PoC GitHub (`reference_data`). CVE baru hilang dari digest itu bila **semua** barisnya di-FP oleh
-  pemiliknya masing-masing. Dulu mereka memakai himpunan FP dari client mana pun, jadi satu client yang menandai FP
-  menyembunyikan CVE itu dari client lain.
-- **Tulis hanya untuk CVE yang ada di tracker client pemanggil**: `POST /{cve_id}/false-positive`,
-  `bulk-false-positive`, `PUT /{cve_id}/ticket`, `POST /{cve_id}/acknowledge`, dan `bulk-acknowledge` membalas **404**
-  (`CVE not tracked by this client: ...`) kalau CVE-nya tidak punya baris `cve_tracker` untuk client aktif; satu id
-  tak dikenal menggagalkan seluruh daftar bulk dan tidak ada yang ditulis. Pengecualian untuk ticket dan ack: CVE
-  yang SUDAH punya ticket (mis. yatim sesudah purge) tetap boleh diubah. `DELETE /{cve_id}/false-positive`
-  (membersihkan penanda lama) dan `GET /{cve_id}/ticket` (`{}`) tidak diperiksa. Pemeriksaannya ada di router
-  (`_require_tracked`), bukan di repo, jadi alat dan tes yang memanggil repo langsung tidak terpengaruh.
-- Aksi tulis yang dibaca (false-positive, ticket, bulk-acknowledge, purge) memanggil
-  `AsyncAuditLogRepo.write` lalu `commit`.
-- **`cve_id` di request dinormalisasi dan divalidasi** (`schemas/cve.py::CveId`): path `/{cve_id}/...` (FP, ticket,
-  acknowledge, exploit-lookup) dan `cve_ids` di body `bulk-false-positive`, `bulk-acknowledge`, `draft-email`.
-  Huruf besar, spasi pinggir dibuang, format `CVE-YYYY-NNNN` (4-11 digit ASCII); selain itu **422** dan tidak ada
-  yang ditulis (satu id salah menggagalkan seluruh daftar bulk). Pencocokan `cve_id` di DB itu persis, jadi tanpa
-  ini `cve-2026-1234` jadi baris FP/ticket tersendiri. Id kembar di daftar bulk dihitung sekali.
-  **Belum ada pengecekan keberadaan**: FP/ticket masih bisa dibuat untuk CVE yang tidak di-track client itu
-  (keputusan produk, lihat catatan di PR).
-- **Ticketing view** = `GET /tickets` (ticket + ringkasan CVE: severity, skor, tech, `detected_on`, `false_positive`).
-  Ticket CVE FP disembunyikan kecuali `include_fp=true` (UI mewajibkan Acknowledge sebelum Mark FP, jadi tiap CVE FP
-  punya ticket).
-- **Draft email** (`POST /draft-email`): 3 panggilan LLM + template `cve_notification_email.html`, membuat
-  draft lewat Microsoft Graph. **Manual**, dipicu analis. Hanya baris tracker milik client aktif (`X-Client-ID`) yang
-  dipakai. Tracking ID = nomor ticket yang sudah ada untuk CVE-nya (dipisah koma); nomor "intipan" berikutnya (tidak
-  disimpan) hanya dipakai kalau belum ada ticket sama sekali.
+  `risk_acceptance`, `closure_date`. Status values are a "soft enum" **without validation** (ROADMAP #18).
+- **False positive** (`POST/DELETE /{cve_id}/false-positive`, `bulk-false-positive` max 100): per
+  `(cve_id, client_id)`, recorded in the audit log. A tracker row is only treated as FP if **the client that owns the row**
+  marked it (`is_false_positive_row`); marks by other clients, including clients that do not track that CVE,
+  do not count. This rule is used everywhere that is not scoped to a single client: enrichment and the newsletter
+  (`list_true_positive_cve_ids`), the `recap` digest, the CVE exposure table in `exec_dashboard`, `crossref`, and the CVE list
+  for the GitHub PoC monitor (`reference_data`). A CVE only disappears from those once **every** one of its rows has been FP'd by
+  its own owner. They used to use the FP set of any client, so one client marking an FP
+  hid that CVE from the other clients.
+- **Writes only for CVEs in the calling client's tracker**: `POST /{cve_id}/false-positive`,
+  `bulk-false-positive`, `PUT /{cve_id}/ticket`, `POST /{cve_id}/acknowledge`, and `bulk-acknowledge` answer **404**
+  (`CVE not tracked by this client: ...`) if the CVE has no `cve_tracker` row for the active client; one unknown id
+  fails the whole bulk list and nothing is written. Exception for tickets and acks: a CVE
+  that ALREADY has a ticket (e.g. orphaned after a purge) can still be changed. `DELETE /{cve_id}/false-positive`
+  (clearing an old mark) and `GET /{cve_id}/ticket` (`{}`) are not checked. The check lives in the router
+  (`_require_tracked`), not in the repo, so tools and tests that call the repo directly are unaffected.
+- Write actions that are read back (false-positive, ticket, bulk-acknowledge, purge) call
+  `AsyncAuditLogRepo.write` then `commit`.
+- **The `cve_id` in requests is normalised and validated** (`schemas/cve.py::CveId`): the `/{cve_id}/...` path (FP, ticket,
+  acknowledge, exploit-lookup) and `cve_ids` in the body of `bulk-false-positive`, `bulk-acknowledge`, `draft-email`.
+  Upper case, surrounding spaces stripped, format `CVE-YYYY-NNNN` (4-11 ASCII digits); anything else is **422** and nothing
+  is written (one bad id fails the whole bulk list). `cve_id` matching in the DB is exact, so without
+  this `cve-2026-1234` would become its own FP/ticket row. Duplicate ids in a bulk list are counted once.
+  **No existence check yet**: FPs/tickets can still be created for a CVE that client does not track
+  (a product decision, see the note in the PR).
+- **Ticketing view** = `GET /tickets` (ticket + CVE summary: severity, score, tech, `detected_on`, `false_positive`).
+  Tickets of FP CVEs are hidden unless `include_fp=true` (the UI requires Acknowledge before Mark FP, so every FP CVE
+  has a ticket).
+- **Draft email** (`POST /draft-email`): 3 LLM calls + the `cve_notification_email.html` template, creating a
+  draft via Microsoft Graph. **Manual**, triggered by an analyst. Only tracker rows of the active client (`X-Client-ID`) are
+  used. Tracking ID = the existing ticket numbers for the CVE (comma-separated); the next "peek" number (not
+  saved) is only used when there is no ticket at all.
 
-## 7. Notifikasi: apa yang ADA
+## 7. Notifications: what EXISTS
 
-**CVE baru di `cve_tracker` -> ringkasan Telegram (baru 2026-10-07, di branch `nameless/roadmap-runners`, belum
-di `main`).** Sebelumnya **tidak ada** notifikasi otomatis per CVE baru: `_cve_sink` hanya upsert, dan
-`legacy_label="NEW CVE"` cuma label kompatibilitas health. (Koreksi atas asumsi lisan sebelumnya.) Sekarang:
-- `_cve_sink` memakai `CveTrackerRepo.upsert_with_status`; kalau baris **dibuat** (INSERT, bukan update) dicatat
-  `(cve_id, client_id)` di `Session.info["cve_new_rows"]`.
-- `Runner.execute()` memanggil `sinks.finish_run(session)` **sesudah** run dicatat selesai ->
-  `cti_scraper.cve_alert.notify_new_cves`: baca ulang baris itu dari DB, saring, kirim **satu pesan per client
-  per run** ke topik Telegram `cve_new` (`TELEGRAM__THREAD_IDS`).
-- Penyaring: hanya `published` dalam **3 hari terakhir** (tech baru/backfill/DB baru tidak membanjiri channel;
-  tanpa tanggal publish = tidak dikirim), bukan false positive client itu. "Tech di-monitor" tidak perlu
-  penyaring sendiri: baris tracker memang hanya dibuat untuk (client, tech) di `techstack_entries`.
-- Format: judul + nama client + jumlah; maksimal 10 CVE (severity terparah dulu), sisanya "dan N lainnya";
-  selalu < 4096 karakter (baris dikurangi sampai muat); semua teks luar di-`html.escape`.
-- **Kegagalan kirim tidak menggagalkan run dan tidak dicoba ulang** (`cve_new_alert_failed` di log): karena sink
-  sudah commit, run berikutnya melihat baris itu sebagai update. Topik `cve_new` belum ada di `.env` prod =
-  alert tidak terkirim, ingest tetap jalan.
-- **Deploy**: tambahkan `"cve_new": <thread id>` ke `TELEGRAM__THREAD_IDS` di `.env` host (nilai `0` = chat
-  utama tanpa thread). `.env.example` dan `.env.prod.template` sudah memuatnya.
-- Kalau pipeline diganti mirror -> promosi (#19), titik panggilnya sama: "baris `cve_tracker` baru dibuat".
-  Sudah begitu di kode (irisan 4, `CVE_MIRROR__PROMOTE=live`; saat `live` scraper `new_cve` ditangguhkan, irisan 7,
-  `docs/CVE_CATALOG_CUTOVER.md`): `cve_promotion` mengisi
-  `Session.info["cve_new_rows"]` dan tugas `cve.mirror_sync` memanggil `finish_run` sesudah commit. Default
-  `off`: alur di atas tidak berubah.
+**New CVEs in `cve_tracker` -> a Telegram summary (new on 2026-10-07, on the `nameless/roadmap-runners` branch, not yet
+on `main`).** Before that there was **no** automatic notification per new CVE: `_cve_sink` only upserted, and
+`legacy_label="NEW CVE"` was just a health compatibility label. (A correction to an earlier verbal assumption.) Now:
+- `_cve_sink` uses `CveTrackerRepo.upsert_with_status`; when a row is **created** (INSERT, not update) it records
+  `(cve_id, client_id)` in `Session.info["cve_new_rows"]`.
+- `Runner.execute()` calls `sinks.finish_run(session)` **after** the run is recorded as finished ->
+  `cti_scraper.cve_alert.notify_new_cves`: re-reads those rows from the DB, filters them, sends **one message per client
+  per run** to the Telegram `cve_new` topic (`TELEGRAM__THREAD_IDS`).
+- Filter: only `published` within the **last 3 days** (a new tech/backfill/new DB does not flood the channel;
+  no publish date = not sent), and not a false positive of that client. "Monitored tech" needs no
+  filter of its own: tracker rows are only created for (client, tech) pairs in `techstack_entries`.
+- Format: title + client name + count; at most 10 CVEs (most severe first), the rest as "and N more";
+  always < 4096 characters (rows are dropped until it fits); all external text is `html.escape`d.
+- **A send failure does not fail the run and is not retried** (`cve_new_alert_failed` in the log): because the sink
+  has already committed, the next run sees those rows as updates. If the `cve_new` topic is not in the prod `.env` yet =
+  the alert is not sent, ingest keeps running.
+- **Deploy**: add `"cve_new": <thread id>` to `TELEGRAM__THREAD_IDS` in the host `.env` (value `0` = the main
+  chat without a thread). `.env.example` and `.env.prod.template` already contain it.
+- If the pipeline is replaced by mirror -> promotion (#19), the call point is the same: "a new `cve_tracker` row was created".
+  That is already the case in the code (slice 4, `CVE_MIRROR__PROMOTE=live`; when `live` the `new_cve` scraper is suspended, slice 7,
+  `docs/CVE_CATALOG_CUTOVER.md`): `cve_promotion` fills
+  `Session.info["cve_new_rows"]` and the `cve.mirror_sync` task calls `finish_run` after commit. Default
+  `off`: the flow above is unchanged.
 
-Yang lain terkait CVE (tidak berubah):
+Other CVE-related items (unchanged):
 
-| Apa | Pemicu | Tujuan | Memakai techstack? |
+| What | Trigger | Destination | Uses the techstack? |
 |---|---|---|---|
-| Alert artikel (`cti_enrich` routing) | tiap artikel di-enrich; `related_tech_status` (judul menyebut tech) atau `related_tech_cve_status` (vendor CVE di judul cocok) | topik `tech_stack` | ya, **daftar nama distinct lintas client** (`score()`) |
-| Top CVE mingguan (`report.weekly_top_cve`, Minggu 07:01) | beat | `tech_stack` | ya (`techstack_names`, **lintas client**) + `applicable_to_stack` |
-| Trending CVE (`report.trending_cve`, jam tertentu menit 5) | beat | `tech_stack` bila cocok, jika tidak `tech_stack_unrelated` + `vendor_report` | ya, sama |
-| Alert PoC GitHub (`github_poc_monitor`) | repo baru <= 3 hari dari pencarian broad | `github_poc` | ya (lewat vendor/produk MITRE) |
-| Draft email CVE | analis menekan tombol | Graph (draft) | tidak |
+| Article alert (`cti_enrich` routing) | every enriched article; `related_tech_status` (the title names a tech) or `related_tech_cve_status` (a CVE vendor in the title matches) | `tech_stack` topic | yes, **a distinct list of names across clients** (`score()`) |
+| Weekly top CVE (`report.weekly_top_cve`, Sunday 07:01) | beat | `tech_stack` | yes (`techstack_names`, **across clients**) + `applicable_to_stack` |
+| Trending CVE (`report.trending_cve`, certain hours at minute 5) | beat | `tech_stack` when it matches, otherwise `tech_stack_unrelated` + `vendor_report` | yes, same |
+| GitHub PoC alert (`github_poc_monitor`) | a new repo <= 3 days old from the broad search | `github_poc` | yes (via MITRE vendor/product) |
+| CVE draft email | an analyst presses the button | Graph (draft) | no |
 
-Digest dan alert artikel/laporan memakai nama techstack **gabungan semua client**, tidak per client; ringkasan
-CVE baru di atas adalah satu-satunya yang per client.
+The digests and the article/report alerts use the techstack names **combined across all clients**, not per client; the
+new-CVE summary above is the only per-client one.
 
-Newsletter (`services/newsletter._enrich_articles`, global, bukan per client) juga mengkorelasikan artikel dengan
-tracker: artikel yang judul/badannya menyebut CVE yang masih **true positive untuk minimal satu client**
-(`list_true_positive_cve_ids()`; FP dinilai per baris client, bukan hanya `"default"`, diubah di PR #14) diberi
-`cve_mentions` dan `possibly_exploited_wild`. Mention-nya ditulis ke `cve_newsletter_mentions` pada **satu** baris
-tracker (client mana pun, urutan DB), dan tabel itu belum dibaca siapa pun.
+The newsletter (`services/newsletter._enrich_articles`, global, not per client) also correlates articles with the
+tracker: articles whose title/body mention a CVE that is still **true positive for at least one client**
+(`list_true_positive_cve_ids()`; FP judged per client row, not just `"default"`, changed in PR #14) get
+`cve_mentions` and `possibly_exploited_wild`. The mention is written to `cve_newsletter_mentions` on **one**
+tracker row (any client, DB order), and that table is not read by anything yet.
 
-## 8. Peta UI (`apps/web/src/app/(app)/cve/page.tsx`)
+## 8. UI map (`apps/web/src/app/(app)/cve/page.tsx`)
 
-Dua view: **CVEs** dan **Package Vulnerabilities** (`pkgvuln/`, tidak dipelajari di sini). Di dalam CVEs ada
-empat sub-view: **CVEs** (`cve-core-view`: filter bar, baris "Updated ... + Check for new CVEs" (`cve-check-new`:
-waktu cek terakhir, tombol admin yang polling sampai cek selesai lalu melaporkan jumlah CVE baru), toolbar lookup KEV/EPSS/Exploit-DB + Export Excel,
-list, `cve-detail-modal` dengan tab Ticket), **Dashboard** (`cve-dashboard-view`), **Ticketing**
-(`cve-ticketing-view`), **Tech Stack** (`techstack-panel`: tambah, hapus, ubah exposure/hosting; input teks
-"Tech name..." tanpa validasi). Browser tidak memanggil API langsung; lewat `/api/proxy/[...path]`.
+Two views: **CVEs** and **Package Vulnerabilities** (`pkgvuln/`, not studied here). Inside CVEs there are
+four sub-views: **CVEs** (`cve-core-view`: the filter bar, an "Updated ... + Check for new CVEs" row (`cve-check-new`:
+the last check time, an admin button that polls until the check finishes and then reports the number of new CVEs), the KEV/EPSS/Exploit-DB lookup toolbar + Excel Export,
+the list, `cve-detail-modal` with the Ticket tab), **Dashboard** (`cve-dashboard-view`), **Ticketing**
+(`cve-ticketing-view`), **Tech Stack** (`techstack-panel`: add, delete, change exposure/hosting; a text input
+"Tech name..." without validation). The browser does not call the API directly; it goes through `/api/proxy/[...path]`.
 
-## 9. Pencocok nama tech (tujuh, bukan enam)
+## 9. Tech name matchers (seven, not six)
 
-`docs/CVE_TECH_MATCHING.md` 2.4 menyebut enam. Sebenarnya ada **tujuh**; yang ketujuh tidak tercatat dan
-**tidak disentuh fase 1**:
+`docs/CVE_TECH_MATCHING.md` 2.4 lists six. There are actually **seven**; the seventh was not recorded and
+**is not touched by phase 1**:
 
-| # | Tempat | Aturan di `main` |
+| # | Where | Rule on `main` |
 |---|---|---|
-| 1 | `new_cve._nvd_candidates` | NVD `keywordSearch` (pencari kandidat, bukan pencocok) |
-| 2 | `new_cve._tenable_candidates` | kata per kata (`_mentions`) |
-| 3 | `new_cve` gate (`relevant_techs`) | kata utuh + angka versi menempel |
-| 4 | `score.py` `related_tech_status` | `\b{tech}\b` **tanpa `re.escape`** |
-| 5 | `score.py` `check_tech_stack` | substring tanpa batas kata |
-| 6 | `cve_priority.in_tech_stack` | substring dua arah |
-| **7** | **`reports/cve_record.py::applicable_to_stack`** | **substring `re.escape(tech)` terhadap vendor, tanpa batas kata** (label "Might Applicable to Organization!") |
+| 1 | `new_cve._nvd_candidates` | NVD `keywordSearch` (a candidate finder, not a matcher) |
+| 2 | `new_cve._tenable_candidates` | word by word (`_mentions`) |
+| 3 | `new_cve` gate (`relevant_techs`) | whole word + attached version number |
+| 4 | `score.py` `related_tech_status` | `\b{tech}\b` **without `re.escape`** |
+| 5 | `score.py` `check_tech_stack` | substring without word boundaries |
+| 6 | `cve_priority.in_tech_stack` | substring in both directions |
+| **7** | **`reports/cve_record.py::applicable_to_stack`** | **`re.escape(tech)` substring against the vendor, without word boundaries** (label "Might Applicable to Organization!") |
 
-Branch `nameless/roadmap-runners` (belum di `main`) menyatukan 2-6 ke `cti_core.tech_match`; **#7 pengecualian
-yang disengaja (keputusan user 2026-10-08)**: `test_cve_record.py` mengunci `c++` ~ `c++ inc`, yang bertentangan
-dengan aturan "istilah < 2 karakter tak pernah cocok"; laporan Top CVE tidak ikut jalur katalog dan perilakunya
-tidak diubah.
+The `nameless/roadmap-runners` branch (not yet on `main`) unifies 2-6 into `cti_core.tech_match`; **#7 is a deliberate
+exception (user decision 2026-10-08)**: `test_cve_record.py` locks `c++` ~ `c++ inc`, which contradicts
+the rule "terms < 2 characters never match"; the Top CVE report does not follow the catalog path and its behaviour
+is not changed.
 
-## 10. Hal yang harus dipertahankan saat mengubah desain (checklist invarian)
+## 10. What must be preserved when changing the design (invariant checklist)
 
-1. `cve_tracker.tech` adalah **teks yang cocok dengan `techstack_entries.name` huruf kecil**; `get_risk_context`,
-   filter `tech`, `purge_orphaned`, dan dashboard bergantung padanya. Kalau katalog menggantikan nama, label
-   tampilan harus tetap jadi `name` (atau join diganti sekaligus di semua tempat itu).
-2. **Ticket dan FP berkunci `(cve_id, client_id)`, tidak ber-FK ke tracker**: aman dari cascade, tapi artinya
-   kalau baris tracker dibuang (retensi) ticketnya yatim. `purge-orphaned` dan `reconcile_cve_tech` sudah
-   melindungi baris yang punya ticket/ACK; promosi ke `cve_tracker` dan jalur pembuang lain harus menjaganya.
-3. Satu baris tracker = **satu tech** per (CVE, client); `upsert` menimpa `tech` tiap run.
-4. **Techstack kosong = tab CVEs tanpa filter tech** (tapi `purge_orphaned` menganggap semua yatim, kecuali yang punya ticket). **Diputuskan
-   irisan 5**: tanpa entri sama sekali tetap tanpa filter (tidak ada perubahan perilaku); ada entri tapi semuanya
-   nonaktif = kosong. Dikonfirmasi user 2026-10-08 (`docs/CVE_CATALOG_DESIGN.md` 9.5).
-5. Enrichment sweep bekerja **lintas client** dan tanpa penyaring kesegaran; skala "selalu di-enrich" untuk
-   banyak tech perlu `*_checked_at` sebagai penyaring.
-6. `detected_on` diisi saat INSERT pertama; dasar KPI dashboard. CVE yang dipromosikan dari mirror harus
-   menetapkan `detected_on` dengan sengaja (waktu ditemukan sistem, bukan tanggal publish) supaya MTTD tetap
-   bermakna.
-7. Notifikasi CVE baru bergantung pada **INSERT baris tracker** (bagian 7): jalur apa pun yang membuat baris
-   (promosi dari mirror) harus lewat `upsert_with_status` + `finish_run`, bukan insert langsung.
-8. Export, `/stats`, dan dashboard harus tetap memakai **scope yang sama** dengan tab CVEs.
-9. **Ack pertama menang**: `acknowledge` (tunggal) dan `bulk_acknowledge` tidak mengubah ticket yang sudah di-ack
-   (nama, `acknowledge_time`, `ticket_id`); ack ulang tetap `200` tanpa efek. `acknowledge_time` adalah dasar MTTA di
-   dashboard. Keduanya mengambil lock penomoran SEBELUM membaca ticket, supaya dua ack bersamaan berurutan (yang
-   kedua melihat ack yang pertama). Dulu ack tunggal menimpa ketiganya.
-10. **FP, ticket, dan ack hanya untuk CVE ter-track**: ketiganya berkunci `(cve_id, client_id)` tanpa FK ke tracker,
-    jadi keberadaan baris tracker diperiksa di router (`_require_tracked`); tanpanya id valid apa pun melahirkan
-    ticket yatim atau penanda FP untuk CVE yang tidak pernah di-track.
+1. `cve_tracker.tech` is **text that matches the lower-cased `techstack_entries.name`**; `get_risk_context`,
+   the `tech` filter, `purge_orphaned`, and the dashboard depend on it. If the catalog replaces names, the display
+   label must still be `name` (or the join must be replaced in all those places at once).
+2. **Tickets and FPs are keyed by `(cve_id, client_id)` with no FK to the tracker**: safe from cascades, but it means
+   that if a tracker row is dropped (retention) its ticket is orphaned. `purge-orphaned` and `reconcile_cve_tech` already
+   protect rows that have a ticket/ACK; promotion into `cve_tracker` and any other dropping path must preserve that.
+3. One tracker row = **one tech** per (CVE, client); `upsert` overwrites `tech` on every run.
+4. **An empty techstack = the CVEs tab without a tech filter** (but `purge_orphaned` treats everything as orphaned, except rows with a ticket). **Decided in
+   slice 5**: no entries at all stays unfiltered (no behaviour change); entries that are all
+   inactive = empty. Confirmed by the user 2026-10-08 (`docs/CVE_CATALOG_DESIGN.md` 9.5).
+5. The enrichment sweep works **across clients** and without a freshness filter; scaling "always enriched" to
+   many techs needs `*_checked_at` as a filter.
+6. `detected_on` is set on the first INSERT; it is the basis of the dashboard KPIs. CVEs promoted from the mirror must
+   set `detected_on` deliberately (the time the system found it, not the publish date) so MTTD stays
+   meaningful.
+7. New-CVE notifications depend on **the INSERT of a tracker row** (section 7): any path that creates rows
+   (promotion from the mirror) must go through `upsert_with_status` + `finish_run`, not a direct insert.
+8. Export, `/stats`, and the dashboard must keep using **the same scope** as the CVEs tab.
+9. **The first ack wins**: `acknowledge` (single) and `bulk_acknowledge` do not change a ticket that is already acked
+   (name, `acknowledge_time`, `ticket_id`); a repeated ack still returns `200` with no effect. `acknowledge_time` is the basis of MTTA on
+   the dashboard. Both take the numbering lock BEFORE reading the ticket, so two simultaneous acks are serialised (the
+   second sees the first ack). The single ack used to overwrite all three.
+10. **FP, ticket, and ack only for tracked CVEs**: all three are keyed by `(cve_id, client_id)` with no FK to the tracker,
+    so the existence of a tracker row is checked in the router (`_require_tracked`); without it any valid id would create an orphan
+    ticket or an FP mark for a CVE that was never tracked.
 
-## 11. Belum diverifikasi (jujur)
+## 11. Not yet verified (honestly)
 
-Tidak dibaca sampai tuntas: `pkgvuln` (view Package Vulnerabilities), isi `cve_export.py`, `cve_email.py`,
-`campaign_analysis`/`crossref` (isinya; satu hal sudah dipastikan lewat grep di `apps`, `packages`, `scrapers`,
-`tools`: **tidak ada kode yang menulis `cve_threat_actors`/`cve_ttps`**, hanya `crossref` yang membacanya, jadi
-cabang TA/TTP-nya tidak punya data kecuali ada penulis di luar repo ini),
-detail UI `cve-detail-modal`/`cve-ticket-tab`, `tools/seed/fase10_cve_migrate.py`, task `scrape.run`
-(pemicu manual `POST /api/scraper/{id}/trigger`). Perilaku `new_cve` di produksi (berapa kandidat per run,
-berapa yang lolos gate) hanya diketahui dari laporan `reconcile_cve_tech` 2026-10-07 di
+Not read in full: `pkgvuln` (the Package Vulnerabilities view), the contents of `cve_export.py`, `cve_email.py`,
+`campaign_analysis`/`crossref` (their contents; one thing was confirmed by grepping `apps`, `packages`, `scrapers`,
+`tools`: **no code writes `cve_threat_actors`/`cve_ttps`**, only `crossref` reads them, so
+its TA/TTP branches have no data unless a writer exists outside this repo),
+the UI details of `cve-detail-modal`/`cve-ticket-tab`, `tools/seed/fase10_cve_migrate.py`, the `scrape.run` task
+(the manual trigger `POST /api/scraper/{id}/trigger`). `new_cve`'s behaviour in production (how many candidates per run,
+how many pass the gate) is only known from the 2026-10-07 `reconcile_cve_tech` report in
 `docs/CVE_TECH_MATCHING.md`.

@@ -1,612 +1,612 @@
-# Roadmap pasca-cutover
+# Post-cutover roadmap
 
-Catatan permintaan yang **belum dikerjakan**, dicatat 2026-09-26 (permintaan user, urutan = urutan
-dikerjakan). Bukan janji jadwal: tiap item tinggal butuh input/keputusan yang ditulis di bawahnya.
-Yang **sudah** berjalan dan bukan roadmap ada di `docs/PROGRESS.md`; gate cutover di
+A record of requests that have **not been done yet**, written on 2026-09-26 (user requests, order = the order of
+work). Not a schedule commitment: each item only needs the input/decision written under it.
+What is **already** running and not roadmap is in `docs/PROGRESS.md`; the cutover gate is in
 `docs/CUTOVER_RUNBOOK.md`.
 
-Isi tiap item: **apa** yang diminta, **keadaan sekarang** (fakta dari repo/staging, bukan tebakan),
-**titik sentuh** (file), **yang dibutuhkan** sebelum mulai, dan **cara membuktikannya selesai**.
+Each item contains: **what** was asked, **the current state** (facts from the repo/staging, not guesses),
+**touch points** (files), **what is needed** before starting, and **how to prove it is done**.
 
-| # | Item | Butuh dari user | Bergantung pada |
+| # | Item | Needs from the user | Depends on |
 |---|---|---|---|
-| 1 | Rebranding nama platform + UI (colorplate, typography, animation) -- **SELESAI 2026-10-02, sisa logo SVG** | aset brand | -- |
-| 2 | Rebranding template `newsletter_email` dan `cve_notification_email` -- **kode selesai 2026-10-02, verifikasi klien email belum** | (aset yang sama dengan #1) | #1 |
-| 3 | (kemungkinan tergantikan #19) Tombol "Populate now" di CVE Tracker (semua / hanya yang baru ditambahkan) | keputusan kecil (lihat item) | -- |
-| 4 | IOC enrichment + reputasi (VirusTotal, AbuseIPDB, urlscan, Shodan/GreyNoise) | API key tiap layanan, kuota | -- |
-| 5 | Feed IOC/CVE keluar (TAXII 2.1 dan/atau CSV/JSON) + API key integrasi | target tooling (Wazuh/Splunk/Fortinet?) | #4 |
-| 6 | IOC lifecycle: first/last seen, sightings, expiry/decay | keputusan umur IOC | #4 |
-| 7 | Relevansi ke aset sendiri: ancaman x techstack, alert actor yang menarget stack kita | data aset yang rapi | -- |
-| 8 | Konektor MISP/OpenCTI (import + export) | instance target | #5 |
-| 9 | Dark web monitoring lewat sumber agregator (breach, leak site ransomware, Telegram) -- bukan crawl onion sendiri | budget, daftar domain/email eksekutif, persetujuan internal | -- |
-| 10 | Case/RFI workflow (assignment, SLA, status, audit) terhubung ke tiket CVE | alur kerja tim | -- |
-| 11 | TLP/PAP konsisten di semua objek + MFA/SSO | kebijakan TLP | #5 |
-| 12 | Perbaikan prompt klasifikasi artikel berbasis audit trail (false accept / false reject) | contoh artikel yang salah diklasifikasi | audit trail `raw_enrichment` (sudah jalan 2026-10-05) |
-| 13 | **CI di `main` merah** (3 job), jadi job Deploy belum pernah jalan (5 run, semua `skipped`) -- **CI hijau di `main` terbukti 2026-10-07 (run #23); Deploy terpicu pertama kali (run #8) tapi `cancelled` setelah 10m25s, penyebab belum diketahui** | -- | -- |
-| 14 | Logo hilang di export Excel CVE Tracker (Pillow belum jadi dependency) -- **kode + test selesai 2026-10-07, smoke build image di CI belum** | -- | -- |
-| 15 | Pakai `published_at` di UI/API/dashboard + samakan format tanggal export | keputusan format kolom Acknowledged | backfill `published_at` di produksi |
-| 16 | Dashboard CVE: SLA per severity (ganti rating ambang tetap) | target SLA ack/remediasi per severity | -- |
-| 17 | Dashboard CVE: panel backlog/aging, KEV/EPSS, produk paling sering terdampak | pilihan panel | -- |
-| 18 | Validasi isian ticket CVE + keputusan model ticket (1 ticket per CVE vs satu ticket banyak CVE) | daftar nilai baku, keputusan model | -- |
-| 19 | **Katalog tech dari mirror CVE + Monitor** (arah baru 2026-10-07, menggantikan rencana alias/fase 2-3; kolom `aliases` dibuang): mirror semua CVE (retensi tahun kalender) -> katalog vendor+produk -> tab All Tech / Monitored Tech -> tab CVEs hanya tech yang di-monitor. **Kode selesai (irisan 1-7) di branch `nameless/roadmap-runners`, PR menutup roadmap ini**; tersisa operasional: pemetaan 34 entri di dev, mode bayangan, cutover (`docs/CVE_CATALOG_CUTOVER.md`); desain `docs/CVE_CATALOG_DESIGN.md` | pemetaan manual + shadow di dev | uji di server dev dulu, baru prod |
+| 1 | Rebranding the platform name + UI (colour palette, typography, animation) -- **DONE 2026-10-02, the SVG logo remains** | brand assets | -- |
+| 2 | Rebranding the `newsletter_email` and `cve_notification_email` templates -- **code done 2026-10-02, email client verification not yet** | (the same assets as #1) | #1 |
+| 3 | (probably superseded by #19) A "Populate now" button in the CVE Tracker (all / only newly added) | a small decision (see the item) | -- |
+| 4 | IOC enrichment + reputation (VirusTotal, AbuseIPDB, urlscan, Shodan/GreyNoise) | an API key per service, quotas | -- |
+| 5 | Outbound IOC/CVE feeds (TAXII 2.1 and/or CSV/JSON) + integration API keys | target tooling (Wazuh/Splunk/Fortinet?) | #4 |
+| 6 | IOC lifecycle: first/last seen, sightings, expiry/decay | an IOC age decision | #4 |
+| 7 | Relevance to our own assets: threats x techstack, alerts for actors targeting our stack | tidy asset data | -- |
+| 8 | MISP/OpenCTI connector (import + export) | a target instance | #5 |
+| 9 | Dark web monitoring through aggregator sources (breaches, ransomware leak sites, Telegram) -- not crawling onions ourselves | budget, a list of executive domains/emails, internal approval | -- |
+| 10 | Case/RFI workflow (assignment, SLA, status, audit) linked to CVE tickets | the team's workflow | -- |
+| 11 | Consistent TLP/PAP on every object + MFA/SSO | a TLP policy | #5 |
+| 12 | Improving the article classification prompt based on the audit trail (false accept / false reject) | examples of misclassified articles | the `raw_enrichment` audit trail (running since 2026-10-05) |
+| 13 | **CI on `main` is red** (3 jobs), so the Deploy job has never run (5 runs, all `skipped`) -- **green CI on `main` proven 2026-10-07 (run #23); Deploy triggered for the first time (run #8) but `cancelled` after 10m25s, cause unknown** | -- | -- |
+| 14 | Logo missing from the CVE Tracker Excel export (Pillow is not yet a dependency) -- **code + test done 2026-10-07, the image smoke build in CI not yet** | -- | -- |
+| 15 | Use `published_at` in the UI/API/dashboard + align the export date formats | a decision on the format of the Acknowledged column | the `published_at` backfill in production |
+| 16 | CVE dashboard: SLA per severity (replacing fixed-threshold ratings) | ack/remediation SLA targets per severity | -- |
+| 17 | CVE dashboard: backlog/aging panels, KEV/EPSS, most frequently affected products | a choice of panels | -- |
+| 18 | CVE ticket field validation + a ticket model decision (1 ticket per CVE vs one ticket for many CVEs) | a list of standard values, the model decision | -- |
+| 19 | **Tech catalog from the CVE mirror + Monitor** (new direction 2026-10-07, replacing the alias/phase 2-3 plan; the `aliases` column is dropped): mirror every CVE (calendar-year retention) -> a vendor+product catalog -> All Tech / Monitored Tech tabs -> the CVEs tab only for monitored techs. **Code done (slices 1-7) on the `nameless/roadmap-runners` branch, the PR closes this roadmap item**; what remains is operational: mapping the 34 entries on dev, shadow mode, cutover (`docs/CVE_CATALOG_CUTOVER.md`); design `docs/CVE_CATALOG_DESIGN.md` | manual mapping + shadow on dev | test on the dev server first, then prod |
 
 ---
 
-## 1. Rebranding nama platform dan UI
+## 1. Rebranding the platform name and UI
 
-> **Status 2026-10-02 -- dikerjakan** (PR #3 dan #4). Nama tampilan **Vareon Intelligence** (satu konstanta
-> `apps/web/src/lib/brand.ts` + setelan `platform_name` di `cti_core.config`); tema light dan dark
-> (`globals.css`, token terpisah untuk severity, kontras dicek AA); font Google Sans Flex; `prefers-reduced-motion`;
-> sidebar, dashboard + peta dunia, semua tab dan dialog utama dicek di staging. Identifier teknis (`cti-platform`,
-> `cti_*`, image) sengaja tetap. **Sisa**: logo SVG (header masih huruf "N" + teks), dan `grep` nama lama di
-> prompt LLM ("Cyber Threat Intelligence" sebagai istilah umum) sengaja dibiarkan.
+> **Status 2026-10-02 -- done** (PRs #3 and #4). Display name **Vareon Intelligence** (one constant
+> `apps/web/src/lib/brand.ts` + the `platform_name` setting in `cti_core.config`); light and dark themes
+> (`globals.css`, separate severity tokens, contrast checked to AA); the Google Sans Flex font; `prefers-reduced-motion`;
+> the sidebar, dashboard + world map, every tab and the main dialogs checked on staging. Technical identifiers (`cti-platform`,
+> `cti_*`, images) deliberately stay. **Remaining**: the SVG logo (the header is still the letter "N" + text), and a `grep` for the old name in
+> LLM prompts ("Cyber Threat Intelligence" as a generic term) is deliberately left alone.
 
-**Diminta**: ganti nama platform dan tampilan UI -- *colorplate*, *typography*, *animation* -- sesuai
-aset yang akan diberikan user.
+**Asked**: change the platform name and the UI look -- *colour palette*, *typography*, *animation* -- according to
+assets the user will provide.
 
-**Keadaan sekarang**
-- Nama "CTI PLATFORM" ditulis langsung di 9 file, bukan dari satu sumber:
-  `apps/web/src/app/layout.tsx` (judul halaman), `apps/web/src/app/login/page.tsx`,
+**Current state**
+- The name "CTI PLATFORM" is written directly in 9 files, not from a single source:
+  `apps/web/src/app/layout.tsx` (page title), `apps/web/src/app/login/page.tsx`,
   `apps/web/src/components/app-header.tsx`, `apps/api/src/cti_api/main.py`,
   `apps/api/src/cti_api/services/stix.py`, `apps/api/src/cti_api/templates/newsletter_email.html`,
   `packages/cti-core/src/cti_core/db/repositories/{attack,mitre}.py`, `tools/codemod/run_migration.py`
-  (yang terakhir alat migrasi -- abaikan). Perlu dicek juga judul pesan Telegram dan header Excel
-  (belum di-grep).
-- Warna: token `oklch(...)` di `apps/web/src/app/globals.css` (`--background`, `--foreground`, `--primary`,
-  `--accent`, `--radius`, ...). Tema yang tampil sekarang gelap dengan aksen biru/cyan.
-- Font: tiga font Google lewat `next/font` di `apps/web/src/app/layout.tsx` -- Rajdhani (isi),
-  Share Tech Mono (judul/angka), IBM Plex Mono (data); dipetakan ke `--font-sans/--font-heading/--font-mono`.
-- Animasi: belum diinventarisasi (langkah pertama item ini).
+  (the last one is a migration tool -- ignore it). Telegram message titles and Excel headers also need checking
+  (not grepped yet).
+- Colours: `oklch(...)` tokens in `apps/web/src/app/globals.css` (`--background`, `--foreground`, `--primary`,
+  `--accent`, `--radius`, ...). The current theme is dark with blue/cyan accents.
+- Fonts: three Google fonts via `next/font` in `apps/web/src/app/layout.tsx` -- Rajdhani (body),
+  Share Tech Mono (headings/numbers), IBM Plex Mono (data); mapped to `--font-sans/--font-heading/--font-mono`.
+- Animation: not inventoried yet (the first step of this item).
 
-**Yang dibutuhkan dari user**: nama final; logo (SVG); palet warna (light dan/atau dark) beserta warna
-severity (kritis/tinggi/sedang/rendah -- semantik, jangan ikut berubah tanpa sengaja); font + lisensinya;
-pedoman animasi (dan sikap terhadap `prefers-reduced-motion`).
+**Needed from the user**: the final name; a logo (SVG); a colour palette (light and/or dark) including the
+severity colours (critical/high/medium/low -- semantic, they must not change by accident); fonts + their licences;
+animation guidelines (and the stance on `prefers-reduced-motion`).
 
-**Usulan desain (untuk diputuskan bersama)**
-- Ganti **nama tampilan** saja (UI, email, Telegram, producer STIX). Identifier teknis (`cti-platform`,
-  image `cti-*`, nama package `cti_*`, env var) **tetap**: mengganti itu = churn besar tanpa nilai bagi
-  pengguna dan memutus tag/volume/rollback yang sudah dilatih.
-- Satu sumber nama (setelan `platform_name` di `cti_core.config` untuk backend; satu konstanta untuk web)
-  supaya rebrand berikutnya satu tempat.
-- Warna severity dipisah dari warna brand di `globals.css`.
+**Design proposal (to decide together)**
+- Change the **display name** only (UI, email, Telegram, STIX producer). Technical identifiers (`cti-platform`,
+  `cti-*` images, `cti_*` package names, env vars) **stay**: changing those = a lot of churn with no value for
+  users, and it breaks the tags/volumes/rollbacks that have already been drilled.
+- One source for the name (a `platform_name` setting in `cti_core.config` for the backend; one constant for the web)
+  so the next rebrand is in one place.
+- Severity colours separated from brand colours in `globals.css`.
 
-**Selesai bila**: semua tab + halaman login + email + pesan Telegram memakai nama/warna/font baru; kontras
-teks-latar memenuhi WCAG AA di tema yang dipakai; screenshot tiap tab dilampirkan; `grep` nama lama = kosong
-(kecuali identifier teknis yang sengaja tetap).
-
----
-
-## 2. Rebranding template email
-
-> **Status 2026-10-02 -- kode selesai, verifikasi belum**: `templates/_base_email.html` (Jinja `extends`) dipakai
-> kedua email; palet brand, hex saja, font stack cadangan, `platform_name` dari setelan. **Belum**: dikirim lewat
-> Graph ke akun uji dan dicek di Outlook desktop/web, Gmail, mobile (kriteria "Selesai bila" di bawah). Catatan:
-> preview newsletter di staging masih gagal dengan `500: Expecting value` dari sisi server (diduga konfigurasi LLM
-> di `.env`), terpisah dari template ini.
-
-**Diminta**: template `newsletter_email` dan `cve_notification_email` mengikuti hasil item 1.
-
-**Keadaan sekarang**
-- File: `apps/api/src/cti_api/templates/newsletter_email.html` (240 baris) dan
-  `apps/api/src/cti_api/templates/cve_notification_email.html` (268 baris).
-- Warna ditulis **inline** dan ganda di kedua file (mis. `#1976d2`, `#0d1b2a`, `#00e5ff`, `#d32f2f`,
-  `#e8ecf0`), tidak memakai token web -- jadi rebrand web tidak otomatis mengubah email.
-- Nama ditulis langsung di header/footer newsletter ("Cyber Threat Intelligence", "CTI Platform").
-- Ada test yang menyentuh pengiriman (`tests/unit/test_mailer.py`); asersi string brand (kalau ada)
-  perlu ikut diperbarui.
-
-**Batasan klien email** (jangan dilanggar saat mengganti gaya):
-- CSS inline; tidak ada web font di banyak klien (Outlook desktop) -> tentukan *font stack* cadangan.
-- Tidak ada `oklch()`/CSS variable -> pakai hex/rgb.
-- Animasi tidak didukung -> item "animation" dari #1 tidak berlaku di email.
-- Warna severity harus tetap terbaca (merah/kuning/hijau) di light dan dark mode klien.
-
-**Usulan**: satu *base layout* Jinja (`{% extends %}`) untuk kedua template, agar rebrand berikutnya cukup di
-satu tempat (sekarang CSS-nya diduplikasi).
-
-**Bergantung pada**: #1 (palet + nama final).
-
-**Selesai bila**: kedua email terkirim lewat Graph ke akun uji dan terlihat benar di Outlook desktop, Outlook
-web, Gmail, dan mobile; tes render lulus.
+**Done when**: every tab + the login page + email + Telegram messages use the new name/colours/fonts; text-background
+contrast meets WCAG AA in the themes used; a screenshot of each tab is attached; a `grep` for the old name = empty
+(except the technical identifiers that deliberately stay).
 
 ---
 
-## 3. Tombol "Populate now" di CVE Tracker
+## 2. Rebranding the email templates
 
-> **Tergantikan oleh #19 (kode selesai 2026-10-08, belum di `main`).** Tech yang di-Monitor (tombol Monitor,
-> "Map to catalog", Resume, atau target baru) langsung terisi riwayatnya dari mirror lewat tugas
-> `cve.promote_entry` (hanya bila `CVE_MIRROR__ENABLED` dan `CVE_MIRROR__PROMOTE` menyala), sehingga tombol ini,
-> jendela 8 hari, backfill 180 hari, dan masalah pacing MITRE di bawah tidak relevan lagi KALAU cutover
-> dilakukan. **Jangan dikerjakan**; bagian di bawah catatan keadaan sebelum cutover.
+> **Status 2026-10-02 -- code done, verification not yet**: `templates/_base_email.html` (Jinja `extends`) is used by
+> both emails; brand palette, hex only, a fallback font stack, `platform_name` from the setting. **Not yet**: sent through
+> Graph to a test account and checked in Outlook desktop/web, Gmail, mobile (the "Done when" criteria below). Note:
+> the newsletter preview on staging still fails with `500: Expecting value` on the server side (suspected LLM configuration
+> in `.env`), separate from this template.
 
-**Diminta**: tombol **Populate now** untuk mengisi CVE, dengan pilihan **populate all** atau **hanya
-techstack/package yang baru ditambahkan**. Menggantikan teks petunjuk lama di tab kosong.
+**Asked**: the `newsletter_email` and `cve_notification_email` templates follow the outcome of item 1.
 
-> **Update 2026-09-30**: bagian "riwayat CVE kosong di hari pertama" untuk data LAMA (yang sudah pernah
-> ditrack sebelum cutover) SUDAH BERES lewat `tools/seed/fase10_cve_migrate.py` (migrasi dari dump Mongo,
-> langkah 8 di `docs/CUTOVER_RUNBOOK.md`) -- lihat `docs/PROGRESS.md`. Yang TERSISA di item ini murni soal
-> techstack/package yang ditambah SETELAH cutover (tidak ada di dump lama), plus keinginan tombol UI-nya.
+**Current state**
+- Files: `apps/api/src/cti_api/templates/newsletter_email.html` (240 lines) and
+  `apps/api/src/cti_api/templates/cve_notification_email.html` (268 lines).
+- Colours are written **inline** and duplicated in both files (e.g. `#1976d2`, `#0d1b2a`, `#00e5ff`, `#d32f2f`,
+  `#e8ecf0`), not using the web tokens -- so a web rebrand does not change the emails automatically.
+- The name is written directly in the newsletter header/footer ("Cyber Threat Intelligence", "CTI Platform").
+- There is a test that touches sending (`tests/unit/test_mailer.py`); brand string assertions (if any)
+  need updating too.
 
-**Keadaan sekarang** (semua terukur di staging 2026-09-26, kecuali yang ditandai update di atas)
-- CVE hanya diisi oleh scraper `new_cve` (tiap jam, bespoke, `scrapers/src/cti_scrapers/feeds/new_cve.py`):
-  per techstack ia query NVD (`keywordSearch`) + Tenable, lalu ambil detail dari MITRE. Jendela pencariannya
-  **hanya 8 hari terakhir**.
-- Akibatnya: techstack **baru** (ditambah setelah cutover, jadi tidak ada di dump migrasi) hanya dapat CVE
-  yang terbit dalam 8 hari terakhir sejak ditambahkan -- **riwayat sebelum itu tidak pernah terisi** kecuali
-  dipicu manual.
-- **Legacy punya ini dan sengaja belum diport**: `POST /api/techstack/backfill-cves` (semua techstack satu
-  client), `POST /api/techstack/{id}/backfill-historical` (NVD **180 hari** untuk satu tech), dan saat menambah
-  techstack legacy menyalin CVE yang sudah ada + memicu backfill 180 hari. Dicatat di docstring
-  `apps/api/src/cti_api/routers/techstack.py` dan `apps/web/src/components/cve/techstack-panel.tsx`.
-- Paket: `POST /api/pkg-vuln/packages/{id}/scan` (satu) dan `POST /api/pkg-vuln/scan` (semua) sudah ada.
-  Pemindaian paket **tidak terjadwal** (legacy juga tidak: tak ada job Rundeck untuknya); jadi sisi paket cukup
-  aksi tombol, bukan scraper.
+**Email client limitations** (do not break these when restyling):
+- Inline CSS; no web fonts in many clients (Outlook desktop) -> define a fallback *font stack*.
+- No `oklch()`/CSS variables -> use hex/rgb.
+- No animation support -> the "animation" part of #1 does not apply to email.
+- Severity colours must stay readable (red/yellow/green) in the client's light and dark modes.
 
-**Fondasi yang sudah ada**
-- Trigger manual `POST /api/scraper/{id}/trigger` (admin + audit log). Task Celery `scrape.run` sekarang
-  **hanya** menerima `scraper_id` dan `trigger`, **belum** meneruskan opsi.
-- Kerangka opsi per-scraper (`ScraperOption`, `Runner(options=...)`, `--option key=value`) sudah bisa
-  menimpa perilaku satu run **tanpa menulis ke DB** -- cocok untuk `scope`/`window_days`.
-- `techstack_entries.added_date` dan `created_at` = dasar "baru ditambahkan".
+**Proposal**: one Jinja *base layout* (`{% extends %}`) for both templates, so the next rebrand is in
+one place (today the CSS is duplicated).
 
-**Yang perlu dibangun**
-1. `new_cve`: opsi `scope` (`all` | `recent`) dan `window_days` (default 8; backfill lebih panjang). Untuk
-   `recent`: hanya techstack dengan `added_date` sejak tanggal tertentu.
-   NVD membatasi satu request ke **120 hari** (batas dokumentasi NVD API 2.0) -> jendela 180 hari harus dipecah.
-2. **Pacing MITRE**: token bucket sekarang *tidak menunggu* -- begitu 60/menit habis, `RateLimited` dan run
-   berhenti. Backfill besar (ratusan CVE) pasti kena. Perlu menunggu token / mencicil per batch / melanjutkan
-   di run berikutnya. Ini juga risiko run biasa bila kandidat > 60 sekali jalan.
-3. **Dedup**: `new_cve` sengaja tanpa dedup (MITRE bisa memperbarui skor), jadi tiap run memanggil ulang MITRE
-   untuk semua kandidat. Untuk backfill, lewati CVE yang sudah ada dan `cve_modified_date`-nya tak berubah.
-4. Task `scrape.run` + endpoint trigger menerima `options` (divalidasi `validate_options`, 422 bila salah,
-   seperti PUT config). Endpoint khusus mis. `POST /api/cve/populate {scope, since}` (admin, audit log)
-   yang mengembalikan id run.
-5. UI: tombol di tab CVE Tracker -> dialog dua pilihan ("Semua techstack" / "Hanya yang baru ditambahkan
-   sejak ...") + status run (link ke `/scrapers`); untuk paket, aksi scan yang sudah ada.
-6. Test: unit (opsi + jendela), integrasi (trigger dengan opsi), e2e di staging dengan techstack baru.
+**Depends on**: #1 (the final palette + name).
 
-**Keputusan yang dibutuhkan dari user**
-- Berapa hari riwayat untuk techstack baru? (legacy: 180.)
-- "Baru ditambahkan" = sejak kapan? (mis. 7 hari terakhir, atau sejak populate terakhir.)
-- Siapa yang boleh menekan tombol? (usulan: admin saja, sama seperti trigger scraper.)
-- Scan paket otomatis saat paket ditambahkan, atau tetap manual?
-
-**Selesai bila**: menambah techstack baru lalu menekan "hanya yang baru" mengisi riwayatnya tanpa menyentuh
-techstack lain; "populate all" pada techstack besar selesai tanpa `rate_limited`; tab kosong menampilkan tombol
-ini alih-alih petunjuk.
-
-> Sudah dikerjakan di sesi yang sama dan **bukan** bagian roadmap ini: teks kosong lama ("Run newCveThreat.py")
-> diganti; bug techstack bernama multi-kata (`palo alto`, `microsoft 365`, `new relic`, `harmony sase`) yang
-> CVE-nya dibuang diam-diam sudah diperbaiki -- lihat `docs/PROGRESS.md`.
+**Done when**: both emails are sent through Graph to a test account and look right in Outlook desktop, Outlook
+web, Gmail, and mobile; the render tests pass.
 
 ---
 
-# Gap fitur menuju Threat Intelligence Platform penuh (usulan 2026-10-05)
+## 3. A "Populate now" button in the CVE Tracker
 
-Item 4-11 di bawah **usulan** (dari audit fitur 2026-10-05), belum diminta resmi: urutan = prioritas
-yang disarankan, silakan diubah. Pola gap: platform sudah kuat **mengumpulkan dan membaca** intel
-(scraper, enrichment artikel, CVE, ATT&CK, newsletter, exec dashboard), tapi lemah **bertindak dan
-terhubung** ke tooling lain. Hasil `git grep` di `apps packages scrapers`: nol hit untuk `taxii`, `misp`,
+> **Superseded by #19 (code done 2026-10-08, not yet on `main`).** A Monitored tech (the Monitor button,
+> "Map to catalog", Resume, or a new target) immediately has its history filled from the mirror through the
+> `cve.promote_entry` task (only when `CVE_MIRROR__ENABLED` and `CVE_MIRROR__PROMOTE` are on), so this button,
+> the 8-day window, the 180-day backfill, and the MITRE pacing problem below are no longer relevant IF the cutover
+> happens. **Do not work on it**; the section below records the state before the cutover.
+
+**Asked**: a **Populate now** button to fill in CVEs, with a choice of **populate all** or **only
+newly added techstack/packages**. It replaces the old hint text on the empty tab.
+
+> **Update 2026-09-30**: the "CVE history empty on day one" part for OLD data (already
+> tracked before the cutover) is ALREADY SOLVED by `tools/seed/fase10_cve_migrate.py` (migration from the Mongo dump,
+> step 8 in `docs/CUTOVER_RUNBOOK.md`) -- see `docs/PROGRESS.md`. What REMAINS in this item is purely about
+> techstack/packages added AFTER the cutover (not in the old dump), plus the desired UI button.
+
+**Current state** (all measured on staging 2026-09-26, except where marked as updated above)
+- CVEs are only filled by the `new_cve` scraper (hourly, bespoke, `scrapers/src/cti_scrapers/feeds/new_cve.py`):
+  per techstack it queries NVD (`keywordSearch`) + Tenable, then fetches details from MITRE. Its search window is
+  **only the last 8 days**.
+- Consequence: a **new** techstack (added after the cutover, so not in the migration dump) only gets CVEs
+  published in the 8 days before it was added -- **the history before that is never filled** unless
+  triggered manually.
+- **Legacy had this and it was deliberately not ported yet**: `POST /api/techstack/backfill-cves` (every techstack of one
+  client), `POST /api/techstack/{id}/backfill-historical` (NVD **180 days** for one tech), and when adding a
+  techstack legacy copied the existing CVEs + triggered a 180-day backfill. Recorded in the docstrings of
+  `apps/api/src/cti_api/routers/techstack.py` and `apps/web/src/components/cve/techstack-panel.tsx`.
+- Packages: `POST /api/pkg-vuln/packages/{id}/scan` (one) and `POST /api/pkg-vuln/scan` (all) already exist.
+  Package scanning is **not scheduled** (nor was it in legacy: there is no Rundeck job for it); so on the package side a
+  button action is enough, not a scraper.
+
+**Foundations that already exist**
+- The manual trigger `POST /api/scraper/{id}/trigger` (admin + audit log). The Celery task `scrape.run` currently
+  **only** accepts `scraper_id` and `trigger`, and does **not yet** pass options through.
+- The per-scraper options framework (`ScraperOption`, `Runner(options=...)`, `--option key=value`) can already
+  override one run's behaviour **without writing to the DB** -- a fit for `scope`/`window_days`.
+- `techstack_entries.added_date` and `created_at` = the basis for "newly added".
+
+**What needs building**
+1. `new_cve`: options `scope` (`all` | `recent`) and `window_days` (default 8; a longer backfill). For
+   `recent`: only techstacks with `added_date` since a given date.
+   NVD limits one request to **120 days** (the documented NVD API 2.0 limit) -> a 180-day window must be split.
+2. **MITRE pacing**: the token bucket currently *does not wait* -- once 60/minute is used up, `RateLimited` and the run
+   stops. A large backfill (hundreds of CVEs) will certainly hit it. It needs to wait for tokens / work in batches / continue
+   in the next run. This is also a risk for normal runs when candidates > 60 in one go.
+3. **Dedup**: `new_cve` deliberately has no dedup (MITRE can update scores), so every run calls MITRE again
+   for every candidate. For a backfill, skip CVEs that already exist and whose `cve_modified_date` has not changed.
+4. The `scrape.run` task + the trigger endpoint accept `options` (validated by `validate_options`, 422 if wrong,
+   like PUT config). A dedicated endpoint, e.g. `POST /api/cve/populate {scope, since}` (admin, audit log),
+   that returns the run id.
+5. UI: a button on the CVE Tracker tab -> a dialog with two choices ("All techstacks" / "Only those newly added
+   since ...") + the run status (a link to `/scrapers`); for packages, the existing scan action.
+6. Tests: unit (options + window), integration (trigger with options), e2e on staging with a new techstack.
+
+**Decisions needed from the user**
+- How many days of history for a new techstack? (legacy: 180.)
+- "Newly added" = since when? (e.g. the last 7 days, or since the last populate.)
+- Who may press the button? (proposal: admins only, same as the scraper trigger.)
+- Scan packages automatically when a package is added, or keep it manual?
+
+**Done when**: adding a new techstack and then pressing "only new" fills its history without touching
+other techstacks; "populate all" on a large techstack finishes without `rate_limited`; the empty tab shows this button
+instead of the hint.
+
+> Done in the same session and **not** part of this roadmap: the old empty-state text ("Run newCveThreat.py")
+> was replaced; the bug where techstacks with multi-word names (`palo alto`, `microsoft 365`, `new relic`, `harmony sase`)
+> had their CVEs silently dropped is fixed -- see `docs/PROGRESS.md`.
+
+---
+
+# Feature gaps towards a full Threat Intelligence Platform (proposal 2026-10-05)
+
+Items 4-11 below are **proposals** (from the 2026-10-05 feature audit), not yet formally requested: order = the suggested
+priority, feel free to change it. The gap pattern: the platform is already strong at **collecting and reading**
+intel (scrapers, article enrichment, CVEs, ATT&CK, newsletter, exec dashboard), but weak at **acting and
+connecting** to other tooling. `git grep` results in `apps packages scrapers`: zero hits for `taxii`, `misp`,
 `opencti`, `virustotal`, `sighting`, `yara|sigma`, `siem|wazuh|splunk`, `api_key`, `sso|oidc|saml|mfa`;
-`tlp` hanya di `services/stix.py` dan `services/ta_profile.py`; `webhook` 1 file. Titik sentuh yang sudah
-ada: `routers/iocs.py`, `routers/stix.py`, `routers/techstack.py`, `routers/rfi.py`/`pir.py`,
+`tlp` only in `services/stix.py` and `services/ta_profile.py`; `webhook` in 1 file. Existing touch points:
+`routers/iocs.py`, `routers/stix.py`, `routers/techstack.py`, `routers/rfi.py`/`pir.py`,
 `packages/cti-alerts` (Telegram + email), `db/models/ioc_reference.py` (`IocAllowlistEntry`).
 
-## 4. IOC enrichment + reputasi
+## 4. IOC enrichment + reputation
 
-**Diminta (usulan)**: tiap IOC diperkaya otomatis (VirusTotal, AbuseIPDB, urlscan, Shodan/GreyNoise)
-dengan skor/verdict dan sumbernya tersimpan.
-**Keadaan sekarang**: IOC diekstrak dari artikel (`cti-enrich`), belum ada enrichment eksternal.
-**Yang dibutuhkan**: API key + kuota tiap layanan (simpan lewat mekanisme secret yang sama dengan
-`docs/SECRETS_ROTATION.md`), keputusan IOC mana yang di-enrich (semua vs hanya yang terkait CVE/actor
-prioritas) supaya kuota tidak habis.
-**Selesai bila**: detail IOC menampilkan verdict + tautan sumber, hasil di-cache, rate limit dihormati,
-kegagalan satu layanan tidak menggagalkan yang lain.
+**Asked (proposal)**: every IOC is enriched automatically (VirusTotal, AbuseIPDB, urlscan, Shodan/GreyNoise)
+with its score/verdict and its source stored.
+**Current state**: IOCs are extracted from articles (`cti-enrich`); there is no external enrichment yet.
+**Needed**: an API key + quota per service (stored through the same secret mechanism as
+`docs/SECRETS_ROTATION.md`), a decision on which IOCs are enriched (all vs only those linked to priority CVEs/actors)
+so quotas do not run out.
+**Done when**: the IOC detail shows the verdict + a source link, results are cached, rate limits are respected,
+and one service failing does not fail the others.
 
-## 5. Feed keluar + API key integrasi
+## 5. Outbound feeds + integration API keys
 
-**Diminta (usulan)**: endpoint TAXII 2.1 dan/atau CSV/JSON dengan filter TLP, confidence, dan umur IOC,
-diakses lewat API key per service (bukan login UI), supaya Wazuh/Splunk/Fortinet menarik IOC + CVE otomatis.
-**Keadaan sekarang**: `services/stix.py` sudah membangun bundle STIX; belum ada TAXII, belum ada API key
-(auth hanya JWT user).
-**Yang dibutuhkan**: tooling target + format yang diminta, kebijakan TLP (#11), keputusan scope key
+**Asked (proposal)**: a TAXII 2.1 and/or CSV/JSON endpoint with TLP, confidence, and IOC age filters,
+accessed with a per-service API key (not a UI login), so Wazuh/Splunk/Fortinet pull IOCs + CVEs automatically.
+**Current state**: `services/stix.py` already builds STIX bundles; there is no TAXII yet and no API key
+(auth is user JWT only).
+**Needed**: the target tooling + the requested format, a TLP policy (#11), a decision on key scope
 (per client).
-**Selesai bila**: satu tooling nyata berhasil menarik feed memakai key, key bisa dicabut, tiap tarikan
-tercatat di audit log, dan hasilnya ter-scope `client_id`.
+**Done when**: one real tool pulls the feed with a key, the key can be revoked, every pull
+is recorded in the audit log, and the result is scoped to `client_id`.
 
 ## 6. IOC lifecycle
 
-**Diminta (usulan)**: first/last seen, hitungan sighting, expiry atau decay, dan false-positive/allowlist.
-**Keadaan sekarang**: allowlist sudah ada (`IocAllowlistEntry`); first/last seen, sighting, dan expiry
-**belum dicek ada/tidaknya** -- langkah pertama item ini membuktikannya di skema `iocs`.
-**Yang dibutuhkan**: keputusan umur IOC per tipe (IP vs hash vs domain).
-**Selesai bila**: IOC kedaluwarsa otomatis keluar dari feed (#5) tanpa dihapus dari riwayat.
+**Asked (proposal)**: first/last seen, sighting counts, expiry or decay, and false positive/allowlist.
+**Current state**: the allowlist already exists (`IocAllowlistEntry`); whether first/last seen, sightings, and expiry
+exist **has not been checked yet** -- the first step of this item proves it against the `iocs` schema.
+**Needed**: a decision on IOC age per type (IP vs hash vs domain).
+**Done when**: expired IOCs automatically drop out of the feed (#5) without being deleted from history.
 
-## 7. Relevansi ke aset sendiri
+## 7. Relevance to our own assets
 
-**Diminta (usulan)**: hubungkan techstack ke ancaman -- alert "actor X menarget teknologi yang kita pakai",
-prioritas CVE berbasis exposure, ringkasan "yang relevan untuk kita" di dashboard.
-**Keadaan sekarang**: techstack, risk exposure/hosting multiplier di skor CVE (`routers/cve.py`), dan
-profil threat actor sudah ada, tapi belum ada penghubung actor -> techstack dan alert-nya.
-**Yang dibutuhkan**: techstack yang rapi dan lengkap (kualitas matching mengikuti kualitas data ini).
-**Selesai bila**: penambahan satu techstack memunculkan actor/campaign terkait, dan alert Telegram/email
-hanya terkirim untuk yang cocok dengan stack client.
+**Asked (proposal)**: link the techstack to threats -- an "actor X targets technology we use" alert,
+exposure-based CVE priority, a "what is relevant to us" summary on the dashboard.
+**Current state**: the techstack, the risk exposure/hosting multipliers in the CVE score (`routers/cve.py`), and
+threat actor profiles already exist, but there is no actor -> techstack link and no alert for it yet.
+**Needed**: a tidy and complete techstack (matching quality follows the quality of this data).
+**Done when**: adding a techstack surfaces related actors/campaigns, and Telegram/email alerts are
+only sent for those that match the client's stack.
 
-## 8. Konektor MISP / OpenCTI
+## 8. MISP / OpenCTI connector
 
-**Diminta (usulan)**: import dan export dua arah.
-**Keadaan sekarang**: belum ada. Bergantung pada #5 (format keluar sudah teruji).
-**Yang dibutuhkan**: instance MISP/OpenCTI target, atau konfirmasi tidak perlu.
+**Asked (proposal)**: two-way import and export.
+**Current state**: none. Depends on #5 (an outbound format already tested).
+**Needed**: a target MISP/OpenCTI instance, or confirmation that it is not needed.
 
-## 9. Dark web monitoring (lewat sumber agregator)
+## 9. Dark web monitoring (through aggregator sources)
 
-**Diminta (usulan)**: dark web monitoring dengan empat tujuan: (1) **breach monitoring** domain dan email
-eksekutif, (2) bahan **Executive Summary**, (3) **enrich newsroom**, (4) **TA monitoring**. Mencakup juga
-niat lama item ini (typosquat/brand, sebutan di paste) sebagai fase lanjutan.
-**Keputusan desain (dari diskusi 2026-10-05)**: **bukan crawler onion sendiri**. URL onion cepat berubah
-sehingga daftar URL, captcha, dan login forum menjadi beban perawatan terus-menerus; butuh infrastruktur
-Tor terisolasi dengan risiko keamanan/hukum (konten ilegal, malware); forum butuh akun yang tidak akan
-dibuat atau ditembus captcha-nya. Ambil dari sumber yang sudah mengagregasi, jadi URL yang berubah adalah
-urusan mereka.
-**Keadaan sekarang**: tabel `ransomware_victims` + `routers/ransomware.py` + panel ransomware di newsroom
-sudah ada (ditulis scraper). Telegram baru **keluar** (`packages/cti-alerts/telegram.py` mengirim alert);
-monitoring channel Telegram **masuk** belum ada (tidak ditemukan di `scrapers/`). Breach/kredensial bocor:
-nol hit di kode.
+**Asked (proposal)**: dark web monitoring with four goals: (1) **breach monitoring** of domains and executive
+emails, (2) material for the **Executive Summary**, (3) **enriching the newsroom**, (4) **TA monitoring**. It also covers
+this item's old intent (typosquat/brand, mentions in pastes) as a later phase.
+**Design decision (from the 2026-10-05 discussion)**: **no onion crawler of our own**. Onion URLs change quickly,
+so URL lists, captchas, and forum logins become a constant maintenance burden; it needs isolated
+Tor infrastructure with security/legal risks (illegal content, malware); forums need accounts that will not be
+created, or captchas that will not be bypassed. Take it from sources that already aggregate, so changing URLs are
+their problem.
+**Current state**: the `ransomware_victims` table + `routers/ransomware.py` + the ransomware panel in the newsroom
+already exist (written by a scraper). Telegram is only **outbound** (`packages/cti-alerts/telegram.py` sends alerts);
+**inbound** Telegram channel monitoring does not exist (not found in `scrapers/`). Breaches/leaked credentials:
+zero hits in the code.
 
-**Fase**
-1. **Breach + leak site ransomware**: HIBP (domain search) atau Intelligence X untuk domain dan email
-   eksekutif; sumber leak site ransomware tambahan (mis. API ransomware.live) ke tabel yang sudah ada.
-   Menutup tujuan 1 dan sebagian besar 4.
-2. **Telegram channel actor** (inbound) + hubungkan ke Executive Summary (2) dan newsroom (3): widget
-   "korban baru di sektor kita", "kredensial bocor 30 hari", "actor aktif"; artikel ditautkan ke korban/actor
-   yang muncul di leak site.
-3. **(opsional, bila budget ada)** layanan dark web komersial (mis. Flare, SpyCloud) sebagai pengganti
-   crawl sendiri; paste monitoring dan typosquat domain.
+**Phases**
+1. **Breaches + ransomware leak sites**: HIBP (domain search) or Intelligence X for domains and executive
+   emails; additional ransomware leak-site sources (e.g. the ransomware.live API) into the existing table.
+   Covers goal 1 and most of 4.
+2. **Actor Telegram channels** (inbound) + link to the Executive Summary (2) and the newsroom (3): widgets
+   "new victims in our sector", "leaked credentials in 30 days", "active actors"; articles linked to the victims/actors
+   that appear on leak sites.
+3. **(optional, if there is budget)** a commercial dark web service (e.g. Flare, SpyCloud) instead of
+   crawling ourselves; paste monitoring and typosquat domains.
 
-**Yang dibutuhkan**: budget (menentukan HIBP saja yang murah dan hanya breach, atau layanan yang juga
-mengcover forum); daftar domain dan email eksekutif yang dipantau; keputusan hukum/kebijakan soal
-penyimpanan data kredensial bocor (hash saja atau plaintext; siapa boleh melihat); persetujuan internal.
-**Selesai bila**: domain yang dipantau memunculkan alert saat muncul di breach/leak baru (tanpa duplikat),
-data ter-scope `client_id`, kegagalan satu sumber tidak menghentikan yang lain, dan Executive Summary
-menampilkan ringkasan dari data ini.
+**Needed**: budget (deciding between HIBP only, which is cheap and covers breaches only, or a service that also
+covers forums); the list of monitored domains and executive emails; a legal/policy decision on
+storing leaked credential data (hash only or plaintext; who may see it); internal approval.
+**Done when**: a monitored domain raises an alert when it appears in a new breach/leak (without duplicates),
+the data is scoped to `client_id`, one source failing does not stop the others, and the Executive Summary
+shows a summary of this data.
 
 ## 10. Case/RFI workflow
 
-**Diminta (usulan)**: assignment, SLA, status, dan jejak audit di PIR/RFI, terhubung ke tiket CVE
-(sub-view Ticketing).
-**Keadaan sekarang**: `routers/pir.py` dan `routers/rfi.py` ada; tiket CVE ada (`cve_tickets`); belum
-saling terhubung.
-**Yang dibutuhkan**: alur kerja tim (siapa menerima RFI, target SLA).
+**Asked (proposal)**: assignment, SLA, status, and an audit trail on PIRs/RFIs, linked to CVE tickets
+(the Ticketing sub-view).
+**Current state**: `routers/pir.py` and `routers/rfi.py` exist; CVE tickets exist (`cve_tickets`); they are not
+linked to each other.
+**Needed**: the team's workflow (who receives RFIs, SLA targets).
 
-## 11. TLP/PAP konsisten + MFA/SSO
+## 11. Consistent TLP/PAP + MFA/SSO
 
-**Diminta (usulan)**: label TLP/PAP di semua objek dan ditegakkan saat distribusi (#5); MFA/TOTP dan SSO
-(OIDC) bila dipakai lintas tim.
-**Keadaan sekarang**: TLP hanya di STIX dan profil actor; tidak ada MFA/SSO.
-**Yang dibutuhkan**: kebijakan TLP internal, IdP yang dipakai.
+**Asked (proposal)**: TLP/PAP labels on every object, enforced at distribution (#5); MFA/TOTP and SSO
+(OIDC) if used across teams.
+**Current state**: TLP only in STIX and actor profiles; no MFA/SSO.
+**Needed**: the internal TLP policy, the IdP in use.
 
-## 12. Perbaikan prompt klasifikasi berbasis audit trail
+## 12. Improving the classification prompt based on the audit trail
 
-**Diminta**: prompt klasifikasi perlu di-improve karena sebagian artikel yang seharusnya valid jadi tidak
-valid (ditolak) dan sebaliknya.
-**Keadaan sekarang**: prompt `_PROMPT` di `packages/cti-enrich/src/cti_enrich/stages/classify.py` (disalin
-verbatim dari sistem lama, menilai **hanya dari judul**). Sejak 2026-10-05 respons LLM mentah, model, dan
-`prompt_version` tersimpan di `raw_enrichment["classify"]` (artikel diterima dan ditolak), jadi kasus salah
-bisa dianalisis dan hasil antar revisi prompt dibandingkan. Hanya artikel yang diproses setelah deploy yang
-punya data ini. Angka kesalahan sekarang **belum diukur**.
-**Titik sentuh**: `classify.py` (`_PROMPT`, `ClassifyResult`), `routers/filtered_articles.py` (daftar
-ditolak), `tests/unit/test_llm_json_retry.py`.
-**Yang dibutuhkan**: contoh nyata yang salah di dua arah (ditolak padahal relevan, diterima padahal bukan);
-keputusan apakah klasifikasi tetap hanya dari judul atau ikut membaca ringkasan/isi (lebih akurat, tapi
-tiap artikel butuh fetch teks sebelum klasifikasi, dan itu menggeser urutan stage di `pipeline.py`).
-**Langkah**: (1) kumpulkan 30-50 contoh berlabel dari `rejected_articles` dan `articles`; (2) ukur
-precision/recall prompt sekarang sebagai baseline; (3) revisi prompt, ukur ulang di set yang sama; (4) rilis
-dengan `prompt_version` baru dan pantau rasio tolak harian.
-**Selesai bila**: ada set contoh berlabel tersimpan di repo (tests/fixtures), metrik sebelum dan sesudah
-tercatat, dan rasio false reject/false accept turun tanpa menaikkan kegagalan JSON.
+**Asked**: the classification prompt needs improving, because some articles that should be valid become
+invalid (rejected) and vice versa.
+**Current state**: the `_PROMPT` in `packages/cti-enrich/src/cti_enrich/stages/classify.py` (copied
+verbatim from the old system, judging **from the title only**). Since 2026-10-05 the raw LLM response, model, and
+`prompt_version` are stored in `raw_enrichment["classify"]` (for accepted and rejected articles), so wrong cases
+can be analysed and results across prompt revisions compared. Only articles processed after the deploy
+have this data. The current error rate **has not been measured yet**.
+**Touch points**: `classify.py` (`_PROMPT`, `ClassifyResult`), `routers/filtered_articles.py` (the rejected
+list), `tests/unit/test_llm_json_retry.py`.
+**Needed**: real examples of mistakes in both directions (rejected although relevant, accepted although not);
+a decision on whether classification stays title-only or also reads the summary/body (more accurate, but
+every article then needs a text fetch before classification, which reorders the stages in `pipeline.py`).
+**Steps**: (1) collect 30-50 labelled examples from `rejected_articles` and `articles`; (2) measure the
+current prompt's precision/recall as a baseline; (3) revise the prompt, re-measure on the same set; (4) release
+with a new `prompt_version` and watch the daily rejection ratio.
+**Done when**: a labelled example set is stored in the repo (tests/fixtures), the before and after metrics are
+recorded, and the false reject/false accept ratios drop without increasing JSON failures.
 
 ---
 
-# Tindak lanjut CVE Tracker dan CI (temuan 2026-10-06)
+# CVE Tracker and CI follow-ups (findings 2026-10-06)
 
-Item 13-18 berasal dari audit workbook Excel `CVE_Tracker_Dashboard.xlsx`, pengerjaan Dashboard CVE
-Tracker, perubahan kolom export Excel, dan pembacaan hasil CI di GitHub pada hari yang sama. 13-14 adalah
-cacat nyata dengan bukti; 15-18 usulan (belum diminta resmi), urutan = prioritas yang disarankan.
-**Sengaja tidak dimasukkan**: impor riwayat Excel 2026 (811 CVE) ke platform, diputuskan tidak
-2026-10-06 (dashboard hanya membaca data platform).
+Items 13-18 come from an audit of the `CVE_Tracker_Dashboard.xlsx` Excel workbook, the work on the CVE Tracker
+Dashboard, the change to the Excel export columns, and reading the CI results on GitHub on the same day. 13-14 are
+real defects with evidence; 15-18 are proposals (not yet formally requested), order = the suggested priority.
+**Deliberately left out**: importing the 2026 Excel history (811 CVEs) into the platform, decided against on
+2026-10-06 (the dashboard only reads platform data).
 
-## 13. CI di `main` merah, CD otomatis tidak bisa terpicu
+## 13. CI on `main` is red, automatic CD cannot be triggered
 
-**Diminta (usulan)**: bikin CI hijau lagi supaya `deploy.yml` (hanya jalan kalau CI sukses untuk push ke
-`main`) benar-benar terpicu.
-**Keadaan sekarang**: run CI #11 sampai #16 (2026-10-05 s/d 10-06, termasuk `main` @ `d3f2a04`) semuanya
-`failure`. Tiga job merah, tiga sebab berbeda (dibaca dari log GitHub Actions, run #16):
-1. `lint`: `ruff format --check .` menolak 2 file, `docs/ADDING_A_SCRAPER.md` dan
-   `tests/unit/test_rss_illegal_xml_chars.py` (reproduksi lokal; `ruff format` memperbaikinya).
-2. `compose`: `env file .../.env not found`. `docker-compose.yml` memuat `env_file: ${CTI_ENV_FILE:-.env}`,
-   sedangkan job hanya punya `docker/stack.env.example` (`.env` tidak ada di git).
-3. `test`: 2 test gagal, 2150 lolos, 3 di-skip. (a) `tests/contract/test_golden.py::test_golden_trendmicro`: Chromium
-   Playwright tidak terpasang di runner. (b) `tests/integration/test_articles_router_snapshot.py::
-   test_article_dedup_groups`: seed memakai `_TODAY = datetime.date(2026, 9, 24)` hard-code, sedangkan
-   `services/dedup.py::get_dedup_groups` memakai jendela 7 hari dari `date.today()`, jadi test ini mati
-   sejak 2026-10-01 (bom waktu, bukan regresi kode).
-Akibatnya kelima run Deploy (#1-#5) berstatus `skipped` (syaratnya CI `success`): job deploy belum pernah
-berjalan sekali pun. Job lain (typecheck, web, api-contract, 4 build image, gitleaks) hijau. Upload codecov juga gagal
-("Token required") tapi `continue-on-error`, tidak ikut memerahkan job.
-**Titik sentuh**: `.github/workflows/ci.yml` (`compose`, `test`), `tests/integration/
-test_articles_router_snapshot.py` (`_TODAY`), 2 file yang disebut di atas.
-**Yang dibutuhkan**: tidak ada keputusan; untuk (3a) pilih memasang Chromium di job `test`
-(`playwright install --with-deps chromium`, menambah beberapa menit) atau men-skip test marker
-`playwright` kalau browser tidak ada (seperti test Docker yang sudah di-skip otomatis).
-**Selesai bila**: CI hijau di `main`, dan Deploy terpicu sekali (otomatis atau `workflow_dispatch`) dan
-lolos `deploy.sh` dengan health check. Sampai itu, produksi hanya bisa di-update manual (`make deploy`, atau Actions > Deploy > Run workflow).
-**Status 2026-10-07**: keempat penyebab diperbaiki, masing-masing direproduksi lalu dibuktikan di lokal:
-1. `lint`: `ruff format` pada 2 file (`ruff format --check .` bersih, 574 file).
-2. `compose`: step menyetel `CTI_ENV_FILE: .env.example` (mekanisme yang sudah didokumentasikan di kepala
-   `docker-compose.yml`); `docker compose config -q` lolos untuk profil default dan `app`.
-3a. `test`: step `uv run playwright install --with-deps chromium` sebelum pytest, lewat playwright di venv
-   supaya revisi Chromium sama dengan `uv.lock` (1.63.0 minta revisi 1243; gagal lokal dengan penyebab yang
-   sama persis dengan CI karena hanya ada revisi 1194). Isi test dibuktikan lolos dengan Chromium asli.
-3b. `test_article_dedup_groups` seed dengan `date.today()`; versi lama gagal dan versi baru lolos pada
-   Postgres 16 lokal (8/8 snapshot lolos). `_TODAY` pinned sengaja dipertahankan untuk test yang snapshot-nya
-   memuat `week`/`month`.
-**Belum terbukti**: CI penuh hijau (baru ada setelah PR dibuat; CI hanya jalan pada `pull_request` dan push ke
-`main`), dan Deploy yang terpicu pertama kali di runner prod. Langkah `playwright install --with-deps` belum
-dijalankan di runner GitHub (sandbox pengembangan tidak boleh memasang browser); `docker/api.Dockerfile` dan
-`docker/worker.Dockerfile` memakai perintah yang sama lewat `uv tool run`.
-**Hasil setelah PR #11 di-merge (2026-10-07)**: CI di `main` @ `35e6def` hijau (run #23, semua job). Deploy
-**terpicu pertama kali** (run #8, `workflow_run` dari CI itu) dan berjalan di runner self-hosted, tetapi berakhir
-`cancelled` setelah 10m25s. Bukan timeout (`timeout-minutes: 45`) dan bukan digantikan run lain
-(`cancel-in-progress: false`); log job 404 dari GitHub API, jadi penyebabnya tidak bisa dibaca dari sini
-(kemungkinan dibatalkan manual atau runner terputus -- belum dikonfirmasi). Yang tersisa dari "Selesai bila":
-satu Deploy yang lolos `deploy.sh` dengan health check. **Sesudah deploy yang terputus, cek keadaan host
-prod**: `docker compose ps`, tag image `:prev` vs terbaru, dan `alembic current` (apakah `migrate` sempat jalan).
-**Ditemukan saat PR #11 dijalankan di CI (2026-10-07), ikut diperbaiki di PR yang sama karena memblokir "CI hijau"**:
-`tests/unit/test_ioc_extractor.py::test_domain_defanged_regex_does_not_catastrophically_backtrack` merah di
-runner GitHub (satu-satunya kegagalan dari 2240 test; dua test yang diperbaiki di atas lolos, jadi langkah
-`playwright install` terbukti jalan). Penyebab: ambang alarm 5 detik untuk 2000 pengulangan, padahal
-`_RE_DOMAIN_DEFANGED` (`{0,10}`) berbiaya LINEAR yang besar (±0,45 ms per karakter; 1,3 s / 2,7 s / 5,4 s untuk
-500 / 1000 / 2000 pengulangan di mesin dev, ±5 s di runner), jadi lolos-gagalnya mengikuti kecepatan runner, bukan
-ReDoS (run #16 lolos tipis). Ambang dinaikkan ke 60 detik; regex tak terbatas (`*`) tumbuh eksponensial (x16
-tiap +4 pengulangan) sehingga tetap tertangkap (disimulasikan: gagal tepat di detik ke-60). Tidak ada perubahan
-pada regex produksi.
-**Temuan yang BELUM dikerjakan**: biaya ±0,45 ms per karakter itu sendiri nyata di produksi -- `extract_iocs()`
-pada satu artikel ±12KB makan ±5 detik CPU sinkron di stage enrichment. Bukan ReDoS dan bukan bagian #13; kalau
-mau dioptimalkan, titiknya `_RE_DOMAIN_DEFANGED` (mis. saringan awal sebelum regex dijalankan), dengan korpus
-`tests/unit/test_ioc_extractor.py` sebagai pengaman byte-identik.
+**Asked (proposal)**: make CI green again so `deploy.yml` (which only runs when CI succeeds for a push to
+`main`) really gets triggered.
+**Current state**: CI runs #11 to #16 (2026-10-05 to 10-06, including `main` @ `d3f2a04`) were all
+`failure`. Three red jobs, three different causes (read from the GitHub Actions log, run #16):
+1. `lint`: `ruff format --check .` rejects 2 files, `docs/ADDING_A_SCRAPER.md` and
+   `tests/unit/test_rss_illegal_xml_chars.py` (reproduced locally; `ruff format` fixes them).
+2. `compose`: `env file .../.env not found`. `docker-compose.yml` contains `env_file: ${CTI_ENV_FILE:-.env}`,
+   while the job only has `docker/stack.env.example` (`.env` is not in git).
+3. `test`: 2 tests failed, 2150 passed, 3 skipped. (a) `tests/contract/test_golden.py::test_golden_trendmicro`: Playwright's
+   Chromium is not installed on the runner. (b) `tests/integration/test_articles_router_snapshot.py::
+   test_article_dedup_groups`: the seed uses a hardcoded `_TODAY = datetime.date(2026, 9, 24)`, while
+   `services/dedup.py::get_dedup_groups` uses a 7-day window from `date.today()`, so this test has been dead
+   since 2026-10-01 (a time bomb, not a code regression).
+As a result all five Deploy runs (#1-#5) are `skipped` (their condition is CI `success`): the deploy job has never
+run even once. The other jobs (typecheck, web, api-contract, 4 image builds, gitleaks) are green. The codecov upload also fails
+("Token required") but has `continue-on-error`, so it does not turn the job red.
+**Touch points**: `.github/workflows/ci.yml` (`compose`, `test`), `tests/integration/
+test_articles_router_snapshot.py` (`_TODAY`), the 2 files mentioned above.
+**Needed**: no decisions; for (3a) choose between installing Chromium in the `test` job
+(`playwright install --with-deps chromium`, adding a few minutes) or skipping tests with the
+`playwright` marker when the browser is missing (like the Docker tests that are already skipped automatically).
+**Done when**: CI is green on `main`, and Deploy is triggered once (automatically or via `workflow_dispatch`) and
+passes `deploy.sh` with its health check. Until then, production can only be updated manually (`make deploy`, or Actions > Deploy > Run workflow).
+**Status 2026-10-07**: all four causes are fixed, each reproduced and then proven locally:
+1. `lint`: `ruff format` on the 2 files (`ruff format --check .` clean, 574 files).
+2. `compose`: the step sets `CTI_ENV_FILE: .env.example` (the mechanism already documented at the top of
+   `docker-compose.yml`); `docker compose config -q` passes for the default and `app` profiles.
+3a. `test`: a `uv run playwright install --with-deps chromium` step before pytest, through the playwright in the venv
+   so the Chromium revision matches `uv.lock` (1.63.0 wants revision 1243; it failed locally for exactly the same
+   reason as CI because only revision 1194 was present). The test content is proven to pass with real Chromium.
+3b. `test_article_dedup_groups` seeds with `date.today()`; the old version fails and the new one passes on
+   a local Postgres 16 (8/8 snapshots pass). The pinned `_TODAY` is deliberately kept for the tests whose snapshots
+   contain `week`/`month`.
+**Not yet proven**: a fully green CI (only available once a PR is opened; CI only runs on `pull_request` and pushes to
+`main`), and the first triggered Deploy on the prod runner. The `playwright install --with-deps` step has not
+run on a GitHub runner yet (the development sandbox may not install browsers); `docker/api.Dockerfile` and
+`docker/worker.Dockerfile` use the same command through `uv tool run`.
+**Result after PR #11 was merged (2026-10-07)**: CI on `main` @ `35e6def` is green (run #23, all jobs). Deploy
+**was triggered for the first time** (run #8, `workflow_run` from that CI) and ran on the self-hosted runner, but ended
+`cancelled` after 10m25s. Not a timeout (`timeout-minutes: 45`) and not superseded by another run
+(`cancel-in-progress: false`); the job log is a 404 from the GitHub API, so the cause cannot be read from here
+(possibly cancelled manually or the runner disconnected -- not confirmed). What remains of "Done when":
+one Deploy that passes `deploy.sh` with its health check. **After an interrupted deploy, check the state of the prod
+host**: `docker compose ps`, the `:prev` vs latest image tags, and `alembic current` (whether `migrate` got to run).
+**Found when PR #11 ran in CI (2026-10-07), fixed in the same PR because it blocked "green CI"**:
+`tests/unit/test_ioc_extractor.py::test_domain_defanged_regex_does_not_catastrophically_backtrack` was red on the
+GitHub runner (the only failure out of 2240 tests; the two tests fixed above passed, so the
+`playwright install` step is proven to work). Cause: an alarm threshold of 5 seconds for 2000 repetitions, while
+`_RE_DOMAIN_DEFANGED` (`{0,10}`) has a large LINEAR cost (~0.45 ms per character; 1.3 s / 2.7 s / 5.4 s for
+500 / 1000 / 2000 repetitions on the dev machine, ~5 s on the runner), so pass/fail followed the runner's speed, not
+ReDoS (run #16 passed narrowly). The threshold was raised to 60 seconds; an unbounded regex (`*`) grows exponentially (x16
+per +4 repetitions) so it is still caught (simulated: it fails exactly at the 60th second). No change
+to the production regex.
+**Finding NOT yet worked on**: that ~0.45 ms per character cost is itself real in production -- `extract_iocs()`
+on one ~12KB article takes ~5 seconds of synchronous CPU in the enrichment stage. Not ReDoS and not part of #13; if
+it is to be optimised, the spot is `_RE_DOMAIN_DEFANGED` (e.g. a pre-filter before running the regex), with the
+`tests/unit/test_ioc_extractor.py` corpus as a byte-identical safety net.
 
-## 14. Logo hilang di export Excel CVE Tracker
+## 14. Logo missing from the CVE Tracker Excel export
 
-**Diminta (usulan)**: file hasil `GET /api/cve/export` membawa logo di kiri atas seperti template.
-**Keadaan sekarang**: template `apps/api/src/cti_api/templates/CVE_Tracker_template.xlsx` berisi logo
-(`xl/media/image1.png`), tapi hasil export tidak: openpyxl membuang gambar kalau Pillow tidak terpasang,
-dan `pillow` tidak ada di `uv.lock` (jadi tidak ada di image API juga). Reproduksi: memuat lalu menyimpan
-template asli dengan openpyxl di venv proyek menghasilkan zip tanpa `xl/media/*`. Sudah begitu sebelum
-perubahan kolom export 2026-10-06.
-**Titik sentuh**: `apps/api/pyproject.toml` (+ `uv.lock`), `services/cve_export.py`,
+**Asked (proposal)**: the file produced by `GET /api/cve/export` carries the logo at the top left like the template.
+**Current state**: the template `apps/api/src/cti_api/templates/CVE_Tracker_template.xlsx` contains the logo
+(`xl/media/image1.png`), but the export does not: openpyxl drops images when Pillow is not installed,
+and `pillow` is not in `uv.lock` (so not in the API image either). Reproduction: loading and then saving
+the original template with openpyxl in the project venv produces a zip without `xl/media/*`. It was already like this before
+the 2026-10-06 export column change.
+**Touch points**: `apps/api/pyproject.toml` (+ `uv.lock`), `services/cve_export.py`,
 `tests/integration/test_cve_export_service.py`.
-**Yang dibutuhkan**: tidak ada.
-**Selesai bila**: `pillow` jadi dependency `cti-api`, image API tetap lolos smoke CI, dan satu test
-memastikan workbook hasil export memuat 1 gambar.
-**Status 2026-10-07**: `pillow>=10.0` ditambahkan (`uv.lock`: pillow 12.3.0, wheel manylinux saja),
-`test_export_keeps_template_logo` ditambahkan (gagal tanpa pillow, lolos dengan pillow). Yang belum
-terbukti: job `docker` di CI membangun image API. `uv sync --frozen --no-dev --no-editable --package cti-api`
-(langkah stage builder) sudah dicek terpisah dan memasang pillow, tapi `docker build` penuh belum jalan
-karena registry `ghcr.io` tidak terjangkau dari sesi pengembangan.
+**Needed**: nothing.
+**Done when**: `pillow` is a `cti-api` dependency, the API image still passes the CI smoke, and one test
+ensures the exported workbook contains 1 image.
+**Status 2026-10-07**: `pillow>=10.0` added (`uv.lock`: pillow 12.3.0, manylinux wheels only),
+`test_export_keeps_template_logo` added (fails without pillow, passes with it). Not yet
+proven: the CI `docker` job building the API image. `uv sync --frozen --no-dev --no-editable --package cti-api`
+(the builder stage step) was checked separately and installs pillow, but a full `docker build` has not run
+because the `ghcr.io` registry is unreachable from the development session.
 
-## 15. Pakai `published_at` di UI/API/dashboard + samakan format tanggal
+## 15. Use `published_at` in the UI/API/dashboard + align the date formats
 
-**Diminta (usulan)**: jam publish MITRE (`cve_tracker.published_at`, ditambah 2026-10-06 untuk export)
-dipakai juga di tempat lain, dan format tanggal export seragam.
-**Keadaan sekarang**: `CveOut` (`schemas/cve.py`) belum mengekspos `published_at`; tab Ticket
-(`cve-ticket-tab.tsx`, `reportedDateVal = fmtDt(cve.published)`) menampilkan "CVE Reported Date" tanpa
-jam; MTTD di dashboard dihitung dalam **hari** (`detected_on` - `published`) karena `published` tanpa jam
-(`services/cve_dashboard.py`). Di export, kolom "Date Acknowledged by CTI Team" masih
-`YYYY-MM-DD HH:MM:SS`, beda dari dua kolom di sebelahnya (`HH:MM DD-MM-YYYY`).
-**Titik sentuh**: `schemas/cve.py`, `routers/cve.py` (`_serialize`), `cve-ticket-tab.tsx`,
-`services/cve_dashboard.py`, `cve-dashboard-view.tsx` (teks definisi MTTD), `services/cve_export.py`.
-**Yang dibutuhkan**: `tools/ops/backfill_cve_published_at.py --apply` sudah dijalankan di produksi
-(tanpa itu CVE lama tidak punya jam); keputusan apakah kolom Acknowledged ikut `HH:MM DD-MM-YYYY`.
-**Selesai bila**: tab Ticket menampilkan jam publish, MTTD tampil dalam jam untuk CVE yang punya
-`published_at` (dan jatuh ke hari untuk yang belum, dengan `n` terpisah supaya cakupannya kelihatan),
-kontrak API diregenerasi (`export_openapi` + `gen:api`), dan format kolom export konsisten.
+**Asked (proposal)**: MITRE's publish time (`cve_tracker.published_at`, added 2026-10-06 for the export)
+is used elsewhere too, and the export date formats are uniform.
+**Current state**: `CveOut` (`schemas/cve.py`) does not expose `published_at` yet; the Ticket tab
+(`cve-ticket-tab.tsx`, `reportedDateVal = fmtDt(cve.published)`) shows "CVE Reported Date" without a
+time; the dashboard MTTD is computed in **days** (`detected_on` - `published`) because `published` has no time
+(`services/cve_dashboard.py`). In the export, the "Date Acknowledged by CTI Team" column is still
+`YYYY-MM-DD HH:MM:SS`, unlike the two columns next to it (`HH:MM DD-MM-YYYY`).
+**Touch points**: `schemas/cve.py`, `routers/cve.py` (`_serialize`), `cve-ticket-tab.tsx`,
+`services/cve_dashboard.py`, `cve-dashboard-view.tsx` (the MTTD definition text), `services/cve_export.py`.
+**Needed**: `tools/ops/backfill_cve_published_at.py --apply` has been run in production
+(without it old CVEs have no time); a decision on whether the Acknowledged column follows `HH:MM DD-MM-YYYY`.
+**Done when**: the Ticket tab shows the publish time, MTTD is shown in hours for CVEs that have
+`published_at` (and falls back to days for those that do not, with a separate `n` so the coverage is visible),
+the API contract is regenerated (`export_openapi` + `gen:api`), and the export column formats are consistent.
 
-## 16. Dashboard CVE: SLA per severity
+## 16. CVE dashboard: SLA per severity
 
-**Diminta (usulan)**: rating di dashboard berdasarkan target SLA per severity, bukan ambang tetap.
-**Keadaan sekarang**: rating (Excellent/Good/Fair/Needs improvement) memakai ambang dari sheet Excel lama
-untuk rata-rata MTTA (<=1 / <=7 / <=14 hari) dan sama untuk semua severity
-(`apps/web/src/lib/cve/dashboard.ts::ratingForMtta`): CRITICAL dengan MTTA 10 hari dan LOW dengan 10 hari
-dinilai sama ("Fair"). Rata-rata juga mudah tertarik outlier; median dan p90 sudah dihitung tapi belum
-dipakai untuk menilai.
-**Titik sentuh**: `dashboard.ts`, `cve-dashboard-view.tsx`, `services/cve_dashboard.py` (hitung pelanggaran
-di server, bukan di browser).
-**Yang dibutuhkan**: target per severity untuk acknowledge dan remediasi (hari kalender atau hari kerja,
-per client atau global), dan metrik yang dinilai (mean, median, atau persentase CVE dalam SLA).
-**Selesai bila**: dashboard menampilkan jumlah/persen CVE yang melanggar SLA per severity dan daftar CVE
-yang sedang melewati batas, dengan target tersimpan sebagai konfigurasi (bukan konstanta di kode).
+**Asked (proposal)**: dashboard ratings based on SLA targets per severity, not fixed thresholds.
+**Current state**: the rating (Excellent/Good/Fair/Needs improvement) uses the thresholds from the old Excel sheet
+for the average MTTA (<=1 / <=7 / <=14 days), the same for every severity
+(`apps/web/src/lib/cve/dashboard.ts::ratingForMtta`): a CRITICAL with an MTTA of 10 days and a LOW with 10 days
+are rated the same ("Fair"). The average is also easily pulled by outliers; the median and p90 are already computed but not
+used for the rating.
+**Touch points**: `dashboard.ts`, `cve-dashboard-view.tsx`, `services/cve_dashboard.py` (compute violations
+on the server, not in the browser).
+**Needed**: targets per severity for acknowledge and remediation (calendar days or working days,
+per client or global), and the metric to rate (mean, median, or the percentage of CVEs within SLA).
+**Done when**: the dashboard shows the number/percentage of CVEs violating the SLA per severity and a list of CVEs
+currently over the limit, with the targets stored as configuration (not constants in code).
 
-## 17. Dashboard CVE: panel tambahan
+## 17. CVE dashboard: additional panels
 
-**Diminta (usulan)**: panel yang tidak ada di Excel lama tapi datanya sudah ada di platform.
-**Keadaan sekarang** (angka dari workbook Excel 2026, 811 CVE, bukan dari DB platform): 511 CVE sudah
-di-acknowledge tapi status remediation kosong dan 147 belum di-acknowledge (backlog yang sekarang hanya
-terlihat sebagai bucket "Awaiting status" dan "Unacknowledged"); produk paling sering muncul n8n 62,
-Splunk Enterprise 60, wazuh 43, suricata 42. Platform menyimpan `cisa_kev`, `epss_score`, dan
-`active_exploitation` per CVE (`db/models/cve.py`) yang belum dipakai di dashboard.
-**Usulan panel**: (a) aging backlog (CVE tanpa status > N hari, dikelompokkan per severity); (b) CVE
-dengan KEV/EPSS tinggi yang belum remediasi; (c) produk/tech paling sering terdampak.
-**Titik sentuh**: `services/cve_dashboard.py` (`DashRow` perlu kolom tambahan),
+**Asked (proposal)**: panels that were not in the old Excel but whose data already exists in the platform.
+**Current state** (numbers from the 2026 Excel workbook, 811 CVEs, not from the platform DB): 511 CVEs were already
+acknowledged but their remediation status is empty and 147 are not acknowledged (a backlog that today is only
+visible as the "Awaiting status" and "Unacknowledged" buckets); the most frequent products are n8n 62,
+Splunk Enterprise 60, wazuh 43, suricata 42. The platform stores `cisa_kev`, `epss_score`, and
+`active_exploitation` per CVE (`db/models/cve.py`), which are not used on the dashboard yet.
+**Proposed panels**: (a) backlog aging (CVEs without a status for > N days, grouped by severity); (b) CVEs
+with high KEV/EPSS that are not yet remediated; (c) the most frequently affected products/techs.
+**Touch points**: `services/cve_dashboard.py` (`DashRow` needs extra columns),
 `repositories/cve.py::list_dashboard_rows`, `cve-dashboard-view.tsx`.
-**Yang dibutuhkan**: pilihan panel yang berguna dan ambang "terlalu lama" untuk aging.
-**Selesai bila**: tiap panel punya test di `tests/unit/test_cve_dashboard.py` dan satu test integrasi yang
-mengunci scope client/techstack seperti panel yang sudah ada.
+**Needed**: a choice of useful panels and a "too long" threshold for aging.
+**Done when**: each panel has a test in `tests/unit/test_cve_dashboard.py` and one integration test that
+locks the client/techstack scope like the existing panels.
 
-## 18. Validasi isian ticket CVE + model ticket
+## 18. CVE ticket field validation + the ticket model
 
-**Diminta (usulan)**: nilai ticket dibatasi ke daftar baku, dan diputuskan apakah satu ticket boleh
-menaungi banyak CVE.
-**Keadaan sekarang**: `remediation_status`, `risk_acceptance`, dan `active_exploitation` adalah "soft
-enum" tanpa CHECK maupun validasi API (`CveTicketBody` semuanya `str`); dropdown UI memakai
-Open/In Progress/Resolved/Risk Accepted/Closed. Dashboard menyerap vocab legenda Excel lewat
-`_STATUS_ALIASES` (`services/cve_dashboard.py`) supaya nilai legacy tidak diam-diam salah bucket. Di
-workbook Excel akar masalahnya terlihat: dropdown status hanya menutup beberapa baris (daftarnya memuat
-"Not Applicable" dobel dan tanpa "Completed"), ada 4 baris berstatus "Closed" di luar legenda, dan 657 dari
-811 status kosong. Model: Excel memakai 600 ticket untuk 811 CVE (maks 32 CVE dalam satu ticket, mis. satu
-patch Splunk), platform satu `CveTicket` per `(cve_id, client_id)` (docstring `CveTicket`).
-**Titik sentuh**: `schemas/cve.py::CveTicketBody`, `routers/cve.py` (`PUT /{cve_id}/ticket`),
+**Asked (proposal)**: ticket values are restricted to a standard list, and a decision on whether one ticket may
+cover many CVEs.
+**Current state**: `remediation_status`, `risk_acceptance`, and `active_exploitation` are "soft
+enums" without a CHECK or API validation (`CveTicketBody` is all `str`); the UI dropdown uses
+Open/In Progress/Resolved/Risk Accepted/Closed. The dashboard absorbs the Excel legend vocabulary through
+`_STATUS_ALIASES` (`services/cve_dashboard.py`) so legacy values do not silently land in the wrong bucket. In the
+Excel workbook the root cause is visible: the status dropdown only covers some rows (its list contains
+"Not Applicable" twice and no "Completed"), there are 4 rows with the status "Closed" outside the legend, and 657 of
+811 statuses are empty. Model: Excel uses 600 tickets for 811 CVEs (up to 32 CVEs in one ticket, e.g. one
+Splunk patch), the platform has one `CveTicket` per `(cve_id, client_id)` (the `CveTicket` docstring).
+**Touch points**: `schemas/cve.py::CveTicketBody`, `routers/cve.py` (`PUT /{cve_id}/ticket`),
 `cve-ticket-tab.tsx`, `cve-ticketing-view.tsx`, `db/models/cve.py::CveTicket`.
-**Yang dibutuhkan**: daftar nilai baku (termasuk apakah "Not Applicable" dan "Completed" masuk), dan
-keputusan model: tetap 1 ticket per CVE, atau izinkan ticket menaungi banyak CVE (perubahan skema +
+**Needed**: the list of standard values (including whether "Not Applicable" and "Completed" are in), and the
+model decision: keep 1 ticket per CVE, or allow a ticket to cover many CVEs (a schema change +
 export + dashboard).
-**Selesai bila**: `PUT /ticket` menolak nilai di luar daftar dengan 422 (nilai lama dimigrasi atau
-dipetakan), UI dan dashboard memakai satu daftar yang sama, dan keputusan model ticket tertulis di
-docstring `CveTicket`.
+**Done when**: `PUT /ticket` rejects values outside the list with 422 (old values migrated or
+mapped), the UI and the dashboard use one shared list, and the ticket model decision is written in the
+`CveTicket` docstring.
 
-## 19. Katalog tech dari mirror CVE + Monitor
+## 19. Tech catalog from the CVE mirror + Monitor
 
-> **Arah berubah 2026-10-07 (diskusi dengan user).** Rencana lama (kolom `aliases` + katalog yang dikurasi
-> tangan + query CPE) tidak dilanjutkan sebagai jalur utama: alias manual per tech tidak skala, dan akar
-> masalahnya (nama bebas dicocokkan sebagai teks) tetap ada. Desain di bawah menggantikan fase 2 dan 3 di
-> `docs/CVE_TECH_MATCHING.md` 7.1. **Kodenya sudah ada** (irisan 1-7, lihat "Fase" dan "Rancangan teknis" di
-> bawah); "Keadaan sekarang" mencatat keadaan SEBELUM katalog.
+> **The direction changed on 2026-10-07 (a discussion with the user).** The old plan (an `aliases` column + a
+> hand-curated catalog + CPE queries) is not continued as the main path: manual per-tech aliases do not scale, and the
+> root problem (free names matched as text) remains. The design below replaces phases 2 and 3 in
+> `docs/CVE_TECH_MATCHING.md` 7.1. **The code already exists** (slices 1-7, see "Phases" and "Technical design"
+> below); "Current state" records the state BEFORE the catalog.
 
-**Diminta (2026-10-07)**: kolom Tech di CVE Tracker tidak boleh salah-cocok lagi, dan daftar techstack
-berhenti jadi "ketik nama manual". Latar belakang, akar masalah, dan solusi 0.2.1:
+**Asked (2026-10-07)**: the Tech column in the CVE Tracker must not mismatch any more, and the techstack list
+stops being "type the name by hand". Background, root cause, and the 0.2.1 solution:
 `docs/CVE_TECH_MATCHING.md`.
 
-**Keadaan sekarang** (alur lengkap CVE Tracker: `docs/CVE_TRACKER_FLOW.md`; fakta dari repo/produksi, bukan
-tebakan): `techstack_entries.name` teks bebas, input
-UI "Tech name..." tanpa validasi, dan nama itu juga **kunci join** ke `cve_tracker.tech` (`get_risk_context`).
-Tujuh pencocok dengan aturan berbeda memakainya (NVD `keywordSearch`; Tenable; gate `new_cve`;
-`score.py` `related_tech_status`; `score.py` `check_tech_stack`; `cve_priority.in_tech_stack`; laporan Top CVE
-`applicable_to_stack`). Di produksi, 55
-dari 118 baris tracker yang bisa diverifikasi salah. `new_cve` mencari per nama tech tiap jam (34 request ke
-NVD, mencari kata di deskripsi), jendela 8 hari, dan satu panggilan MITRE per kandidat (batas 60/menit).
-**Yang sudah ada di branch `nameless/roadmap-runners` (belum di `main`)**: `cti_core.tech_match` (satu
-definisi "cocok": kata utuh, angka versi menempel diterima, huruf menempel ditolak, istilah < 2 karakter tak
-pernah cocok) dipakai pencocok 2-6 dan penilai `reconcile_cve_tech`. **Kolom `techstack_entries.aliases`,
-migrasi, seed, dan reference data `techstack_aliases` dibuang (keputusan user 2026-10-07)**; tidak ada migrasi
-baru. Efek yang terlihat di produksi bila di-merge: alert `tech_stack` dan flag `in_tech_stack` tidak lagi
-cocok lewat substring (`go` ~ `google`).
+**Current state** (the full CVE Tracker flow: `docs/CVE_TRACKER_FLOW.md`; facts from the repo/production, not
+guesses): `techstack_entries.name` is free text, the UI input
+"Tech name..." has no validation, and that name is also the **join key** to `cve_tracker.tech` (`get_risk_context`).
+Seven matchers with different rules use it (NVD `keywordSearch`; Tenable; the `new_cve` gate;
+`score.py` `related_tech_status`; `score.py` `check_tech_stack`; `cve_priority.in_tech_stack`; the Top CVE report's
+`applicable_to_stack`). In production, 55
+of the 118 verifiable tracker rows were wrong. `new_cve` searches per tech name every hour (34 requests to
+NVD, searching words in the description), an 8-day window, and one MITRE call per candidate (limit 60/minute).
+**What already exists on the `nameless/roadmap-runners` branch (not yet on `main`)**: `cti_core.tech_match` (one
+definition of "matches": whole word, attached version digits accepted, attached letters rejected, terms < 2 characters never
+match) used by matchers 2-6 and by the `reconcile_cve_tech` assessor. **The `techstack_entries.aliases` column,
+the migration, the seed, and the `techstack_aliases` reference data are dropped (user decision 2026-10-07)**; there is no new
+migration. The visible effect in production once merged: `tech_stack` alerts and the `in_tech_stack` flag no longer
+match by substring (`go` ~ `google`).
 
-### Desain (disepakati 2026-10-07)
+### Design (agreed 2026-10-07)
 
-**Alur**: tarik semua CVE (2025 sampai sekarang) ke DB sendiri -> dari data itu keluar **katalog tech**
-(vendor + produk) -> menu techstack punya dua tab, **All Tech** (katalog, cari lalu klik **Monitor**) dan
-**Monitored Tech** (per client) -> CVE baru dicocokkan lewat **identitas produk dari data CVE**, bukan
-lewat teks nama -> tab **CVEs** hanya menampilkan CVE untuk tech yang di-monitor.
+**Flow**: pull every CVE (2025 to now) into our own DB -> from that data comes a **tech catalog**
+(vendor + product) -> the techstack menu has two tabs, **All Tech** (the catalog; search and click **Monitor**) and
+**Monitored Tech** (per client) -> new CVEs are matched through **the product identity from the CVE data**, not
+through name text -> the **CVEs** tab only shows CVEs for monitored techs.
 
-**Lapisan data (umur berbeda, ini inti desainnya)**
+**Data layers (different lifetimes, this is the core of the design)**
 
-| Lapisan | Isi | Siklus hidup |
+| Layer | Contents | Life cycle |
 |---|---|---|
-| Mirror CVE (baru) | semua CVE: id, tanggal publish/ubah, ringkasan, CVSS, produk terdampak (teks, seperti kolom Affected sekarang) | **habis dibuang retensi** |
-| Katalog tech (baru) | vendor + produk ternormalisasi, nama tampilan, `first_seen`, `last_cve_at`, jumlah CVE | **permanen**; baris yang di-monitor tidak pernah dihapus |
-| Monitored tech (`techstack_entries`) | per client; menunjuk ke katalog (kolom nullable untuk "custom"); `exposure`, `hosting_type`, flag aktif | permanen |
-| `cve_tracker` (sudah ada) | CVE per client untuk tech yang di-monitor, plus ticket/ACK | **permanen**, tanpa FK cascade ke mirror |
+| CVE mirror (new) | every CVE: id, publish/modify dates, summary, CVSS, affected products (text, like the Affected column today) | **dropped by retention** |
+| Tech catalog (new) | normalised vendor + product, display name, `first_seen`, `last_cve_at`, CVE count | **permanent**; monitored rows are never deleted |
+| Monitored tech (`techstack_entries`) | per client; points into the catalog (a nullable column for "custom"); `exposure`, `hosting_type`, an active flag | permanent |
+| `cve_tracker` (already exists) | CVEs per client for monitored techs, plus tickets/ACKs | **permanent**, no FK cascade to the mirror |
 
-- **CVE yang cocok dengan tech di-monitor dipromosikan ke `cve_tracker` saat ingest** (disalin, bukan
-  di-join saat query), jadi ticket, export Excel, dan dashboard CVE tidak terpengaruh retensi.
-- **Katalog bukan turunan sesaat dari mirror**: tanpa ini produk yang CVE-nya hanya ada di 2025 hilang dari
-  katalog di 2027 padahal masih di-monitor.
-- `name` tetap label tampilan dan kunci join (`cve_tracker.tech`), jadi ticket dan riwayat tidak putus.
+- **CVEs matching a monitored tech are promoted into `cve_tracker` at ingest** (copied, not
+  joined at query time), so tickets, the Excel export, and the CVE dashboard are not affected by retention.
+- **The catalog is not a transient derivative of the mirror**: otherwise a product whose CVEs only exist in 2025 would disappear from
+  the catalog in 2027 while still being monitored.
+- `name` stays the display label and the join key (`cve_tracker.tech`), so tickets and history do not break.
 
-**Retensi**: tahun kalender. Simpan tahun berjalan dan tahun sebelumnya; mulai 1 Januari tahun N, semua CVE
-terbitan N-2 dibuang (di 2026 mirror berisi 2025 dan 2026; di 2027 CVE 2025 dibuang). Job harian di queue
-`maintenance`, mencatat jumlah yang dibuang di log, dan tidak menyentuh `cve_tracker`.
+**Retention**: calendar year. Keep the current year and the previous one; from 1 January of year N, every CVE
+published in N-2 is dropped (in 2026 the mirror holds 2025 and 2026; in 2027 the 2025 CVEs are dropped). A daily job on the
+`maintenance` queue, logging the number dropped, and not touching `cve_tracker`.
 
-**Tab dan perilaku**
-- **All Tech**: katalog global, pencarian dulu (autocomplete; bukan daftar yang di-scroll), aksi Monitor.
-  Produk yang belum ada di katalog boleh ditambah sebagai **custom**, bertanda belum terverifikasi.
-- **Monitored Tech**: per client. Tech yang di-monitor **selalu** di-enrich seperti yang sudah ada sekarang
-  (skor/risk exposure+hosting, KEV, EPSS, ticket); tidak ada enrichment baru di versi pertama.
-- **Tidak di-monitor = disembunyikan** (flag aktif; dashboard sudah punya scope "techstack aktif"). Ticket
-  tidak pernah ikut hilang.
-- **CVEs**: hanya CVE untuk tech yang di-monitor. **CVE DB** (tab baru, baca-saja): menjelajah semua CVE di
-  mirror (terbatas sedalam retensi), dan dari satu CVE bisa klik produk terdampaknya lalu Monitor. Butuh
-  index (tanggal, severity, produk).
-- **Notifikasi: sudah dibangun terpisah dari #19 (2026-10-07, branch `nameless/roadmap-runners`).** Keputusan
-  user: Telegram saja, semua CVE baru untuk tech yang di-monitor, satu ringkasan per run (per client),
-  dibangun sekarang di sink yang ada. Premis awalnya (sudah ada alert per CVE baru) ternyata salah; sebelum
-  ini hanya ada alert artikel, laporan Top CVE, alert PoC, dan draft email manual. Titik panggilnya (baris
-  `cve_tracker` baru dibuat) tetap sama saat pipeline diganti mirror -> promosi. Rinci: `docs/CVE_TRACKER_FLOW.md`
-  7. Sisa: laporan/alert lama (artikel, Top CVE) masih memakai nama techstack gabungan semua client.
+**Tabs and behaviour**
+- **All Tech**: a global catalog, search first (autocomplete; not a list to scroll), a Monitor action.
+  Products not yet in the catalog may be added as **custom**, flagged as unverified.
+- **Monitored Tech**: per client. Monitored techs are **always** enriched as today
+  (score/risk exposure+hosting, KEV, EPSS, ticket); no new enrichment in the first version.
+- **Not monitored = hidden** (an active flag; the dashboard already has an "active techstack" scope). Tickets
+  are never lost.
+- **CVEs**: only CVEs for monitored techs. **CVE DB** (a new, read-only tab): browses every CVE in the
+  mirror (limited to the retention depth), and from one CVE you can click its affected product and Monitor it. Needs
+  indexes (date, severity, product).
+- **Notifications: already built separately from #19 (2026-10-07, branch `nameless/roadmap-runners`).** User
+  decision: Telegram only, every new CVE for monitored techs, one summary per run (per client),
+  built now in the existing sink. Its original premise (that per-new-CVE alerts already existed) turned out to be wrong; before
+  this there were only article alerts, the Top CVE report, PoC alerts, and the manual email draft. Its call point (a new
+  `cve_tracker` row was created) stays the same when the pipeline is replaced by mirror -> promotion. Details: `docs/CVE_TRACKER_FLOW.md`
+  7. Remaining: the old reports/alerts (articles, Top CVE) still use the techstack names combined across all clients.
 
-**Dampak ke item lain**: #3 ("Populate now") **hilang** -- tech baru yang di-monitor langsung terisi dari
-mirror (sedalam retensi; riwayat sebelum 2025 sudah ada di tracker dari migrasi Mongo), jadi jendela 8 hari,
-backfill 180 hari, dan pacing MITRE tidak relevan lagi. #7 dapat dasar relevansi berbasis versi bila range
-versi disimpan. `new_cve` berubah dari "cari per nama" jadi "ambil semua CVE baru/berubah sekali per jam,
-proyeksikan ke tech yang di-monitor".
+**Impact on other items**: #3 ("Populate now") **goes away** -- a newly monitored tech is filled immediately from the
+mirror (as deep as retention; history before 2025 is already in the tracker from the Mongo migration), so the 8-day window,
+the 180-day backfill, and MITRE pacing are no longer relevant. #7 gets a basis for version-based relevance if version
+ranges are stored. `new_cve` changes from "search per name" to "fetch every new/changed CVE once an hour,
+project onto the monitored techs".
 
-**Pencocok nama tech sebenarnya ada tujuh, bukan enam** (`reports/cve_record.py::applicable_to_stack` tidak
-tercatat sebelumnya dan tidak disentuh fase 1; lihat `docs/CVE_TRACKER_FLOW.md` 9).
+**There are actually seven tech name matchers, not six** (`reports/cve_record.py::applicable_to_stack` was not
+recorded before and is not touched by phase 1; see `docs/CVE_TRACKER_FLOW.md` 9).
 
-**Pencocok teks tetap dibutuhkan** untuk artikel dan tweet (tidak punya CPE): `cti_core.tech_match` (di
-branch) dipertahankan; istilahnya kelak diturunkan dari katalog.
+**A text matcher is still needed** for articles and tweets (they have no CPE): `cti_core.tech_match` (on the
+branch) is kept; its terms will eventually be derived from the catalog.
 
-**Rancangan teknis lengkap (tabel, resolver, ingest, pencocokan, retensi, API/UI, migrasi, irisan PR)**:
-`docs/CVE_CATALOG_DESIGN.md`. **Irisan 1 (resolver murni `cti_core.catalog_resolve` + 58 tes) dan irisan 2
-(skema + model + repositori katalog/mirror/target, revisi `b7e3d9a1c5f2`, 21 tes Postgres), irisan 3
-(ingest `cve.mirror_sync` + retensi + skrip backfill, flag `CVE_MIRROR__ENABLED` default mati), dan irisan 4
-(promosi mirror -> `cve_tracker` dengan mode bayangan, flag `CVE_MIRROR__PROMOTE` default `off`), irisan 5
-(API katalog / CVE DB / Monitor + kontrak, scope entri nonaktif), dan irisan 6 (UI: Monitored Tech, All Tech,
-CVE DB, pemetaan entri lewat "Map to catalog"), dan irisan 7 (sakelar cutover: `new_cve` ditangguhkan saat
-`CVE_MIRROR__PROMOTE=live`, ekspor/impor pemetaan antar-lingkungan, `--since` untuk riwayat live, runbook) selesai
-di branch. **Semua kode #19 sudah ada; yang tersisa operasional, dikerjakan user**: pemetaan 34 entri di dev,
-mode bayangan, lalu cutover dev dan prod. Langkah persisnya: `docs/CVE_CATALOG_CUTOVER.md`.** Keputusan 2026-10-07: picker
-menyembunyikan keluarga ber-1 CVE (pencarian tetap menampilkan semuanya).
+**The full technical design (tables, resolver, ingest, matching, retention, API/UI, migration, PR slices)**:
+`docs/CVE_CATALOG_DESIGN.md`. **Slice 1 (the pure resolver `cti_core.catalog_resolve` + 58 tests), slice 2
+(schema + models + catalog/mirror/target repositories, revision `b7e3d9a1c5f2`, 21 Postgres tests), slice 3
+(`cve.mirror_sync` ingest + retention + backfill script, flag `CVE_MIRROR__ENABLED` off by default), slice 4
+(mirror -> `cve_tracker` promotion with shadow mode, flag `CVE_MIRROR__PROMOTE` default `off`), slice 5
+(catalog / CVE DB / Monitor API + contract, inactive entry scope), slice 6 (UI: Monitored Tech, All Tech,
+CVE DB, mapping entries through "Map to catalog"), and slice 7 (the cutover switch: `new_cve` suspended when
+`CVE_MIRROR__PROMOTE=live`, export/import of mappings across environments, `--since` for live history, runbook) are done
+on the branch. **All the #19 code exists; what remains is operational, done by the user**: mapping the 34 entries on dev,
+shadow mode, then the dev and prod cutovers. The exact steps: `docs/CVE_CATALOG_CUTOVER.md`.** Decision 2026-10-07: the picker
+hides 1-CVE families (search still shows everything).
 
-### Fase
+### Phases
 
-1. **Spike pengukuran** -- **dijalankan di data penuh 2026-10-07 (117.220 CVE); hasil dan implikasi di `docs/CVE_TECH_MATCHING.md` 7.1.3, laporan di `docs/spikes/`; perlu dijalankan ulang dengan skrip yang sudah diperbaiki dan `--since` = tanggal `new_cve` mulai berjalan**: `tools/ops/spike_cve_catalog.py` (stdlib saja; cara pakai di docstring dan `docs/CVE_TECH_MATCHING.md` 7.1.2). Hanya baca, tidak mengubah produk: tarik CVE 2025 sampai sekarang, hitung produk
-   (vendor, produk) unik, persentase sampah (`n/a`, nama repo, string versi), duplikasi ejaan, dan berapa dari
-   34 tech produksi ketemu dengan bersih. Sekaligus jadi angka recall (`docs/CVE_TECH_MATCHING.md` 7.2.1).
-   Hasilnya menentukan seberapa berat normalisasi katalog -- risiko terbesar desain ini.
-2. **Mirror + katalog (baca-saja)**: skema, ingest, normalisasi otomatis, job retensi, tab CVE DB.
-3. **Monitor**: tab All Tech / Monitored Tech, `techstack_entries` menunjuk ke katalog, validasi API,
-   regenerasi `docs/openapi.json` dan `schema.d.ts`. Pemetaan 34 tech lama ke katalog **ditinjau manual**.
-4. **Ganti `new_cve`**: projeksi mirror -> tracker. **Mode bayangan dulu** (jalan berdampingan dengan
-   `new_cve` lama beberapa hari, bandingkan CVE yang hanya ditemukan satu pihak), baru dialihkan.
-5. **Merge produk oleh admin** (gabung produk A ke B di katalog): menyusul setelah terlihat seberapa
-   berantakan hasil normalisasi otomatis.
+1. **Measurement spike** -- **run on the full data 2026-10-07 (117,220 CVEs); results and implications in `docs/CVE_TECH_MATCHING.md` 7.1.3, reports in `docs/spikes/`; needs re-running with the fixed script and `--since` = the date `new_cve` started running**: `tools/ops/spike_cve_catalog.py` (stdlib only; usage in the docstring and `docs/CVE_TECH_MATCHING.md` 7.1.2). Read-only, does not change the product: pull CVEs from 2025 to now, count the unique
+   (vendor, product) pairs, the percentage of junk (`n/a`, repo names, version strings), spelling duplicates, and how many of the
+   34 production techs come out clean. It doubles as the recall number (`docs/CVE_TECH_MATCHING.md` 7.2.1).
+   The result decides how heavy catalog normalisation is -- the biggest risk of this design.
+2. **Mirror + catalog (read-only)**: schema, ingest, automatic normalisation, the retention job, the CVE DB tab.
+3. **Monitor**: the All Tech / Monitored Tech tabs, `techstack_entries` pointing into the catalog, API validation,
+   regenerating `docs/openapi.json` and `schema.d.ts`. Mapping the 34 old techs to the catalog is **reviewed by hand**.
+4. **Replace `new_cve`**: mirror -> tracker projection. **Shadow mode first** (running alongside the
+   old `new_cve` for a few days, comparing CVEs found by only one side), then switched over.
+5. **Product merging by admins** (merging product A into B in the catalog): later, once it is clear how
+   messy the automatic normalisation is.
 
-Semuanya diuji di **server dev dulu**, baru produksi.
+Everything is tested on the **dev server first**, then production.
 
-### Terbuka (butuh konfirmasi user)
-- **Status 2026-10-08**: kode selesai; tersisa pemetaan manual, mode bayangan, dan cutover (runbook). Butir di
-  bawah yang belum ditandai DIPUTUSKAN masih terbuka.
-- **Sumber data**: CVE List V5 sebagai utama; spike mendukungnya (ADP menyelamatkan hanya 0,1% CVE dan CPE
-  hanya ada di 7,5% data CNA, jadi NVD/CPE tidak bisa jadi sumber identitas; NVD tetap berguna sebagai
-  pelengkap untuk CVSS/KEV). Menunggu konfirmasi user.
-- **Unit yang di-monitor: DIPUTUSKAN (user 2026-10-07) dua tingkat, vendor dan keluarga produk.** 9 dari 34
-  tech produksi bertipe "satu vendor, banyak produk" (fortinet 311 CVE, splunk 182, juniper 168, palo alto
-  150, ...). Satu entri Monitor boleh punya banyak target (lihat `docs/CVE_CATALOG_DESIGN.md` 3.4).
-- **Spike ulang: setengah selesai.** Dijalankan ulang dengan skrip yang sudah diperbaiki (angka identitas dan
-  cakupan sudah benar, laporan v2). **Recall belum terpisah**: `--since 2025-01-01` dan `tracker.csv` (73
-  baris; produksi 125 saat `reconcile`) sama dengan sebelumnya. Perlu `--since` = tanggal `new_cve` mulai
-  berjalan dan `tracker.csv` dari DB yang sama; konfirmasi DB mana / sudah dibersihkan?
-- **Tanggal untuk retensi dan jendela mirror**: usulan tanggal publish. Konsekuensinya CVE lama yang baru
-  berubah (mis. masuk KEV di 2026 padahal terbit 2023) tidak masuk mirror -- keterbatasan yang sama dengan
-  jendela 8 hari sekarang; bisa ditutup dengan mengambil khusus CVE lama yang berubah dan kena tech di-monitor.
-- **Versi terdampak: keputusan user 2026-10-07 = ikut yang sudah ada.** Tidak ada penyimpanan range versi
-  terstruktur baru; kolom Affected tetap teks (`cve_affected.affected`) dan ticket tetap
-  `affected_version`/`fixed_version` isian analis. Relevansi berbasis versi (#7) tidak dikerjakan di #19
-  (usulan range terstruktur dibatalkan, bukan ditunda).
-- **Pencocok ketujuh: DIPUTUSKAN (user 2026-10-08) = pengecualian.** `applicable_to_stack` (laporan Top CVE) sengaja
-  TIDAK disatukan ke `cti_core.tech_match`: `test_cve_record.py` mengunci `c++` ~ `c++ inc` (substring), dan laporan
-  itu tidak ikut jalur katalog. Tesnya tetap, perilakunya tidak diubah.
-- **Pemetaan `grafana`: DIPUTUSKAN (user 2026-10-08) = vendor-level** (vendor Grafana: menangkap Grafana OSS/
-  Enterprise, `mcp-k6`, k6, dll.; risikonya membawa produk Grafana yang tak dipakai).
+### Open (needs user confirmation)
+- **Status 2026-10-08**: code done; what remains is manual mapping, shadow mode, and cutover (runbook). Items
+  below not marked DECIDED are still open.
+- **Data source**: CVE List V5 as the primary; the spike supports it (ADP rescues only 0.1% of CVEs and CPE
+  is only present in 7.5% of CNA data, so NVD/CPE cannot be the identity source; NVD is still useful as a
+  supplement for CVSS/KEV). Waiting for user confirmation.
+- **The monitored unit: DECIDED (user 2026-10-07): two levels, vendor and product family.** 9 of the 34
+  production techs are of the "one vendor, many products" type (fortinet 311 CVEs, splunk 182, juniper 168, palo alto
+  150, ...). One Monitor entry may have many targets (see `docs/CVE_CATALOG_DESIGN.md` 3.4).
+- **Re-running the spike: half done.** Re-run with the fixed script (the identity and
+  coverage numbers are now correct, the v2 report). **Recall is not separated yet**: `--since 2025-01-01` and `tracker.csv` (73
+  rows; production had 125 at `reconcile` time) are the same as before. It needs `--since` = the date `new_cve` started
+  running and `tracker.csv` from the same DB; confirm which DB / was it already cleaned up?
+- **The date for retention and the mirror window**: proposed publish date. The consequence: old CVEs that change
+  recently (e.g. added to KEV in 2026 although published in 2023) do not enter the mirror -- the same limitation as
+  today's 8-day window; it could be closed by specifically fetching old CVEs that changed and hit a monitored tech.
+- **Affected versions: user decision 2026-10-07 = follow what exists.** No new structured version-range
+  storage; the Affected column stays text (`cve_affected.affected`) and tickets keep the
+  analyst-filled `affected_version`/`fixed_version`. Version-based relevance (#7) is not done in #19
+  (the structured-range proposal is cancelled, not deferred).
+- **The seventh matcher: DECIDED (user 2026-10-08) = an exception.** `applicable_to_stack` (the Top CVE report) is deliberately
+  NOT unified into `cti_core.tech_match`: `test_cve_record.py` locks `c++` ~ `c++ inc` (substring), and that report
+  does not follow the catalog path. Its test stays, its behaviour is not changed.
+- **Mapping `grafana`: DECIDED (user 2026-10-08) = vendor level** (the Grafana vendor: catches Grafana OSS/
+  Enterprise, `mcp-k6`, k6, etc.; the risk is bringing in unused Grafana products).
 
-**Titik sentuh (perkiraan)**: model + migrasi Alembic baru (mirror, katalog, `techstack_entries.catalog_id`;
-dicek `test_migrations_match_models`), job ingest dan retensi di `apps/worker` (queue `maintenance`),
+**Touch points (estimated)**: models + a new Alembic migration (mirror, catalog, `techstack_entries.catalog_id`;
+checked by `test_migrations_match_models`), ingest and retention jobs in `apps/worker` (the `maintenance` queue),
 `feeds/new_cve.py`, `routers/techstack.py` + `schemas/techstack.py` (+ openapi/`schema.d.ts`),
-`apps/web/src/components/cve/techstack-panel.tsx` + tab CVE DB, `routers/cve.py`, `services/cve_priority.py`,
+`apps/web/src/components/cve/techstack-panel.tsx` + the CVE DB tab, `routers/cve.py`, `services/cve_priority.py`,
 `cti_enrich/stages/score.py`, `cti_scraper/reference_data.py`, `tools/ops/reconcile_cve_tech.py`.
 
-**Selesai bila**: spike terlapor dengan angka; menekan Monitor pada produk katalog mengisi riwayatnya dari
-mirror tanpa menyentuh tech lain; tab CVEs hanya berisi tech di-monitor; di server dev, hasil mode bayangan
-vs `new_cve` lama terdokumentasi (CVE yang hanya ditemukan satu pihak, dengan penjelasan); tool
-`reconcile_cve_tech` pada data produksi tidak lagi menghasilkan `DELETE` yang disebabkan nama; retensi
-terbukti menghapus tahun N-2 tanpa menyentuh `cve_tracker`; angka recall sebelum/sesudah tercatat.
+**Done when**: the spike is reported with numbers; pressing Monitor on a catalog product fills its history from the
+mirror without touching other techs; the CVEs tab only contains monitored techs; on the dev server, the shadow mode
+vs old `new_cve` results are documented (CVEs found by only one side, with an explanation); the
+`reconcile_cve_tech` tool on production data no longer produces name-caused `DELETE`s; retention is
+proven to delete year N-2 without touching `cve_tracker`; before/after recall numbers are recorded.

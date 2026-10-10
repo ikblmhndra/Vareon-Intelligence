@@ -1,26 +1,26 @@
 # `apps/web` -- CTI Platform frontend
 
-Next.js App Router + TypeScript. Fase 8 (rewrite dari `ScraperNewsWeb`'s
-vanilla JS/Jinja2 lama) -- lihat `docs/PROGRESS.md` buat status per-grup
-dan `CLAUDE.md` buat gotcha shadcn/ui (Base UI, bukan Radix).
+Next.js App Router + TypeScript. Phase 8 (a rewrite of `ScraperNewsWeb`'s old
+vanilla JS/Jinja2) -- see `docs/PROGRESS.md` for per-group status and
+`CLAUDE.md` for the shadcn/ui gotchas (Base UI, not Radix).
 
-## Jalanin dev
+## Running dev
 
-Butuh `cti-api` (FastAPI) jalan duluan di `API_BASE_URL` (default
-`http://localhost:8000`, `.env.local`) -- Next.js jadi BFF (Backend For
-Frontend): browser gak pernah manggil `cti-api` langsung, semua lewat
-`app/api/proxy/[...path]` (baca `src/proxy.ts` + `src/lib/auth/session.ts`
-buat alasan arsitekturnya, keputusan #3 di `docs/PROGRESS.md` Fase 8).
+Needs `cti-api` (FastAPI) running first on `API_BASE_URL` (default
+`http://localhost:8000`, `.env.local`) -- Next.js acts as a BFF (Backend For
+Frontend): the browser never calls `cti-api` directly, everything goes through
+`app/api/proxy/[...path]` (read `src/proxy.ts` + `src/lib/auth/session.ts`
+for the architectural reasoning, decision #3 in `docs/PROGRESS.md` Phase 8).
 
 ```bash
 pnpm install
 pnpm dev
 ```
 
-## Generate ulang tipe API
+## Regenerating the API types
 
-`src/lib/api/schema.d.ts` di-generate dari `docs/openapi.json` (root repo,
-hasil Fase 7.7). Jalanin ulang abis backend nambah/ubah endpoint:
+`src/lib/api/schema.d.ts` is generated from `docs/openapi.json` (repo root,
+produced in Phase 7.7). Re-run it after the backend adds or changes an endpoint:
 
 ```bash
 pnpm run gen:api

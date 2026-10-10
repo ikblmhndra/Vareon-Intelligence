@@ -1,20 +1,20 @@
-# Data referensi bawaan (fresh deployment tanpa Mongo lama)
+# Default reference data (fresh deployment without the old Mongo)
 
-Tiga koleksi kecil yang dibutuhkan platform baru supaya fiturnya hidup, disalin apa adanya dari
-dump Mongo legacy (`mongodump`, struktur `<database>/<koleksi>.bson`). Isinya data umum, bukan rahasia:
+Three small collections the new platform needs for its features to work, copied as-is from the legacy
+Mongo dump (`mongodump`, layout `<database>/<collection>.bson`). The contents are public data, not secrets:
 
-| File | Isi | Baris | Tabel tujuan |
+| File | Contents | Rows | Target table |
 |---|---|---|---|
-| `threatintel/groups.bson` | kamus nama threat actor (sumber: malpedia, eternal-library, threat-card, mstic, orkl, ransomlook, mitre, dll) | 3991 | `threat_actor_groups` |
-| `threatintel/apac-people.bson` | demonym/nasionalitas APAC (BUKAN nama orang) | 30 | `monitored_people` |
-| `news_db/ioc_allowlist.bson` | IP/domain yang jangan dihitung sebagai IOC | 9 | `ioc_allowlist_entries` |
+| `threatintel/groups.bson` | dictionary of threat actor names (sources: malpedia, eternal-library, threat-card, mstic, orkl, ransomlook, mitre, etc.) | 3991 | `threat_actor_groups` |
+| `threatintel/apac-people.bson` | APAC demonyms/nationalities (NOT people's names) | 30 | `monitored_people` |
+| `news_db/ioc_allowlist.bson` | IPs/domains that must not be counted as IOCs | 9 | `ioc_allowlist_entries` |
 
-Tanpa `threat_actor_groups`, scoring tidak menemukan threat actor sama sekali: dropdown TA kosong dan PIR
-berbasis TA selalu 0 hasil (temuan QA staging 2026-10-01).
+Without `threat_actor_groups`, scoring finds no threat actors at all: the TA dropdown is empty and TA-based
+PIRs always return 0 results (staging QA finding, 2026-10-01).
 
-`tools/ops/fresh_deploy.sh` memuatnya otomatis lewat `tools/seed/fase5_reference_data.py --dump-dir`.
-Idempoten: dijalankan ulang tidak menggandakan baris dan tidak menimpa perubahan dari UI.
+`tools/ops/fresh_deploy.sh` loads them automatically through `tools/seed/fase5_reference_data.py --dump-dir`.
+Idempotent: re-running it does not duplicate rows and does not overwrite changes made in the UI.
 
-Cara menambah/memperbarui: ganti file `.bson` dengan hasil `mongodump` baru (jaga nama dan lokasinya).
-Data kurasi lain (client, techstack, akun X yang dipantau, PIR, dst) TIDAK ikut -- itu diisi lewat UI,
-atau lewat `tools/seed/fase10_reference_data.py` kalau punya dump Mongo lama.
+To add or update: replace the `.bson` file with a new `mongodump` output (keep its name and location).
+Other curated data (clients, techstack, monitored X accounts, PIRs, etc.) is NOT included -- it is entered
+through the UI, or through `tools/seed/fase10_reference_data.py` if you have an old Mongo dump.

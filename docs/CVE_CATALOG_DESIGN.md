@@ -1,371 +1,371 @@
-# Rancangan: mirror CVE, katalog tech, dan Monitor (ROADMAP #19)
+# Design: CVE mirror, tech catalog, and Monitor (ROADMAP #19)
 
-Status: **irisan 1 (resolver), 2 (skema, model, repositori), 3 (ingest), 4 (promosi + mode
-bayangan), 5 (API), 6 (UI), dan 7 (sakelar cutover + alat pemetaan + runbook) SELESAI di branch; yang tersisa
-operasional (pemetaan manual 34 entri, mode bayangan, cutover) mengikuti `docs/CVE_CATALOG_CUTOVER.md`** (2026-10-07). Diturunkan dari keputusan user, hasil spike di data
-penuh (`docs/spikes/2026-10-07_cve_catalog_report_v2.md`, tafsir di `docs/CVE_TECH_MATCHING.md` 7.1.3), dan
-alur CVE Tracker yang sekarang (`docs/CVE_TRACKER_FLOW.md`; **baca bagian 10-nya**, itu invarian yang
-harus dijaga). Hal yang belum diverifikasi ditandai **[asumsi]**; yang diverifikasi ditandai **[dicek]**.
+Status: **slices 1 (resolver), 2 (schema, models, repositories), 3 (ingest), 4 (promotion + shadow
+mode), 5 (API), 6 (UI), and 7 (cutover switch + mapping tools + runbook) are DONE on the branch; what remains
+is operational (manual mapping of the 34 entries, shadow mode, cutover) and follows `docs/CVE_CATALOG_CUTOVER.md`** (2026-10-07). Derived from the user's decisions, the spike results on the full
+data (`docs/spikes/2026-10-07_cve_catalog_report_v2.md`, interpreted in `docs/CVE_TECH_MATCHING.md` 7.1.3), and
+the current CVE Tracker flow (`docs/CVE_TRACKER_FLOW.md`; **read its section 10**, those are the invariants that
+must be preserved). Unverified items are marked **[assumption]**; verified ones are marked **[checked]**.
 
-## 1. Keputusan yang sudah diambil (user, 2026-10-07)
+## 1. Decisions already made (user, 2026-10-07)
 
-1. Semua CVE terbit >= 2025 disimpan di DB sendiri (**mirror**). **Retensi tahun kalender**: simpan tahun
-   berjalan dan tahun sebelumnya; 1 Januari 2027 CVE terbitan 2025 dibuang.
-2. Katalog tech (vendor, produk) diturunkan dari data CVE. Produk yang belum ada boleh ditambah sebagai
-   **custom** (bertanda belum terverifikasi).
-3. Menu techstack punya tab **All Tech** (katalog) dan **Monitored Tech** (per client). Tab **CVEs** hanya
-   menampilkan CVE untuk tech yang di-monitor. Tab baru **CVE DB** (baca-saja) menjelajah seluruh mirror.
-4. **Unit Monitor dua tingkat: vendor dan keluarga produk.**
-5. Tech yang tidak di-monitor **disembunyikan** (flag aktif), tidak dihapus; ticket tidak pernah hilang.
-6. Enrichment untuk yang di-monitor = yang sudah ada sekarang (skor/risk, KEV, EPSS, ticket).
-7. Versi terdampak: ikut yang sudah ada (teks di Affected + isian ticket). Tidak ada range terstruktur.
-8. Notifikasi CVE baru: **sudah dibangun** (`cti_scraper.cve_alert`), memakai penanda "baris tracker baru
-   dibuat"; rancangan ini harus tetap memanggil titik yang sama.
-9. Normalisasi otomatis dulu; merge produk oleh admin menyusul. Diuji di **server dev** dulu, **mode
-   bayangan** sebelum mengganti `new_cve`.
+1. Every CVE published >= 2025 is stored in our own DB (the **mirror**). **Calendar-year retention**: keep the current year
+   and the previous one; on 1 January 2027 CVEs published in 2025 are dropped.
+2. The tech catalog (vendor, product) is derived from the CVE data. Products that do not exist yet may be added as
+   **custom** (flagged as unverified).
+3. The techstack menu has an **All Tech** tab (the catalog) and a **Monitored Tech** tab (per client). The **CVEs** tab only
+   shows CVEs for monitored techs. A new **CVE DB** tab (read-only) browses the whole mirror.
+4. **The Monitor unit has two levels: vendor and product family.**
+5. Techs that are not monitored are **hidden** (an active flag), not deleted; tickets are never lost.
+6. Enrichment for monitored techs = what already exists today (score/risk, KEV, EPSS, ticket).
+7. Affected versions: follow what exists (text in Affected + ticket fields). No structured ranges.
+8. New-CVE notifications: **already built** (`cti_scraper.cve_alert`), using the "a new tracker row was
+   created" marker; this design must keep calling the same point.
+9. Automatic normalisation first; product merging by admins later. Tested on the **dev server** first, **shadow
+   mode** before replacing `new_cve`.
 
-## 2. Fakta dari data yang membentuk rancangan
+## 2. Facts from the data that shape the design
 
-| Fakta (117.220 CVE, 2025-01-01 s.d. 2026-10-07) | Akibat pada rancangan |
+| Fact (117,220 CVEs, 2025-01-01 to 2026-10-07) | Consequence for the design |
 |---|---|
-| Volume: 2025 ±43,8 ribu; Sep 2026 14,9 ribu (3,9x Sep 2025); kemarin 1.010 baru + 929 diperbarui | Ingest harus tahan ratusan-ribuan perubahan/hari; filter per run, bukan per kandidat |
-| 93,8% CVE punya identitas; ADP menyelamatkan 42; CPE hanya 7,5% | Identitas dari isian CNA; **abaikan ADP**; jangan bergantung pada CPE/NVD |
-| 15.290 vendor, **79% berproduk tunggal**; 41.507 identitas; **62,9% hanya 1 CVE**; 5.546 (13,4%) >= 5 CVE | Picker search-first; tampilan awal >= 5 CVE; katalog sebagian besar ekor |
-| Ejaan digabung otomatis hanya 242 (0,6%) | Normalisasi otomatis cukup untuk v1; merge admin boleh menyusul |
-| **Hanya 562 keluarga bervarian > 1** (1.915 identitas, 4,6%): lipat versi otomatis nyaris tak mengubah apa pun di luar Windows/perangkat | "Keluarga" praktis = produk, dengan lipat versi untuk Windows/Dell/D-Link/Siemens; **vendor-level adalah jaring pengaman** bila lipat keluarga salah |
-| Vendor tanpa nama layak: `unknown` 1.236, `n/a` 520, kosong 211 identitas (4,7%) | Vendor placeholder dibuang jadi "(tanpa vendor)", tidak bisa di-monitor di tingkat vendor |
-| Vendor yang sama dieja beda: `Palo Alto Networks`/`paloaltonetworks`, `n8n io`/`n8n`, `graylog2`/`graylog`, `nagios`/`nagios enterprises llc` | Kunci vendor = bentuk kompak; sisanya perlu alias/merge manual |
-| Label tech lama sering mencakup **beberapa** keluarga (`junos` = junos os + evolved + space; `jira`; `nginx` = open source + plus) atau beberapa vendor (`graylog`, `nagios`) | **Satu entri Monitor harus bisa punya banyak target** (lihat 3.4) |
-| **Feed delta CVE List V5 [dicek]**: `cves/delta.json` (4 KB) hanya memuat jendela fetch terakhir; selang fetch median 18 menit, maks 62; `deltaLog.json` 24 MB menyimpan 30 hari | Polling per jam kehilangan data; lihat 5 |
+| Volume: 2025 ~43.8 thousand; Sep 2026 14.9 thousand (3.9x Sep 2025); yesterday 1,010 new + 929 updated | Ingest must handle hundreds to thousands of changes/day; filter per run, not per candidate |
+| 93.8% of CVEs have an identity; ADP rescues 42; CPE only 7.5% | Identity from CNA input; **ignore ADP**; do not depend on CPE/NVD |
+| 15,290 vendors, **79% with a single product**; 41,507 identities; **62.9% with only 1 CVE**; 5,546 (13.4%) >= 5 CVEs | Search-first picker; initial view >= 5 CVEs; the catalog is mostly tail |
+| Automatically merged spellings only 242 (0.6%) | Automatic normalisation is enough for v1; admin merging can come later |
+| **Only 562 families with > 1 variant** (1,915 identities, 4.6%): automatic version folding changes almost nothing outside Windows/devices | "Family" is practically = product, with version folding for Windows/Dell/D-Link/Siemens; **vendor level is the safety net** when family folding is wrong |
+| Vendors without a usable name: `unknown` 1,236, `n/a` 520, empty 211 identities (4.7%) | Placeholder vendors are collapsed into "(tanpa vendor)" (no vendor), which cannot be monitored at vendor level |
+| The same vendor spelled differently: `Palo Alto Networks`/`paloaltonetworks`, `n8n io`/`n8n`, `graylog2`/`graylog`, `nagios`/`nagios enterprises llc` | Vendor key = the compact form; the rest needs manual aliases/merges |
+| Old tech labels often cover **several** families (`junos` = junos os + evolved + space; `jira`; `nginx` = open source + plus) or several vendors (`graylog`, `nagios`) | **One Monitor entry must be able to have many targets** (see 3.4) |
+| **CVE List V5 delta feed [checked]**: `cves/delta.json` (4 KB) only holds the last fetch window; median fetch interval 18 minutes, max 62; `deltaLog.json` 24 MB keeps 30 days | Hourly polling loses data; see 5 |
 
-## 3. Model data
+## 3. Data model
 
-Umur berbeda, jangan disamakan:
+Different lifetimes, do not conflate them:
 
-| Lapisan | Tabel | Siklus hidup |
+| Layer | Tables | Life cycle |
 |---|---|---|
-| Mirror | `cve_records`, `cve_record_products` | dibuang retensi |
-| Katalog | `catalog_vendors`, `catalog_families`, `catalog_family_aliases` | **permanen**; baris yang dirujuk Monitor tidak pernah dihapus |
-| Monitor | `techstack_entries` (+kolom), `techstack_targets` | permanen, per client |
-| Hasil | `cve_tracker` dst (sudah ada) | permanen, tanpa FK ke mirror |
+| Mirror | `cve_records`, `cve_record_products` | dropped by retention |
+| Catalog | `catalog_vendors`, `catalog_families`, `catalog_family_aliases` | **permanent**; rows referenced by Monitor are never deleted |
+| Monitor | `techstack_entries` (+columns), `techstack_targets` | permanent, per client |
+| Results | `cve_tracker` etc. (already exist) | permanent, no FK to the mirror |
 
 ### 3.1 Mirror
 
-`cve_records`: `cve_id` PK; `published_date` (index; dasar retensi), `published_at`, `modified_at`;
-`summary`, `cvss_score`, `cvss_severity`, `cvss_vector`, `link`, `solutions`; `references` JSONB (daftar URL);
-`affected_lines` JSONB (daftar string **persis format yang kini ditulis `new_cve`**, mis. `Zabbix: < 7.0`);
-`ingested_at`, `source_updated_at`. Ini semua yang dibutuhkan untuk menyalin ke `cve_tracker` (padanan
-`CveItem`), jadi **tidak menyimpan JSON mentah**.
+`cve_records`: `cve_id` PK; `published_date` (indexed; the retention basis), `published_at`, `modified_at`;
+`summary`, `cvss_score`, `cvss_severity`, `cvss_vector`, `link`, `solutions`; `references` JSONB (a list of URLs);
+`affected_lines` JSONB (a list of strings in **exactly the format `new_cve` writes today**, e.g. `Zabbix: < 7.0`);
+`ingested_at`, `source_updated_at`. That is everything needed to copy into `cve_tracker` (the equivalent of
+`CveItem`), so **no raw JSON is stored**.
 
-`cve_record_products`: `cve_id` FK (`ON DELETE CASCADE`), `family_id` FK (nullable bila tak teridentifikasi),
-`vendor_id` FK, `vendor_raw`, `product_raw`, `has_cpe`. Index `(family_id, cve_id)` dan `(vendor_id, cve_id)`.
-String mentah disimpan supaya pemetaan ulang (aturan keluarga diperbaiki) bisa dihitung ulang untuk data
-yang masih dalam retensi.
+`cve_record_products`: `cve_id` FK (`ON DELETE CASCADE`), `family_id` FK (nullable when unidentified),
+`vendor_id` FK, `vendor_raw`, `product_raw`, `has_cpe`. Indexes `(family_id, cve_id)` and `(vendor_id, cve_id)`.
+The raw strings are stored so that re-mapping (when family rules are fixed) can be recomputed for data
+still within retention.
 
-### 3.2 Katalog
+### 3.2 Catalog
 
-- `catalog_vendors`: `id`, `key` unik (**bentuk kompak**: `palo alto networks` = `paloaltonetworks`),
-  `display_name` (ejaan mentah paling sering), `monitorable` (false untuk "(tanpa vendor)"), `first_seen`,
-  `last_cve_at`, `cve_seen_total` (naik tiap ingest; **tidak turun saat retensi**, supaya urutan
-  popularitas stabil).
-- `catalog_families`: `id`, `vendor_id` FK, `key` (unik bersama `vendor_id`), `display_name`, `source`
-  (`auto` | `manual` | `custom`), statistik yang sama. `custom` = ditambah pengguna, belum terverifikasi.
-- `catalog_family_aliases`: `alias_key` unik -> `family_id`. Diisi otomatis untuk tiap varian yang dilipat
-  (`windows 10 version 1507` -> keluarga `windows`) dan, kelak, oleh merge admin. Resolver mencari di sini
-  dulu, jadi koreksi manual tidak hilang saat ingest berikutnya.
+- `catalog_vendors`: `id`, unique `key` (**compact form**: `palo alto networks` = `paloaltonetworks`),
+  `display_name` (the most frequent raw spelling), `monitorable` (false for "(tanpa vendor)"), `first_seen`,
+  `last_cve_at`, `cve_seen_total` (incremented on every ingest; **does not drop on retention**, so the popularity
+  order stays stable).
+- `catalog_families`: `id`, `vendor_id` FK, `key` (unique together with `vendor_id`), `display_name`, `source`
+  (`auto` | `manual` | `custom`), the same statistics. `custom` = added by a user, not yet verified.
+- `catalog_family_aliases`: unique `alias_key` -> `family_id`. Filled automatically for every folded variant
+  (`windows 10 version 1507` -> family `windows`) and, later, by admin merges. The resolver looks here
+  first, so manual corrections are not lost on the next ingest.
 
-Tidak ada tabel produk terpisah: varian dilipat ke keluarga saat resolusi; nama mentah ada di
-`cve_record_products` (selama retensi).
+There is no separate products table: variants are folded into families at resolution time; the raw names live in
+`cve_record_products` (while in retention).
 
-### 3.3 Resolver identitas (`cti_core.catalog_resolve`, **sudah ada**, 58 tes)
+### 3.3 Identity resolver (`cti_core.catalog_resolve`, **already exists**, 58 tests)
 
 `resolve(vendor_raw, product_raw, cpes) -> (vendor_key, vendor_display, family_key, family_display) | None`.
-Aturan = hasil spike, ditulis ulang sebagai modul dengan tes (spike tetap salinan lokal tanpa dependensi):
-1. CPE dipakai kalau ada dan tidak wildcard; jika tidak isian CNA (`product`, lalu `packageName`).
-2. Normalisasi sadar-unicode (huruf kecil, tanda baca jadi spasi, nama CJK utuh).
-3. Produk **sampah** -> `None`: placeholder (`n/a`, `unknown`, ...), generik (`software`, `firmware`, ...),
-   mirip-versi, angka-saja, URL. **Bukan sampah** (tetap identitas): `owner/repo`, judul panjang, memuat
+Rules = the spike's results, rewritten as a module with tests (the spike stays a local copy without dependencies):
+1. Use CPE when present and not a wildcard; otherwise the CNA input (`product`, then `packageName`).
+2. Unicode-aware normalisation (lower case, punctuation to spaces, CJK names kept whole).
+3. **Junk** products -> `None`: placeholders (`n/a`, `unknown`, ...), generic (`software`, `firmware`, ...),
+   version-like, digits-only, URLs. **Not junk** (still an identity): `owner/repo`, long titles, names containing
    `and`/`&`.
-4. Vendor placeholder/kosong -> vendor "(tanpa vendor)" (`monitorable=false`).
-5. Keluarga = produk dengan token versi di ujung dibuang (`version`, `22h2`, angka, `edition`, `x64`, ...),
-   dicek ke `catalog_family_aliases` lebih dulu. Akhiran noise `server core installation` ikut dibuang
-   (keputusan irisan 1; tanpa itu tiap versi Windows Server menjadi dua keluarga). Pengaman: keluarga hasil
-   lipat yang sama dengan vendornya tidak dipakai (`Microsoft 365` tidak boleh jadi `microsoft`).
-6. Kunci vendor = bentuk kompak **tanpa akhiran legal** (`inc`, `corporation`, `ltd`, `llc`, `gmbh`, ...):
-   di katalog nyata ini menggabungkan 127 grup vendor tambahan, semuanya benar (Microsoft/Microsoft Inc,
-   Oracle/Oracle Corporation, D-Link/D-Link Corporation). Akhiran satu huruf sengaja tidak dipakai (menggabung
-   `n` dengan `n a`).
+4. A placeholder/empty vendor -> the vendor "(tanpa vendor)" (`monitorable=false`).
+5. Family = the product with trailing version tokens dropped (`version`, `22h2`, digits, `edition`, `x64`, ...),
+   checked against `catalog_family_aliases` first. The noise suffix `server core installation` is dropped too
+   (a slice 1 decision; without it every Windows Server version becomes two families). Safeguard: a folded
+   family equal to its vendor is not used (`Microsoft 365` must not become `microsoft`).
+6. Vendor key = the compact form **without legal suffixes** (`inc`, `corporation`, `ltd`, `llc`, `gmbh`, ...):
+   on the real catalog this merges 127 additional vendor groups, all correctly (Microsoft/Microsoft Inc,
+   Oracle/Oracle Corporation, D-Link/D-Link Corporation). Single-letter suffixes are deliberately not used (they would merge
+   `n` with `n a`).
 
-**Hasil resolver di seluruh katalog spike (41.507 identitas, 0,5 detik)**: **39.896** pasangan (vendor,
-keluarga) dan **14.911** vendor (dari 15.290); 810 keluarga melipat > 1 identitas (2.421 identitas); 1.971
-identitas tanpa vendor (4,7%). Target pemetaan tabel 8 semuanya ada: `fortinet/fortios`, `junos os`/`junos os
-evolved`/`junos space`, `f5/nginx open source` + `nginx plus`, `mikrotik/routeros`, vendor Fortinet (51
-keluarga), Palo Alto Networks (32, dua ejaan vendor bersatu), Splunk (31). **Tetap terpisah, butuh alias
-manual**: `n8nio` vs `n8n` (175 vs 22), `graylog2` vs `graylog`, `nagios` vs `nagios enterprises llc`.
+**Resolver results on the whole spike catalog (41,507 identities, 0.5 seconds)**: **39,896** (vendor,
+family) pairs and **14,911** vendors (out of 15,290); 810 families fold > 1 identity (2,421 identities); 1,971
+identities without a vendor (4.7%). Every mapping target in the table in 8 exists: `fortinet/fortios`, `junos os`/`junos os
+evolved`/`junos space`, `f5/nginx open source` + `nginx plus`, `mikrotik/routeros`, the Fortinet vendor (51
+families), Palo Alto Networks (32, both vendor spellings unified), Splunk (31). **Still separate, needing a manual
+alias**: `n8nio` vs `n8n` (175 vs 22), `graylog2` vs `graylog`, `nagios` vs `nagios enterprises llc`.
 
-### 3.4 Monitor: satu entri, banyak target
+### 3.4 Monitor: one entry, many targets
 
-`techstack_entries` tetap: `name` (label **dan kunci join** ke `cve_tracker.tech`, tidak berubah),
-`exposure`, `hosting_type`, `source`, `added_date`; **tambah** `active` (default true).
+`techstack_entries` stays: `name` (the label **and the join key** to `cve_tracker.tech`, unchanged),
+`exposure`, `hosting_type`, `source`, `added_date`; **add** `active` (default true).
 
-`techstack_targets` (baru): `entry_id` FK (`ON DELETE CASCADE`), `vendor_id` FK **atau** `family_id` FK
-(`CHECK` tepat satu terisi). Contoh: `junos` -> {family `junos os`, `junos os evolved`, `junos space`};
+`techstack_targets` (new): `entry_id` FK (`ON DELETE CASCADE`), `vendor_id` FK **or** `family_id` FK
+(`CHECK` exactly one is set). Examples: `junos` -> {family `junos os`, `junos os evolved`, `junos space`};
 `fortinet` -> {vendor `fortinet`}; `nginx` -> {family `nginx open source`, `nginx plus`}.
 
-Entri **tanpa target** = entri lama/custom, tetap dicocokkan lewat teks seperti sekarang (gate `new_cve`),
-sehingga tidak ada yang berhenti bekerja sebelum dipetakan.
+An entry **without targets** = an old/custom entry, still matched by text as today (the `new_cve` gate),
+so nothing stops working before it is mapped.
 
-Tombol **Monitor** di All Tech membuat entri (label = nama tampilan, hak `exposure`/`hosting` default
-seperti sekarang) dengan **satu** target; menambah target ke entri yang ada = langkah terpisah (UI sederhana
-dulu).
+The **Monitor** button in All Tech creates an entry (label = the display name, `exposure`/`hosting` defaults
+as today) with **one** target; adding a target to an existing entry is a separate step (simple UI
+first).
 
-## 4. Pencocokan dan promosi ke `cve_tracker`
+## 4. Matching and promotion into `cve_tracker`
 
-Untuk tiap record mirror yang baru/berubah:
-1. Resolve produknya -> himpunan `(vendor_id, family_id)`.
-2. Entri aktif per client yang punya target cocok (target vendor cocok bila `vendor_id` ada di himpunan;
-   target keluarga bila `family_id` ada) **ATAU** entri tanpa target yang lolos gate teks lama
-   (`relevant_techs` pada string vendor/produk, ringkasan sebagai cadangan).
-3. Satu baris per `(cve_id, client_id)` (invarian: satu tech per baris). Bila beberapa entri cocok, pilih
-   **yang paling spesifik** (ada target keluarga cocok > hanya vendor > teks), lalu yang paling awal menurut
-   abjad (aturan sekarang), agar deterministik.
-4. `CveTrackerRepo.upsert_with_status` dengan field yang disalin dari `cve_records`; **`detected_on` diisi
-   saat INSERT** (waktu sistem menemukan, bukan tanggal publish; dasar MTTD) dan **tidak ditimpa**. Baris yang
-   dibuat dicatat ke `Session.info["cve_new_rows"]` sehingga ringkasan Telegram yang ada jalan tanpa diubah.
-5. Tidak mengecek false positive saat ingest (sama seperti sekarang; disembunyikan di query).
+For each new/changed mirror record:
+1. Resolve its products -> a set of `(vendor_id, family_id)`.
+2. Active entries per client that have a matching target (a vendor target matches when `vendor_id` is in the set;
+   a family target when `family_id` is) **OR** entries without targets that pass the old text gate
+   (`relevant_techs` on the vendor/product strings, with the summary as a fallback).
+3. One row per `(cve_id, client_id)` (invariant: one tech per row). When several entries match, pick
+   **the most specific** (a matching family target > vendor only > text), then the alphabetically first
+   (today's rule), so it is deterministic.
+4. `CveTrackerRepo.upsert_with_status` with the fields copied from `cve_records`; **`detected_on` is set
+   on INSERT** (the time the system found it, not the publish date; the MTTD basis) and **never overwritten**. Created rows
+   are recorded in `Session.info["cve_new_rows"]` so the existing Telegram summary works unchanged.
+5. False positives are not checked at ingest (same as today; they are hidden in queries).
 
-Pemicu lain: entri **baru di-Monitor** -> jalankan sekali terhadap seluruh mirror (riwayat langsung terisi;
-tombol "Populate now" #3 tidak diperlukan). Ringkasan Telegram tidak ikut mengumumkan riwayat itu karena
-batas umur 3 hari di `cve_alert`.
+Another trigger: an entry **newly Monitored** -> run once against the whole mirror (history is filled immediately;
+the "Populate now" button #3 is not needed). The Telegram summary does not announce that history because of
+the 3-day age limit in `cve_alert`.
 
-## 5. Ingest dari CVE List V5
+## 5. Ingest from CVE List V5
 
-**[dicek]** `https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/delta.json` berisi
-`fetchTime`, `numberOfChanges`, `new[]`, `updated[]`, `error[]`; tiap elemen punya `cveId`, `githubLink`
-(URL berkas raw), `dateUpdated`. Hanya jendela fetch terakhir; `deltaLog.json` (24 MB, 30 hari) menyimpan
-riwayat.
+**[checked]** `https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/delta.json` contains
+`fetchTime`, `numberOfChanges`, `new[]`, `updated[]`, `error[]`; each element has `cveId`, `githubLink`
+(the raw file URL), `dateUpdated`. Only the last fetch window; `deltaLog.json` (24 MB, 30 days) keeps the
+history.
 
-- Tugas `cve.mirror_sync` (queue `maintenance`) **tiap 5 menit**: ambil `delta.json`, bandingkan
-  `fetchTime` dengan kursor (disimpan di DB), proses hanya yang baru, unduh tiap berkas `githubLink`, parse
-  dengan logika parser MITRE yang sudah ada, simpan ke mirror, resolve, promosikan. **[dicek pada 2 record
-  asli]** record CVE List V5 punya semua yang dibaca parser (`metrics` dengan `cvssV3_1`/`format`/`scenarios`,
-  `affected[].versions` dengan `lessThan`/`lessThanOrEqual`/`status`, `references`, `solutions`, tanggal)
-  serta `descriptions[lang=en]`. **Tetapi parser itu belum bisa dipakai ulang**: ia menyatu di
-  `NewCve._mitre_detail` (bukan fungsi murni), dan `summary` serta `link` datang dari kandidat NVD/Tenable,
-  bukan dari record MITRE. Perlu **refactor**: ekstrak `parse_cve_record(data, *, link, summary)` murni,
-  dipakai `new_cve` (perilaku tidak berubah, tes yang ada jadi pengaman) dan ingest mirror
-  (`summary` = `descriptions[en]`, `link` = `https://nvd.nist.gov/vuln/detail/<id>`; teks NVD dan CNA
-  umumnya sama, tapi perbedaannya perlu diukur di mode bayangan).
-- **Celah**: bila worker mati > selang fetch (maks 62 menit teramati), `delta.json` sudah menimpa jendela
-  yang terlewat. Deteksi: `fetchTime` baru terlalu jauh dari kursor -> **catch-up lewat `deltaLog.json`**
-  (24 MB, jarang), atau lewat clone/git pull. Tanpa ini data hilang diam-diam.
-- **Backfill awal**: skrip ops sekali jalan memakai iterator sumber dari `spike_cve_catalog.py` (clone atau
-  zip), parser dan resolver yang sama.
-- Batas: `raw.githubusercontent.com` terjangkau dari environment ini **[dicek]**; ratusan sampai ~2.000
-  berkas per hari. Hormati `User-Agent`/jeda; kegagalan satu berkas tidak menghentikan batch (dicatat,
-  dicoba lagi di siklus berikut).
+- Task `cve.mirror_sync` (queue `maintenance`) **every 5 minutes**: fetch `delta.json`, compare
+  `fetchTime` with the cursor (stored in the DB), process only what is new, download each `githubLink` file, parse
+  it with the existing MITRE parser logic, store it in the mirror, resolve, promote. **[checked on 2 real
+  records]** CVE List V5 records have everything the parser reads (`metrics` with `cvssV3_1`/`format`/`scenarios`,
+  `affected[].versions` with `lessThan`/`lessThanOrEqual`/`status`, `references`, `solutions`, dates)
+  as well as `descriptions[lang=en]`. **But that parser could not be reused yet**: it was fused into
+  `NewCve._mitre_detail` (not a pure function), and `summary` and `link` came from the NVD/Tenable candidate,
+  not from the MITRE record. It needed a **refactor**: extract a pure `parse_cve_record(data, *, link, summary)`,
+  used by `new_cve` (behaviour unchanged, the existing tests as a safety net) and by mirror ingest
+  (`summary` = `descriptions[en]`, `link` = `https://nvd.nist.gov/vuln/detail/<id>`; NVD and CNA text are
+  usually the same, but the difference needs measuring in shadow mode).
+- **Gap**: if the worker is down longer than the fetch interval (max 62 minutes observed), `delta.json` has already overwritten
+  the missed window. Detection: the new `fetchTime` is too far from the cursor -> **catch up through `deltaLog.json`**
+  (24 MB, rare), or through a clone/git pull. Without this, data is lost silently.
+- **Initial backfill**: a one-off ops script using the source iterator from `spike_cve_catalog.py` (clone or
+  zip), with the same parser and resolver.
+- Limits: `raw.githubusercontent.com` is reachable from this environment **[checked]**; hundreds to ~2,000
+  files per day. Respect `User-Agent`/pauses; one file failing does not stop the batch (it is logged and
+  retried in the next cycle).
 
-## 6. Retensi
+## 6. Retention
 
-Tugas harian (queue `maintenance`): `DELETE FROM cve_records WHERE published_date < make_date(
-extract(year FROM now())::int - 1, 1, 1)` (cascade ke `cve_record_products`). Catat jumlah di log; **tidak
-menyentuh** `cve_tracker`, ticket, katalog. Tes: setelah retensi, baris tracker yang berasal dari CVE yang
-dibuang tetap utuh. Statistik katalog tidak turun (kolom `*_seen_total`).
+A daily task (queue `maintenance`): `DELETE FROM cve_records WHERE published_date < make_date(
+extract(year FROM now())::int - 1, 1, 1)` (cascading to `cve_record_products`). Log the count; **does not
+touch** `cve_tracker`, tickets, or the catalog. Test: after retention, tracker rows that came from dropped CVEs
+stay intact. Catalog statistics do not drop (the `*_seen_total` columns).
 
-## 7. API dan UI
+## 7. API and UI
 
-- Katalog: `GET /api/catalog/vendors?q=&show_all=` , `GET /api/catalog/vendors/{id}/families?show_all=`,
-  `GET /api/catalog/families?q=` (search lintas keluarga, hasil menyertakan vendor). **Keputusan user
-  2026-10-07: tampilan jelajah menyembunyikan keluarga yang hanya punya 1 CVE** (`show_all=true` untuk
-  menampilkan semuanya). Pengecualian: **pencarian (`q`) tidak menyembunyikan apa pun** (produk baru
-  dengan CVE pertamanya harus tetap bisa ditemukan dan di-monitor), dan keluarga/vendor yang sudah dirujuk
-  Monitor selalu tampil. Di data nyata ini menyembunyikan 24.562 dari 39.896 keluarga (61,6%): tampil 15.334
-  keluarga di 5.815 vendor. Hitungan "CVE per keluarga" adalah **CVE unik per keluarga** (satu CVE yang
-  mencantumkan tiga varian Windows dihitung sekali; jumlah entri di CSV spike menghitung dobel). Pagination
-  wajib.
-- Monitor: `POST /api/techstack` menerima `{vendor_id | family_id | custom_name}`; `POST/DELETE
-  /api/techstack/{id}/targets`; `PATCH /api/techstack/{id}` untuk `active`. Perubahan kontrak ->
-  regenerasi `docs/openapi.json` dan `apps/web/src/lib/api/schema.d.ts` (CI memeriksa drift).
-- CVE DB: `GET /api/cve-db?q=&vendor=&family=&severity=&date_start=` baca-saja atas mirror; dari satu CVE,
-  tiap produk terdampak punya aksi Monitor.
-- UI: sub-view Tech Stack dipecah **All Tech** (pohon vendor -> keluarga, search-first) dan **Monitored
-  Tech** (daftar sekarang + target + toggle aktif). Mengikuti `apps/web/CLAUDE.md` (Base UI, bukan Radix).
-- Scope tab CVEs/stats/dashboard/export: tambah filter `active` pada techstack. **Putuskan perilaku
-  techstack kosong** (sekarang = tanpa filter tech; lihat `docs/CVE_TRACKER_FLOW.md` 10.4).
+- Catalog: `GET /api/catalog/vendors?q=&show_all=` , `GET /api/catalog/vendors/{id}/families?show_all=`,
+  `GET /api/catalog/families?q=` (search across families, results include the vendor). **User decision
+  2026-10-07: the browse view hides families that have only 1 CVE** (`show_all=true` to
+  show everything). Exceptions: **search (`q`) hides nothing** (a new product
+  with its first CVE must still be findable and monitorable), and families/vendors already referenced by
+  Monitor are always shown. On the real data this hides 24,562 of the 39,896 families (61.6%): 15,334
+  families across 5,815 vendors are shown. The "CVEs per family" count is **unique CVEs per family** (one CVE that
+  lists three Windows variants is counted once; the entry counts in the spike CSV double-count). Pagination
+  is mandatory.
+- Monitor: `POST /api/techstack` accepts `{vendor_id | family_id | custom_name}`; `POST/DELETE
+  /api/techstack/{id}/targets`; `PATCH /api/techstack/{id}` for `active`. Contract changes ->
+  regenerate `docs/openapi.json` and `apps/web/src/lib/api/schema.d.ts` (CI checks for drift).
+- CVE DB: `GET /api/cve-db?q=&vendor=&family=&severity=&date_start=`, read-only over the mirror; from a CVE,
+  every affected product has a Monitor action.
+- UI: the Tech Stack sub-view is split into **All Tech** (a vendor -> family tree, search-first) and **Monitored
+  Tech** (today's list + targets + an active toggle). Follows `apps/web/CLAUDE.md` (Base UI, not Radix).
+- Scope of the CVEs tab/stats/dashboard/export: add an `active` filter on the techstack. **Decide the behaviour of an
+  empty techstack** (today = no tech filter; see `docs/CVE_TRACKER_FLOW.md` 10.4).
 
-## 8. Migrasi dan cutover
+## 8. Migration and cutover
 
-1. Skema baru ditambahkan **tanpa mengubah perilaku**: entri lama tanpa target, `new_cve` tetap jalan.
-2. Backfill mirror + katalog dari clone (skrip ops) di dev; verifikasi jumlah dengan angka spike.
-3. **Pemetaan 34 entri lama ke target ditinjau manusia** (tabel usulan di bawah), dari hasil spike:
+1. The new schema is added **without changing behaviour**: old entries without targets, `new_cve` keeps running.
+2. Backfill the mirror + catalog from a clone (ops script) on dev; verify the counts against the spike numbers.
+3. **Mapping the 34 old entries to targets is reviewed by a human** (proposal table below), based on the spike results:
 
-   | Label lama | Usulan target | Catatan dari spike |
+   | Old label | Proposed target | Note from the spike |
    |---|---|---|
-   | fortinet | vendor Fortinet | 51 keluarga, 311 CVE |
-   | fortigate | keluarga fortinet/fortios | CNA menulis `FortiOS`, nama label beda dari produk |
-   | juniper | vendor Juniper Networks | 168 CVE |
-   | junos | keluarga junos os, junos os evolved, junos space | butuh banyak target |
-   | palo alto | vendor Palo Alto Networks | vendor dieja dua cara (kompak menyatukan) |
-   | splunk, okta, proofpoint, crowdstrike | vendor masing-masing | satu vendor, banyak produk |
-   | nginx | keluarga f5/nginx open source + nginx plus | JANGAN vendor/nama bebas: `nginx ui`, `ingress-nginx` ikut |
-   | jira | keluarga atlassian/jira software/service management (+align?) | putusan manusia |
-   | graylog, nagios | dua vendor yang dieja beda | butuh alias vendor |
-   | microsoft 365, outlook | keluarga Microsoft 365 Apps / Outlook | hierarki Office |
-   | harmony sase + perimeter81 | satu produk (Check Point) | dua entri menunjuk produk sama |
-   | gitlab, n8n, wazuh, suricata, mikrotik, anydesk, ejbca, burp suite | keluarga bersih | n8n: vendor `n8n io` dan `n8n` |
-   | grafana | **vendor Grafana (vendor-level; DIPUTUSKAN user 2026-10-08)** | menangkap Grafana OSS/Enterprise, `mcp-k6`, k6, dll.; risiko: produk Grafana yang tak dipakai ikut |
-   | new relic, maxscale, extrahop, thales, esxi, mariadb, proxmox | **ditinjau satu per satu** | tak ada CVE di jendela, atau ambigu |
+   | fortinet | vendor Fortinet | 51 families, 311 CVEs |
+   | fortigate | family fortinet/fortios | the CNA writes `FortiOS`, the label differs from the product |
+   | juniper | vendor Juniper Networks | 168 CVEs |
+   | junos | families junos os, junos os evolved, junos space | needs several targets |
+   | palo alto | vendor Palo Alto Networks | the vendor is spelled two ways (the compact form unifies them) |
+   | splunk, okta, proofpoint, crowdstrike | their respective vendors | one vendor, many products |
+   | nginx | families f5/nginx open source + nginx plus | NOT the vendor/free name: `nginx ui`, `ingress-nginx` would come along |
+   | jira | families atlassian/jira software/service management (+align?) | a human decision |
+   | graylog, nagios | two vendors spelled differently | needs a vendor alias |
+   | microsoft 365, outlook | families Microsoft 365 Apps / Outlook | the Office hierarchy |
+   | harmony sase + perimeter81 | one product (Check Point) | two entries point to the same product |
+   | gitlab, n8n, wazuh, suricata, mikrotik, anydesk, ejbca, burp suite | clean families | n8n: vendors `n8n io` and `n8n` |
+   | grafana | **vendor Grafana (vendor level; DECIDED by the user 2026-10-08)** | catches Grafana OSS/Enterprise, `mcp-k6`, k6, etc.; risk: unused Grafana products come along |
+   | new relic, maxscale, extrahop, thales, esxi, mariadb, proxmox | **reviewed one by one** | no CVEs in the window, or ambiguous |
 
-4. **Mode bayangan** di dev beberapa hari: pipeline baru menulis ke `cve_tracker` hanya bila flag aktif;
-   sebelum itu menulis ke tabel pembanding. Hasil: CVE yang hanya ditemukan satu pihak, dengan penjelasan.
-5. Alihkan; `new_cve` lama tetap tersedia sebagai cadangan (flag) beberapa rilis.
-6. **Rollback**: matikan flag -> `new_cve` lama kembali; skema baru tidak perlu diturunkan.
+4. **Shadow mode** on dev for a few days: the new pipeline writes to `cve_tracker` only when the flag is on;
+   before that it writes to a comparison table. Result: the CVEs found by only one side, with an explanation.
+5. Switch over; the old `new_cve` stays available as a fallback (flag) for a few releases.
+6. **Rollback**: turn the flag off -> the old `new_cve` comes back; the new schema does not need to be downgraded.
 
-## 9. Pembagian pekerjaan (satu PR per irisan, tiap irisan bisa di-merge sendiri)
+## 9. Breakdown of the work (one PR per slice, each slice mergeable on its own)
 
-1. **Resolver murni + tes** dari data spike (fixture asli), tanpa DB. Termasuk keputusan sufiks `server core
-   installation`.
-2. **Migrasi + model** mirror/katalog/target + repositori. Tes migrasi (`test_migrations_match_models`).
-   **SELESAI**: revisi `b7e3d9a1c5f2`; `cti_core.db.repositories.catalog` (`CatalogRepo`, `CveMirrorRepo`,
-   `retention_cutoff`); `tests/integration/test_catalog_mirror.py` (21 tes). Statistik `cve_seen_total`
-   naik sekali per CVE per keluarga/vendor (idempoten, tahan urutan, tidak turun saat retensi); record
-   dengan `modified_at` lebih lama ditolak; entri techstack lama tetap `active` tanpa target dan tetap
-   dicocokkan lewat teks. Belum ada kode yang MEMAKAI tabel ini (tidak ada perubahan perilaku).
-3. **Ingest**: refactor `_mitre_detail` jadi fungsi murni (tanpa mengubah perilaku `new_cve`), tugas
-   `cve.mirror_sync`, kursor, catch-up, retensi. Tes dengan delta palsu + fixture asli.
-   **SELESAI** (dengan flag `CVE_MIRROR__ENABLED`, default MATI):
-   - `cti_core.cve_record.parse_cve_record` (parser murni; `new_cve` memakainya, 71 tes lama jadi
-     pengaman), `cti_core.cve_mirror_sync` (`sync_once`, `purge_expired`), tugas `cve.mirror_sync`
-     (tiap 5 menit) dan `cve.mirror_purge` (03:30 UTC) di queue `maintenance`, skrip
+1. **Pure resolver + tests** from the spike data (real fixtures), no DB. Includes the decision on the `server core
+   installation` suffix.
+2. **Migration + models** for mirror/catalog/targets + repositories. Migration test (`test_migrations_match_models`).
+   **DONE**: revision `b7e3d9a1c5f2`; `cti_core.db.repositories.catalog` (`CatalogRepo`, `CveMirrorRepo`,
+   `retention_cutoff`); `tests/integration/test_catalog_mirror.py` (21 tests). The `cve_seen_total` statistic
+   increments once per CVE per family/vendor (idempotent, order-independent, does not drop on retention); records
+   with an older `modified_at` are rejected; old techstack entries stay `active` without targets and are still
+   matched by text. No code USES these tables yet (no behaviour change).
+3. **Ingest**: refactor `_mitre_detail` into a pure function (without changing `new_cve`'s behaviour), the
+   `cve.mirror_sync` task, the cursor, catch-up, retention. Tests with a fake delta + real fixtures.
+   **DONE** (behind the `CVE_MIRROR__ENABLED` flag, OFF by default):
+   - `cti_core.cve_record.parse_cve_record` (the pure parser; `new_cve` uses it, 71 existing tests as the
+     safety net), `cti_core.cve_mirror_sync` (`sync_once`, `purge_expired`), the tasks `cve.mirror_sync`
+     (every 5 minutes) and `cve.mirror_purge` (03:30 UTC) on the `maintenance` queue, the script
      `tools/ops/backfill_cve_mirror.py` (`make backfill-cve-mirror`).
-   - Keputusan di luar rancangan awal: kursor + antrean percobaan ulang di `job_state`
-     (`cve_mirror.state`, tanpa migrasi); **catch-up dipicu dua hal**, poll sukses terakhir > 12 menit
-     (kita sendiri yang telat) atau `fetchTime` melompat > 90 menit (selang fetch teramati maks 62
-     menit, jadi satu jendela hilang tak terdeteksi bila hanya melihat `fetchTime`); kunci advisory
-     Postgres (satu siklus sekaligus, dipakai juga backfill); hanya tautan
-     `raw.githubusercontent.com/CVEProject/cvelistV5/` yang diunduh; record REJECTED dibuang dari
-     mirror; record tanpa tanggal atau di luar retensi tidak disimpan; kelebihan di atas
-     `max_files_per_run` dibawa ke siklus berikut (kursor tetap maju).
-   - Tes: `tests/unit/test_cve_mirror_sync.py`, `test_cve_mirror_task.py`,
+   - Decisions beyond the original design: cursor + retry queue in `job_state`
+     (`cve_mirror.state`, no migration); **catch-up is triggered by two things**: the last successful poll > 12 minutes ago
+     (we ourselves are late) or `fetchTime` jumping > 90 minutes (the observed fetch interval is at most 62
+     minutes, so a lost window would go undetected by looking at `fetchTime` alone); a Postgres advisory
+     lock (one cycle at a time, also used by the backfill); only links under
+     `raw.githubusercontent.com/CVEProject/cvelistV5/` are downloaded; REJECTED records are dropped from the
+     mirror; records without a date or outside retention are not stored; overflow above
+     `max_files_per_run` is carried to the next cycle (the cursor still advances).
+   - Tests: `tests/unit/test_cve_mirror_sync.py`, `test_cve_mirror_task.py`,
      `tests/integration/test_cve_mirror_sync.py`, `test_backfill_cve_mirror.py`.
-   - **Belum**: promosi ke `cve_tracker` (irisan 4), jadi mirror terisi tapi tidak mengubah apa pun yang
-     dilihat user. Ukuran tabel dan waktu retensi/backfill belum diukur di data penuh (lakukan di dev
-     sebelum menyalakan flag di prod).
-4. **Promosi + pencocokan** ke `cve_tracker` (flag, mode bayangan), memakai `upsert_with_status`.
-   **SELESAI** (flag `CVE_MIRROR__PROMOTE=off|shadow|live`, default `off`, hanya berlaku bila
+   - **Not yet**: promotion into `cve_tracker` (slice 4), so the mirror fills up but changes nothing the
+     user sees. Table size and retention/backfill time have not been measured on the full data (do it on dev
+     before turning the flag on in prod).
+4. **Promotion + matching** into `cve_tracker` (flag, shadow mode), using `upsert_with_status`.
+   **DONE** (flag `CVE_MIRROR__PROMOTE=off|shadow|live`, default `off`, only effective when
    `CVE_MIRROR__ENABLED`):
-   - `cti_core.cve_promotion`: `choose` (murni: target keluarga > target vendor > teks, lalu nama
-     abjad, lalu `entry_id`; entri bertarget TIDAK dicocokkan lewat teks; entri tanpa target memakai gate
-     teks lama `tech_match.relevant_techs`, kini dipindah ke `cti_core.tech_match`), `promote_record`,
-     `promote_all`. `live` menulis `cve_tracker` lewat `upsert_with_status` (bentuk baris sama dengan
-     `_cve_sink`: skor 0.0 dan vektor "" bila tak ada metrik; `detected_on` server saat INSERT; enrichment,
-     ticket, FP tidak disentuh; tidak pernah menghapus baris tracker) dan mengisi
-     `Session.info["cve_new_rows"]`, jadi ringkasan Telegram yang ada jalan lewat `finish_run` (dipanggil
-     tugas `cve.mirror_sync` sesudah commit). `shadow` menulis tabel baru `cve_promotion_shadow`
-     (revisi `e5b2d8f4a7c1`) dan tidak menyentuh tracker; bayangan ikut dibuang retensi.
-   - Promosi satu record jalan di savepoint yang sama dengan upsert mirror (gagal = record dicoba ulang).
-   - `reference_data` (`techstack`, `techstack_by_client`) kini hanya memuat entri `active`.
-   - Tool: `tools/ops/promote_cve_mirror.py` (`make promote-cve-mirror`; seluruh mirror; laporan =
-     rollback; jalur "entri baru di-Monitor" lewat `--entry`) dan `tools/ops/compare_promotion_shadow.py`
-     (`make compare-promotion-shadow`; kategori sama / tech beda / hanya bayangan / hanya tracker +
-     sebab).
-   - **Belum / sengaja ditunda**: mematikan `new_cve` (irisan 7; selama `live` dan `new_cve` jalan
-     bersama, keduanya meng-upsert baris yang sama dan `tech` bisa bergantian, tidak ada data hilang);
-     tab CVEs/dashboard yang menyembunyikan entri nonaktif (irisan 5, perubahan API); pemicu otomatis
-     "entri baru di-Monitor" dari UI (irisan 5, saat ini lewat tool). Gate teks memakai vendor/produk
-     hasil resolver (`vendor_raw`/`product_raw`/`product_norm`), bukan `packageName`/CPE mentah seperti
-     `new_cve`: selisihnya akan terlihat di perbandingan bayangan.
-5. **API katalog/CVE DB/Monitor** + kontrak.
-   **SELESAI** (`docs/openapi.json` dan `schema.d.ts` diregenerasi, hanya penambahan; 8 operasi baru, 2 skema
-   bertambah/berubah):
-   - Katalog (baca-saja, global, status Monitor per client): `GET /api/catalog/vendors`,
-     `GET /api/catalog/vendors/{id}/families`, `GET /api/catalog/families?q=` (min 2 huruf). Jelajah
-     menyembunyikan keluarga `cve_seen_total < 2` dan vendor yang semua keluarganya begitu (`hidden` di respons
-     = berapa); `q` dan `show_all=true` tidak menyembunyikan; yang sudah dirujuk Monitor selalu tampil. Input
-     `q` diperlakukan literal (bukan pola LIKE). `page_size` maks 100. Vendor "(tanpa vendor)" muncul dengan
+   - `cti_core.cve_promotion`: `choose` (pure: family target > vendor target > text, then alphabetical
+     name, then `entry_id`; entries with targets are NOT matched by text; entries without targets use the old text
+     gate `tech_match.relevant_techs`, now moved to `cti_core.tech_match`), `promote_record`,
+     `promote_all`. `live` writes `cve_tracker` through `upsert_with_status` (the same row shape as
+     `_cve_sink`: score 0.0 and vector "" when there are no metrics; `detected_on` set by the server on INSERT; enrichment,
+     tickets, FPs are not touched; tracker rows are never deleted) and fills
+     `Session.info["cve_new_rows"]`, so the existing Telegram summary works through `finish_run` (called by the
+     `cve.mirror_sync` task after commit). `shadow` writes a new table `cve_promotion_shadow`
+     (revision `e5b2d8f4a7c1`) and does not touch the tracker; the shadow is dropped by retention too.
+   - Promoting one record runs in the same savepoint as the mirror upsert (failure = the record is retried).
+   - `reference_data` (`techstack`, `techstack_by_client`) now only contains `active` entries.
+   - Tools: `tools/ops/promote_cve_mirror.py` (`make promote-cve-mirror`; the whole mirror; report =
+     rollback; the "newly Monitored entry" path via `--entry`) and `tools/ops/compare_promotion_shadow.py`
+     (`make compare-promotion-shadow`; categories same / different tech / shadow only / tracker only +
+     reason).
+   - **Not yet / deliberately deferred**: switching off `new_cve` (slice 7; while `live` and `new_cve` run
+     together, both upsert the same rows and `tech` can flip back and forth, no data is lost);
+     a CVEs tab/dashboard that hides inactive entries (slice 5, an API change); the automatic
+     "newly Monitored entry" trigger from the UI (slice 5, currently through the tool). The text gate uses the
+     resolver's vendor/product (`vendor_raw`/`product_raw`/`product_norm`), not the raw `packageName`/CPE as
+     `new_cve` does: the difference will show up in the shadow comparison.
+5. **Catalog/CVE DB/Monitor API** + contract.
+   **DONE** (`docs/openapi.json` and `schema.d.ts` regenerated, additions only; 8 new operations, 2 schemas
+   added/changed):
+   - Catalog (read-only, global, Monitor status per client): `GET /api/catalog/vendors`,
+     `GET /api/catalog/vendors/{id}/families`, `GET /api/catalog/families?q=` (min 2 letters). Browsing
+     hides families with `cve_seen_total < 2` and vendors whose families are all like that (`hidden` in the response
+     = how many); `q` and `show_all=true` hide nothing; anything already referenced by Monitor is always shown. The
+     `q` input is treated literally (not as a LIKE pattern). `page_size` max 100. The "(tanpa vendor)" vendor appears with
      `monitorable=false`.
-   - CVE DB: `GET /api/cve-db?q=&vendor=&family=&severity=&date_start=&date_end=` dan `GET /api/cve-db/{cve_id}`;
-     tiap produk membawa `monitored`/`monitor_entry_id` (langsung atau lewat target vendor). Ringkasan di daftar
-     dipotong 400 karakter, detail utuh.
-   - Monitor: `POST /api/techstack` kini menerima `name` saja (entri **custom**, kontrak lama), atau
-     `vendor_id` / `family_id` (entri **katalog**, `name` opsional menimpa label bawaan; label harus unik per
-     client, `duplicate` bila bentrok). `POST /{id}/targets`, `DELETE /{id}/targets/{target_id}` (404/409/422
-     lewat status HTTP; **target terakhir tidak bisa dilepas**, karena entri tanpa target kembali dicocokkan
-     lewat teks), `PATCH /{id}` `{active}`, dan `GET /api/techstack?active=`. `TechStackOut` bertambah
+   - CVE DB: `GET /api/cve-db?q=&vendor=&family=&severity=&date_start=&date_end=` and `GET /api/cve-db/{cve_id}`;
+     each product carries `monitored`/`monitor_entry_id` (directly or through a vendor target). The summary in the list
+     is cut at 400 characters, the detail is complete.
+   - Monitor: `POST /api/techstack` now accepts just `name` (a **custom** entry, the old contract), or
+     `vendor_id` / `family_id` (a **catalog** entry, `name` optionally overrides the default label; the label must be unique per
+     client, `duplicate` on a clash). `POST /{id}/targets`, `DELETE /{id}/targets/{target_id}` (404/409/422
+     via the HTTP status; **the last target cannot be removed**, because an entry without targets goes back to being matched
+     by text), `PATCH /{id}` `{active}`, and `GET /api/techstack?active=`. `TechStackOut` gains
      `active`, `kind` (`catalog`/`custom`), `targets`.
-   - Pemicu promosi: tambah/aktifkan/target baru -> API mengirim tugas `cve.promote_entry` (setelah commit,
-     best effort, hanya bila `CVE_MIRROR__ENABLED` dan `CVE_MIRROR__PROMOTE` != off) yang mengisi riwayat entri
-     itu dari mirror (kandidat = record yang produknya cocok target; entri custom memindai seluruh mirror).
-   - Scope tab CVEs/stats/dashboard/export/`tech-list`/`purge-orphaned`: lihat 9.5.
-   - Tes: `tests/integration/test_catalog_api.py` (23), `test_cve_promotion.py` (+5 `promote_entry`),
+   - Promotion trigger: add/activate/new target -> the API sends a `cve.promote_entry` task (after commit,
+     best effort, only when `CVE_MIRROR__ENABLED` and `CVE_MIRROR__PROMOTE` != off) that fills that entry's
+     history from the mirror (candidates = records whose products match a target; custom entries scan the whole mirror).
+   - Scope of the CVEs tab/stats/dashboard/export/`tech-list`/`purge-orphaned`: see 9.5.
+   - Tests: `tests/integration/test_catalog_api.py` (23), `test_cve_promotion.py` (+5 `promote_entry`),
      `tests/unit/test_monitor_trigger.py`.
 6. **UI** All Tech / Monitored Tech / CVE DB.
-   **SELESAI** (`apps/web`, halaman CVE Tracker; sub-view "Tech Stack" lama diganti tiga sub-view):
-   - **Monitored Tech** (`monitored-tech-panel.tsx`, menggantikan `techstack-panel.tsx`): daftar entri dengan
-     target, status Active/Paused, exposure/hosting, filter status. Entri lama ditandai **"Unmapped · name text"**
-     dengan tombol **"Map to catalog"**; entri katalog punya **"Targets"**. "Pause"/"Resume" = nonaktif/aktif.
-     "Remove" menjelaskan bahwa CVE-nya jadi yatim dan menawarkan Pause. "Add custom (unmapped)" tetap ada.
-   - **Map to catalog / Targets** (`map-tech-dialog.tsx`): editor target satu entri. Pencarian katalog terisi nama
-     entri; hasil dipisah **Products** (paling presisi) dan **Vendors** (semua produk vendor); dialog tetap
-     terbuka supaya beberapa target ditambahkan berurutan (mis. `junos` -> tiga produk); target terakhir tidak
-     bisa dilepas (tombol nonaktif, backend juga menolak). Hasil kosong menampilkan petunjuk bahwa katalog memakai
-     nama yang CNA terbitkan (FortiGate = FortiOS), karena label entri sering beda dari nama produk.
-   - **All Tech** (`all-tech-view.tsx`): pohon vendor -> produk, search-first. Jelajah menyembunyikan produk
-     ber-1 CVE (tampil catatan "N hidden"; centang "Show all"); pencarian menampilkan semuanya, terpisah
-     Vendors dan Products. Tombol Monitor vendor / Monitor produk.
-   - **CVE DB** (`cve-db-view.tsx`): daftar CVE mirror (cari, severity, tanggal, filter produk) dan dialog detail
-     dengan aksi Monitor per produk/vendor dan "Filter DB".
-   - Bersama: `src/lib/cve/catalog.ts` (`useMonitorActions`, `useDebounced`, tipe).
-   - Verifikasi: `eslint`, `tsc`, `next build` bersih, DAN dijalankan E2E sungguhan (API asli + Postgres + Chromium):
-     login, petakan `fortigate`, tiga target untuk `junos`, target terakhir tak bisa dilepas, Pause/Resume, All
-     Tech (jelajah, buka vendor, cari produk ber-1 CVE, Monitor), CVE DB (daftar, detail, Monitor produk),
-     entri baru muncul di Monitored Tech; nol respons 4xx/5xx dari tab baru. Skrip E2E tidak di-commit (repo tidak
-     punya test runner web).
-7. Pemetaan 34 entri + cutover.
-   **SELESAI sisi kode** (langkah manusianya di `docs/CVE_CATALOG_CUTOVER.md`):
-   - **Sakelar**: `CVE_MIRROR__PROMOTE=live` menangguhkan `new_cve` (`cti_scraper.supersede`): tidak dijadwalkan
-     beat, `Runner` menolak (status `disabled`), health = `disabled` (tidak mengotori digest), daftar scraper
-     nonaktif. `CVE_MIRROR__KEEP_LEGACY_NEW_CVE=true` membiarkannya jalan berdampingan (tumpang tindih /
-     cadangan). **Rollback = ubah flag + restart, tanpa migrasi**; control plane tetap menang.
-   - **Pemetaan antar-lingkungan** (`tools/ops/catalog_mapping.py`, `make catalog-mapping`): `export` dari dev
-     ke JSON dengan kunci katalog stabil (bukan ID), `import` ke prod (laporan dulu; idempoten; kunci yang belum
-     ada di katalog dilaporkan, tidak dibuat; status aktif tidak disalin kecuali `--with-active`), `suggest`
-     (kandidat katalog untuk entri yang belum dipetakan).
-   - **`--since`** pada `promote_cve_mirror` / `promote_all` / `promote_entry`: membatasi riwayat yang di-live-kan
-     ke CVE terbit sejak tanggal itu. Tanpa ini riwayat lama masuk tracker dengan `detected_on` = sekarang dan
-     merusak MTTD dashboard.
-   - Tes: `tests/unit/test_supersede.py`, `tests/integration/test_supersede_runner.py`,
-     `test_catalog_mapping.py`, dan tambahan `--since` di `test_promotion_tools.py`.
+   **DONE** (`apps/web`, the CVE Tracker page; the old "Tech Stack" sub-view replaced by three sub-views):
+   - **Monitored Tech** (`monitored-tech-panel.tsx`, replacing `techstack-panel.tsx`): a list of entries with
+     targets, Active/Paused status, exposure/hosting, a status filter. Old entries are marked **"Unmapped · name text"**
+     with a **"Map to catalog"** button; catalog entries have **"Targets"**. "Pause"/"Resume" = inactive/active.
+     "Remove" explains that its CVEs become orphans and offers Pause. "Add custom (unmapped)" remains.
+   - **Map to catalog / Targets** (`map-tech-dialog.tsx`): a target editor for one entry. The catalog search is prefilled with the
+     entry's name; results are split into **Products** (most precise) and **Vendors** (every product of the vendor); the dialog stays
+     open so several targets can be added in a row (e.g. `junos` -> three products); the last target cannot
+     be removed (the button is disabled, and the backend refuses too). An empty result shows a hint that the catalog uses
+     the names CNAs publish (FortiGate = FortiOS), because entry labels often differ from product names.
+   - **All Tech** (`all-tech-view.tsx`): a vendor -> product tree, search-first. Browsing hides products
+     with 1 CVE (showing an "N hidden" note; a "Show all" checkbox); search shows everything, split into
+     Vendors and Products. Monitor vendor / Monitor product buttons.
+   - **CVE DB** (`cve-db-view.tsx`): a list of mirror CVEs (search, severity, date, product filter) and a detail dialog
+     with Monitor actions per product/vendor and "Filter DB".
+   - Shared: `src/lib/cve/catalog.ts` (`useMonitorActions`, `useDebounced`, types).
+   - Verification: `eslint`, `tsc`, `next build` clean, AND run as a real E2E (real API + Postgres + Chromium):
+     login, map `fortigate`, three targets for `junos`, the last target cannot be removed, Pause/Resume, All
+     Tech (browse, open a vendor, search for a 1-CVE product, Monitor), CVE DB (list, detail, Monitor a product),
+     the new entry appears in Monitored Tech; zero 4xx/5xx responses from the new tabs. The E2E script is not committed (the repo has
+     no web test runner).
+7. Mapping the 34 entries + cutover.
+   **DONE on the code side** (the human steps are in `docs/CVE_CATALOG_CUTOVER.md`):
+   - **Switch**: `CVE_MIRROR__PROMOTE=live` suspends `new_cve` (`cti_scraper.supersede`): beat does not schedule it,
+     `Runner` refuses it (status `disabled`), health = `disabled` (does not pollute the digest), the scraper list shows it
+     inactive. `CVE_MIRROR__KEEP_LEGACY_NEW_CVE=true` lets it run side by side (overlap /
+     fallback). **Rollback = change the flag + restart, no migration**; the control plane still wins.
+   - **Mapping across environments** (`tools/ops/catalog_mapping.py`, `make catalog-mapping`): `export` from dev
+     to JSON with stable catalog keys (not IDs), `import` into prod (report first; idempotent; keys that do not yet
+     exist in the catalog are reported, not created; the active status is not copied unless `--with-active`), `suggest`
+     (catalog candidates for unmapped entries).
+   - **`--since`** on `promote_cve_mirror` / `promote_all` / `promote_entry`: limits the history that goes live
+     to CVEs published since that date. Without it, old history enters the tracker with `detected_on` = now and
+     ruins the dashboard MTTD.
+   - Tests: `tests/unit/test_supersede.py`, `tests/integration/test_supersede_runner.py`,
+     `test_catalog_mapping.py`, and the `--since` additions in `test_promotion_tools.py`.
 
-### 9.5 Keputusan irisan 5 (DIKONFIRMASI user 2026-10-08)
+### 9.5 Slice 5 decisions (CONFIRMED by the user 2026-10-08)
 
-- **Nonaktif** (`active=false`) = berhenti dipantau dan disembunyikan, TIDAK dihapus: baris tracker, ticket,
-  ACK, dan false positive tetap; mengaktifkan lagi memunculkannya kembali (dan mengisi riwayatnya dari mirror).
-  Beda dari menghapus entri, yang membuat barisnya yatim dan bisa dibuang `purge-orphaned`.
-- **Techstack kosong**: client tanpa entri sama sekali = tab CVEs tanpa filter tech (tidak berubah); client
-  yang punya entri tapi semuanya nonaktif = tab kosong. Alternatif: selalu kosong bila tanpa entri aktif.
-- **Export Excel** hanya CVE yang dimonitor, sama dengan tab (keputusan user: "export hanya cve yang
-  termonitor"). Sebelumnya tidak menyaring techstack sama sekali;
-  baris yatim (tech sudah dihapus) tidak lagi ikut export.
-- **`score.py`/`reference_data`** hanya memakai entri aktif (artikel dan scraper tidak lagi mencari/mencocokkan
-  tech yang dinonaktifkan).
-- **Label entri katalog** = nama tampilan katalog (mis. "FortiOS"), harus unik per client; bentrok -> beri
-  `name` lain. Label tetap kunci join ke `cve_tracker.tech`.
+- **Inactive** (`active=false`) = stops being monitored and is hidden, NOT deleted: tracker rows, tickets,
+  ACKs, and false positives stay; reactivating brings them back (and fills its history from the mirror).
+  Different from deleting an entry, which orphans its rows so `purge-orphaned` can drop them.
+- **Empty techstack**: a client with no entries at all = the CVEs tab without a tech filter (unchanged); a client
+  that has entries but all inactive = an empty tab. Alternative: always empty when there are no active entries.
+- **Excel export** only the monitored CVEs, same as the tab (user decision: "export hanya cve yang
+  termonitor", i.e. export only monitored CVEs). Before, it did not filter by techstack at all;
+  orphan rows (tech already deleted) are no longer exported.
+- **`score.py`/`reference_data`** only use active entries (articles and scrapers no longer search/match
+  deactivated techs).
+- **Catalog entry label** = the catalog display name (e.g. "FortiOS"), must be unique per client; on a clash -> give it
+  another `name`. The label stays the join key to `cve_tracker.tech`.
 
-## 10. Risiko dan hal terbuka
+## 10. Risks and open items
 
-- **Kualitas keluarga otomatis**: lipat versi hanya efektif di 810 keluarga; sisanya identitas = produk. Aman
-  karena Monitor vendor-level ada. Picker panjang (Microsoft 425 keluarga, Siemens 1.053) **diputuskan**:
-  keluarga ber-1 CVE disembunyikan di tampilan jelajah (bagian 7), pencarian tetap menampilkan semuanya.
-- **Volume** terus naik (Sep 2026 14,9 ribu/bulan). Mirror akhir 2026 > 130 ribu CVE; 2027 proyeksi kasar
-  lebih besar. Ukur ukuran tabel dan waktu retensi di dev sebelum prod.
-- **Delta feed** bukan kontrak stabil resmi **[asumsi]**; jaga pengganti (clone/`git pull`) dan alarm bila
-  `fetchTime` berhenti maju.
-- **Recall pipeline vs riwayat belum terpisah**: spike dijalankan dengan `--since 2025-01-01`. Jalankan ulang
-  dengan `--since` = tanggal `new_cve` mulai berjalan (dan `tracker.csv` dari DB yang sama) sebelum klaim
-  apa pun tentang "kelewat keyword search".
-- **Identitas tanpa vendor** (4,7%) dan CVE tanpa produk layak (6,2%): hanya terjangkau lewat teks;
-  jalur teks lama dipertahankan untuk entri tanpa target, tapi CVE tanpa identitas tidak bisa dicocokkan ke
-  target katalog sama sekali.
-- **Tab CVEs untuk techstack kosong** dan **tahun yang dipertahankan bila CVE lama berubah** (KEV) belum
-  diputuskan (lihat `docs/ROADMAP.md` #19 "Terbuka").
+- **Quality of automatic families**: version folding is only effective in 810 families; elsewhere identity = product. Safe
+  because vendor-level Monitor exists. Long pickers (Microsoft 425 families, Siemens 1,053) are **decided**:
+  1-CVE families are hidden in the browse view (section 7), search still shows everything.
+- **Volume** keeps rising (Sep 2026 14.9 thousand/month). The mirror at the end of 2026 > 130 thousand CVEs; 2027 roughly projected
+  bigger. Measure table size and retention time on dev before prod.
+- **The delta feed** is not an official stable contract **[assumption]**; keep a fallback (clone/`git pull`) and an alarm when
+  `fetchTime` stops advancing.
+- **Pipeline recall vs history not yet separated**: the spike was run with `--since 2025-01-01`. Re-run it
+  with `--since` = the date `new_cve` started running (and `tracker.csv` from the same DB) before making any
+  claim about "missed by keyword search".
+- **Identities without a vendor** (4.7%) and CVEs without a usable product (6.2%): only reachable through text;
+  the old text path is kept for entries without targets, but CVEs without an identity cannot be matched to
+  catalog targets at all.
+- **The CVEs tab for an empty techstack** and **which year is kept when an old CVE changes** (KEV) are not yet
+  decided (see `docs/ROADMAP.md` #19 "Open").

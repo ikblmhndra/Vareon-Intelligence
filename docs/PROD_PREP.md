@@ -1,63 +1,63 @@
-# Persiapan produksi (Fase 10.F) -- 4 langkah yang cuma bisa dijalankan di host produksi
+# Production preparation (Phase 10.F) -- 4 steps that can only be run on the production host
 
-Empat item ini butuh akses ke host produksi lama/baru yang tidak dimiliki asisten yang menulis
-dokumen ini -- jadi ini panduan langkah-demi-langkah buat DIJALANKAN MANUAL, bukan sesuatu yang
-sudah dieksekusi. Urutan pengerjaan bebas, keempatnya independen satu sama lain.
+These four items need access to the old/new production hosts, which the assistant that wrote this
+document does not have -- so this is a step-by-step guide to RUN MANUALLY, not something that
+has already been executed. Do them in any order; the four are independent of each other.
 
-> Aturan main yang sama seperti dokumen lain: jangan pernah menempel/menyalin isi `.env`, `config.yml`,
-> atau nilai secret apa pun ke chat/tiket/log. Cek keberadaannya dengan `grep -q "^KEY=." file`, bukan
-> dengan mencetak nilainya.
+> Same ground rules as the other documents: never paste/copy the contents of `.env`, `config.yml`,
+> or any secret value into chat/tickets/logs. Check that something exists with `grep -q "^KEY=." file`, not
+> by printing its value.
 
 ---
 
-## 1. Backup Mongo + drill restore (checklist "Backup Mongo <24 jam, sudah dites restore")
+## 1. Mongo backup + restore drill (checklist "Mongo backup <24 h, restore tested")
 
-Mongo (`mongod`) jalan LOKAL di host produksi lama (dari `legacy/config.yml`: cluster `threatintel`,
-plus database `news_db` yang dipakai `ScraperNewsWeb`). Alat: `mongodump`/`mongorestore` bawaan Mongo --
-tidak perlu tool baru, sudah cukup untuk kebutuhan sekali pakai ini.
+Mongo (`mongod`) runs LOCALLY on the old production host (from `legacy/config.yml`: the `threatintel` cluster,
+plus the `news_db` database used by `ScraperNewsWeb`). Tools: Mongo's own `mongodump`/`mongorestore` --
+no new tool needed, they are enough for this one-off need.
 
 ```bash
-# --- di host produksi lama ---
+# --- on the old production host ---
 BACKUP_DIR=/var/backups/mongo-cti/$(date -u +%Y%m%dT%H%M%SZ)
 mkdir -p "$BACKUP_DIR"
 
-# Dump KEDUA database (news_db dipakai ScraperNewsWeb, threatintel dipakai scraper) --
-# --uri baca kredensial dari environment/config, JANGAN ditulis di command line (muncul di
-# `ps`/history shell kalau ditulis literal).
+# Dump BOTH databases (news_db is used by ScraperNewsWeb, threatintel by the scrapers) --
+# --uri reads credentials from the environment/config, do NOT write them on the command line (they show up in
+# `ps`/shell history if written literally).
 mongodump --uri="$MONGO_URI" --db=news_db     --out="$BACKUP_DIR"
 mongodump --uri="$MONGO_URI" --db=threatintel --out="$BACKUP_DIR"
 
-# Cek ukuran + jumlah koleksi wajar (bandingkan sama hari sebelumnya)
+# Check that size + collection count look sane (compare with the previous day)
 du -sh "$BACKUP_DIR"
 ls "$BACKUP_DIR/news_db" | wc -l
 
-# Salin KELUAR host (disk sama = bukan backup) -- sesuaikan tujuan
-rsync -a "$BACKUP_DIR" user@host-lain:/backups/mongo-cti/
+# Copy it OFF the host (same disk = not a backup) -- adjust the destination
+rsync -a "$BACKUP_DIR" user@other-host:/backups/mongo-cti/
 ```
 
-**Drill restore** (buktikan dump-nya beneran bisa dipulihkan, bukan cuma "file-nya ada"):
+**Restore drill** (prove the dump can actually be restored, not just that "the file exists"):
 
-> ⚠️ **Command di bawah beda dari versi awal dokumen ini** -- ketemu 2 jebakan waktu drill
-> beneran dijalankan (2026-09-30, staging), keduanya WAJIB dihindari:
+> ⚠️ **The commands below differ from the first version of this document** -- 2 traps were found when the drill
+> was actually run (2026-09-30, staging), and both MUST be avoided:
 >
-> 1. `mongorestore --nsFrom=... --nsTo=... "$BACKUP_DIR/news_db"` (nunjuk LANGSUNG ke folder
->    per-db) **GAK JALAN** -- `mongorestore` gak bisa infer nama db dari folder yang dikasih
->    langsung sebagai `--dir`/posisional, hasilnya "don't know what to do with file", 0 dokumen
->    ke-restore. Harus `--dir="$BACKUP_DIR"` (folder INDUK yang isi `news_db/` + `threatintel/`
->    sekaligus), biar `mongorestore` deteksi nama db dari nama subfolder.
-> 2. TAPI kalau `--dir` folder induk itu isinya lebih dari satu database (kasus kita: `news_db`
->    DAN `threatintel` sekaligus) dan cuma nge-set `--nsFrom`/`--nsTo` TANPA `--nsInclude`,
->    `mongorestore` tetap MEMPROSES SEMUA isi folder itu -- yang cocok pola `nsFrom` di-remap ke
->    nama test, yang GAK cocok (database lain di folder yang sama) tetap di-restore ke NAMA
->    ASLINYA. Efeknya restore ke `news_db_restore_test` diam-diam JUGA nulis ke `threatintel`
->    asli (dan sebaliknya di command kedua) -- di staging kebetulan `news_db`/`threatintel` lagi
->    kosong jadi gak ada data ketiban, tapi di produksi (yang isinya database ASLI, bukan
->    kosong) ini bisa nimpa data beneran. **`--nsInclude` WAJIB ada**, bukan opsional.
+> 1. `mongorestore --nsFrom=... --nsTo=... "$BACKUP_DIR/news_db"` (pointing DIRECTLY at the
+>    per-db folder) **DOES NOT WORK** -- `mongorestore` cannot infer the db name from a folder given
+>    directly as `--dir`/positional; the result is "don't know what to do with file" and 0 documents
+>    restored. It has to be `--dir="$BACKUP_DIR"` (the PARENT folder that holds both `news_db/` + `threatintel/`),
+>    so `mongorestore` detects the db name from the subfolder name.
+> 2. BUT if that parent `--dir` folder holds more than one database (our case: `news_db`
+>    AND `threatintel`) and you only set `--nsFrom`/`--nsTo` WITHOUT `--nsInclude`,
+>    `mongorestore` still PROCESSES EVERYTHING in the folder -- whatever matches the `nsFrom` pattern is remapped to
+>    the test name, and whatever does NOT match (the other database in the same folder) is still restored under its ORIGINAL
+>    NAME. The effect is that a restore to `news_db_restore_test` silently ALSO writes to the real
+>    `threatintel` (and vice versa in the second command) -- on staging `news_db`/`threatintel` happened to be
+>    empty so no data was overwritten, but in production (which holds the REAL databases, not
+>    empty ones) this can overwrite real data. **`--nsInclude` is MANDATORY**, not optional.
 
 ```bash
-# Restore ke database SEMENTARA di instance Mongo yang SAMA (bukan menimpa news_db asli).
-# --dir HARUS folder INDUK ($BACKUP_DIR, bukan $BACKUP_DIR/news_db), dan --nsInclude WAJIB
-# ada supaya database lain di folder yang sama gak ikut ter-restore ke nama aslinya.
+# Restore into a TEMPORARY database on the SAME Mongo instance (not overwriting the real news_db).
+# --dir MUST be the PARENT folder ($BACKUP_DIR, not $BACKUP_DIR/news_db), and --nsInclude MUST
+# be present so the other database in the same folder is not restored under its original name.
 mongorestore --uri="$MONGO_URI" \
     --nsInclude="news_db.*" --nsFrom="news_db.*" --nsTo="news_db_restore_test.*" \
     --dir="$BACKUP_DIR"
@@ -65,164 +65,164 @@ mongorestore --uri="$MONGO_URI" \
     --nsInclude="threatintel.*" --nsFrom="threatintel.*" --nsTo="threatintel_restore_test.*" \
     --dir="$BACKUP_DIR"
 
-# Bandingkan jumlah dokumen per collection kunci dengan aslinya (atau, kalau database asli
-# kosong/belum ada seperti staging, bandingkan dengan hitungan langsung dari file dump:
+# Compare document counts per key collection with the originals (or, if the original database is
+# empty/missing as on staging, compare with a count taken straight from the dump file:
 # `bsondump --quiet "$BACKUP_DIR/news_db/$col.bson" | wc -l`)
 for col in articles cve_tracker iocs scraper_runs; do
   orig=$(mongosh "$MONGO_URI" --quiet --eval "db.getSiblingDB('news_db').$col.countDocuments()")
   test=$(mongosh "$MONGO_URI" --quiet --eval "db.getSiblingDB('news_db_restore_test').$col.countDocuments()")
-  echo "$col: asli=$orig restore=$test"
+  echo "$col: original=$orig restore=$test"
 done
 
-# Bersihkan database sementara
+# Clean up the temporary databases
 mongosh "$MONGO_URI" --quiet --eval "db.getSiblingDB('news_db_restore_test').dropDatabase()"
 mongosh "$MONGO_URI" --quiet --eval "db.getSiblingDB('threatintel_restore_test').dropDatabase()"
 ```
 
-**Sudah dijalankan & lolos (2026-09-30, staging, container `cti-mongo`):** dump `20260930T120307Z`
-(58 MB `news_db` + 22 MB `threatintel`, dari `/home/nameless/backups/mongo-cti/`). Restore kedua
-db total **2 detik** (205.446 dokumen). Semua 9 collection kunci dicek cocok PERSIS dengan hitungan
-langsung dari file dump (`bsondump`, karena `news_db`/`threatintel` di staging kosong, gak ada
-"asli" buat dibandingin): `articles` 8834, `cve_tracker` 667, `iocs` 23956, `scraper_runs` 9330,
-`users` 7, `clients` 2, `techstack` 32, `groups` 3995, `hash` 398 -- nol selisih. Database test
-sudah dibersihkan (`dropDatabase`, 2 kali dijalankan manual oleh user karena classifier otomatis
-nolak `dropDatabase()` berturut-turut sebagai "mass delete" meski sudah dikonfirmasi di chat).
-**Catatan:** drill ini di STAGING (bukan host produksi lama yang sebenarnya jadi target dokumen
-ini) -- membuktikan MEKANISME restore-nya benar dan `mongorestore`-nya terpasang lengkap, bukan
-pengganti drill di produksi. Ini juga sekaligus SUMBER dump yang dipakai warm start cutover
-(runbook 3, langkah 4) -- jangan buang.
+**Already run & passed (2026-09-30, staging, container `cti-mongo`):** dump `20260930T120307Z`
+(58 MB `news_db` + 22 MB `threatintel`, from `/home/nameless/backups/mongo-cti/`). Restoring both
+dbs took **2 seconds** in total (205,446 documents). All 9 key collections were checked to match EXACTLY the counts
+taken straight from the dump file (`bsondump`, because `news_db`/`threatintel` on staging are empty, so there is no
+"original" to compare against): `articles` 8834, `cve_tracker` 667, `iocs` 23956, `scraper_runs` 9330,
+`users` 7, `clients` 2, `techstack` 32, `groups` 3995, `hash` 398 -- zero difference. The test databases
+were cleaned up (`dropDatabase`, run manually twice by the user because the automatic classifier
+refused consecutive `dropDatabase()` calls as a "mass delete" even after confirmation in chat).
+**Note:** this drill was on STAGING (not the actual old production host this document
+targets) -- it proves the restore MECHANISM is right and that `mongorestore` is fully installed; it is not a
+substitute for a drill in production. It is also the SOURCE of the dump used for the cutover warm start
+(runbook 3, step 4) -- do not throw it away.
 
-**Cara masukin dump ke container kalau `docker cp` gagal** (ketemu di staging: mount
-`docker-entrypoint-initdb.d/init.js` di `cti-mongo` nyangkut jadi direktori kosong -- bukan file
-seperti seharusnya -- bikin `docker cp` APAPUN ke container ini gagal dengan error mount, walau
-container-nya sendiri jalan sehat. Belum diperbaiki di sumbernya, gak disentuh sesi ini karena
-di luar scope drill restore): pakai `tar` streaming lewat `docker exec -i` sebagai gantinya, gak
-kena pengecekan mount yang sama --
+**How to get the dump into the container if `docker cp` fails** (found on staging: the
+`docker-entrypoint-initdb.d/init.js` mount in `cti-mongo` got stuck as an empty directory -- not a file
+as it should be -- which makes ANY `docker cp` into this container fail with a mount error, even though
+the container itself runs healthy. Not fixed at the source, and not touched in this session because it is
+outside the restore drill's scope): use `tar` streaming through `docker exec -i` instead, which does not
+hit the same mount check --
 ```bash
 tar -C "$BACKUP_DIR" -cf - news_db threatintel | docker exec -i cti-mongo tar -C /tmp/restore-drill -xf -
 ```
 
 ---
 
-## 2. Snapshot Rundeck (H-1, bukan drill -- baca-doang, aman dijalankan kapan saja)
+## 2. Rundeck snapshot (D-1, not a drill -- read-only, safe to run any time)
 
-Sudah ada alatnya (`tools/ops/rundeck_schedule.py`, lihat docstring-nya) dan sudah didokumentasikan di
-`docs/CUTOVER_RUNBOOK.md` bagian 2.3. Ringkasannya di sini biar tidak perlu bolak-balik:
+The tool already exists (`tools/ops/rundeck_schedule.py`, see its docstring) and is documented in
+`docs/CUTOVER_RUNBOOK.md` section 2.3. A summary here so you do not have to jump back and forth:
 
 ```bash
-export RD_URL=http://10.8.20.78:4440       # IP dari legacy/config.yml, bukan secret
+export RD_URL=http://10.8.20.78:4440       # IP from legacy/config.yml, not a secret
 export RD_PROJECT=Threat-Information
-read -s RD_TOKEN                            # token API Rundeck -- diketik interaktif, TIDAK di history shell
+read -s RD_TOKEN                            # Rundeck API token -- typed interactively, NOT in shell history
 export RD_TOKEN
 
 python3 tools/ops/rundeck_schedule.py snapshot --out rundeck-before-cutover.json
-python3 tools/ops/rundeck_schedule.py status   --snapshot rundeck-before-cutover.json   # harus N/N
+python3 tools/ops/rundeck_schedule.py status   --snapshot rundeck-before-cutover.json   # must be N/N
 ```
 
-Simpan `rundeck-before-cutover.json` di luar host produksi DAN di luar repo (isinya nama job, bukan
-secret, tapi tetap jangan di-commit). Ini yang dipakai `disable`/`enable` di hari cutover (runbook 3)
-dan rollback ke stack lama (bagian 3 di bawah). **Ambil snapshot BARU tepat H-1** -- yang ada di
-`docs/legacy/rundeck-jobs-map.json` itu rekaman Fase 0, sudah bisa basi.
+Keep `rundeck-before-cutover.json` off the production host AND out of the repo (it holds job names, not
+secrets, but still do not commit it). This is what `disable`/`enable` use on cutover day (runbook 3)
+and for rollback to the old stack (section 3 below). **Take a NEW snapshot exactly at D-1** -- the one in
+`docs/legacy/rundeck-jobs-map.json` is a Phase 0 recording and may be stale.
 
-Belum pernah diuji terhadap Rundeck ASLI (cuma API palsu di test unit) -- langkah 2 di bawah ini
-sekaligus jadi uji coba pertamanya terhadap Rundeck produksi.
+Never tested against the REAL Rundeck (only a fake API in the unit tests) -- step 2 below
+doubles as its first trial against production Rundeck.
 
 ---
 
-## 3. Latihan rollback ke stack lama <5 menit (di PRODUKSI, minimal sekali sebelum go-live)
+## 3. Rollback drill to the old stack in <5 minutes (in PRODUCTION, at least once before go-live)
 
-Ini DRILL, bukan cuma baca dokumen -- runbook bagian 7.3 menjelaskan APA yang dilakukan; langkah di
-bawah ini yang benar-benar MENJALANKANNYA dengan stopwatch, di jam yang sepi (bukan jam kerja), TANPA
-niat sungguhan cutover (stack baru belum tentu perlu jalan sama sekali untuk latihan ini -- cukup
-buktikan stack LAMA bisa mati-nyala lewat prosedur ini).
+This is a DRILL, not just reading a document -- runbook section 7.3 explains WHAT is done; the steps
+below actually RUN it with a stopwatch, in a quiet hour (not working hours), WITHOUT
+an actual cutover intent (the new stack does not even need to be running for this drill -- it is enough
+to prove the OLD stack can be switched off and on through this procedure).
 
 ```bash
-# 0. Prasyarat: snapshot Rundeck (bagian 2) sudah ada dan masih akurat (job aktif belum berubah
-#    sejak snapshot diambil -- kalau ragu, ambil snapshot baru)
-python3 tools/ops/rundeck_schedule.py status --snapshot rundeck-before-cutover.json   # catat N/N
+# 0. Prerequisite: the Rundeck snapshot (section 2) exists and is still accurate (active jobs have not changed
+#    since the snapshot was taken -- if in doubt, take a new snapshot)
+python3 tools/ops/rundeck_schedule.py status --snapshot rundeck-before-cutover.json   # note N/N
 
-# 1. Catat waktu mulai
+# 1. Note the start time
 date -u
 
-# 2. MATIKAN jadwal (persis prosedur cutover langkah 2)
+# 2. DISABLE the schedule (exactly cutover procedure step 2)
 python3 tools/ops/rundeck_schedule.py disable --snapshot rundeck-before-cutover.json
-python3 tools/ops/rundeck_schedule.py status  --snapshot rundeck-before-cutover.json   # harus 0/N
+python3 tools/ops/rundeck_schedule.py status  --snapshot rundeck-before-cutover.json   # must be 0/N
 
-# 3. (simulasi "platform baru dibatalkan" -- untuk drill ini boleh skip stop/start unit
-#    cti-web/nlp_worker/iocSyncer beneran kalau stack lama MEMANG masih yang aktif;
-#    kalau platform baru sedang jalan paralel, matikan dulu: docker compose ... stop
+# 3. (simulating "the new platform is called off" -- for this drill you may skip actually stopping/starting the
+#    cti-web/nlp_worker/iocSyncer units if the old stack IS still the active one;
+#    if the new platform is running in parallel, stop it first: docker compose ... stop
 #    beat worker worker-browser worker-nlp nginx)
 
-# 4. NYALAKAN LAGI jadwal (ini yang diukur -- "rollback ke stack lama")
+# 4. RE-ENABLE the schedule (this is what is measured -- "rollback to the old stack")
 python3 tools/ops/rundeck_schedule.py enable --snapshot rundeck-before-cutover.json
-python3 tools/ops/rundeck_schedule.py status --snapshot rundeck-before-cutover.json   # harus N/N lagi
+python3 tools/ops/rundeck_schedule.py status --snapshot rundeck-before-cutover.json   # must be N/N again
 
-# 5. Catat waktu selesai
+# 5. Note the end time
 date -u
 ```
 
-**Setelah drill:** tulis hasilnya di `docs/CUTOVER_RUNBOOK.md` bagian 7.3, baris
-"tulis waktunya: `____ menit` (target <5)" -- ganti dengan angka sungguhan. Kalau lebih dari 5 menit atau
-ada job yang gagal enable/disable, itu temuan yang harus diperbaiki SEBELUM go-live, bukan sesuatu yang
-diabaikan.
+**After the drill:** write the result into `docs/CUTOVER_RUNBOOK.md` section 7.3, on the line
+"write the time: `____ minutes` (target <5)" -- replace it with the real number. If it took more than 5 minutes or
+a job failed to enable/disable, that is a finding to fix BEFORE go-live, not something
+to ignore.
 
 ---
 
-## 4. Backup Postgres terjadwal + salinan off-host (host PRODUKSI BARU)
+## 4. Scheduled Postgres backup + off-host copy (NEW production host)
 
-### 4a. Timer systemd (unit file sudah ada, belum dipasang)
+### 4a. systemd timer (the unit files exist, not installed yet)
 
 ```bash
-# Di host produksi baru, working directory = tempat docker-compose.yml + docker/stack.env berada
+# On the new production host, working directory = where docker-compose.yml + docker/stack.env live
 sudo cp docker/ops/cti-pg-backup.service docker/ops/cti-pg-backup.timer /etc/systemd/system/
-# Sesuaikan WorkingDirectory di cti-pg-backup.service kalau lokasinya bukan /opt/cti-platform
+# Adjust WorkingDirectory in cti-pg-backup.service if the location is not /opt/cti-platform
 sudo systemctl daemon-reload
 sudo systemctl enable --now cti-pg-backup.timer
 
-# Verifikasi jadwal terpasang
+# Verify the schedule is installed
 systemctl list-timers cti-pg-backup.timer
 
-# Uji sekali secara manual (jangan tunggu jam 02:30)
+# Test once manually (do not wait for 02:30)
 sudo systemctl start cti-pg-backup.service
 journalctl -u cti-pg-backup -n 30 --no-pager
-ls -la /var/backups/cti      # dump baru harus muncul, chmod 600
+ls -la /var/backups/cti      # a new dump must appear, chmod 600
 ```
 
-Kegagalan memicu alarm Telegram topik `debug` otomatis (`--on-failure-cmd` di unit file) -- uji ini
-juga sekaligus membuktikan jalur alarmnya, bukan cuma backup-nya.
+A failure triggers a Telegram alarm on the `debug` topic automatically (`--on-failure-cmd` in the unit file) -- this test
+therefore also proves the alarm path, not just the backup.
 
-### 4b. Salinan off-host (BELUM diotomasi -- ini yang masih kosong)
+### 4b. Off-host copy (NOT automated yet -- this is the remaining gap)
 
-Backup di disk yang sama dengan Postgres-nya bukan backup (kalau disk/host itu rusak, backup ikut
-hilang). Dua opsi, pilih salah satu:
+A backup on the same disk as its Postgres is not a backup (if that disk/host breaks, the backup is
+lost too). Two options, pick one:
 
-**Opsi A -- cron `rsync` ke host lain** (paling sederhana, butuh SSH key one-way dari host produksi ke
-host penyimpanan, read-write HANYA ke direktori backup):
+**Option A -- cron `rsync` to another host** (simplest; needs a one-way SSH key from the production host to the
+storage host, read-write ONLY to the backup directory):
 
 ```bash
-# Di host produksi, crontab root (atau user yang punya akses baca /var/backups/cti)
-# Jalan 15 menit setelah timer backup (02:30 + buffer)
+# On the production host, root's crontab (or a user with read access to /var/backups/cti)
+# Runs 15 minutes after the backup timer (02:30 + buffer)
 crontab -e
-# tambahkan:
+# add:
 45 2 * * * rsync -a --delete /var/backups/cti/ backup-host:/backups/cti-platform/ 2>&1 | logger -t cti-backup-offhost
 ```
 
-**Opsi B -- `rclone` ke object storage** (S3-compatible dkk, kalau tidak ada host kedua yang cocok):
+**Option B -- `rclone` to object storage** (S3-compatible etc., if there is no suitable second host):
 
 ```bash
-rclone config          # sekali, interaktif -- isi kredensial provider storage
-# lalu cron yang sama pola-nya:
+rclone config          # once, interactive -- enter the storage provider's credentials
+# then a cron with the same pattern:
 45 2 * * * rclone sync /var/backups/cti/ remote:cti-platform-backups/ 2>&1 | logger -t cti-backup-offhost
 ```
 
-**Setelah dipasang (opsi A atau B):** verifikasi sekali dengan menjalankan cron entry-nya manual, cek
-filenya benar-benar muncul di sisi tujuan, lalu update `docs/CUTOVER_RUNBOOK.md` bagian 6 -- baris
-"Off-host: ... belum diotomasi" diganti jadi cara yang dipakai + jadwalnya.
+**Once installed (option A or B):** verify it once by running the cron entry manually, check
+the files really appear at the destination, then update `docs/CUTOVER_RUNBOOK.md` section 6 -- replace the line
+"Off-host: ... not automated yet" with the method used + its schedule.
 
 ---
 
-## Setelah keempatnya selesai
+## After all four are done
 
-Update checklist cutover di `docs/PROGRESS.md` ("Checklist cutover") dan baris terkait di
-`docs/CUTOVER_RUNBOOK.md` bagian 10 ("Yang BELUM terbukti") -- jangan biarkan dua dokumen itu bilang
-"belum" kalau di sini sudah "selesai".
+Update the cutover checklist in `docs/PROGRESS.md` ("Checklist cutover") and the related lines in
+`docs/CUTOVER_RUNBOOK.md` section 10 ("What is NOT yet proven") -- do not let those two documents say
+"not yet" when this one says "done".

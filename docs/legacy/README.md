@@ -1,14 +1,14 @@
-# Artefak Legacy
+# Legacy Artifacts
 
-Barang yang direkam dari sistem lama di Fase 0. Sebagian **gak bisa
-direkonstruksi** kalau host prod hilang.
+Things recorded from the old system in Phase 0. Some of them **cannot be
+reconstructed** if the prod host is lost.
 
-| File | Sumber | Commit? | Kenapa penting |
+| File | Source | Commit? | Why it matters |
 |---|---|---|---|
-| `crontab.txt` | `dump_crontab.sh` | **ya** | Jadwal 206 scraper. Gak pernah ada di repo. Juga satu-satunya cara tahu scraper mana yang live. |
-| `../../legacy/static/` | `pull_static.sh` | **ya** | 27 file JS = seluruh frontend. Ke-gitignore di repo lama. Jadi spesifikasi perilaku buat rewrite Next.js. |
-| `../../legacy/config.yml` | `pull_config.sh` | **TIDAK** | Berisi kredensial. Dipakai buat mastiin nama DB/collection. |
+| `crontab.txt` | `dump_crontab.sh` | **yes** | Schedule of 206 scrapers. Was never in a repo. Also the only way to know which scrapers are live. |
+| `../../legacy/static/` | `pull_static.sh` | **yes** | 27 JS files = the entire frontend. Gitignored in the old repo. Serves as the behavioural spec for the Next.js rewrite. |
+| `../../legacy/config.yml` | `pull_config.sh` | **NO** | Contains credentials. Used to confirm DB/collection names. |
 
-Dump Mongo dari `backup_mongo.sh` **jangan** ditaruh di sini — simpan di luar
-repo dan di luar host prod. Karena cutover mulai dari DB kosong, dump itu
-satu-satunya arsip data historis.
+Do **not** put the Mongo dump from `backup_mongo.sh` here — keep it outside
+the repo and off the prod host. Since the cutover starts from an empty DB, that
+dump is the only archive of historical data.
