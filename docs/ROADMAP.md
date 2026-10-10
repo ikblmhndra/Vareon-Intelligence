@@ -1,7 +1,8 @@
 # Post-cutover roadmap
 
-A record of requests that have **not been done yet**, written on 2026-09-26 (user requests, order = the order of
-work). Not a schedule commitment: each item only needs the input/decision written under it.
+A record of requests, written on 2026-09-26 (user requests, order = the order of work) and updated as they are
+delivered; **status as of 2026-10-10 is in "Delivered so far" right after the index**. Not a schedule commitment: each
+open item only needs the input/decision written under it.
 What is **already** running and not roadmap is in `docs/PROGRESS.md`; the cutover gate is in
 `docs/CUTOVER_RUNBOOK.md`.
 
@@ -22,13 +23,48 @@ Each item contains: **what** was asked, **the current state** (facts from the re
 | 10 | Case/RFI workflow (assignment, SLA, status, audit) linked to CVE tickets | the team's workflow | -- |
 | 11 | Consistent TLP/PAP on every object + MFA/SSO | a TLP policy | #5 |
 | 12 | Improving the article classification prompt based on the audit trail (false accept / false reject) | examples of misclassified articles | the `raw_enrichment` audit trail (running since 2026-10-05) |
-| 13 | **CI on `main` is red** (3 jobs), so the Deploy job has never run (5 runs, all `skipped`) -- **green CI on `main` proven 2026-10-07 (run #23); Deploy triggered for the first time (run #8) but `cancelled` after 10m25s, cause unknown** | -- | -- |
-| 14 | Logo missing from the CVE Tracker Excel export (Pillow is not yet a dependency) -- **code + test done 2026-10-07, the image smoke build in CI not yet** | -- | -- |
+| 13 | **CI on `main` is red** (3 jobs), so the Deploy job has never run (5 runs, all `skipped`) -- **green CI on `main` proven 2026-10-07 (run #23); Deploy has run 3 times (#8-#10, 2026-10-07/08) and all 3 were `cancelled`, none has passed, cause unknown** | -- | -- |
+| 14 | Logo missing from the CVE Tracker Excel export (Pillow is not yet a dependency) -- **done 2026-10-07 (PR #9); the API image build with pillow is green in CI (PR #12)** | -- | -- |
 | 15 | Use `published_at` in the UI/API/dashboard + align the export date formats | a decision on the format of the Acknowledged column | the `published_at` backfill in production |
 | 16 | CVE dashboard: SLA per severity (replacing fixed-threshold ratings) | ack/remediation SLA targets per severity | -- |
 | 17 | CVE dashboard: backlog/aging panels, KEV/EPSS, most frequently affected products | a choice of panels | -- |
 | 18 | CVE ticket field validation + a ticket model decision (1 ticket per CVE vs one ticket for many CVEs) | a list of standard values, the model decision | -- |
-| 19 | **Tech catalog from the CVE mirror + Monitor** (new direction 2026-10-07, replacing the alias/phase 2-3 plan; the `aliases` column is dropped): mirror every CVE (calendar-year retention) -> a vendor+product catalog -> All Tech / Monitored Tech tabs -> the CVEs tab only for monitored techs. **Code done (slices 1-7) on the `nameless/roadmap-runners` branch, the PR closes this roadmap item**; what remains is operational: mapping the 34 entries on dev, shadow mode, cutover (`docs/CVE_CATALOG_CUTOVER.md`); design `docs/CVE_CATALOG_DESIGN.md` | manual mapping + shadow on dev | test on the dev server first, then prod |
+| 19 | **Tech catalog from the CVE mirror + Monitor** (new direction 2026-10-07, replacing the alias/phase 2-3 plan; the `aliases` column is dropped): mirror every CVE (calendar-year retention) -> a vendor+product catalog -> All Tech / Monitored Tech tabs -> the CVEs tab only for monitored techs. **Code done (slices 1-7), merged to `main` 2026-10-08 (PR #12, release 0.3.0)**; what remains is operational: mapping the 34 entries on dev, shadow mode, cutover (`docs/CVE_CATALOG_CUTOVER.md`); design `docs/CVE_CATALOG_DESIGN.md` | manual mapping + shadow on dev | test on the dev server first, then prod |
+| 20 | **Known follow-ups from releases 0.4.0 / 0.4.1** (found while reviewing the CVE Tracker; none is blocking) | product decisions on the points marked (D) | -- |
+
+---
+
+## Delivered so far (as of 2026-10-10)
+
+PRs #2-#31 are all merged into `main` (release tags in `CHANGELOG.md`: 0.2.0, 0.2.1, 0.3.0, 0.4.0, 0.4.1).
+
+**Roadmap items by status**
+
+| # | Status | Delivered by | What is left |
+|---|---|---|---|
+| 1 | Done | PRs #3, #4 (+ the rename to Vareon Intelligence, 2026-10-05) | the SVG logo |
+| 2 | Code done | PR #3 | verification in real email clients |
+| 3 | Superseded by #19 | PR #12 | nothing, do not work on it |
+| 13 | Partly done | PR #11 (CI green on `main`, run #23) | one Deploy that passes: runs #8-#10 were all `cancelled`; check the prod host state |
+| 14 | Done | PR #9 (pillow), CI image build green in PR #12 | nothing |
+| 19 | Code done, merged | PR #12 (release 0.3.0), PR #27 (cutover runbook fix) | operational only: map 34 entries on dev, shadow mode, cutover dev then prod |
+| 4-12, 15-18 | Open | -- | not started; only prerequisites exist (e.g. the `raw_enrichment` audit trail for #12, the `published_at` column for #15). See each item |
+
+**Merged PRs by release**
+
+| Release | PRs | What they delivered |
+|---|---|---|
+| before 0.2.0 | #2, #3, #4 | date-independent TA timeline test; rebrand (themes, font, emails, #1/#2); UI redesign (sidebar, world map, cards) |
+| 0.2.0 (2026-10-05) | #5, #6, #7 | end-to-end QA fixes (API security, session/JWT, CVE data bugs, UI); CD that deploys to prod after green CI on `main` (see #13); release |
+| 0.2.1 (2026-10-06) | #8 | CVE Tracker Tech must match the affected product (`reconcile_cve_tech` tool) |
+| 0.2.1 -> 0.3.0 (2026-10-07) | #9, #10, #11 | CVE Dashboard (MTTD/MTTA/MTTR) + backfill tooling, Excel logo (#14); docs fix for the `reconcile_cve_tech` server command; CI green on `main` (#13) |
+| 0.3.0 (2026-10-08) | #12, #13 | **#19 tech catalog + CVE mirror + Monitor** (slices 1-7), new-CVE Telegram summary, one shared tech matcher, Chromium in CI; release |
+| 0.4.0 (2026-10-09) | #14-#23 | CVE Tracker logic review: NVD window offset, client scope, article mentions, ticket numbers, stats; CVE id validation; FP per client; `acknowledged_by` from the login, first ack wins; purge/write protections; "last updated" line + manual **Check for new CVEs**; release |
+| 0.4.1 (2026-10-09) | #24-#28 | `affected` text no longer starts with `<=` twice (+ `tools/ops/fix_affected_double_operator.sql`), Exec "Critical CVEs" caption, Dashboard "unrated" tile, runbook fix; release |
+| after 0.4.1 | #29, #30, #31 | Exec KPI cards: Critical CVEs and KEV CVEs separate with full totals (2026-10-09); `docs/ARCHITECTURE.md` + all docs in English (2026-10-10); a URL that is already an article is not re-enriched or re-alerted (2026-10-10) |
+
+Not yet released as a version: #29-#31 are on `main` after 0.4.1. Follow-ups found while delivering 0.4.x are
+collected in #20 below.
 
 ---
 
@@ -113,7 +149,7 @@ web, Gmail, and mobile; the render tests pass.
 
 ## 3. A "Populate now" button in the CVE Tracker
 
-> **Superseded by #19 (code done 2026-10-08, not yet on `main`).** A Monitored tech (the Monitor button,
+> **Superseded by #19 (code done 2026-10-08, on `main` since PR #12 / release 0.3.0).** A Monitored tech (the Monitor button,
 > "Map to catalog", Resume, or a new target) immediately has its history filled from the mirror through the
 > `cve.promote_entry` task (only when `CVE_MIRROR__ENABLED` and `CVE_MIRROR__PROMOTE` are on), so this button,
 > the 8-day window, the 180-day backfill, and the MITRE pacing problem below are no longer relevant IF the cutover
@@ -370,6 +406,11 @@ GitHub runner (the only failure out of 2240 tests; the two tests fixed above pas
 ReDoS (run #16 passed narrowly). The threshold was raised to 60 seconds; an unbounded regex (`*`) grows exponentially (x16
 per +4 repetitions) so it is still caught (simulated: it fails exactly at the 60th second). No change
 to the production regex.
+**Update 2026-10-10**: Deploy has run three times and all three ended `cancelled`: #8 (2026-10-07, after PR #11), #9 and
+#10 (2026-10-08, after PRs #12 and #13), each after 10-23 minutes; the Actions list shows no Deploy run after 2026-10-08
+and none has passed. The cause is still unknown (the logs are not readable from the development session), so
+"Done when" is not met. Check on the prod host what the interrupted runs left behind (`docker compose ps`, `:prev` tags,
+`alembic current`: whether `migrate` got to run).
 **Finding NOT yet worked on**: that ~0.45 ms per character cost is itself real in production -- `extract_iocs()`
 on one ~12KB article takes ~5 seconds of synchronous CPU in the enrichment stage. Not ReDoS and not part of #13; if
 it is to be optimised, the spot is `_RE_DOMAIN_DEFANGED` (e.g. a pre-filter before running the regex), with the
@@ -393,6 +434,8 @@ ensures the exported workbook contains 1 image.
 proven: the CI `docker` job building the API image. `uv sync --frozen --no-dev --no-editable --package cti-api`
 (the builder stage step) was checked separately and installs pillow, but a full `docker build` has not run
 because the `ghcr.io` registry is unreachable from the development session.
+**Merged 2026-10-07 (PR #9); the `docker (api ...)` CI job that builds the image with pillow was green in the CI run of
+PR #12 (2026-10-08).** Item closed.
 
 ## 15. Use `published_at` in the UI/API/dashboard + align the date formats
 
@@ -483,11 +526,11 @@ Seven matchers with different rules use it (NVD `keywordSearch`; Tenable; the `n
 `applicable_to_stack`). In production, 55
 of the 118 verifiable tracker rows were wrong. `new_cve` searches per tech name every hour (34 requests to
 NVD, searching words in the description), an 8-day window, and one MITRE call per candidate (limit 60/minute).
-**What already exists on the `nameless/roadmap-runners` branch (not yet on `main`)**: `cti_core.tech_match` (one
+**What exists (merged to `main` in PR #12, 2026-10-08)**: `cti_core.tech_match` (one
 definition of "matches": whole word, attached version digits accepted, attached letters rejected, terms < 2 characters never
 match) used by matchers 2-6 and by the `reconcile_cve_tech` assessor. **The `techstack_entries.aliases` column,
 the migration, the seed, and the `techstack_aliases` reference data are dropped (user decision 2026-10-07)**; there is no new
-migration. The visible effect in production once merged: `tech_stack` alerts and the `in_tech_stack` flag no longer
+migration. The visible effect in production once deployed: `tech_stack` alerts and the `in_tech_stack` flag no longer
 match by substring (`go` ~ `google`).
 
 ### Design (agreed 2026-10-07)
@@ -553,7 +596,7 @@ branch) is kept; its terms will eventually be derived from the catalog.
 (catalog / CVE DB / Monitor API + contract, inactive entry scope), slice 6 (UI: Monitored Tech, All Tech,
 CVE DB, mapping entries through "Map to catalog"), and slice 7 (the cutover switch: `new_cve` suspended when
 `CVE_MIRROR__PROMOTE=live`, export/import of mappings across environments, `--since` for live history, runbook) are done
-on the branch. **All the #19 code exists; what remains is operational, done by the user**: mapping the 34 entries on dev,
+and merged (PR #12, release 0.3.0). **All the #19 code exists; what remains is operational, done by the user**: mapping the 34 entries on dev,
 shadow mode, then the dev and prod cutovers. The exact steps: `docs/CVE_CATALOG_CUTOVER.md`.** Decision 2026-10-07: the picker
 hides 1-CVE families (search still shows everything).
 
@@ -574,8 +617,11 @@ hides 1-CVE families (search still shows everything).
 Everything is tested on the **dev server first**, then production.
 
 ### Open (needs user confirmation)
-- **Status 2026-10-08**: code done; what remains is manual mapping, shadow mode, and cutover (runbook). Items
-  below not marked DECIDED are still open.
+- **Status 2026-10-10**: code done and merged (PR #12, release 0.3.0); what remains is manual mapping, shadow mode,
+  and cutover (runbook). The worker log posted on 2026-10-08 shows the mirror ingest running (`cve_mirror_synced` is
+  `ok`/`noop`, `failed=0`, no gap) with `CVE_MIRROR__PROMOTE=off`. **Before `live`**, clean the stored `affected` text (0.4.1 upgrade step 2,
+  `tools/ops/fix_affected_double_operator.sql`): promotion copies `affected_lines` as they are. Items below not marked
+  DECIDED are still open.
 - **Data source**: CVE List V5 as the primary; the spike supports it (ADP rescues only 0.1% of CVEs and CPE
   is only present in 7.5% of CNA data, so NVD/CPE cannot be the identity source; NVD is still useful as a
   supplement for CVSS/KEV). Waiting for user confirmation.
@@ -610,3 +656,41 @@ mirror without touching other techs; the CVEs tab only contains monitored techs;
 vs old `new_cve` results are documented (CVEs found by only one side, with an explanation); the
 `reconcile_cve_tech` tool on production data no longer produces name-caused `DELETE`s; retention is
 proven to delete year N-2 without touching `cve_tracker`; before/after recall numbers are recorded.
+
+---
+
+## 20. Known follow-ups from releases 0.4.0 / 0.4.1
+
+Collected from the "Known / not yet done" parts of `CHANGELOG.md` (0.4.0 and 0.4.1) so they are not lost; the changelog
+has the detail and the evidence. (D) = needs a product decision before anyone starts. Nothing here was asked
+formally; order = a suggestion.
+
+**Decisions first**
+- (D) Exec dashboard: the "Critical CVEs" / "KEV CVEs" cards and the CVE exposure table count the tracker of **all clients**
+  (no `client_id` filter) and the table lists only the top 10 techs. Should the numbers be per client? (PR #29 made the card
+  totals complete but kept this scope.)
+- (D) The lower bound of a `lessThan` range is not written in the `affected` text (`version: "3.3.0", lessThan: "3.5.4"`
+  reads as `< 3.5.4`). Adding it changes almost every stored `affected` text (193 of 333 on dev), so it is its own decision.
+- (D) "Severity" has three versions in the UI (raw, "effective" which goes up one level with a PoC, and
+  `adjusted_risk_score`); `cisa_kev_detail` (including `due_date`) is stored but never shown.
+
+**Security / access**
+- KEV, EPSS and Exploit-DB lookups are open to every analyst (`require_auth`); the bulk Exploit-DB lookup is heavy and any
+  analyst can trigger it.
+
+**Data correctness**
+- `cisa_kev` / `active_exploitation` are never reset to `false` when CISA removes an entry from the KEV catalog.
+- Status "Resolved" without `actual_remediation_date` is not counted in MTTR (visible in the `n` on the dashboard);
+  field validation for tickets is #18.
+- Tickets orphaned by an old `purge-orphaned` are not cleaned automatically (check: a ticket without a tracker row).
+- `recap` and `crossref` return one row per client, so a CVE tracked by two clients appears twice.
+- `cve_newsletter_mentions` is written to only one tracker row (any client) and nothing reads it yet.
+- No code writes `cve_threat_actors` and `cve_ttps`, so the TA/TTP branch of `crossref` has no data.
+- The dashboard tables "Mean time metrics by severity" and "Monthly CVE volume by severity" do not show unrated CVEs yet
+  (the API does not send that bucket).
+
+**Coverage**
+- `trending_cve` only searches `CVE-<current year>-`; last year's CVEs that are trending are missed (adding them costs more
+  X API tweets and the query syntax must be validated against the real API).
+
+**Done when**: each point is either fixed (with a test) or dropped with a one-line reason here.
