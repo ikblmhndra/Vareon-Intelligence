@@ -12,7 +12,7 @@ Each item contains: **what** was asked, **the current state** (facts from the re
 | # | Item | Needs from the user | Depends on |
 |---|---|---|---|
 | 21 | **PRIORITY (team feedback 2026-10-10)** -- **Improve the Recap feature**: weekly instead of daily (a manual daily trigger stays), fewer/cheaper LLM calls, week-over-week comparison, grounding check, forecast scorecard -- **scope decided 2026-10-10, not built** | the week boundary and generation time (WIB) | -- |
-| 22 | **PRIORITY (team feedback 2026-10-10)** -- **Newsletter**: monthly (first working day of the month), Indonesian article summaries under English headings, redesigned template with the company logo (mockup drawn, `docs/mockups/newsletter-redesign.html`), recommended articles in the composer, denser layout (full cards plus a compact list), executive summary paragraph from the weekly recaps, per-article summary cache and one history row per send -- **scope decided 2026-10-10, not built** | the logo file (the sandbox cannot reach its URL); confirm the "By the Numbers" / "Campaigns" headings and the 09:00 WIB preparation time | #21 (the executive summary reads the weekly recaps; shared LLM usage logging) |
+| 22 | **PRIORITY (team feedback 2026-10-10)** -- **Newsletter**: monthly (first working day of the month), Indonesian article summaries under English headings, redesigned template with the company logo (mockup drawn, `docs/mockups/newsletter-redesign.html`), recommended articles in the composer, denser layout (full cards plus a compact list), executive summary paragraph from the weekly recaps, per-article summary cache and one history row per send -- **scope decided 2026-10-10, not built** | the logo file (the sandbox cannot reach its URL); confirm the "Campaigns" heading and the 09:00 WIB preparation time | #21 (the executive summary reads the weekly recaps; shared LLM usage logging) |
 | 1 | Rebranding the platform name + UI (colour palette, typography, animation) -- **DONE 2026-10-02, the SVG logo remains** | brand assets | -- |
 | 2 | Rebranding the `newsletter_email` and `cve_notification_email` templates -- **code done 2026-10-02, email client verification not yet** | (the same assets as #1) | #1 |
 | 3 | (probably superseded by #19) A "Populate now" button in the CVE Tracker (all / only newly added) | a small decision (see the item) | -- |
@@ -41,7 +41,8 @@ Each item contains: **what** was asked, **the current state** (facts from the re
 The team asked for two items to be treated as priorities; they go before everything that is still open. Order:
 **#21 Recap first** (it introduces LLM usage logging and the weekly content that #22 reuses), then **#22 Newsletter**.
 Scope was decided with the user on 2026-10-10 (which proposed additions were approved and which were left out are
-listed in each item); both are written out at the end of this file. Nothing is built yet. The questions that still block
+listed in each item); both are written out at the end of this file. The implementation plan (nine pull requests, order,
+tests, rollback) is `docs/PLAN_RECAP_NEWSLETTER.md`. Nothing is built yet. The questions that still block
 work are under **Needed** in each item.
 
 ---
@@ -746,11 +747,10 @@ formally; order = a suggestion.
 - Storage: `daily_recaps` is keyed by one day, so add `kind` (`weekly` | `daily`) and `period_start`/`period_end`
   (hand-written migration, `test_migrations_match_models` updated). Weekly rows are the scheduled ones; `daily` rows
   exist only when someone triggers a day by hand. History/list/latest endpoints and the UI show the kind and the range.
-- **Week boundary (proposal, to confirm): Monday to Sunday, generated Monday 00:15 WIB** (Sunday 17:15 UTC; the beat
-  entry must use WIB because `crontab` is UTC today). The earlier proposal (Friday to Thursday) existed only so two
+- **Week boundary (proposal, to confirm): Monday to Sunday, generated Monday 07:15 WIB** (Monday 00:15 UTC; the collectors use UTC calendar dates, so the week is only complete once Sunday ends in UTC, and a 00:15 WIB run would miss Sunday 17:00-24:00 UTC). The earlier proposal (Friday to Thursday) existed only so two
   recaps would match a 14-day newsletter window; the newsletter (#22) is now monthly and takes the weekly recaps whose
   week overlaps the month, so that reason is gone and the usual Monday-Sunday week is simpler to read. It also fits a newsletter built on the first
-  working day: the recap of the last week of the month (which ends on Sunday) is generated Monday 00:15 WIB, before the
+  working day: the recap of the last week of the month (which ends on Sunday) is generated Monday 07:15 WIB, before the
   newsletter is prepared that morning.
 - A week is about 7x the volume of a day, so the weekly prompt is built from **aggregates**, not from a wider date range:
   top N per category ranked by signal (confidence/score, confirmed incident, KEV/PoC, source reliability, cluster size),
@@ -790,7 +790,7 @@ formally; order = a suggestion.
 `repositories/recap.py`, `schemas` + `openapi.json` + `schema.d.ts`, `apps/web/src/components/recap/*`
 (range/kind, deltas, scorecard, article links), `tests/` (unit for grounding/comparison/window, integration for the
 repository and the router snapshot).
-**Needed from the user**: confirm the week boundary and time (proposal: Monday-Sunday, Monday 00:15 WIB).
+**Needed from the user**: confirm the week boundary and time (proposal: Monday-Sunday, Monday 07:15 WIB).
 **Done when**: a weekly recap is generated on schedule and shown with its date range; a day can still be generated by
 hand; every run records its token usage; the measured input size/tokens per recap is lower than the recorded baseline
 (numbers written here); a run with no activity makes no LLM call; the page shows the week-over-week deltas, the
@@ -815,7 +815,7 @@ comparison, grounding and the no-activity path.
 - **Edition label = the month it covers** ("October 2026 Edition"), which matches current practice (the September edition
   went out on 1 Oct). No running number, no "week N". The window is the **previous full calendar month**; the label is
   derived from it, so nothing is counted or configured for numbering.
-- **Headings are English** (user, 2026-10-10): Executive Summary, By the Numbers, Highlights, Asia Pacific, Global,
+- **Headings are English** (user, 2026-10-10): Executive Summary, Highlights, Asia Pacific, Global,
   Indonesia, Campaigns, Analyst Note. The article summaries and key points under them are Indonesian. The current
   template's labels are already English, so no label translation is needed.
 - **Executive summary is a paragraph, not a timeline.** The weekly recaps stay English (#21), so the paragraph needs one
@@ -866,7 +866,7 @@ comparison, grounding and the no-activity path.
   down on the day, the next weekday builds it, so the edition is late rather than missing. One suggestion per window
   makes the task idempotent.
 - The task **prepares the suggested content**: the recommended articles (below) already placed in Highlights / Asia
-  Pacific / Global / Indonesia, the Executive Summary paragraph and the numbers. The analyst opens the Newsletter page,
+  Pacific / Global / Indonesia, and the Executive Summary paragraph. The analyst opens the Newsletter page,
   reviews and edits, and previews or creates the Outlook draft as today. No Telegram notice and no automatic sending.
 - The suggestion is stored **server-side** (a `newsletter_suggestions` row per window: period, the placed article ids with
   their section, tier and reasons, the summary paragraph), because the composer queue today lives only in the browser's
@@ -888,7 +888,7 @@ comparison, grounding and the no-activity path.
   build measures the rendered size and the composer warns above about 90 KB before the draft is created.
 - `routers/newsletter.py` swaps the 5-per-section check for these two limits (full cards and compact rows per section).
 
-**Design: executive summary and numbers**
+**Design: executive summary**
 - **Executive Summary** = one paragraph (about 100-130 words, Indonesian) condensing the weekly recaps whose week
   **overlaps** the month. It is **one LLM call per edition**, which reverses the earlier "no extra call" idea: the recaps
   stay English and the user wants a paragraph, so something has to condense and translate. Input is only the stored
@@ -896,9 +896,9 @@ comparison, grounding and the no-activity path.
   names and campaign names must appear in the input) runs on it. The paragraph is saved in the suggestion and shown in
   an **editable field** in the composer, so the analyst corrects it like the rest of the draft. Missing recaps: the
   field is left empty, not generated from raw articles. The call is logged with its token usage (#21).
-- **By the Numbers** (articles, new CVEs, new IOCs, active campaigns, each with the change against the previous month)
-  is **counted from the database for the exact calendar month**, because the weekly boundary does not match the month
-  edges; it is not a sum of the recaps and costs no LLM call.
+- There is **no statistics block** in the newsletter (**By the Numbers** was drawn and then dropped by the user,
+  2026-10-10): no monthly counts and no deltas, so nothing is counted from the database for the edition. The
+  week-over-week comparison stays in the Recap page (#21).
 
 **Design: Indonesian content**
 - Generate `key_points` and `summary` **in Indonesian in the same LLM call** as today (prompt change; no second
@@ -916,7 +916,7 @@ comparison, grounding and the no-activity path.
   the CSS gradient, a hidden preheader line, and a stacked layout under 480 px, so it can become `newsletter_email.html`
   without a second redesign.
 - Structure: header with the **company logo**, the edition label and the date range; **Executive Summary** (paragraph);
-  **By the Numbers** (with deltas); **Highlights**; **Asia Pacific**, **Global** and **Indonesia** sections (full cards
+  **Highlights**; **Asia Pacific**, **Global** and **Indonesia** sections (full cards
   plus the compact "Also Noted" list); **Campaigns**; footer. The colour coding per section is kept (Asia Pacific blue,
   Global purple, Indonesia red).
 - **Logo**: the logo is red, so on the burgundy header it sits on a white rounded panel to keep its contrast. For the real
@@ -937,7 +937,7 @@ comparison, grounding and the no-activity path.
   never sends anything by itself.
 
 **Design: approved additions**
-- **Executive summary from the weekly recap**: see Design: executive summary and numbers.
+- **Executive summary from the weekly recap**: see Design: executive summary.
 - **Summary cache and one row per send**: cache each article's `key_points` / `summary` (a table keyed by article id and
   language, or persisted at enrichment time) so `preview` and `draft-email` never redo Playwright + LLM; `preview` does
   not save a row and does not write IOCs/CVE mentions; the single save happens when the Outlook draft is created, and a
@@ -950,8 +950,7 @@ comparison, grounding and the no-activity path.
 `.env.example` + `.env.prod.template` (`NEWSLETTER__HOLIDAYS`), `apps/web/src/components/newsletter/*` (suggestions,
 tiers, editable summary, size warning), `openapi.json` + `schema.d.ts`.
 **Needed from the user**: (1) the **logo file** (put the PNG in the repo, or add `privy.zmidevelopment.com` to the
-environment's allowed domains so it can be fetched); (2) confirm the wording **By the Numbers** (for "periode dalam
-angka") and **Campaigns** (you wrote "Campaign"); (3) confirm the executive-summary paragraph is **Indonesian** like the
+environment's allowed domains so it can be fetched); (2) confirm the heading **Campaigns** (you wrote "Campaign"); (3) confirm the executive-summary paragraph is **Indonesian** like the
 rest of the content, and the **09:00 WIB** preparation time; (4) holidays: a configured date list, as proposed.
 **Done when**: suggested content is prepared on the first working day of each month, already placed in the sections
 and tiers, and the composer loads it for review while the Newsroom picking flow still works; every edition carries the
