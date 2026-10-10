@@ -290,6 +290,16 @@ class ArticleRepo:
     def get_by_url(self, url: str) -> Article | None:
         return self.get_by_url_hash(compute_url_hash(url))
 
+    def mark_seen(self, article: Article) -> Article:
+        """Kedatangan ulang URL yang SUDAH jadi artikel (feed lain, atau feed yang sama
+        sesudah TTL dedup habis): cuma `seen_count`/`last_seen_at` yang naik. Judul,
+        sumber, dan enrichment kedatangan pertama dipertahankan -- beda dari `upsert`,
+        yang menimpa semuanya. Lihat `cti_enrich.pipeline.run_pipeline`."""
+        article.seen_count += 1
+        article.last_seen_at = datetime.datetime.now(datetime.UTC)
+        self.session.flush()
+        return article
+
     def set_overrides(self, article: Article, **overrides: Any) -> Article:
         """Satu-satunya jalur analis nulis koreksi manual -- lihat plan §5.6.
         Dipanggil dari layer web (Fase 7), bukan dari scraper/enrichment."""
