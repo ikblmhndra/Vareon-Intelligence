@@ -25,7 +25,18 @@ from __future__ import annotations
 import datetime
 from typing import Any
 
-from sqlalchemy import BigInteger, Boolean, DateTime, SmallInteger, String, Text, func
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    SmallInteger,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -38,6 +49,12 @@ class Newsletter(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     week: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     year: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    """Minggu ISO dari WAKTU PEMBUATAN, bukan jendela yang diliput. Tetap NOT NULL dan tetap
+    diisi baris baru supaya baris lama dan UI histori yang masih membaca "Week N, YYYY" jalan."""
+    period_start: Mapped[datetime.date | None] = mapped_column(Date, nullable=True)
+    period_end: Mapped[datetime.date | None] = mapped_column(Date, nullable=True)
+    """Jendela yang diliput edisi ini (bulan kalender sebelumnya secara default). NULL di baris
+    sebelum kolom ini ada; label tampilannya lalu jatuh ke "Week N, YYYY"."""
     generated_at: Mapped[str] = mapped_column(String(40), nullable=False)
     created_by: Mapped[str] = mapped_column(String(200), nullable=False)
     created_at: Mapped[datetime.datetime] = mapped_column(
@@ -61,3 +78,45 @@ class NewsletterPaywallHint(Base):
     source: Mapped[str] = mapped_column(String(200), nullable=False, unique=True, index=True)
     paywall_likely: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     last_seen: Mapped[str] = mapped_column(String(40), nullable=False)
+
+
+class NewsletterArticleSummary(Base):
+    """Cache ringkasan per artikel (dan bahasa) buat `preview`/`draft-email` newsletter.
+
+    Dulu tiap build mengulang fetch Playwright + satu panggilan LLM per artikel (~10-13 detik
+    sendiri), dan `preview` + `draft-email` masing-masing membangun ulang semuanya. Sekarang
+    hasilnya disimpan di sini: baris yang ada = tanpa fetch dan tanpa LLM.
+
+    `iocs` dan `cve_ids` ikut di-cache karena keduanya berasal dari BODY yang di-fetch: tanpa
+    keduanya, langkah draft yang menulis IOC dan sebutan CVE harus fetch halamannya lagi.
+    `cve_ids` = semua CVE id di judul + body SEBELUM disaring true-positive; irisan dengan set
+    true-positive dihitung saat build, bukan di-cache, karena set itu berubah (FP ditandai,
+    CVE baru di-track) sementara isi artikel tidak.
+
+    `language` ikut kunci supaya edisi bahasa lain tidak menimpa. Prompt saat ini menghasilkan
+    bahasa Inggris, jadi semua baris `en` sampai PR bahasa Indonesia."""
+
+    __tablename__ = "newsletter_article_summaries"
+    __table_args__ = (
+        UniqueConstraint("article_id", "language", name="uq_newsletter_article_summary"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    article_id: Mapped[int] = mapped_column(
+        ForeignKey("articles.id", ondelete="CASCADE"), nullable=False
+    )
+    language: Mapped[str] = mapped_column(String(8), nullable=False)
+    key_points: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    body_source: Mapped[str] = mapped_column(String(20), nullable=False)
+    """`fetched` (dari body halaman) atau `metadata` (halaman tak terbaca/paywall, ringkasan
+    ditulis dari metadata artikel; mudah salah, jadi UI perlu bisa menandainya)."""
+    iocs: Mapped[dict[str, list[str]]] = mapped_column(JSONB, nullable=False, default=dict)
+    cve_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    model: Mapped[str] = mapped_column(String(100), nullable=False)
+    token_usage: Mapped[dict[str, int]] = mapped_column(JSONB, nullable=False, default=dict)
+    """`{}` kalau gateway LLM tidak mengembalikan `usage` (gateway dev kadang begitu)."""
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    """Waktu ringkasan ini DIBUAT; `regenerate` menimpa baris dan mengisinya ulang."""
