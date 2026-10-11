@@ -21,6 +21,19 @@
       'model': 'test-model',
       'raw_llm': None,
       'token_usage': dict({
+        'completion_tokens': 20,
+        'input_chars': int,
+        'prompt_items': dict({
+          'articles': 0,
+          'campaigns': 0,
+          'cves': 0,
+          'iocs': 0,
+          'new_threat_actors': 0,
+          'tweets': 0,
+        }),
+        'prompt_tokens': 100,
+        'total_tokens': 120,
+        'wall_ms': 7,
       }),
       'yesterday': dict({
         'summary': 'No major incidents.',
