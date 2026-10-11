@@ -187,6 +187,48 @@ async def test_get_latest_is_none_when_the_kind_has_no_rows(async_db_session: As
     assert await AsyncRecapRepo(async_db_session).get_latest("weekly") is None
 
 
+async def test_quality_defaults_to_an_empty_object_and_is_replaced_whole_by_upsert(
+    async_db_session: AsyncSession,
+) -> None:
+    repo = AsyncRecapRepo(async_db_session)
+    created = await repo.upsert(MONDAY, kind="weekly")
+    await async_db_session.refresh(created)  # dibaca balik dari DB
+    assert created.quality == {}
+
+    await repo.upsert(MONDAY, kind="weekly", quality={"grounding": {"dropped": [], "count": 0}})
+    regenerated = await repo.upsert(MONDAY, kind="weekly", quality={"comparison": {"x": 1}})
+
+    assert regenerated.quality == {"comparison": {"x": 1}}  # force-regen: tidak digabung
+
+
+async def test_get_by_id_reads_one_row_with_or_without_the_row_lock(
+    async_db_session: AsyncSession,
+) -> None:
+    repo = AsyncRecapRepo(async_db_session)
+    row = await repo.upsert(MONDAY, kind="weekly", headline="the week")
+
+    plain = await repo.get_by_id(row.id)
+    locked = await repo.get_by_id(row.id, for_update=True)
+
+    assert plain is not None and locked is not None
+    assert (plain.headline, locked.id) == ("the week", row.id)
+    assert await repo.get_by_id(row.id + 1000) is None
+
+
+async def test_list_latest_is_newest_first_limited_and_of_one_kind(
+    async_db_session: AsyncSession,
+) -> None:
+    repo = AsyncRecapRepo(async_db_session)
+    for monday in ("2026-09-14", "2026-09-21", "2026-09-28", MONDAY):
+        await repo.upsert(monday, kind="weekly")
+    await repo.upsert("2026-10-09")  # harian lebih baru: tidak ikut
+
+    rows = await repo.list_latest("weekly", 3)
+
+    assert [r.date for r in rows] == [MONDAY, "2026-09-28", "2026-09-21"]
+    assert await repo.list_latest("weekly", 0) == []
+
+
 async def _clients(session: AsyncSession, *extra: str) -> None:
     """`default` selalu ada; `extra` client tambahan (baris `cve_tracker` punya FK ke `clients`)."""
     repo = AsyncClientRepo(session)
