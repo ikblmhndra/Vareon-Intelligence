@@ -6,9 +6,12 @@ Fase 7.3 (router `recap`, Bagian 5)."""
 
 from __future__ import annotations
 
+import contextlib
 import datetime
 import json
+import re
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -115,8 +118,11 @@ async def test_collect_campaigns_maps_fields_for_build_user_message(
     assert "Apt41" in msg
 
 
-def _fake_completion(content: str) -> SimpleNamespace:
-    return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))])
+def _fake_completion(content: str, usage: SimpleNamespace | None = None) -> SimpleNamespace:
+    """`usage=None` (bawaan) meniru gateway dev yang membuang `usage`."""
+    return SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content=content))], usage=usage
+    )
 
 
 async def test_generate_daily_recap_caches_and_force_regenerates(
@@ -173,3 +179,132 @@ async def test_generate_daily_recap_handles_malformed_llm_json(
         )
     assert result["headline"] == ""
     assert result["raw_llm"] == "not valid json at all"
+
+
+_QUIET_JSON = json.dumps(
+    {"headline": "quiet day", "recap": {"summary": "nothing"}, "forecast": {"summary": "calm"}}
+)
+
+
+def _capturing_client(sent: list[dict[str, Any]], usage: SimpleNamespace | None) -> SimpleNamespace:
+    """Client LLM palsu yang menyimpan argumen tiap panggilan di `sent`; pesan user-nya ada di
+    `sent[0]["messages"][1]["content"]`."""
+
+    def create(**kw: Any) -> SimpleNamespace:
+        sent.append(kw)
+        return _fake_completion(_QUIET_JSON, usage)
+
+    return SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+
+
+async def _generate_today(
+    session: AsyncSession, client: SimpleNamespace, **caps: int
+) -> dict[str, Any]:
+    """`generate_daily_recap` hari ini dengan client palsu; `caps` mengecilkan batas `_MAX_*`."""
+    with (
+        patch.object(recap_service, "get_llm_client", return_value=(client, "test-model")),
+        patch.multiple(recap_service, **caps) if caps else contextlib.nullcontext(),
+    ):
+        return await recap_service.generate_daily_recap(session, date=_TODAY.isoformat())
+
+
+async def test_generate_daily_recap_records_usage_wall_time_and_prompt_size(
+    async_db_session: AsyncSession,
+) -> None:
+    await _ensure_clients(async_db_session)
+    repo = AsyncArticleRepo(async_db_session)
+    titles = ["Ransomware hits a hospital", "Zero-day in a VPN appliance", "Phishing kit for banks"]
+    for i, title in enumerate(titles):
+        await repo.upsert(url=f"https://x.com/u{i}", title=title, source="CISA", posted_on=_TODAY)
+    sent: list[dict[str, Any]] = []
+    usage = SimpleNamespace(prompt_tokens=1200, completion_tokens=300, total_tokens=1500)
+
+    # `_MAX_ARTICLES` dikecilkan: yang dicatat harus yang BENAR-BENAR masuk prompt (2), bukan
+    # total yang dikumpulkan (3, tetap utuh di `counts`).
+    result = await _generate_today(
+        async_db_session, _capturing_client(sent, usage), _MAX_ARTICLES=2
+    )
+
+    user_msg = sent[0]["messages"][1]["content"]
+    stored = result["token_usage"]
+    assert {k: stored[k] for k in ("prompt_tokens", "completion_tokens", "total_tokens")} == {
+        "prompt_tokens": 1200,
+        "completion_tokens": 300,
+        "total_tokens": 1500,
+    }
+    assert isinstance(stored["wall_ms"], int)
+    assert stored["wall_ms"] >= 0
+    assert stored["input_chars"] == len(user_msg)
+    assert stored["prompt_items"] == {
+        "articles": 2,
+        "tweets": 0,
+        "cves": 0,
+        "iocs": 0,
+        "campaigns": 0,
+        "new_threat_actors": 0,
+    }
+    assert result["counts"]["articles"] == 3
+    assert len(re.findall(r"^- \[", user_msg, flags=re.MULTILINE)) == 2
+
+
+async def test_generate_daily_recap_without_gateway_usage_still_records_prompt_size(
+    async_db_session: AsyncSession,
+) -> None:
+    """Gateway dev kadang membuang `usage`: tidak ada angka token yang dikarang, tetapi ukuran
+    prompt dan waktu tetap tercatat (itu satu-satunya ukuran yang tersisa)."""
+    await _ensure_clients(async_db_session)
+    sent: list[dict[str, Any]] = []
+
+    result = await _generate_today(async_db_session, _capturing_client(sent, usage=None))
+
+    stored = result["token_usage"]
+    assert set(stored) == {"wall_ms", "input_chars", "prompt_items"}
+    assert stored["input_chars"] == len(sent[0]["messages"][1]["content"])
+
+
+def _cve(cve_id: str, client_id: str = "default", **fields: Any) -> CveTracker:
+    """Baris tracker yang masuk recap hari ini lewat `published`."""
+    return CveTracker(cve_id=cve_id, client_id=client_id, published=_TODAY, **fields)
+
+
+async def test_generate_daily_recap_counts_a_cve_tracked_by_two_clients_once(
+    async_db_session: AsyncSession,
+) -> None:
+    await _ensure_clients(async_db_session)
+    await AsyncClientRepo(async_db_session).create(client_id="acme", name="Acme", countries=[])
+    async_db_session.add_all([_cve("CVE-2026-0001", "default"), _cve("CVE-2026-0001", "acme")])
+    await async_db_session.flush()
+    sent: list[dict[str, Any]] = []
+
+    result = await _generate_today(async_db_session, _capturing_client(sent, usage=None))
+
+    assert result["counts"]["cves"] == 1
+    assert result["token_usage"]["prompt_items"]["cves"] == 1
+    assert sent[0]["messages"][1]["content"].count("- CVE-2026-0001 (") == 1
+
+
+async def test_generate_daily_recap_prompt_keeps_the_strongest_cves(
+    async_db_session: AsyncSession,
+) -> None:
+    """Prompt memuat N CVE PERTAMA menurut urutan KEV -> PoC -> CVSS; CVSS tertinggi saja tidak
+    cukup untuk lolos."""
+    await _ensure_clients(async_db_session)
+    async_db_session.add_all(
+        [
+            _cve("CVE-2026-0001", cve_score=9.9),
+            _cve("CVE-2026-0002", cisa_kev=True),
+            _cve("CVE-2026-0003", poc_available=True),
+        ]
+    )
+    await async_db_session.flush()
+    sent: list[dict[str, Any]] = []
+
+    result = await _generate_today(
+        async_db_session, _capturing_client(sent, usage=None), _MAX_CVES=2
+    )
+
+    user_msg = sent[0]["messages"][1]["content"]
+    assert user_msg.index("- CVE-2026-0002 (") < user_msg.index("- CVE-2026-0003 (")
+    assert "CVE-2026-0001 (" not in user_msg
+    assert result["counts"]["cves"] == 3
+    assert result["token_usage"]["prompt_items"]["cves"] == 2
