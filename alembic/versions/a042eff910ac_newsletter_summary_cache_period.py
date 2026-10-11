@@ -10,8 +10,13 @@ Dua perubahan, keduanya aditif:
   membaca "Week N, YYYY" tidak berubah. Baris lama dibiarkan NULL (tidak ada jendela yang bisa
   ditebak dari minggu ISO).
 
+Rantai: awalnya `down_revision` = `e5b2d8f4a7c1`, sama dengan migrasi recap mingguan
+(`f6c3a9d2b8e1`, PR 2). Kedua PR ke-merge dari induk yang sama dan `main` jadi punya dua head
+(`alembic upgrade head` gagal). Migrasi ini di-re-point ke `f6c3a9d2b8e1` supaya rantainya satu.
+Isinya tidak berubah dan tidak menyentuh tabel `daily_recaps`, jadi urutan keduanya tidak penting.
+
 Revision ID: a042eff910ac
-Revises: e5b2d8f4a7c1
+Revises: f6c3a9d2b8e1
 Create Date: 2026-10-11 14:00:00.000000
 
 """
@@ -25,7 +30,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "a042eff910ac"
-down_revision: str | None = "e5b2d8f4a7c1"
+down_revision: str | None = "f6c3a9d2b8e1"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
