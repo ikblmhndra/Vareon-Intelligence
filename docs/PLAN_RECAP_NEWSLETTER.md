@@ -1,6 +1,7 @@
 # Implementation plan: #21 Recap and #22 Newsletter
 
-> **Status: plan only. Nothing here is built.** Scope and decisions are in `docs/ROADMAP.md` (#21, #22); this file
+> **Status (2026-10-11): PR 1 is merged (#34) and deployed to the dev instance, and its baseline is in `docs/ROADMAP.md` #21.
+> PR 2, 3 and 5 are being built in separate sessions; the rest is plan only.** Scope and decisions are in `docs/ROADMAP.md` (#21, #22); this file
 > turns them into pull requests, in order, with the files each one touches, the tests it needs and how to roll it back.
 > Written 2026-10-10 from the code on `main` (0.4.1 + PRs #29-#31) and revised 2026-10-11 after each claim was checked
 > against the code. The mockup is `docs/mockups/newsletter-redesign.html`. Choices marked "recommended" in section 7
@@ -84,6 +85,7 @@ Why first: small, independent, and it produces the **baseline** the "fewer token
   5); deleting then takes two releases (remove the key everywhere, then the field).
 - Baseline: run the daily recap for a few recent days (`POST /api/recap/generate?force=true`) and write the measured
   `input_chars` / tokens into ROADMAP #21 under "Done when". Without this number the criterion cannot be checked later.
+  **Done 2026-10-11** (7 days, 4-10 Oct; numbers in ROADMAP #21, "Baseline").
 - Tests: unit for `usage_from` (present, missing, partial), for the ordering and the dedupe (same CVE for two
   clients counts once), and for `recap` storing the usage.
 

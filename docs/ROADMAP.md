@@ -11,7 +11,7 @@ Each item contains: **what** was asked, **the current state** (facts from the re
 
 | # | Item | Needs from the user | Depends on |
 |---|---|---|---|
-| 21 | **PRIORITY (team feedback 2026-10-10)** -- **Improve the Recap feature**: weekly instead of daily (a manual daily trigger stays), fewer/cheaper LLM calls, week-over-week comparison, grounding check, forecast scorecard -- **scope decided 2026-10-10, not built** | the recommended defaults in `docs/PLAN_RECAP_NEWSLETTER.md` section 7 (week boundary and time confirmed 2026-10-11) | -- |
+| 21 | **PRIORITY (team feedback 2026-10-10)** -- **Improve the Recap feature**: weekly instead of daily (a manual daily trigger stays), fewer/cheaper LLM calls, week-over-week comparison, grounding check, forecast scorecard -- **scope decided 2026-10-10; PR 1 (usage logging + CVE order) merged 2026-10-11 (#34) and deployed to dev, baseline measured; PR 2-4 not merged yet** | the recommended defaults in `docs/PLAN_RECAP_NEWSLETTER.md` section 7 (week boundary and time confirmed 2026-10-11) | -- |
 | 22 | **PRIORITY (team feedback 2026-10-10)** -- **Newsletter**: monthly (first working day of the month), Indonesian article summaries under English headings, redesigned template with the company logo (mockup drawn, `docs/mockups/newsletter-redesign.html`), recommended articles in the composer, denser layout (full cards plus a compact list), executive summary paragraph from the weekly recaps, per-article summary cache and one history row per send -- **scope decided 2026-10-10, not built** | the recommended defaults in `docs/PLAN_RECAP_NEWSLETTER.md` section 7 (logo, heading, language, 09:00 WIB and "no holiday list" answered 2026-10-11) | #21 (the executive summary reads the weekly recaps; shared LLM usage logging) |
 | 1 | Rebranding the platform name + UI (colour palette, typography, animation) -- **DONE 2026-10-02, the SVG logo remains** | brand assets | -- |
 | 2 | Rebranding the `newsletter_email` and `cve_notification_email` templates -- **code done 2026-10-02, email client verification not yet** | (the same assets as #1) | #1 |
@@ -735,8 +735,10 @@ formally; order = a suggestion.
 - **One LLM call per recap** (`temperature=0`, free-form JSON parsed with `parse_json_response`). The prompt holds up to
   60 articles, 50 tweets, 30 CVEs, an IOC count line, the new threat actors and 8 campaign clusters (collected from up to
   200 / 150 / 50 / 200 rows first, then cut). The article list is sorted by a source-name heuristic, not by importance.
-- **Nothing measures the cost**: `token_usage` is always stored as `{}` (the completion's `usage` is never read), and
-  `LlmSettings.rate_limit` ("global spend throttle, Redis token bucket") is declared in `config.py` but has no consumer.
+- **Nothing measured the cost** (fixed by PR 1, merged 2026-10-11, #34): `token_usage` used to be stored as `{}` (the
+  completion's `usage` was never read); it now holds the gateway's tokens, `wall_ms`, `input_chars` and the items per
+  prompt section. `LlmSettings.rate_limit` ("global spend throttle, Redis token bucket") is still declared in `config.py`
+  with no consumer.
   The client retries twice (`max_retries=2`, 60 s timeout), then the task fails; a reply that is not JSON is stored as
   an empty recap with the text in `raw_llm`.
 - The CVE list is **global**: `_collect_cves` -> `list_registered_on` returns tracker rows of every client, capped at 50
@@ -785,6 +787,30 @@ formally; order = a suggestion.
    `.env.prod.template`, and with `extra="forbid"` a key left in the prod `.env` after its field is gone stops the app
    from starting (checked 2026-10-11), so the key goes first and the field later.
 
+**Baseline (measured 2026-10-11)**: the seven daily recaps of 4-10 Oct 2026 (UTC), regenerated with Force Regen on the dev
+instance right after PR 1 was deployed there (gateway model `my-combo`; the dev data has no tweets and no campaign clusters,
+so those prompt sections were empty). One LLM call per day:
+
+| Measure | Sum of the 7 calls | Per call (average, range) |
+|---|---|---|
+| User message (`input_chars`) | 41,188 chars | 5,884 (1,122 - 10,794) |
+| Prompt tokens | 73,833 | 10,548 (8,237 - 12,918) |
+| Completion tokens | 12,501 | 1,786 |
+| Total tokens | 86,334 | 12,333 |
+| Wall time of the LLM call | 121.9 s | 17.4 s |
+
+Collected that week: 320 articles (237 reached a prompt: the daily cap is 60), 79 CVEs, IOC rows at the collector cap (200) on
+4 of the 7 days. Reproduce one day with Force Regen on the Recap page (or `POST /api/recap/generate?date=D&force=true`) and read
+`token_usage` and `counts` in `GET /api/recap/D`.
+
+Reading the numbers: the gateway reports about 7.9k prompt tokens even for an almost empty message. A least-squares fit over the
+seven calls gives roughly `7,900 + 0.45 x chars` prompt tokens (an estimate): the fixed part is far larger than our ~2.2k-character
+system prompt, so most of it is overhead outside our text, most likely the gateway. A weekly call pays that fixed part once
+instead of seven times, and beats the 73.8k prompt-token sum as long as its user message stays under ~147k characters (aim for far
+less). Compare the weekly recap against this table using `input_chars` and the total tokens in its `token_usage`; the daily
+figures are a sample of one week, not a constant. The 4-10 Oct rows stored on dev were overwritten (three) or created (four)
+by this measurement.
+
 **Design: approved additions**
 - **Week-over-week comparison**: compare `counts` with the previous weekly recap (articles, tweets, IOCs, CVEs, campaigns,
   new threat actors) as absolute and percentage deltas, plus "new this week" for threat actors, campaigns and CVEs that
@@ -814,7 +840,7 @@ grounding/comparison/window, integration for the repository and the router snaps
 `rate_limit` left alone, hit-rate rule).
 **Done when**: a weekly recap is generated on schedule and shown with its date range; a day can still be generated by
 hand; every run records its token usage; the measured input size/tokens per recap is lower than the recorded baseline
-(numbers written here); a run with no activity makes no LLM call; the page shows the week-over-week deltas, the
+(written above, 2026-10-11); a run with no activity makes no LLM call; the page shows the week-over-week deltas, the
 dropped-item count from the grounding check and the forecast scorecard; tests cover the weekly window, aggregation,
 comparison, grounding and the no-activity path.
 
