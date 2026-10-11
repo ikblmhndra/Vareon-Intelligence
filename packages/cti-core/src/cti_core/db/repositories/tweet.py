@@ -158,6 +158,39 @@ class AsyncTweetRepo:
         result = await self.session.execute(list_stmt)
         return list(result.scalars().all()), total
 
+    async def list_top_between(
+        self, *, posted_on_start: datetime.datetime, posted_before: datetime.datetime, limit: int
+    ) -> tuple[list[Tweet], int]:
+        """`(tweet terkuat di [posted_on_start, posted_before), maksimal limit, total sebenarnya)`.
+
+        Dipakai recap mingguan: seminggu bisa ratusan tweet, jadi yang masuk prompt dipilih DI
+        SQL (`LIMIT`), bukan dimuat semua lalu dipotong. Urutan sinyal: insiden terkonfirmasi,
+        lalu `incident_confidence` (NULL terakhir, sama dengan sort recap harian), lalu terbaru.
+        `posted_before` EKSKLUSIF, sama dengan `_apply_tweet_filters`."""
+        window = _apply_tweet_filters(
+            select(Tweet),
+            search=None,
+            author=None,
+            lang=None,
+            posted_on_start=posted_on_start,
+            posted_before=posted_before,
+            apac_only=False,
+            ot_only=False,
+            confirmed_only=False,
+        )
+        total = (
+            await self.session.execute(select(func.count()).select_from(window.subquery()))
+        ).scalar_one()
+        result = await self.session.execute(
+            window.order_by(
+                Tweet.confirmed_incident.desc(),
+                Tweet.incident_confidence.desc().nulls_last(),
+                Tweet.posted_on.desc().nulls_last(),
+                Tweet.id.desc(),
+            ).limit(limit)
+        )
+        return list(result.scalars().all()), total
+
     async def get_stats(
         self,
         *,

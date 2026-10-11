@@ -64,6 +64,27 @@ class AsyncTARepo:
         )
         return list(result.scalars().all())
 
+    async def list_added_between(
+        self, start: datetime.date, end: datetime.date, *, limit: int
+    ) -> tuple[list[ThreatActorGroup], int]:
+        """`(grup yang pertama ditambahkan di [start, end] -- paling awal dulu, maksimal `limit`,
+        total sebenarnya)`. Sama dengan `list_added_on` (tanggalnya `created_at::date`), tapi
+        dipotong: satu sinkronisasi katalog bisa menambah ratusan grup sekaligus, dan itu tidak
+        boleh membengkakkan prompt recap mingguan."""
+        added = func.date(ThreatActorGroup.created_at).between(start, end)
+        total = (
+            await self.session.execute(
+                select(func.count()).select_from(ThreatActorGroup).where(added)
+            )
+        ).scalar_one()
+        result = await self.session.execute(
+            select(ThreatActorGroup)
+            .where(added)
+            .order_by(ThreatActorGroup.created_at, ThreatActorGroup.name)
+            .limit(limit)
+        )
+        return list(result.scalars().all()), total
+
     async def list_groups(
         self,
         *,
