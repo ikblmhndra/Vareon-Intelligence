@@ -23,8 +23,9 @@ _NORMALIZE = path_type(
         r"(.*\.)?generated_at$": (str,),
         # `/latest` dan `/generate` balikin "yesterday" relatif ke hari
         # jalan test (routers/recap.py), bukan tanggal tetap -- literal
-        # ke-bake di snapshot bakal basi tiap hari kalender maju.
-        r"(.*\.)?date$": (str,),
+        # ke-bake di snapshot bakal basi tiap hari kalender maju. Rentang periode recap harian
+        # (= tanggal itu) sama.
+        r"(.*\.)?(date|period_start|period_end)$": (str,),
         # Panjang pesan user = panjang template prompt; tanpa ini snapshot ikut berubah setiap kali
         # teks prompt diedit, padahal yang dijaga di sini bentuk `token_usage`.
         r"(.*\.)?input_chars$": (int,),

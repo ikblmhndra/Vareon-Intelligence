@@ -18,7 +18,10 @@
       'generated_at': str,
       'headline': 'Quiet day',
       'id': int,
+      'kind': 'daily',
       'model': 'test-model',
+      'period_end': str,
+      'period_start': str,
       'raw_llm': None,
       'token_usage': dict({
         'completion_tokens': 20,
