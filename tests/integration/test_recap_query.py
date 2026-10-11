@@ -12,9 +12,12 @@ from typing import Any
 
 import pytest
 from cti_core.db.models.cve import CveTracker
+from cti_core.db.models.recap import DailyRecap
 from cti_core.db.repositories.auth import AsyncClientRepo
 from cti_core.db.repositories.cve import AsyncCveFalsePositiveRepo, AsyncCveTrackerRepo
 from cti_core.db.repositories.recap import AsyncRecapRepo
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 pytestmark = pytest.mark.asyncio
@@ -64,6 +67,117 @@ async def test_list_recent_ordered_desc(async_db_session: AsyncSession) -> None:
         )
     rows = await repo.list_recent(limit=10)
     assert [r.date for r in rows] == ["2026-09-17", "2026-09-16", "2026-09-15"]
+
+
+MONDAY = "2026-10-05"
+"""Senin: tanggal yang dipakai baris mingguan (`date` = Senin) DAN sebuah baris harian."""
+MONDAY_DATE = datetime.date.fromisoformat(MONDAY)
+
+
+async def _both_kinds_on_monday(repo: AsyncRecapRepo) -> None:
+    await repo.upsert(MONDAY, headline="the day", period_start=MONDAY_DATE, period_end=MONDAY_DATE)
+    await repo.upsert(
+        MONDAY,
+        kind="weekly",
+        headline="the week",
+        period_start=MONDAY_DATE,
+        period_end=MONDAY_DATE + datetime.timedelta(days=6),
+    )
+
+
+async def test_a_weekly_and_a_daily_row_can_share_a_date_and_each_is_read_by_kind(
+    async_db_session: AsyncSession,
+) -> None:
+    """Dulu `get(date)` = `scalar_one_or_none()` tanpa `kind`: dua baris di Senin yang sama jadi
+    `MultipleResultsFound` (HTTP 500). Sekarang unik di `(kind, date)` dan dibaca per kind."""
+    repo = AsyncRecapRepo(async_db_session)
+    await _both_kinds_on_monday(repo)
+
+    daily = await repo.get(MONDAY)
+    weekly = await repo.get(MONDAY, "weekly")
+
+    assert daily is not None and weekly is not None
+    assert (daily.kind, daily.headline) == ("daily", "the day")
+    assert (weekly.kind, weekly.headline) == ("weekly", "the week")
+    assert weekly.period_end == datetime.date(2026, 10, 11)
+    assert daily.id != weekly.id
+
+
+async def test_upsert_updates_only_the_row_of_its_own_kind(async_db_session: AsyncSession) -> None:
+    repo = AsyncRecapRepo(async_db_session)
+    await _both_kinds_on_monday(repo)
+
+    await repo.upsert(MONDAY, kind="weekly", headline="the week, regenerated")
+
+    assert (await repo.get(MONDAY, "weekly")).headline == "the week, regenerated"  # type: ignore[union-attr]
+    assert (await repo.get(MONDAY)).headline == "the day"  # type: ignore[union-attr]
+
+
+async def test_a_second_row_of_the_same_kind_and_date_is_rejected_by_the_database(
+    async_db_session: AsyncSession,
+) -> None:
+    """Jaring terakhir di DB: `upsert` tidak pernah membuatnya, tapi jalur lain (SQL tangan,
+    balapan dua worker) bisa."""
+    await AsyncRecapRepo(async_db_session).upsert(MONDAY, kind="weekly")
+
+    with pytest.raises(IntegrityError, match="uq_daily_recap_kind_date"):
+        async with async_db_session.begin_nested():
+            async_db_session.add(DailyRecap(date=MONDAY, kind="weekly"))
+            await async_db_session.flush()
+
+
+async def test_kind_defaults_to_daily_for_a_writer_that_does_not_know_about_it(
+    async_db_session: AsyncSession,
+) -> None:
+    """Kode lama (rollback, deploy bergulir) INSERT tanpa `kind`/`period_*`: harus tetap jalan,
+    dan barisnya jadi `daily` dengan periode NULL."""
+    await async_db_session.execute(
+        text(
+            "INSERT INTO daily_recaps (date, headline, yesterday, forecast, counts, model, "
+            "token_usage) VALUES ('2026-09-01', 'old writer', '{}', '{}', '{}', '', '{}')"
+        )
+    )
+
+    row = await AsyncRecapRepo(async_db_session).get("2026-09-01")
+
+    assert row is not None
+    assert (row.kind, row.period_start, row.period_end) == ("daily", None, None)
+
+
+async def test_list_recent_returns_both_kinds_with_the_weekly_one_first_on_a_shared_date(
+    async_db_session: AsyncSession,
+) -> None:
+    repo = AsyncRecapRepo(async_db_session)
+    await repo.upsert("2026-09-28", kind="weekly")
+    await _both_kinds_on_monday(repo)
+
+    rows = await repo.list_recent(limit=10)
+
+    assert [(r.date, r.kind) for r in rows] == [
+        (MONDAY, "weekly"),
+        (MONDAY, "daily"),
+        ("2026-09-28", "weekly"),
+    ]
+
+
+async def test_get_latest_returns_the_newest_row_of_that_kind_only(
+    async_db_session: AsyncSession,
+) -> None:
+    repo = AsyncRecapRepo(async_db_session)
+    await repo.upsert("2026-09-28", kind="weekly")
+    await repo.upsert(MONDAY, kind="weekly")
+    await repo.upsert("2026-10-09")  # harian lebih baru dari mingguan mana pun
+
+    latest = await repo.get_latest("weekly")
+
+    assert latest is not None and latest.date == MONDAY
+    assert (await repo.get_latest("daily")).date == "2026-10-09"  # type: ignore[union-attr]
+
+
+async def test_get_latest_is_none_when_the_kind_has_no_rows(async_db_session: AsyncSession) -> None:
+    await AsyncRecapRepo(async_db_session).upsert("2026-10-09")
+
+    assert await AsyncRecapRepo(async_db_session).get_latest("weekly") is None
 
 
 async def _clients(session: AsyncSession, *extra: str) -> None:
