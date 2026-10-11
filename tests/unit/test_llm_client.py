@@ -7,6 +7,7 @@ walau sekarang dipakai 7 caller (`cti_enrich.stages.classify`/
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import pytest
 from cti_core.config import LlmSettings
@@ -80,3 +81,48 @@ def test_store_param_false_when_custom_url() -> None:
 def test_store_param_false_for_non_openai_provider() -> None:
     settings = LlmSettings(provider="deepseek", api_key="sk-test")
     assert llm_client.store_param(settings) == {}
+
+
+def _completion(usage: object) -> SimpleNamespace:
+    return SimpleNamespace(choices=[], usage=usage)
+
+
+def test_usage_from_reads_the_three_counters() -> None:
+    usage = SimpleNamespace(prompt_tokens=120, completion_tokens=30, total_tokens=150)
+    assert llm_client.usage_from(_completion(usage)) == {
+        "prompt_tokens": 120,
+        "completion_tokens": 30,
+        "total_tokens": 150,
+    }
+
+
+def test_usage_from_without_usage_is_empty_and_does_not_raise() -> None:
+    """Gateway dev kadang membuang `usage` (atau mengirim `null`): hasilnya `{}`, bukan error --
+    pemanggil sudah membayar token-nya, jangan sampai pencatatan menggagalkan recap."""
+    assert llm_client.usage_from(_completion(None)) == {}
+    assert llm_client.usage_from(SimpleNamespace(choices=[])) == {}  # atribut `usage` tidak ada
+    assert llm_client.usage_from(None) == {}
+
+
+def test_usage_from_partial_usage_keeps_only_the_integer_fields() -> None:
+    missing_total = SimpleNamespace(prompt_tokens=120, completion_tokens=30)
+    assert llm_client.usage_from(_completion(missing_total)) == {
+        "prompt_tokens": 120,
+        "completion_tokens": 30,
+    }
+    with_nulls = SimpleNamespace(prompt_tokens=None, completion_tokens=30, total_tokens=None)
+    assert llm_client.usage_from(_completion(with_nulls)) == {"completion_tokens": 30}
+
+
+def test_usage_from_accepts_plain_dicts() -> None:
+    """Gateway kadang mengembalikan objek yang sudah di-parse (lihat `parse_json_response`)."""
+    usage = {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+    assert llm_client.usage_from({"usage": usage}) == usage
+    assert llm_client.usage_from(_completion(usage)) == usage
+    assert llm_client.usage_from({"usage": None}) == {}
+
+
+def test_usage_from_drops_values_that_are_not_integers() -> None:
+    usage = SimpleNamespace(prompt_tokens="lots", completion_tokens=[1], total_tokens=2.5)
+    assert llm_client.usage_from(_completion(usage)) == {}
+    assert llm_client.usage_from(_completion("not an object at all")) == {}
