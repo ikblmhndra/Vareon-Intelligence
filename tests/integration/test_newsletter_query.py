@@ -5,13 +5,15 @@ artikel dari ROADMAP #22 (PR 5)."""
 from __future__ import annotations
 
 import datetime
+from typing import Any
 
 import pytest
 from cti_core.db.models.article import Article
-from cti_core.db.models.newsletter import NewsletterArticleSummary
+from cti_core.db.models.newsletter import NewsletterArticleSummary, NewsletterSuggestion
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.newsletter import AsyncNewsletterRepo
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 pytestmark = pytest.mark.asyncio
@@ -216,3 +218,112 @@ async def test_summary_row_goes_away_with_its_article(async_db_session: AsyncSes
         await async_db_session.execute(select(func.count()).select_from(NewsletterArticleSummary))
     ).scalar_one()
     assert count == 0
+
+
+# ── Saran konten bulanan (ROADMAP #22, PR 7) ─────────────────────────────────────────────────────
+
+_OCT = (datetime.date(2026, 10, 1), datetime.date(2026, 10, 31))
+_SEP = (datetime.date(2026, 9, 1), datetime.date(2026, 9, 30))
+
+_ITEM = {
+    "article_id": 11,
+    "section": "indonesia",
+    "tier": "highlight",
+    "rank": 1,
+    "reasons": [{"code": "kev", "text": "Mentions CVE-2026-1111 in the CISA KEV catalog"}],
+}
+
+
+async def _suggest(
+    repo: AsyncNewsletterRepo, period: tuple[datetime.date, datetime.date], **kwargs: Any
+) -> NewsletterSuggestion:
+    return await repo.upsert_suggestion(period_start=period[0], period_end=period[1], **kwargs)
+
+
+async def test_suggestion_roundtrip_keeps_every_field(async_db_session: AsyncSession) -> None:
+    repo = AsyncNewsletterRepo(async_db_session)
+    assert await repo.get_suggestion(*_OCT) is None
+
+    saved = await _suggest(repo, _OCT, items=[_ITEM])
+
+    row = await repo.get_suggestion(*_OCT)
+    assert row is not None and row.id == saved.id
+    assert (row.period_start, row.period_end) == _OCT
+    assert row.items == [_ITEM]
+    # Isian ringkasan sengaja kosong sampai PR 8; kosong = "belum ada", bukan NULL.
+    assert (row.summary_text, row.summary_meta) == ("", {})
+    assert row.created_at is not None
+
+
+async def test_the_period_pair_is_unique_in_the_database(async_db_session: AsyncSession) -> None:
+    repo = AsyncNewsletterRepo(async_db_session)
+    await _suggest(repo, _OCT, items=[])
+
+    duplicate = NewsletterSuggestion(
+        period_start=_OCT[0], period_end=_OCT[1], items=[], summary_text="", summary_meta={}
+    )
+    with pytest.raises(IntegrityError):
+        async with async_db_session.begin_nested():
+            async_db_session.add(duplicate)
+            await async_db_session.flush()
+
+
+async def test_rebuilding_the_same_window_replaces_the_row_entirely(
+    async_db_session: AsyncSession,
+) -> None:
+    repo = AsyncNewsletterRepo(async_db_session)
+    first = await _suggest(
+        repo, _OCT, items=[_ITEM], summary_text="paragraf lama", summary_meta={"weeks": [40]}
+    )
+    await async_db_session.execute(
+        text("UPDATE newsletter_suggestions SET created_at = '2020-01-01 00:00:00+00'")
+    )
+
+    newer_item = {**_ITEM, "article_id": 12, "tier": "full", "rank": 2}
+    second = await _suggest(repo, _OCT, items=[newer_item])
+
+    assert second.id == first.id  # baris yang sama ditimpa, bukan baris baru
+    row = await repo.get_suggestion(*_OCT)
+    assert row is not None
+    assert row.items == [newer_item]
+    assert (row.summary_text, row.summary_meta) == ("", {})  # ringkasan ikut dibangun ulang
+    assert row.created_at.year >= 2026  # `created_at` = waktu dibangun, ikut diperbarui
+    count = (
+        await async_db_session.execute(select(func.count()).select_from(NewsletterSuggestion))
+    ).scalar_one()
+    assert count == 1
+
+
+async def test_only_the_exact_window_matches_and_other_windows_are_separate_rows(
+    async_db_session: AsyncSession,
+) -> None:
+    repo = AsyncNewsletterRepo(async_db_session)
+    await _suggest(repo, _OCT, items=[_ITEM])
+    await _suggest(repo, _SEP, items=[])
+
+    assert (
+        await repo.get_suggestion(datetime.date(2026, 10, 1), datetime.date(2026, 10, 30)) is None
+    )
+    assert (
+        await repo.get_suggestion(datetime.date(2026, 10, 2), datetime.date(2026, 10, 31)) is None
+    )
+    sep = await repo.get_suggestion(*_SEP)
+    assert sep is not None and sep.items == []
+    count = (
+        await async_db_session.execute(select(func.count()).select_from(NewsletterSuggestion))
+    ).scalar_one()
+    assert count == 2
+
+
+async def test_latest_suggestion_is_the_window_that_ends_last_not_the_last_written(
+    async_db_session: AsyncSession,
+) -> None:
+    repo = AsyncNewsletterRepo(async_db_session)
+    assert await repo.latest_suggestion() is None
+
+    await _suggest(repo, _OCT, items=[_ITEM])
+    await _suggest(repo, _SEP, items=[])  # bulan lama dibangun belakangan (rebuild manual)
+
+    latest = await repo.latest_suggestion()
+    assert latest is not None
+    assert (latest.period_start, latest.period_end) == _OCT
