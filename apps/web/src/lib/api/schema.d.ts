@@ -2289,7 +2289,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Recap Latest */
+        /**
+         * Recap Latest
+         * @description Recap MINGGUAN terbaru yang tersimpan. Belum ada satu pun: `recap` null dan `date` = Senin
+         *     pekan yang akan dibuat berikutnya (pekan terakhir yang sudah selesai).
+         */
         get: operations["recap_latest_api_recap_latest_get"];
         put?: never;
         post?: never;
@@ -10762,10 +10766,14 @@ export interface operations {
     recap_generate_api_recap_generate_post: {
         parameters: {
             query?: {
-                /** @description YYYY-MM-DD — defaults to yesterday */
+                /** @description kind=daily: YYYY-MM-DD — defaults to yesterday */
                 date?: string | null;
                 /** @description Regenerate even if cached */
                 force?: boolean;
+                /** @description daily: one day by hand (default); weekly: a Monday-Sunday week (UTC) */
+                kind?: "daily" | "weekly";
+                /** @description kind=weekly: the Monday of the week, YYYY-MM-DD — defaults to the last finished week; a week whose Sunday has not ended in UTC is refused */
+                week_start?: string | null;
             };
             header?: {
                 authorization?: string | null;
@@ -10867,7 +10875,10 @@ export interface operations {
     };
     recap_get_api_recap__date__get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description daily (default) or weekly (date = its Monday) */
+                kind?: "daily" | "weekly";
+            };
             header?: {
                 authorization?: string | null;
             };
