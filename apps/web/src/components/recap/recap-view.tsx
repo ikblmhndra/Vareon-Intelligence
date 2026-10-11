@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { RecapDoc } from "@/lib/api/loose-types";
+import { recapTitle } from "@/lib/recap/period";
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -54,9 +55,10 @@ function Chips({ items }: { items?: string[] }) {
 }
 
 /**
- * Render satu dokumen recap harian -- port `_recapRender()` di
+ * Render satu dokumen recap (harian atau mingguan) -- port `_recapRender()` di
  * `legacy/static/js/newsroom/recap.js`, ditulis pakai token Tailwind +
- * `Badge` shadcn gantiin string HTML inline-style manual.
+ * `Badge` shadcn gantiin string HTML inline-style manual. Isi recap mingguan juga ada di
+ * `doc.yesterday` (nama kolom lama), bentuknya sama dengan yang harian.
  */
 export function RecapView({ doc }: { doc: RecapDoc }) {
   const recap = doc.yesterday || {};
@@ -64,15 +66,21 @@ export function RecapView({ doc }: { doc: RecapDoc }) {
   const counts = doc.counts || {};
   const gen = doc.generated_at ? new Date(doc.generated_at).toLocaleString() : "—";
   const tokens = doc.token_usage?.total_tokens;
+  const weekly = doc.kind === "weekly";
 
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-gradient-to-br from-primary/5 to-primary/[0.04] px-4 py-3">
         <div>
           <div className="mb-1 text-sm font-semibold text-muted-foreground">
-            Daily Recap · {doc.date}
+            {recapTitle(doc.kind, doc.date, doc.period_start, doc.period_end)}
           </div>
           <div className="text-sm leading-snug">{doc.headline || "(no headline)"}</div>
+          {weekly && (
+            <div className="mt-1 text-xs text-muted-foreground">
+              Monday–Sunday by UTC date (Monday 07:00 to Monday 07:00 WIB)
+            </div>
+          )}
         </div>
         <div className="text-right font-mono text-xs text-muted-foreground">
           <div>
@@ -83,6 +91,7 @@ export function RecapView({ doc }: { doc: RecapDoc }) {
           </div>
           <div className="mt-1">
             gen: {gen}
+            {doc.token_usage?.skipped ? " · LLM skipped (no activity)" : ""}
             {tokens ? ` · ${tokens} tokens` : ""}
           </div>
         </div>
@@ -168,7 +177,7 @@ export function RecapView({ doc }: { doc: RecapDoc }) {
 
       <div className="mt-6 rounded-md border border-warning/40 bg-warning/[0.04] px-4 py-3">
         <div className="mb-2 font-mono text-sm tracking-[0.12em] text-warning uppercase">
-          ▲ Forecast · Next 1-3 Days
+          ▲ Forecast · Next {weekly ? "1-2 Weeks" : "1-3 Days"}
         </div>
         <p className="mb-2 text-sm leading-relaxed">{fcast.summary || "(no forecast)"}</p>
 
