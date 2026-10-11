@@ -34,12 +34,20 @@ client.parse_json_response()` tapi gak nahan `<think>...</think>`
 preamble -- sekarang numpang fungsi kanonik itu, dibungkus try/except
 biar kontrak lama (gak pernah raise, fallback `{"_raw": raw}` yang
 dipakai `generate_daily_recap()` buat mutusin nyimpen `raw_llm` atau
-kagak) tetap sama persis."""
+kagak) tetap sama persis.
+
+**`token_usage` (#21, 2026-10-11)** dulu SELALU `{}`: `usage` dari completion gak pernah dibaca,
+jadi biaya satu recap gak kelihatan dan target "token lebih sedikit" gak punya angka pembanding.
+Sekarang isinya token dari gateway (`usage_from`, kosong kalau gateway diam), `wall_ms` (waktu
+panggilan API, diukur di `_call_llm`), `input_chars` (panjang pesan user) dan `prompt_items`
+(berapa item tiap seksi yang BENAR-BENAR masuk prompt). Dua yang terakhir ada supaya ukuran prompt
+tetap terlihat walau gateway tidak melaporkan token."""
 
 from __future__ import annotations
 
 import asyncio
 import datetime
+import time
 from typing import Any
 
 from cti_core.db.repositories.article import AsyncArticleRepo
@@ -48,7 +56,7 @@ from cti_core.db.repositories.ioc import AsyncIOCRepo
 from cti_core.db.repositories.recap import AsyncRecapRepo
 from cti_core.db.repositories.ta import AsyncTARepo
 from cti_core.db.repositories.tweet import AsyncTweetRepo
-from cti_core.llm.client import get_llm_client, parse_json_response
+from cti_core.llm.client import get_llm_client, parse_json_response, usage_from
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_api.services import campaign as campaign_service
@@ -152,6 +160,35 @@ async def _collect_campaigns(session: AsyncSession) -> list[dict[str, Any]]:
     ]
 
 
+_MAX_ARTICLES = 60
+_MAX_TWEETS = 50
+_MAX_CVES = 30
+_MAX_CAMPAIGNS = 8
+"""Berapa baris tiap seksi yang dimuat `_build_user_message`; sisanya cuma ikut terhitung di judul
+seksi. Satu tempat buat prompt DAN `_prompt_items`, supaya jumlah yang dicatat tidak melenceng dari
+yang benar-benar dikirim. IOC (satu baris hitungan per tipe) dan threat actor baru tidak dipotong."""
+
+
+def _prompt_items(
+    articles: list[Any],
+    tweets: list[Any],
+    iocs: list[Any],
+    cves: list[Any],
+    campaigns: list[dict[str, Any]],
+    new_tas: list[Any],
+) -> dict[str, int]:
+    """Item tiap seksi yang BENAR-BENAR masuk prompt (setelah dipotong `_MAX_*`), bukan total yang
+    dikumpulkan (itu `counts`). IOC masuk sebagai hitungan per tipe, jadi semuanya terwakili."""
+    return {
+        "articles": min(len(articles), _MAX_ARTICLES),
+        "tweets": min(len(tweets), _MAX_TWEETS),
+        "cves": min(len(cves), _MAX_CVES),
+        "iocs": len(iocs),
+        "campaigns": min(len(campaigns), _MAX_CAMPAIGNS),
+        "new_threat_actors": len(new_tas),
+    }
+
+
 def _build_user_message(
     date_iso: str,
     articles: list[Any],
@@ -162,14 +199,14 @@ def _build_user_message(
     new_tas: list[Any],
 ) -> str:
     article_lines = []
-    for a in articles[:60]:
+    for a in articles[:_MAX_ARTICLES]:
         actors = ", ".join(t.threat_actor for t in a.threat_actors[:3])
         article_lines.append(
             f"- [{a.source}] {_truncate(a.title, 200)}" + (f" | actors: {actors}" if actors else "")
         )
 
     tweet_lines = []
-    for t in tweets[:50]:
+    for t in tweets[:_MAX_TWEETS]:
         sr = t.scan_results or {}
         flags = []
         if t.confirmed_incident:
@@ -192,7 +229,7 @@ def _build_user_message(
         )
 
     cve_lines = []
-    for c in cves[:30]:
+    for c in cves[:_MAX_CVES]:
         bits = []
         if c.cve_score is not None:
             bits.append(f"CVSS {c.cve_score}")
@@ -214,7 +251,7 @@ def _build_user_message(
     )
 
     camp_lines = []
-    for c in campaigns[:8]:
+    for c in campaigns[:_MAX_CAMPAIGNS]:
         theme = c.get("theme") or c.get("label") or "(unlabeled)"
         size = c.get("size") or len(c.get("article_ids") or [])
         actors = ", ".join((c.get("threat_actors") or [])[:3])
@@ -257,8 +294,12 @@ def _extract_json(raw: str) -> dict[str, Any]:
         return {"_raw": raw}
 
 
-def _call_llm(user_msg: str) -> tuple[str, str]:
+def _call_llm(user_msg: str) -> tuple[str, str, dict[str, int]]:
+    """`(isi balasan, nama model, pemakaian)`. Pemakaian = `usage_from` (kosong kalau gateway tidak
+    mengirim `usage`) + `wall_ms`: waktu panggilan API termasuk retry klien. Diukur DI SINI, di
+    dalam fungsi yang jalan di thread (`asyncio.to_thread`), supaya antre event loop tidak ikut."""
     client, model_name = get_llm_client()
+    started = time.monotonic()
     completion = client.chat.completions.create(
         model=model_name,
         messages=[
@@ -268,7 +309,12 @@ def _call_llm(user_msg: str) -> tuple[str, str]:
         temperature=0,
         n=1,
     )
-    return completion.choices[0].message.content or "", model_name
+    wall_ms = int((time.monotonic() - started) * 1000)
+    return (
+        completion.choices[0].message.content or "",
+        model_name,
+        {**usage_from(completion), "wall_ms": wall_ms},
+    )
 
 
 async def generate_daily_recap(
@@ -293,7 +339,7 @@ async def generate_daily_recap(
     new_tas = await _collect_new_threat_actors(session, day)
 
     user_msg = _build_user_message(date_iso, articles, tweets, iocs, cves, campaigns, new_tas)
-    raw, model_name = await asyncio.to_thread(_call_llm, user_msg)
+    raw, model_name, llm_usage = await asyncio.to_thread(_call_llm, user_msg)
     parsed = _extract_json(raw)
 
     row = await repo.upsert(
@@ -311,7 +357,11 @@ async def generate_daily_recap(
         },
         generated_at=datetime.datetime.now(datetime.UTC),
         model=model_name,
-        token_usage={},
+        token_usage={
+            **llm_usage,
+            "input_chars": len(user_msg),
+            "prompt_items": _prompt_items(articles, tweets, iocs, cves, campaigns, new_tas),
+        },
         raw_llm=raw if "_raw" in parsed else None,
     )
     return _to_dict(row, cached=False)

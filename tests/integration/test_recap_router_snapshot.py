@@ -25,6 +25,9 @@ _NORMALIZE = path_type(
         # jalan test (routers/recap.py), bukan tanggal tetap -- literal
         # ke-bake di snapshot bakal basi tiap hari kalender maju.
         r"(.*\.)?date$": (str,),
+        # Panjang pesan user = panjang template prompt; tanpa ini snapshot ikut berubah setiap kali
+        # teks prompt diedit, padahal yang dijaga di sini bentuk `token_usage`.
+        r"(.*\.)?input_chars$": (int,),
     },
     regex=True,
     strict=False,
@@ -34,6 +37,12 @@ _FAKE_LLM_RESPONSE = (
     '{"headline": "Quiet day", "recap": {"summary": "No major incidents."}, '
     '"forecast": {"outlook": "stable"}}'
 )
+_FAKE_LLM_USAGE = {
+    "prompt_tokens": 100,
+    "completion_tokens": 20,
+    "total_tokens": 120,
+    "wall_ms": 7,
+}
 
 
 def _yesterday() -> str:
@@ -80,7 +89,9 @@ async def test_recap_generate(
     snapshot: SnapshotAssertion,
 ) -> None:
     with patch.object(
-        recap_service, "_call_llm", MagicMock(return_value=(_FAKE_LLM_RESPONSE, "test-model"))
+        recap_service,
+        "_call_llm",
+        MagicMock(return_value=(_FAKE_LLM_RESPONSE, "test-model", _FAKE_LLM_USAGE)),
     ):
         resp = await api_client.post(
             "/api/recap/generate", headers=auth_header(), params={"date": _yesterday()}

@@ -85,6 +85,35 @@ def store_param(settings: LlmSettings | None = None) -> dict[str, Any]:
     return {}
 
 
+_USAGE_FIELDS = ("prompt_tokens", "completion_tokens", "total_tokens")
+
+
+def _field(obj: Any, name: str) -> Any:
+    """`obj.name`, atau `obj[name]` kalau `obj` dict; `None` kalau tidak ada. Objek SDK dan dict
+    polos sama-sama muncul dari gateway, dan satu cara baca cukup buat dua-duanya."""
+    if isinstance(obj, dict):
+        return obj.get(name)
+    return getattr(obj, name, None)
+
+
+def usage_from(completion: Any) -> dict[str, int]:
+    """Pemakaian token dari hasil `chat.completions.create()`: `prompt_tokens`,
+    `completion_tokens`, `total_tokens`, hanya field yang ada dan berupa bilangan bulat.
+
+    TIDAK PERNAH raise dan tidak mengarang angka. Gateway dev kadang membuang `usage` sama sekali
+    atau mengisinya sebagian (field hilang / `null`); hasilnya `{}` atau field yang ada saja.
+    Pencatatan biaya jalan SETELAH token-nya terbayar, jadi tidak boleh sampai menggagalkan
+    pemanggilnya. Yang butuh ukuran pasti walau gateway diam harus punya ukuran sendiri
+    (`wall_ms`, `input_chars` di `recap.generate_daily_recap`)."""
+    usage = _field(completion, "usage")
+    found: dict[str, int] = {}
+    for name in _USAGE_FIELDS:
+        value = _field(usage, name)
+        if isinstance(value, int):
+            found[name] = value
+    return found
+
+
 def parse_json_response(content: str | dict[str, Any] | None) -> dict[str, Any]:
     """Parse a chat completion's content as JSON, tolerating things raw
     `json.loads()` chokes on: a `<think>...</think>` reasoning preamble
