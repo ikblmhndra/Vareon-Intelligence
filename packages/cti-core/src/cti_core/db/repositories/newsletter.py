@@ -10,12 +10,19 @@ nanganin."""
 
 from __future__ import annotations
 
+import datetime
+from collections.abc import Sequence
 from typing import Any
 
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_core.db.models.newsletter import Newsletter, NewsletterPaywallHint
+from cti_core.db.models.newsletter import (
+    Newsletter,
+    NewsletterArticleSummary,
+    NewsletterPaywallHint,
+)
 
 
 class AsyncNewsletterRepo:
@@ -31,10 +38,14 @@ class AsyncNewsletterRepo:
         created_by: str,
         html: str,
         sections: dict[str, Any],
+        period_start: datetime.date | None = None,
+        period_end: datetime.date | None = None,
     ) -> Newsletter:
         row = Newsletter(
             week=week,
             year=year,
+            period_start=period_start,
+            period_end=period_end,
             generated_at=generated_at,
             created_by=created_by,
             html=html,
@@ -71,6 +82,75 @@ class AsyncNewsletterRepo:
     async def get_html(self, newsletter_id: int) -> str | None:
         row = await self.get_by_id(newsletter_id)
         return row.html if row else None
+
+    async def get_article_summary(
+        self, article_id: int, language: str
+    ) -> NewsletterArticleSummary | None:
+        """Baris cache ringkasan untuk satu artikel + bahasa, atau None kalau belum ada.
+
+        `populate_existing`: `upsert_article_summary` menulis lewat statement, bukan lewat objek
+        ORM, jadi objek yang sudah dimuat sesi ini bisa basi; baca selalu dari baris sekarang."""
+        result = await self.session.execute(
+            select(NewsletterArticleSummary)
+            .where(
+                NewsletterArticleSummary.article_id == article_id,
+                NewsletterArticleSummary.language == language,
+            )
+            .execution_options(populate_existing=True)
+        )
+        return result.scalar_one_or_none()
+
+    async def get_article_summaries(
+        self, article_ids: Sequence[int], language: str
+    ) -> dict[int, NewsletterArticleSummary]:
+        """Sama, untuk banyak artikel sekaligus (baris compact). Yang belum ada tidak ikut."""
+        if not article_ids:
+            return {}
+        result = await self.session.execute(
+            select(NewsletterArticleSummary)
+            .where(
+                NewsletterArticleSummary.article_id.in_(article_ids),
+                NewsletterArticleSummary.language == language,
+            )
+            .execution_options(populate_existing=True)
+        )
+        return {row.article_id: row for row in result.scalars().all()}
+
+    async def upsert_article_summary(
+        self,
+        *,
+        article_id: int,
+        language: str,
+        key_points: list[str],
+        summary: str,
+        body_source: str,
+        iocs: dict[str, list[str]],
+        cve_ids: list[str],
+        model: str,
+        token_usage: dict[str, int],
+    ) -> None:
+        """Simpan (atau timpa, untuk `regenerate`) cache satu artikel.
+
+        `ON CONFLICT DO UPDATE`, bukan get-lalu-insert: dua preview bersamaan untuk artikel yang
+        sama (klik ganda, dua analis) sama-sama miss, dan insert kedua akan kena unique
+        constraint dan menjatuhkan seluruh request. Sekarang yang terakhir menang."""
+        values = {
+            "key_points": key_points,
+            "summary": summary,
+            "body_source": body_source,
+            "iocs": iocs,
+            "cve_ids": cve_ids,
+            "model": model,
+            "token_usage": token_usage,
+        }
+        stmt = pg_insert(NewsletterArticleSummary).values(
+            article_id=article_id, language=language, **values
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["article_id", "language"],
+            set_={**values, "created_at": func.now()},
+        )
+        await self.session.execute(stmt)
 
     async def get_paywall_hint(self, source: str) -> NewsletterPaywallHint | None:
         result = await self.session.execute(

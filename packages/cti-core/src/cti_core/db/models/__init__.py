@@ -39,7 +39,11 @@ from cti_core.db.models.ioc import IOC, IOCFeedback, IOCSource, IOCTag, IOCThrea
 from cti_core.db.models.ioc_reference import IocAllowlistEntry, ThreatFeedEntry
 from cti_core.db.models.malware_trend import MalwareTrend
 from cti_core.db.models.mindmap import MindmapDoc
-from cti_core.db.models.newsletter import Newsletter, NewsletterPaywallHint
+from cti_core.db.models.newsletter import (
+    Newsletter,
+    NewsletterArticleSummary,
+    NewsletterPaywallHint,
+)
 from cti_core.db.models.package import MonitoredPackage, PackageDepGraph, PackageVuln
 from cti_core.db.models.pir import PIRNote, PIRRequirement
 from cti_core.db.models.ransomware import RansomwareVictim
@@ -101,6 +105,7 @@ __all__ = [
     "MonitoredPackage",
     "MonitoredPerson",
     "Newsletter",
+    "NewsletterArticleSummary",
     "NewsletterPaywallHint",
     "PIRNote",
     "PIRRequirement",
