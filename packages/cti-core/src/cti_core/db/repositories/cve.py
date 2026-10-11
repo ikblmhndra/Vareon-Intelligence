@@ -284,17 +284,41 @@ class AsyncCveTrackerRepo:
         `recap`, Bagian 5) -- CVE yang PERTAMA ke-track/kedetek/dipublish
         tanggal ini (OR tiga kolom tanggal, port apa adanya dari kode
         lama), lintas client (recap emang digest GLOBAL, bukan per-client).
-        Baris yang ditandai FP oleh clientnya sendiri tidak ikut (`is_false_positive_row`);
-        baris client lain untuk CVE yang sama tetap ikut."""
-        stmt = select(CveTracker).where(
-            or_(
-                func.date(CveTracker.registered_date) == day,
-                func.date(CveTracker.detected_on) == day,
-                CveTracker.published == day,
-            ),
-            ~is_false_positive_row(),
+        Baris yang ditandai FP oleh clientnya sendiri tidak ikut (`is_false_positive_row`).
+
+        **Satu baris per `cve_id`, urutan tetap (#21, 2026-10-11).** Tracker menyimpan satu baris
+        PER CLIENT, jadi CVE yang di-track dua client dulu keluar dua kali (dan dihitung dua kali di
+        `counts.cves`), dan 50 baris yang lolos `limit` tanpa ORDER BY itu sembarang. Sekarang
+        per `cve_id` dipilih baris terkuat (KEV, lalu PoC, lalu CVSS tertinggi, seri -> `id`
+        terkecil), baru hasilnya diurutkan KEV -> PoC -> CVSS menurun (NULL terakhir) -> `cve_id`
+        dan dipotong `limit`. FP dibuang SEBELUM baris terkuat dipilih: kalau sesudahnya, baris FP
+        yang kuat menang lalu tersaring, dan CVE-nya hilang padahal client lain masih menganggapnya
+        valid."""
+        strength = (
+            CveTracker.cisa_kev.desc(),
+            CveTracker.poc_available.desc(),
+            CveTracker.cve_score.desc().nulls_last(),
         )
-        stmt = stmt.limit(limit)
+        # `DISTINCT ON` Postgres, sama dengan `AsyncScraperRunRepo.latest_per_scraper`.
+        strongest_ids = (
+            select(CveTracker.id)
+            .where(
+                or_(
+                    func.date(CveTracker.registered_date) == day,
+                    func.date(CveTracker.detected_on) == day,
+                    CveTracker.published == day,
+                ),
+                ~is_false_positive_row(),
+            )
+            .distinct(CveTracker.cve_id)
+            .order_by(CveTracker.cve_id, *strength, CveTracker.id)
+        )
+        stmt = (
+            select(CveTracker)
+            .where(CveTracker.id.in_(strongest_ids))
+            .order_by(*strength, CveTracker.cve_id)
+            .limit(limit)
+        )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 

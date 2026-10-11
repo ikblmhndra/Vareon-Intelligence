@@ -1,15 +1,26 @@
 """Integration test `AsyncRecapRepo` -- Postgres REAL (testcontainers).
-Fase 7.3 (router `recap`, Bagian 5)."""
+Fase 7.3 (router `recap`, Bagian 5).
+
+Sekalian query CVE yang dipakai recap, `AsyncCveTrackerRepo.list_registered_on` (#21, 2026-10-11):
+satu baris per `cve_id` dan urutan tetap. Tracker menyimpan satu baris per client, jadi tanpa itu
+satu CVE muncul sekali per client dan 50 baris yang lolos `limit` sembarang."""
 
 from __future__ import annotations
 
 import datetime
+from typing import Any
 
 import pytest
+from cti_core.db.models.cve import CveTracker
+from cti_core.db.repositories.auth import AsyncClientRepo
+from cti_core.db.repositories.cve import AsyncCveFalsePositiveRepo, AsyncCveTrackerRepo
 from cti_core.db.repositories.recap import AsyncRecapRepo
 from sqlalchemy.ext.asyncio import AsyncSession
 
 pytestmark = pytest.mark.asyncio
+
+DAY = datetime.date(2026, 3, 1)
+"""Tanggal tetap, supaya hasil tidak bergantung pada jam dinding (`detected_on` default `now()`)."""
 
 
 async def test_upsert_creates_then_updates(async_db_session: AsyncSession) -> None:
@@ -53,3 +64,171 @@ async def test_list_recent_ordered_desc(async_db_session: AsyncSession) -> None:
         )
     rows = await repo.list_recent(limit=10)
     assert [r.date for r in rows] == ["2026-09-17", "2026-09-16", "2026-09-15"]
+
+
+async def _clients(session: AsyncSession, *extra: str) -> None:
+    """`default` selalu ada; `extra` client tambahan (baris `cve_tracker` punya FK ke `clients`)."""
+    repo = AsyncClientRepo(session)
+    await repo.ensure_default()
+    for client_id in extra:
+        await repo.create(client_id=client_id, name=client_id.title(), countries=[])
+
+
+def _row(cve_id: str, client_id: str = "default", **fields: Any) -> CveTracker:
+    """Baris tracker yang jatuh di `DAY` lewat `published` (satu dari tiga kolom tanggal query)."""
+    return CveTracker(cve_id=cve_id, client_id=client_id, published=DAY, **fields)
+
+
+async def test_list_registered_on_returns_a_shared_cve_once(
+    async_db_session: AsyncSession,
+) -> None:
+    await _clients(async_db_session, "acme")
+    async_db_session.add_all([_row("CVE-2026-0001", "default"), _row("CVE-2026-0001", "acme")])
+    await async_db_session.flush()
+
+    rows = await AsyncCveTrackerRepo(async_db_session).list_registered_on(DAY)
+
+    assert [r.cve_id for r in rows] == ["CVE-2026-0001"]
+
+
+async def test_list_registered_on_keeps_the_strongest_row_of_a_shared_cve(
+    async_db_session: AsyncSession,
+) -> None:
+    await _clients(async_db_session, "acme", "globex")
+    # Yang kuat sengaja kadang masuk dulu, kadang belakangan: pemenang tidak boleh ditentukan
+    # urutan sisip.
+    async_db_session.add_all(
+        [
+            # KEV mengalahkan PoC, dan PoC mengalahkan CVSS tertinggi.
+            _row("CVE-2026-0001", "default", cve_score=9.9),
+            _row("CVE-2026-0001", "acme", poc_available=True, cve_score=5.0),
+            _row("CVE-2026-0001", "globex", cisa_kev=True, cve_score=1.0),
+            _row("CVE-2026-0002", "acme", poc_available=True),
+            _row("CVE-2026-0002", "default", cve_score=9.9),
+            # CVSS yang ada mengalahkan CVSS NULL.
+            _row("CVE-2026-0003", "default"),
+            _row("CVE-2026-0003", "acme", cve_score=3.0),
+        ]
+    )
+    await async_db_session.flush()
+    # Seri penuh: baris yang lebih dulu dibuat (id terkecil) yang dipilih, supaya hasilnya stabil.
+    # Di-flush satu per satu karena yang diuji adalah `id`, bukan urutan batch INSERT.
+    async_db_session.add(_row("CVE-2026-0004", "acme"))
+    await async_db_session.flush()
+    async_db_session.add(_row("CVE-2026-0004", "default"))
+    await async_db_session.flush()
+
+    rows = await AsyncCveTrackerRepo(async_db_session).list_registered_on(DAY)
+
+    assert {r.cve_id: r.client_id for r in rows} == {
+        "CVE-2026-0001": "globex",
+        "CVE-2026-0002": "acme",
+        "CVE-2026-0003": "acme",
+        "CVE-2026-0004": "acme",
+    }
+
+
+async def test_list_registered_on_orders_kev_then_poc_then_cvss_nulls_last_then_cve_id(
+    async_db_session: AsyncSession,
+) -> None:
+    await _clients(async_db_session)
+    # Urutan sisip = kebalikan urutan yang diharapkan, supaya urutan heap tak bisa kebetulan benar.
+    async_db_session.add_all(
+        [
+            _row("CVE-2026-0016"),
+            _row("CVE-2026-0015"),
+            _row("CVE-2026-0014", cve_score=5.0),
+            _row("CVE-2026-0013", cve_score=9.0),
+            _row("CVE-2026-0009", cve_score=9.0),
+            _row("CVE-2026-0012", poc_available=True, cve_score=7.0),
+            _row("CVE-2026-0011", cisa_kev=True, cve_score=9.8),
+            _row("CVE-2026-0010", cisa_kev=True, poc_available=True, cve_score=5.0),
+        ]
+    )
+    await async_db_session.flush()
+
+    rows = await AsyncCveTrackerRepo(async_db_session).list_registered_on(DAY)
+
+    assert [r.cve_id for r in rows] == [
+        "CVE-2026-0010",  # KEV + PoC
+        "CVE-2026-0011",  # KEV tanpa PoC: CVSS 9.8 tidak melompati PoC di atasnya
+        "CVE-2026-0012",  # PoC tanpa KEV
+        "CVE-2026-0009",  # CVSS 9.0; seri dengan 0013, jadi cve_id yang lebih kecil dulu
+        "CVE-2026-0013",
+        "CVE-2026-0014",  # CVSS 5.0
+        "CVE-2026-0015",  # tanpa CVSS (NULL) paling belakang, lalu cve_id
+        "CVE-2026-0016",
+    ]
+
+
+async def test_list_registered_on_applies_the_limit_after_dedupe(
+    async_db_session: AsyncSession,
+) -> None:
+    """Kalau `limit` dipotong sebelum dedupe, CVE terkuat yang di-track dua client memakai kedua
+    slot dan CVE kedua tersingkir."""
+    await _clients(async_db_session, "acme")
+    async_db_session.add_all(
+        [
+            _row("CVE-2026-0001", "default", cisa_kev=True),
+            _row("CVE-2026-0001", "acme", cisa_kev=True),
+            _row("CVE-2026-0002", "default", cve_score=8.0),
+            _row("CVE-2026-0003", "default", cve_score=4.0),
+        ]
+    )
+    await async_db_session.flush()
+
+    rows = await AsyncCveTrackerRepo(async_db_session).list_registered_on(DAY, limit=2)
+
+    assert [r.cve_id for r in rows] == ["CVE-2026-0001", "CVE-2026-0002"]
+
+
+async def test_list_registered_on_drops_false_positive_rows_before_picking_the_strongest(
+    async_db_session: AsyncSession,
+) -> None:
+    """FP dibuang SEBELUM baris terkuat dipilih. Kalau tidak, baris FP yang kuat menang lalu
+    tersaring, dan CVE-nya hilang padahal client lain masih menganggapnya valid."""
+    await _clients(async_db_session, "acme")
+    async_db_session.add_all(
+        [
+            _row("CVE-2026-0001", "default", cisa_kev=True),  # terkuat, tapi di-FP default
+            _row("CVE-2026-0001", "acme", cve_score=4.0),
+            _row("CVE-2026-0002", "default", cisa_kev=True),  # di-FP semua client yang men-track
+            _row("CVE-2026-0002", "acme", cisa_kev=True),
+        ]
+    )
+    await async_db_session.flush()
+    fp = AsyncCveFalsePositiveRepo(async_db_session)
+    await fp.mark("CVE-2026-0001", "default")
+    await fp.mark("CVE-2026-0002", "default")
+    await fp.mark("CVE-2026-0002", "acme")
+
+    rows = await AsyncCveTrackerRepo(async_db_session).list_registered_on(DAY)
+
+    assert [(r.cve_id, r.client_id) for r in rows] == [("CVE-2026-0001", "acme")]
+
+
+async def test_list_registered_on_matches_any_of_the_three_date_columns(
+    async_db_session: AsyncSession,
+) -> None:
+    await _clients(async_db_session)
+    at_day = datetime.datetime(2026, 3, 1, 12, 0, tzinfo=datetime.UTC)
+    other = datetime.datetime(2026, 2, 1, 12, 0, tzinfo=datetime.UTC)
+    async_db_session.add_all(
+        [
+            CveTracker(cve_id="CVE-2026-0001", client_id="default", registered_date=at_day),
+            CveTracker(cve_id="CVE-2026-0002", client_id="default", detected_on=at_day),
+            CveTracker(cve_id="CVE-2026-0003", client_id="default", published=DAY),
+            CveTracker(
+                cve_id="CVE-2026-0004",
+                client_id="default",
+                published=DAY - datetime.timedelta(days=1),
+                registered_date=other,
+                detected_on=other,
+            ),
+        ]
+    )
+    await async_db_session.flush()
+
+    rows = await AsyncCveTrackerRepo(async_db_session).list_registered_on(DAY)
+
+    assert sorted(r.cve_id for r in rows) == ["CVE-2026-0001", "CVE-2026-0002", "CVE-2026-0003"]
