@@ -59,9 +59,15 @@ function useGenerateRecap() {
         target.kind === "weekly"
           ? { kind: "weekly" as const, week_start: target.date || undefined, force }
           : { kind: "daily" as const, date: target.date || undefined, force };
-      const { data, response } = await api.POST("/api/recap/generate", { params: { query } });
+      const { data, error, response } = await api.POST("/api/recap/generate", {
+        params: { query },
+      });
       if (!response.ok) {
-        const text = await response.text().catch(() => "");
+        // `openapi-fetch` sudah membaca body-nya (`response.text()` di sini selalu kosong), jadi
+        // alasannya diambil dari `error`. Pesan penolakan server, mis. pekan yang belum selesai di
+        // UTC, adalah satu-satunya petunjuk buat pengguna.
+        const detail = (error as { detail?: unknown } | undefined)?.detail;
+        const text = typeof detail === "string" ? detail : error ? JSON.stringify(error) : "";
         throw new Error(`HTTP ${response.status}${text ? `: ${text.slice(0, 200)}` : ""}`);
       }
       return (data as { recap: RecapDoc } | undefined)?.recap ?? null;
