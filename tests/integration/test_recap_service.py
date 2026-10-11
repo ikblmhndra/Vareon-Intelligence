@@ -219,11 +219,17 @@ async def test_generate_daily_recap_records_usage_wall_time_and_prompt_size(
     sent: list[dict[str, Any]] = []
     usage = SimpleNamespace(prompt_tokens=1200, completion_tokens=300, total_tokens=1500)
 
+    # Jam palsu hanya di modul `recap` (bukan `time.monotonic` global, itu dipakai event loop):
+    # `_call_llm` membaca jam dua kali, sebelum dan sesudah panggilan API, jadi 0,25 s = 250 ms
+    # terkunci pasti tanpa sleep, dan satuannya (detik -> ms, bilangan bulat) ikut teruji.
+    ticks = iter([100.0, 100.25])
+    fake_time = SimpleNamespace(monotonic=lambda: next(ticks))
     # `_MAX_ARTICLES` dikecilkan: yang dicatat harus yang BENAR-BENAR masuk prompt (2), bukan
     # total yang dikumpulkan (3, tetap utuh di `counts`).
-    result = await _generate_today(
-        async_db_session, _capturing_client(sent, usage), _MAX_ARTICLES=2
-    )
+    with patch.object(recap_service, "time", fake_time):
+        result = await _generate_today(
+            async_db_session, _capturing_client(sent, usage), _MAX_ARTICLES=2
+        )
 
     user_msg = sent[0]["messages"][1]["content"]
     stored = result["token_usage"]
@@ -232,8 +238,7 @@ async def test_generate_daily_recap_records_usage_wall_time_and_prompt_size(
         "completion_tokens": 300,
         "total_tokens": 1500,
     }
-    assert isinstance(stored["wall_ms"], int)
-    assert stored["wall_ms"] >= 0
+    assert stored["wall_ms"] == 250
     assert stored["input_chars"] == len(user_msg)
     assert stored["prompt_items"] == {
         "articles": 2,
