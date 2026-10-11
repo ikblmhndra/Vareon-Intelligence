@@ -7,8 +7,17 @@ tervalidasi, bukan keputusan baru khusus newsletter."""
 from __future__ import annotations
 
 import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
+
+SummaryLanguage = Literal["id", "en"]
+DEFAULT_SUMMARY_LANGUAGE: SummaryLanguage = "id"
+"""Bahasa `key_points` dan `summary` per artikel (ROADMAP #22, "Design: Indonesian content"):
+Indonesia secara default, Inggris tetap bisa supaya edisi berbahasa Inggris tidak hilang. Judul
+bagian, label, subject, dan footer selalu Inggris. Ikut kunci cache ringkasan, jadi satu bahasa
+tidak pernah memakai atau menimpa baris bahasa lain. Satu tempat untuk default-nya: field request
+di bawah dan service newsletter memakai konstanta ini."""
 
 MAX_HIGHLIGHTS = 3
 MAX_FULL_PER_SECTION = 4
@@ -33,8 +42,8 @@ class NewsletterSectionsBody(BaseModel):
     #    `MAX_*` di atas, dicek `services/newsletter_edition.py`.
     # Dicampur ditolak karena batas "full <= 4" jadi tidak berarti kalau `apac` (5) dan
     # `apac_full` (4) boleh dijumlah.
-    # Template email saat ini baru merender highlight PERTAMA dan kartu penuh; highlight
-    # berikutnya dan semua baris compact sudah ada di konteks tapi belum dirender (PR template).
+    # Template email merender semua `highlights`, kartu penuh, dan baris compact ("Also Noted");
+    # bentuk lama sama-sama jadi kartu penuh dengan baris compact kosong.
     highlight: int | None = None
     apac: list[int] = []
     global_news: list[int] = []
@@ -110,6 +119,15 @@ class NewsletterSectionsBody(BaseModel):
     )
     period_end: datetime.date | None = Field(
         default=None, description="Last day (inclusive) covered by the edition; see `period_start`."
+    )
+    language: SummaryLanguage = Field(
+        default=DEFAULT_SUMMARY_LANGUAGE,
+        description=(
+            "Language of the article summaries and key points: `id` (Indonesian, the default) "
+            "or `en`. Headings, labels and the subject stay English. Summaries are cached per "
+            "article and language, so an edition in one language never reuses or overwrites "
+            "the other."
+        ),
     )
 
     custom_css: str = ""

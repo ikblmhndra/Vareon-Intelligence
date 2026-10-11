@@ -88,6 +88,7 @@ async def _build(session: AsyncSession, body: NewsletterSectionsBody) -> tuple[d
         period_start=body.period_start,
         period_end=body.period_end,
         regenerate=body.regenerate,
+        language=body.language,
     )
     await session.commit()
     return context, newsletter_service.render_newsletter_html(context)
