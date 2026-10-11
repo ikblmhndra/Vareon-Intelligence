@@ -275,7 +275,7 @@ def test_weekly_prompt_states_the_window_and_exact_totals_next_to_the_trimmed_li
     msg = svc._build_weekly_user_message(inputs)
 
     assert "2026-09-28 (Monday) to 2026-10-04 (Sunday), UTC calendar dates" in msg
-    assert "POSTED 2026-09-28..2026-10-04 (412 total, 2 strongest shown;" in msg
+    assert "POSTED 2026-09-28..2026-10-04 (412 total, 2 story lines shown;" in msg
     assert "X / TWITTER POSTS 2026-09-28..2026-10-04 (318 total, 2 strongest shown)" in msg
     assert "NEW / UPDATED CVES 2026-09-28..2026-10-04 (57 total, 1 strongest shown;" in msg
     assert "NEW IOCS 2026-09-28..2026-10-04 (705 total)" in msg

@@ -459,7 +459,7 @@ async def test_generate_weekly_recap_summarises_the_whole_week_from_aggregates(
     assert system_msg == recap_service.WEEKLY_SYSTEM_PROMPT
     assert stored["input_chars"] == len(user_msg)
     assert "2026-03-02 (Monday) to 2026-03-08 (Sunday)" in user_msg
-    assert "(5 total, 3 strongest shown;" in user_msg
+    assert "(5 total, 3 story lines shown;" in user_msg
     assert "(4 total, 2 strongest shown;" in user_msg
     assert "ip=2, domain=1" in user_msg
     assert "outside before" not in user_msg and "outside after" not in user_msg

@@ -651,7 +651,9 @@ async def _collect_weekly(
 
 
 def _of(total: int, shown: int, how: str) -> str:
-    """ "412 total, 60 strongest shown" kalau ada yang dipotong; "5 total" kalau semuanya tampil."""
+    """ "412 total, 60 strongest shown" kalau ada yang dipotong; "5 total" kalau semuanya tampil.
+    `how` = apa yang dihitung baris yang tampil. Artikel memakai "story lines", BUKAN "strongest":
+    artikel satu klaster berbagi satu baris, jadi baris < total belum berarti ada yang terbuang."""
     return f"{total} total" if shown >= total else f"{total} total, {shown} {how} shown"
 
 
@@ -671,7 +673,7 @@ def _build_weekly_user_message(inputs: WeeklyInputs) -> str:
     return f"""WEEKLY RECAP WINDOW: {start} (Monday) to {end} (Sunday), UTC calendar dates
 The counts below are exact totals for the whole week; each list holds only the strongest items.
 
-== NEWS ROOM ARTICLES POSTED {window} ({_of(inputs.articles_total, len(article_lines), "strongest")}; articles of one campaign collapsed into one line) ==
+== NEWS ROOM ARTICLES POSTED {window} ({_of(inputs.articles_total, len(article_lines), "story lines")}; articles of one campaign collapsed into one line) ==
 {chr(10).join(article_lines) if article_lines else "  (none)"}
 
 == X / TWITTER POSTS {window} ({_of(inputs.tweets_total, len(tweet_lines), "strongest")}) ==
