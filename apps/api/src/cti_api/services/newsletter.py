@@ -14,7 +14,13 @@ dikirim ke template newsletter dipangkas (`name`/`size`/`first_seen`/
 
 Body artikel di-fetch pakai Playwright (real headless browser) + IOC
 regex-scan + LLM summarization -- proses ini genuinely lambat/network-
-heavy per artikel (bukan bug, port apa adanya)."""
+heavy per artikel (bukan bug, port apa adanya). Sejak PR 5 (ROADMAP #22)
+hasilnya di-CACHE per artikel (`newsletter_article_summaries`), jadi
+mengulang preview, atau draft sesudah preview, tidak fetch dan tidak
+memanggil LLM lagi. Membangun konteks sendiri hanya menulis dua cache
+(ringkasan dan hint paywall); IOC dan sebutan CVE baru ditulis oleh
+`write_article_findings()` saat draft dibuat (dulu ikut tertulis tiap
+preview)."""
 
 from __future__ import annotations
 
@@ -22,11 +28,13 @@ import asyncio
 import datetime
 import json
 import re
+from collections.abc import Collection, Mapping
 from pathlib import Path
 from typing import Any
 
-from cti_core.config import platform_name
+from cti_core.config import get_settings, platform_name
 from cti_core.db.models.article import Article
+from cti_core.db.models.newsletter import NewsletterArticleSummary
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.cve import AsyncCveTrackerRepo
 from cti_core.db.repositories.ioc import AsyncIOCRepo
@@ -37,10 +45,15 @@ from cti_core.llm.client import get_llm_client, parse_json_response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_api.services import campaign as campaign_service
+from cti_api.services import newsletter_edition
 from cti_api.services.email_env import make_env
 
 _TEMPLATE_DIR = Path(__file__).parent.parent / "templates"
 _NEWSLETTER_EMAIL_TEMPLATE = "newsletter_email.html"
+
+SUMMARY_LANGUAGE = "en"
+"""Bahasa ringkasan yang di-cache. Kedua prompt di bawah menghasilkan bahasa Inggris, jadi kuncinya
+satu konstanta; PR bahasa Indonesia menggantinya dengan field `language` di request."""
 
 _RE_CVE = re.compile(r"\bCVE-\d{4}-\d{4,7}\b", re.IGNORECASE)
 
@@ -146,7 +159,20 @@ async def fetch_article_body(
 # ── LLM summarization ────────────────────────────────────────────────────────
 
 
-def _llm_summarize_with_body(title: str, body: str) -> dict[str, Any]:
+def _usage_of(completion: Any) -> dict[str, int]:
+    """Token usage dari completion, `{}` kalau gateway tidak mengirim `usage` (gateway dev kadang
+    begitu): tidak boleh raise, ringkasannya sendiri sudah jadi."""
+    usage = getattr(completion, "usage", None)
+    out: dict[str, int] = {}
+    for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+        value = getattr(usage, key, None)
+        if isinstance(value, int):
+            out[key] = value
+    return out
+
+
+def _llm_summarize_with_body(title: str, body: str) -> tuple[dict[str, Any], str, dict[str, int]]:
+    """Return (hasil parse, nama model, token usage); dua terakhir ikut disimpan di cache."""
     prompt = """You are a Cyber Threat Intelligence analyst writing a weekly newsletter.
 Summarize this threat article concisely for a security leadership audience.
 
@@ -167,10 +193,12 @@ Return ONLY valid JSON (no markdown, no code blocks):
     )
     content = completion.choices[0].message.content
     result = parse_json_response(content or "{}")
-    return result
+    return result, model_name, _usage_of(completion)
 
 
-def _llm_summarize_from_metadata(article: dict[str, Any]) -> dict[str, Any]:
+def _llm_summarize_from_metadata(
+    article: dict[str, Any],
+) -> tuple[dict[str, Any], str, dict[str, int]]:
     prompt = """You are a Cyber Threat Intelligence analyst writing a weekly newsletter.
 Based on available metadata, generate plausible key points and a summary for this threat news item.
 Note: full article text is unavailable (possible paywall).
@@ -202,17 +230,72 @@ Return ONLY valid JSON (no markdown, no code blocks):
     )
     content = completion.choices[0].message.content
     result = parse_json_response(content or "{}")
-    return result
+    return result, model_name, _usage_of(completion)
 
 
-async def generate_article_summary(article: dict[str, Any], body: str | None) -> dict[str, Any]:
+def _summary_from_row(row: NewsletterArticleSummary) -> dict[str, Any]:
+    return {
+        "key_points": row.key_points,
+        "summary": row.summary,
+        "body_source": row.body_source,
+        "iocs": row.iocs,
+        "cve_ids": row.cve_ids,
+    }
+
+
+async def generate_article_summary(
+    session: AsyncSession,
+    article: dict[str, Any],
+    *,
+    allowlist: dict[str, set[str]],
+    regenerate: bool = False,
+) -> dict[str, Any]:
+    """Ringkasan satu artikel, CACHE DULU (`newsletter_article_summaries`, kunci artikel + bahasa).
+
+    Baris ada = langsung dipakai: tanpa fetch Playwright dan tanpa LLM. Tidak ada (atau
+    `regenerate`) = fetch body, satu panggilan LLM, ekstrak IOC dan CVE id dari body itu, simpan.
+    Return `{key_points, summary, body_source, iocs, cve_ids}`; `cve_ids` semua CVE di judul +
+    body, BELUM disaring true-positive (lihat `_enrich_articles`).
+
+    Hasil kosong (LLM membalas `{}`/tanpa isi) TIDAK di-cache: dulu itu gagal sementara yang
+    dicoba lagi build berikutnya, sekarang akan nempel selamanya kalau disimpan.
+
+    Catatan: gagal fetch sementara (timeout, jaringan) juga jadi ringkasan `metadata` yang
+    di-cache; `body_source` menandainya dan `regenerate` adalah jalan keluarnya. IOC ikut
+    allowlist saat baris dibuat, perubahan allowlist sesudahnya tidak mengubah baris lama."""
+    repo = AsyncNewsletterRepo(session)
+    if not regenerate:
+        cached = await repo.get_article_summary(article["id"], SUMMARY_LANGUAGE)
+        if cached is not None:
+            return _summary_from_row(cached)
+
+    title = article.get("title", "")
+    url = article.get("url", "")
+    body, _ = await fetch_article_body(session, url, article.get("source", ""))
     if body:
-        result = await asyncio.to_thread(_llm_summarize_with_body, article.get("title", ""), body)
-        result["body_source"] = "fetched"
+        result, model, usage = await asyncio.to_thread(_llm_summarize_with_body, title, body)
+        body_source = "fetched"
+        iocs = await asyncio.to_thread(extract_iocs, body, url, allowlist)
     else:
-        result = await asyncio.to_thread(_llm_summarize_from_metadata, article)
-        result["body_source"] = "metadata"
-    return result
+        result, model, usage = await asyncio.to_thread(_llm_summarize_from_metadata, article)
+        body_source = "metadata"
+        iocs = {}
+    summary: dict[str, Any] = {
+        "key_points": result.get("key_points") or [],
+        "summary": result.get("summary") or "",
+        "body_source": body_source,
+        "iocs": iocs,
+        "cve_ids": _extract_cve_ids(title, body),
+    }
+    if summary["key_points"] or summary["summary"]:
+        await repo.upsert_article_summary(
+            article_id=article["id"],
+            language=SUMMARY_LANGUAGE,
+            model=model,
+            token_usage=usage,
+            **summary,
+        )
+    return summary
 
 
 # ── CVE correlation ──────────────────────────────────────────────────────────
@@ -227,10 +310,18 @@ async def _get_tp_cve_ids(session: AsyncSession) -> set[str]:
     return set(await AsyncCveTrackerRepo(session).list_true_positive_cve_ids())
 
 
-def _find_cve_mentions(title: str, body: str | None, tp_cve_set: set[str]) -> list[str]:
+def _extract_cve_ids(title: str, body: str | None) -> list[str]:
+    """Semua CVE id di judul + body, huruf besar, unik, terurut, SEBELUM disaring true-positive.
+
+    Inilah yang di-cache (`cve_ids`): isi artikel tidak berubah, sedangkan set true-positive
+    berubah (FP ditandai, CVE baru di-track), jadi irisannya dihitung ulang tiap build."""
     text = title + " " + (body or "")
-    found = {m.upper() for m in _RE_CVE.findall(text)}
-    return sorted(found & tp_cve_set)
+    return sorted({m.upper() for m in _RE_CVE.findall(text)})
+
+
+def _find_cve_mentions(cve_ids: Collection[str], tp_cve_set: set[str]) -> list[str]:
+    """Irisan CVE id artikel dengan set true-positive SEKARANG, terurut."""
+    return sorted(set(cve_ids) & tp_cve_set)
 
 
 # ── Article dict shape ───────────────────────────────────────────────────────
@@ -261,54 +352,44 @@ async def fetch_articles_by_ids(session: AsyncSession, ids: list[int]) -> dict[i
 
 
 async def _enrich_articles(
-    session: AsyncSession, articles: list[dict[str, Any]]
+    session: AsyncSession,
+    articles: list[dict[str, Any]],
+    *,
+    regenerate: Collection[int] = (),
 ) -> list[dict[str, Any]]:
-    """Fetch body + generate summary + IOC extraction + CVE correlation
-    per article -- SEKUENSIAL (bukan `asyncio.gather` kayak kode lama),
-    karena masing-masing butuh browser Playwright sendiri + write DB
+    """Ringkasan + IOC + korelasi CVE per article -- SEKUENSIAL (bukan `asyncio.gather` kayak kode
+    lama), karena masing-masing butuh browser Playwright sendiri + write DB
     lewat SATU AsyncSession yang gak aman dipakai concurrent (lihat
-    catatan sama di `AsyncPIRRepo.list_pirs`)."""
+    catatan sama di `AsyncPIRRepo.list_pirs`).
+
+    Dari cache kalau ada (`generate_article_summary`). Fungsi ini TIDAK menulis IOC dan sebutan
+    CVE: itu `write_article_findings()`, dipanggil sekali saat draft dibuat. Dulu keduanya
+    ditulis di sini, jadi tiap preview menambah `seen_count` IOC dan sumbernya lagi.
+
+    `cve_mentions` = CVE id di cache yang masih true-positive SEKARANG; dihitung tiap build dan
+    tidak di-cache, karena set true-positive berubah sementara isi artikel tidak. `regenerate` =
+    id artikel yang melewati cache, SEKALI per build (kemunculan kedua artikel yang sama sudah
+    memakai baris yang baru ditulis)."""
     tp_cve_set, allowlist = await asyncio.gather(
         _get_tp_cve_ids(session), _get_allowlist_sets(session)
     )
 
+    pending_regenerate = set(regenerate)
     results = []
     for article in articles:
-        body, _ = await fetch_article_body(
-            session, article.get("url", ""), article.get("source", "")
+        article_id = article.get("id")
+        summary = await generate_article_summary(
+            session, article, allowlist=allowlist, regenerate=article_id in pending_regenerate
         )
-        summary = await generate_article_summary(article, body)
-        if body:
-            iocs = await asyncio.to_thread(extract_iocs, body, article.get("url", ""), allowlist)
-        else:
-            iocs = {}
-        cve_hits = _find_cve_mentions(article.get("title", ""), body, tp_cve_set)
-        if cve_hits:
-            posted_on = article.get("posted_on", "")
-            for cid in cve_hits:
-                await AsyncCveTrackerRepo(session).add_newsletter_mention(
-                    cid,
-                    title=article.get("title", ""),
-                    url=article.get("url", ""),
-                    source=article.get("source", ""),
-                    mention_date=posted_on,
-                )
-        if iocs:
-            ioc_repo = AsyncIOCRepo(session)
-            for field_key, values in iocs.items():
-                for value in values:
-                    await ioc_repo.upsert(
-                        type=_IOC_TYPE_MAP.get(field_key, field_key),
-                        value=value,
-                        source_url=article.get("url", ""),
-                        source_name=article.get("source", ""),
-                        article_id=article.get("id"),
-                    )
+        pending_regenerate.discard(article_id)
+        cve_hits = _find_cve_mentions(summary["cve_ids"], tp_cve_set)
         results.append(
             {
                 **article,
-                **summary,
-                "iocs": iocs,
+                "key_points": summary["key_points"],
+                "summary": summary["summary"],
+                "body_source": summary["body_source"],
+                "iocs": summary["iocs"],
                 "cve_mentions": cve_hits,
                 "possibly_exploited_wild": bool(cve_hits),
             }
@@ -329,6 +410,44 @@ _IOC_TYPE_MAP = {
 }
 
 
+async def write_article_findings(session: AsyncSession, context: dict[str, Any]) -> None:
+    """Tulis IOC dan sebutan CVE dari artikel kartu-penuh edisi ini (data dari cache, tanpa fetch).
+
+    Dipanggil SEKALI per draft, sesudah draft Outlook jadi dan baris histori disimpan. Tiap
+    artikel sekali walau muncul dua kali di edisi. Baris compact tidak ikut: tanpa fetch tidak ada
+    IOC, dan "ikut kalau kebetulan sudah di-cache" membuat hasilnya bergantung riwayat cache."""
+    cve_repo = AsyncCveTrackerRepo(session)
+    ioc_repo = AsyncIOCRepo(session)
+    seen: set[Any] = set()
+    for article in (
+        *context["highlights"],
+        *context["apac"],
+        *context["global_news"],
+        *context["indonesia"],
+    ):
+        article_id = article.get("id")
+        if article_id in seen:
+            continue
+        seen.add(article_id)
+        for cid in article.get("cve_mentions", []):
+            await cve_repo.add_newsletter_mention(
+                cid,
+                title=article.get("title", ""),
+                url=article.get("url", ""),
+                source=article.get("source", ""),
+                mention_date=article.get("posted_on", ""),
+            )
+        for field_key, values in article.get("iocs", {}).items():
+            for value in values:
+                await ioc_repo.upsert(
+                    type=_IOC_TYPE_MAP.get(field_key, field_key),
+                    value=value,
+                    source_url=article.get("url", ""),
+                    source_name=article.get("source", ""),
+                    article_id=article_id,
+                )
+
+
 def _inject_analyst_note(article: dict[str, Any], notes: dict[str, str]) -> dict[str, Any]:
     note = notes.get(str(article.get("id", "")), "").strip()
     if note:
@@ -344,9 +463,33 @@ def _now() -> datetime.datetime:
     return datetime.datetime.now(datetime.UTC)
 
 
+def _default_period(now: datetime.datetime) -> tuple[datetime.date, datetime.date]:
+    """Bulan kalender sebelumnya menurut zona laporan (`worker.report_utc_offset_hours`, WIB)."""
+    return newsletter_edition.default_period(now, get_settings().worker.report_utc_offset_hours)
+
+
+def _compact_entry(
+    article: dict[str, Any], cached: NewsletterArticleSummary | None
+) -> dict[str, Any]:
+    """Satu baris compact dari baris artikel: tanpa fetch dan tanpa LLM. Ringkasan di cache
+    dipakai kalau ada (artikel yang pernah jadi kartu penuh), selain itu hanya metadata."""
+    entry: dict[str, Any] = {
+        "id": article.get("id"),
+        "title": article.get("title", ""),
+        "url": article.get("url", ""),
+        "source": article.get("source", ""),
+        "posted_on": article.get("posted_on", ""),
+        "news_type": article.get("news_type", ""),
+    }
+    if cached is not None:
+        entry["key_points"] = cached.key_points
+        entry["summary"] = cached.summary
+    return entry
+
+
 async def build_newsletter_context(
     session: AsyncSession,
-    highlight: dict[str, Any],
+    highlights: dict[str, Any] | list[dict[str, Any]],
     apac: list[dict[str, Any]],
     global_news: list[dict[str, Any]],
     indonesia: list[dict[str, Any]],
@@ -357,11 +500,34 @@ async def build_newsletter_context(
     notes: dict[str, str] | None = None,
     include_clusters: bool = False,
     cluster_days: int = 7,
+    compact: Mapping[str, list[dict[str, Any]]] | None = None,
+    period_start: datetime.date | None = None,
+    period_end: datetime.date | None = None,
+    regenerate: Collection[int] = (),
 ) -> dict[str, Any]:
-    notes = notes or {}
-    all_articles = [highlight, *apac, *global_news, *indonesia]
+    """Susun konteks template dari artikel yang sudah dipilih. Menulis HANYA dua cache (ringkasan
+    dan hint paywall); tidak ada baris `newsletters`, IOC, atau sebutan CVE (lihat modul ini).
 
-    enriched = await _enrich_articles(session, all_articles)
+    `highlights`: satu dict (bentuk lama) atau daftar dict. `apac`/`global_news`/`indonesia`:
+    kartu penuh. `compact`: `{section: [artikel]}` baris compact, dari baris artikel (+ cache bila
+    ada), tanpa fetch dan tanpa LLM. `period_*`: keduanya atau tidak sama sekali; kosong = bulan
+    kalender sebelumnya menurut `_now()` di zona laporan.
+
+    Kunci konteks yang BARU dan belum dirender template sekarang (PR template, ROADMAP #22):
+    `highlights` (semua kartu highlight; template lama cuma merender `highlight` = yang pertama),
+    `apac_compact`/`global_news_compact`/`indonesia_compact`, `period_start`/`period_end`/
+    `period_label`. `apac`/`global_news`/`indonesia` tetap berarti kartu penuh, jadi template
+    lama tetap merender kartu penuh dari request tier dan melewatkan baris compact. Cluster
+    kampanye masih memakai `cluster_days` (hitung mundur dari hari ini); pindah ke tanggal
+    jendela menyusul."""
+    notes = notes or {}
+    compact = compact or {}
+    highlight_cards = [highlights] if isinstance(highlights, dict) else list(highlights)
+    if not highlight_cards:
+        raise ValueError("newsletter butuh minimal satu highlight")
+    all_articles = [*highlight_cards, *apac, *global_news, *indonesia]
+
+    enriched = await _enrich_articles(session, all_articles, regenerate=regenerate)
 
     raw_clusters: list[dict[str, Any]] = []
     if include_clusters:
@@ -370,19 +536,30 @@ async def build_newsletter_context(
         )
         raw_clusters = campaigns[:5]
 
-    highlight_enriched = _inject_analyst_note(enriched[0], notes)
+    n = len(highlight_cards)
+    highlights_enriched = [_inject_analyst_note(a, notes) for a in enriched[:n]]
     apac_count = len(apac)
     global_count = len(global_news)
 
-    n = 1
     apac_enriched = [_inject_analyst_note(a, notes) for a in enriched[n : n + apac_count]]
     n += apac_count
     global_enriched = [_inject_analyst_note(a, notes) for a in enriched[n : n + global_count]]
     n += global_count
     indonesia_enriched = [_inject_analyst_note(a, notes) for a in enriched[n:]]
 
+    cached = await AsyncNewsletterRepo(session).get_article_summaries(
+        [a["id"] for section in newsletter_edition.SECTIONS for a in compact.get(section, [])],
+        SUMMARY_LANGUAGE,
+    )
+    compact_rows = {
+        section: [_compact_entry(a, cached.get(a["id"])) for a in compact.get(section, [])]
+        for section in newsletter_edition.SECTIONS
+    }
+
     now = _now()
     iso_cal = now.isocalendar()
+    if period_start is None or period_end is None:
+        period_start, period_end = _default_period(now)
 
     campaign_clusters = [
         {
@@ -403,10 +580,17 @@ async def build_newsletter_context(
         "week": iso_cal[1],
         "year": iso_cal[0],
         "generated_at": now.strftime("%Y-%m-%d %H:%M UTC"),
-        "highlight": highlight_enriched,
+        "period_start": period_start,
+        "period_end": period_end,
+        "period_label": newsletter_edition.period_label(period_start, period_end),
+        "highlight": highlights_enriched[0],
+        "highlights": highlights_enriched,
         "apac": apac_enriched,
         "global_news": global_enriched,
         "indonesia": indonesia_enriched,
+        "apac_compact": compact_rows["apac"],
+        "global_news_compact": compact_rows["global_news"],
+        "indonesia_compact": compact_rows["indonesia"],
         "custom_css": custom_css,
         "custom_intro": custom_intro,
         "custom_footer": custom_footer,
@@ -450,10 +634,18 @@ async def save_newsletter(
         "apac": [_strip_article(a) for a in context["apac"]],
         "global_news": [_strip_article(a) for a in context["global_news"]],
         "indonesia": [_strip_article(a) for a in context["indonesia"]],
+        # Kunci tier (PR 5): `highlight` di atas tetap yang pertama supaya kartu histori lama
+        # jalan; baris compact sudah ringkas dari `_compact_entry`, tidak perlu di-strip lagi.
+        "highlights": [_strip_article(a) for a in context["highlights"]],
+        "apac_compact": context["apac_compact"],
+        "global_news_compact": context["global_news_compact"],
+        "indonesia_compact": context["indonesia_compact"],
     }
     row = await AsyncNewsletterRepo(session).save(
         week=context["week"],
         year=context["year"],
+        period_start=context["period_start"],
+        period_end=context["period_end"],
         generated_at=context["generated_at"],
         created_by=created_by,
         html=html,

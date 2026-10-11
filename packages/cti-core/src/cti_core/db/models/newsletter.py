@@ -63,7 +63,12 @@ class Newsletter(Base):
     html: Mapped[str] = mapped_column(Text, nullable=False)
     sections: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     """{highlight, apac, global_news, indonesia} -- masing-masing snapshot
-    artikel yang di-strip (`_strip_article` lama), lihat docstring modul."""
+    artikel yang di-strip (`_strip_article` lama), lihat docstring modul.
+
+    Baris sejak ROADMAP #22 (PR 5) juga punya `highlights` (semua kartu highlight; `highlight`
+    tetap yang pertama supaya kartu histori lama jalan) dan `apac_compact`/`global_news_compact`/
+    `indonesia_compact` (baris compact: id, judul, url, source, tanggal, tipe). Baris lama tidak
+    punya kunci-kunci itu, jadi pembaca harus menganggapnya opsional."""
 
 
 class NewsletterPaywallHint(Base):

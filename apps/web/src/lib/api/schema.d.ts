@@ -1822,7 +1822,12 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Draft Email */
+        /**
+         * Draft Email
+         * @description Satu-satunya tempat edisi disimpan: bangun dari cache -> draft Outlook (Graph) -> baru
+         *     simpan baris, IOC, sebutan CVE, dan audit dalam satu commit. Dulu barisnya di-commit SEBELUM
+         *     Graph dipanggil, jadi Graph yang gagal meninggalkan baris histori tanpa draft.
+         */
         post: operations["draft_email_api_newsletter_draft_email_post"];
         delete?: never;
         options?: never;
@@ -1856,7 +1861,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Preview Newsletter */
+        /**
+         * Preview Newsletter
+         * @description Pratinjau tanpa efek ke catatan: tidak ada baris `newsletters` (jadi `newsletter_id`
+         *     selalu null), tidak ada IOC, tidak ada sebutan CVE. Hanya dua cache yang terisi.
+         */
         post: operations["preview_newsletter_api_newsletter_preview_post"];
         delete?: never;
         options?: never;
@@ -4235,6 +4244,12 @@ export interface components {
             generated_at: string;
             /** Id */
             id: number;
+            /** Label */
+            label: string;
+            /** Period End */
+            period_end?: string | null;
+            /** Period Start */
+            period_start?: string | null;
             /** Sections */
             sections: {
                 [key: string]: unknown;
@@ -4263,6 +4278,16 @@ export interface components {
              */
             apac: number[];
             /**
+             * Apac Compact
+             * @description Asia Pacific articles shown as one-line rows built from stored metadata only (no page fetch, no LLM call); at most 15.
+             */
+            apac_compact?: number[];
+            /**
+             * Apac Full
+             * @description Asia Pacific articles shown as full cards (key points + summary); at most 4. Replaces the legacy `apac`; do not combine with the legacy fields.
+             */
+            apac_full?: number[];
+            /**
              * Cluster Days
              * @default 7
              */
@@ -4287,8 +4312,23 @@ export interface components {
              * @default []
              */
             global_news: number[];
+            /**
+             * Global News Compact
+             * @description Global articles shown as one-line rows (no fetch, no LLM call); at most 15.
+             */
+            global_news_compact?: number[];
+            /**
+             * Global News Full
+             * @description Global articles shown as full cards; at most 4. Replaces the legacy `global_news`; do not combine with the legacy fields.
+             */
+            global_news_full?: number[];
             /** Highlight */
-            highlight: number;
+            highlight?: number | null;
+            /**
+             * Highlights
+             * @description Articles for the Highlights block, shown as full cards; at most 3. Replaces the legacy `highlight`; do not combine with the legacy fields.
+             */
+            highlights?: number[];
             /**
              * Include Clusters
              * @default false
@@ -4300,12 +4340,37 @@ export interface components {
              */
             indonesia: number[];
             /**
+             * Indonesia Compact
+             * @description Indonesia articles shown as one-line rows (no fetch, no LLM call); at most 15.
+             */
+            indonesia_compact?: number[];
+            /**
+             * Indonesia Full
+             * @description Indonesia articles shown as full cards; at most 4. Replaces the legacy `indonesia`; do not combine with the legacy fields.
+             */
+            indonesia_full?: number[];
+            /**
              * Notes
              * @default {}
              */
             notes: {
                 [key: string]: string;
             };
+            /**
+             * Period End
+             * @description Last day (inclusive) covered by the edition; see `period_start`.
+             */
+            period_end?: string | null;
+            /**
+             * Period Start
+             * @description First day covered by the edition. Give both `period_start` and `period_end`, or neither: the default is the previous calendar month in the report time zone (WIB).
+             */
+            period_start?: string | null;
+            /**
+             * Regenerate
+             * @description Article ids whose cached summary is rebuilt (page fetched, LLM called again) instead of reused. Only affects articles shown as full cards or highlights.
+             */
+            regenerate?: number[];
         };
         /** PIRArticleListResponse */
         PIRArticleListResponse: {
