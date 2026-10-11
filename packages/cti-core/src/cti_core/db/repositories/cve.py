@@ -23,7 +23,7 @@ import zoneinfo
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import ColumnElement, Row, Select, func, or_, select, text
+from sqlalchemy import ColumnElement, Row, Select, and_, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -280,11 +280,30 @@ class AsyncCveTrackerRepo:
         return set(result.scalars().all())
 
     async def list_registered_on(self, day: datetime.date, *, limit: int = 50) -> list[CveTracker]:
-        """Port `_collect_cves()` (`recap_service.py`, Fase 7.3 router
-        `recap`, Bagian 5) -- CVE yang PERTAMA ke-track/kedetek/dipublish
-        tanggal ini (OR tiga kolom tanggal, port apa adanya dari kode
-        lama), lintas client (recap emang digest GLOBAL, bukan per-client).
-        Baris yang ditandai FP oleh clientnya sendiri tidak ikut (`is_false_positive_row`).
+        """Port `_collect_cves()` (`recap_service.py`, Fase 7.3 router `recap`, Bagian 5): satu hari
+        = rentang satu hari, urutan dan dedupe-nya lihat `list_registered_between`."""
+        return await self.list_registered_between(day, day, limit=limit)
+
+    @staticmethod
+    def _registered_between(start: datetime.date, end: datetime.date) -> ColumnElement[bool]:
+        """CVE yang PERTAMA ke-track/kedetek/dipublish di `[start, end]` (OR tiga kolom tanggal,
+        port apa adanya dari kode lama), tanpa baris yang ditandai FP oleh clientnya sendiri
+        (`is_false_positive_row`). `func.date(timestamptz)` mengikuti timezone SESI DB, jadi "hari"
+        di sini = hari UTC hanya kalau sesinya UTC (dijaga `recap._warn_unless_db_is_utc`)."""
+        return and_(
+            or_(
+                func.date(CveTracker.registered_date).between(start, end),
+                func.date(CveTracker.detected_on).between(start, end),
+                CveTracker.published.between(start, end),
+            ),
+            ~is_false_positive_row(),
+        )
+
+    async def list_registered_between(
+        self, start: datetime.date, end: datetime.date, *, limit: int = 50
+    ) -> list[CveTracker]:
+        """CVE yang masuk di `[start, end]` (inklusif), lintas client (recap emang digest GLOBAL,
+        bukan per-client). Satu tempat buat recap HARIAN (`list_registered_on`) dan MINGGUAN.
 
         **Satu baris per `cve_id`, urutan tetap (#21, 2026-10-11).** Tracker menyimpan satu baris
         PER CLIENT, jadi CVE yang di-track dua client dulu keluar dua kali (dan dihitung dua kali di
@@ -293,7 +312,10 @@ class AsyncCveTrackerRepo:
         terkecil), baru hasilnya diurutkan KEV -> PoC -> CVSS menurun (NULL terakhir) -> `cve_id`
         dan dipotong `limit`. FP dibuang SEBELUM baris terkuat dipilih: kalau sesudahnya, baris FP
         yang kuat menang lalu tersaring, dan CVE-nya hilang padahal client lain masih menganggapnya
-        valid."""
+        valid.
+
+        `limit` memotong daftar, jadi TOTAL yang sebenarnya dari `count_registered_between`
+        (satu pekan bisa jauh lebih banyak dari yang muat di prompt)."""
         strength = (
             CveTracker.cisa_kev.desc(),
             CveTracker.poc_available.desc(),
@@ -302,14 +324,7 @@ class AsyncCveTrackerRepo:
         # `DISTINCT ON` Postgres, sama dengan `AsyncScraperRunRepo.latest_per_scraper`.
         strongest_ids = (
             select(CveTracker.id)
-            .where(
-                or_(
-                    func.date(CveTracker.registered_date) == day,
-                    func.date(CveTracker.detected_on) == day,
-                    CveTracker.published == day,
-                ),
-                ~is_false_positive_row(),
-            )
+            .where(self._registered_between(start, end))
             .distinct(CveTracker.cve_id)
             .order_by(CveTracker.cve_id, *strength, CveTracker.id)
         )
@@ -321,6 +336,17 @@ class AsyncCveTrackerRepo:
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    async def count_registered_between(self, start: datetime.date, end: datetime.date) -> int:
+        """Jumlah `cve_id` BERBEDA di `[start, end]` dengan aturan yang sama persis dengan
+        `list_registered_between` (FP dibuang, satu per `cve_id`), tanpa `limit`: angka yang jujur
+        buat `counts.cves`, bukan `len()` dari daftar yang sudah dipotong."""
+        result = await self.session.execute(
+            select(func.count(func.distinct(CveTracker.cve_id))).where(
+                self._registered_between(start, end)
+            )
+        )
+        return result.scalar_one()
 
     async def get_by_cve_id_any_client(
         self, cve_id: str, *, exclude_false_positives: bool = False

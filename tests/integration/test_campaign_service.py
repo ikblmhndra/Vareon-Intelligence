@@ -14,6 +14,7 @@ from __future__ import annotations
 import datetime
 
 import pytest
+import structlog
 from cti_api.services import campaign as campaign_service
 from cti_core.db.models.cve import CveTracker
 from cti_core.db.models.pir import PIRRequirement
@@ -216,3 +217,96 @@ async def test_get_recent_campaigns_links_related_campaigns_by_shared_actor(
     for c in campaigns:
         assert len(c["related_campaigns"]) == 1
         assert c["related_campaigns"][0]["link_type"] == "same_actor"
+
+
+# --- jendela tanggal eksplisit (recap mingguan, #21 PR 2) ----------------------------------------
+
+
+async def _seed_pair(
+    session: AsyncSession, titles: list[str], actor: str, posted_on: datetime.date, tag: str
+) -> None:
+    repo = AsyncArticleRepo(session)
+    for i, title in enumerate(titles):
+        a = await repo.upsert(
+            url=f"https://example.com/{tag}-{i}",
+            title=title,
+            source=f"{tag}{i}",
+            posted_on=posted_on,
+        )
+        await repo.set_enrichment(a, threat_actors=[actor])
+
+
+_OTHER_TITLES = [
+    "Lazarus deploys ransomware payload against victims alpha",
+    "Lazarus deploys ransomware payload against victims beta",
+]
+
+
+async def test_get_recent_campaigns_with_a_window_clusters_that_period_not_the_last_days(
+    async_db_session: AsyncSession,
+) -> None:
+    """Dulu jendelanya selalu `days` terakhir dari HARI INI, jadi recap pekan yang di-backfill
+    mendapat klaster pekan saat ia dijalankan."""
+    await _ensure_clients(async_db_session)
+    old = _TODAY - datetime.timedelta(days=30)
+    # Judul sama di kedua periode (yang terbukti lolos ambang 0.75 untuk korpus dua dokumen);
+    # pembedanya aktor, jadi jelas klaster periode mana yang terbaca.
+    await _seed_pair(async_db_session, _TITLES, "Apt41", old, "old")
+    await _seed_pair(async_db_session, _TITLES, "Lazarus", _TODAY, "now")
+
+    last_days = await campaign_service.get_recent_campaigns(async_db_session, days=7, min_size=2)
+    old_week = await campaign_service.get_recent_campaigns(
+        async_db_session,
+        min_size=2,
+        start=old - datetime.timedelta(days=3),
+        end=old + datetime.timedelta(days=3),
+    )
+
+    assert [c["dominant_tas"] for c in last_days] == [["Lazarus"]]
+    assert [c["dominant_tas"] for c in old_week] == [["Apt41"]]
+
+
+async def test_get_recent_campaigns_end_alone_counts_days_back_from_end_not_from_today(
+    async_db_session: AsyncSession,
+) -> None:
+    await _ensure_clients(async_db_session)
+    old = _TODAY - datetime.timedelta(days=30)
+    await _seed_pair(async_db_session, _TITLES, "Apt41", old, "old")
+
+    inside = await campaign_service.get_recent_campaigns(
+        async_db_session, days=7, min_size=2, end=old + datetime.timedelta(days=2)
+    )
+    outside = await campaign_service.get_recent_campaigns(
+        async_db_session, days=1, min_size=2, end=old + datetime.timedelta(days=5)
+    )
+
+    assert len(inside) == 1
+    assert outside == []
+
+
+async def test_get_recent_campaigns_warns_when_the_article_cap_truncates_the_window(
+    async_db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await _ensure_clients(async_db_session)
+    await _seed_pair(async_db_session, _TITLES, "Apt41", _TODAY, "cap")
+    await _seed_pair(async_db_session, _OTHER_TITLES[:1], "Lazarus", _TODAY, "cap-extra")
+    monkeypatch.setattr(campaign_service, "_ARTICLE_CAP", 2)
+
+    with structlog.testing.capture_logs() as logs:
+        await campaign_service.get_recent_campaigns(async_db_session, days=7, min_size=2)
+
+    [warning] = [e for e in logs if e["event"] == "campaign_article_cap_hit"]
+    assert warning["log_level"] == "warning"
+    assert (warning["cap"], warning["articles_in_window"]) == (2, 3)
+
+
+async def test_get_recent_campaigns_does_not_warn_when_the_window_fits_under_the_cap(
+    async_db_session: AsyncSession,
+) -> None:
+    await _ensure_clients(async_db_session)
+    await _seed_pair(async_db_session, _TITLES, "Apt41", _TODAY, "fits")
+
+    with structlog.testing.capture_logs() as logs:
+        await campaign_service.get_recent_campaigns(async_db_session, days=7, min_size=2)
+
+    assert [e for e in logs if e["event"] == "campaign_article_cap_hit"] == []

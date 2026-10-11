@@ -18,7 +18,10 @@
       'generated_at': str,
       'headline': 'Quiet day',
       'id': int,
+      'kind': 'daily',
       'model': 'test-model',
+      'period_end': str,
+      'period_start': str,
       'raw_llm': None,
       'token_usage': dict({
         'completion_tokens': 20,
@@ -41,6 +44,103 @@
     }),
   })
 # ---
+# name: test_recap_generate_weekly_with_activity_calls_the_llm_with_the_weekly_prompt
+  dict({
+    'recap': dict({
+      'cached': False,
+      'counts': dict({
+        'articles': 1,
+        'campaigns': 0,
+        'cves': 0,
+        'iocs': 0,
+        'new_threat_actors': 0,
+        'tweets': 0,
+      }),
+      'date': '2026-03-02',
+      'forecast': dict({
+        'outlook': 'stable',
+      }),
+      'generated_at': str,
+      'headline': 'Quiet day',
+      'id': int,
+      'kind': 'weekly',
+      'model': 'test-model',
+      'period_end': '2026-03-08',
+      'period_start': '2026-03-02',
+      'raw_llm': None,
+      'token_usage': dict({
+        'completion_tokens': 20,
+        'input_chars': int,
+        'prompt_items': dict({
+          'articles': 1,
+          'campaigns': 0,
+          'cves': 0,
+          'iocs': 0,
+          'new_threat_actors': 0,
+          'tweets': 0,
+        }),
+        'prompt_tokens': 100,
+        'total_tokens': 120,
+        'wall_ms': 7,
+      }),
+      'yesterday': dict({
+        'summary': 'No major incidents.',
+      }),
+    }),
+  })
+# ---
+# name: test_recap_generate_weekly_without_activity_makes_no_llm_call
+  dict({
+    'recap': dict({
+      'cached': False,
+      'counts': dict({
+        'articles': 0,
+        'campaigns': 0,
+        'cves': 0,
+        'iocs': 0,
+        'new_threat_actors': 0,
+        'tweets': 0,
+      }),
+      'date': '2026-03-02',
+      'forecast': dict({
+        'likely_events': list([
+        ]),
+        'summary': 'No forecast: there were no signals this week to base one on.',
+        'watch_items': list([
+        ]),
+      }),
+      'generated_at': str,
+      'headline': 'No notable cyber activity this week.',
+      'id': int,
+      'kind': 'weekly',
+      'model': '',
+      'period_end': '2026-03-08',
+      'period_start': '2026-03-02',
+      'raw_llm': None,
+      'token_usage': dict({
+        'reason': 'no_activity',
+        'skipped': True,
+      }),
+      'yesterday': dict({
+        'active_campaigns': list([
+        ]),
+        'active_threat_actors': list([
+        ]),
+        'apac_signals': list([
+        ]),
+        'new_threat_actors_added': list([
+        ]),
+        'notable_cves': list([
+        ]),
+        'summary': 'No articles, X posts or CVEs were recorded between 2026-03-02 and 2026-03-08 (UTC), so there is nothing to summarise.',
+        'top_stories': list([
+        ]),
+        'top_tweets': list([
+        ]),
+      }),
+    }),
+  })
+# ---
 # name: test_recap_get_not_found
   dict({
     'detail': 'No recap for 2026-01-01',
@@ -49,12 +149,51 @@
 # name: test_recap_latest_none
   dict({
     'date': str,
+    'kind': 'weekly',
     'recap': None,
   })
 # ---
 # name: test_recap_list_empty
   dict({
     'recaps': list([
+    ]),
+  })
+# ---
+# name: test_recap_reads_distinguish_weekly_from_daily_on_the_same_monday
+  dict({
+    'recaps': list([
+      dict({
+        'counts': dict({
+          'articles': 1,
+          'campaigns': 0,
+          'cves': 0,
+          'iocs': 0,
+          'new_threat_actors': 0,
+          'tweets': 0,
+        }),
+        'date': '2026-03-02',
+        'generated_at': str,
+        'headline': 'Quiet day',
+        'kind': 'weekly',
+        'period_end': '2026-03-08',
+        'period_start': '2026-03-02',
+      }),
+      dict({
+        'counts': dict({
+          'articles': 0,
+          'campaigns': 0,
+          'cves': 0,
+          'iocs': 0,
+          'new_threat_actors': 0,
+          'tweets': 0,
+        }),
+        'date': '2026-03-02',
+        'generated_at': str,
+        'headline': 'Quiet day',
+        'kind': 'daily',
+        'period_end': '2026-03-02',
+        'period_start': '2026-03-02',
+      }),
     ]),
   })
 # ---

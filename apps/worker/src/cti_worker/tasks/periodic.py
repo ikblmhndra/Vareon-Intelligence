@@ -166,21 +166,25 @@ def ioc_decay_sweep(self: Any) -> dict[str, object]:
     return _run_async(_run_ioc_decay_sweep())
 
 
-# ── Daily recap ──────────────────────────────────────────────────────────────
+# ── Weekly recap ─────────────────────────────────────────────────────────────
+# Recap harian tidak lagi dijadwalkan (#21): task `recap.generate_daily` dibuang bersama entri
+# beat-nya, tinggal pemicu tangan lewat `POST /api/recap/generate?kind=daily`.
 
 
-async def _run_generate_daily_recap() -> dict[str, Any]:
-    from cti_api.services.recap import generate_daily_recap
+async def _run_generate_weekly_recap() -> dict[str, Any]:
+    from cti_api.services.recap import generate_weekly_recap
     from cti_core.db.engine import async_session
 
     async with async_session() as session:
-        return await generate_daily_recap(session, date=None, force=False)
+        # `week_start=None`: pekan terakhir yang SUDAH selesai di UTC. Senin 00:15 UTC itu pekan
+        # yang berakhir kemarin; run yang telat tetap dapat pekan yang sama.
+        return await generate_weekly_recap(session, week_start=None, force=False)
 
 
-@app.task(bind=True, name="recap.generate_daily", queue=QUEUE_MAINTENANCE)
-def generate_daily_recap(self: Any) -> dict[str, object]:
-    doc = _run_async(_run_generate_daily_recap())
-    return {"date": doc.get("date"), "cached": doc.get("cached")}
+@app.task(bind=True, name="recap.generate_weekly", queue=QUEUE_MAINTENANCE)
+def generate_weekly_recap(self: Any) -> dict[str, object]:
+    doc = _run_async(_run_generate_weekly_recap())
+    return {"week_start": doc.get("date"), "cached": doc.get("cached")}
 
 
 # ── CVE enrichment (CISA KEV + Exploit-DB + EPSS) ───────────────────────────

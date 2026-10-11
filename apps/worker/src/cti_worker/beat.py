@@ -11,8 +11,8 @@ yang perlu library tambahan.
 
 6 entri lama di `_PERIODIC_SCHEDULE` (Fase 7.8, `tasks/periodic.py`) --
 port 5 loop `ScraperNewsWeb/app/main.py`. Jam IOC decay (04:00)/daily
-recap (06:00)/CVE enrichment (tiap 3 jam) HARDCODED port apa adanya dari
-`_seconds_until_04h_utc()`/`_seconds_until_06h_utc()`/
+recap (06:00, sekarang diganti recap MINGGUAN Senin 00:15 UTC, #21)/CVE enrichment (tiap 3 jam)
+HARDCODED port apa adanya dari `_seconds_until_04h_utc()`/`_seconds_until_06h_utc()`/
 `_seconds_until_next_3h()` lama (gak pernah env-configurable di kode
 lama, jadi gak dijadiin `Settings` field juga di sini). PIR
 P1/all-interval PAKAI `Settings.worker` (lihat docstring
@@ -150,9 +150,13 @@ def _periodic_schedule() -> dict[str, dict[str, object]]:
             "schedule": crontab(hour=4, minute=0),
             "options": {"queue": QUEUE_MAINTENANCE},
         },
-        "recap-generate-daily": {
-            "task": "recap.generate_daily",
-            "schedule": crontab(hour=6, minute=0),
+        "recap-generate-weekly": {
+            "task": "recap.generate_weekly",
+            # Senin 00:15 UTC = 07:15 WIB: pekan Senin-Minggu (tanggal UTC) baru utuh setelah
+            # Minggunya lewat di UTC, jadi 00:15 WIB (= Minggu 17:15 UTC) akan kehilangan Minggu
+            # 17:00-24:00 UTC. Hardcoded: tidak ada setting `RECAP__SCHEDULE` (#21), yang bisa
+            # diubah cuma lewat kode, dan entri ini aditif (rollback = revert + restart beat).
+            "schedule": crontab(day_of_week=1, hour=0, minute=15),
             "options": {"queue": QUEUE_MAINTENANCE},
         },
         "cve-enrichment-sweep": {

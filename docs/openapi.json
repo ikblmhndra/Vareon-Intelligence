@@ -17059,7 +17059,7 @@
         "operationId": "recap_generate_api_recap_generate_post",
         "parameters": [
           {
-            "description": "YYYY-MM-DD \u2014 defaults to yesterday",
+            "description": "kind=daily: YYYY-MM-DD \u2014 defaults to yesterday",
             "in": "query",
             "name": "date",
             "required": false,
@@ -17072,7 +17072,7 @@
                   "type": "null"
                 }
               ],
-              "description": "YYYY-MM-DD \u2014 defaults to yesterday",
+              "description": "kind=daily: YYYY-MM-DD \u2014 defaults to yesterday",
               "title": "Date"
             }
           },
@@ -17086,6 +17086,40 @@
               "description": "Regenerate even if cached",
               "title": "Force",
               "type": "boolean"
+            }
+          },
+          {
+            "description": "daily: one day by hand (default); weekly: a Monday-Sunday week (UTC)",
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "default": "daily",
+              "description": "daily: one day by hand (default); weekly: a Monday-Sunday week (UTC)",
+              "enum": [
+                "daily",
+                "weekly"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "description": "kind=weekly: the Monday of the week, YYYY-MM-DD \u2014 defaults to the last finished week; a week whose Sunday has not ended in UTC is refused",
+            "in": "query",
+            "name": "week_start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "kind=weekly: the Monday of the week, YYYY-MM-DD \u2014 defaults to the last finished week; a week whose Sunday has not ended in UTC is refused",
+              "title": "Week Start"
             }
           },
           {
@@ -17137,6 +17171,7 @@
     },
     "/api/recap/latest": {
       "get": {
+        "description": "Recap MINGGUAN terbaru yang tersimpan. Belum ada satu pun: `recap` null dan `date` = Senin\npekan yang akan dibuat berikutnya (pekan terakhir yang sudah selesai).",
         "operationId": "recap_latest_api_recap_latest_get",
         "parameters": [
           {
@@ -17259,6 +17294,22 @@
             "required": true,
             "schema": {
               "title": "Date",
+              "type": "string"
+            }
+          },
+          {
+            "description": "daily (default) or weekly (date = its Monday)",
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "default": "daily",
+              "description": "daily (default) or weekly (date = its Monday)",
+              "enum": [
+                "daily",
+                "weekly"
+              ],
+              "title": "Kind",
               "type": "string"
             }
           },
