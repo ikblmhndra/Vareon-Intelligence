@@ -187,6 +187,28 @@ def generate_weekly_recap(self: Any) -> dict[str, object]:
     return {"week_start": doc.get("date"), "cached": doc.get("cached")}
 
 
+# ── Newsletter bulanan ───────────────────────────────────────────────────────
+
+
+async def _run_prepare_newsletter_monthly() -> dict[str, Any]:
+    from cti_api.services.newsletter_schedule import prepare_monthly
+    from cti_core.db.engine import async_session
+
+    # `async_session()` commit saat blok sukses (servisnya sendiri tidak commit) dan rollback
+    # kalau exception, jadi saran yang gagal di tengah (mis. gateway LLM mati) tidak tersimpan
+    # setengah jadi dan hari kerja berikutnya mencoba lagi.
+    async with async_session() as session:
+        return await prepare_monthly(session, datetime.datetime.now(datetime.UTC))
+
+
+@app.task(bind=True, name="newsletter.prepare_monthly", queue=QUEUE_MAINTENANCE)
+def prepare_newsletter_monthly(self: Any) -> dict[str, object]:
+    """Tiap hari kerja 09:00 WIB. Hampir selalu kembali segera (`prepared: False`): hanya hari
+    kerja pertama bulan itu, dan hari-hari kejar sesudahnya selama jendela 7 hari dan bulan
+    sebelumnya belum punya saran, yang benar-benar menyiapkan saran + Executive Summary."""
+    return _run_async(_run_prepare_newsletter_monthly())
+
+
 # ── CVE enrichment (CISA KEV + Exploit-DB + EPSS) ───────────────────────────
 
 
