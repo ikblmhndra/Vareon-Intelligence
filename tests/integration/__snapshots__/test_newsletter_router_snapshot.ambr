@@ -4,7 +4,7 @@
     'email_id': 'graph-msg-2',
     'method': 'graph',
     'newsletter_id': int,
-    'subject': '[CTI Newsletter] Threat Intelligence Digest — Week 39, 2026',
+    'subject': '[CTI Newsletter] Threat Intelligence Digest — August 2026',
     'week': 39,
     'year': 2026,
   })
@@ -55,7 +55,9 @@
 # ---
 # name: test_preview_newsletter
   dict({
+    'html_bytes': int,
     'newsletter_id': None,
+    'size_warning': None,
     'week': 39,
     'year': 2026,
   })
@@ -265,7 +267,7 @@
   dict({
     'email_id': 'graph-msg-1',
     'method': 'graph',
-    'subject': '[CTI Newsletter] Threat Intelligence Digest — Week 39, 2026',
+    'subject': '[CTI Newsletter] Threat Intelligence Digest — August 2026',
   })
 # ---
 # name: test_source_hints

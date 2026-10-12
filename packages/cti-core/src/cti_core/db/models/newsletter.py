@@ -98,8 +98,9 @@ class NewsletterArticleSummary(Base):
     true-positive dihitung saat build, bukan di-cache, karena set itu berubah (FP ditandai,
     CVE baru di-track) sementara isi artikel tidak.
 
-    `language` ikut kunci supaya edisi bahasa lain tidak menimpa. Prompt saat ini menghasilkan
-    bahasa Inggris, jadi semua baris `en` sampai PR bahasa Indonesia."""
+    `language` ikut kunci supaya edisi bahasa lain tidak menimpa. Baris yang dibuat sebelum
+    ROADMAP #22 (PR template) semuanya `en`; sejak itu bahasa bawaan `id` (Indonesia), dan `en`
+    tetap bisa diminta lewat field `language` di request build."""
 
     __tablename__ = "newsletter_article_summaries"
     __table_args__ = (

@@ -2439,6 +2439,15 @@
             "title": "Indonesia Full",
             "type": "array"
           },
+          "language": {
+            "description": "Language of the article summaries and key points: `id` (Indonesian, the default) or `en`. Headings, labels and the subject stay English. Summaries are cached per article and language, so an edition in one language never reuses or overwrites the other.",
+            "enum": [
+              "id",
+              "en"
+            ],
+            "title": "Language",
+            "type": "string"
+          },
           "notes": {
             "additionalProperties": {
               "type": "string"
@@ -14976,7 +14985,7 @@
     },
     "/api/newsletter/preview": {
       "post": {
-        "description": "Pratinjau tanpa efek ke catatan: tidak ada baris `newsletters` (jadi `newsletter_id`\nselalu null), tidak ada IOC, tidak ada sebutan CVE. Hanya dua cache yang terisi.",
+        "description": "Pratinjau tanpa efek ke catatan: tidak ada baris `newsletters` (jadi `newsletter_id`\nselalu null), tidak ada IOC, tidak ada sebutan CVE. Hanya dua cache yang terisi.\n\n`html` = versi untuk browser (logo sebagai data URI). `html_bytes` dan `size_warning` mengukur\nversi `cid:` yang akan DIKIRIM, bukan `html` ini; `size_warning` null di bawah ~90 KB.",
         "operationId": "preview_newsletter_api_newsletter_preview_post",
         "parameters": [
           {

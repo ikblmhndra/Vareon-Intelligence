@@ -65,6 +65,7 @@ _NORMALIZE = path_type(
         r"(.*\.)?newsletter_id$": (int,),
         r"(.*\.)?created_at$": (str,),
         r"(.*\.)?generated_at$": (str,),
+        r"(.*\.)?html_bytes$": (int,),  # ukuran HTML berubah tiap template diubah
     },
     regex=True,
     strict=False,

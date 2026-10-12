@@ -32,10 +32,13 @@ class FakeLlm:
         self.calls = 0
         self.content = content
         self.with_usage = with_usage
+        self.system_prompts: list[str] = []
+        """Isi pesan `system` tiap panggilan, untuk memeriksa bahasa dan glosarium yang dikirim."""
         self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
 
     def _create(self, **kwargs: Any) -> SimpleNamespace:
         self.calls += 1
+        self.system_prompts.append(kwargs["messages"][0]["content"])
         message = SimpleNamespace(content=self.content)
         completion = SimpleNamespace(choices=[SimpleNamespace(message=message)])
         if self.with_usage:
@@ -120,8 +123,8 @@ async def test_miss_fetches_summarizes_and_stores_everything_the_draft_will_need
     # Judul + body, semuanya, belum disaring true-positive.
     assert result["cve_ids"] == ["CVE-2026-1111", "CVE-2026-2222"]
 
-    row = cache[(7, newsletter_service.SUMMARY_LANGUAGE)]
-    assert newsletter_service.SUMMARY_LANGUAGE == "en"
+    row = cache[(7, "id")]  # tanpa `language` = default produk (Indonesia)
+    assert row.language == "id"
     assert row.model == "stub-model"
     assert row.token_usage == {"prompt_tokens": 11, "completion_tokens": 7, "total_tokens": 18}
     assert (row.key_points, row.summary, row.body_source) == (
@@ -155,7 +158,7 @@ async def test_regenerate_bypasses_the_cache_and_overwrites_the_row(
     assert fetch.await_count == 2
     assert llm.calls == 2
     assert fresh["summary"] == "ringkasan dua"
-    assert cache[(7, "en")].summary == "ringkasan dua"
+    assert cache[(7, "id")].summary == "ringkasan dua"
     assert len(cache) == 1  # menimpa, bukan baris kedua
 
     # Dan build berikutnya tanpa `regenerate` memakai hasil yang baru, tanpa panggilan lagi.
@@ -173,7 +176,7 @@ async def test_each_article_has_its_own_cache_row(
     await _summary(_article(1))
 
     assert llm.calls == 2
-    assert sorted(cache) == [(1, "en"), (2, "en")]
+    assert sorted(cache) == [(1, "id"), (2, "id")]
 
 
 async def test_without_a_readable_page_the_summary_comes_from_metadata_and_is_cached_as_such(
@@ -187,7 +190,7 @@ async def test_without_a_readable_page_the_summary_comes_from_metadata_and_is_ca
     assert result["iocs"] == {}
     assert result["cve_ids"] == ["CVE-2026-1111"]  # hanya dari judul
     assert llm.calls == 1
-    assert cache[(7, "en")].body_source == "metadata"
+    assert cache[(7, "id")].body_source == "metadata"
 
 
 async def test_an_empty_llm_result_is_returned_but_not_cached(
@@ -205,7 +208,7 @@ async def test_an_empty_llm_result_is_returned_but_not_cached(
     llm.content = SUMMARY_JSON
     await _summary(_article())
     assert fetch.await_count == 2  # tidak ada hit, jadi dicoba lagi
-    assert (7, "en") in cache
+    assert (7, "id") in cache
 
 
 async def test_a_gateway_without_usage_still_caches_with_empty_token_usage(
@@ -215,15 +218,26 @@ async def test_a_gateway_without_usage_still_caches_with_empty_token_usage(
 
     await _summary(_article())
 
-    assert cache[(7, "en")].token_usage == {}
+    assert cache[(7, "id")].token_usage == {}
 
 
-def test_usage_of_tolerates_missing_and_partial_usage() -> None:
-    usage = newsletter_service._usage_of
-    assert usage(SimpleNamespace()) == {}
-    assert usage(SimpleNamespace(usage=None)) == {}
-    partial = SimpleNamespace(usage=SimpleNamespace(prompt_tokens=5, completion_tokens=None))
-    assert usage(partial) == {"prompt_tokens": 5}
+async def test_token_usage_comes_from_usage_from_so_dict_and_partial_usage_are_kept(
+    cache: Rows, llm: FakeLlm, fetch: AsyncMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Pemakaian token dibaca `cti_core.llm.client.usage_from` (satu pembaca untuk semua LLM):
+    gateway yang membalas `usage` berupa dict, atau hanya sebagian field, tetap tercatat."""
+
+    def create(**kwargs: Any) -> SimpleNamespace:
+        message = SimpleNamespace(content=SUMMARY_JSON)
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=message)],
+            usage={"prompt_tokens": 5, "completion_tokens": None},
+        )
+
+    llm.chat.completions.create = create
+    await _summary(_article())
+
+    assert cache[(7, "id")].token_usage == {"prompt_tokens": 5}
 
 
 # ── Ekstraksi CVE id ─────────────────────────────────────────────────────────
@@ -273,7 +287,7 @@ async def test_cve_mentions_are_the_cached_ids_intersected_with_the_current_tp_s
     [first] = await newsletter_service._enrich_articles(MagicMock(), [_article()])
     assert first["cve_mentions"] == ["CVE-2026-2222"]
     assert first["possibly_exploited_wild"] is True
-    assert cache[(7, "en")].cve_ids == ["CVE-2026-1111", "CVE-2026-2222"]  # tidak tersaring
+    assert cache[(7, "id")].cve_ids == ["CVE-2026-1111", "CVE-2026-2222"]  # tidak tersaring
 
     # Set true-positive berubah (CVE lain mulai di-track, yang tadi ditandai FP): build kedua
     # memakai cache (nol fetch/LLM) tapi hasilnya mengikuti set yang SEKARANG.
@@ -441,8 +455,8 @@ async def test_compact_rows_come_from_the_article_row_and_never_fetch_or_call_th
     llm: FakeLlm,
     fetch: AsyncMock,
 ) -> None:
-    cache[(30, "en")] = SimpleNamespace(
-        article_id=30, language="en", key_points=["dari cache"], summary="ringkasan cache"
+    cache[(30, "id")] = SimpleNamespace(
+        article_id=30, language="id", key_points=["dari cache"], summary="ringkasan cache"
     )
 
     ctx = await newsletter_service.build_newsletter_context(
@@ -494,3 +508,170 @@ async def test_regenerate_ids_are_passed_on_to_enrichment(
     )
 
     assert enrich_passthrough.await_args.kwargs["regenerate"] == [7, 9]
+
+
+# ── Bahasa ringkasan (ROADMAP #22, PR template) ──────────────────────────────
+
+
+def test_the_request_defaults_to_indonesian_and_accepts_only_id_or_en() -> None:
+    from cti_api.schemas.newsletter import DEFAULT_SUMMARY_LANGUAGE, NewsletterSectionsBody
+    from pydantic import ValidationError
+
+    assert DEFAULT_SUMMARY_LANGUAGE == "id"
+    assert NewsletterSectionsBody(highlight=1).language == "id"
+    assert NewsletterSectionsBody(highlight=1, language="en").language == "en"
+    with pytest.raises(ValidationError):
+        NewsletterSectionsBody(highlight=1, language="fr")  # type: ignore[arg-type]
+
+
+async def test_the_indonesian_prompt_asks_for_indonesian_keeps_names_and_carries_the_glossary(
+    cache: Rows, llm: FakeLlm, fetch: AsyncMock
+) -> None:
+    from cti_api.services import newsletter_glossary
+
+    await _summary(_article())
+
+    [prompt] = llm.system_prompts  # satu panggilan: tanpa panggilan terjemahan kedua
+    assert llm.calls == 1
+    assert "Indonesian (Bahasa Indonesia)" in prompt
+    assert "Keep the JSON keys exactly as shown" in prompt
+    assert '"key_points"' in prompt and '"summary"' in prompt
+    assert "CVE identifiers" in prompt and "MITRE ATT&CK technique names and IDs" in prompt
+    assert "indicators of compromise (IP addresses" in prompt
+    for english, indonesian in newsletter_glossary.TRANSLATIONS:
+        assert f"- {english}: {indonesian}" in prompt
+    for term in newsletter_glossary.KEEP_IN_ENGLISH:
+        assert term in prompt
+    assert "<<language>>" not in prompt  # slot terisi, tidak bocor ke model
+
+
+async def test_the_metadata_only_prompt_gets_the_same_language_block_and_keeps_its_habit(
+    cache: Rows, llm: FakeLlm, fetch: AsyncMock
+) -> None:
+    fetch.return_value = (None, True)  # paywall -> ringkasan dari metadata
+
+    await _summary(_article())
+
+    [prompt] = llm.system_prompts
+    assert "Indonesian (Bahasa Indonesia)" in prompt
+    assert "- vulnerability: kerentanan" in prompt
+    # Perilaku prompt metadata-only dipertahankan; `body_source` di cache yang menandainya.
+    assert "generate plausible key points" in prompt
+    assert "Do not mention that the article was paywalled" in prompt
+    assert cache[(7, "id")].body_source == "metadata"
+
+
+async def test_the_english_prompt_asks_for_english_and_has_no_glossary(
+    cache: Rows, llm: FakeLlm, fetch: AsyncMock
+) -> None:
+    await newsletter_service.generate_article_summary(
+        MagicMock(), _article(), allowlist=ALLOWLIST, language="en"
+    )
+
+    [prompt] = llm.system_prompts
+    assert "in English, in a clear, professional register" in prompt
+    assert "Indonesian" not in prompt and "kerentanan" not in prompt
+    assert "monthly newsletter" in prompt and "weekly" not in prompt
+
+
+async def test_each_language_has_its_own_cache_row_and_never_reuses_the_other(
+    cache: Rows, llm: FakeLlm, fetch: AsyncMock
+) -> None:
+    indonesian = await _summary(_article())
+    llm.content = json.dumps({"key_points": ["a"], "summary": "english summary"})
+    english = await newsletter_service.generate_article_summary(
+        MagicMock(), _article(), allowlist=ALLOWLIST, language="en"
+    )
+
+    # Baris `id` bukan hit untuk permintaan `en`: fetch + LLM jalan lagi, dan tidak menimpa.
+    assert (llm.calls, fetch.await_count) == (2, 2)
+    assert sorted(cache) == [(7, "en"), (7, "id")]
+    assert cache[(7, "id")].summary == indonesian["summary"] == "ringkasan satu"
+    assert cache[(7, "en")].summary == english["summary"] == "english summary"
+
+    # Sesudahnya keduanya hit.
+    await _summary(_article())
+    await newsletter_service.generate_article_summary(
+        MagicMock(), _article(), allowlist=ALLOWLIST, language="en"
+    )
+    assert (llm.calls, fetch.await_count) == (2, 2)
+
+
+async def test_regenerate_rebuilds_only_the_requested_language(
+    cache: Rows, llm: FakeLlm, fetch: AsyncMock
+) -> None:
+    await _summary(_article())
+    await newsletter_service.generate_article_summary(
+        MagicMock(), _article(), allowlist=ALLOWLIST, language="en"
+    )
+    llm.content = json.dumps({"key_points": ["baru"], "summary": "ringkasan baru"})
+
+    await _summary(_article(), regenerate=True)
+
+    assert cache[(7, "id")].summary == "ringkasan baru"
+    assert cache[(7, "en")].summary == "ringkasan satu"  # bahasa lain tidak tersentuh
+
+
+async def test_the_language_reaches_enrichment_and_the_compact_row_lookup(
+    cache: Rows,
+    fixed_clock: list[datetime.datetime],
+    enrich_passthrough: AsyncMock,
+) -> None:
+    cache[(30, "en")] = SimpleNamespace(
+        article_id=30, language="en", key_points=["en kp"], summary="english summary"
+    )
+    compact = {"apac": [_article(30)]}
+
+    english = await newsletter_service.build_newsletter_context(
+        MagicMock(), _article(1), [], [], [], compact=compact, language="en"
+    )
+    indonesian = await newsletter_service.build_newsletter_context(
+        MagicMock(), _article(1), [], [], [], compact=compact
+    )
+
+    assert enrich_passthrough.await_args_list[0].kwargs["language"] == "en"
+    assert enrich_passthrough.await_args_list[1].kwargs["language"] == "id"
+    # Ringkasan compact yang di-cache hanya terbaca dalam bahasa yang diminta.
+    assert english["apac_compact"][0]["summary"] == "english summary"
+    assert "summary" not in indonesian["apac_compact"][0]
+    assert (english["language"], indonesian["language"]) == ("en", "id")
+
+
+async def test_context_carries_the_range_and_the_publication_date_in_the_report_time_zone(
+    cache: Rows, fixed_clock: list[datetime.datetime], enrich_passthrough: AsyncMock
+) -> None:
+    """Dibaca header template. 2 Nov 02:00 UTC = Senin 09:00 WIB: tim sudah di Senin."""
+    ctx = await newsletter_service.build_newsletter_context(MagicMock(), _article(), [], [], [])
+
+    assert ctx["period_range"] == "1 \N{EN DASH} 31 October 2026"
+    assert ctx["published_label"] == "Monday, 2 November 2026"
+
+
+async def test_the_publication_date_is_the_local_day_not_the_utc_day(
+    cache: Rows, fixed_clock: list[datetime.datetime], enrich_passthrough: AsyncMock
+) -> None:
+    """20:00 UTC Senin = 03:00 WIB Selasa: tanggal terbit mengikuti WIB, sama seperti periode
+    bawaan (`default_period`), bukan UTC."""
+    fixed_clock[0] = datetime.datetime(2026, 11, 2, 20, 0, tzinfo=datetime.UTC)
+
+    ctx = await newsletter_service.build_newsletter_context(MagicMock(), _article(), [], [], [])
+
+    assert ctx["published_label"] == "Tuesday, 3 November 2026"
+    assert ctx["period_label"] == "October 2026"  # periodenya tetap bulan sebelumnya
+
+
+async def test_a_requested_period_sets_the_range_but_not_the_publication_date(
+    cache: Rows, fixed_clock: list[datetime.datetime], enrich_passthrough: AsyncMock
+) -> None:
+    ctx = await newsletter_service.build_newsletter_context(
+        MagicMock(),
+        _article(),
+        [],
+        [],
+        [],
+        period_start=datetime.date(2026, 9, 28),
+        period_end=datetime.date(2026, 10, 4),
+    )
+
+    assert ctx["period_range"] == "28 September \N{EN DASH} 4 October 2026"
+    assert ctx["published_label"] == "Monday, 2 November 2026"

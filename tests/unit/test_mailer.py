@@ -5,12 +5,14 @@ test unit."""
 
 from __future__ import annotations
 
+import base64
 from unittest.mock import MagicMock, patch
 
 import pytest
 from cti_alerts.mailer import (
     GraphAuthError,
     GraphSendError,
+    InlineImage,
     create_graph_draft,
     split_addresses,
 )
@@ -137,3 +139,66 @@ def test_semicolon_separated_cc_becomes_separate_recipients() -> None:
         {"emailAddress": {"address": "user@domain.com"}},
         {"emailAddress": {"address": "user2@domain.com"}},
     ]
+
+
+# ── Lampiran inline (`cid:`) -- ROADMAP #22, PR template ─────────────────────────────────────
+
+_LOGO = InlineImage(
+    content_id="newsletter-logo",
+    content_type="image/png",
+    data=b"\x89PNG\r\n\x1a\n-bukan-gambar-sungguhan-",
+    name="logo.png",
+)
+
+
+def _post_draft(*, inline_images: tuple[InlineImage, ...] | None = None) -> MagicMock:
+    """Panggil `create_graph_draft` dengan msal/httpx di-mock; kembalikan mock `httpx.post`."""
+    mock_resp = MagicMock(status_code=201)
+    mock_resp.json.return_value = {"id": "msg-1"}
+    kwargs = {} if inline_images is None else {"inline_images": inline_images}
+    with (
+        patch(
+            "cti_alerts.mailer.msal.ConfidentialClientApplication", return_value=_mock_msal_app()
+        ),
+        patch("cti_alerts.mailer.httpx.post", return_value=mock_resp) as mock_post,
+    ):
+        create_graph_draft(
+            '<img src="cid:newsletter-logo">', "subject", settings=_SETTINGS, **kwargs
+        )
+    return mock_post
+
+
+def test_inline_images_become_inline_file_attachments_in_the_same_request() -> None:
+    mock_post = _post_draft(inline_images=(_LOGO,))
+
+    mock_post.assert_called_once()  # satu POST: lampiran ikut membuat pesan, bukan panggilan kedua
+    assert mock_post.call_args.kwargs["json"]["attachments"] == [
+        {
+            "@odata.type": "#microsoft.graph.fileAttachment",
+            "name": "logo.png",
+            "contentType": "image/png",
+            "contentBytes": base64.b64encode(_LOGO.data).decode("ascii"),
+            "contentId": "newsletter-logo",
+            "isInline": True,
+        }
+    ]
+    # Sisa payload tidak berubah karena ada lampiran.
+    body = mock_post.call_args.kwargs["json"]
+    assert body["subject"] == "subject"
+    assert body["body"] == {"contentType": "html", "content": '<img src="cid:newsletter-logo">'}
+
+
+def test_several_inline_images_keep_their_order() -> None:
+    other = InlineImage(content_id="b", content_type="image/gif", data=b"GIF89a", name="b.gif")
+
+    mock_post = _post_draft(inline_images=(_LOGO, other))
+
+    attachments = mock_post.call_args.kwargs["json"]["attachments"]
+    assert [a["contentId"] for a in attachments] == ["newsletter-logo", "b"]
+
+
+def test_without_inline_images_the_payload_has_no_attachments_key() -> None:
+    """Pemanggil lama (email CVE) dan default tidak berubah: tanpa kunci `attachments` sama sekali,
+    bukan daftar kosong."""
+    assert "attachments" not in _post_draft().call_args.kwargs["json"]
+    assert "attachments" not in _post_draft(inline_images=()).call_args.kwargs["json"]

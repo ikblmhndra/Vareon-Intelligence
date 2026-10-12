@@ -20,7 +20,12 @@ mengulang preview, atau draft sesudah preview, tidak fetch dan tidak
 memanggil LLM lagi. Membangun konteks sendiri hanya menulis dua cache
 (ringkasan dan hint paywall); IOC dan sebutan CVE baru ditulis oleh
 `write_article_findings()` saat draft dibuat (dulu ikut tertulis tiap
-preview)."""
+preview).
+
+Bahasa (ROADMAP #22): `key_points` dan `summary` ditulis dalam bahasa permintaan (`language`,
+Indonesia secara default) di panggilan LLM yang SAMA dengan ringkasannya; istilah berulang
+diseragamkan glosarium di `newsletter_glossary`, dan bahasa ikut kunci cache. Template email
+(`templates/newsletter_email.html`) merujuk logo lewat `cid:` (`newsletter_logo`)."""
 
 from __future__ import annotations
 
@@ -29,6 +34,7 @@ import datetime
 import json
 import re
 from collections.abc import Collection, Mapping
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -41,19 +47,24 @@ from cti_core.db.repositories.ioc import AsyncIOCRepo
 from cti_core.db.repositories.ioc_reference import AsyncIocAllowlistRepo
 from cti_core.db.repositories.newsletter import AsyncNewsletterRepo
 from cti_core.ioc.extractor import extract_iocs
-from cti_core.llm.client import get_llm_client, parse_json_response
+from cti_core.llm.client import get_llm_client, parse_json_response, usage_from
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cti_api.schemas.newsletter import DEFAULT_SUMMARY_LANGUAGE, SummaryLanguage
 from cti_api.services import campaign as campaign_service
-from cti_api.services import newsletter_edition
+from cti_api.services import newsletter_edition, newsletter_glossary, newsletter_logo
 from cti_api.services.email_env import make_env
 
 _TEMPLATE_DIR = Path(__file__).parent.parent / "templates"
 _NEWSLETTER_EMAIL_TEMPLATE = "newsletter_email.html"
 
-SUMMARY_LANGUAGE = "en"
-"""Bahasa ringkasan yang di-cache. Kedua prompt di bawah menghasilkan bahasa Inggris, jadi kuncinya
-satu konstanta; PR bahasa Indonesia menggantinya dengan field `language` di request."""
+GMAIL_CLIP_BYTES = 102 * 1024
+"""Gmail memotong pesan yang HTML-nya lebih besar dari ~102 KB dan menyembunyikan sisanya di balik
+"View entire message" (footer dan bagian bawah edisi ikut hilang)."""
+
+HTML_WARN_BYTES = 90 * 1024
+"""Batas peringatan di preview, di bawah batas Gmail supaya analis sempat memindahkan kartu ke
+"Also Noted" atau membuangnya. CSS inline membuat HTML berat (satu kartu penuh sekitar 2-3 KB)."""
 
 _RE_CVE = re.compile(r"\bCVE-\d{4}-\d{4,7}\b", re.IGNORECASE)
 
@@ -159,33 +170,50 @@ async def fetch_article_body(
 # ── LLM summarization ────────────────────────────────────────────────────────
 
 
-def _usage_of(completion: Any) -> dict[str, int]:
-    """Token usage dari completion, `{}` kalau gateway tidak mengirim `usage` (gateway dev kadang
-    begitu): tidak boleh raise, ringkasannya sendiri sudah jadi."""
-    usage = getattr(completion, "usage", None)
-    out: dict[str, int] = {}
-    for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
-        value = getattr(usage, key, None)
-        if isinstance(value, int):
-            out[key] = value
-    return out
+_LANGUAGE_SLOT = "<<language>>"
 
-
-def _llm_summarize_with_body(title: str, body: str) -> tuple[dict[str, Any], str, dict[str, int]]:
-    """Return (hasil parse, nama model, token usage); dua terakhir ikut disimpan di cache."""
-    prompt = """You are a Cyber Threat Intelligence analyst writing a weekly newsletter.
+_PROMPT_WITH_BODY = """You are a Cyber Threat Intelligence analyst writing a monthly newsletter.
 Summarize this threat article concisely for a security leadership audience.
+
+<<language>>
 
 Return ONLY valid JSON (no markdown, no code blocks):
 {
   "key_points": ["point 1 (max 20 words)", "point 2 (max 20 words)", "point 3 (max 20 words)"],
   "summary": "2-3 sentence paragraph covering what happened, who is affected, and the threat significance. Max 80 words."
 }"""
+
+_PROMPT_FROM_METADATA = """You are a Cyber Threat Intelligence analyst writing a monthly newsletter.
+Based on available metadata, generate plausible key points and a summary for this threat news item.
+Note: full article text is unavailable (possible paywall).
+
+<<language>>
+
+Return ONLY valid JSON (no markdown, no code blocks):
+{
+  "key_points": ["point 1 (max 20 words)", "point 2 (max 20 words)", "point 3 (max 20 words)"],
+  "summary": "2-3 sentence paragraph covering the likely threat context based on metadata. Max 80 words. Do not mention that the article was paywalled."
+}"""
+"""Kedua prompt meminta bahasa dalam SATU panggilan yang sama dengan ringkasannya (tanpa panggilan
+terjemahan kedua, jadi biaya per artikel tidak naik); blok bahasa + glosariumnya datang dari
+`newsletter_glossary`. Kata "weekly" di prompt lama jadi "monthly": edisinya bulanan sekarang dan
+kata itu menarik model ke "this week" di teks. Prompt metadata tetap menulis teks yang "plausible"
+(perilaku lama dipertahankan); `body_source` di cache menandai ringkasan yang begitu."""
+
+
+def _prompt(template: str, language: SummaryLanguage) -> str:
+    return template.replace(_LANGUAGE_SLOT, newsletter_glossary.language_instructions(language))
+
+
+def _llm_summarize_with_body(
+    title: str, body: str, *, language: SummaryLanguage
+) -> tuple[dict[str, Any], str, dict[str, int]]:
+    """Return (hasil parse, nama model, token usage); dua terakhir ikut disimpan di cache."""
     client, model_name = get_llm_client()
     completion = client.chat.completions.create(
         model=model_name,
         messages=[
-            {"role": "system", "content": prompt},
+            {"role": "system", "content": _prompt(_PROMPT_WITH_BODY, language)},
             {"role": "user", "content": f"Title: {title}\n\nArticle body:\n{body[:4000]}"},
         ],
         temperature=0,
@@ -193,21 +221,12 @@ Return ONLY valid JSON (no markdown, no code blocks):
     )
     content = completion.choices[0].message.content
     result = parse_json_response(content or "{}")
-    return result, model_name, _usage_of(completion)
+    return result, model_name, usage_from(completion)
 
 
 def _llm_summarize_from_metadata(
-    article: dict[str, Any],
+    article: dict[str, Any], *, language: SummaryLanguage
 ) -> tuple[dict[str, Any], str, dict[str, int]]:
-    prompt = """You are a Cyber Threat Intelligence analyst writing a weekly newsletter.
-Based on available metadata, generate plausible key points and a summary for this threat news item.
-Note: full article text is unavailable (possible paywall).
-
-Return ONLY valid JSON (no markdown, no code blocks):
-{
-  "key_points": ["point 1 (max 20 words)", "point 2 (max 20 words)", "point 3 (max 20 words)"],
-  "summary": "2-3 sentence paragraph covering the likely threat context based on metadata. Max 80 words. Do not mention that the article was paywalled."
-}"""
     meta = {
         "title": article.get("title", ""),
         "source": article.get("source", ""),
@@ -222,7 +241,7 @@ Return ONLY valid JSON (no markdown, no code blocks):
     completion = client.chat.completions.create(
         model=model_name,
         messages=[
-            {"role": "system", "content": prompt},
+            {"role": "system", "content": _prompt(_PROMPT_FROM_METADATA, language)},
             {"role": "user", "content": json.dumps(meta)},
         ],
         temperature=0,
@@ -230,7 +249,7 @@ Return ONLY valid JSON (no markdown, no code blocks):
     )
     content = completion.choices[0].message.content
     result = parse_json_response(content or "{}")
-    return result, model_name, _usage_of(completion)
+    return result, model_name, usage_from(completion)
 
 
 def _summary_from_row(row: NewsletterArticleSummary) -> dict[str, Any]:
@@ -249,11 +268,14 @@ async def generate_article_summary(
     *,
     allowlist: dict[str, set[str]],
     regenerate: bool = False,
+    language: SummaryLanguage = DEFAULT_SUMMARY_LANGUAGE,
 ) -> dict[str, Any]:
     """Ringkasan satu artikel, CACHE DULU (`newsletter_article_summaries`, kunci artikel + bahasa).
 
     Baris ada = langsung dipakai: tanpa fetch Playwright dan tanpa LLM. Tidak ada (atau
     `regenerate`) = fetch body, satu panggilan LLM, ekstrak IOC dan CVE id dari body itu, simpan.
+    `language` menentukan bahasa ringkasan SEKALIGUS baris cache yang dibaca dan ditimpa: edisi
+    Indonesia dan Inggris dari artikel yang sama tidak saling memakai atau menimpa.
     Return `{key_points, summary, body_source, iocs, cve_ids}`; `cve_ids` semua CVE di judul +
     body, BELUM disaring true-positive (lihat `_enrich_articles`).
 
@@ -265,7 +287,7 @@ async def generate_article_summary(
     allowlist saat baris dibuat, perubahan allowlist sesudahnya tidak mengubah baris lama."""
     repo = AsyncNewsletterRepo(session)
     if not regenerate:
-        cached = await repo.get_article_summary(article["id"], SUMMARY_LANGUAGE)
+        cached = await repo.get_article_summary(article["id"], language)
         if cached is not None:
             return _summary_from_row(cached)
 
@@ -273,11 +295,15 @@ async def generate_article_summary(
     url = article.get("url", "")
     body, _ = await fetch_article_body(session, url, article.get("source", ""))
     if body:
-        result, model, usage = await asyncio.to_thread(_llm_summarize_with_body, title, body)
+        result, model, usage = await asyncio.to_thread(
+            partial(_llm_summarize_with_body, title, body, language=language)
+        )
         body_source = "fetched"
         iocs = await asyncio.to_thread(extract_iocs, body, url, allowlist)
     else:
-        result, model, usage = await asyncio.to_thread(_llm_summarize_from_metadata, article)
+        result, model, usage = await asyncio.to_thread(
+            partial(_llm_summarize_from_metadata, article, language=language)
+        )
         body_source = "metadata"
         iocs = {}
     summary: dict[str, Any] = {
@@ -290,7 +316,7 @@ async def generate_article_summary(
     if summary["key_points"] or summary["summary"]:
         await repo.upsert_article_summary(
             article_id=article["id"],
-            language=SUMMARY_LANGUAGE,
+            language=language,
             model=model,
             token_usage=usage,
             **summary,
@@ -356,6 +382,7 @@ async def _enrich_articles(
     articles: list[dict[str, Any]],
     *,
     regenerate: Collection[int] = (),
+    language: SummaryLanguage = DEFAULT_SUMMARY_LANGUAGE,
 ) -> list[dict[str, Any]]:
     """Ringkasan + IOC + korelasi CVE per article -- SEKUENSIAL (bukan `asyncio.gather` kayak kode
     lama), karena masing-masing butuh browser Playwright sendiri + write DB
@@ -379,7 +406,11 @@ async def _enrich_articles(
     for article in articles:
         article_id = article.get("id")
         summary = await generate_article_summary(
-            session, article, allowlist=allowlist, regenerate=article_id in pending_regenerate
+            session,
+            article,
+            allowlist=allowlist,
+            regenerate=article_id in pending_regenerate,
+            language=language,
         )
         pending_regenerate.discard(article_id)
         cve_hits = _find_cve_mentions(summary["cve_ids"], tp_cve_set)
@@ -468,6 +499,13 @@ def _default_period(now: datetime.datetime) -> tuple[datetime.date, datetime.dat
     return newsletter_edition.default_period(now, get_settings().worker.report_utc_offset_hours)
 
 
+def _local_date(now: datetime.datetime) -> datetime.date:
+    """Tanggal `now` di zona laporan (WIB), bukan UTC: Senin 02:00 UTC sudah Senin 09:00 bagi tim,
+    dan 20:00 UTC sudah hari berikutnya."""
+    offset = datetime.timedelta(hours=get_settings().worker.report_utc_offset_hours)
+    return (now + offset).date()
+
+
 def _compact_entry(
     article: dict[str, Any], cached: NewsletterArticleSummary | None
 ) -> dict[str, Any]:
@@ -504,6 +542,7 @@ async def build_newsletter_context(
     period_start: datetime.date | None = None,
     period_end: datetime.date | None = None,
     regenerate: Collection[int] = (),
+    language: SummaryLanguage = DEFAULT_SUMMARY_LANGUAGE,
 ) -> dict[str, Any]:
     """Susun konteks template dari artikel yang sudah dipilih. Menulis HANYA dua cache (ringkasan
     dan hint paywall); tidak ada baris `newsletters`, IOC, atau sebutan CVE (lihat modul ini).
@@ -513,13 +552,12 @@ async def build_newsletter_context(
     ada), tanpa fetch dan tanpa LLM. `period_*`: keduanya atau tidak sama sekali; kosong = bulan
     kalender sebelumnya menurut `_now()` di zona laporan.
 
-    Kunci konteks yang BARU dan belum dirender template sekarang (PR template, ROADMAP #22):
-    `highlights` (semua kartu highlight; template lama cuma merender `highlight` = yang pertama),
-    `apac_compact`/`global_news_compact`/`indonesia_compact`, `period_start`/`period_end`/
-    `period_label`. `apac`/`global_news`/`indonesia` tetap berarti kartu penuh, jadi template
-    lama tetap merender kartu penuh dari request tier dan melewatkan baris compact. Cluster
-    kampanye masih memakai `cluster_days` (hitung mundur dari hari ini); pindah ke tanggal
-    jendela menyusul."""
+    Kunci konteks yang dibaca template (`templates/newsletter_email.html`): `highlights` (semua kartu
+    highlight; `highlight` = yang pertama, dipakai kartu histori lama), `apac`/`global_news`/
+    `indonesia` (kartu penuh), `apac_compact`/`global_news_compact`/`indonesia_compact` (baris
+    "Also Noted"), `period_label`/`period_range`/`published_label`, `language`, `custom_*`, dan
+    `campaign_clusters`. Cluster kampanye masih memakai `cluster_days` (hitung mundur dari hari ini);
+    pindah ke tanggal jendela menyusul."""
     notes = notes or {}
     compact = compact or {}
     highlight_cards = [highlights] if isinstance(highlights, dict) else list(highlights)
@@ -527,7 +565,9 @@ async def build_newsletter_context(
         raise ValueError("newsletter butuh minimal satu highlight")
     all_articles = [*highlight_cards, *apac, *global_news, *indonesia]
 
-    enriched = await _enrich_articles(session, all_articles, regenerate=regenerate)
+    enriched = await _enrich_articles(
+        session, all_articles, regenerate=regenerate, language=language
+    )
 
     raw_clusters: list[dict[str, Any]] = []
     if include_clusters:
@@ -549,7 +589,7 @@ async def build_newsletter_context(
 
     cached = await AsyncNewsletterRepo(session).get_article_summaries(
         [a["id"] for section in newsletter_edition.SECTIONS for a in compact.get(section, [])],
-        SUMMARY_LANGUAGE,
+        language,
     )
     compact_rows = {
         section: [_compact_entry(a, cached.get(a["id"])) for a in compact.get(section, [])]
@@ -583,6 +623,9 @@ async def build_newsletter_context(
         "period_start": period_start,
         "period_end": period_end,
         "period_label": newsletter_edition.period_label(period_start, period_end),
+        "period_range": newsletter_edition.period_range(period_start, period_end),
+        "published_label": newsletter_edition.long_date(_local_date(now)),
+        "language": language,
         "highlight": highlights_enriched[0],
         "highlights": highlights_enriched,
         "apac": apac_enriched,
@@ -599,9 +642,31 @@ async def build_newsletter_context(
 
 
 def render_newsletter_html(context: dict[str, Any]) -> str:
+    """HTML edisi dengan logo dirujuk lewat `cid:` -- versi yang DIKIRIM dan DISIMPAN. Untuk
+    ditampilkan di browser lewat `newsletter_logo.with_data_uris()`."""
     env = make_env(_TEMPLATE_DIR)
+    env.filters["short_date"] = newsletter_edition.short_date
     template = env.get_template(_NEWSLETTER_EMAIL_TEMPLATE)
-    return template.render(platform_name=platform_name(), **context)
+    return template.render(
+        platform_name=platform_name(), logo_cid=newsletter_logo.LOGO_CONTENT_ID, **context
+    )
+
+
+def html_size_bytes(html: str) -> int:
+    """Ukuran HTML dalam byte UTF-8, yang dihitung Gmail. Ukur versi `cid:` (yang dikirim), bukan
+    versi data URI untuk preview yang lebih besar beberapa KB."""
+    return len(html.encode("utf-8"))
+
+
+def size_warning(html_bytes: int) -> str | None:
+    """Peringatan bagi analis kalau email mendekati batas potong Gmail, atau None."""
+    if html_bytes <= HTML_WARN_BYTES:
+        return None
+    return (
+        f"The email is {html_bytes / 1024:.0f} KB. Gmail clips messages above about "
+        f"{GMAIL_CLIP_BYTES // 1024} KB and hides the rest behind a link, so readers may miss the "
+        "end of the edition. Move cards to Also Noted or remove some before creating the draft."
+    )
 
 
 # ── Persistence ───────────────────────────────────────────────────────────────
