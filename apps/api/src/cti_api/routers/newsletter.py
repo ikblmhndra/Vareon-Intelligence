@@ -12,15 +12,23 @@ Alur (ROADMAP #22, PR 5): `preview` dan `draft-email` sama-sama membangun dari c
 `preview` TIDAK membuat baris `newsletters` dan tidak menulis IOC/sebutan CVE; `draft-email`
 membuat draft Outlook DULU, baru menyimpan baris + IOC + sebutan CVE. Satu draft = satu baris,
 dan draft yang gagal di Graph tidak meninggalkan baris.
+
+Saran konten (ROADMAP #22, PR 7): `GET /suggestion` membaca saran tersimpan (terbaru, atau jendela
+tertentu) dan `POST /suggestion/rebuild` membangun ulang satu jendela dengan tangan, menimpa saran
+jendela itu. Keduanya hanya membaca/menulis tabel `newsletter_suggestions`; saran tidak pernah
+mengirim atau membuat draft apa pun sendiri.
 """
 
 from __future__ import annotations
 
 import asyncio
+import datetime
 from typing import Any
 
 import structlog
 from cti_alerts.mailer import create_graph_draft
+from cti_core.db.models.newsletter import NewsletterSuggestion
+from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.auth import AsyncAuditLogRepo
 from cti_core.db.repositories.newsletter import AsyncNewsletterRepo
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -28,13 +36,18 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_api.deps import AuthedUser, get_db, request_ip, require_auth
+from cti_api.routers.articles import _serialize as _serialize_article
 from cti_api.schemas.newsletter import (
     NewsletterListItem,
     NewsletterListResponse,
     NewsletterSectionsBody,
+    NewsletterSuggestionItem,
+    NewsletterSuggestionReason,
+    NewsletterSuggestionRebuildBody,
+    NewsletterSuggestionResponse,
 )
 from cti_api.services import newsletter as newsletter_service
-from cti_api.services import newsletter_edition
+from cti_api.services import newsletter_edition, newsletter_suggestion
 
 router = APIRouter(prefix="/api/newsletter", tags=["newsletter"])
 log = structlog.get_logger()
@@ -128,6 +141,96 @@ async def newsletter_history(
         page=page,
         page_size=page_size,
     )
+
+
+async def _suggestion_response(
+    session: AsyncSession, row: NewsletterSuggestion
+) -> NewsletterSuggestionResponse:
+    """Baris saran -> respons, dengan tiap item membawa artikelnya (`ArticleOut`, bentuk yang sama
+    dengan antrean composer) supaya composer tidak perlu mengambil artikel satu per satu. Item
+    yang artikelnya sudah terhapus dilewati: `items` tidak punya FK, dan artikel yang hilang tidak
+    bisa masuk newsletter."""
+    articles = AsyncArticleRepo(session)
+    stored = sorted(row.items, key=lambda item: item["rank"])
+    found = await articles.get_by_ids([item["article_id"] for item in stored])
+    items = []
+    for item in stored:
+        article = found.get(item["article_id"])
+        if article is None:
+            continue
+        items.append(
+            NewsletterSuggestionItem(
+                article_id=item["article_id"],
+                section=item["section"],
+                tier=item["tier"],
+                rank=item["rank"],
+                reasons=[NewsletterSuggestionReason.model_validate(r) for r in item["reasons"]],
+                article=_serialize_article(article, articles.to_dict(article)),
+            )
+        )
+    return NewsletterSuggestionResponse(
+        id=row.id,
+        period_start=row.period_start,
+        period_end=row.period_end,
+        label=newsletter_edition.period_label(row.period_start, row.period_end),
+        items=items,
+        summary_text=row.summary_text,
+        summary_meta=row.summary_meta,
+        created_at=row.created_at.isoformat(),
+    )
+
+
+@router.get("/suggestion", response_model=NewsletterSuggestionResponse)
+async def get_suggestion(
+    period_start: datetime.date | None = None,
+    period_end: datetime.date | None = None,
+    session: AsyncSession = Depends(get_db),
+    user: AuthedUser = Depends(require_auth),
+) -> NewsletterSuggestionResponse:
+    """Saran konten edisi newsletter. Tanpa parameter: edisi yang berakhir paling akhir. Dengan
+    `period_start` + `period_end`: saran untuk jendela PERSIS itu. 404 kalau belum ada."""
+    if (period_start is None) != (period_end is None):
+        raise HTTPException(
+            status_code=422, detail="set both period_start and period_end, or neither"
+        )
+    repo = AsyncNewsletterRepo(session)
+    if period_start is not None and period_end is not None:
+        row = await repo.get_suggestion(period_start, period_end)
+    else:
+        row = await repo.latest_suggestion()
+    if row is None:
+        raise HTTPException(status_code=404, detail="No newsletter suggestion found")
+    return await _suggestion_response(session, row)
+
+
+@router.post("/suggestion/rebuild", response_model=NewsletterSuggestionResponse)
+async def rebuild_suggestion(
+    request: Request,
+    body: NewsletterSuggestionRebuildBody | None = None,
+    session: AsyncSession = Depends(get_db),
+    user: AuthedUser = Depends(require_auth),
+) -> NewsletterSuggestionResponse:
+    """Bangun ulang saran satu jendela dengan tangan dan TIMPA saran tersimpan untuk jendela itu.
+    Tanpa body (atau tanpa tanggal): bulan kalender sebelumnya menurut zona laporan (WIB).
+    Dipakai analis kalau task terjadwal terlambat, atau data berubah setelah saran dibangun."""
+    if body is not None and body.period_start is not None and body.period_end is not None:
+        period_start, period_end = body.period_start, body.period_end
+    else:
+        period_start, period_end = newsletter_suggestion.default_window()
+    row = await newsletter_suggestion.build_suggestion(session, period_start, period_end)
+    await AsyncAuditLogRepo(session).write(
+        username=user["username"],
+        action="rebuild_newsletter_suggestion",
+        target_id=str(row.id),
+        detail={
+            "period_start": period_start.isoformat(),
+            "period_end": period_end.isoformat(),
+            "items": len(row.items),
+        },
+        ip_address=request_ip(request),
+    )
+    await session.commit()
+    return await _suggestion_response(session, row)
 
 
 @router.get("/{newsletter_id}/html")

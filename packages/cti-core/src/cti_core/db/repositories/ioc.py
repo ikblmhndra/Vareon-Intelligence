@@ -247,6 +247,25 @@ class AsyncIOCRepo:
         )
         return list(result.scalars().unique().all())
 
+    async def cve_ids_by_article(self, article_ids: Sequence[int]) -> dict[int, set[str]]:
+        """Id CVE (IOC `type="cve"`, huruf besar) per artikel lewat `IOCSource` -- satu query
+        ramping: tanpa memuat objek IOC beserta sumber, tag, dan feedback-nya seperti
+        `list_by_article_ids`. Inilah satu-satunya hubungan artikel -> CVE yang tersimpan (tidak
+        ada tabel khusus; `persist` menulis IOC dari isi artikel), jadi mencakup CVE yang hanya
+        disebut di body. Artikel tanpa CVE tidak ada di hasil."""
+        if not article_ids:
+            return {}
+        result = await self.session.execute(
+            select(IOCSource.article_id, IOC.value)
+            .join(IOC, IOC.id == IOCSource.ioc_id)
+            .where(IOC.type == "cve", IOCSource.article_id.in_(article_ids))
+            .distinct()
+        )
+        found: dict[int, set[str]] = {}
+        for article_id, value in result.all():
+            found.setdefault(article_id, set()).add(value.upper())
+        return found
+
     async def get_stats(self) -> dict[str, object]:
         total = (await self.session.execute(select(func.count()).select_from(IOC))).scalar_one()
         by_type_stmt = (

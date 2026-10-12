@@ -197,8 +197,7 @@ class NewsletterSuggestionReason(BaseModel):
     code: str = Field(
         description=(
             "Stable machine code: kev, poc, confirmed_incident, monitored_tech, client_country, "
-            "indonesia, apac, coverage, source, confidence. Listed from the largest contribution "
-            "to the smallest."
+            "indonesia, apac, coverage, source, confidence."
         )
     )
     text: str = Field(description="Short English explanation shown to the analyst.")
@@ -221,7 +220,9 @@ class NewsletterSuggestionItem(BaseModel):
         )
     )
     rank: int = Field(description="1-based overall rank; display order inside a tier follows it.")
-    reasons: list[NewsletterSuggestionReason]
+    reasons: list[NewsletterSuggestionReason] = Field(
+        description="Why the article was suggested, from the largest contribution to the smallest."
+    )
     article: ArticleOut = Field(
         description="The article as the Newsroom returns it, ready to join the composer queue."
     )

@@ -388,6 +388,26 @@ class AsyncCveTrackerRepo:
         )
         return list(result.scalars().all())
 
+    async def exploit_flags(self, cve_ids: Sequence[str]) -> dict[str, tuple[bool, bool]]:
+        """`{CVE_ID: (cisa_kev, poc_available)}` untuk CVE yang di-track client mana pun.
+
+        Kunci huruf besar. KEV dan PoC adalah properti CVE-nya (enrichment menulis hasilnya ke
+        semua baris CVE itu), jadi cukup satu baris yang bertanda. Baris yang ditandai FP oleh
+        client PEMILIKNYA tidak dihitung (`is_false_positive_row`, seperti query lintas client
+        lain): CVE yang semua pemantaunya menyatakan FP tidak boleh mengangkat artikel.
+        Konsekuensi yang disengaja: status KEV/PoC hanya diketahui untuk CVE yang di-track,
+        karena tidak ada tabel KEV sendiri. CVE yang tidak di-track tidak ada di hasil."""
+        if not cve_ids:
+            return {}
+        upper_ids = {cid.upper() for cid in cve_ids}
+        cve = func.upper(CveTracker.cve_id)
+        result = await self.session.execute(
+            select(cve, func.bool_or(CveTracker.cisa_kev), func.bool_or(CveTracker.poc_available))
+            .where(cve.in_(upper_ids), ~is_false_positive_row())
+            .group_by(cve)
+        )
+        return {cid: (bool(kev), bool(poc)) for cid, kev, poc in result.all()}
+
     async def list_by_cve_ids_any_client(self, cve_ids: Sequence[str]) -> list[CveTracker]:
         """Semua baris (lintas client) buat sekumpulan cve_id, case-
         insensitive -- beda dari `get_by_cve_id_any_client` (satu baris
