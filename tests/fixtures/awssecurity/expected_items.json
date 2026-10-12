@@ -1,0 +1,104 @@
+{
+  "2026-10-12": [
+    {
+      "title": "Configuring your AI vulnerability harness, Part 2: The steering file",
+      "url": "https://aws.amazon.com/blogs/security/configuring-your-ai-vulnerability-harness-part-2-the-steering-file/",
+      "posted_on": "2026-10-12"
+    },
+    {
+      "title": "Building your AI vulnerability harness, Part 1",
+      "url": "https://aws.amazon.com/blogs/security/building-your-ai-vulnerability-harness-part-1/",
+      "posted_on": "2026-10-12"
+    },
+    {
+      "title": "Part 1 – Cybersecurity journeys: I didn’t plan this",
+      "url": "https://aws.amazon.com/blogs/security/part-1-cybersecurity-journeys-i-didnt-plan-this/",
+      "posted_on": "2026-10-12"
+    },
+    {
+      "title": "Improving SPIRE security and resiliency with AWS managed services",
+      "url": "https://aws.amazon.com/blogs/security/improving-spire-security-and-resiliency-with-aws-managed-services/",
+      "posted_on": "2026-10-12"
+    },
+    {
+      "title": "Identity-aware AI data agents with AWS Lake Formation and Trusted Identity Propagation",
+      "url": "https://aws.amazon.com/blogs/security/identity-aware-ai-data-agents-with-aws-lake-formation-and-trusted-identity-propagation/",
+      "posted_on": "2026-10-12"
+    },
+    {
+      "title": "AWS Continuum sets a new standard in autonomous code security",
+      "url": "https://aws.amazon.com/blogs/security/aws-continuum-sets-a-new-standard-in-autonomous-code-security/",
+      "posted_on": "2026-10-12"
+    },
+    {
+      "title": "AWS European Sovereign Cloud: Demonstrating an independent operation",
+      "url": "https://aws.amazon.com/blogs/security/aws-european-sovereign-cloud-demonstrating-an-independent-operation/",
+      "posted_on": "2026-10-12"
+    },
+    {
+      "title": "ICYMI: August 2026 @AWS Security",
+      "url": "https://aws.amazon.com/blogs/security/icymi-august-2026-aws-security/",
+      "posted_on": "2026-10-12"
+    },
+    {
+      "title": "Supporting ASD’s multi-factor authentication campaign: Why MFA matters more than ever",
+      "url": "https://aws.amazon.com/blogs/security/supporting-asds-multi-factor-authentication-campaign-why-mfa-matters-more-than-ever/",
+      "posted_on": "2026-10-12"
+    },
+    {
+      "title": "Transforming Bedrock Guardrails events into OCSF with CloudWatch",
+      "url": "https://aws.amazon.com/blogs/security/transforming-bedrock-guardrails-events-into-ocsf-with-cloudwatch/",
+      "posted_on": "2026-10-12"
+    },
+    {
+      "title": "Run open weight models on Amazon Bedrock in AWS European Sovereign Cloud",
+      "url": "https://aws.amazon.com/blogs/security/run-open-weight-models-on-aws-bedrock-in-aws-european-sovereign-cloud/",
+      "posted_on": "2026-10-12"
+    },
+    {
+      "title": "Architecting a secure landing zone in the AWS European Sovereign Cloud",
+      "url": "https://aws.amazon.com/blogs/security/architecting-a-secure-landing-zone-in-the-aws-european-sovereign-cloud/",
+      "posted_on": "2026-10-12"
+    },
+    {
+      "title": "AWS STS simplifies session token size limits and adds session token size monitoring",
+      "url": "https://aws.amazon.com/blogs/security/aws-sts-simplifies-session-token-size-limits-and-adds-session-token-size-monitoring/",
+      "posted_on": "2026-10-12"
+    },
+    {
+      "title": "Architecting resilient authentication with Amazon Cognito multi-Region replication",
+      "url": "https://aws.amazon.com/blogs/security/architecting-resilient-authentication-with-amazon-cognito-multi-region-replication/",
+      "posted_on": "2026-10-12"
+    },
+    {
+      "title": "Operationalizing least privilege: Automate IAM remediation through your CI/CD pipeline",
+      "url": "https://aws.amazon.com/blogs/security/operationalizing-least-privilege-automate-iam-remediation-through-your-ci-cd-pipeline/",
+      "posted_on": "2026-10-12"
+    },
+    {
+      "title": "AWS Security Reference Architecture: A deep dive into PCI DSS compliance",
+      "url": "https://aws.amazon.com/blogs/security/aws-security-reference-architecture-a-deep-dive-into-pci-dss-compliance/",
+      "posted_on": "2026-10-12"
+    },
+    {
+      "title": "The state of AI for security: Measuring what matters most for building trust",
+      "url": "https://aws.amazon.com/blogs/security/the-state-of-ai-for-security-measuring-what-matters-most-for-building-trust/",
+      "posted_on": "2026-10-12"
+    },
+    {
+      "title": "OSPAR 2026 report now available with 167 services in scope",
+      "url": "https://aws.amazon.com/blogs/security/ospar-2026-report-now-available-with-167-services-in-scope/",
+      "posted_on": "2026-10-12"
+    },
+    {
+      "title": "Incident response guide for AWS CloudTrail investigations – Part 2",
+      "url": "https://aws.amazon.com/blogs/security/incident-response-guide-for-aws-cloudtrail-investigations-part-2/",
+      "posted_on": "2026-10-12"
+    },
+    {
+      "title": "Incident response guide for AWS CloudTrail investigations – Part 1",
+      "url": "https://aws.amazon.com/blogs/security/incident-response-guide-for-aws-cloudtrail-investigations-part-1/",
+      "posted_on": "2026-10-12"
+    }
+  ]
+}
