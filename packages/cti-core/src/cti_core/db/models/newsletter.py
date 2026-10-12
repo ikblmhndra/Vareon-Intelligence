@@ -141,7 +141,8 @@ class NewsletterSuggestion(Base):
     `items` = daftar `{article_id, section, tier, rank, reasons: [{code, text}]}` urut `rank`
     (`newsletter_ranking.RankedArticle.to_item`). Tanpa FK ke `articles`: ini snapshot saran pada
     hari dibangun, dan artikel yang kemudian terhapus cukup dilewati saat dibaca. `summary_text`
-    dan `summary_meta` (Executive Summary dari recap mingguan, PR 8) kosong sampai PR itu."""
+    dan `summary_meta` = Executive Summary dari recap mingguan (PR 8, bentuknya di docstring
+    `cti_api.services.newsletter_summary`); teksnya kosong kalau jendelanya tidak punya recap."""
 
     __tablename__ = "newsletter_suggestions"
     __table_args__ = (
