@@ -9,12 +9,15 @@ Alur `build_suggestion(session, start, end)`:
    `cve_tracker` (KEV/PoC), ukuran kampanye (`campaign.get_recent_campaigns`), negara semua
    client, dan nama techstack aktif semua client. Newsletter ini global, jadi sinyal client
    selalu gabungan SEMUA client, bukan satu client.
-3. `rank_candidates`, lalu simpan hasilnya sebagai satu baris `newsletter_suggestions` yang
-   MENIMPA saran lama untuk jendela yang sama.
+3. `rank_candidates`, lalu Executive Summary dari recap mingguan (`newsletter_summary`, PR 8: satu
+   panggilan LLM, atau tanpa panggilan kalau bulannya tidak punya recap), dan simpan keduanya
+   sebagai satu baris `newsletter_suggestions` yang MENIMPA saran lama untuk jendela yang sama.
+   Menimpa seluruh baris berarti rebuild juga membuat ulang ringkasannya (cara analis memperbaiki
+   recap Senin yang telat).
 
-Tidak ada panggilan LLM, fetch halaman, ataupun penulisan selain baris saran itu; fungsi di sini
-tidak commit (session-first), pemanggil yang commit. Dipanggil `POST /suggestion/rebuild` dan,
-kelak, task terjadwal bulanan (PR 8).
+Tidak ada fetch halaman ataupun penulisan selain baris saran itu; ranking-nya sendiri tanpa LLM.
+Fungsi di sini tidak commit (session-first), pemanggil yang commit. Dipanggil
+`POST /suggestion/rebuild` dan task terjadwal bulanan (`newsletter_schedule.prepare_monthly`).
 
 **Dari mana CVE sebuah artikel diketahui**: tidak ada tabel artikel-CVE, tapi `persist` menulis
 setiap CVE yang ia temukan di isi artikel sebagai IOC bertipe `cve` yang tersambung ke artikelnya
@@ -43,7 +46,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_api.services import campaign as campaign_service
 from cti_api.services import newsletter as newsletter_service
-from cti_api.services import newsletter_edition
+from cti_api.services import newsletter_edition, newsletter_summary
 from cti_api.services.newsletter_ranking import Candidate, rank_candidates
 
 log = structlog.get_logger()
@@ -89,18 +92,16 @@ async def _articles_in_window(
         page += 1
 
 
-async def _campaigns(session: AsyncSession, period_start: datetime.date) -> list[dict[str, Any]]:
-    """SATU-SATUNYA pintu ke `get_recent_campaigns`. Cabang ini memakai versi `days` fungsi itu
-    (jendela `start`/`end` dari PR 2 tidak ada di basis cabang ini), jadi `days` dihitung mundur
-    dari hari ini sampai `period_start` dengan jam yang sama dengan yang dipakai fungsi itu.
-    Akibatnya cluster juga memuat artikel SESUDAH jendela (sampai hari ini), dan `_cluster_sizes`
-    hanya menghitung anggota yang ada di jendela. Batas 2000 artikel terbaru di
-    `get_recent_campaigns` berlaku juga: untuk jendela yang jauh di belakang, artikelnya bisa di
-    luar 2000 itu dan cluster-nya kosong (sinyal liputan hilang, sisanya tetap jalan). Untuk pindah
-    ke versi jendela cukup ganti isi fungsi ini; pemanggilnya tidak berubah."""
-    days = max(1, (datetime.date.today() - period_start).days)
+async def _campaigns(
+    session: AsyncSession, period_start: datetime.date, period_end: datetime.date
+) -> list[dict[str, Any]]:
+    """SATU-SATUNYA pintu ke `get_recent_campaigns`, dengan jendela `start`/`end` (PR 2): klaster
+    dibangun dari artikel jendela itu saja, jadi ukuran kampanye (sinyal liputan di ranking)
+    menghitung bulan yang diedisikan, bukan artikel sesudahnya sampai hari ini. Batas 2000 artikel
+    terbaru di `get_recent_campaigns` berlaku: jendela yang lebih padat dikluster dari yang
+    terbaru saja dan itu dicatat sebagai peringatan `campaign_article_cap_hit`."""
     return await campaign_service.get_recent_campaigns(
-        session, days=days, min_size=CLUSTER_MIN_SIZE
+        session, min_size=CLUSTER_MIN_SIZE, start=period_start, end=period_end
     )
 
 
@@ -140,7 +141,7 @@ async def load_candidates(
     flags = await AsyncCveTrackerRepo(session).exploit_flags(
         sorted({cve for cves in cves_by_article.values() for cve in cves})
     )
-    sizes = _cluster_sizes(await _campaigns(session, period_start), set(article_ids))
+    sizes = _cluster_sizes(await _campaigns(session, period_start, period_end), set(article_ids))
 
     repo = AsyncArticleRepo(session)
     candidates = []
@@ -172,8 +173,9 @@ async def load_candidates(
 async def build_suggestion(
     session: AsyncSession, period_start: datetime.date, period_end: datetime.date
 ) -> NewsletterSuggestion:
-    """Bangun saran satu jendela dan simpan, MENIMPA saran lama jendela yang sama (ringkasannya
-    ikut dikosongkan: PR 8 mengisinya ulang pada rebuild). Tidak commit."""
+    """Bangun saran satu jendela (ranking + Executive Summary) dan simpan, MENIMPA saran lama
+    jendela yang sama. Panggilan LLM-nya gagal = exception naik dan tidak ada yang tersimpan
+    (lihat `newsletter_summary.generate_executive_summary`). Tidak commit."""
     candidates = await load_candidates(session, period_start, period_end)
     clients = await AsyncClientRepo(session).list_all()
     ranked = rank_candidates(
@@ -181,17 +183,30 @@ async def build_suggestion(
         client_countries={c.country_code for client in clients for c in client.countries},
         monitored_techs=await AsyncTechStackRepo(session).active_names_all_clients(),
     )
+    summary_text, summary_meta = await newsletter_summary.generate_executive_summary(
+        session, period_start, period_end
+    )
     row = await AsyncNewsletterRepo(session).upsert_suggestion(
         period_start=period_start,
         period_end=period_end,
         items=[r.to_item() for r in ranked],
+        summary_text=summary_text,
+        summary_meta=summary_meta,
     )
     log.info(
-        "newsletter_suggestion_built",
+        "newsletter_prepared",
         period_start=period_start.isoformat(),
         period_end=period_end.isoformat(),
         candidates=len(candidates),
         suggested=len(ranked),
         highlights=sum(1 for r in ranked if r.tier == "highlight"),
+        weeks_used=[w["week_start"] for w in summary_meta["weeks"]],
+        uncovered=summary_meta["uncovered"],
+        summary_words=len(summary_text.split()),
+        summary_skipped=bool(summary_meta["token_usage"].get("skipped")),
+        parse_failed=summary_meta["parse_failed"],
+        token_usage=summary_meta["token_usage"],
+        model=summary_meta["model"],
+        grounding_dropped=len(summary_meta["dropped"]),
     )
     return row
