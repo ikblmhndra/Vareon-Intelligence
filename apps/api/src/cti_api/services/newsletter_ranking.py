@@ -65,11 +65,13 @@ TIER_COMPACT: TierName = "compact"
 
 INDONESIA = "ID"
 
-DEDUP_POOL = 300
-"""Hanya sebanyak ini kandidat teratas yang masuk dedup. `find_dedup_groups` membandingkan semua
-pasangan (kuadrat) dan sebulan artikel bisa ribuan; yang di luar 300 teratas tidak akan terpilih
-(batas total hanya 3 + 3 x 19 = 60), jadi memotongnya tidak mengubah hasil kecuali 240 teratas
-isinya duplikat semua."""
+DEDUP_POOL_PER_SECTION = 100
+"""Hanya sebanyak ini kandidat teratas DI TIAP SECTION yang masuk dedup. `find_dedup_groups`
+membandingkan semua pasangan (kuadrat) dan sebulan artikel bisa ribuan, jadi masukannya dibatasi
+(paling banyak 3 x 100). Per section, bukan global: kuota tier juga per section, dan pool global
+bisa dipenuhi satu section (mis. 300 artikel Indonesia berskor tinggi) sehingga section lain
+kosong padahal punya kandidat. Satu section hanya butuh 4 + 15 pilihan (dan 3 highlight yang
+pasti ada di 3 teratas section-nya), jadi 100 masih menyisakan ruang untuk puluhan duplikat."""
 
 # ── Bobot (nilai awal, lihat docstring modul) ───────────────────────────────────────────────────
 
@@ -330,7 +332,14 @@ def rank_candidates(
             scored.append(_Scored(candidate, section, score, reasons))
     scored.sort(key=_order)
 
-    final = sorted(_collapse_duplicates(scored[:DEDUP_POOL], ctx), key=_order)
+    pooled: dict[str, int] = dict.fromkeys(SECTIONS, 0)
+    pool: list[_Scored] = []
+    for item in scored:  # sudah urut skor, jadi yang masuk pool = teratas tiap section
+        if pooled[item.section] < DEDUP_POOL_PER_SECTION:
+            pooled[item.section] += 1
+            pool.append(item)
+
+    final = sorted(_collapse_duplicates(pool, ctx), key=_order)
 
     taken = dict.fromkeys(SECTIONS, 0)
     ranked: list[RankedArticle] = []

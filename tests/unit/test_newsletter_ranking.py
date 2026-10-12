@@ -332,9 +332,35 @@ def test_a_quiet_month_is_not_padded_up_to_the_caps() -> None:
 
 
 def test_more_candidates_than_the_dedup_pool_still_respect_the_caps() -> None:
-    candidates = [_c(n, confidence_score=60 + n % 40) for n in range(1, ranking.DEDUP_POOL + 60)]
+    per_section = ranking.DEDUP_POOL_PER_SECTION + 50
+    candidates = [
+        _c(1000 * i + n, victim_countries=(country,), confidence_score=60 + n % 40)
+        for i, country in enumerate(("ID", "JP", "US"), start=1)
+        for n in range(1, per_section + 1)
+    ]
+
     ranked = rank_candidates(candidates)
-    assert len(ranked) == MAX_HIGHLIGHTS + MAX_FULL_PER_SECTION + MAX_COMPACT_PER_SECTION
+
+    assert len(ranked) == MAX_HIGHLIGHTS + len(SECTIONS) * (
+        MAX_FULL_PER_SECTION + MAX_COMPACT_PER_SECTION
+    )
+
+
+def test_a_section_crowded_with_stronger_articles_does_not_push_the_others_out() -> None:
+    """Pool dedup per section: 350 artikel Indonesia berskor tinggi tidak boleh mengosongkan
+    Global yang kandidatnya jauh di bawah peringkat 300 secara keseluruhan."""
+    indonesia = [
+        _c(n, victim_countries=("ID",), confirmed_incident=True, confidence_score=100)
+        for n in range(1, 351)
+    ]
+    plain = [_c(5000 + n, confidence_score=60) for n in range(10)]
+
+    ranked = rank_candidates([*indonesia, *plain])
+
+    counts = Counter((r.section, r.tier) for r in ranked)
+    assert counts[("global_news", "full")] == MAX_FULL_PER_SECTION
+    assert counts[("global_news", "compact")] == 10 - MAX_FULL_PER_SECTION
+    assert counts[("indonesia", "highlight")] == MAX_HIGHLIGHTS
 
 
 # ── Urutan pasti ────────────────────────────────────────────────────────────────────────────────
