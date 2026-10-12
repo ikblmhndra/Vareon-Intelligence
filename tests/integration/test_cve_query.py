@@ -517,3 +517,39 @@ class TestNewsletterMentions:
 
         ids = await repo.list_all_distinct_cve_ids()
         assert set(ids) == {"CVE-2026-0001", "CVE-2026-0002", "CVE-2026-0003"}
+
+
+async def test_exploit_flags_are_per_cve_across_clients_and_skip_false_positives(
+    async_db_session: AsyncSession,
+) -> None:
+    await _ensure_clients(async_db_session)
+    rows = [
+        # KEV di baris client "acme" saja: properti CVE-nya, jadi tetap terbaca.
+        CveTracker(cve_id="CVE-2026-1001", client_id="default", cisa_kev=False),
+        CveTracker(cve_id="CVE-2026-1001", client_id="acme", cisa_kev=True),
+        CveTracker(cve_id="CVE-2026-1002", client_id="default", poc_available=True),
+        CveTracker(cve_id="CVE-2026-1003", client_id="default"),
+        # FP oleh satu-satunya pemantaunya: tidak boleh mengangkat artikel.
+        CveTracker(cve_id="CVE-2026-1004", client_id="default", cisa_kev=True),
+        # FP di "default" tapi masih valid di "acme": tetap dihitung lewat baris "acme".
+        CveTracker(cve_id="CVE-2026-1005", client_id="default", cisa_kev=True),
+        CveTracker(cve_id="CVE-2026-1005", client_id="acme", poc_available=True),
+    ]
+    for row in rows:
+        async_db_session.add(row)
+    await async_db_session.flush()
+    fp = AsyncCveFalsePositiveRepo(async_db_session)
+    await fp.mark("CVE-2026-1004", "default")
+    await fp.mark("CVE-2026-1005", "default")
+    repo = AsyncCveTrackerRepo(async_db_session)
+
+    asked = ["cve-2026-1001", "CVE-2026-1002", "CVE-2026-1003", "CVE-2026-1004", "CVE-2026-1005"]
+    flags = await repo.exploit_flags([*asked, "CVE-2026-9999"])  # yang terakhir tidak di-track
+
+    assert flags == {
+        "CVE-2026-1001": (True, False),
+        "CVE-2026-1002": (False, True),
+        "CVE-2026-1003": (False, False),
+        "CVE-2026-1005": (False, True),  # baris "default" (KEV) FP; yang dihitung baris "acme"
+    }
+    assert await repo.exploit_flags([]) == {}

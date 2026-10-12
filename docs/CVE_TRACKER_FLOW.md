@@ -258,6 +258,12 @@ a preview writes nothing to the tracker: the mention is written to `cve_newslett
 draft is created (`write_article_findings`, once per article), on **one** tracker row (any client, DB order), and that
 table is not read by anything yet.
 
+The newsletter **suggestion** (`services/newsletter_suggestion`, ROADMAP #22) is one more reader of the tracker:
+`AsyncCveTrackerRepo.exploit_flags` returns `cisa_kev` / `poc_available` per CVE across clients, skipping rows FP'd by
+their own client (the same rule), for the CVEs of each candidate article (IOC rows of type `cve` linked through
+`ioc_sources.article_id`, plus the title). KEV/PoC status exists only on tracker rows, so a KEV CVE that no client
+tracks gives the ranking no signal; moving that status elsewhere has to move this read with it.
+
 ## 8. UI map (`apps/web/src/app/(app)/cve/page.tsx`)
 
 Two views: **CVEs** and **Package Vulnerabilities** (`pkgvuln/`, not studied here). Inside CVEs there are

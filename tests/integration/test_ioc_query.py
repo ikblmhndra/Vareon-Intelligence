@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import cast
 
 import pytest
+from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.ioc import AsyncIOCRepo
 from cti_core.db.repositories.ioc_reference import AsyncIocAllowlistRepo
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -208,3 +209,31 @@ class TestAsyncIocAllowlistRepo:
         entry = await repo.create(entry_type="ip", value="1.2.3.4", added_by="admin1")
         assert await repo.delete(entry.id) is True
         assert await repo.list_all() == []
+
+
+async def test_cve_ids_by_article_returns_only_cve_iocs_of_the_given_articles(
+    async_db_session: AsyncSession,
+) -> None:
+    articles = AsyncArticleRepo(async_db_session)
+    first = await articles.upsert(url="https://example.com/a", title="A", source="s")
+    second = await articles.upsert(url="https://example.com/b", title="B", source="s")
+    third = await articles.upsert(url="https://example.com/c", title="C", source="s")
+    repo = AsyncIOCRepo(async_db_session)
+    # Satu IOC CVE disebut dua artikel; satu artikel menyebut dua CVE dan satu IP; satu tanpa IOC.
+    for article, value in ((first, "CVE-2026-1111"), (second, "CVE-2026-1111")):
+        await repo.upsert(
+            type="cve", value=value, source_url=article.url, source_name="s", article_id=article.id
+        )
+    await repo.upsert(
+        type="cve", value="CVE-2026-2222", source_url="u", source_name="s", article_id=first.id
+    )
+    await repo.upsert(
+        type="ip", value="203.0.113.5", source_url="u", source_name="s", article_id=first.id
+    )
+    await repo.upsert(type="cve", value="CVE-2026-3333", source_url="u", source_name="s")
+
+    found = await repo.cve_ids_by_article([first.id, second.id, third.id])
+
+    assert found == {first.id: {"CVE-2026-1111", "CVE-2026-2222"}, second.id: {"CVE-2026-1111"}}
+    assert await repo.cve_ids_by_article([second.id]) == {second.id: {"CVE-2026-1111"}}
+    assert await repo.cve_ids_by_article([]) == {}

@@ -22,6 +22,7 @@ from cti_core.db.models.newsletter import (
     Newsletter,
     NewsletterArticleSummary,
     NewsletterPaywallHint,
+    NewsletterSuggestion,
 )
 
 
@@ -151,6 +152,68 @@ class AsyncNewsletterRepo:
             set_={**values, "created_at": func.now()},
         )
         await self.session.execute(stmt)
+
+    async def get_suggestion(
+        self, period_start: datetime.date, period_end: datetime.date
+    ) -> NewsletterSuggestion | None:
+        """Saran untuk jendela PERSIS ini, atau None. `populate_existing` karena
+        `upsert_suggestion` menulis lewat statement; objek yang sudah termuat bisa basi."""
+        result = await self.session.execute(
+            select(NewsletterSuggestion)
+            .where(
+                NewsletterSuggestion.period_start == period_start,
+                NewsletterSuggestion.period_end == period_end,
+            )
+            .execution_options(populate_existing=True)
+        )
+        return result.scalar_one_or_none()
+
+    async def latest_suggestion(self) -> NewsletterSuggestion | None:
+        """Saran edisi yang berakhir paling akhir; kalau beberapa jendela berakhir di hari yang
+        sama, yang paling baru dibangun. Yang dicari composer adalah edisi yang sedang disiapkan,
+        jadi bukan sekadar baris yang terakhir ditulis: membangun ulang bulan lama lewat tombol
+        tidak boleh menggeser "terbaru" ke bulan itu."""
+        result = await self.session.execute(
+            select(NewsletterSuggestion)
+            .order_by(
+                NewsletterSuggestion.period_end.desc(),
+                NewsletterSuggestion.created_at.desc(),
+                NewsletterSuggestion.id.desc(),
+            )
+            .limit(1)
+            .execution_options(populate_existing=True)
+        )
+        return result.scalar_one_or_none()
+
+    async def upsert_suggestion(
+        self,
+        *,
+        period_start: datetime.date,
+        period_end: datetime.date,
+        items: list[dict[str, Any]],
+        summary_text: str = "",
+        summary_meta: dict[str, Any] | None = None,
+    ) -> NewsletterSuggestion:
+        """Simpan saran satu jendela; kalau sudah ada, TIMPA seluruhnya (item, ringkasan, dan
+        `created_at`). `ON CONFLICT DO UPDATE` supaya dua rebuild bersamaan (klik ganda, task
+        terjadwal bertemu tombol) tidak menjatuhkan salah satunya dengan pelanggaran unique."""
+        values = {
+            "items": items,
+            "summary_text": summary_text,
+            "summary_meta": summary_meta or {},
+        }
+        stmt = pg_insert(NewsletterSuggestion).values(
+            period_start=period_start, period_end=period_end, **values
+        )
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["period_start", "period_end"],
+            set_={**values, "created_at": func.now()},
+        )
+        await self.session.execute(stmt)
+        row = await self.get_suggestion(period_start, period_end)
+        if row is None:  # pragma: no cover - baru saja ditulis di transaksi yang sama
+            raise RuntimeError("newsletter_suggestions: baris hilang setelah upsert")
+        return row
 
     async def get_paywall_hint(self, source: str) -> NewsletterPaywallHint | None:
         result = await self.session.execute(
