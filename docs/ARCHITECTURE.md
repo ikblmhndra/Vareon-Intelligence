@@ -224,8 +224,12 @@ Runbook:
   composer loads it when its queue is empty (PR 9).
 - **Rebuild by hand**: `POST /api/newsletter/suggestion/rebuild` (no body = the previous month in WIB, or give both
   dates). It overwrites the whole row for that window and **regenerates the summary**, so it is also the fix when a
-  Monday recap arrived after the scheduled run, or when the LLM gateway was down on the first working day (the task then
-  fails visibly and retries on the next weekday; the rebuild answers with an error and stores nothing).
+  Monday recap arrived after the scheduled run.
+- **When the LLM call fails** (gateway down, timeout): the ranked items are still stored, `summary_text` is empty and
+  `summary_meta.error` holds `ExceptionName: message` (log `newsletter_summary_failed`; the task returns
+  `prepared: true` and `newsletter_prepared` carries `summary_error`). On the following weekdays of the catch-up window the
+  task repeats only the summary step and clears `error` once it works (`newsletter_summary_retried`). A rebuild during
+  an outage answers 200 with the same `error` instead of failing, so the composer can warn the analyst.
 - **What the summary covers**: only weekly recaps that exist and overlap the month, never raw articles. No recap means an
   empty summary and no LLM call. Weeks are used whole, so the first and last week may stick out of the month. When the
   month does not end on a Sunday its last days fall in a week that is not finished on the first working day (November

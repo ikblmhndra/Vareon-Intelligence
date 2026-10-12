@@ -13,6 +13,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+import structlog.testing
 from cti_api.services import newsletter_glossary
 from cti_api.services import newsletter_summary as summary
 
@@ -115,6 +116,7 @@ async def test_no_recaps_means_an_empty_summary_and_no_llm_call(
         "model": "",
         "dropped": [],
         "parse_failed": False,
+        "error": None,
         "token_usage": {"skipped": True, "reason": "no_recaps"},
     }
     assert recaps.asked == [("weekly", D(2026, 10, 1), D(2026, 10, 31))]
@@ -159,7 +161,7 @@ async def test_one_call_condenses_the_weeks_and_records_what_was_used(
     assert (meta["covered_start"], meta["covered_end"]) == ("2026-09-28", "2026-11-01")
     assert meta["uncovered"] == []
     assert meta["model"] == "stub-model"
-    assert meta["dropped"] == [] and meta["parse_failed"] is False
+    assert meta["dropped"] == [] and meta["parse_failed"] is False and meta["error"] is None
     usage = meta["token_usage"]
     assert (usage["prompt_tokens"], usage["completion_tokens"], usage["total_tokens"]) == (
         400,
@@ -269,17 +271,84 @@ async def test_a_reply_without_a_usable_summary_is_empty_and_flagged_not_an_erro
     assert meta["token_usage"]["total_tokens"] == 550  # panggilannya tetap tercatat
 
 
-async def test_a_gateway_failure_is_not_swallowed(
+def _broken_llm(monkeypatch: pytest.MonkeyPatch, exc: Exception) -> MagicMock:
+    broken = MagicMock()
+    broken.chat.completions.create.side_effect = exc
+    monkeypatch.setattr(summary, "get_llm_client", MagicMock(return_value=(broken, "m")))
+    return broken
+
+
+async def test_a_gateway_failure_is_recorded_not_raised_so_the_ranking_is_not_lost(
     monkeypatch: pytest.MonkeyPatch, recaps: type[_FakeRecapRepo]
 ) -> None:
-    """Exception naik: task terjadwal gagal terlihat dan dicoba lagi pada hari kerja berikutnya,
-    dan baris saran tidak tersimpan setengah jadi."""
-    recaps.rows = [_recap(D(2026, 10, 5))]
-    broken = MagicMock()
-    broken.chat.completions.create.side_effect = RuntimeError("gateway down")
-    monkeypatch.setattr(summary, "get_llm_client", MagicMock(return_value=(broken, "m")))
+    recaps.rows = [_recap(w) for w in OCTOBER_WEEKS[:2]]
+    broken = _broken_llm(monkeypatch, RuntimeError("gateway down"))
 
-    with pytest.raises(RuntimeError, match="gateway down"):
+    with structlog.testing.capture_logs() as logs:
+        text, meta = await _generate()
+
+    assert text == ""
+    assert broken.chat.completions.create.call_count == 1
+    assert meta["error"] == "RuntimeError: gateway down"
+    assert meta["token_usage"] == {"skipped": True, "reason": "llm_error"}
+    assert meta["parse_failed"] is False and meta["dropped"] == [] and meta["model"] == ""
+    # yang dihitung dari recap tetap ada, supaya composer bisa menampilkan apa yang dicakup
+    assert [w["week_start"] for w in meta["weeks"]] == ["2026-09-28", "2026-10-05"]
+    assert (meta["covered_start"], meta["covered_end"]) == ("2026-09-28", "2026-10-11")
+    assert meta["uncovered"] == [{"start": "2026-10-12", "end": "2026-10-31"}]
+    [failed] = [e for e in logs if e["event"] == "newsletter_summary_failed"]
+    assert failed["log_level"] == "warning" and failed["error"] == meta["error"]
+
+
+async def test_the_meta_has_the_same_keys_on_every_path(
+    monkeypatch: pytest.MonkeyPatch, recaps: type[_FakeRecapRepo]
+) -> None:
+    """Composer membaca satu bentuk: tanpa recap, sukses, balasan tak terpakai, dan gagal."""
+    shapes = []
+    _llm(monkeypatch, {"summary": "Ok."})
+    shapes.append(await _generate())  # tanpa recap
+    recaps.rows = [_recap(D(2026, 10, 5))]
+    shapes.append(await _generate())  # sukses
+    _llm(monkeypatch, "bukan JSON")
+    shapes.append(await _generate())  # balasan tak terpakai
+    _broken_llm(monkeypatch, RuntimeError("x"))
+    shapes.append(await _generate())  # gagal
+
+    assert len({frozenset(meta) for _, meta in shapes}) == 1
+    assert [meta["error"] for _, meta in shapes] == [None, None, None, "RuntimeError: x"]
+
+
+@pytest.mark.parametrize(
+    ("exc", "expected"),
+    [
+        (TimeoutError(), "TimeoutError"),  # tanpa pesan: namanya saja
+        (RuntimeError("one\n  two\tthree"), "RuntimeError: one two three"),  # satu baris
+        (ValueError("x" * 500), "ValueError: " + "x" * summary.ERROR_CLIP),  # dipotong
+    ],
+)
+async def test_the_error_text_is_one_short_line(
+    monkeypatch: pytest.MonkeyPatch,
+    recaps: type[_FakeRecapRepo],
+    exc: Exception,
+    expected: str,
+) -> None:
+    recaps.rows = [_recap(D(2026, 10, 5))]
+    _broken_llm(monkeypatch, exc)
+
+    _, meta = await _generate()
+
+    assert meta["error"] == expected
+
+
+async def test_only_the_llm_call_is_caught_a_database_failure_still_raises(
+    monkeypatch: pytest.MonkeyPatch, recaps: type[_FakeRecapRepo]
+) -> None:
+    async def broken_query(self: Any, kind: str, start: D, end: D) -> list[Any]:
+        raise ConnectionError("db down")
+
+    monkeypatch.setattr(_FakeRecapRepo, "list_overlapping", broken_query)
+
+    with pytest.raises(ConnectionError, match="db down"):
         await _generate()
 
 

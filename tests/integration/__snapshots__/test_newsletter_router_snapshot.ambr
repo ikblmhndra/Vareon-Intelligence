@@ -263,6 +263,7 @@
       'covered_start': None,
       'dropped': list([
       ]),
+      'error': None,
       'model': '',
       'parse_failed': False,
       'token_usage': dict({

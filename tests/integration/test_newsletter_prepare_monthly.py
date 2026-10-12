@@ -16,7 +16,9 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+import structlog.testing
 from cti_api.services import newsletter_schedule, newsletter_suggestion, newsletter_summary
+from cti_core.db.models.auth import AuditLogEntry
 from cti_core.db.models.newsletter import NewsletterSuggestion
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.auth import AsyncClientRepo
@@ -61,6 +63,15 @@ class CountingLlm:
 def _patched_llm(llm: CountingLlm) -> Any:
     return patch.object(
         newsletter_summary, "get_llm_client", MagicMock(return_value=(llm, "stub-model"))
+    )
+
+
+def _patched_broken_llm(message: str = "gateway down") -> Any:
+    """LLM yang melempar RuntimeError di setiap panggilan (gateway mati)."""
+    broken = MagicMock()
+    broken.chat.completions.create.side_effect = RuntimeError(message)
+    return patch.object(
+        newsletter_summary, "get_llm_client", MagicMock(return_value=(broken, "stub-model"))
     )
 
 
@@ -228,30 +239,85 @@ async def test_a_month_without_weekly_recaps_gets_the_ranking_but_an_empty_summa
     assert row.summary_meta["token_usage"] == {"skipped": True, "reason": "no_recaps"}
 
 
-async def test_a_failing_llm_leaves_no_half_built_suggestion_so_the_next_weekday_retries(
+async def test_a_failing_llm_keeps_the_ranking_and_records_the_error(
     async_db_session: AsyncSession,
 ) -> None:
-    """Exception naik dari `prepare_monthly` (task gagal terlihat), baris saran tidak ditulis, dan
-    `should_prepare` masih benar besoknya."""
+    """Gateway mati pada hari kerja pertama: rankingnya tersimpan, ringkasannya kosong dengan
+    `error`, dan task melaporkan `prepared` (bukan gagal)."""
+    ids = await _seed_articles(async_db_session)
+    await _seed_recaps(async_db_session)
+
+    with _patched_broken_llm(), no_campaigns(), structlog.testing.capture_logs() as logs:
+        result = await newsletter_schedule.prepare_monthly(async_db_session, NOW)
+
+    assert result["prepared"] is True and result["items"] == 2 and result["summary"] is False
+    assert result["summary_error"] == "RuntimeError: gateway down"
+    [row] = await _suggestions(async_db_session)
+    assert sorted(i["article_id"] for i in row.items) == sorted(ids[:2])
+    assert row.summary_text == ""
+    meta = row.summary_meta
+    assert meta["error"] == "RuntimeError: gateway down"
+    assert meta["token_usage"] == {"skipped": True, "reason": "llm_error"}
+    assert meta["parse_failed"] is False and meta["model"] == "" and meta["dropped"] == []
+    assert len(meta["weeks"]) == 5 and meta["uncovered"] == []  # yang dihitung dari recap tetap ada
+    events = {e["event"]: e for e in logs}
+    assert events["newsletter_summary_failed"]["log_level"] == "warning"
+    assert events["newsletter_prepared"]["summary_error"] == "RuntimeError: gateway down"
+
+
+async def test_the_next_catch_up_day_redoes_only_the_summary_and_clears_the_error(
+    async_db_session: AsyncSession,
+) -> None:
     await _seed_articles(async_db_session)
     await _seed_recaps(async_db_session)
-    broken = MagicMock()
-    broken.chat.completions.create.side_effect = RuntimeError("gateway down")
-
-    with (
-        patch.object(newsletter_summary, "get_llm_client", MagicMock(return_value=(broken, "m"))),
-        no_campaigns(),
-    ):
-        with pytest.raises(RuntimeError, match="gateway down"):
-            await newsletter_schedule.prepare_monthly(async_db_session, NOW)
-        assert await _suggestions(async_db_session) == []
-
+    with _patched_broken_llm(), no_campaigns():
+        await newsletter_schedule.prepare_monthly(async_db_session, NOW)
+    [failed] = await _suggestions(async_db_session)
+    items_before, built_at = failed.items, failed.created_at
     llm = CountingLlm()
-    with _patched_llm(llm), no_campaigns():
-        retry = await newsletter_schedule.prepare_monthly(
+    tuesday = NOW + datetime.timedelta(days=1)
+
+    with _patched_llm(llm), no_campaigns(), structlog.testing.capture_logs() as logs:
+        retried = await newsletter_schedule.prepare_monthly(async_db_session, tuesday)
+        wednesday = await newsletter_schedule.prepare_monthly(
+            async_db_session, NOW + datetime.timedelta(days=2)
+        )
+
+    assert retried["prepared"] is False and retried["summary_retried"] is True
+    assert retried["summary"] is True and retried["summary_error"] is None
+    assert wednesday == {"prepared": False, "period_start": "2026-10-01"}
+    assert llm.calls == 1  # sekali untuk retry; hari berikutnya sehat, tidak ada LLM lagi
+    [row] = await _suggestions(async_db_session)
+    assert row.id == failed.id
+    assert row.summary_text == REPLY
+    assert row.summary_meta["error"] is None
+    assert row.summary_meta["token_usage"]["total_tokens"] == 550
+    assert row.items == items_before  # rankingnya tidak disentuh
+    assert row.created_at == built_at
+    assert [e["event"] for e in logs if e["event"].startswith("newsletter_")] == [
+        "newsletter_summary_retried"  # bukan `newsletter_prepared`: tidak merangking ulang
+    ]
+
+
+async def test_a_summary_that_keeps_failing_is_retried_each_day_until_the_window_closes(
+    async_db_session: AsyncSession,
+) -> None:
+    await _seed_articles(async_db_session)
+    await _seed_recaps(async_db_session)
+
+    with _patched_broken_llm("down"), no_campaigns():
+        await newsletter_schedule.prepare_monthly(async_db_session, NOW)  # Senin 2 Nov
+        retried = await newsletter_schedule.prepare_monthly(
             async_db_session, NOW + datetime.timedelta(days=1)
         )
-    assert retry["prepared"] is True and llm.calls == 1
+        closed = await newsletter_schedule.prepare_monthly(
+            async_db_session,
+            NOW + datetime.timedelta(days=8),  # Selasa 10 Nov
+        )
+
+    assert retried["summary_retried"] is True
+    assert retried["summary_error"] == "RuntimeError: down"
+    assert closed == {"prepared": False, "period_start": "2026-10-01"}  # sesudah jendela: manual
 
 
 async def test_the_tail_of_november_is_recorded_as_uncovered(
@@ -351,3 +417,37 @@ async def test_rebuild_marks_an_invented_cve_id_in_the_stored_paragraph(
     ]
     stored = await AsyncNewsletterRepo(api_session).get_suggestion(*OCTOBER)
     assert stored is not None and stored.summary_text == body["summary_text"]
+
+
+async def test_rebuild_during_an_llm_outage_answers_200_with_the_ranking_and_the_error(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+) -> None:
+    ids = await _seed_articles(api_session)
+    await _seed_recaps(api_session)
+
+    with suggestion_clock(), no_campaigns(), _patched_broken_llm("gateway down"):
+        resp = await api_client.post(_REBUILD, headers=auth_header("rina"), json={})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert sorted(i["article_id"] for i in body["items"]) == sorted(ids[:2])
+    assert body["summary_text"] == ""
+    assert body["summary_meta"]["error"] == "RuntimeError: gateway down"
+    assert body["summary_meta"]["token_usage"] == {"skipped": True, "reason": "llm_error"}
+    assert len(body["summary_meta"]["weeks"]) == 5
+    entry = (
+        await api_session.execute(
+            select(AuditLogEntry).where(AuditLogEntry.action == "rebuild_newsletter_suggestion")
+        )
+    ).scalar_one()
+    assert entry.username == "rina" and entry.target_id == str(body["id"])
+    stored = await AsyncNewsletterRepo(api_session).get_suggestion(*OCTOBER)
+    assert stored is not None and stored.summary_meta["error"] == body["summary_meta"]["error"]
+
+    # gateway pulih: rebuild berikutnya mengisi ringkasan dan menghapus `error`
+    healed = await _rebuild(api_client, auth_header, CountingLlm())
+    assert healed.json()["id"] == body["id"]
+    assert healed.json()["summary_text"] == REPLY
+    assert healed.json()["summary_meta"]["error"] is None

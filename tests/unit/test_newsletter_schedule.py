@@ -122,15 +122,32 @@ class _FakeRepo:
         return type(self).existing
 
 
+def _row(error: str | None = None, **extra: Any) -> SimpleNamespace:
+    """Baris saran palsu: `summary_meta.error` menentukan apakah ringkasannya perlu diulang."""
+    fields: dict[str, Any] = {
+        "id": 7,
+        "items": [{"article_id": 1}],
+        "summary_text": "Ringkasan." if error is None else "",
+        "summary_meta": {"error": error},
+    }
+    return SimpleNamespace(**{**fields, **extra})
+
+
 @pytest.fixture
 def build(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
     _FakeRepo.existing, _FakeRepo.asked = None, []
-    built = AsyncMock(
-        return_value=SimpleNamespace(id=7, items=[{"article_id": 1}], summary_text="Ringkasan.")
-    )
+    built = AsyncMock(return_value=_row())
     monkeypatch.setattr(schedule, "AsyncNewsletterRepo", _FakeRepo)
     monkeypatch.setattr(schedule.newsletter_suggestion, "build_suggestion", built)
     return built
+
+
+@pytest.fixture
+def refresh(monkeypatch: pytest.MonkeyPatch, build: AsyncMock) -> AsyncMock:
+    """`refresh_summary` palsu: mengembalikan baris dengan ringkasan yang sudah terisi."""
+    refreshed = AsyncMock(return_value=_row())
+    monkeypatch.setattr(schedule.newsletter_suggestion, "refresh_summary", refreshed)
+    return refreshed
 
 
 async def test_on_the_first_weekday_it_builds_the_previous_month(build: AsyncMock) -> None:
@@ -147,11 +164,12 @@ async def test_on_the_first_weekday_it_builds_the_previous_month(build: AsyncMoc
         "suggestion_id": 7,
         "items": 1,
         "summary": True,
+        "summary_error": None,
     }
 
 
 async def test_the_second_run_finds_the_suggestion_and_does_nothing(build: AsyncMock) -> None:
-    _FakeRepo.existing = SimpleNamespace(id=7)
+    _FakeRepo.existing = _row()
     tuesday = datetime.datetime(2026, 11, 3, 2, 0, tzinfo=UTC)
 
     result = await schedule.prepare_monthly("SESSION", tuesday)  # type: ignore[arg-type]
@@ -197,7 +215,7 @@ async def test_today_is_the_local_date_not_the_utc_date(build: AsyncMock) -> Non
 
 
 async def test_an_empty_summary_is_reported_as_such(build: AsyncMock) -> None:
-    build.return_value = SimpleNamespace(id=8, items=[], summary_text="")
+    build.return_value = _row(items=[], summary_text="", id=8)
 
     result = await schedule.prepare_monthly(
         "S",  # type: ignore[arg-type]
@@ -205,3 +223,93 @@ async def test_an_empty_summary_is_reported_as_such(build: AsyncMock) -> None:
     )
 
     assert result["summary"] is False and result["items"] == 0
+
+
+async def test_a_failed_summary_still_counts_as_prepared_and_reports_the_error(
+    build: AsyncMock,
+) -> None:
+    """Ranking tersimpan (`prepared`), ringkasannya kosong dan alasannya ada di hasil task."""
+    build.return_value = _row("RuntimeError: gateway down")
+    now = datetime.datetime(2026, 11, 2, 2, 0, tzinfo=UTC)
+
+    result = await schedule.prepare_monthly("S", now)  # type: ignore[arg-type]
+
+    assert result["prepared"] is True and result["items"] == 1
+    assert result["summary"] is False
+    assert result["summary_error"] == "RuntimeError: gateway down"
+
+
+# --- ringkasan yang gagal dikejar ---------------------------------------------------------------
+
+
+def test_the_summary_is_retried_only_inside_the_catch_up_window_and_only_after_an_error() -> None:
+    first = D(2026, 11, 2)
+    for offset in range(0, schedule.PREPARE_WINDOW_DAYS + 1):
+        day = first + datetime.timedelta(days=offset)
+        assert schedule.should_retry_summary(day, suggestion_has_summary_error=True), day
+        assert not schedule.should_retry_summary(day, suggestion_has_summary_error=False), day
+    assert not schedule.should_retry_summary(D(2026, 11, 10), suggestion_has_summary_error=True)
+    assert not schedule.should_retry_summary(D(2026, 11, 1), suggestion_has_summary_error=True)
+
+
+async def test_a_suggestion_whose_summary_failed_gets_only_the_summary_redone(
+    build: AsyncMock, refresh: AsyncMock
+) -> None:
+    failed = _row("RuntimeError: gateway down")
+    _FakeRepo.existing = failed
+    tuesday = datetime.datetime(2026, 11, 3, 2, 0, tzinfo=UTC)
+
+    result = await schedule.prepare_monthly("S", tuesday)  # type: ignore[arg-type]
+
+    refresh.assert_awaited_once_with("S", failed)
+    build.assert_not_awaited()  # tidak merangking ulang
+    assert result == {
+        "prepared": False,
+        "summary_retried": True,
+        "period_start": "2026-10-01",
+        "suggestion_id": 7,
+        "summary": True,
+        "summary_error": None,
+    }
+
+
+async def test_a_retry_that_fails_again_reports_the_new_error_and_the_next_day_tries_again(
+    build: AsyncMock, refresh: AsyncMock
+) -> None:
+    _FakeRepo.existing = _row("RuntimeError: gateway down")
+    refresh.return_value = _row("TimeoutError")
+
+    first = await schedule.prepare_monthly(
+        "S",  # type: ignore[arg-type]
+        datetime.datetime(2026, 11, 3, 2, 0, tzinfo=UTC),
+    )
+    second = await schedule.prepare_monthly(
+        "S",  # type: ignore[arg-type]
+        datetime.datetime(2026, 11, 4, 2, 0, tzinfo=UTC),
+    )
+
+    assert first["summary_error"] == second["summary_error"] == "TimeoutError"
+    assert refresh.await_count == 2
+
+
+@pytest.mark.parametrize(
+    ("existing", "day"),
+    [
+        (_row(), 3),  # ringkasan sehat: tidak ada LLM lagi
+        (_row("RuntimeError: x"), 10),  # sesudah jendela kejar
+        (_row(summary_meta={}), 3),  # baris dari sebelum ringkasan ada: bukan kegagalan
+    ],
+)
+async def test_nothing_is_retried_when_the_summary_is_fine_or_the_window_is_over(
+    build: AsyncMock, refresh: AsyncMock, existing: SimpleNamespace, day: int
+) -> None:
+    _FakeRepo.existing = existing
+
+    result = await schedule.prepare_monthly(
+        "S",  # type: ignore[arg-type]
+        datetime.datetime(2026, 11, day, 2, 0, tzinfo=UTC),
+    )
+
+    assert result == {"prepared": False, "period_start": "2026-10-01"}
+    build.assert_not_awaited()
+    refresh.assert_not_awaited()
