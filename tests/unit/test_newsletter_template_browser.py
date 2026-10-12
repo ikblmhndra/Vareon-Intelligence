@@ -103,5 +103,7 @@ def test_the_logo_is_loaded_and_shown_at_28px_high_at_every_width(
     logo = _measure(browser, displayed_html, width)["logo"]
 
     assert logo["loaded"]
-    assert logo["natural"] == 2 * logo["width"]  # berkas 2x untuk layar retina
+    # Berkas 2x untuk layar retina. Berkasnya 211 px lebar dan ditampilkan 28 px tinggi, jadi lebar
+    # tampilnya 105,5 px yang dibulatkan jadi 106: selisih 1 px itu pembulatan, bukan salah ukuran.
+    assert abs(logo["natural"] - 2 * logo["width"]) <= 1
     assert (logo["width"], logo["height"]) == (106, 28)
