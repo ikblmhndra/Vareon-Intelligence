@@ -28,6 +28,10 @@ export interface RecapTopStory {
   title: string;
   why_it_matters?: string;
   source?: string;
+  /** Id artikel yang dipakai cerita ini dan URL-nya, ditulis KODE setelah grounding (PR 3). Recap
+   * lama tidak punya keduanya: judulnya tampil tanpa tautan. */
+  article_id?: number;
+  url?: string;
 }
 
 export interface RecapTopTweet {
@@ -43,6 +47,8 @@ export interface RecapActiveCampaign {
 }
 
 export interface RecapLikelyEvent {
+  /** `f1`, `f2`, ... menurut posisinya; kunci scorecard pekan berikutnya. Baris lama tidak punya. */
+  id?: string;
   event?: string;
   basis?: string;
   confidence?: string;
@@ -73,6 +79,97 @@ export interface RecapCounts {
   new_threat_actors?: number;
 }
 
+/** Penunjuk ke satu recap mingguan (`quality.comparison.previous`, `quality.scorecard.reviewed`). */
+export interface RecapWeekRef {
+  date: string;
+  period_start: string;
+  period_end: string;
+}
+
+/** Selisih satu kunci `counts`. `delta_pct` null kalau pekan lalu 0 (tak ada persen yang berarti). */
+export interface RecapCountDelta {
+  current: number;
+  previous: number;
+  delta: number;
+  delta_pct: number | null;
+}
+
+export interface RecapComparison {
+  previous: RecapWeekRef;
+  /** Kunci: `articles`, `tweets`, `iocs`, `cves`, `campaigns`, `new_threat_actors`. */
+  counts: Record<string, RecapCountDelta>;
+  new_this_week: { threat_actors?: string[]; campaigns?: string[]; cves?: string[] };
+}
+
+export type RecapDropReason = "not_in_input" | "malformed" | "no_article_id" | "unknown_article_id";
+
+/** Satu item keluaran model yang dibuang cek grounding; `field` mis. `top_stories`, `notable_cves`. */
+export interface RecapDropped {
+  field: string;
+  value: string;
+  reason: RecapDropReason | (string & {});
+}
+
+export interface RecapGrounding {
+  dropped: RecapDropped[];
+  count: number;
+}
+
+export type RecapVerdict = "happened" | "partly" | "not_happened" | "unclear";
+
+export interface RecapScorecardEvent {
+  /** Id event forecast pekan sebelumnya (`f1`, ...): bagian URL override. */
+  id: string;
+  event: string;
+  basis: string;
+  confidence: string;
+  /** Verdict MODEL; yang berlaku = `override?.verdict ?? verdict`. */
+  verdict: RecapVerdict;
+  evidence: string;
+  override?: { verdict: RecapVerdict; by: string; at: string };
+}
+
+export interface RecapScorecard {
+  /** Pekan yang forecast-nya di-review (pekan sebelum recap yang memuat scorecard ini). */
+  reviewed: RecapWeekRef;
+  events: RecapScorecardEvent[];
+}
+
+/** `RecapDoc.quality` (PR 3): tiap blok opsional (recap lama dan pekan pertama tidak punya). */
+export interface RecapQuality {
+  comparison?: RecapComparison;
+  grounding?: RecapGrounding;
+  scorecard?: RecapScorecard;
+}
+
+export interface RecapHitBucket {
+  events: number;
+  /** `events - unclear`: penyebut hit rate. */
+  judged: number;
+  unclear: number;
+  /** `happened` = 1, `partly` = 0.5, jadi bisa pecahan. */
+  hits: number;
+  /** null kalau belum ada event yang dinilai (`judged` = 0). */
+  rate_pct: number | null;
+}
+
+/** `hit_rate` di balasan `/latest`, `/{date}?kind=weekly`, dan override: 8 recap mingguan terakhir. */
+export interface RecapHitRate {
+  weeks: number;
+  reviewed_weeks: number;
+  first_week: string | null;
+  last_week: string | null;
+  overall: RecapHitBucket;
+  by_confidence: { low: RecapHitBucket; med: RecapHitBucket; high: RecapHitBucket };
+}
+
+/** Amplop balasan `/latest`, `/{date}`, `/generate` dan override. `hit_rate` hanya ada di yang
+ * mingguan (recap harian tidak punya scorecard) dan tidak ada di `/generate`. */
+export interface RecapEnvelope {
+  recap: RecapDoc | null;
+  hit_rate?: RecapHitRate;
+}
+
 /** `weekly` = recap terjadwal satu pekan Senin-Minggu (UTC), `date` = Senin-nya; `daily` = satu
  * hari yang dipicu tangan. Dua jenis boleh berbagi `date`, jadi semua baca/pilih menyebut `kind`. */
 export type RecapKind = "daily" | "weekly";
@@ -91,6 +188,8 @@ export interface RecapDoc {
   model: string;
   /** `skipped`: pekan tanpa artikel/tweet/CVE, tidak ada panggilan LLM. */
   token_usage: { total_tokens?: number; skipped?: boolean };
+  /** Selalu ada dari API, tapi `{}` di recap lama: semua bloknya opsional. */
+  quality?: RecapQuality;
   raw_llm: string | null;
   cached: boolean;
 }
