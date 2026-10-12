@@ -30,7 +30,10 @@ sini, bukan `AsyncClient`, konsisten sama itu."""
 
 from __future__ import annotations
 
+import base64
 import re
+from collections.abc import Sequence
+from dataclasses import dataclass
 
 import httpx
 import msal
@@ -45,6 +48,21 @@ class GraphSendError(Exception):
     """Graph API nolak permintaan kirim/draft email."""
 
 
+@dataclass(frozen=True)
+class InlineImage:
+    """Gambar yang dirujuk HTML lewat `<img src="cid:{content_id}">` dan dikirim sebagai lampiran
+    inline pada draft yang sama.
+
+    Dipilih daripada tautan ke domain luar karena Outlook memblokir gambar tertaut sampai pembaca
+    mengizinkannya, dan tautan putus kalau domainnya pindah. `name` adalah nama berkas yang
+    tampil kalau klien email menampilkan daftar lampiran."""
+
+    content_id: str
+    content_type: str
+    data: bytes
+    name: str
+
+
 def split_addresses(raw: str) -> list[str]:
     """Daftar alamat email dari satu string env (`GRAPH__CC`). Pemisah koma ATAU titik koma
     (`;` = format Outlook; tanpa ini `a@x.com;b@x.com` terkirim sebagai SATU alamat rusak dan
@@ -53,13 +71,36 @@ def split_addresses(raw: str) -> list[str]:
     return [addr.strip() for addr in re.split(r"[;,]", raw) if addr.strip()]
 
 
+def _inline_attachment(image: InlineImage) -> dict[str, object]:
+    """`fileAttachment` Graph untuk satu gambar inline. `contentId` yang dicari klien email saat
+    menemukan `cid:` di HTML; tanpa `isInline` Outlook menampilkannya sebagai lampiran biasa dan
+    gambarnya tidak muncul di badan pesan."""
+    return {
+        "@odata.type": "#microsoft.graph.fileAttachment",
+        "name": image.name,
+        "contentType": image.content_type,
+        "contentBytes": base64.b64encode(image.data).decode("ascii"),
+        "contentId": image.content_id,
+        "isInline": True,
+    }
+
+
 def create_graph_draft(
-    html_content: str, subject: str, *, settings: GraphSettings | None = None
+    html_content: str,
+    subject: str,
+    *,
+    settings: GraphSettings | None = None,
+    inline_images: Sequence[InlineImage] = (),
 ) -> str:
     """Bikin DRAFT message di mailbox `settings.sender` lewat Graph API
     (`POST /users/{sender}/messages`) -- port apa adanya, kode lama juga
     "draft" bukan "send" beneran (gak ada `/sendMail` call), analis yang
-    review+kirim manual dari Outlook. Return Graph message id."""
+    review+kirim manual dari Outlook. Return Graph message id.
+
+    `inline_images`: gambar yang dirujuk `html_content` lewat `cid:`, dikirim di request yang SAMA
+    (Graph menerima `attachments` saat membuat pesan, selama tiap lampiran di bawah ~3 MB; logo
+    newsletter beberapa KB). Kosong (default) = payload persis seperti sebelumnya, jadi pemanggil
+    lama (email CVE) tidak berubah."""
     settings = settings or get_settings().graph
 
     authority = f"https://login.microsoftonline.com/{settings.tenant_id}"
@@ -74,11 +115,13 @@ def create_graph_draft(
         )
 
     cc_list = [{"emailAddress": {"address": addr}} for addr in split_addresses(settings.cc)]
-    payload = {
+    payload: dict[str, object] = {
         "subject": subject,
         "body": {"contentType": "html", "content": html_content},
         "ccRecipients": cc_list,
     }
+    if inline_images:
+        payload["attachments"] = [_inline_attachment(image) for image in inline_images]
     resp2 = httpx.post(
         f"https://graph.microsoft.com/v1.0/users/{settings.sender}/messages",
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},

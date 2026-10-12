@@ -51,7 +51,7 @@ async def _cache_one_article(session: AsyncSession) -> dict[str, object]:
     article = (await newsletter_service.fetch_articles_by_ids(session, [article_id]))[article_id]
     await AsyncNewsletterRepo(session).upsert_article_summary(
         article_id=article_id,
-        language=newsletter_service.SUMMARY_LANGUAGE,
+        language="id",
         key_points=["poin"],
         summary="ringkasan",
         body_source="fetched",

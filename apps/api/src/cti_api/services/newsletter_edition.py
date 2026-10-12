@@ -1,5 +1,5 @@
 """Bentuk satu edisi newsletter yang tidak butuh IO: batas tier, pemisahan tier dari request, dan
-periode (bulan) yang diliput beserta labelnya.
+periode (bulan) yang diliput beserta label, rentang tanggal, dan subject-nya.
 
 Dipisah dari `newsletter.py` (DB, Playwright, LLM) supaya bisa dites tanpa Docker, dan supaya PR
 berikutnya (template, ranking, composer) mengimpor batas yang SAMA dari satu tempat, bukan
@@ -40,6 +40,14 @@ _MONTHS = (
 )
 """Daftar tetap, bukan `strftime("%B")`: nama bulan dari locale server bisa berbeda per mesin,
 dan label ini masuk ke subject/histori yang harus sama di mana pun dibuat."""
+
+_WEEKDAYS = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+
+_EN_DASH = "\u2013"
+"""Ditulis sebagai escape: ruff (RUF001) menandai EN DASH literal sebagai karakter yang mirip tanda
+hubung biasa, padahal di sini memang tanda pisah rentang."""
+
+SUBJECT_PREFIX = "[CTI Newsletter] Threat Intelligence Digest \u2014 "
 
 
 class SectionLimitError(ValueError):
@@ -130,3 +138,45 @@ def edition_label(
     if period_start is not None and period_end is not None:
         return period_label(period_start, period_end)
     return f"Week {week}, {year}"
+
+
+def period_range(start: datetime.date, end: datetime.date) -> str:
+    """Rentang tanggal untuk header, dipisah EN DASH: `1 - 31 October 2026`; lintas bulan
+    `28 September - 4 October 2026`; lintas tahun menyebut kedua tahun; satu hari saja
+    `1 October 2026`."""
+    first = f"{start.day} {_MONTHS[start.month - 1]}"
+    last = f"{end.day} {_MONTHS[end.month - 1]} {end.year}"
+    if start == end:
+        return last
+    if start.year != end.year:
+        first = f"{first} {start.year}"
+    elif start.month == end.month:
+        first = str(start.day)
+    return f"{first} {_EN_DASH} {last}"
+
+
+def long_date(day: datetime.date) -> str:
+    """Tanggal panjang seperti `Monday, 2 November 2026`; nama hari dan bulan dari daftar tetap,
+    bukan locale server."""
+    return f"{_WEEKDAYS[day.weekday()]}, {day.day} {_MONTHS[day.month - 1]} {day.year}"
+
+
+def short_date(value: object) -> str:
+    """`2026-10-20` jadi `20 Oct 2026` untuk baris artikel. Tanggal artikel datang sebagai teks
+    ISO (`posted_on`, kosong kalau sumbernya tidak memberi tanggal); yang bukan ISO dikembalikan
+    apa adanya dan yang kosong tetap kosong, supaya satu artikel aneh tidak menjatuhkan render."""
+    text = str(value or "")
+    try:
+        day = datetime.date.fromisoformat(text[:10])
+    except ValueError:
+        return text
+    return f"{day.day} {_MONTHS[day.month - 1][:3]} {day.year}"
+
+
+def newsletter_subject(
+    period_start: datetime.date | None, period_end: datetime.date | None, week: int, year: int
+) -> str:
+    """Subject email SATU tempat: dipakai `draft-email` (dari konteks) dan `resend` (dari baris
+    histori). "[CTI Newsletter] Threat Intelligence Digest — October 2026", atau "Week N, YYYY"
+    untuk baris lama tanpa periode. Dulu keduanya menulis "Week N" sendiri-sendiri."""
+    return SUBJECT_PREFIX + edition_label(period_start, period_end, week, year)
