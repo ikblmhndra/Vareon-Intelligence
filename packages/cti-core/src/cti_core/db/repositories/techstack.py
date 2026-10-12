@@ -159,6 +159,18 @@ class AsyncTechStackRepo:
             return None
         return [name for name, active in rows if active]
 
+    async def active_names_all_clients(self) -> list[str]:
+        """Nama entri AKTIF dari SEMUA client, unik dan urut. Persis himpunan yang dipakai
+        `cti_enrich.stages.score.score()` untuk menandai artikel yang menyebut tech terpantau,
+        versi async untuk API. Kosong = tidak ada tech terpantau (bukan "semua cocok")."""
+        result = await self.session.execute(
+            select(TechStackEntry.name)
+            .where(TechStackEntry.active.is_(True))
+            .distinct()
+            .order_by(TechStackEntry.name)
+        )
+        return list(result.scalars().all())
+
     async def all_names(self, client_id: str) -> list[str]:
         """Semua nama entri, aktif maupun nonaktif (`purge-orphaned`: yang disembunyikan BUKAN
         yatim, barisnya tidak boleh ikut terhapus)."""

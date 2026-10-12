@@ -1893,6 +1893,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/newsletter/suggestion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Suggestion
+         * @description Saran konten edisi newsletter. Tanpa parameter: edisi yang berakhir paling akhir. Dengan
+         *     `period_start` + `period_end`: saran untuk jendela PERSIS itu. 404 kalau belum ada.
+         */
+        get: operations["get_suggestion_api_newsletter_suggestion_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/newsletter/suggestion/rebuild": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rebuild Suggestion
+         * @description Bangun ulang saran satu jendela dengan tangan dan TIMPA saran tersimpan untuk jendela itu.
+         *     Tanpa body (atau tanpa tanggal): bulan kalender sebelumnya menurut zona laporan (WIB).
+         *     Dipakai analis kalau task terjadwal terlambat, atau data berubah setelah saran dibangun.
+         */
+        post: operations["rebuild_suggestion_api_newsletter_suggestion_rebuild_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/newsletter/{newsletter_id}/html": {
         parameters: {
             query?: never;
@@ -4384,6 +4427,103 @@ export interface components {
              * @description Article ids whose cached summary is rebuilt (page fetched, LLM called again) instead of reused. Only affects articles shown as full cards or highlights.
              */
             regenerate?: number[];
+        };
+        /** NewsletterSuggestionItem */
+        NewsletterSuggestionItem: {
+            /** @description The article as the Newsroom returns it, ready to join the composer queue. */
+            article: components["schemas"]["ArticleOut"];
+            /** Article Id */
+            article_id: number;
+            /**
+             * Rank
+             * @description 1-based overall rank; display order inside a tier follows it.
+             */
+            rank: number;
+            /**
+             * Reasons
+             * @description Why the article was suggested, from the largest contribution to the smallest.
+             */
+            reasons: components["schemas"]["NewsletterSuggestionReason"][];
+            /**
+             * Section
+             * @description The section the article belongs to: Indonesia if `ID` is among its victim or mentioned countries, else Asia Pacific if one of them is in the APAC set, else Global. Highlights are a tier, so a highlight keeps its natural section here.
+             * @enum {string}
+             */
+            section: "apac" | "global_news" | "indonesia";
+            /**
+             * Tier
+             * @description `highlight` = the Highlights block (top overall, at most 3, not repeated in its section), `full` = full card (at most 4 per section), `compact` = one-line row (at most 15 per section).
+             * @enum {string}
+             */
+            tier: "highlight" | "full" | "compact";
+        };
+        /** NewsletterSuggestionReason */
+        NewsletterSuggestionReason: {
+            /**
+             * Code
+             * @description Stable machine code: kev, poc, confirmed_incident, monitored_tech, client_country, indonesia, apac, coverage, source, confidence.
+             */
+            code: string;
+            /**
+             * Text
+             * @description Short English explanation shown to the analyst.
+             */
+            text: string;
+        };
+        /** NewsletterSuggestionRebuildBody */
+        NewsletterSuggestionRebuildBody: {
+            /**
+             * Period End
+             * @description Last day (inclusive) of the window; see `period_start`.
+             */
+            period_end?: string | null;
+            /**
+             * Period Start
+             * @description First day of the window. Give both `period_start` and `period_end`, or neither: the default is the previous calendar month in the report time zone (WIB).
+             */
+            period_start?: string | null;
+        };
+        /** NewsletterSuggestionResponse */
+        NewsletterSuggestionResponse: {
+            /**
+             * Created At
+             * @description When this suggestion was built (ISO 8601).
+             */
+            created_at: string;
+            /** Id */
+            id: number;
+            /**
+             * Items
+             * @description Ordered by `rank`. Articles that no longer exist are left out.
+             */
+            items: components["schemas"]["NewsletterSuggestionItem"][];
+            /**
+             * Label
+             * @description Edition label derived from the period ("October 2026").
+             */
+            label: string;
+            /**
+             * Period End
+             * Format: date
+             */
+            period_end: string;
+            /**
+             * Period Start
+             * Format: date
+             */
+            period_start: string;
+            /**
+             * Summary Meta
+             * @description Details about the summary (weeks used, token usage); empty until generated.
+             */
+            summary_meta: {
+                [key: string]: unknown;
+            };
+            /**
+             * Summary Text
+             * @description Suggested Executive Summary paragraph; empty until it is generated.
+             */
+            summary_text: string;
         };
         /** PIRArticleListResponse */
         PIRArticleListResponse: {
@@ -9856,6 +9996,75 @@ export interface operations {
                             [key: string]: unknown;
                         };
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_suggestion_api_newsletter_suggestion_get: {
+        parameters: {
+            query?: {
+                period_start?: string | null;
+                period_end?: string | null;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NewsletterSuggestionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rebuild_suggestion_api_newsletter_suggestion_rebuild_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["NewsletterSuggestionRebuildBody"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NewsletterSuggestionResponse"];
                 };
             };
             /** @description Validation Error */

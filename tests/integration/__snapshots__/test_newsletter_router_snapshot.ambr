@@ -62,6 +62,207 @@
     'year': 2026,
   })
 # ---
+# name: test_rebuild_builds_the_previous_month_and_get_returns_the_same_suggestion
+  dict({
+    'created_at': str,
+    'id': int,
+    'items': list([
+      dict({
+        'article': dict({
+          'actor_countries': list([
+          ]),
+          'confidence_score': 85,
+          'id': int,
+          'impacted_industries': list([
+          ]),
+          'iocs': dict({
+          }),
+          'mentioned_countries': list([
+          ]),
+          'month': '2026-10',
+          'news_type': '',
+          'posted_on': '2026-10-20',
+          'source': 'CISA',
+          'threat_actors': list([
+          ]),
+          'title': 'Fortinet zero-day CVE-2026-1111 exploited in the wild',
+          'ttps': list([
+          ]),
+          'url': 'https://example.com/zero_day',
+          'victim_countries': list([
+          ]),
+          'week': '2026-W43',
+          'year': 2026,
+        }),
+        'article_id': int,
+        'rank': 1,
+        'reasons': list([
+          dict({
+            'code': 'kev',
+            'text': 'Mentions CVE-2026-1111 in the CISA KEV catalog',
+          }),
+          dict({
+            'code': 'monitored_tech',
+            'text': 'Mentions monitored tech: Fortinet',
+          }),
+          dict({
+            'code': 'confidence',
+            'text': 'Confidence score 85/100',
+          }),
+          dict({
+            'code': 'source',
+            'text': 'Source reliability grade A',
+          }),
+        ]),
+        'section': 'global_news',
+        'tier': 'highlight',
+      }),
+      dict({
+        'article': dict({
+          'actor_countries': list([
+          ]),
+          'confidence_score': 90,
+          'id': int,
+          'impacted_industries': list([
+          ]),
+          'iocs': dict({
+          }),
+          'mentioned_countries': list([
+            'ID',
+          ]),
+          'month': '2026-10',
+          'news_type': '',
+          'posted_on': '2026-10-12',
+          'source': 'BleepingComputer',
+          'threat_actors': list([
+          ]),
+          'title': 'Indonesian bank breached by ransomware crew',
+          'ttps': list([
+          ]),
+          'url': 'https://example.com/bank',
+          'victim_countries': list([
+            'ID',
+          ]),
+          'week': '2026-W42',
+          'year': 2026,
+        }),
+        'article_id': int,
+        'rank': 2,
+        'reasons': list([
+          dict({
+            'code': 'indonesia',
+            'text': 'Indonesia is a victim country',
+          }),
+          dict({
+            'code': 'confirmed_incident',
+            'text': 'Confirmed incident',
+          }),
+          dict({
+            'code': 'confidence',
+            'text': 'Confidence score 90/100',
+          }),
+          dict({
+            'code': 'source',
+            'text': 'Source reliability grade B',
+          }),
+        ]),
+        'section': 'indonesia',
+        'tier': 'highlight',
+      }),
+      dict({
+        'article': dict({
+          'actor_countries': list([
+          ]),
+          'confidence_score': 75,
+          'id': int,
+          'impacted_industries': list([
+          ]),
+          'iocs': dict({
+          }),
+          'mentioned_countries': list([
+          ]),
+          'month': '2026-10',
+          'news_type': '',
+          'posted_on': '2026-10-03',
+          'source': 'Wired',
+          'threat_actors': list([
+          ]),
+          'title': 'Japanese manufacturer hit by supply chain attack',
+          'ttps': list([
+          ]),
+          'url': 'https://example.com/factory',
+          'victim_countries': list([
+            'JP',
+          ]),
+          'week': '2026-W40',
+          'year': 2026,
+        }),
+        'article_id': int,
+        'rank': 3,
+        'reasons': list([
+          dict({
+            'code': 'apac',
+            'text': 'Victim in APAC: JP',
+          }),
+          dict({
+            'code': 'confidence',
+            'text': 'Confidence score 75/100',
+          }),
+          dict({
+            'code': 'source',
+            'text': 'Source reliability grade C',
+          }),
+        ]),
+        'section': 'apac',
+        'tier': 'highlight',
+      }),
+      dict({
+        'article': dict({
+          'actor_countries': list([
+          ]),
+          'confidence_score': 60,
+          'id': int,
+          'impacted_industries': list([
+          ]),
+          'iocs': dict({
+          }),
+          'mentioned_countries': list([
+          ]),
+          'month': '2026-10',
+          'news_type': '',
+          'posted_on': '2026-10-25',
+          'source': 'Random Blog',
+          'threat_actors': list([
+          ]),
+          'title': 'Quiet security roundup for the week',
+          'ttps': list([
+          ]),
+          'url': 'https://example.com/roundup',
+          'victim_countries': list([
+          ]),
+          'week': '2026-W43',
+          'year': 2026,
+        }),
+        'article_id': int,
+        'rank': 4,
+        'reasons': list([
+          dict({
+            'code': 'confidence',
+            'text': 'Confidence score 60/100',
+          }),
+        ]),
+        'section': 'global_news',
+        'tier': 'full',
+      }),
+    ]),
+    'label': 'October 2026',
+    'period_end': '2026-10-31',
+    'period_start': '2026-10-01',
+    'summary_meta': dict({
+    }),
+    'summary_text': '',
+  })
+# ---
 # name: test_resend_newsletter
   dict({
     'email_id': 'graph-msg-1',

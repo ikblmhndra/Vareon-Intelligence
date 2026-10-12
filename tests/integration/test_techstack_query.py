@@ -155,3 +155,20 @@ async def test_get_risk_context(async_db_session: AsyncSession) -> None:
     ctx = await repo.get_risk_context("default")
     assert ctx["nginx"] == {"exposure": "public", "hosting_type": "cloud"}
     assert ctx["apache struts"] == {"exposure": "internal", "hosting_type": "on_prem"}
+
+
+async def test_active_names_all_clients_is_the_distinct_union_of_active_entries(
+    async_db_session: AsyncSession,
+) -> None:
+    await _ensure_clients(async_db_session)
+    repo = AsyncTechStackRepo(async_db_session)
+    assert await repo.active_names_all_clients() == []
+
+    default_fortinet, _ = await repo.create(name="Fortinet", client_id="default")
+    await repo.create(name="Nginx", client_id="default")
+    await repo.create(name="Fortinet", client_id="acme")  # nama sama di client lain: sekali
+    hidden, _ = await repo.create(name="Zabbix", client_id="acme")
+    assert default_fortinet is not None and hidden is not None
+    await repo.set_active(hidden.id, "acme", False)  # nonaktif = disembunyikan, bukan dipantau
+
+    assert await repo.active_names_all_clients() == ["Fortinet", "Nginx"]

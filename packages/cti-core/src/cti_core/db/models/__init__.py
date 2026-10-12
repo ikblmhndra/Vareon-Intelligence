@@ -43,6 +43,7 @@ from cti_core.db.models.newsletter import (
     Newsletter,
     NewsletterArticleSummary,
     NewsletterPaywallHint,
+    NewsletterSuggestion,
 )
 from cti_core.db.models.package import MonitoredPackage, PackageDepGraph, PackageVuln
 from cti_core.db.models.pir import PIRNote, PIRRequirement
@@ -107,6 +108,7 @@ __all__ = [
     "Newsletter",
     "NewsletterArticleSummary",
     "NewsletterPaywallHint",
+    "NewsletterSuggestion",
     "PIRNote",
     "PIRRequirement",
     "PackageDepGraph",

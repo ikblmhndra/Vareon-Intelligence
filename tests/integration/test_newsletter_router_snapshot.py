@@ -1,7 +1,7 @@
 """Snapshot test `routers/newsletter.py` -- Fase 7.6 (lanjutan pola
 pilot `test_cve_router_snapshot.py`).
 
-Dua gaya di file ini:
+Tiga gaya di file ini:
 - Test bentuk respons (snapshot): `_enrich_articles()` (Playwright browser real + LLM
   summarization) di-mock, titik yang SAMA persis kayak `test_newsletter_clusters.py` yang
   udah ada. `create_graph_draft` (imported LANGSUNG ke namespace `cti_api.routers.newsletter`,
@@ -10,23 +10,32 @@ Dua gaya di file ini:
 - Test alur (ROADMAP #22, PR 5): `_enrich_articles` dibiarkan JALAN beneran supaya cache
   ringkasan, urutan simpan, dan penulisan IOC/CVE terukur; yang di-stub hanya fetch Playwright,
   klien LLM, dan Graph (`newsletter_stubs`). Yang dibuktikan di sana adalah JUMLAH panggilan dan
-  isi tabel, bukan bentuk JSON."""
+  isi tabel, bukan bentuk JSON.
+- Test saran konten (ROADMAP #22, PR 7): artikel sungguhan di DB, cluster kampanye dimatikan dan
+  jam dipatok (`no_campaigns`, `suggestion_clock`); satu snapshot untuk bentuk respons, sisanya
+  asersi perilaku (timpa saat rebuild, "terbaru", validasi, audit)."""
 
 from __future__ import annotations
 
 import datetime
 from collections.abc import Callable
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import structlog
+from cti_api.schemas.newsletter import NewsletterSectionsBody
 from cti_api.services import newsletter as newsletter_service
-from cti_core.db.models.cve import CveNewsletterMention
+from cti_api.services import newsletter_edition
+from cti_core.db.models.article import Article
+from cti_core.db.models.auth import AuditLogEntry
+from cti_core.db.models.cve import CveNewsletterMention, CveTracker
 from cti_core.db.models.ioc import IOC
-from cti_core.db.models.newsletter import Newsletter, NewsletterArticleSummary
+from cti_core.db.models.newsletter import Newsletter, NewsletterArticleSummary, NewsletterSuggestion
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.auth import AsyncClientRepo
 from cti_core.db.repositories.newsletter import AsyncNewsletterRepo
+from cti_core.db.repositories.techstack import AsyncTechStackRepo
 from httpx import AsyncClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,9 +43,11 @@ from syrupy.assertion import SnapshotAssertion
 from syrupy.matchers import path_type
 
 from tests.integration.newsletter_stubs import (
+    no_campaigns,
     patched_pipeline,
     seed_articles,
     seed_true_positive_cve,
+    suggestion_clock,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -547,3 +558,314 @@ async def test_newsletter_history_label(
     assert resp.status_code == 200
     assert [i["label"] for i in resp.json()["newsletters"]] == ["October 2026", "Week 38, 2026"]
     assert resp.json() == snapshot(matcher=_NORMALIZE)
+
+
+# ── Saran konten (ROADMAP #22, PR 7) ─────────────────────────────────────────────────────────────
+
+_SUGGESTION_NORMALIZE = path_type(
+    {
+        r"(.*\.)?id$": (int,),
+        r"(.*\.)?article_id$": (int,),
+        r"(.*\.)?created_at$": (str,),
+    },
+    regex=True,
+    strict=False,
+)
+
+_OCTOBER = {"period_start": "2026-10-01", "period_end": "2026-10-31"}
+_SUGGESTION = "/api/newsletter/suggestion"
+_REBUILD = "/api/newsletter/suggestion/rebuild"
+
+
+async def _seed_october(session: AsyncSession) -> dict[str, int]:
+    """Satu client (negara SG, tech Fortinet), satu CVE KEV, dan enam artikel dengan skor berbeda
+    supaya urutannya tidak bergantung id: tiga highlight, satu kartu penuh, satu tanpa sinyal,
+    satu di luar jendela."""
+    clients = AsyncClientRepo(session)
+    await clients.ensure_default()
+    await clients.update("default", name="Default", countries=["SG"])
+    await AsyncTechStackRepo(session).create(name="Fortinet", client_id="default")
+    session.add(
+        CveTracker(cve_id="CVE-2026-1111", client_id="default", tech="Fortinet", cisa_kev=True)
+    )
+    await session.flush()
+    repo = AsyncArticleRepo(session)
+    day = datetime.date
+    specs = [
+        (
+            "bank",
+            "Indonesian bank breached by ransomware crew",
+            "BleepingComputer",
+            day(2026, 10, 12),
+            90,
+            True,
+            [("ID", "victim"), ("ID", "mentioned")],
+        ),
+        (
+            "zero_day",
+            "Fortinet zero-day CVE-2026-1111 exploited in the wild",
+            "CISA",
+            day(2026, 10, 20),
+            85,
+            False,
+            [],
+        ),
+        (
+            "factory",
+            "Japanese manufacturer hit by supply chain attack",
+            "Wired",
+            day(2026, 10, 3),
+            75,
+            False,
+            [("JP", "victim")],
+        ),
+        (
+            "roundup",
+            "Quiet security roundup for the week",
+            "Random Blog",
+            day(2026, 10, 25),
+            60,
+            False,
+            [],
+        ),
+        ("noise", "Phishing kit sold on a forum", "Random Blog", day(2026, 10, 28), 40, False, []),
+        (
+            "september",
+            "A September story outside the window",
+            "CISA",
+            day(2026, 9, 30),
+            95,
+            True,
+            [],
+        ),
+    ]
+    ids = {}
+    for name, title, source, posted_on, confidence, confirmed, countries in specs:
+        article = await repo.upsert(
+            url=f"https://example.com/{name}",
+            title=title,
+            source=source,
+            posted_on=posted_on,
+            confidence_score=confidence,
+            confirmed_incident=confirmed,
+        )
+        if countries:
+            await repo.set_enrichment(article, countries=countries)
+        ids[name] = article.id
+    return ids
+
+
+async def _rebuild(
+    api_client: AsyncClient,
+    auth_header: Callable[..., dict[str, str]],
+    body: dict[str, object] | None = None,
+) -> Any:
+    with suggestion_clock(), no_campaigns():
+        return await api_client.post(_REBUILD, headers=auth_header(), json=body)
+
+
+async def test_suggestion_is_a_404_until_one_has_been_built(
+    api_client: AsyncClient, auth_header: Callable[..., dict[str, str]]
+) -> None:
+    latest = await api_client.get(_SUGGESTION, headers=auth_header())
+    exact = await api_client.get(_SUGGESTION, params=_OCTOBER, headers=auth_header())
+
+    assert (latest.status_code, exact.status_code) == (404, 404)
+    assert latest.json() == {"detail": "No newsletter suggestion found"}
+
+
+async def test_rebuild_builds_the_previous_month_and_get_returns_the_same_suggestion(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+    snapshot: SnapshotAssertion,
+) -> None:
+    ids = await _seed_october(api_session)
+
+    built = await _rebuild(api_client, auth_header)  # tanpa body: bulan sebelum 2 Nov 2026
+
+    assert built.status_code == 200
+    body = built.json()
+    assert body == snapshot(matcher=_SUGGESTION_NORMALIZE)
+    assert [i["article_id"] for i in body["items"]] == [
+        ids["zero_day"],
+        ids["bank"],
+        ids["factory"],
+        ids["roundup"],
+    ]  # `noise` tanpa sinyal dan `september` di luar jendela tidak ikut
+    latest = await api_client.get(_SUGGESTION, headers=auth_header())
+    exact = await api_client.get(_SUGGESTION, params=_OCTOBER, headers=auth_header())
+    assert latest.status_code == exact.status_code == 200
+    assert latest.json() == exact.json() == body
+    other = await api_client.get(
+        _SUGGESTION,
+        params={"period_start": "2026-09-01", "period_end": "2026-09-30"},
+        headers=auth_header(),
+    )
+    assert other.status_code == 404  # jendela PERSIS, bukan yang beririsan
+
+
+async def test_rebuild_accepts_an_empty_object_and_an_explicit_window(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Callable[..., dict[str, str]]
+) -> None:
+    await _seed_october(api_session)
+
+    empty = await _rebuild(api_client, auth_header, {})
+    explicit = await _rebuild(api_client, auth_header, _OCTOBER)
+    narrower = await _rebuild(
+        api_client, auth_header, {"period_start": "2026-10-10", "period_end": "2026-10-15"}
+    )
+
+    assert empty.status_code == explicit.status_code == narrower.status_code == 200
+    assert empty.json()["id"] == explicit.json()["id"]  # default = Oktober = jendela yang sama
+    assert [i["rank"] for i in narrower.json()["items"]] == [1]  # hanya `bank` di 10-15 Okt
+    assert narrower.json()["label"] == "October 2026"
+    assert await api_session.scalar(select(func.count()).select_from(NewsletterSuggestion)) == 2
+
+
+async def test_rebuilding_replaces_the_stored_suggestion_for_that_exact_window(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Callable[..., dict[str, str]]
+) -> None:
+    ids = await _seed_october(api_session)
+    first = (await _rebuild(api_client, auth_header)).json()
+    assert ids["noise"] not in [i["article_id"] for i in first["items"]]
+    await AsyncArticleRepo(api_session).set_overrides(
+        await api_session.get_one(Article, ids["noise"]), confirmed_incident=True
+    )
+
+    second = (await _rebuild(api_client, auth_header)).json()
+
+    assert second["id"] == first["id"]
+    assert second["items"][0]["article_id"] == ids["zero_day"]
+    assert ids["noise"] in [i["article_id"] for i in second["items"]]
+    assert await api_session.scalar(select(func.count()).select_from(NewsletterSuggestion)) == 1
+
+
+async def test_latest_is_the_window_that_ends_last_even_when_an_older_one_was_rebuilt_later(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Callable[..., dict[str, str]]
+) -> None:
+    await _seed_october(api_session)
+    october = (await _rebuild(api_client, auth_header)).json()
+    september = await _rebuild(
+        api_client, auth_header, {"period_start": "2026-09-01", "period_end": "2026-09-30"}
+    )
+    assert september.status_code == 200 and september.json()["id"] != october["id"]
+
+    latest = await api_client.get(_SUGGESTION, headers=auth_header())
+
+    assert latest.json()["id"] == october["id"]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"period_start": "2026-10-01"},
+        {"period_end": "2026-10-31"},
+        {"period_start": "2026-10-31", "period_end": "2026-10-01"},
+        {"period_start": "2026-01-01", "period_end": "2026-12-31"},
+        {"period_start": "2026-08-01", "period_end": "2026-11-02"},  # 94 hari: satu terlalu panjang
+        {"period_start": "bukan-tanggal", "period_end": "2026-10-31"},
+    ],
+)
+async def test_rebuild_rejects_a_malformed_window_and_stores_nothing(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+    body: dict[str, object],
+) -> None:
+    resp = await _rebuild(api_client, auth_header, body)
+
+    assert resp.status_code == 422
+    assert await api_session.scalar(select(func.count()).select_from(NewsletterSuggestion)) == 0
+
+
+async def test_the_longest_allowed_window_is_93_days(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Callable[..., dict[str, str]]
+) -> None:
+    resp = await _rebuild(
+        api_client, auth_header, {"period_start": "2026-08-01", "period_end": "2026-11-01"}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["label"] == "August - November 2026"
+
+
+@pytest.mark.parametrize("params", [{"period_start": "2026-10-01"}, {"period_end": "2026-10-31"}])
+async def test_get_needs_both_dates_or_neither(
+    api_client: AsyncClient, auth_header: Callable[..., dict[str, str]], params: dict[str, str]
+) -> None:
+    resp = await api_client.get(_SUGGESTION, params=params, headers=auth_header())
+    assert resp.status_code == 422
+
+
+async def test_both_suggestion_endpoints_require_login(api_client: AsyncClient) -> None:
+    assert (await api_client.get(_SUGGESTION)).status_code == 401
+    assert (await api_client.post(_REBUILD, json={})).status_code == 401
+
+
+async def test_rebuild_is_written_to_the_audit_log(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Callable[..., dict[str, str]]
+) -> None:
+    await _seed_october(api_session)
+    with suggestion_clock(), no_campaigns():
+        resp = await api_client.post(_REBUILD, headers=auth_header("rina"), json={})
+
+    entry = (
+        await api_session.execute(
+            select(AuditLogEntry).where(AuditLogEntry.action == "rebuild_newsletter_suggestion")
+        )
+    ).scalar_one()
+    assert entry.username == "rina"
+    assert entry.target_id == str(resp.json()["id"])
+    assert entry.detail == {**_OCTOBER, "items": 4}
+
+
+async def test_items_whose_article_was_deleted_are_left_out_of_the_response(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Callable[..., dict[str, str]]
+) -> None:
+    ids = await _seed_october(api_session)
+    await _rebuild(api_client, auth_header)
+    await api_session.delete(await api_session.get_one(Article, ids["bank"]))
+    await api_session.flush()
+
+    resp = await api_client.get(_SUGGESTION, headers=auth_header())
+
+    assert [i["article_id"] for i in resp.json()["items"]] == [
+        ids["zero_day"],
+        ids["factory"],
+        ids["roundup"],
+    ]
+
+
+async def test_suggestion_items_map_straight_onto_the_tier_request_fields(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Callable[..., dict[str, str]]
+) -> None:
+    """Kontrak dengan PR 5/9: `highlights`, `<section>_full`, `<section>_compact` dan batasnya."""
+    await AsyncClientRepo(api_session).ensure_default()
+    repo = AsyncArticleRepo(api_session)
+    for n in range(66):
+        country = ("ID", "JP", "US")[n % 3]
+        article = await repo.upsert(
+            url=f"https://example.com/many-{n}",
+            title=f"many{n:03d} headline{n:03d}",
+            source="CISA",
+            posted_on=datetime.date(2026, 10, 1 + n % 28),
+            confidence_score=100,
+            confirmed_incident=True,
+        )
+        await repo.set_enrichment(article, countries=[(country, "victim")])
+
+    resp = await _rebuild(api_client, auth_header)
+
+    items = resp.json()["items"]
+    request: dict[str, list[int]] = {"highlights": []}
+    for section in newsletter_edition.SECTIONS:
+        request[f"{section}_full"] = []
+        request[f"{section}_compact"] = []
+    for item in items:
+        key = "highlights" if item["tier"] == "highlight" else f"{item['section']}_{item['tier']}"
+        request[key].append(item["article_id"])
+    body = NewsletterSectionsBody(**request)  # tidak ada ValidationError
+    plan = newsletter_edition.plan_sections(body)  # dan tidak ada SectionLimitError
+    assert len(plan.highlights) == 3
+    assert all(len(plan.full[s]) == 4 and len(plan.compact[s]) == 15 for s in plan.full)
+    assert len(items) == 60
