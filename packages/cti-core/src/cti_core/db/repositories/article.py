@@ -509,6 +509,30 @@ class AsyncArticleRepo:
         articles = list(result.scalars().unique().all())
         return articles, total
 
+    async def list_top_between(
+        self, start: datetime.date, end: datetime.date, *, limit: int
+    ) -> tuple[list[Article], int]:
+        """`(artikel terkuat dengan posted_on di [start, end], maksimal `limit`, total sebenarnya)`.
+
+        Dipakai recap mingguan: yang masuk prompt dipilih DI SQL (`LIMIT`), bukan dimuat semua
+        (seminggu bisa ribuan artikel, tiap baris menarik empat tabel anak lewat selectin). Urutan
+        sinyal yang ada di kolom: insiden terkonfirmasi, lalu `confidence_score` (NULL terakhir),
+        lalu terbaru. Sinyal yang tidak ada di kolom (keandalan sumber, ukuran klaster) dipakai
+        pemanggil untuk menyusun ulang kumpulan kandidat ini."""
+        window = select(Article).where(Article.posted_on >= start, Article.posted_on <= end)
+        total = (
+            await self.session.execute(select(func.count()).select_from(window.subquery()))
+        ).scalar_one()
+        result = await self.session.execute(
+            window.order_by(
+                Article.confirmed_incident.desc(),
+                Article.confidence_score.desc().nulls_last(),
+                Article.posted_on.desc(),
+                Article.id.desc(),
+            ).limit(limit)
+        )
+        return list(result.scalars().all()), total
+
     async def get_filter_options(self) -> dict[str, Any]:
         """Port `article_service.get_filter_options()`. Distinct langsung
         dari kolom/tabel anak yang udah ternormalisasi -- gak butuh

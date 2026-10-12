@@ -174,6 +174,20 @@ class AsyncIOCRepo:
         )
         return list(result.scalars().all())
 
+    async def count_first_seen_by_type_between(
+        self, start: datetime.date, end: datetime.date
+    ) -> dict[str, int]:
+        """IOC yang PERTAMA ketemu di `[start, end]` (inklusif), dihitung per `type` lewat
+        GROUP BY: recap mingguan cuma butuh hitungan per tipe, jadi barisnya tidak perlu dimuat
+        (seminggu bisa ribuan). Tanggalnya `func.date(timestamptz)`, jadi mengikuti timezone sesi
+        DB seperti `list_first_seen_on`."""
+        result = await self.session.execute(
+            select(IOC.type, func.count())
+            .where(func.date(IOC.first_seen_at).between(start, end))
+            .group_by(IOC.type)
+        )
+        return {ioc_type: n for ioc_type, n in result.all()}
+
     async def list_needing_decay(self, cutoff: datetime.datetime, *, limit: int = 500) -> list[IOC]:
         """Port query `decay_sweep()` (`ioc_service.py` lama) -- IOC yang
         confidence-nya belum PERNAH dihitung ulang (`confidence_decayed_at`
