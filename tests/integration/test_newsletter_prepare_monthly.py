@@ -66,10 +66,19 @@ def _patched_llm(llm: CountingLlm) -> Any:
     )
 
 
-def _patched_broken_llm(message: str = "gateway down") -> Any:
-    """LLM yang melempar RuntimeError di setiap panggilan (gateway mati)."""
+class AuthenticationError(Exception):
+    """Seperti `openai.AuthenticationError`: kode HTTP di exception, pesannya memuat kunci."""
+
+    status_code = 401
+
+
+SECRET = "sk-live-FAKE0123456789abcdef"
+
+
+def _patched_broken_llm(exc: Exception | None = None) -> Any:
+    """LLM yang melempar `exc` (default `RuntimeError`) di setiap panggilan (gateway mati)."""
     broken = MagicMock()
-    broken.chat.completions.create.side_effect = RuntimeError(message)
+    broken.chat.completions.create.side_effect = exc or RuntimeError("gateway down")
     return patch.object(
         newsletter_summary, "get_llm_client", MagicMock(return_value=(broken, "stub-model"))
     )
@@ -251,18 +260,19 @@ async def test_a_failing_llm_keeps_the_ranking_and_records_the_error(
         result = await newsletter_schedule.prepare_monthly(async_db_session, NOW)
 
     assert result["prepared"] is True and result["items"] == 2 and result["summary"] is False
-    assert result["summary_error"] == "RuntimeError: gateway down"
+    assert result["summary_error"] == "RuntimeError"
     [row] = await _suggestions(async_db_session)
     assert sorted(i["article_id"] for i in row.items) == sorted(ids[:2])
     assert row.summary_text == ""
     meta = row.summary_meta
-    assert meta["error"] == "RuntimeError: gateway down"
+    assert meta["error"] == "RuntimeError"
     assert meta["token_usage"] == {"skipped": True, "reason": "llm_error"}
     assert meta["parse_failed"] is False and meta["model"] == "" and meta["dropped"] == []
     assert len(meta["weeks"]) == 5 and meta["uncovered"] == []  # yang dihitung dari recap tetap ada
     events = {e["event"]: e for e in logs}
     assert events["newsletter_summary_failed"]["log_level"] == "warning"
-    assert events["newsletter_prepared"]["summary_error"] == "RuntimeError: gateway down"
+    assert events["newsletter_prepared"]["summary_error"] == "RuntimeError"
+    assert events["newsletter_summary_failed"]["detail"] == "gateway down"
 
 
 async def test_the_next_catch_up_day_redoes_only_the_summary_and_clears_the_error(
@@ -305,7 +315,7 @@ async def test_a_summary_that_keeps_failing_is_retried_each_day_until_the_window
     await _seed_articles(async_db_session)
     await _seed_recaps(async_db_session)
 
-    with _patched_broken_llm("down"), no_campaigns():
+    with _patched_broken_llm(AuthenticationError(f"bad key {SECRET}")), no_campaigns():
         await newsletter_schedule.prepare_monthly(async_db_session, NOW)  # Senin 2 Nov
         retried = await newsletter_schedule.prepare_monthly(
             async_db_session, NOW + datetime.timedelta(days=1)
@@ -316,7 +326,7 @@ async def test_a_summary_that_keeps_failing_is_retried_each_day_until_the_window
         )
 
     assert retried["summary_retried"] is True
-    assert retried["summary_error"] == "RuntimeError: down"
+    assert retried["summary_error"] == "AuthenticationError (HTTP 401)"
     assert closed == {"prepared": False, "period_start": "2026-10-01"}  # sesudah jendela: manual
 
 
@@ -427,14 +437,19 @@ async def test_rebuild_during_an_llm_outage_answers_200_with_the_ranking_and_the
     ids = await _seed_articles(api_session)
     await _seed_recaps(api_session)
 
-    with suggestion_clock(), no_campaigns(), _patched_broken_llm("gateway down"):
+    with (
+        suggestion_clock(),
+        no_campaigns(),
+        _patched_broken_llm(AuthenticationError(f"Incorrect API key provided: {SECRET}")),
+    ):
         resp = await api_client.post(_REBUILD, headers=auth_header("rina"), json={})
 
     assert resp.status_code == 200
     body = resp.json()
     assert sorted(i["article_id"] for i in body["items"]) == sorted(ids[:2])
     assert body["summary_text"] == ""
-    assert body["summary_meta"]["error"] == "RuntimeError: gateway down"
+    assert body["summary_meta"]["error"] == "AuthenticationError (HTTP 401)"
+    assert SECRET not in resp.text  # nama kelas dan kode saja, tidak pernah pesan klien
     assert body["summary_meta"]["token_usage"] == {"skipped": True, "reason": "llm_error"}
     assert len(body["summary_meta"]["weeks"]) == 5
     entry = (
@@ -445,6 +460,7 @@ async def test_rebuild_during_an_llm_outage_answers_200_with_the_ranking_and_the
     assert entry.username == "rina" and entry.target_id == str(body["id"])
     stored = await AsyncNewsletterRepo(api_session).get_suggestion(*OCTOBER)
     assert stored is not None and stored.summary_meta["error"] == body["summary_meta"]["error"]
+    assert SECRET not in json.dumps(stored.summary_meta)  # juga tidak di DB
 
     # gateway pulih: rebuild berikutnya mengisi ringkasan dan menghapus `error`
     healed = await _rebuild(api_client, auth_header, CountingLlm())

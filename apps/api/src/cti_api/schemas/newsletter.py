@@ -273,9 +273,10 @@ class NewsletterSuggestionResponse(BaseModel):
             "week covers, e.g. the last days of a month whose final week is not finished yet), "
             "`model`, `token_usage` (`skipped` with a `reason` when no call was made: `no_recaps` "
             "or `llm_error`), `dropped` (items removed or replaced by the grounding check), "
-            "`parse_failed` and `error` (null normally; `ExceptionName: message` when the model "
-            "call failed, in which case the ranked items are still there and the summary is "
-            "empty until the next scheduled retry or a rebuild)."
+            "`parse_failed` and `error` (null normally; the exception class name, plus ` (HTTP "
+            "<code>)` when it carries one, e.g. `RateLimitError (HTTP 429)`, when the model call "
+            "failed: never the exception message. The ranked items are still there and the "
+            "summary is empty until the next scheduled retry or a rebuild)."
         )
     )
     created_at: str = Field(description="When this suggestion was built (ISO 8601).")

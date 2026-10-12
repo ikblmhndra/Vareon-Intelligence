@@ -289,7 +289,8 @@ async def test_a_gateway_failure_is_recorded_not_raised_so_the_ranking_is_not_lo
 
     assert text == ""
     assert broken.chat.completions.create.call_count == 1
-    assert meta["error"] == "RuntimeError: gateway down"
+    assert meta["error"] == "RuntimeError"  # nama kelasnya saja, tanpa pesan
+    assert "gateway down" not in json.dumps(meta)
     assert meta["token_usage"] == {"skipped": True, "reason": "llm_error"}
     assert meta["parse_failed"] is False and meta["dropped"] == [] and meta["model"] == ""
     # yang dihitung dari recap tetap ada, supaya composer bisa menampilkan apa yang dicakup
@@ -298,6 +299,7 @@ async def test_a_gateway_failure_is_recorded_not_raised_so_the_ranking_is_not_lo
     assert meta["uncovered"] == [{"start": "2026-10-12", "end": "2026-10-31"}]
     [failed] = [e for e in logs if e["event"] == "newsletter_summary_failed"]
     assert failed["log_level"] == "warning" and failed["error"] == meta["error"]
+    assert failed["detail"] == "gateway down"  # pesannya hanya ada di log server
 
 
 async def test_the_meta_has_the_same_keys_on_every_path(
@@ -315,18 +317,45 @@ async def test_the_meta_has_the_same_keys_on_every_path(
     shapes.append(await _generate())  # gagal
 
     assert len({frozenset(meta) for _, meta in shapes}) == 1
-    assert [meta["error"] for _, meta in shapes] == [None, None, None, "RuntimeError: x"]
+    assert [meta["error"] for _, meta in shapes] == [None, None, None, "RuntimeError"]
+
+
+SECRET = "sk-live-FAKE0123456789abcdef"
+"""Kunci palsu yang dibawa pesan error stub: tidak boleh sampai ke `summary_meta`."""
+
+
+class AuthenticationError(Exception):
+    """Seperti `openai.AuthenticationError`: `status_code` ada di exception-nya."""
+
+    status_code = 401
+
+
+class RateLimitError(Exception):
+    """Seperti klien yang hanya menaruh kode di `response.status_code`."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+        self.response = SimpleNamespace(status_code=429, headers={"authorization": SECRET})
+
+
+class APITimeoutError(Exception):
+    pass
 
 
 @pytest.mark.parametrize(
     ("exc", "expected"),
     [
-        (TimeoutError(), "TimeoutError"),  # tanpa pesan: namanya saja
-        (RuntimeError("one\n  two\tthree"), "RuntimeError: one two three"),  # satu baris
-        (ValueError("x" * 500), "ValueError: " + "x" * summary.ERROR_CLIP),  # dipotong
+        (
+            AuthenticationError(f"Incorrect API key provided: {SECRET}"),
+            "AuthenticationError (HTTP 401)",
+        ),
+        (RateLimitError(f"slow down, key {SECRET}"), "RateLimitError (HTTP 429)"),
+        (APITimeoutError(f"Request timed out for {SECRET}"), "APITimeoutError"),
+        (TimeoutError(), "TimeoutError"),
+        (RuntimeError("x" * 500), "RuntimeError"),
     ],
 )
-async def test_the_error_text_is_one_short_line(
+async def test_the_stored_error_is_the_exception_class_and_status_never_its_message(
     monkeypatch: pytest.MonkeyPatch,
     recaps: type[_FakeRecapRepo],
     exc: Exception,
@@ -335,9 +364,54 @@ async def test_the_error_text_is_one_short_line(
     recaps.rows = [_recap(D(2026, 10, 5))]
     _broken_llm(monkeypatch, exc)
 
-    _, meta = await _generate()
+    text, meta = await _generate()
 
     assert meta["error"] == expected
+    assert SECRET not in json.dumps(meta) and "x" * 20 not in json.dumps(meta)
+    assert text == ""
+
+
+def test_a_status_code_that_is_not_an_int_is_ignored() -> None:
+    class Odd(Exception):
+        status_code = "401"
+
+    class Flag(Exception):
+        status_code = True
+
+    assert summary._describe(Odd()) == "Odd" and summary._describe(Flag()) == "Flag"
+
+
+async def test_the_server_log_keeps_the_detail_clipped_and_without_the_configured_key(
+    monkeypatch: pytest.MonkeyPatch, recaps: type[_FakeRecapRepo]
+) -> None:
+    """Pesannya ada di log (untuk operator), tapi satu baris, terpotong, kunci LLM yang
+    dikonfigurasi disamarkan, dan tidak ada header atau objek response di dalamnya."""
+    from cti_core.config import get_settings
+
+    for name, value in {
+        "DATABASE__URL": "postgresql+asyncpg://x:x@127.0.0.1:1/x",
+        "DATABASE__SYNC_URL": "postgresql+psycopg://x:x@127.0.0.1:1/x",
+        "AUTH__JWT_SECRET": "test",
+        "AUTH__SESSION_SECRET_KEY": "test",
+        "LLM__API_KEY": SECRET,
+    }.items():
+        monkeypatch.setenv(name, value)
+    get_settings.cache_clear()
+    recaps.rows = [_recap(D(2026, 10, 5))]
+    _broken_llm(monkeypatch, RateLimitError(f"rate limited\n for key {SECRET} " + "y" * 800))
+
+    try:
+        with structlog.testing.capture_logs() as logs:
+            await _generate()
+    finally:
+        get_settings.cache_clear()  # jangan menyisakan settings berisi kunci palsu ke test lain
+
+    [failed] = [e for e in logs if e["event"] == "newsletter_summary_failed"]
+    assert failed["error"] == "RateLimitError (HTTP 429)"
+    assert failed["detail"].startswith("rate limited for key ***")
+    assert SECRET not in json.dumps(failed, default=str) and "authorization" not in str(failed)
+    assert len(failed["detail"]) == summary.LOG_DETAIL_CLIP
+    assert set(failed) == {"event", "log_level", "error", "detail", "weeks_used"}
 
 
 async def test_only_the_llm_call_is_caught_a_database_failure_still_raises(

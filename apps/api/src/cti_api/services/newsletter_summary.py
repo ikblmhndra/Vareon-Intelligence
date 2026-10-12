@@ -38,20 +38,23 @@ Bentuk `summary_meta` (selalu sama, juga saat tidak ada recap)::
                                                # atau {"skipped": true, "reason": "llm_error"}
       "dropped": [{"field", "value", "reason"}],
       "parse_failed": false,                   # balasan model bukan JSON / tanpa `summary`
-      "error": null                            # "<NamaException>: <pesan>" kalau panggilan gagal
+      "error": null                            # "NamaException (HTTP 401)" kalau panggilan gagal
     }
 
 **Panggilan LLM yang gagal tidak membuang ranking.** Exception dari panggilan itu (gateway mati,
 timeout, apa pun) ditangkap: teks kosong, `token_usage = {"skipped": true, "reason":
-"llm_error"}`, `error` terisi (`NamaException: pesan`, pesannya dipotong `ERROR_CLIP` karakter),
-dan log peringatan `newsletter_summary_failed`. Pemanggil tetap menyimpan barisnya dengan ranking,
-dan hari kerja berikutnya di jendela kejar mengulang HANYA langkah ini
-(`newsletter_suggestion.refresh_summary`). Hanya panggilan LLM-nya yang ditangkap: kesalahan DB
-dan sejenisnya tetap naik. Pesan exception dicatat apa adanya (terpotong); pesan gateway yang
-menolak kredensial kadang memuat potongan kunci yang sudah disamarkan oleh gateway-nya.
+"llm_error"}`, `error` terisi, dan log peringatan `newsletter_summary_failed`. Pemanggil tetap
+menyimpan barisnya dengan ranking, dan hari kerja berikutnya di jendela kejar mengulang HANYA
+langkah ini (`newsletter_suggestion.refresh_summary`). Hanya panggilan LLM-nya yang ditangkap:
+kesalahan DB dan sejenisnya tetap naik.
 
-Rentang pekan yang dipakai boleh melewati batas bulan (pekan 28 Sep-4 Okt dipakai utuh untuk
-edisi Oktober): `covered_*` adalah batas PEKAN, bukan batas bulan."""
+**`error` TIDAK memuat pesan exception.** Isinya hanya nama kelas exception, ditambah ` (HTTP
+<kode>)` kalau exception-nya membawa `status_code` atau `response.status_code` (`APITimeoutError`,
+`AuthenticationError (HTTP 401)`, `RateLimitError (HTTP 429)`). Nilai ini tersimpan di DB dan
+dikembalikan API; pesan klien OpenAI untuk 401/403 bisa memuat potongan kunci, jadi pesannya hanya
+ada di log server (`detail` di `newsletter_summary_failed`: satu baris, terpotong, kunci LLM yang
+dikonfigurasi disamarkan, tanpa header maupun objek request/response).
+"""
 
 from __future__ import annotations
 
@@ -61,6 +64,7 @@ import time
 from typing import Any
 
 import structlog
+from cti_core.config import get_settings
 from cti_core.db.models.recap import DailyRecap
 from cti_core.db.repositories.recap import AsyncRecapRepo
 from cti_core.llm.client import get_llm_client, parse_json_response, usage_from
@@ -73,8 +77,8 @@ log = structlog.get_logger()
 CVE_MARKER = "[CVE tidak terverifikasi]"
 """Pengganti CVE id karangan di paragraf (lihat docstring modul)."""
 
-ERROR_CLIP = 200
-"""Panjang maksimum pesan exception yang disimpan di `summary_meta.error`."""
+LOG_DETAIL_CLIP = 500
+"""Panjang maksimum pesan exception di log `newsletter_summary_failed` (hanya log, bukan DB)."""
 
 _ONE_DAY = datetime.timedelta(days=1)
 
@@ -244,11 +248,34 @@ def _paragraph(raw: str) -> str:
     return " ".join(value.split()) if isinstance(value, str) else ""
 
 
+def _status_code(exc: Exception) -> int | None:
+    """Kode HTTP dari exception klien (`status_code`, atau `response.status_code`), kalau ada."""
+    for candidate in (exc, getattr(exc, "response", None)):
+        code = getattr(candidate, "status_code", None)
+        if isinstance(code, int) and not isinstance(code, bool):
+            return code
+    return None
+
+
 def _describe(exc: Exception) -> str:
-    """`NamaException: pesan` untuk `summary_meta.error`; pesannya dilebur jadi satu baris dan
-    dipotong, supaya balasan error gateway yang panjang tidak membengkakkan baris saran."""
-    message = " ".join(str(exc).split())[:ERROR_CLIP]
-    return f"{type(exc).__name__}: {message}" if message else type(exc).__name__
+    """Isi `summary_meta.error`: nama kelas exception dan, kalau ada, ` (HTTP <kode>)`. SENGAJA
+    tanpa pesan (lihat docstring modul): nilai ini disimpan dan dikembalikan lewat API."""
+    code = _status_code(exc)
+    return type(exc).__name__ if code is None else f"{type(exc).__name__} (HTTP {code})"
+
+
+def _log_detail(exc: Exception) -> str:
+    """Pesan exception untuk log server: satu baris, terpotong, dan kunci LLM yang dikonfigurasi
+    disamarkan kalau gateway mengembalikannya di pesan errornya (penyamaran gagal = pesan apa
+    adanya: mencatat kegagalan lebih penting daripada gagal karena settings tidak termuat)."""
+    detail = " ".join(str(exc).split())
+    try:
+        key = get_settings().llm.api_key
+        if key and len(key) >= 6:
+            detail = detail.replace(key, "***")
+    except Exception:
+        pass
+    return detail[:LOG_DETAIL_CLIP]
 
 
 async def generate_executive_summary(
@@ -282,7 +309,12 @@ async def generate_executive_summary(
         raw, model_name, token_usage = await asyncio.to_thread(_call_llm, user_message)
     except Exception as exc:
         error = _describe(exc)
-        log.warning("newsletter_summary_failed", error=error, weeks_used=len(weeks))
+        log.warning(
+            "newsletter_summary_failed",
+            error=error,
+            detail=_log_detail(exc),
+            weeks_used=len(weeks),
+        )
         return "", {**meta, "token_usage": {"skipped": True, "reason": "llm_error"}, "error": error}
     text = _paragraph(raw)
     grounder = grounding.Grounder(grounding.Known.build(text=user_message), cve_marker=CVE_MARKER)

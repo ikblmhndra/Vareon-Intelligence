@@ -226,10 +226,11 @@ Runbook:
   dates). It overwrites the whole row for that window and **regenerates the summary**, so it is also the fix when a
   Monday recap arrived after the scheduled run.
 - **When the LLM call fails** (gateway down, timeout): the ranked items are still stored, `summary_text` is empty and
-  `summary_meta.error` holds `ExceptionName: message` (log `newsletter_summary_failed`; the task returns
-  `prepared: true` and `newsletter_prepared` carries `summary_error`). On the following weekdays of the catch-up window the
-  task repeats only the summary step and clears `error` once it works (`newsletter_summary_retried`). A rebuild during
-  an outage answers 200 with the same `error` instead of failing, so the composer can warn the analyst.
+  `summary_meta.error` holds only the exception class and HTTP status (`RateLimitError (HTTP 429)`), never the message,
+  which can echo a key; the message is in the server log `newsletter_summary_failed` as `detail`. The task returns
+  `prepared: true` and `newsletter_prepared` carries `summary_error`. On the following weekdays of the catch-up window
+  the task repeats only the summary step and clears `error` once it works (`newsletter_summary_retried`). A rebuild
+  during an outage answers 200 with the same `error` instead of failing, so the composer can warn the analyst.
 - **What the summary covers**: only weekly recaps that exist and overlap the month, never raw articles. No recap means an
   empty summary and no LLM call. Weeks are used whole, so the first and last week may stick out of the month. When the
   month does not end on a Sunday its last days fall in a week that is not finished on the first working day (November

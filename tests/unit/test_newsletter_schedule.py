@@ -229,14 +229,14 @@ async def test_a_failed_summary_still_counts_as_prepared_and_reports_the_error(
     build: AsyncMock,
 ) -> None:
     """Ranking tersimpan (`prepared`), ringkasannya kosong dan alasannya ada di hasil task."""
-    build.return_value = _row("RuntimeError: gateway down")
+    build.return_value = _row("RuntimeError")
     now = datetime.datetime(2026, 11, 2, 2, 0, tzinfo=UTC)
 
     result = await schedule.prepare_monthly("S", now)  # type: ignore[arg-type]
 
     assert result["prepared"] is True and result["items"] == 1
     assert result["summary"] is False
-    assert result["summary_error"] == "RuntimeError: gateway down"
+    assert result["summary_error"] == "RuntimeError"
 
 
 # --- ringkasan yang gagal dikejar ---------------------------------------------------------------
@@ -255,7 +255,7 @@ def test_the_summary_is_retried_only_inside_the_catch_up_window_and_only_after_a
 async def test_a_suggestion_whose_summary_failed_gets_only_the_summary_redone(
     build: AsyncMock, refresh: AsyncMock
 ) -> None:
-    failed = _row("RuntimeError: gateway down")
+    failed = _row("RuntimeError")
     _FakeRepo.existing = failed
     tuesday = datetime.datetime(2026, 11, 3, 2, 0, tzinfo=UTC)
 
@@ -276,7 +276,7 @@ async def test_a_suggestion_whose_summary_failed_gets_only_the_summary_redone(
 async def test_a_retry_that_fails_again_reports_the_new_error_and_the_next_day_tries_again(
     build: AsyncMock, refresh: AsyncMock
 ) -> None:
-    _FakeRepo.existing = _row("RuntimeError: gateway down")
+    _FakeRepo.existing = _row("RuntimeError")
     refresh.return_value = _row("TimeoutError")
 
     first = await schedule.prepare_monthly(
