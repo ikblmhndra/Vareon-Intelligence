@@ -1273,15 +1273,31 @@ export interface NewsletterSections {
   apac: NewsletterArticleStrip[];
   global_news: NewsletterArticleStrip[];
   indonesia: NewsletterArticleStrip[];
+  /** Baris "Also Noted" (sejak PR 5); baris riwayat lama tidak punya kuncinya. */
+  apac_compact?: unknown[];
+  global_news_compact?: unknown[];
+  indonesia_compact?: unknown[];
 }
 
 /** `POST /api/newsletter/preview` dan `/draft-email` balikin `dict[str,
  * object]` polos (bukan Pydantic model) di `routers/newsletter.py`. */
 export interface NewsletterPreviewResult {
   html: string;
+  /** Ukuran versi yang DIKIRIM (logo `cid:`), bukan `html` di atas (logo data URI). */
+  html_bytes: number;
+  /** Teks peringatan siap tampil di atas ~90 KB (Gmail memotong sekitar 102 KB); selain itu null. */
+  size_warning: string | null;
   week: number;
   year: number;
-  newsletter_id: number;
+  /** Bulan yang diliput, mis. "October 2026"; ganti "Week N, YYYY" untuk judul dan toast. */
+  period_label: string;
+  /** Rentang tanggal, mis. "1 – 31 October 2026". */
+  period_range: string;
+  /** `{id artikel: "fetched" | "metadata"}` per kartu penuh; `metadata` = halaman tidak terbaca,
+   * ringkasannya ditulis dari metadata saja. */
+  body_sources: Record<string, "fetched" | "metadata" | "">;
+  /** Preview tidak membuat baris `newsletters`, jadi selalu null. */
+  newsletter_id: null;
 }
 
 export interface NewsletterDraftResult {
@@ -1290,7 +1306,27 @@ export interface NewsletterDraftResult {
   subject: string;
   week: number;
   year: number;
+  period_label: string;
+  period_range: string;
   newsletter_id: number;
+}
+
+/** `NewsletterSuggestionResponse.summary_meta` (`dict[str, object]` di `schema.d.ts`), bentuk dari
+ * `services/newsletter_summary.py`. Semua field opsional di sini: baris yang dibangun sebelum PR 8
+ * bisa punya `{}`. */
+export interface NewsletterSummaryMeta {
+  weeks?: { week_start: string; week_end: string }[];
+  covered_start?: string | null;
+  covered_end?: string | null;
+  /** Hari jendela yang tidak diliput pekan mana pun (ekor bulan yang pekannya belum selesai). */
+  uncovered?: { start: string; end: string }[];
+  model?: string | null;
+  /** `{skipped: true, reason: "no_recaps" | "llm_error"}` kalau tidak ada panggilan model. */
+  token_usage?: { skipped?: boolean; reason?: string; [key: string]: unknown };
+  dropped?: { field: string; value: string; reason: string }[];
+  parse_failed?: boolean;
+  /** Nama exception (+ kode HTTP), tanpa pesan: sengaja, pesan bisa memuat potongan kunci. */
+  error?: string | null;
 }
 
 export interface NewsletterResendResult {
