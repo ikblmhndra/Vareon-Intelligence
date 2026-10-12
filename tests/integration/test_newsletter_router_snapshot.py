@@ -132,7 +132,7 @@ async def test_preview_newsletter(
         patch.object(newsletter_service, "_now", return_value=_NOW),
     ):
         resp = await api_client.post(
-            "/api/newsletter/preview", headers=auth_header(), json={"highlight": article_id}
+            "/api/newsletter/preview", headers=auth_header(), json={"highlights": [article_id]}
         )
     assert resp.status_code == 200
     body = resp.json()
@@ -153,7 +153,7 @@ async def test_get_saved_html(
     ):
         # Preview tidak lagi menyimpan baris; hanya `draft-email` yang membuat satu.
         draft_resp = await api_client.post(
-            "/api/newsletter/draft-email", headers=auth_header(), json={"highlight": article_id}
+            "/api/newsletter/draft-email", headers=auth_header(), json={"highlights": [article_id]}
         )
     newsletter_id = draft_resp.json()["newsletter_id"]
     resp = await api_client.get(f"/api/newsletter/{newsletter_id}/html", headers=auth_header())
@@ -175,7 +175,7 @@ async def test_resend_newsletter(
         patch(_GRAPH, MagicMock(return_value="graph-msg-0")),
     ):
         draft_resp = await api_client.post(
-            "/api/newsletter/draft-email", headers=auth_header(), json={"highlight": article_id}
+            "/api/newsletter/draft-email", headers=auth_header(), json={"highlights": [article_id]}
         )
     newsletter_id = draft_resp.json()["newsletter_id"]
     with patch(_GRAPH, MagicMock(return_value="graph-msg-1")):
@@ -199,7 +199,7 @@ async def test_draft_email(
         patch(_GRAPH, MagicMock(return_value="graph-msg-2")),
     ):
         resp = await api_client.post(
-            "/api/newsletter/draft-email", headers=auth_header(), json={"highlight": article_id}
+            "/api/newsletter/draft-email", headers=auth_header(), json={"highlights": [article_id]}
         )
     assert resp.status_code == 200
     body = resp.json()
@@ -229,7 +229,7 @@ async def test_preview_twice_then_draft_leaves_one_row_and_repeats_no_fetch_or_l
 ) -> None:
     ids = await seed_articles(api_session, 2)
     await seed_true_positive_cve(api_session)
-    payload = {"highlight": ids[0], "apac": [ids[1]]}
+    payload = {"highlights": [ids[0]], "apac_full": [ids[1]]}
 
     with patched_pipeline() as pipeline, patch(_GRAPH, MagicMock(return_value="graph-1")) as graph:
         first = await api_client.post(
@@ -278,7 +278,7 @@ async def test_a_failing_graph_call_leaves_no_row_and_the_retry_reuses_the_cache
 ) -> None:
     ids = await seed_articles(api_session, 2)
     await seed_true_positive_cve(api_session)
-    payload = {"highlight": ids[0], "apac": [ids[1]]}
+    payload = {"highlights": [ids[0]], "apac_full": [ids[1]]}
 
     with patched_pipeline() as pipeline:
         with patch(_GRAPH, MagicMock(side_effect=RuntimeError("graph is down"))):
@@ -327,7 +327,7 @@ async def test_a_failed_save_after_graph_logs_the_message_id_and_still_returns_a
         structlog.testing.capture_logs() as logs,
     ):
         resp = await api_client.post(
-            "/api/newsletter/draft-email", headers=auth_header(), json={"highlight": ids[0]}
+            "/api/newsletter/draft-email", headers=auth_header(), json={"highlights": [ids[0]]}
         )
 
     assert resp.status_code == 500
@@ -348,7 +348,7 @@ async def test_regenerate_rebuilds_only_the_listed_article_and_only_once(
     auth_header: Callable[..., dict[str, str]],
 ) -> None:
     ids = await seed_articles(api_session, 2)
-    payload = {"highlight": ids[0], "apac": [ids[1]]}
+    payload = {"highlights": [ids[0]], "apac_full": [ids[1]]}
 
     with patched_pipeline() as pipeline:
         await api_client.post("/api/newsletter/preview", headers=auth_header(), json=payload)
@@ -366,24 +366,6 @@ async def test_regenerate_rebuilds_only_the_listed_article_and_only_once(
         assert pipeline.calls == (3, 3)  # build berikutnya memakai baris yang baru
 
     assert await _count(api_session, NewsletterArticleSummary) == 2  # menimpa, bukan menambah
-
-
-async def test_old_and_tier_spelling_of_the_same_edition_render_identical_html(
-    api_client: AsyncClient,
-    api_session: AsyncSession,
-    auth_header: Callable[..., dict[str, str]],
-) -> None:
-    ids = await seed_articles(api_session, 3)
-    legacy = {"highlight": ids[0], "apac": [ids[1]], "global_news": [ids[2]]}
-    tiered = {"highlights": [ids[0]], "apac_full": [ids[1]], "global_news_full": [ids[2]]}
-
-    with patched_pipeline():
-        old = await api_client.post("/api/newsletter/preview", headers=auth_header(), json=legacy)
-        new = await api_client.post("/api/newsletter/preview", headers=auth_header(), json=tiered)
-
-    assert old.status_code == new.status_code == 200
-    assert old.json() == new.json()
-    assert "Story 2 about intrusions" in old.json()["html"]
 
 
 async def test_tiered_request_fetches_only_full_cards_and_saves_the_compact_rows(
@@ -426,9 +408,6 @@ async def test_tiered_request_fetches_only_full_cards_and_saves_the_compact_rows
 @pytest.mark.parametrize(
     ("payload", "detail"),
     [
-        ({"highlight": 1, "apac": [1, 2, 3, 4, 5, 6]}, "apac: max 5 articles"),
-        ({"highlight": 1, "global_news": [1, 2, 3, 4, 5, 6]}, "global_news: max 5 articles"),
-        ({"highlight": 1, "indonesia": [1, 2, 3, 4, 5, 6]}, "indonesia: max 5 articles"),
         ({"highlights": [1, 2, 3, 4]}, "highlights: max 3 articles"),
         ({"highlights": [1], "apac_full": [1, 2, 3, 4, 5]}, "apac_full: max 4 articles"),
         (
@@ -454,13 +433,12 @@ async def test_over_the_limit_is_a_400_naming_the_field(
 @pytest.mark.parametrize(
     "payload",
     [
-        {},  # tanpa highlight sama sekali (dulu 422 karena `highlight` wajib)
+        {},  # tanpa highlight sama sekali
         {"apac_full": [1]},
-        {"highlight": 1, "apac_full": [2]},  # field lama dicampur field tier
-        {"highlights": [1], "apac": [2]},
-        {"highlight": 1, "period_start": "2026-10-01"},  # hanya satu tanggal
-        {"highlight": 1, "period_start": "2026-11-01", "period_end": "2026-10-31"},
-        {"highlight": 1, "period_start": "bukan-tanggal", "period_end": "2026-10-31"},
+        {"highlight": 1},  # field lama sudah dihapus: tidak dihitung sebagai highlight
+        {"highlights": [1], "period_start": "2026-10-01"},  # hanya satu tanggal
+        {"highlights": [1], "period_start": "2026-11-01", "period_end": "2026-10-31"},
+        {"highlights": [1], "period_start": "bukan-tanggal", "period_end": "2026-10-31"},
     ],
 )
 async def test_malformed_requests_are_422(
@@ -493,7 +471,7 @@ async def test_the_row_gets_the_default_or_requested_period_and_still_the_iso_we
     auth_header: Callable[..., dict[str, str]],
 ) -> None:
     ids = await seed_articles(api_session, 1)
-    payload = {"highlight": ids[0]}
+    payload = {"highlights": [ids[0]]}
 
     with patched_pipeline(), patch(_GRAPH, MagicMock(return_value="graph-p")):
         default = await api_client.post(

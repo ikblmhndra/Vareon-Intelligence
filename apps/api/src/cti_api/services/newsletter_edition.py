@@ -6,8 +6,8 @@ berikutnya (template, ranking, composer) mengimpor batas yang SAMA dari satu tem
 menyalin angkanya.
 
 Tier (ROADMAP #22, "Design: density"): kartu PENUH vs baris COMPACT per section. Angka batasnya
-(`MAX_*`, `LEGACY_MAX_PER_SECTION`) hidup di `schemas/newsletter.py`, satu tempat, dan diimpor di
-sini supaya `cti_api.services.newsletter_edition.MAX_*` tetap bisa dipakai pemanggil lain."""
+(`MAX_*`) hidup di `schemas/newsletter.py`, satu tempat, dan diimpor di sini supaya
+`cti_api.services.newsletter_edition.MAX_*` tetap bisa dipakai pemanggil lain."""
 
 from __future__ import annotations
 
@@ -15,7 +15,6 @@ import datetime
 from dataclasses import dataclass
 
 from cti_api.schemas.newsletter import (
-    LEGACY_MAX_PER_SECTION,
     MAX_COMPACT_PER_SECTION,
     MAX_FULL_PER_SECTION,
     MAX_HIGHLIGHTS,
@@ -56,7 +55,7 @@ class SectionLimitError(ValueError):
 
 @dataclass(frozen=True)
 class SectionPlan:
-    """Id artikel per tier setelah request lama dan request tier dilebur jadi satu bentuk."""
+    """Id artikel per tier, dari field request tier."""
 
     highlights: list[int]
     full: dict[str, list[int]]
@@ -78,14 +77,7 @@ def _check_limit(name: str, ids: list[int], limit: int) -> None:
 
 
 def plan_sections(body: NewsletterSectionsBody) -> SectionPlan:
-    """Petakan request ke tier dan terapkan batasnya.
-
-    Request lama (`highlight`, `apac`, ...) dan request tier (`highlights`, `apac_full`,
-    `apac_compact`, ...) tidak boleh dicampur; itu sudah ditolak validator schema (422), jadi di
-    sini tiap daftar cukup dicek terhadap batasnya sendiri tanpa menebak gabungannya. Field lama
-    tetap kartu penuh dengan batas lamanya (5) dan pesan error yang sama persis dengan dulu."""
-    for section in SECTIONS:
-        _check_limit(section, getattr(body, section), LEGACY_MAX_PER_SECTION)
+    """Petakan request ke tier dan terapkan batasnya (`SectionLimitError` -> HTTP 400)."""
     _check_limit("highlights", body.highlights, MAX_HIGHLIGHTS)
     for section in SECTIONS:
         _check_limit(f"{section}_full", getattr(body, f"{section}_full"), MAX_FULL_PER_SECTION)
@@ -93,10 +85,9 @@ def plan_sections(body: NewsletterSectionsBody) -> SectionPlan:
             f"{section}_compact", getattr(body, f"{section}_compact"), MAX_COMPACT_PER_SECTION
         )
 
-    highlights = ([body.highlight] if body.highlight is not None else []) + body.highlights
     return SectionPlan(
-        highlights=highlights,
-        full={s: [*getattr(body, s), *getattr(body, f"{s}_full")] for s in SECTIONS},
+        highlights=list(body.highlights),
+        full={s: list(getattr(body, f"{s}_full")) for s in SECTIONS},
         compact={s: list(getattr(body, f"{s}_compact")) for s in SECTIONS},
     )
 

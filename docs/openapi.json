@@ -2323,14 +2323,6 @@
       },
       "NewsletterSectionsBody": {
         "properties": {
-          "apac": {
-            "default": [],
-            "items": {
-              "type": "integer"
-            },
-            "title": "Apac",
-            "type": "array"
-          },
           "apac_compact": {
             "description": "Asia Pacific articles shown as one-line rows built from stored metadata only (no page fetch, no LLM call); at most 15.",
             "items": {
@@ -2340,7 +2332,7 @@
             "type": "array"
           },
           "apac_full": {
-            "description": "Asia Pacific articles shown as full cards (key points + summary); at most 4. Replaces the legacy `apac`; do not combine with the legacy fields.",
+            "description": "Asia Pacific articles shown as full cards (key points + summary); at most 4.",
             "items": {
               "type": "integer"
             },
@@ -2367,14 +2359,6 @@
             "title": "Custom Intro",
             "type": "string"
           },
-          "global_news": {
-            "default": [],
-            "items": {
-              "type": "integer"
-            },
-            "title": "Global News",
-            "type": "array"
-          },
           "global_news_compact": {
             "description": "Global articles shown as one-line rows (no fetch, no LLM call); at most 15.",
             "items": {
@@ -2384,26 +2368,15 @@
             "type": "array"
           },
           "global_news_full": {
-            "description": "Global articles shown as full cards; at most 4. Replaces the legacy `global_news`; do not combine with the legacy fields.",
+            "description": "Global articles shown as full cards; at most 4.",
             "items": {
               "type": "integer"
             },
             "title": "Global News Full",
             "type": "array"
           },
-          "highlight": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Highlight"
-          },
           "highlights": {
-            "description": "Articles for the Highlights block, shown as full cards; at most 3. Replaces the legacy `highlight`; do not combine with the legacy fields.",
+            "description": "Articles for the Highlights block, shown as full cards; at least one, at most 3.",
             "items": {
               "type": "integer"
             },
@@ -2415,14 +2388,6 @@
             "title": "Include Clusters",
             "type": "boolean"
           },
-          "indonesia": {
-            "default": [],
-            "items": {
-              "type": "integer"
-            },
-            "title": "Indonesia",
-            "type": "array"
-          },
           "indonesia_compact": {
             "description": "Indonesia articles shown as one-line rows (no fetch, no LLM call); at most 15.",
             "items": {
@@ -2432,7 +2397,7 @@
             "type": "array"
           },
           "indonesia_full": {
-            "description": "Indonesia articles shown as full cards; at most 4. Replaces the legacy `indonesia`; do not combine with the legacy fields.",
+            "description": "Indonesia articles shown as full cards; at most 4.",
             "items": {
               "type": "integer"
             },

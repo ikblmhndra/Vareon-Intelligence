@@ -518,10 +518,10 @@ def test_the_request_defaults_to_indonesian_and_accepts_only_id_or_en() -> None:
     from pydantic import ValidationError
 
     assert DEFAULT_SUMMARY_LANGUAGE == "id"
-    assert NewsletterSectionsBody(highlight=1).language == "id"
-    assert NewsletterSectionsBody(highlight=1, language="en").language == "en"
+    assert NewsletterSectionsBody(highlights=[1]).language == "id"
+    assert NewsletterSectionsBody(highlights=[1], language="en").language == "en"
     with pytest.raises(ValidationError):
-        NewsletterSectionsBody(highlight=1, language="fr")  # type: ignore[arg-type]
+        NewsletterSectionsBody(highlights=[1], language="fr")  # type: ignore[arg-type]
 
 
 async def test_the_indonesian_prompt_asks_for_indonesian_keeps_names_and_carries_the_glossary(

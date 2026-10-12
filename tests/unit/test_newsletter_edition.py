@@ -26,7 +26,6 @@ def test_limits_are_the_agreed_starting_values() -> None:
     assert ed.MAX_HIGHLIGHTS == 3
     assert ed.MAX_FULL_PER_SECTION == 4
     assert ed.MAX_COMPACT_PER_SECTION == 15
-    assert ed.LEGACY_MAX_PER_SECTION == 5
 
 
 def test_tiered_request_at_the_limits_is_accepted() -> None:
@@ -68,28 +67,7 @@ def test_one_over_the_limit_is_rejected_with_a_message_naming_the_field(
     assert str(exc.value) == f"{field}: max {limit} articles"
 
 
-@pytest.mark.parametrize("section", ["apac", "global_news", "indonesia"])
-def test_legacy_fields_keep_their_old_cap_of_five_and_the_old_message(section: str) -> None:
-    ok = NewsletterSectionsBody(highlight=1, **{section: _ids(5, 10)})
-    assert len(ed.plan_sections(ok).full[section]) == 5
-
-    over = NewsletterSectionsBody(highlight=1, **{section: _ids(6, 10)})
-    with pytest.raises(ed.SectionLimitError) as exc:
-        ed.plan_sections(over)
-    assert str(exc.value) == f"{section}: max 5 articles"
-
-
 # ── Pemisahan tier ───────────────────────────────────────────────────────────
-
-
-def test_legacy_request_maps_to_one_highlight_and_full_cards_only() -> None:
-    plan = ed.plan_sections(
-        NewsletterSectionsBody(highlight=9, apac=[1, 2], global_news=[3], indonesia=[])
-    )
-    assert plan.highlights == [9]
-    assert plan.full == {"apac": [1, 2], "global_news": [3], "indonesia": []}
-    assert plan.compact == {"apac": [], "global_news": [], "indonesia": []}
-    assert plan.all_ids == [9, 1, 2, 3]
 
 
 def test_tiered_request_is_split_per_section_and_tier() -> None:
@@ -118,62 +96,71 @@ def test_all_ids_lists_an_article_once_even_when_the_request_repeats_it() -> Non
 # ── Bentuk request ───────────────────────────────────────────────────────────
 
 
-def test_legacy_and_tier_fields_cannot_be_mixed() -> None:
-    with pytest.raises(ValidationError, match="not both"):
-        NewsletterSectionsBody(highlight=1, apac_full=[2])
-    with pytest.raises(ValidationError, match="not both"):
-        NewsletterSectionsBody(highlights=[1], apac=[2])
-    with pytest.raises(ValidationError, match="not both"):
-        NewsletterSectionsBody(highlight=1, highlights=[2])
-
-
-def test_a_highlight_is_required_in_either_shape() -> None:
+def test_a_highlight_is_required() -> None:
     with pytest.raises(ValidationError, match="highlight is required"):
         NewsletterSectionsBody()
     with pytest.raises(ValidationError, match="highlight is required"):
-        NewsletterSectionsBody(apac=[1])
-    with pytest.raises(ValidationError, match="highlight is required"):
         NewsletterSectionsBody(apac_full=[1])
-    NewsletterSectionsBody(highlight=1)
     NewsletterSectionsBody(highlights=[1])
 
 
-def test_old_style_request_still_validates_with_every_old_field() -> None:
-    """Persis yang dikirim web sekarang (`buildPayload`): tidak boleh mulai ditolak."""
+def test_the_old_request_fields_are_gone() -> None:
+    """`highlight`, `apac`, `global_news` dan `indonesia` dihapus setelah composer baru (PR 9) tidak
+    lagi mengirimnya. Pydantic mengabaikan field asing, jadi request lama bukan lagi bentuk yang
+    sah: tanpa `highlights` ia ditolak, dan sisanya tidak diam-diam menjadi kartu penuh."""
+    for old in ("highlight", "apac", "global_news", "indonesia"):
+        assert old not in NewsletterSectionsBody.model_fields
+    with pytest.raises(ValidationError, match="highlight is required"):
+        NewsletterSectionsBody.model_validate({"highlight": 1, "apac": [2]})
+    body = NewsletterSectionsBody.model_validate({"highlights": [1], "apac": [2]})
+    assert ed.plan_sections(body).full["apac"] == []
+
+
+def test_the_request_the_composer_sends_validates_with_every_field() -> None:
+    """Persis yang dikirim composer baru (`buildRequestBody`): tidak boleh mulai ditolak."""
     body = NewsletterSectionsBody(
-        highlight=1,
-        apac=[2],
-        global_news=[3],
-        indonesia=[4],
+        highlights=[1],
+        apac_full=[2],
+        apac_compact=[5],
+        global_news_full=[3],
+        indonesia_full=[4],
         custom_css="",
-        custom_intro="",
+        custom_intro="<p>ringkasan</p>",
         custom_footer="",
         notes={"2": "catatan"},
         include_clusters=True,
         cluster_days=7,
+        language="en",
+        regenerate=[2],
+        period_start=D(2026, 10, 1),
+        period_end=D(2026, 10, 31),
     )
-    assert body.highlight == 1
-    assert body.period_start is None
-    assert body.regenerate == []
+    assert body.highlights == [1]
+    assert body.language == "en"
+    assert body.regenerate == [2]
 
 
 def test_period_needs_both_dates_or_neither() -> None:
     with pytest.raises(ValidationError, match="both period_start and period_end"):
-        NewsletterSectionsBody(highlight=1, period_start=D(2026, 10, 1))
+        NewsletterSectionsBody(highlights=[1], period_start=D(2026, 10, 1))
     with pytest.raises(ValidationError, match="both period_start and period_end"):
-        NewsletterSectionsBody(highlight=1, period_end=D(2026, 10, 31))
+        NewsletterSectionsBody(highlights=[1], period_end=D(2026, 10, 31))
 
 
 def test_period_start_must_not_be_after_period_end() -> None:
     with pytest.raises(ValidationError, match="must not be after"):
-        NewsletterSectionsBody(highlight=1, period_start=D(2026, 11, 1), period_end=D(2026, 10, 31))
-    ok = NewsletterSectionsBody(highlight=1, period_start=D(2026, 10, 5), period_end=D(2026, 10, 5))
+        NewsletterSectionsBody(
+            highlights=[1], period_start=D(2026, 11, 1), period_end=D(2026, 10, 31)
+        )
+    ok = NewsletterSectionsBody(
+        highlights=[1], period_start=D(2026, 10, 5), period_end=D(2026, 10, 5)
+    )
     assert ok.period_start == ok.period_end  # satu hari tetap sah
 
 
 def test_period_accepts_iso_strings_from_json() -> None:
     body = NewsletterSectionsBody.model_validate(
-        {"highlight": 1, "period_start": "2026-10-01", "period_end": "2026-10-31"}
+        {"highlights": [1], "period_start": "2026-10-01", "period_end": "2026-10-31"}
     )
     assert (body.period_start, body.period_end) == (D(2026, 10, 1), D(2026, 10, 31))
 
