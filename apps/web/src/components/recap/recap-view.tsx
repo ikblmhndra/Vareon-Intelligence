@@ -1,21 +1,50 @@
 import { Badge } from "@/components/ui/badge";
-import type { RecapDoc } from "@/lib/api/loose-types";
+import type { RecapDoc, RecapHitRate, RecapTopStory } from "@/lib/api/loose-types";
 import { recapTitle } from "@/lib/recap/period";
+import { safeHttpUrl } from "@/lib/recap/quality";
 import { ConfidenceBadge, Chips, EmptyNote, Section } from "@/components/recap/recap-parts";
+import {
+  ComparisonBlock,
+  GroundingBlock,
+  HitRateBlock,
+  ScorecardBlock,
+} from "@/components/recap/recap-quality";
+
+/** Judul cerita; bertaut ke artikelnya kalau ada `url` (cerita yang lolos grounding membawanya,
+ * recap lama tidak: judulnya tampil polos seperti dulu). */
+function StoryTitle({ story }: { story: RecapTopStory }) {
+  const href = safeHttpUrl(story.url);
+  if (!href) return <span className="font-medium">{story.title}</span>;
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="font-medium text-primary underline-offset-2 hover:underline"
+    >
+      {story.title}
+    </a>
+  );
+}
 
 /**
  * Render satu dokumen recap (harian atau mingguan) -- port `_recapRender()` di
  * `legacy/static/js/newsroom/recap.js`, ditulis pakai token Tailwind +
  * `Badge` shadcn gantiin string HTML inline-style manual. Isi recap mingguan juga ada di
  * `doc.yesterday` (nama kolom lama), bentuknya sama dengan yang harian.
+ *
+ * Kualitas (#21 PR 4): `doc.quality` membawa tiga blok opsional (perbandingan, grounding,
+ * scorecard) dan `hitRate` datang dari amplop balasan; masing-masing dipasang hanya kalau
+ * datanya ada, jadi recap lama (`quality` = `{}`) dan recap harian tampil seperti sebelumnya.
  */
-export function RecapView({ doc }: { doc: RecapDoc }) {
+export function RecapView({ doc, hitRate }: { doc: RecapDoc; hitRate?: RecapHitRate }) {
   const recap = doc.yesterday || {};
   const fcast = doc.forecast || {};
   const counts = doc.counts || {};
   const gen = doc.generated_at ? new Date(doc.generated_at).toLocaleString() : "—";
   const tokens = doc.token_usage?.total_tokens;
   const weekly = doc.kind === "weekly";
+  const quality = doc.quality ?? {};
 
   return (
     <div>
@@ -46,6 +75,10 @@ export function RecapView({ doc }: { doc: RecapDoc }) {
         </div>
       </div>
 
+      {quality.grounding && <GroundingBlock grounding={quality.grounding} />}
+
+      {quality.comparison && <ComparisonBlock comparison={quality.comparison} />}
+
       <Section title="Summary">
         <p className="text-sm leading-relaxed">{recap.summary || "(no summary)"}</p>
       </Section>
@@ -55,7 +88,7 @@ export function RecapView({ doc }: { doc: RecapDoc }) {
           <ul className="list-disc space-y-1.5 pl-4 text-sm leading-snug">
             {recap.top_stories.map((s, i) => (
               <li key={i}>
-                <span className="font-medium">{s.title}</span>{" "}
+                <StoryTitle story={s} />{" "}
                 <span className="font-mono text-xs text-muted-foreground">[{s.source || "?"}]</span>
                 {s.why_it_matters && (
                   <div className="mt-1 text-sm text-muted-foreground">{s.why_it_matters}</div>
@@ -161,6 +194,10 @@ export function RecapView({ doc }: { doc: RecapDoc }) {
           </>
         )}
       </div>
+
+      {quality.scorecard && <ScorecardBlock recapId={doc.id} scorecard={quality.scorecard} />}
+
+      {hitRate && <HitRateBlock hitRate={hitRate} />}
 
       {doc.raw_llm && (
         <details className="mt-4">

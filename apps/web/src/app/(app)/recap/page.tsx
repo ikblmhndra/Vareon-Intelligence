@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/lib/api/client";
-import type { RecapDoc, RecapKind, RecapListItem } from "@/lib/api/loose-types";
+import type { RecapDoc, RecapEnvelope, RecapKind, RecapListItem } from "@/lib/api/loose-types";
 import { formatRange, lastFinishedWeekStart, mondayOf, sundayOf } from "@/lib/recap/period";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,21 +31,23 @@ function useRecapHistory() {
   });
 }
 
+/** Yang di-cache adalah amplop balasan (`{recap, hit_rate?}`), bukan recap-nya saja: `hit_rate`
+ * ikut dibaca di tempat yang sama dan diganti oleh balasan override (`recap-quality.tsx`). */
 function useRecapDoc(selected: Selection | null) {
-  return useQuery({
+  return useQuery<RecapEnvelope>({
     queryKey: selected ? ["recap", "doc", selected.kind, selected.date] : ["recap", "doc", "latest"],
     queryFn: async () => {
       if (!selected) {
         const { data, response } = await api.GET("/api/recap/latest");
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        return (data as { recap: RecapDoc | null } | undefined)?.recap ?? null;
+        return (data as RecapEnvelope | undefined) ?? { recap: null };
       }
       const { data, response } = await api.GET("/api/recap/{date}", {
         params: { path: { date: selected.date }, query: { kind: selected.kind } },
       });
-      if (response.status === 404) return null;
+      if (response.status === 404) return { recap: null };
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return (data as { recap: RecapDoc } | undefined)?.recap ?? null;
+      return (data as RecapEnvelope | undefined) ?? { recap: null };
     },
   });
 }
@@ -75,11 +77,17 @@ function useGenerateRecap() {
     onSuccess: (recap) => {
       if (recap) {
         // Kunci dari balasan server (tanggal/pekan yang BENAR-BENAR dibuat), bukan dari input.
-        queryClient.setQueryData(["recap", "doc", recap.kind, recap.date], recap);
+        queryClient.setQueryData<RecapEnvelope>(
+          ["recap", "doc", recap.kind, recap.date],
+          (old) => ({ recap, hit_rate: old?.hit_rate }),
+        );
       }
       void queryClient.invalidateQueries({ queryKey: ["recap", "list"] });
-      // Recap mingguan baru bisa jadi yang terbaru.
-      void queryClient.invalidateQueries({ queryKey: ["recap", "doc", "latest"] });
+      // Recap mingguan baru bisa jadi yang terbaru, dan scorecard-nya mengubah hit rate yang
+      // berlaku lintas pekan: semua recap mingguan di cache diambil ulang, bukan cuma yang baru.
+      void queryClient.invalidateQueries({
+        queryKey: recap?.kind === "weekly" ? ["recap", "doc"] : ["recap", "doc", "latest"],
+      });
     },
   });
 }
@@ -114,8 +122,10 @@ export default function RecapPage() {
     : "the last finished week";
   const dateLabel = mode === "week" ? weekLabel : inputDate || "yesterday";
   const noun = mode === "week" ? "week" : "date";
+  const recap: RecapDoc | null = doc.data?.recap ?? null;
+  const empty = doc.data !== undefined && recap === null;
   // Yang tampil: pilihan eksplisit, atau recap mingguan terbaru yang dimuat `/latest`.
-  const shown: Selection | null = selected ?? (doc.data ? { kind: doc.data.kind, date: doc.data.date } : null);
+  const shown: Selection | null = selected ?? (recap ? { kind: recap.kind, date: recap.date } : null);
 
   const status = useMemo(() => {
     if (generate.isPending) return { text: "Generating… this can take 10-30s", tone: "info" as const };
@@ -123,15 +133,15 @@ export default function RecapPage() {
     if (generate.isSuccess) return { text: "Generated · saved", tone: "ok" as const };
     if (doc.isFetching) return { text: "Loading…", tone: "info" as const };
     if (doc.isError) return { text: (doc.error as Error).message, tone: "err" as const };
-    if (doc.data === null) {
+    if (empty) {
       const text = selected
         ? `No ${selected.kind === "weekly" ? "weekly " : ""}recap stored for that ${selected.kind === "weekly" ? "week" : "date"}`
         : "No weekly recap stored yet";
       return { text, tone: "warn" as const };
     }
-    if (doc.data) return { text: "Loaded", tone: "ok" as const };
+    if (recap) return { text: "Loaded", tone: "ok" as const };
     return { text: "", tone: "info" as const };
-  }, [generate.isPending, generate.isError, generate.isSuccess, generate.error, doc.isFetching, doc.isError, doc.error, doc.data, selected]);
+  }, [generate.isPending, generate.isError, generate.isSuccess, generate.error, doc.isFetching, doc.isError, doc.error, empty, recap, selected]);
 
   const statusColor = {
     info: "text-muted-foreground",
@@ -230,8 +240,8 @@ export default function RecapPage() {
             </div>
           )}
           {doc.isError && <p className="text-sm text-destructive">{(doc.error as Error).message}</p>}
-          {doc.data && <RecapView doc={doc.data} />}
-          {doc.data === null && (
+          {recap && <RecapView doc={recap} hitRate={doc.data?.hit_rate} />}
+          {empty && (
             <div className="rounded-md border border-dashed border-border px-6 py-8 text-center">
               <p className="mb-3 font-mono text-xs text-muted-foreground">
                 {selected ? (
