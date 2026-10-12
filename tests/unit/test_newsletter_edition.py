@@ -293,3 +293,17 @@ def test_subject_for_a_custom_range_names_both_months() -> None:
     subject = ed.newsletter_subject(D(2026, 9, 28), D(2026, 10, 4), 40, 2026)
 
     assert subject.endswith("— September - October 2026")
+
+
+def test_fields_added_after_the_web_was_written_stay_optional_in_the_generated_types() -> None:
+    """openapi-typescript menjadikan field ber-`default` di body request WAJIB di tipe TS
+    (`defaultNonNullable`), sehingga halaman web yang belum mengirimnya gagal compile; ketahuan
+    saat `language` ditambah dengan `default="id"`. Field baru memakai `default_factory` (tanpa
+    kunci `default` di kontrak), seperti `regenerate` dan field tier dari PR 5. Web baru (PR 9)
+    boleh mengirimnya; yang lama tidak dipaksa."""
+    schema = NewsletterSectionsBody.model_json_schema()
+
+    for name in ("language", "regenerate", "highlights", "apac_full", "apac_compact"):
+        assert "default" not in schema["properties"][name], name
+        assert name not in schema.get("required", []), name
+    assert schema["properties"]["language"]["enum"] == ["id", "en"]

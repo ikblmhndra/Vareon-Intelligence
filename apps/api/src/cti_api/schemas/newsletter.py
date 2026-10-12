@@ -120,8 +120,12 @@ class NewsletterSectionsBody(BaseModel):
     period_end: datetime.date | None = Field(
         default=None, description="Last day (inclusive) covered by the edition; see `period_start`."
     )
+    # `default_factory`, BUKAN `default=`: openapi-typescript menganggap field ber-`default` di body
+    # request sebagai WAJIB di tipe TS (sama seperti `cluster_days`/`custom_css` di atas), jadi
+    # halaman newsletter yang belum mengirim `language` gagal compile. Dengan `default_factory`
+    # kontraknya opsional, pola yang sama dengan field baru PR 5 (`regenerate`, `highlights`, ...).
     language: SummaryLanguage = Field(
-        default=DEFAULT_SUMMARY_LANGUAGE,
+        default_factory=lambda: DEFAULT_SUMMARY_LANGUAGE,
         description=(
             "Language of the article summaries and key points: `id` (Indonesian, the default) "
             "or `en`. Headings, labels and the subject stay English. Summaries are cached per "

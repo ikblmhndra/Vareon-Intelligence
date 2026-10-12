@@ -1865,6 +1865,9 @@ export interface paths {
          * Preview Newsletter
          * @description Pratinjau tanpa efek ke catatan: tidak ada baris `newsletters` (jadi `newsletter_id`
          *     selalu null), tidak ada IOC, tidak ada sebutan CVE. Hanya dua cache yang terisi.
+         *
+         *     `html` = versi untuk browser (logo sebagai data URI). `html_bytes` dan `size_warning` mengukur
+         *     versi `cid:` yang akan DIKIRIM, bukan `html` ini; `size_warning` null di bawah ~90 KB.
          */
         post: operations["preview_newsletter_api_newsletter_preview_post"];
         delete?: never;
@@ -4352,10 +4355,9 @@ export interface components {
             /**
              * Language
              * @description Language of the article summaries and key points: `id` (Indonesian, the default) or `en`. Headings, labels and the subject stay English. Summaries are cached per article and language, so an edition in one language never reuses or overwrites the other.
-             * @default id
              * @enum {string}
              */
-            language: "id" | "en";
+            language?: "id" | "en";
             /**
              * Notes
              * @default {}
