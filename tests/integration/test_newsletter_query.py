@@ -509,17 +509,17 @@ async def test_cluster_size_counts_only_the_members_inside_the_window(
     assert after_window.id not in sizes
 
 
-async def test_campaigns_are_read_back_from_today_to_the_period_start(
+async def test_campaigns_are_read_for_the_window_not_counted_back_from_today(
     async_db_session: AsyncSession,
 ) -> None:
-    """`get_recent_campaigns` belum mengenal jendela (PR 2): `days` dihitung dari hari ini."""
-    start = datetime.date.today() - datetime.timedelta(days=40)
+    """PR 8: `get_recent_campaigns(start=, end=)` (PR 2) menggantikan `days` dari hari ini, jadi
+    klaster hanya memuat artikel jendela dan ukuran kampanye menghitung bulannya saja."""
     seen = AsyncMock(return_value=[])
     with patch.object(campaign_service, "get_recent_campaigns", seen):
-        await newsletter_suggestion._campaigns(async_db_session, start)
+        await newsletter_suggestion._campaigns(async_db_session, *_OCT)
 
     assert seen.await_args is not None
-    assert seen.await_args.kwargs == {"days": 40, "min_size": 3}
+    assert seen.await_args.kwargs == {"min_size": 3, "start": _OCT[0], "end": _OCT[1]}
 
 
 async def test_real_campaign_clustering_feeds_cluster_size(async_db_session: AsyncSession) -> None:
