@@ -2485,6 +2485,172 @@
         "title": "NewsletterSectionsBody",
         "type": "object"
       },
+      "NewsletterSuggestionItem": {
+        "properties": {
+          "article": {
+            "$ref": "#/components/schemas/ArticleOut",
+            "description": "The article as the Newsroom returns it, ready to join the composer queue."
+          },
+          "article_id": {
+            "title": "Article Id",
+            "type": "integer"
+          },
+          "rank": {
+            "description": "1-based overall rank; display order inside a tier follows it.",
+            "title": "Rank",
+            "type": "integer"
+          },
+          "reasons": {
+            "description": "Why the article was suggested, from the largest contribution to the smallest.",
+            "items": {
+              "$ref": "#/components/schemas/NewsletterSuggestionReason"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "section": {
+            "description": "The section the article belongs to: Indonesia if `ID` is among its victim or mentioned countries, else Asia Pacific if one of them is in the APAC set, else Global. Highlights are a tier, so a highlight keeps its natural section here.",
+            "enum": [
+              "apac",
+              "global_news",
+              "indonesia"
+            ],
+            "title": "Section",
+            "type": "string"
+          },
+          "tier": {
+            "description": "`highlight` = the Highlights block (top overall, at most 3, not repeated in its section), `full` = full card (at most 4 per section), `compact` = one-line row (at most 15 per section).",
+            "enum": [
+              "highlight",
+              "full",
+              "compact"
+            ],
+            "title": "Tier",
+            "type": "string"
+          }
+        },
+        "required": [
+          "article_id",
+          "section",
+          "tier",
+          "rank",
+          "reasons",
+          "article"
+        ],
+        "title": "NewsletterSuggestionItem",
+        "type": "object"
+      },
+      "NewsletterSuggestionReason": {
+        "properties": {
+          "code": {
+            "description": "Stable machine code: kev, poc, confirmed_incident, monitored_tech, client_country, indonesia, apac, coverage, source, confidence.",
+            "title": "Code",
+            "type": "string"
+          },
+          "text": {
+            "description": "Short English explanation shown to the analyst.",
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "text"
+        ],
+        "title": "NewsletterSuggestionReason",
+        "type": "object"
+      },
+      "NewsletterSuggestionRebuildBody": {
+        "properties": {
+          "period_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Last day (inclusive) of the window; see `period_start`.",
+            "title": "Period End"
+          },
+          "period_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "First day of the window. Give both `period_start` and `period_end`, or neither: the default is the previous calendar month in the report time zone (WIB).",
+            "title": "Period Start"
+          }
+        },
+        "title": "NewsletterSuggestionRebuildBody",
+        "type": "object"
+      },
+      "NewsletterSuggestionResponse": {
+        "properties": {
+          "created_at": {
+            "description": "When this suggestion was built (ISO 8601).",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "items": {
+            "description": "Ordered by `rank`. Articles that no longer exist are left out.",
+            "items": {
+              "$ref": "#/components/schemas/NewsletterSuggestionItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "label": {
+            "description": "Edition label derived from the period (\"October 2026\").",
+            "title": "Label",
+            "type": "string"
+          },
+          "period_end": {
+            "format": "date",
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "format": "date",
+            "title": "Period Start",
+            "type": "string"
+          },
+          "summary_meta": {
+            "additionalProperties": true,
+            "description": "Details about the summary (weeks used, token usage); empty until generated.",
+            "title": "Summary Meta",
+            "type": "object"
+          },
+          "summary_text": {
+            "description": "Suggested Executive Summary paragraph; empty until it is generated.",
+            "title": "Summary Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "period_start",
+          "period_end",
+          "label",
+          "items",
+          "summary_text",
+          "summary_meta",
+          "created_at"
+        ],
+        "title": "NewsletterSuggestionResponse",
+        "type": "object"
+      },
       "PIRArticleListResponse": {
         "properties": {
           "articles": {
@@ -14919,6 +15085,157 @@
           }
         },
         "summary": "Source Hints",
+        "tags": [
+          "newsletter"
+        ]
+      }
+    },
+    "/api/newsletter/suggestion": {
+      "get": {
+        "description": "Saran konten edisi newsletter. Tanpa parameter: edisi yang berakhir paling akhir. Dengan\n`period_start` + `period_end`: saran untuk jendela PERSIS itu. 404 kalau belum ada.",
+        "operationId": "get_suggestion_api_newsletter_suggestion_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "period_start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Period Start"
+            }
+          },
+          {
+            "in": "query",
+            "name": "period_end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Period End"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewsletterSuggestionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Suggestion",
+        "tags": [
+          "newsletter"
+        ]
+      }
+    },
+    "/api/newsletter/suggestion/rebuild": {
+      "post": {
+        "description": "Bangun ulang saran satu jendela dengan tangan dan TIMPA saran tersimpan untuk jendela itu.\nTanpa body (atau tanpa tanggal): bulan kalender sebelumnya menurut zona laporan (WIB).\nDipakai analis kalau task terjadwal terlambat, atau data berubah setelah saran dibangun.",
+        "operationId": "rebuild_suggestion_api_newsletter_suggestion_rebuild_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/NewsletterSuggestionRebuildBody"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewsletterSuggestionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rebuild Suggestion",
         "tags": [
           "newsletter"
         ]
