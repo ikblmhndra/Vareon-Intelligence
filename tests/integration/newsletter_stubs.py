@@ -16,6 +16,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from cti_api.services import newsletter as newsletter_service
+from cti_api.services import newsletter_suggestion
 from cti_core.db.models.cve import CveTracker
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.auth import AsyncClientRepo
@@ -101,3 +102,15 @@ async def seed_true_positive_cve(session: AsyncSession) -> None:
     await AsyncClientRepo(session).ensure_default()
     session.add(CveTracker(cve_id=TP_CVE, client_id="default", tech="nginx"))
     await session.flush()
+
+
+def no_campaigns() -> Any:
+    """Matikan cluster kampanye di saran: `get_recent_campaigns` membaca 2000 artikel terbaru dari
+    HARI INI, bukan jendela test, jadi hasilnya bergantung tanggal asli. Test yang memang tentang
+    cluster memakai stub sendiri atau pemanggilan sungguhan."""
+    return patch.object(newsletter_suggestion, "_campaigns", AsyncMock(return_value=[]))
+
+
+def suggestion_clock() -> Any:
+    """Pin jam saran ke `NOW` (Senin 2 Nov 2026, 09:00 WIB): jendela default = Oktober 2026."""
+    return patch.object(newsletter_suggestion, "_now", return_value=NOW)

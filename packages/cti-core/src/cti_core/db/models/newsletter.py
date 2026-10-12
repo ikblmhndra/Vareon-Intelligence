@@ -125,3 +125,37 @@ class NewsletterArticleSummary(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     """Waktu ringkasan ini DIBUAT; `regenerate` menimpa baris dan mengisinya ulang."""
+
+
+class NewsletterSuggestion(Base):
+    """Saran konten satu edisi newsletter (ROADMAP #22, PR 7): artikel yang direkomendasikan,
+    sudah dipetakan ke Highlights / section dan tier, lengkap dengan ALASAN-nya.
+
+    Disimpan di server, bukan di browser, karena antrean composer hidup di `localStorage` dan
+    saran dibangun terjadwal (PR 8) atau lewat tombol rebuild. Satu baris per jendela:
+    `(period_start, period_end)` unik, dan membangun ulang jendela yang sama MENIMPA barisnya.
+    Tidak ada kolom status (draft/approved/sent): tidak dipilih user, dan saran tidak pernah
+    mengirim apa pun sendiri.
+
+    `items` = daftar `{article_id, section, tier, rank, reasons: [{code, text}]}` urut `rank`
+    (`newsletter_ranking.RankedArticle.to_item`). Tanpa FK ke `articles`: ini snapshot saran pada
+    hari dibangun, dan artikel yang kemudian terhapus cukup dilewati saat dibaca. `summary_text`
+    dan `summary_meta` (Executive Summary dari recap mingguan, PR 8) kosong sampai PR itu."""
+
+    __tablename__ = "newsletter_suggestions"
+    __table_args__ = (
+        UniqueConstraint("period_start", "period_end", name="uq_newsletter_suggestion_period"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    period_start: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+    period_end: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+    """Jendela yang diliput, kedua ujungnya inklusif (bulan kalender sebelumnya secara default)."""
+    items: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list)
+    summary_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    """Paragraf Executive Summary yang disarankan. Kosong = belum ada (atau tidak ada recap)."""
+    summary_meta: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    """Kapan saran ini DIBANGUN; diperbarui saat barisnya ditimpa oleh rebuild."""

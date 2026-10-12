@@ -7,8 +7,11 @@ tervalidasi, bukan keputusan baru khusus newsletter."""
 from __future__ import annotations
 
 import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
+
+from cti_api.schemas.article import ArticleOut
 
 MAX_HIGHLIGHTS = 3
 MAX_FULL_PER_SECTION = 4
@@ -22,6 +25,13 @@ memakai konstanta ini. Angkanya titik mulai yang akan disetel setelah edisi pert
 LEGACY_MAX_PER_SECTION = 5
 """Batas field LAMA (`apac`/`global_news`/`indonesia`, semuanya kartu penuh). Hapus bersama
 field-nya begitu composer baru (PR 9) hidup; sampai itu perilaku request lama tidak berubah."""
+
+SectionName = Literal["apac", "global_news", "indonesia"]
+TierName = Literal["highlight", "full", "compact"]
+"""Section = nama field request tier (`<section>_full` / `<section>_compact`, lihat
+`newsletter_edition.SECTIONS`); tier `highlight` = blok Highlights (field `highlights`), `full` =
+kartu penuh, `compact` = baris "Also Noted". Dipakai suggestion (ROADMAP #22, PR 7), jadi item
+suggestion langsung bisa dipetakan ke field request tier."""
 
 
 class NewsletterSectionsBody(BaseModel):
@@ -174,3 +184,86 @@ class NewsletterListResponse(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+# ── Suggestion (ROADMAP #22, PR 7) ────────────────────────────────────────────────────────────────
+
+MAX_SUGGESTION_WINDOW_DAYS = 93
+"""Jendela terpanjang yang boleh dibangun ulang lewat API (tiga bulan, untuk menyusul edisi yang
+terlewat). Tanpa batas, satu request `2000-01-01`..`2026-12-31` memuat semua artikel ke memori."""
+
+
+class NewsletterSuggestionReason(BaseModel):
+    code: str = Field(
+        description=(
+            "Stable machine code: kev, poc, confirmed_incident, monitored_tech, client_country, "
+            "indonesia, apac, coverage, source, confidence."
+        )
+    )
+    text: str = Field(description="Short English explanation shown to the analyst.")
+
+
+class NewsletterSuggestionItem(BaseModel):
+    article_id: int
+    section: SectionName = Field(
+        description=(
+            "The section the article belongs to: Indonesia if `ID` is among its victim or "
+            "mentioned countries, else Asia Pacific if one of them is in the APAC set, else "
+            "Global. Highlights are a tier, so a highlight keeps its natural section here."
+        )
+    )
+    tier: TierName = Field(
+        description=(
+            "`highlight` = the Highlights block (top overall, at most 3, not repeated in its "
+            "section), `full` = full card (at most 4 per section), `compact` = one-line row "
+            "(at most 15 per section)."
+        )
+    )
+    rank: int = Field(description="1-based overall rank; display order inside a tier follows it.")
+    reasons: list[NewsletterSuggestionReason] = Field(
+        description="Why the article was suggested, from the largest contribution to the smallest."
+    )
+    article: ArticleOut = Field(
+        description="The article as the Newsroom returns it, ready to join the composer queue."
+    )
+
+
+class NewsletterSuggestionResponse(BaseModel):
+    id: int
+    period_start: datetime.date
+    period_end: datetime.date
+    label: str = Field(description='Edition label derived from the period ("October 2026").')
+    items: list[NewsletterSuggestionItem] = Field(
+        description="Ordered by `rank`. Articles that no longer exist are left out."
+    )
+    summary_text: str = Field(
+        description="Suggested Executive Summary paragraph; empty until it is generated."
+    )
+    summary_meta: dict[str, object] = Field(
+        description="Details about the summary (weeks used, token usage); empty until generated."
+    )
+    created_at: str = Field(description="When this suggestion was built (ISO 8601).")
+
+
+class NewsletterSuggestionRebuildBody(BaseModel):
+    period_start: datetime.date | None = Field(
+        default=None,
+        description=(
+            "First day of the window. Give both `period_start` and `period_end`, or neither: the "
+            "default is the previous calendar month in the report time zone (WIB)."
+        ),
+    )
+    period_end: datetime.date | None = Field(
+        default=None, description="Last day (inclusive) of the window; see `period_start`."
+    )
+
+    @model_validator(mode="after")
+    def _valid_window(self) -> NewsletterSuggestionRebuildBody:
+        if (self.period_start is None) != (self.period_end is None):
+            raise ValueError("set both period_start and period_end, or neither")
+        if self.period_start is not None and self.period_end is not None:
+            if self.period_start > self.period_end:
+                raise ValueError("period_start must not be after period_end")
+            if (self.period_end - self.period_start).days + 1 > MAX_SUGGESTION_WINDOW_DAYS:
+                raise ValueError(f"the window may span at most {MAX_SUGGESTION_WINDOW_DAYS} days")
+        return self
