@@ -652,6 +652,21 @@ def render_newsletter_html(context: dict[str, Any]) -> str:
     )
 
 
+def body_sources(context: dict[str, Any]) -> dict[str, str]:
+    """`{str(article_id): "fetched" | "metadata"}` untuk semua kartu penuh edisi ini (highlight dan
+    tiga section). `metadata` = halamannya tidak terbaca (paywall) sehingga ringkasannya ditulis
+    dari metadata saja; composer menandainya supaya analis memeriksanya. Baris compact tidak punya
+    ringkasan baru, jadi tidak ada di sini. Kunci string karena JSON; artikel yang sama sebagai
+    highlight dan kartu section memakai satu baris cache, jadi nilainya pasti sama."""
+    cards = [
+        *context["highlights"],
+        *context["apac"],
+        *context["global_news"],
+        *context["indonesia"],
+    ]
+    return {str(card["id"]): card.get("body_source", "") for card in cards}
+
+
 def html_size_bytes(html: str) -> int:
     """Ukuran HTML dalam byte UTF-8, yang dihitung Gmail. Ukur versi `cid:` (yang dikirim), bukan
     versi data URI untuk preview yang lebih besar beberapa KB."""

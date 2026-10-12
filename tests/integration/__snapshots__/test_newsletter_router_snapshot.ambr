@@ -4,6 +4,8 @@
     'email_id': 'graph-msg-2',
     'method': 'graph',
     'newsletter_id': int,
+    'period_label': 'August 2026',
+    'period_range': '1 – 31 August 2026',
     'subject': '[CTI Newsletter] Threat Intelligence Digest — August 2026',
     'week': 39,
     'year': 2026,
@@ -55,8 +57,13 @@
 # ---
 # name: test_preview_newsletter
   dict({
+    'body_sources': dict({
+      '1': '',
+    }),
     'html_bytes': int,
     'newsletter_id': None,
+    'period_label': 'August 2026',
+    'period_range': '1 – 31 August 2026',
     'size_warning': None,
     'week': 39,
     'year': 2026,

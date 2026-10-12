@@ -296,7 +296,10 @@ async def preview_newsletter(
     selalu null), tidak ada IOC, tidak ada sebutan CVE. Hanya dua cache yang terisi.
 
     `html` = versi untuk browser (logo sebagai data URI). `html_bytes` dan `size_warning` mengukur
-    versi `cid:` yang akan DIKIRIM, bukan `html` ini; `size_warning` null di bawah ~90 KB."""
+    versi `cid:` yang akan DIKIRIM, bukan `html` ini; `size_warning` null di bawah ~90 KB.
+    `period_label`/`period_range` = bulan yang diliput (judul dialog di composer, bukan lagi
+    "Week N"); `body_sources` = per artikel kartu penuh, `fetched` atau `metadata` (ringkasan dari
+    metadata saja, ditandai di composer)."""
     try:
         context, html = await _build(session, body)
     except HTTPException:
@@ -310,6 +313,9 @@ async def preview_newsletter(
         "size_warning": newsletter_service.size_warning(html_bytes),
         "week": context["week"],
         "year": context["year"],
+        "period_label": context["period_label"],
+        "period_range": context["period_range"],
+        "body_sources": newsletter_service.body_sources(context),
         "newsletter_id": None,
     }
 
@@ -377,5 +383,7 @@ async def draft_email(
         "subject": subject,
         "week": context["week"],
         "year": context["year"],
+        "period_label": context["period_label"],
+        "period_range": context["period_range"],
         "newsletter_id": newsletter_id,
     }
