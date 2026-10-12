@@ -3,8 +3,13 @@ inline (`cid:`) pada draft Graph.
 
 Kenapa lampiran inline, bukan tautan ke domain perusahaan: Outlook memblokir gambar tertaut sampai
 pembaca mengizinkannya, dan tautan putus kalau domainnya pindah. Karena itu berkasnya tinggal di
-repo (`templates/newsletter_logo.png`, sumber: logo merah perusahaan, dikecilkan ke 2x tinggi
-tampil 28 px supaya lampirannya cuma beberapa KB) dan HTML merujuknya lewat `cid:`.
+repo (`templates/newsletter_logo.png`) dan HTML merujuknya lewat `cid:`.
+
+Asal berkas: logo merah perusahaan dari
+`https://privy.zmidevelopment.com/_ipx/_/images/Privy_Logo_Red.png` (PNG transparan 2115x561,
+sekitar 60 KB), dikecilkan ke 211x56 px (2x tinggi tampil 28 px, 9 KB) dengan
+`sips --resampleHeight 56`. Untuk menggantinya: skala ulang ke 2x tinggi tampil, tanpa latar, lalu
+sesuaikan `width`/`height` di template (dijaga `tests/unit/test_newsletter_logo.py`).
 
 Aturan yang harus dipegang SEMUA tempat yang menampilkan atau mengirim HTML edisi, karena HTML
 yang disimpan di tabel `newsletters` tetap berisi `cid:` (persis yang dikirim):
