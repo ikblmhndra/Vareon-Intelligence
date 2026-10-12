@@ -15,8 +15,9 @@ from __future__ import annotations
 
 import datetime
 import re
+from html.parser import HTMLParser
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 from cti_api.schemas.newsletter import (
@@ -141,6 +142,64 @@ def test_a_very_long_preheader_is_cut_to_what_inboxes_show() -> None:
     [preheader] = re.findall(r'<div style="display:none;[^"]*">([^<]*)</div>', html)
     assert len(preheader) <= 141
     assert preheader.endswith("…")
+
+
+class _Nesting(HTMLParser):
+    """Mencatat tag yang ditutup tidak pada tempatnya atau tidak pernah ditutup."""
+
+    _VOID: ClassVar[frozenset[str]] = frozenset({"meta", "img", "br", "hr", "input", "link"})
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.stack: list[str] = []
+        self.errors: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: Any) -> None:
+        if tag not in self._VOID:
+            self.stack.append(tag)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in self._VOID:
+            return
+        if self.stack and self.stack[-1] == tag:
+            self.stack.pop()
+            return
+        self.errors.append(f"</{tag}> tanpa pasangan (atas stack: {self.stack[-1:]})")
+        if tag in self.stack:
+            del self.stack[len(self.stack) - self.stack[::-1].index(tag) - 1 :]
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {},
+        {
+            "custom_intro": "",
+            "campaign_clusters": [],
+            "apac_compact": [],
+            "global_news_compact": [],
+        },
+        {"apac": [], "global_news": [], "indonesia": [], "campaign_clusters": []},
+        {"custom_footer": "<p>Footer analis</p>", "custom_css": "a { color: red; }"},
+    ],
+    ids=[
+        "lengkap",
+        "tanpa-intro-kampanye-compact",
+        "hanya-highlight-dan-compact",
+        "footer-dan-css",
+    ],
+)
+def test_rendered_html_is_well_nested_so_the_word_engine_has_nothing_to_guess(
+    overrides: dict[str, Any],
+) -> None:
+    """Browser menebak tag yang hilang dan hasilnya tetap rapi; mesin Word di Outlook desktop
+    lebih kaku. Setiap tag dibuka dan ditutup berpasangan, di semua bentuk edisi."""
+    parser = _Nesting()
+    parser.feed(_render(**overrides))
+    parser.close()
+
+    assert parser.errors == []
+    assert parser.stack == []
 
 
 # ── 2. Isi ───────────────────────────────────────────────────────────────────
