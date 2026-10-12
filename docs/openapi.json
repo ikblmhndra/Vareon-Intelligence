@@ -2235,6 +2235,34 @@
             "title": "Id",
             "type": "integer"
           },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period End"
+          },
+          "period_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start"
+          },
           "sections": {
             "additionalProperties": true,
             "title": "Sections",
@@ -2253,6 +2281,7 @@
           "id",
           "week",
           "year",
+          "label",
           "generated_at",
           "created_by",
           "created_at",
@@ -2302,6 +2331,22 @@
             "title": "Apac",
             "type": "array"
           },
+          "apac_compact": {
+            "description": "Asia Pacific articles shown as one-line rows built from stored metadata only (no page fetch, no LLM call); at most 15.",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Apac Compact",
+            "type": "array"
+          },
+          "apac_full": {
+            "description": "Asia Pacific articles shown as full cards (key points + summary); at most 4. Replaces the legacy `apac`; do not combine with the legacy fields.",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Apac Full",
+            "type": "array"
+          },
           "cluster_days": {
             "default": 7,
             "title": "Cluster Days",
@@ -2330,9 +2375,40 @@
             "title": "Global News",
             "type": "array"
           },
+          "global_news_compact": {
+            "description": "Global articles shown as one-line rows (no fetch, no LLM call); at most 15.",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Global News Compact",
+            "type": "array"
+          },
+          "global_news_full": {
+            "description": "Global articles shown as full cards; at most 4. Replaces the legacy `global_news`; do not combine with the legacy fields.",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Global News Full",
+            "type": "array"
+          },
           "highlight": {
-            "title": "Highlight",
-            "type": "integer"
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Highlight"
+          },
+          "highlights": {
+            "description": "Articles for the Highlights block, shown as full cards; at most 3. Replaces the legacy `highlight`; do not combine with the legacy fields.",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Highlights",
+            "type": "array"
           },
           "include_clusters": {
             "default": false,
@@ -2347,6 +2423,22 @@
             "title": "Indonesia",
             "type": "array"
           },
+          "indonesia_compact": {
+            "description": "Indonesia articles shown as one-line rows (no fetch, no LLM call); at most 15.",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Indonesia Compact",
+            "type": "array"
+          },
+          "indonesia_full": {
+            "description": "Indonesia articles shown as full cards; at most 4. Replaces the legacy `indonesia`; do not combine with the legacy fields.",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Indonesia Full",
+            "type": "array"
+          },
           "notes": {
             "additionalProperties": {
               "type": "string"
@@ -2354,11 +2446,42 @@
             "default": {},
             "title": "Notes",
             "type": "object"
+          },
+          "period_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Last day (inclusive) covered by the edition; see `period_start`.",
+            "title": "Period End"
+          },
+          "period_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "First day covered by the edition. Give both `period_start` and `period_end`, or neither: the default is the previous calendar month in the report time zone (WIB).",
+            "title": "Period Start"
+          },
+          "regenerate": {
+            "description": "Article ids whose cached summary is rebuilt (page fetched, LLM called again) instead of reused. Only affects articles shown as full cards or highlights.",
+            "items": {
+              "type": "integer"
+            },
+            "title": "Regenerate",
+            "type": "array"
           }
         },
-        "required": [
-          "highlight"
-        ],
         "title": "NewsletterSectionsBody",
         "type": "object"
       },
@@ -14556,6 +14679,7 @@
     },
     "/api/newsletter/draft-email": {
       "post": {
+        "description": "Satu-satunya tempat edisi disimpan: bangun dari cache -> draft Outlook (Graph) -> baru\nsimpan baris, IOC, sebutan CVE, dan audit dalam satu commit. Dulu barisnya di-commit SEBELUM\nGraph dipanggil, jadi Graph yang gagal meninggalkan baris histori tanpa draft.",
         "operationId": "draft_email_api_newsletter_draft_email_post",
         "parameters": [
           {
@@ -14686,6 +14810,7 @@
     },
     "/api/newsletter/preview": {
       "post": {
+        "description": "Pratinjau tanpa efek ke catatan: tidak ada baris `newsletters` (jadi `newsletter_id`\nselalu null), tidak ada IOC, tidak ada sebutan CVE. Hanya dua cache yang terisi.",
         "operationId": "preview_newsletter_api_newsletter_preview_post",
         "parameters": [
           {

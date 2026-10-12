@@ -251,8 +251,12 @@ new-CVE summary above is the only per-client one.
 The newsletter (`services/newsletter._enrich_articles`, global, not per client) also correlates articles with the
 tracker: articles whose title/body mention a CVE that is still **true positive for at least one client**
 (`list_true_positive_cve_ids()`; FP judged per client row, not just `"default"`, changed in PR #14) get
-`cve_mentions` and `possibly_exploited_wild`. The mention is written to `cve_newsletter_mentions` on **one**
-tracker row (any client, DB order), and that table is not read by anything yet.
+`cve_mentions` and `possibly_exploited_wild`. The CVE ids found in the title and body are cached per article
+(`newsletter_article_summaries.cve_ids`, before any filtering) and intersected with the **current** true-positive set
+every time an edition is built, so a CVE that is marked FP later drops out without fetching the page again. Building
+a preview writes nothing to the tracker: the mention is written to `cve_newsletter_mentions` only when the Outlook
+draft is created (`write_article_findings`, once per article), on **one** tracker row (any client, DB order), and that
+table is not read by anything yet.
 
 ## 8. UI map (`apps/web/src/app/(app)/cve/page.tsx`)
 

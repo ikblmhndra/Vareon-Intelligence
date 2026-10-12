@@ -18,9 +18,44 @@
     'total': 0,
   })
 # ---
+# name: test_newsletter_history_label
+  dict({
+    'newsletters': list([
+      dict({
+        'created_at': str,
+        'created_by': 'analyst1',
+        'generated_at': str,
+        'id': int,
+        'label': 'October 2026',
+        'period_end': '2026-10-31',
+        'period_start': '2026-10-01',
+        'sections': dict({
+        }),
+        'week': 45,
+        'year': 2026,
+      }),
+      dict({
+        'created_at': str,
+        'created_by': 'analyst1',
+        'generated_at': str,
+        'id': int,
+        'label': 'Week 38, 2026',
+        'period_end': None,
+        'period_start': None,
+        'sections': dict({
+        }),
+        'week': 38,
+        'year': 2026,
+      }),
+    ]),
+    'page': 1,
+    'page_size': 20,
+    'total': 2,
+  })
+# ---
 # name: test_preview_newsletter
   dict({
-    'newsletter_id': int,
+    'newsletter_id': None,
     'week': 39,
     'year': 2026,
   })
