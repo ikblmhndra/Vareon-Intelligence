@@ -1,15 +1,15 @@
 import { GlobeIcon, MapPinIcon, StarIcon, TargetIcon } from "lucide-react";
 
-import type { SectionKey } from "@/components/newsletter/types";
+import type { SectionName } from "@/lib/newsletter/composer";
 
 const ICONS = {
-  highlight: StarIcon,
+  highlights: StarIcon,
   apac: MapPinIcon,
   global_news: GlobeIcon,
   indonesia: TargetIcon,
 } as const;
 
-export function SectionIcon({ section, className }: { section: SectionKey; className?: string }) {
+export function SectionIcon({ section, className }: { section: "highlights" | SectionName; className?: string }) {
   const Icon = ICONS[section];
   return <Icon aria-hidden className={className} />;
 }

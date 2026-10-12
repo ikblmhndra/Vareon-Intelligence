@@ -17,9 +17,11 @@ interface Props {
 const CLUSTER_DAYS_ITEMS: Record<string, string> = { "7": "7 days", "14": "14 days", "30": "30 days" };
 
 /** Port "Customize Template" collapsible (`newsletter.html:353-396`) --
- * custom CSS/intro/footer buat email + toggle "Include Top Campaign
+ * custom CSS/footer buat email + toggle "Include Top Campaign
  * Clusters" (`include_clusters`/`cluster_days`, jalan sejak Fase 7.4
- * Grup A, `services/newsletter.py::build_newsletter_context`). */
+ * Grup A, `services/newsletter.py::build_newsletter_context`). Custom
+ * Intro pindah ke blok Executive Summary di atas composer (field yang
+ * sama, `custom_intro`; PR 9). */
 export function NewsletterTemplatePanel({ value, onChange }: Props) {
   const [open, setOpen] = useState(false);
 
@@ -46,17 +48,6 @@ export function NewsletterTemplatePanel({ value, onChange }: Props) {
               onChange={(e) => set("customCss", e.target.value)}
               placeholder="/* Override any styles, e.g.: .header { background: #1a1a1a; } */"
               className="h-20 resize-y font-mono text-xs"
-            />
-          </div>
-          <div>
-            <Label className="mb-1 block text-sm font-medium text-muted-foreground">
-              Custom Intro — injected at top of email body (HTML allowed)
-            </Label>
-            <Textarea
-              value={value.customIntro}
-              onChange={(e) => set("customIntro", e.target.value)}
-              placeholder="<p>This week's newsletter covers...</p>"
-              className="h-14 resize-y font-mono text-xs"
             />
           </div>
           <div>
