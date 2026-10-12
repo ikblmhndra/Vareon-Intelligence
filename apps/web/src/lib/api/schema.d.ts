@@ -2392,6 +2392,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/recap/{recap_id}/scorecard/{event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Recap Override Scorecard
+         * @description Verdict analis untuk satu event forecast di scorecard recap `recap_id`. Disimpan di samping
+         *     verdict model (siapa dan kapan), dipakai hit rate sebagai pengganti verdict model, dan ditulis
+         *     ke audit log. `recap_id` = recap pekan yang MEMUAT scorecard itu (pekan yang me-review),
+         *     `event_id` = id event forecast pekan sebelumnya (`f1`, `f2`, ...). Membalas recap yang sudah
+         *     diperbarui dan hit rate yang dihitung ulang. 404 kalau recap, scorecard-nya, atau event-nya
+         *     tidak ada; auth-nya sama dengan `POST /generate` (login saja).
+         */
+        patch: operations["recap_override_scorecard_api_recap__recap_id__scorecard__event_id__patch"];
+        trace?: never;
+    };
     "/api/rfi": {
         parameters: {
             query?: never;
@@ -5106,6 +5131,18 @@ export interface components {
             started_at: string | null;
             /** State */
             state: string;
+        };
+        /**
+         * ScorecardOverrideIn
+         * @description Verdict analis untuk satu event forecast di scorecard: `happened`, `partly`,
+         *     `not_happened`, atau `unclear` (dikeluarkan dari penyebut hit rate).
+         */
+        ScorecardOverrideIn: {
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "happened" | "partly" | "not_happened" | "unclear";
         };
         /**
          * ScraperConfigOut
@@ -11171,6 +11208,46 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recap_override_scorecard_api_recap__recap_id__scorecard__event_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                recap_id: number;
+                event_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScorecardOverrideIn"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

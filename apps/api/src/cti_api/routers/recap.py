@@ -5,7 +5,13 @@ endpoint publik di sini).
 **Dua jenis recap (#21, PR 2).** `kind=weekly`: recap terjadwal satu pekan Senin-Minggu (UTC),
 `date` = Senin-nya. `kind=daily`: recap satu hari yang dipicu tangan, default semua endpoint di
 sini supaya pemanggil lama tidak berubah. `/latest` mengembalikan recap MINGGUAN terbaru (halaman
-Recap membukanya), `/list` memuat kedua jenis dengan `kind` dan rentangnya."""
+Recap membukanya), `/list` memuat kedua jenis dengan `kind` dan rentangnya.
+
+**Kualitas recap mingguan (#21, PR 3).** Dokumen recap membawa `quality` (perbandingan pekan,
+laporan grounding, scorecard forecast). Hit rate scorecard 8 pekan dihitung SAAT DIBACA (override
+analis mengubah pekan yang sudah lewat) dan ikut di balasan `/latest`, `/{date}?kind=weekly`, dan
+override sebagai `hit_rate` di samping `recap`; recap harian tidak punya scorecard, jadi tidak
+membawanya."""
 
 from __future__ import annotations
 
@@ -17,6 +23,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_api.deps import AuthedUser, get_db, request_ip, require_auth
+from cti_api.schemas.recap import ScorecardOverrideIn
 from cti_api.services import recap as recap_service
 
 router = APIRouter(prefix="/api/recap", tags=["recap"])
@@ -48,7 +55,8 @@ async def recap_latest(
     pekan yang akan dibuat berikutnya (pekan terakhir yang sudah selesai)."""
     doc = await recap_service.get_latest_recap(session, "weekly")
     date = doc["date"] if doc else recap_service.default_week_start().isoformat()
-    return {"recap": doc, "date": date, "kind": "weekly"}
+    hit_rate = await recap_service.get_hit_rate(session)
+    return {"recap": doc, "date": date, "kind": "weekly", "hit_rate": hit_rate}
 
 
 @router.get("/{date}")
@@ -63,7 +71,10 @@ async def recap_get(
     if not doc:
         what = "recap" if kind == "daily" else f"{kind} recap"
         raise HTTPException(status_code=404, detail=f"No {what} for {date}")
-    return {"recap": doc}
+    body: dict[str, object] = {"recap": doc}
+    if kind == "weekly":
+        body["hit_rate"] = await recap_service.get_hit_rate(session)
+    return body
 
 
 @router.post("/generate")
@@ -116,3 +127,41 @@ async def recap_generate(
     )
     await session.commit()
     return {"recap": doc}
+
+
+@router.patch("/{recap_id}/scorecard/{event_id}")
+async def recap_override_scorecard(
+    recap_id: int,
+    event_id: str,
+    body: ScorecardOverrideIn,
+    request: Request,
+    user: AuthedUser = Depends(require_auth),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, object]:
+    """Verdict analis untuk satu event forecast di scorecard recap `recap_id`. Disimpan di samping
+    verdict model (siapa dan kapan), dipakai hit rate sebagai pengganti verdict model, dan ditulis
+    ke audit log. `recap_id` = recap pekan yang MEMUAT scorecard itu (pekan yang me-review),
+    `event_id` = id event forecast pekan sebelumnya (`f1`, `f2`, ...). Membalas recap yang sudah
+    diperbarui dan hit rate yang dihitung ulang. 404 kalau recap, scorecard-nya, atau event-nya
+    tidak ada; auth-nya sama dengan `POST /generate` (login saja)."""
+    try:
+        doc = await recap_service.override_scorecard(
+            session, recap_id, event_id, body.verdict, user["username"]
+        )
+    except recap_service.ScorecardNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    entry = next(e for e in doc["quality"]["scorecard"]["events"] if e["id"] == event_id)
+    await AsyncAuditLogRepo(session).write(
+        username=user["username"],
+        action="override_recap_scorecard",
+        target_id=str(recap_id),
+        detail={
+            "week_start": doc["date"],
+            "event_id": event_id,
+            "verdict": body.verdict,
+            "model_verdict": entry["verdict"],
+        },
+        ip_address=request_ip(request),
+    )
+    await session.commit()
+    return {"recap": doc, "hit_rate": await recap_service.get_hit_rate(session)}

@@ -19,7 +19,7 @@ from __future__ import annotations
 import datetime
 from typing import Any
 
-from sqlalchemy import BigInteger, Date, DateTime, String, Text, UniqueConstraint, func
+from sqlalchemy import BigInteger, Date, DateTime, String, Text, UniqueConstraint, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -54,6 +54,16 @@ class DailyRecap(Base):
     )
     model: Mapped[str] = mapped_column(String(100), nullable=False, default="")
     token_usage: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    quality: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
+    """Hasil yang dihitung KODE untuk recap mingguan (#21, PR 3), bukan tulisan LLM:
+    `comparison` (selisih `counts` dan item baru terhadap pekan sebelumnya; tidak ada kalau pekan
+    sebelumnya tidak punya baris), `grounding` (`dropped` = item keluaran yang dibuang karena tidak
+    ada di masukan, `count`) dan `scorecard` (review forecast pekan lalu per event, plus override
+    analis di samping verdict model). Kuncinya hanya ada kalau hasilnya memang dihitung; recap
+    harian dan baris dari sebelum kolom ini ada = `{}`. `server_default` supaya penulis lama
+    (rollback, deploy bergulir) tetap bisa INSERT."""
     raw_llm: Mapped[str | None] = mapped_column(Text)
     """Diisi cuma kalau parsing JSON dari LLM gagal (`_extract_json`
     fallback `{"_raw": raw}`) -- port apa adanya, audit trail buat

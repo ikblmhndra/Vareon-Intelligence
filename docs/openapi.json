@@ -4190,6 +4190,26 @@
         "title": "SchedulerStatusOut",
         "type": "object"
       },
+      "ScorecardOverrideIn": {
+        "description": "Verdict analis untuk satu event forecast di scorecard: `happened`, `partly`,\n`not_happened`, atau `unclear` (dikeluarkan dari penyebut hit rate).",
+        "properties": {
+          "verdict": {
+            "enum": [
+              "happened",
+              "partly",
+              "not_happened",
+              "unclear"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "verdict"
+        ],
+        "title": "ScorecardOverrideIn",
+        "type": "object"
+      },
       "ScraperConfigOut": {
         "description": "`None` di tiap field override = \"gak ada override, pakai default\nkode\" -- `enabled` kekecualian (selalu bool efektif, gabungan\n`ScraperConfig.enabled` kalau ada baris override, else `ScraperMeta.\nenabled` kode).",
         "properties": {
@@ -17681,6 +17701,86 @@
           }
         },
         "summary": "Recap Get",
+        "tags": [
+          "recap"
+        ]
+      }
+    },
+    "/api/recap/{recap_id}/scorecard/{event_id}": {
+      "patch": {
+        "description": "Verdict analis untuk satu event forecast di scorecard recap `recap_id`. Disimpan di samping\nverdict model (siapa dan kapan), dipakai hit rate sebagai pengganti verdict model, dan ditulis\nke audit log. `recap_id` = recap pekan yang MEMUAT scorecard itu (pekan yang me-review),\n`event_id` = id event forecast pekan sebelumnya (`f1`, `f2`, ...). Membalas recap yang sudah\ndiperbarui dan hit rate yang dihitung ulang. 404 kalau recap, scorecard-nya, atau event-nya\ntidak ada; auth-nya sama dengan `POST /generate` (login saja).",
+        "operationId": "recap_override_scorecard_api_recap__recap_id__scorecard__event_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "recap_id",
+            "required": true,
+            "schema": {
+              "title": "Recap Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "event_id",
+            "required": true,
+            "schema": {
+              "title": "Event Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScorecardOverrideIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Recap Override Scorecard Api Recap  Recap Id  Scorecard  Event Id  Patch",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Recap Override Scorecard",
         "tags": [
           "recap"
         ]
