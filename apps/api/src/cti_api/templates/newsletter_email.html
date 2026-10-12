@@ -1,233 +1,205 @@
-{% extends "_base_email.html" %}
-{% block title %}{{ platform_name }} Newsletter — Week {{ week }}, {{ year }}{% endblock %}
-{% block styles %}
-    .wrapper { max-width: 720px; margin: 0 auto; }
-  .header { background: #430a23; color: #fff; padding: 28px 32px; border-radius: 8px 8px 0 0; }
-  .header-label { font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: #fbbfa1; margin-bottom: 6px; }
-  .header-title { font-size: 22px; font-weight: 700; margin: 0 0 4px; }
-  .header-meta { font-size: 12px; color: #e6cfd6; }
-  .body { background: #fff; padding: 0 32px 32px; border-radius: 0 0 8px 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+{#-
+  Template newsletter bulanan (ROADMAP #22), dibangun mengikuti docs/mockups/newsletter-redesign.html.
+  BERDIRI SENDIRI: tidak lagi `extends "_base_email.html"` (dipakai bersama email notifikasi CVE,
+  yang tidak boleh ikut berubah).
 
-  .section-header { padding: 24px 0 10px; border-bottom: 2px solid #e8dacb; margin-bottom: 16px; display: flex; align-items: center; gap: 10px; }
-  .section-icon { width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
-  .icon-highlight { background: #fff3cd; }
-  .icon-apac      { background: #dcebf2; }
-  .icon-global    { background: #ebe3f5; }
-  .icon-indonesia { background: #fde8e8; }
-  .section-name { font-size: 13px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; }
-  .label-highlight { color: #856404; }
-  .label-apac      { color: #256a8a; }
-  .label-global    { color: #6b4a9e; }
-  .label-indonesia { color: #8a1c1c; }
+  Aturan klien email (Outlook desktop memakai mesin Word, bukan browser): layout <table>, CSS INLINE,
+  kontainer 640px, font cadangan, warna solid. Kontainer luwes (`width:100%;max-width:640px`) supaya
+  tidak meluber di lebar 481-663px; mesin Word mengabaikan `max-width`, jadi Outlook desktop
+  mendapat tabel 640px dari komentar kondisional `[if mso]` ("ghost table"). Konstruksi CSS modern yang tidak dikenal mesin Word
+  dilarang, daftarnya dijaga tests/unit/test_newsletter_template.py. Satu-satunya <style> memuat
+  media query layar sempit dan aturan untuk HTML ketikan analis (intro/footer), yang tidak bisa
+  diberi style inline; klien yang membuangnya tetap menampilkan versi desktop.
 
-  /* Highlight card — full width, prominent */
-  .highlight-card { background: linear-gradient(135deg, #430a23 0%, #5c1233 100%); border-radius: 8px; padding: 24px; margin-bottom: 8px; color: #fff; }
-  .highlight-card .art-title { font-size: 17px; font-weight: 700; margin: 0 0 6px; }
-  .highlight-card .art-title a { color: #fbbfa1; text-decoration: none; }
-  .highlight-card .art-title a:hover { text-decoration: underline; }
-  .highlight-card .art-meta { font-size: 11px; color: #e6cfd6; margin-bottom: 14px; }
-  .highlight-card .key-points { list-style: none; padding: 0; margin: 0 0 14px; }
-  .highlight-card .key-points li { padding: 4px 0 4px 18px; position: relative; font-size: 13px; color: #f2e8dd; }
-  .highlight-card .key-points li::before { content: '▸'; position: absolute; left: 0; color: #fbbfa1; }
-  .highlight-card .art-summary { font-size: 13px; color: #e6cfd6; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 12px; }
+  Kunci konteks yang dibaca (dari build_newsletter_context() + render_newsletter_html()):
+    platform_name, logo_cid, language,
+    period_label, period_range, published_label,
+    highlights, apac, global_news, indonesia, apac_compact, global_news_compact, indonesia_compact,
+    campaign_clusters, custom_css, custom_intro, custom_footer.
+  Judul bagian = bahasa Inggris (keputusan tim); isi ringkasan artikel = bahasa permintaan (Indonesia).
+  Komentar Jinja ini tidak ikut ke output (komentar HTML akan ikut menambah ukuran email).
+-#}
+{%- macro chip(text, bg, fg, upper=True) -%}
+<span style="display:inline-block;padding:2px 8px;border-radius:3px;font-size:10px;font-weight:700;{% if upper %}letter-spacing:.5px;text-transform:uppercase;{% endif %}background:{{ bg }};color:{{ fg }};">{{ text }}</span>
+{%- endmacro -%}
 
-  /* Regular article cards */
-  .article-card { border: 1px solid #e8dacb; border-radius: 6px; padding: 16px; margin-bottom: 10px; background: #fbf6f1; }
-  .article-card .art-title { font-size: 14px; font-weight: 600; margin: 0 0 4px; }
-  .article-card .art-title a { color: #430a23; text-decoration: none; }
-  .article-card .art-title a:hover { color: #d0002f; text-decoration: underline; }
-  .article-card .art-meta { font-size: 11px; color: #6b4452; margin-bottom: 10px; }
-  .article-card .key-points { list-style: none; padding: 0; margin: 0 0 10px; }
-  .article-card .key-points li { padding: 3px 0 3px 16px; position: relative; font-size: 12px; color: #4a2a36; }
-  .article-card .key-points li::before { content: '•'; position: absolute; left: 0; color: #d0002f; }
-  .article-card .art-summary { font-size: 12px; color: #4a2a36; border-top: 1px solid #e8dacb; padding-top: 10px; }
+{%- macro meta_line(a) -%}
+{{ a.source }}{% if a.posted_on %} &nbsp;·&nbsp; {{ a.posted_on | short_date }}{% endif %}{% if a.news_type %} &nbsp;·&nbsp; {{ a.news_type }}{% endif %}
+{%- endmacro -%}
 
-  .tag { display: inline-block; padding: 2px 7px; border-radius: 3px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-right: 4px; margin-bottom: 4px; }
-  .tag-country  { background: #dcebf2; color: #256a8a; }
-  .tag-industry { background: #def2e5; color: #17703f; }
-  .tag-actor    { background: #fbe0e6; color: #8a0c2f; }
+{#- Satu baris tag artikel: negara korban (biru), industri (hijau), aktor ancaman (merah, hanya Highlights), CVE yang dilacak (hijau). -#}
+{%- macro tag_row(a, actors=False) -%}
+{% for c in a.victim_countries %}{{ chip(c, '#dcebf2', '#256a8a') }} {% endfor -%}
+{% for i in a.impacted_industries %}{{ chip(i, '#def2e5', '#17703f') }} {% endfor -%}
+{% if actors %}{% for t in a.threat_actors %}{{ chip(t, '#fbe0e6', '#8a0c2f') }} {% endfor %}{% endif -%}
+{% for v in a.cve_mentions %}{{ chip(v, '#def2e5', '#17703f') }} {% endfor -%}
+{%- endmacro -%}
 
-  .footer { text-align: center; padding: 20px; font-size: 11px; color: #6b4452; }
-  .footer strong { color: #6b4452; }
-  .custom-intro { padding: 20px 0 0; font-size: 13px; color: #4a2a36; border-bottom: 1px solid #e8dacb; margin-bottom: 4px; }
-  .analyst-note { background: #fffbe6; border-left: 3px solid #f59e0b; border-radius: 0 4px 4px 0; padding: 8px 12px; margin-top: 10px; font-size: 12px; color: #4a2a36; white-space: pre-wrap; }
-  .analyst-note-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #b45309; margin-bottom: 4px; }
-{% endblock %}
-{% block head_extra %}{% if custom_css %}<style>{{ custom_css | safe }}</style>{% endif %}{% endblock %}
-{% block content %}
-<div class="wrapper">
-  <div class="header">
-    <div class="header-label">{{ platform_name }}</div>
-    <div class="header-title">Threat Intelligence Newsletter &mdash; Week {{ week }}, {{ year }}</div>
-    <div class="header-meta">Generated {{ generated_at }}</div>
-  </div>
+{#- Catatan analis; baris baru yang diketik analis jadi <br> (white-space: pre-wrap tidak dikenal semua klien). -#}
+{%- macro analyst_note(text) -%}
+<table role="presentation" class="analyst-note" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#fffbe6" style="background:#fffbe6;border-left:3px solid #f59e0b;"><tr><td style="padding:9px 12px;font-size:12px;line-height:1.55;color:#4a2a36;"><span style="font-size:10px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#b45309;">Analyst Note</span><br>{{ text | e | replace("\n", "<br>" | safe) }}</td></tr></table>
+{%- endmacro -%}
 
-  <div class="body">
+{#- Judul bagian: batang warna di kiri (sel tabel, bukan span inline-block yang diabaikan mesin Word) + label. -#}
+{%- macro heading(label, bar, color) -%}
+<tr><td class="section-header" style="padding:26px 0 12px;border-bottom:2px solid #e8dacb;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="6" bgcolor="{{ bar }}" style="background:{{ bar }};width:6px;font-size:0;line-height:0;">&nbsp;</td><td class="section-name" style="padding-left:8px;font-size:13px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:{{ color }};">{{ label }}</td></tr></table></td></tr>
+{%- endmacro -%}
 
-    {% if custom_intro %}<div class="custom-intro">{{ custom_intro | safe }}</div>{% endif %}
+{#- Kartu penuh biasa (APAC / Global / Indonesia). -#}
+{%- macro card(a) -%}
+<table role="presentation" class="article-card" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#fbf6f1" style="background:#fbf6f1;border:1px solid #e8dacb;border-radius:8px;">
+<tr><td class="art-title" style="padding:16px 18px 4px;font-size:15px;line-height:1.4;font-weight:700;"><a href="{{ a.url | http_url }}" target="_blank" style="color:#430a23;text-decoration:none;">{{ a.title }}</a></td></tr>
+<tr><td class="art-meta" style="padding:0 18px 10px;font-size:11px;color:#6b4452;">{{ meta_line(a) }}</td></tr>
+{%- if a.key_points %}
+<tr><td class="key-points" style="padding:0 18px 10px;font-size:12px;line-height:1.6;color:#4a2a36;">{% for p in a.key_points %}<span style="color:#d0002f;">&bull;</span>&nbsp; {{ p }}{% if not loop.last %}<br>{% endif %}{% endfor %}</td></tr>
+{%- endif %}
+{%- if a.summary %}
+<tr><td class="art-summary" style="padding:{{ '10px 18px 14px' if a.key_points else '0 18px 14px' }};font-size:12px;line-height:1.6;color:#4a2a36;{% if a.key_points %}border-top:1px solid #e8dacb;{% endif %}">{{ a.summary }}</td></tr>
+{%- endif %}
+{%- if a.victim_countries or a.impacted_industries or a.cve_mentions %}
+<tr><td style="padding:0 18px 16px;">{{ tag_row(a) }}</td></tr>
+{%- endif %}
+{%- if a.analyst_note %}
+<tr><td style="padding:0 18px 16px;">{{ analyst_note(a.analyst_note) }}</td></tr>
+{%- endif %}
+</table>
+{%- endmacro -%}
 
-    <!-- ── HIGHLIGHT OF THE WEEK ─────────────────────────────── -->
-    <div class="section-header">
-      <div class="section-icon icon-highlight">⭐</div>
-      <span class="section-name label-highlight">Highlight of the Week</span>
-    </div>
-    {% set h = highlight %}
-    <div class="highlight-card">
-      <div class="art-title"><a href="{{ h.url | http_url }}" target="_blank">{{ h.title }}</a></div>
-      <div class="art-meta">
-        {{ h.source }} &nbsp;·&nbsp; {{ h.posted_on }}
-        {% if h.news_type %}&nbsp;·&nbsp; {{ h.news_type }}{% endif %}
-      </div>
-      {% if h.key_points %}
-      <ul class="key-points">
-        {% for point in h.key_points %}<li>{{ point }}</li>{% endfor %}
-      </ul>
-      {% endif %}
-      {% if h.summary %}<div class="art-summary">{{ h.summary }}</div>{% endif %}
-      {% if h.victim_countries or h.impacted_industries or h.threat_actors %}
-      <div style="margin-top:12px;">
-        {% for c in h.victim_countries %}<span class="tag tag-country">{{ c }}</span>{% endfor %}
-        {% for i in h.impacted_industries %}<span class="tag tag-industry">{{ i }}</span>{% endfor %}
-        {% for a in h.threat_actors %}<span class="tag tag-actor">{{ a }}</span>{% endfor %}
-      </div>
-      {% endif %}
-      {% if h.analyst_note %}
-      <div class="analyst-note" style="margin-top:14px;background:#fffbe6;border-left:3px solid #f59e0b;border-radius:0 4px 4px 0;padding:8px 12px;font-size:12px;color:#4a2a36;white-space:pre-wrap;">
-        <div class="analyst-note-label" style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:#b45309;margin-bottom:4px;">Analyst Note</div>
-        {{ h.analyst_note }}
-      </div>
-      {% endif %}
-    </div>
+{#- Kartu Highlights: latar burgundy, judul peach. -#}
+{%- macro highlight_card(a) -%}
+<table role="presentation" class="highlight-card" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#430a23" style="background:#430a23;border-radius:8px;">
+<tr><td class="art-title" style="padding:22px 24px 6px;font-size:18px;line-height:1.35;font-weight:700;"><a href="{{ a.url | http_url }}" target="_blank" style="color:#fbbfa1;text-decoration:none;">{{ a.title }}</a></td></tr>
+<tr><td class="art-meta" style="padding:0 24px 14px;font-size:11px;color:#e6cfd6;">{{ meta_line(a) }}</td></tr>
+{%- if a.key_points %}
+<tr><td class="key-points" style="padding:0 24px 12px;font-size:13px;line-height:1.6;color:#f2e8dd;">{% for p in a.key_points %}<span style="color:#fbbfa1;">&#9656;</span>&nbsp; {{ p }}{% if not loop.last %}<br>{% endif %}{% endfor %}</td></tr>
+{%- endif %}
+{%- if a.summary %}
+<tr><td class="art-summary" style="padding:{{ '12px 24px 16px' if a.key_points else '0 24px 16px' }};font-size:13px;line-height:1.6;color:#e6cfd6;{% if a.key_points %}border-top:1px solid #6d2b46;{% endif %}">{{ a.summary }}</td></tr>
+{%- endif %}
+{%- if a.victim_countries or a.impacted_industries or a.threat_actors or a.cve_mentions %}
+<tr><td style="padding:0 24px 20px;">{{ tag_row(a, actors=True) }}</td></tr>
+{%- endif %}
+{%- if a.analyst_note %}
+<tr><td style="padding:0 24px 22px;">{{ analyst_note(a.analyst_note) }}</td></tr>
+{%- endif %}
+</table>
+{%- endmacro -%}
 
-    <!-- ── APAC THREATS ──────────────────────────────────────── -->
-    {% if apac %}
-    <div class="section-header">
-      <div class="section-icon icon-apac">🌏</div>
-      <span class="section-name label-apac">APAC Threats</span>
-    </div>
-    {% for art in apac %}
-    <div class="article-card">
-      <div class="art-title"><a href="{{ art.url | http_url }}" target="_blank">{{ art.title }}</a></div>
-      <div class="art-meta">{{ art.source }} &nbsp;·&nbsp; {{ art.posted_on }}{% if art.news_type %} &nbsp;·&nbsp; {{ art.news_type }}{% endif %}</div>
-      {% if art.key_points %}
-      <ul class="key-points">{% for p in art.key_points %}<li>{{ p }}</li>{% endfor %}</ul>
-      {% endif %}
-      {% if art.summary %}<div class="art-summary">{{ art.summary }}</div>{% endif %}
-      {% if art.victim_countries or art.impacted_industries %}
-      <div style="margin-top:8px;">
-        {% for c in art.victim_countries %}<span class="tag tag-country">{{ c }}</span>{% endfor %}
-        {% for i in art.impacted_industries %}<span class="tag tag-industry">{{ i }}</span>{% endfor %}
-      </div>
-      {% endif %}
-      {% if art.analyst_note %}
-      <div class="analyst-note">
-        <div class="analyst-note-label">Analyst Note</div>
-        {{ art.analyst_note }}
-      </div>
-      {% endif %}
-    </div>
-    {% endfor %}
-    {% endif %}
+{#- "Also Noted": satu baris per artikel compact (judul, sumber, tanggal, tipe), tanpa ringkasan. -#}
+{%- macro also_noted(label, rows) -%}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e8dacb;border-radius:8px;">
+<tr><td bgcolor="#f2e8dd" style="background:#f2e8dd;padding:8px 18px;font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6b4452;border-radius:8px 8px 0 0;">Also Noted &nbsp;·&nbsp; {{ label }}</td></tr>
+{%- for r in rows %}
+<tr><td style="padding:9px 18px;{% if not loop.last %}border-bottom:1px solid #e8dacb;{% endif %}"><div style="font-size:13px;line-height:1.4;font-weight:700;"><a href="{{ r.url | http_url }}" target="_blank" style="color:#430a23;text-decoration:none;">{{ r.title }}</a></div><div style="font-size:11px;color:#6b4452;padding-top:2px;">{{ meta_line(r) }}</div></td></tr>
+{%- endfor %}
+</table>
+{%- endmacro -%}
 
-    <!-- ── GLOBAL THREATS ────────────────────────────────────── -->
-    {% if global_news %}
-    <div class="section-header">
-      <div class="section-icon icon-global">🌐</div>
-      <span class="section-name label-global">Global Threats</span>
-    </div>
-    {% for art in global_news %}
-    <div class="article-card">
-      <div class="art-title"><a href="{{ art.url | http_url }}" target="_blank">{{ art.title }}</a></div>
-      <div class="art-meta">{{ art.source }} &nbsp;·&nbsp; {{ art.posted_on }}{% if art.news_type %} &nbsp;·&nbsp; {{ art.news_type }}{% endif %}</div>
-      {% if art.key_points %}
-      <ul class="key-points">{% for p in art.key_points %}<li>{{ p }}</li>{% endfor %}</ul>
-      {% endif %}
-      {% if art.summary %}<div class="art-summary">{{ art.summary }}</div>{% endif %}
-      {% if art.victim_countries or art.impacted_industries %}
-      <div style="margin-top:8px;">
-        {% for c in art.victim_countries %}<span class="tag tag-country">{{ c }}</span>{% endfor %}
-        {% for i in art.impacted_industries %}<span class="tag tag-industry">{{ i }}</span>{% endfor %}
-      </div>
-      {% endif %}
-      {% if art.analyst_note %}
-      <div class="analyst-note">
-        <div class="analyst-note-label">Analyst Note</div>
-        {{ art.analyst_note }}
-      </div>
-      {% endif %}
-    </div>
-    {% endfor %}
-    {% endif %}
+{#- Satu bagian: judul, kartu penuh, lalu daftar compact. Kosong dua-duanya = bagian tidak ditampilkan. -#}
+{%- macro section(label, bar, color, cards, rows, dark=False) -%}
+{%- if cards or rows %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+{{ heading(label, bar, color) }}
+{%- for a in cards %}
+<tr><td style="padding-top:{{ 16 if loop.first else 10 }}px;">{% if dark %}{{ highlight_card(a) }}{% else %}{{ card(a) }}{% endif %}</td></tr>
+{%- endfor %}
+{%- if rows %}
+<tr><td style="padding-top:{{ 10 if cards else 14 }}px;">{{ also_noted(label, rows) }}</td></tr>
+{%- endif %}
+</table>
+{%- endif %}
+{%- endmacro -%}
 
-    <!-- ── INDONESIA ──────────────────────────────────────────── -->
-    {% if indonesia %}
-    <div class="section-header">
-      <div class="section-icon icon-indonesia">🇮🇩</div>
-      <span class="section-name label-indonesia">Indonesia</span>
-    </div>
-    {% for art in indonesia %}
-    <div class="article-card">
-      <div class="art-title"><a href="{{ art.url | http_url }}" target="_blank">{{ art.title }}</a></div>
-      <div class="art-meta">{{ art.source }} &nbsp;·&nbsp; {{ art.posted_on }}{% if art.news_type %} &nbsp;·&nbsp; {{ art.news_type }}{% endif %}</div>
-      {% if art.key_points %}
-      <ul class="key-points">{% for p in art.key_points %}<li>{{ p }}</li>{% endfor %}</ul>
-      {% endif %}
-      {% if art.summary %}<div class="art-summary">{{ art.summary }}</div>{% endif %}
-      {% if art.victim_countries or art.impacted_industries %}
-      <div style="margin-top:8px;">
-        {% for c in art.victim_countries %}<span class="tag tag-country">{{ c }}</span>{% endfor %}
-        {% for i in art.impacted_industries %}<span class="tag tag-industry">{{ i }}</span>{% endfor %}
-      </div>
-      {% endif %}
-      {% if art.analyst_note %}
-      <div class="analyst-note">
-        <div class="analyst-note-label">Analyst Note</div>
-        {{ art.analyst_note }}
-      </div>
-      {% endif %}
-    </div>
-    {% endfor %}
-    {% endif %}
+{%- set preheader = (period_label ~ ': ' ~ (highlights | map(attribute='title') | join(' · '))) | truncate(140, True, '…') -%}
+<!DOCTYPE html>
+<html lang="{{ language | default('id') }}" xmlns:o="urn:schemas-microsoft-com:office:office">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<title>{{ platform_name }} | Threat Intelligence Newsletter, {{ period_label }}</title>
+<!--[if mso]><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml><![endif]-->
+<style>
+  @media only screen and (max-width: 480px) {
+    .px { padding-left: 18px !important; padding-right: 18px !important; }
+    .h1 { font-size: 22px !important; }
+  }
+  .exec-body p { margin: 0 0 10px 0; }
+  .exec-body p:last-child { margin-bottom: 0; }
+  .footer a { color: #fbbfa1; }
+</style>
+{% if custom_css %}<style>{{ custom_css | safe }}</style>{% endif %}
+</head>
+<body style="margin:0;padding:0;background:#f2e8dd;font-family:'Google Sans Flex','Segoe UI',-apple-system,BlinkMacSystemFont,Roboto,Arial,sans-serif;color:#4a2a36;">
+<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:#f2e8dd;opacity:0;">{{ preheader }}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f2e8dd" style="background:#f2e8dd;">
+<tr><td align="center" style="padding:24px 12px;">
+<!--[if mso]><table role="presentation" align="center" width="640" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
+<table role="presentation" class="container wrapper" width="640" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:640px;">
 
-  {% if campaign_clusters %}
-  <div style="padding:24px 0 10px;border-bottom:2px solid #e8dacb;margin-bottom:16px;display:flex;align-items:center;gap:10px;">
-    <div style="width:28px;height:28px;border-radius:6px;background:#fbe0e6;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;">🎯</div>
-    <span style="font-size:13px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#256a8a;">Campaign Clusters</span>
-  </div>
-  {% for c in campaign_clusters %}
-  <div style="border:1px solid #e8dacb;border-radius:6px;padding:14px 16px;margin-bottom:10px;background:#fbf6f1;">
-    <div style="font-size:13px;font-weight:700;color:#430a23;margin-bottom:4px;">{{ c.name }}</div>
-    <div style="font-size:11px;color:#6b4452;margin-bottom:8px;">
-      {{ c.size }} articles &nbsp;·&nbsp; {{ c.first_seen }}{% if c.last_seen and c.last_seen != c.first_seen %} – {{ c.last_seen }}{% endif %}
-    </div>
-    {% if c.dominant_tas %}
-    <div style="margin-bottom:6px;">
-      {% for ta in c.dominant_tas %}<span style="display:inline-block;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:600;background:#fbe0e6;color:#8a0c2f;margin-right:4px;margin-bottom:3px;">{{ ta }}</span>{% endfor %}
-    </div>
-    {% endif %}
-    {% if c.attack_techniques %}
-    <div style="margin-bottom:6px;">
-      {% for ttp in c.attack_techniques %}<span style="display:inline-block;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:600;background:#ebe3f5;color:#6b4a9e;margin-right:4px;margin-bottom:3px;">{{ ttp }}</span>{% endfor %}
-    </div>
-    {% endif %}
-    {% if c.cve_ids %}
-    <div>
-      {% for cve in c.cve_ids %}<span style="display:inline-block;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:600;background:#def2e5;color:#17703f;margin-right:4px;margin-bottom:3px;">{{ cve }}</span>{% endfor %}
-    </div>
-    {% endif %}
-  </div>
-  {% endfor %}
-  {% endif %}
+<tr><td class="px header" bgcolor="#430a23" style="background:#430a23;padding:30px 36px 26px;border-radius:10px 10px 0 0;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr>
+<td valign="middle"><img src="cid:{{ logo_cid }}" alt="Company logo" width="106" height="28" style="display:block;width:106px;height:28px;border:0;"></td>
+<td class="header-label" align="right" valign="middle" style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#e6cfd6;">{{ period_label }} Edition</td>
+</tr>
+<tr><td colspan="2" class="h1 header-title" style="padding-top:14px;font-size:28px;line-height:1.2;font-weight:700;color:#ffffff;">Threat Intelligence Newsletter</td></tr>
+{%- if period_range %}
+<tr><td colspan="2" class="header-meta" style="padding-top:8px;font-size:13px;color:#e6cfd6;">Period {{ period_range }}{% if published_label %} &nbsp;·&nbsp; Published {{ published_label }}{% endif %}</td></tr>
+{%- endif %}
+</table>
+</td></tr>
+<tr><td height="4" bgcolor="#d0002f" style="background:#d0002f;font-size:0;line-height:0;mso-line-height-rule:exactly;">&nbsp;</td></tr>
 
-  </div><!-- /body -->
+<tr><td class="px body" bgcolor="#ffffff" style="background:#ffffff;padding:8px 36px 32px;">
 
-  <div class="footer">
-    {% if custom_footer %}
-    {{ custom_footer | safe }}
-    {% else %}
-    <strong>{{ platform_name }}</strong> &nbsp;·&nbsp; Threat Intelligence Newsletter &nbsp;·&nbsp; Week {{ week }}, {{ year }}<br>
-    Internal &mdash; Confidential
-    {% endif %}
-  </div>
-</div>
-{% endblock %}
+{%- if custom_intro %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+<tr><td style="padding:24px 0 10px;font-size:12px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:#430a23;border-bottom:2px solid #e8dacb;">Executive Summary</td></tr>
+<tr><td style="padding:16px 0 4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#fbf6f1" style="background:#fbf6f1;border:1px solid #e8dacb;border-radius:8px;"><tr><td class="custom-intro exec-body" style="padding:16px 18px;font-size:14px;line-height:1.7;color:#4a2a36;">{{ custom_intro | safe }}</td></tr></table></td></tr>
+</table>
+{%- endif %}
+
+{{ section('Highlights', '#d0002f', '#856404', highlights, [], dark=True) }}
+{{ section('Asia Pacific', '#256a8a', '#256a8a', apac, apac_compact) }}
+{{ section('Global', '#6b4a9e', '#6b4a9e', global_news, global_news_compact) }}
+{{ section('Indonesia', '#8a1c1c', '#8a1c1c', indonesia, indonesia_compact) }}
+
+{%- if campaign_clusters %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+{{ heading('Campaigns', '#430a23', '#430a23') }}
+{%- for c in campaign_clusters %}
+<tr><td style="padding-top:{{ 16 if loop.first else 10 }}px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#fbf6f1" style="background:#fbf6f1;border:1px solid #e8dacb;border-radius:8px;">
+<tr><td style="padding:14px 18px 2px;font-size:14px;font-weight:700;color:#430a23;">{{ c.name }}</td></tr>
+<tr><td style="padding:0 18px 8px;font-size:11px;color:#6b4452;">{{ c.size }} articles &nbsp;·&nbsp; {{ c.first_seen | short_date }}{% if c.last_seen and c.last_seen != c.first_seen %} &ndash; {{ c.last_seen | short_date }}{% endif %}</td></tr>
+{%- if c.dominant_tas or c.attack_techniques or c.cve_ids %}
+<tr><td style="padding:0 18px 14px;">
+{%- for ta in c.dominant_tas %}{{ chip(ta, '#fbe0e6', '#8a0c2f', upper=False) }} {% endfor -%}
+{%- for ttp in c.attack_techniques %}{{ chip(ttp, '#ebe3f5', '#6b4a9e', upper=False) }} {% endfor -%}
+{%- for cve in c.cve_ids %}{{ chip(cve, '#def2e5', '#17703f', upper=False) }} {% endfor -%}
+</td></tr>
+{%- endif %}
+</table></td></tr>
+{%- endfor %}
+</table>
+{%- endif %}
+
+</td></tr>
+
+<tr><td class="px footer" bgcolor="#430a23" align="center" style="background:#430a23;padding:20px 36px;border-radius:0 0 10px 10px;font-size:11px;line-height:1.7;color:#e6cfd6;">
+{%- if custom_footer %}
+{{ custom_footer | safe }}
+{%- else %}
+<strong style="color:#fbbfa1;letter-spacing:1.5px;text-transform:uppercase;">{{ platform_name }}</strong><br>
+Threat Intelligence Newsletter &nbsp;·&nbsp; {{ period_label }} Edition{% if period_range %} &nbsp;·&nbsp; {{ period_range }}{% endif %}<br>
+Internal &mdash; Confidential
+{%- endif %}
+</td></tr>
+
+</table>
+<!--[if mso]></td></tr></table><![endif]-->
+</td></tr>
+</table>
+</body>
+</html>

@@ -12,6 +12,12 @@ Alur (ROADMAP #22, PR 5): `preview` dan `draft-email` sama-sama membangun dari c
 `preview` TIDAK membuat baris `newsletters` dan tidak menulis IOC/sebutan CVE; `draft-email`
 membuat draft Outlook DULU, baru menyimpan baris + IOC + sebutan CVE. Satu draft = satu baris,
 dan draft yang gagal di Graph tidak meninggalkan baris.
+
+Logo (ROADMAP #22, PR template): HTML yang dikirim dan disimpan merujuk logo lewat `cid:`, jadi
+tiap jalur yang MENAMPILKAN HTML (preview, `GET /{id}/html`) memetakannya ke data URI, dan tiap
+jalur yang MENGIRIM (`draft-email`, `resend`) melampirkannya lagi (`services/newsletter_logo.py`).
+Subject dibangun SATU helper (`newsletter_edition.newsletter_subject`) untuk `draft-email` dan
+`resend`.
 """
 
 from __future__ import annotations
@@ -34,7 +40,7 @@ from cti_api.schemas.newsletter import (
     NewsletterSectionsBody,
 )
 from cti_api.services import newsletter as newsletter_service
-from cti_api.services import newsletter_edition
+from cti_api.services import newsletter_edition, newsletter_logo
 
 router = APIRouter(prefix="/api/newsletter", tags=["newsletter"])
 log = structlog.get_logger()
@@ -140,7 +146,7 @@ async def get_saved_html(
     html = await AsyncNewsletterRepo(session).get_html(newsletter_id)
     if not html:
         raise HTTPException(status_code=404, detail="Newsletter not found")
-    return HTMLResponse(content=html)
+    return HTMLResponse(content=newsletter_logo.with_data_uris(html))
 
 
 @router.post("/{newsletter_id}/resend")
@@ -154,9 +160,16 @@ async def resend_newsletter(
     doc = await repo.get_by_id(newsletter_id)
     if doc is None:
         raise HTTPException(status_code=404, detail="Newsletter not found")
-    subject = f"[CTI Newsletter] Threat Intelligence Digest — Week {doc.week}, {doc.year}"
+    subject = newsletter_edition.newsletter_subject(
+        doc.period_start, doc.period_end, doc.week, doc.year
+    )
     try:
-        email_id = await asyncio.to_thread(create_graph_draft, doc.html, subject)
+        email_id = await asyncio.to_thread(
+            create_graph_draft,
+            doc.html,
+            subject,
+            inline_images=newsletter_logo.inline_images_for(doc.html),
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
     await AsyncAuditLogRepo(session).write(
@@ -177,15 +190,21 @@ async def preview_newsletter(
     user: AuthedUser = Depends(require_auth),
 ) -> dict[str, object]:
     """Pratinjau tanpa efek ke catatan: tidak ada baris `newsletters` (jadi `newsletter_id`
-    selalu null), tidak ada IOC, tidak ada sebutan CVE. Hanya dua cache yang terisi."""
+    selalu null), tidak ada IOC, tidak ada sebutan CVE. Hanya dua cache yang terisi.
+
+    `html` = versi untuk browser (logo sebagai data URI). `html_bytes` dan `size_warning` mengukur
+    versi `cid:` yang akan DIKIRIM, bukan `html` ini; `size_warning` null di bawah ~90 KB."""
     try:
         context, html = await _build(session, body)
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
+    html_bytes = newsletter_service.html_size_bytes(html)
     return {
-        "html": html,
+        "html": newsletter_logo.with_data_uris(html),
+        "html_bytes": html_bytes,
+        "size_warning": newsletter_service.size_warning(html_bytes),
         "week": context["week"],
         "year": context["year"],
         "newsletter_id": None,
@@ -204,11 +223,15 @@ async def draft_email(
     Graph dipanggil, jadi Graph yang gagal meninggalkan baris histori tanpa draft."""
     try:
         context, html = await _build(session, body)
-        subject = (
-            f"[CTI Newsletter] Threat Intelligence Digest — "
-            f"Week {context['week']}, {context['year']}"
+        subject = newsletter_edition.newsletter_subject(
+            context["period_start"], context["period_end"], context["week"], context["year"]
         )
-        email_id = await asyncio.to_thread(create_graph_draft, html, subject)
+        email_id = await asyncio.to_thread(
+            create_graph_draft,
+            html,
+            subject,
+            inline_images=newsletter_logo.inline_images_for(html),
+        )
     except HTTPException:
         raise
     except Exception as e:

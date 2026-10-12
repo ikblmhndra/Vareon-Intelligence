@@ -635,3 +635,43 @@ async def test_the_language_reaches_enrichment_and_the_compact_row_lookup(
     assert english["apac_compact"][0]["summary"] == "english summary"
     assert "summary" not in indonesian["apac_compact"][0]
     assert (english["language"], indonesian["language"]) == ("en", "id")
+
+
+async def test_context_carries_the_range_and_the_publication_date_in_the_report_time_zone(
+    cache: Rows, fixed_clock: list[datetime.datetime], enrich_passthrough: AsyncMock
+) -> None:
+    """Dibaca header template. 2 Nov 02:00 UTC = Senin 09:00 WIB: tim sudah di Senin."""
+    ctx = await newsletter_service.build_newsletter_context(MagicMock(), _article(), [], [], [])
+
+    assert ctx["period_range"] == "1 \N{EN DASH} 31 October 2026"
+    assert ctx["published_label"] == "Monday, 2 November 2026"
+
+
+async def test_the_publication_date_is_the_local_day_not_the_utc_day(
+    cache: Rows, fixed_clock: list[datetime.datetime], enrich_passthrough: AsyncMock
+) -> None:
+    """20:00 UTC Senin = 03:00 WIB Selasa: tanggal terbit mengikuti WIB, sama seperti periode
+    bawaan (`default_period`), bukan UTC."""
+    fixed_clock[0] = datetime.datetime(2026, 11, 2, 20, 0, tzinfo=datetime.UTC)
+
+    ctx = await newsletter_service.build_newsletter_context(MagicMock(), _article(), [], [], [])
+
+    assert ctx["published_label"] == "Tuesday, 3 November 2026"
+    assert ctx["period_label"] == "October 2026"  # periodenya tetap bulan sebelumnya
+
+
+async def test_a_requested_period_sets_the_range_but_not_the_publication_date(
+    cache: Rows, fixed_clock: list[datetime.datetime], enrich_passthrough: AsyncMock
+) -> None:
+    ctx = await newsletter_service.build_newsletter_context(
+        MagicMock(),
+        _article(),
+        [],
+        [],
+        [],
+        period_start=datetime.date(2026, 9, 28),
+        period_end=datetime.date(2026, 10, 4),
+    )
+
+    assert ctx["period_range"] == "28 September \N{EN DASH} 4 October 2026"
+    assert ctx["published_label"] == "Monday, 2 November 2026"
