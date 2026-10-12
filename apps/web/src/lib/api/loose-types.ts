@@ -73,22 +73,33 @@ export interface RecapCounts {
   new_threat_actors?: number;
 }
 
+/** `weekly` = recap terjadwal satu pekan Senin-Minggu (UTC), `date` = Senin-nya; `daily` = satu
+ * hari yang dipicu tangan. Dua jenis boleh berbagi `date`, jadi semua baca/pilih menyebut `kind`. */
+export type RecapKind = "daily" | "weekly";
+
 export interface RecapDoc {
   id: number;
+  kind: RecapKind;
   date: string;
+  period_start: string;
+  period_end: string;
   headline: string;
   yesterday: RecapBody;
   forecast: RecapForecast;
   counts: RecapCounts;
   generated_at: string;
   model: string;
-  token_usage: { total_tokens?: number };
+  /** `skipped`: pekan tanpa artikel/tweet/CVE, tidak ada panggilan LLM. */
+  token_usage: { total_tokens?: number; skipped?: boolean };
   raw_llm: string | null;
   cached: boolean;
 }
 
 export interface RecapListItem {
   date: string;
+  kind: RecapKind;
+  period_start: string;
+  period_end: string;
   headline: string;
   counts: RecapCounts;
   generated_at: string;

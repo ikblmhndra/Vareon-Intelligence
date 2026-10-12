@@ -187,10 +187,10 @@ class CveMirrorSettings(_StrictModel):
 
 class WorkerSettings(_StrictModel):
     """Interval buat 2 dari 5 loop Celery beat (Fase 7.8) yang nentuin
-    LOGIKA task, bukan cuma jadwal cron-nya -- IOC decay/daily recap/CVE
-    enrichment jam tetap (04:00/06:00/tiap 3 jam UTC, port apa adanya dari
-    `_seconds_until_04h_utc()` dkk lama) di-hardcode langsung di `beat.py`,
-    gak butuh entri di sini."""
+    LOGIKA task, bukan cuma jadwal cron-nya -- IOC decay/CVE enrichment/recap
+    mingguan jam tetap (04:00/tiap 3 jam/Senin 00:15 UTC; dua pertama port apa
+    adanya dari `_seconds_until_04h_utc()` dkk lama) di-hardcode langsung di
+    `beat.py`, gak butuh entri di sini."""
 
     pir_p1_alert_interval_min: int = 5
     """Port `PIR_P1_INTERVAL_MIN` lama -- P1 dicek tiap segini menit."""

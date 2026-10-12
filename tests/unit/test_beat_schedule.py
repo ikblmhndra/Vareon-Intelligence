@@ -178,3 +178,48 @@ def test_periodic_report_tasks_never_expire(monkeypatch) -> None:
     for name, entry in schedule.items():
         if not name.startswith("scrape-"):
             assert "expires" not in entry["options"], name
+
+
+# --- recap mingguan (#21, PR 2) -----------------------------------------
+
+
+def test_weekly_recap_runs_monday_0015_utc_on_the_maintenance_queue(monkeypatch) -> None:
+    """Senin 00:15 UTC = 07:15 WIB. Pekan Senin-Minggu (tanggal UTC) baru utuh setelah Minggunya
+    lewat di UTC: 00:15 WIB (= Minggu 17:15 UTC) akan kehilangan Minggu 17:00-24:00 UTC."""
+    monkeypatch.setattr(beat, "_scraper_configs", lambda: {})
+
+    entry = beat.build_beat_schedule()["recap-generate-weekly"]
+
+    assert entry["task"] == "recap.generate_weekly"
+    assert _cron(entry) == ("15", "0", "1")  # menit, jam, hari-dalam-pekan (1 = Senin di cron)
+    cron = entry["schedule"]
+    assert (cron.minute, cron.hour, cron.day_of_week) == ({15}, {0}, {1})
+    assert entry["options"] == {"queue": "maintenance"}
+
+
+def test_the_schedule_does_not_depend_on_the_report_utc_offset(monkeypatch) -> None:
+    """Jam recap adalah UTC murni (bukan jam lokal): mengubah `WORKER__REPORT_UTC_OFFSET_HOURS`
+    menggeser laporan Telegram, bukan recap."""
+    monkeypatch.setattr(beat, "_scraper_configs", lambda: {})
+    from cti_core.config import get_settings
+
+    monkeypatch.setenv("WORKER__REPORT_UTC_OFFSET_HOURS", "0")
+    get_settings.cache_clear()
+
+    assert _cron(beat.build_beat_schedule()["recap-generate-weekly"]) == ("15", "0", "1")
+
+
+def test_the_daily_recap_is_no_longer_scheduled(monkeypatch) -> None:
+    monkeypatch.setattr(beat, "_scraper_configs", lambda: {})
+
+    schedule = beat.build_beat_schedule()
+
+    assert "recap-generate-daily" not in schedule
+    assert [e for e in schedule.values() if e["task"] == "recap.generate_daily"] == []
+
+
+def test_the_weekly_recap_task_is_registered_and_the_daily_task_is_gone() -> None:
+    from cti_worker.celery_app import app
+
+    assert "recap.generate_weekly" in app.tasks
+    assert "recap.generate_daily" not in app.tasks

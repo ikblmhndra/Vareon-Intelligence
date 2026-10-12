@@ -5,7 +5,7 @@ barengan sama-sama fire SEMUA jadwal (84 scraper + 9 task periodik) dua
 kali. Itu kejadian nyata pas deploy: `docker compose up -d` bikin container
 beat baru nyala selagi yang lama masih berhenti pelan-pelan, atau ada dua
 node yang salah-konfigurasi. Scraper sendiri aman dari dobel-run (dedup),
-tapi task periodik (recap harian, alert PIR, digest Telegram) TIDAK -- itu
+tapi task periodik (recap mingguan, alert PIR, digest Telegram) TIDAK -- itu
 kirim pesan dobel.
 
 Pola: `SET key token NX PX ttl` buat ambil, Lua "extend kalau masih punya

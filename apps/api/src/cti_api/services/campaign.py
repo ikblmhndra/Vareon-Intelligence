@@ -26,6 +26,7 @@ import datetime
 from collections import Counter
 from typing import Any
 
+import structlog
 from cti_core.db.models.article import Article
 from cti_core.db.repositories.article import AsyncArticleRepo, all_country_codes
 from cti_core.db.repositories.ioc import AsyncIOCRepo
@@ -38,17 +39,46 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cti_api.services import campaign_analysis, cve_priority, diamond_model
 from cti_api.services.cluster_tokenize import cluster_id, derive_cluster_name, tfidf_tokenize
 
+log = structlog.get_logger()
+
 _SIM_THRESHOLD = 0.75
 _RELIABILITY_RANK = {"A": 6, "B": 5, "C": 4, "D": 3, "E": 2, "F": 1}
+_ARTICLE_CAP = 2000
+"""Batas artikel jendela yang dikelompokkan (yang terbaru dulu, urutan `list_filtered`)."""
 
 
 async def get_recent_campaigns(
-    session: AsyncSession, *, days: int = 7, client_id: str | None = None, min_size: int = 3
+    session: AsyncSession,
+    *,
+    days: int = 7,
+    client_id: str | None = None,
+    min_size: int = 3,
+    start: datetime.date | None = None,
+    end: datetime.date | None = None,
 ) -> list[dict[str, Any]]:
-    cutoff = datetime.date.today() - datetime.timedelta(days=days)
-    articles, _total = await AsyncArticleRepo(session).list_filtered(
-        posted_on_start=cutoff, page=1, page_size=2000
+    """Klaster kampanye dari artikel di jendela tanggal.
+
+    Tanpa `start`/`end` jendelanya `days` hari terakhir DIHITUNG DARI HARI INI: perilaku lama, yang
+    dipakai semua pemanggil lama. `start` (inklusif) menggantikan batas bawah itu; `end` (inklusif)
+    menutup batas atasnya, dan kalau `start` tidak diberikan `days` dihitung mundur dari `end`.
+    Recap mingguan memberi keduanya (#21): tanpa itu pekan yang di-backfill mendapat klaster pekan
+    saat ia dijalankan, bukan klaster pekannya sendiri.
+
+    Paling banyak `_ARTICLE_CAP` artikel yang dibaca. Kalau jendelanya lebih padat, klaster dibangun
+    dari yang terbaru saja (kumpulan tidak lengkap) dan itu dicatat sebagai peringatan, bukan
+    diam-diam."""
+    cutoff = start or (end or datetime.date.today()) - datetime.timedelta(days=days)
+    articles, total = await AsyncArticleRepo(session).list_filtered(
+        posted_on_start=cutoff, posted_on_end=end, page=1, page_size=_ARTICLE_CAP
     )
+    if total > len(articles):
+        log.warning(
+            "campaign_article_cap_hit",
+            cap=_ARTICLE_CAP,
+            articles_in_window=total,
+            start=cutoff.isoformat(),
+            end=end.isoformat() if end else None,
+        )
     if len(articles) < 2:
         return []
 
