@@ -12,7 +12,7 @@ sebelumnya. Downgrade membuang kolom beserta isinya; data yang hilang hanya hasi
 override analis, bukan recapnya.
 
 Revision ID: 7e51efe6d78b
-Revises: a042eff910ac
+Revises: 1dbf6006abaf
 Create Date: 2026-10-11 22:00:00.000000
 
 """
@@ -26,7 +26,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "7e51efe6d78b"
-down_revision: str | None = "a042eff910ac"
+down_revision: str | None = "1dbf6006abaf"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
