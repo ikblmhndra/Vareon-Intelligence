@@ -9,6 +9,7 @@ Tabel ini menyimpan dua jenis baris (`kind` = `daily` | `weekly`, #21) yang bole
 
 from __future__ import annotations
 
+import datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -54,6 +55,24 @@ class AsyncRecapRepo:
             .where(DailyRecap.kind == kind)
             .order_by(DailyRecap.date.desc())
             .limit(limit)
+        )
+        return list(result.scalars().all())
+
+    async def list_overlapping(
+        self, kind: str, start: datetime.date, end: datetime.date
+    ) -> list[DailyRecap]:
+        """Baris `kind` yang rentangnya beririsan dengan `[start, end]` (kedua ujung inklusif),
+        urut `period_start`. Pekan yang hanya menyentuh satu hari jendela ikut: Executive Summary
+        newsletter memakai semua pekan yang menyentuh bulannya. Baris tanpa periode (kolom
+        nullable, baris sebelum kolomnya ada) tidak pernah beririsan."""
+        result = await self.session.execute(
+            select(DailyRecap)
+            .where(
+                DailyRecap.kind == kind,
+                DailyRecap.period_start <= end,
+                DailyRecap.period_end >= start,
+            )
+            .order_by(DailyRecap.period_start)
         )
         return list(result.scalars().all())
 

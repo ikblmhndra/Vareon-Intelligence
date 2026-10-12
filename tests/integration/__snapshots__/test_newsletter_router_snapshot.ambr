@@ -259,6 +259,25 @@
     'period_end': '2026-10-31',
     'period_start': '2026-10-01',
     'summary_meta': dict({
+      'covered_end': None,
+      'covered_start': None,
+      'dropped': list([
+      ]),
+      'error': None,
+      'model': '',
+      'parse_failed': False,
+      'token_usage': dict({
+        'reason': 'no_recaps',
+        'skipped': True,
+      }),
+      'uncovered': list([
+        dict({
+          'end': '2026-10-31',
+          'start': '2026-10-01',
+        }),
+      ]),
+      'weeks': list([
+      ]),
     }),
     'summary_text': '',
   })

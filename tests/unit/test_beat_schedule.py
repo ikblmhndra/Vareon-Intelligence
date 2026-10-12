@@ -223,3 +223,58 @@ def test_the_weekly_recap_task_is_registered_and_the_daily_task_is_gone() -> Non
 
     assert "recap.generate_weekly" in app.tasks
     assert "recap.generate_daily" not in app.tasks
+
+
+# --- newsletter bulanan (#22, PR 8) ---------------------------------------------------------------
+
+
+def test_the_newsletter_is_prepared_every_weekday_at_0200_utc_on_the_maintenance_queue(
+    monkeypatch,
+) -> None:
+    """09:00 WIB = 02:00 UTC, Senin-Jumat (cron 1-5). Task-nya yang memutuskan apakah ini hari
+    kerja pertama bulan itu (atau hari kejar); beat hanya mengetuknya tiap hari kerja."""
+    monkeypatch.setattr(beat, "_scraper_configs", lambda: {})
+
+    entry = beat.build_beat_schedule()["newsletter-prepare-monthly"]
+
+    assert entry["task"] == "newsletter.prepare_monthly"
+    cron = entry["schedule"]
+    assert (cron.minute, cron.hour) == ({0}, {2})
+    assert cron.day_of_week == {1, 2, 3, 4, 5}
+    assert cron.day_of_month == set(range(1, 32)) and cron.month_of_year == set(range(1, 13))
+    assert entry["options"] == {"queue": "maintenance"}
+
+
+def test_the_newsletter_hour_follows_the_report_offset_but_stays_monday_to_friday(
+    monkeypatch,
+) -> None:
+    """Offset 0 (server UTC): 09:00 UTC. Selama jamnya tidak melewati tengah malam UTC, rentang
+    hari kerjanya tetap Senin-Jumat."""
+    monkeypatch.setattr(beat, "_scraper_configs", lambda: {})
+    from cti_core.config import get_settings
+
+    monkeypatch.setenv("WORKER__REPORT_UTC_OFFSET_HOURS", "0")
+    get_settings.cache_clear()
+
+    cron = beat.build_beat_schedule()["newsletter-prepare-monthly"]["schedule"]
+
+    assert (cron.minute, cron.hour, cron.day_of_week) == ({0}, {9}, {1, 2, 3, 4, 5})
+
+
+def test_the_newsletter_task_is_registered_with_celery(monkeypatch) -> None:
+    from cti_worker.celery_app import app
+
+    monkeypatch.setattr(beat, "_scraper_configs", lambda: {})
+    entry = beat.build_beat_schedule()["newsletter-prepare-monthly"]
+
+    assert entry["task"] in app.tasks
+    assert "newsletter-prepare-monthly" in app.conf.beat_schedule
+
+
+def test_the_newsletter_entry_never_expires(monkeypatch) -> None:
+    """Telat lebih baik daripada hilang: edisi yang tertunda dikejar hari kerja berikutnya."""
+    monkeypatch.setattr(beat, "_scraper_configs", lambda: {})
+
+    entry = beat.build_beat_schedule()["newsletter-prepare-monthly"]
+
+    assert "expires" not in entry["options"]

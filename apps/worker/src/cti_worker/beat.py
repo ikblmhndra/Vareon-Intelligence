@@ -159,6 +159,18 @@ def _periodic_schedule() -> dict[str, dict[str, object]]:
             "schedule": crontab(day_of_week=1, hour=0, minute=15),
             "options": {"queue": QUEUE_MAINTENANCE},
         },
+        "newsletter-prepare-monthly": {
+            "task": "newsletter.prepare_monthly",
+            # Tiap hari kerja 09:00 WIB (02:00 UTC). `local_to_utc_cron` hanya menerima satu hari,
+            # jadi jam-menitnya saja yang dipakai dan Senin-Jumat ditulis langsung; 09:00 WIB tidak
+            # melewati tengah malam UTC (selama offset laporan di antara -14 dan +9), jadi rentang
+            # harinya tidak bergeser. Task-nya yang memutuskan apakah ini hari kerja pertama
+            # bulan itu atau hari kejar (`newsletter_schedule.should_prepare`).
+            "schedule": crontab(
+                day_of_week="1-5", **local_to_utc_cron(9, 0, w.report_utc_offset_hours)
+            ),
+            "options": {"queue": QUEUE_MAINTENANCE},
+        },
         "cve-enrichment-sweep": {
             "task": "cve.enrichment_sweep",
             "schedule": crontab(hour="*/3", minute=0),
