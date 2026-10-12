@@ -1868,6 +1868,9 @@ export interface paths {
          *
          *     `html` = versi untuk browser (logo sebagai data URI). `html_bytes` dan `size_warning` mengukur
          *     versi `cid:` yang akan DIKIRIM, bukan `html` ini; `size_warning` null di bawah ~90 KB.
+         *     `period_label`/`period_range` = bulan yang diliput (judul dialog di composer, bukan lagi
+         *     "Week N"); `body_sources` = per artikel kartu penuh, `fetched` atau `metadata` (ringkasan dari
+         *     metadata saja, ditandai di composer).
          */
         post: operations["preview_newsletter_api_newsletter_preview_post"];
         delete?: never;
