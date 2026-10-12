@@ -117,7 +117,9 @@ function PoolCard({
   onDiscard?: () => void;
 }) {
   const a = entry.article;
-  const countries = [...(a.victim_countries ?? []), ...(a.mentioned_countries ?? [])].slice(0, 3);
+  // Satu negara bisa ada di victim DAN mentioned (Indonesia di artikel insiden lokal): satu badge saja,
+  // kalau tidak key-nya kembar.
+  const countries = [...new Set([...(a.victim_countries ?? []), ...(a.mentioned_countries ?? [])])].slice(0, 3);
   const actors = (a.threat_actors ?? []).slice(0, 2);
   return (
     <div className="rounded-xl border border-border bg-background p-2.5">

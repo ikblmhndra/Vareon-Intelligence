@@ -118,7 +118,7 @@ function capMessage(slot: SlotDef): string {
       : slot.tier === "full"
         ? "Move one to Also Noted or remove it first."
         : "Remove one first.";
-  return `${slot.label} is at its limit (${slot.cap} of ${slot.cap}). ${way}`;
+  return `No room in ${slot.label}: the limit is ${slot.cap}. ${way}`;
 }
 
 function removeFrom(state: ComposerState, articleId: number): ComposerState {

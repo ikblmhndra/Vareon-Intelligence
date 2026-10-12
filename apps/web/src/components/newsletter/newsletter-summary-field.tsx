@@ -151,13 +151,14 @@ export function NewsletterSummaryField({ value, onChange, suggestion, suggestedI
         </p>
       )}
 
-      {gaps.length > 0 && (
+      {/* Tanpa recap sama sekali seluruh bulan "tidak terliput"; itu sudah dijelaskan pesan di atas. */}
+      {gaps.length > 0 && status?.kind !== "no_recaps" && (
         <Notice tone="warning">
           <p className="font-semibold">The summary does not cover {gaps.join(", ")}.</p>
           <p className="text-muted-foreground">
-            No finished weekly recap includes {singleGap ? "that day" : "those days"} yet (the last week of the month is
-            still running). Articles from {singleGap ? "that day are" : "those days are"} still ranked in the suggestion;
-            mention anything important by hand.
+            No weekly recap exists for {singleGap ? "that day" : "those days"} yet: the week is still running (the usual
+            case at the end of a month) or its recap was not generated. Articles from {singleGap ? "that day are" : "those days are"}{" "}
+            still ranked in the suggestion; mention anything important by hand.
           </p>
         </Notice>
       )}

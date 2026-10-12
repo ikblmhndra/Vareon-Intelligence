@@ -496,8 +496,8 @@ export function NewsletterView() {
         onRebuild={requestRebuild}
       />
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(280px,360px)_minmax(0,1fr)]">
-        <div className="order-2 rounded-2xl border border-border bg-surface p-5 lg:order-1">
+      <div className="grid gap-5 xl:grid-cols-[minmax(280px,360px)_minmax(0,1fr)]">
+        <div className="order-2 rounded-2xl border border-border bg-surface p-5 xl:order-1">
           <NewsletterQueuePanel
             state={state}
             queue={queue}
@@ -509,7 +509,7 @@ export function NewsletterView() {
           />
         </div>
 
-        <div className="order-1 min-w-0 rounded-2xl border border-border bg-surface p-5 lg:order-2">
+        <div className="order-1 min-w-0 rounded-2xl border border-border bg-surface p-5 xl:order-2">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
             <div className="text-base font-semibold text-foreground">Newsletter Composer</div>
             <Button size="sm" onClick={handlePreview}>
