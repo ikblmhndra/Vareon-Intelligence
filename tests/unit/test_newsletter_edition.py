@@ -230,3 +230,66 @@ def test_edition_label_prefers_the_period_and_falls_back_to_the_iso_week() -> No
     assert ed.edition_label(None, None, 39, 2026) == "Week 39, 2026"
     # Baris yang entah bagaimana hanya punya salah satu tanggal tidak menebak.
     assert ed.edition_label(D(2026, 10, 1), None, 39, 2026) == "Week 39, 2026"
+
+
+# ── Rentang, tanggal, subject (ROADMAP #22, PR template) ─────────────────────
+
+
+EN_DASH = "\N{EN DASH}"
+"""Pemisah rentang di header; konstanta karena ruff (RUF001) menandai EN DASH literal."""
+
+
+@pytest.mark.parametrize(
+    ("start", "end", "expected"),
+    [
+        (D(2026, 10, 1), D(2026, 10, 31), f"1 {EN_DASH} 31 October 2026"),
+        (D(2026, 9, 28), D(2026, 10, 4), f"28 September {EN_DASH} 4 October 2026"),
+        (D(2026, 12, 28), D(2027, 1, 3), f"28 December 2026 {EN_DASH} 3 January 2027"),
+        (D(2026, 10, 1), D(2026, 10, 1), "1 October 2026"),
+        (D(2026, 2, 1), D(2026, 2, 28), f"1 {EN_DASH} 28 February 2026"),
+    ],
+)
+def test_period_range_names_the_dates_with_an_en_dash(
+    start: datetime.date, end: datetime.date, expected: str
+) -> None:
+    assert ed.period_range(start, end) == expected
+
+
+def test_long_date_uses_fixed_english_names() -> None:
+    assert ed.long_date(D(2026, 11, 2)) == "Monday, 2 November 2026"
+    assert ed.long_date(D(2027, 1, 3)) == "Sunday, 3 January 2027"
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("2026-10-20", "20 Oct 2026"),
+        ("2026-05-02", "2 May 2026"),
+        ("2026-10-20T08:30:00+00:00", "20 Oct 2026"),  # datetime ISO: hanya bagian tanggal
+        ("", ""),  # sumber tanpa tanggal
+        (None, ""),
+        ("kemarin", "kemarin"),  # bukan ISO: apa adanya, tidak menjatuhkan render
+    ],
+)
+def test_short_date_formats_iso_dates_and_leaves_anything_else_alone(
+    value: object, expected: str
+) -> None:
+    assert ed.short_date(value) == expected
+
+
+def test_subject_uses_the_period_label_when_the_row_has_a_period() -> None:
+    subject = ed.newsletter_subject(D(2026, 10, 1), D(2026, 10, 31), 45, 2026)
+
+    assert subject == "[CTI Newsletter] Threat Intelligence Digest — October 2026"
+
+
+def test_subject_falls_back_to_the_iso_week_for_rows_without_a_period() -> None:
+    subject = ed.newsletter_subject(None, None, 38, 2026)
+
+    assert subject == "[CTI Newsletter] Threat Intelligence Digest — Week 38, 2026"
+
+
+def test_subject_for_a_custom_range_names_both_months() -> None:
+    subject = ed.newsletter_subject(D(2026, 9, 28), D(2026, 10, 4), 40, 2026)
+
+    assert subject.endswith("— September - October 2026")
