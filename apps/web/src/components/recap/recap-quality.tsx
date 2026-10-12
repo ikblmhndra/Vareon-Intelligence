@@ -57,9 +57,11 @@ const NEW_THIS_WEEK: { key: "threat_actors" | "campaigns" | "cves"; label: strin
   { key: "cves", label: "CVEs" },
 ];
 
-/** Sel tabel yang lebih rapat dari default `ui/table` (halaman ini padat, `text-sm`). */
-const CELL = "px-2 py-1.5";
-const HEAD = "h-8 px-2";
+/** Sel tabel yang lebih rapat dari default `ui/table` (halaman ini padat). Di bawah `sm` lebih
+ * rapat lagi dan boleh membungkus: lebar HP (375px) tidak cukup buat lima kolom di ukuran biasa, dan
+ * kolom selisih yang terpotong (harus digeser) menggagalkan tujuan tabelnya. */
+const CELL = "px-1.5 py-1.5 text-xs whitespace-normal sm:px-2 sm:text-sm sm:whitespace-nowrap";
+const HEAD = "h-8 px-1.5 text-[10px] tracking-normal sm:px-2 sm:text-xs sm:tracking-wide";
 
 function pct(n: number): string {
   return `${n > 0 ? "+" : n < 0 ? "−" : ""}${Math.abs(n).toFixed(1)}%`;
@@ -79,8 +81,14 @@ export function ComparisonBlock({ comparison }: { comparison: RecapComparison })
         <TableHeader>
           <TableRow className="hover:bg-transparent">
             <TableHead className={HEAD}>Metric</TableHead>
-            <TableHead className={cn(HEAD, "text-right")}>This week</TableHead>
-            <TableHead className={cn(HEAD, "text-right")}>Last week</TableHead>
+            <TableHead className={cn(HEAD, "text-right")}>
+              This<span className="hidden sm:inline"> week</span>
+              <span className="sm:hidden"> wk</span>
+            </TableHead>
+            <TableHead className={cn(HEAD, "text-right")}>
+              Last<span className="hidden sm:inline"> week</span>
+              <span className="sm:hidden"> wk</span>
+            </TableHead>
             <TableHead className={cn(HEAD, "text-right")}>Change</TableHead>
             <TableHead className={cn(HEAD, "text-right")}>%</TableHead>
           </TableRow>
