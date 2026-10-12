@@ -170,12 +170,28 @@ async def load_candidates(
     return candidates
 
 
+def _summary_log_fields(summary_text: str, summary_meta: dict[str, Any]) -> dict[str, Any]:
+    """Bagian log yang sama untuk build penuh dan retry ringkasan."""
+    return {
+        "weeks_used": [w["week_start"] for w in summary_meta["weeks"]],
+        "uncovered": summary_meta["uncovered"],
+        "summary_words": len(summary_text.split()),
+        "summary_skipped": bool(summary_meta["token_usage"].get("skipped")),
+        "summary_error": summary_meta["error"],
+        "parse_failed": summary_meta["parse_failed"],
+        "token_usage": summary_meta["token_usage"],
+        "model": summary_meta["model"],
+        "grounding_dropped": len(summary_meta["dropped"]),
+    }
+
+
 async def build_suggestion(
     session: AsyncSession, period_start: datetime.date, period_end: datetime.date
 ) -> NewsletterSuggestion:
     """Bangun saran satu jendela (ranking + Executive Summary) dan simpan, MENIMPA saran lama
-    jendela yang sama. Panggilan LLM-nya gagal = exception naik dan tidak ada yang tersimpan
-    (lihat `newsletter_summary.generate_executive_summary`). Tidak commit."""
+    jendela yang sama. Panggilan LLM ringkasan yang gagal TIDAK membuang rankingnya: barisnya
+    tersimpan dengan `summary_text` kosong dan `summary_meta.error` terisi
+    (`newsletter_summary.generate_executive_summary`). Tidak commit."""
     candidates = await load_candidates(session, period_start, period_end)
     clients = await AsyncClientRepo(session).list_all()
     ranked = rank_candidates(
@@ -200,13 +216,23 @@ async def build_suggestion(
         candidates=len(candidates),
         suggested=len(ranked),
         highlights=sum(1 for r in ranked if r.tier == "highlight"),
-        weeks_used=[w["week_start"] for w in summary_meta["weeks"]],
-        uncovered=summary_meta["uncovered"],
-        summary_words=len(summary_text.split()),
-        summary_skipped=bool(summary_meta["token_usage"].get("skipped")),
-        parse_failed=summary_meta["parse_failed"],
-        token_usage=summary_meta["token_usage"],
-        model=summary_meta["model"],
-        grounding_dropped=len(summary_meta["dropped"]),
+        **_summary_log_fields(summary_text, summary_meta),
+    )
+    return row
+
+
+async def refresh_summary(session: AsyncSession, row: NewsletterSuggestion) -> NewsletterSuggestion:
+    """Ulangi HANYA Executive Summary sebuah saran yang sudah ada (rankingnya tidak disentuh, begitu
+    juga `created_at`): dipakai task terjadwal ketika build sebelumnya kehilangan ringkasan karena
+    panggilan LLM-nya gagal. Berhasil = `error` kembali `None`. Tidak commit."""
+    row.summary_text, row.summary_meta = await newsletter_summary.generate_executive_summary(
+        session, row.period_start, row.period_end
+    )
+    await session.flush()
+    log.info(
+        "newsletter_summary_retried",
+        period_start=row.period_start.isoformat(),
+        period_end=row.period_end.isoformat(),
+        **_summary_log_fields(row.summary_text, row.summary_meta),
     )
     return row

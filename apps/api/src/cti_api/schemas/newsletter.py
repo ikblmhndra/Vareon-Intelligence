@@ -260,8 +260,9 @@ class NewsletterSuggestionResponse(BaseModel):
     summary_text: str = Field(
         description=(
             "Suggested Executive Summary: one Indonesian paragraph condensed from the weekly "
-            "recaps that overlap the window. Empty when the window has no weekly recap, or "
-            "when the model returned nothing usable (`summary_meta.parse_failed`)."
+            "recaps that overlap the window. Empty when the window has no weekly recap, when the "
+            "model returned nothing usable (`summary_meta.parse_failed`) or when the model call "
+            "failed (`summary_meta.error`)."
         )
     )
     summary_meta: dict[str, object] = Field(
@@ -270,8 +271,11 @@ class NewsletterSuggestionResponse(BaseModel):
             "`covered_start`/`covered_end` (first and last day of those weeks, which may stick out "
             "of the month; null without recaps), `uncovered` (ranges of the window that no used "
             "week covers, e.g. the last days of a month whose final week is not finished yet), "
-            "`model`, `token_usage` (`skipped` with a `reason` when no call was made), `dropped` "
-            "(items removed or replaced by the grounding check) and `parse_failed`."
+            "`model`, `token_usage` (`skipped` with a `reason` when no call was made: `no_recaps` "
+            "or `llm_error`), `dropped` (items removed or replaced by the grounding check), "
+            "`parse_failed` and `error` (null normally; `ExceptionName: message` when the model "
+            "call failed, in which case the ranked items are still there and the summary is "
+            "empty until the next scheduled retry or a rebuild)."
         )
     )
     created_at: str = Field(description="When this suggestion was built (ISO 8601).")

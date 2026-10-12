@@ -4539,14 +4539,14 @@ export interface components {
             period_start: string;
             /**
              * Summary Meta
-             * @description How the summary was made: `weeks` (the weekly recaps used, `week_start`/`week_end`), `covered_start`/`covered_end` (first and last day of those weeks, which may stick out of the month; null without recaps), `uncovered` (ranges of the window that no used week covers, e.g. the last days of a month whose final week is not finished yet), `model`, `token_usage` (`skipped` with a `reason` when no call was made), `dropped` (items removed or replaced by the grounding check) and `parse_failed`.
+             * @description How the summary was made: `weeks` (the weekly recaps used, `week_start`/`week_end`), `covered_start`/`covered_end` (first and last day of those weeks, which may stick out of the month; null without recaps), `uncovered` (ranges of the window that no used week covers, e.g. the last days of a month whose final week is not finished yet), `model`, `token_usage` (`skipped` with a `reason` when no call was made: `no_recaps` or `llm_error`), `dropped` (items removed or replaced by the grounding check), `parse_failed` and `error` (null normally; `ExceptionName: message` when the model call failed, in which case the ranked items are still there and the summary is empty until the next scheduled retry or a rebuild).
              */
             summary_meta: {
                 [key: string]: unknown;
             };
             /**
              * Summary Text
-             * @description Suggested Executive Summary: one Indonesian paragraph condensed from the weekly recaps that overlap the window. Empty when the window has no weekly recap, or when the model returned nothing usable (`summary_meta.parse_failed`).
+             * @description Suggested Executive Summary: one Indonesian paragraph condensed from the weekly recaps that overlap the window. Empty when the window has no weekly recap, when the model returned nothing usable (`summary_meta.parse_failed`) or when the model call failed (`summary_meta.error`).
              */
             summary_text: string;
         };

@@ -195,8 +195,9 @@ async def _run_prepare_newsletter_monthly() -> dict[str, Any]:
     from cti_core.db.engine import async_session
 
     # `async_session()` commit saat blok sukses (servisnya sendiri tidak commit) dan rollback
-    # kalau exception, jadi saran yang gagal di tengah (mis. gateway LLM mati) tidak tersimpan
-    # setengah jadi dan hari kerja berikutnya mencoba lagi.
+    # kalau exception. Gateway LLM yang mati BUKAN exception di sini: ranking tetap tersimpan dan
+    # ringkasannya diulang hari kerja berikutnya (`summary_meta.error`). Yang tetap naik dan
+    # di-rollback adalah kesalahan lain (DB dan sejenisnya), jadi tidak ada saran setengah jadi.
     async with async_session() as session:
         return await prepare_monthly(session, datetime.datetime.now(datetime.UTC))
 
@@ -205,7 +206,8 @@ async def _run_prepare_newsletter_monthly() -> dict[str, Any]:
 def prepare_newsletter_monthly(self: Any) -> dict[str, object]:
     """Tiap hari kerja 09:00 WIB. Hampir selalu kembali segera (`prepared: False`): hanya hari
     kerja pertama bulan itu, dan hari-hari kejar sesudahnya selama jendela 7 hari dan bulan
-    sebelumnya belum punya saran, yang benar-benar menyiapkan saran + Executive Summary."""
+    sebelumnya belum punya saran, yang benar-benar menyiapkan saran + Executive Summary; dan
+    kalau ringkasannya gagal, hari-hari kejar mengulang ringkasannya saja."""
     return _run_async(_run_prepare_newsletter_monthly())
 
 

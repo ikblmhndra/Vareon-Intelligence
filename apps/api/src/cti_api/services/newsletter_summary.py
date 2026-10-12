@@ -35,9 +35,20 @@ Bentuk `summary_meta` (selalu sama, juga saat tidak ada recap)::
       "model": "...",                          # "" kalau tanpa panggilan
       "token_usage": {...},                    # `usage_from` + `wall_ms` + `input_chars`;
                                                # {"skipped": true, "reason": "no_recaps"}
+                                               # atau {"skipped": true, "reason": "llm_error"}
       "dropped": [{"field", "value", "reason"}],
-      "parse_failed": false                    # balasan model bukan JSON / tanpa `summary`
+      "parse_failed": false,                   # balasan model bukan JSON / tanpa `summary`
+      "error": null                            # "<NamaException>: <pesan>" kalau panggilan gagal
     }
+
+**Panggilan LLM yang gagal tidak membuang ranking.** Exception dari panggilan itu (gateway mati,
+timeout, apa pun) ditangkap: teks kosong, `token_usage = {"skipped": true, "reason":
+"llm_error"}`, `error` terisi (`NamaException: pesan`, pesannya dipotong `ERROR_CLIP` karakter),
+dan log peringatan `newsletter_summary_failed`. Pemanggil tetap menyimpan barisnya dengan ranking,
+dan hari kerja berikutnya di jendela kejar mengulang HANYA langkah ini
+(`newsletter_suggestion.refresh_summary`). Hanya panggilan LLM-nya yang ditangkap: kesalahan DB
+dan sejenisnya tetap naik. Pesan exception dicatat apa adanya (terpotong); pesan gateway yang
+menolak kredensial kadang memuat potongan kunci yang sudah disamarkan oleh gateway-nya.
 
 Rentang pekan yang dipakai boleh melewati batas bulan (pekan 28 Sep-4 Okt dipakai utuh untuk
 edisi Oktober): `covered_*` adalah batas PEKAN, bukan batas bulan."""
@@ -61,6 +72,9 @@ log = structlog.get_logger()
 
 CVE_MARKER = "[CVE tidak terverifikasi]"
 """Pengganti CVE id karangan di paragraf (lihat docstring modul)."""
+
+ERROR_CLIP = 200
+"""Panjang maksimum pesan exception yang disimpan di `summary_meta.error`."""
 
 _ONE_DAY = datetime.timedelta(days=1)
 
@@ -230,15 +244,23 @@ def _paragraph(raw: str) -> str:
     return " ".join(value.split()) if isinstance(value, str) else ""
 
 
+def _describe(exc: Exception) -> str:
+    """`NamaException: pesan` untuk `summary_meta.error`; pesannya dilebur jadi satu baris dan
+    dipotong, supaya balasan error gateway yang panjang tidak membengkakkan baris saran."""
+    message = " ".join(str(exc).split())[:ERROR_CLIP]
+    return f"{type(exc).__name__}: {message}" if message else type(exc).__name__
+
+
 async def generate_executive_summary(
     session: AsyncSession, period_start: datetime.date, period_end: datetime.date
 ) -> tuple[str, dict[str, Any]]:
     """`(summary_text, summary_meta)` untuk jendela edisi. Tidak menulis apa pun ke DB: pemanggil
     (`newsletter_suggestion.build_suggestion`) menyimpannya di baris saran.
 
-    Tanpa recap mingguan yang bisa dipakai: teks kosong dan TANPA panggilan LLM. Kegagalan
-    panggilan (gateway) tidak ditelan: exception naik, task terjadwal gagal terlihat di log Celery
-    dan dicoba lagi pada hari kerja berikutnya selama jendela kejar masih terbuka."""
+    Tanpa recap mingguan yang bisa dipakai: teks kosong dan TANPA panggilan LLM. Panggilan yang
+    gagal (exception apa pun dari panggilan itu) menghasilkan teks kosong dan `error` terisi,
+    bukan exception: saran tidak boleh kehilangan rankingnya karena gateway sedang mati (lihat
+    docstring modul)."""
     rows = await AsyncRecapRepo(session).list_overlapping("weekly", period_start, period_end)
     used = [(row, block) for row in rows if (block := _recap_block(row))]
     weeks = sorted(_week_of(row) for row, _ in used)
@@ -250,12 +272,18 @@ async def generate_executive_summary(
         "model": "",
         "dropped": [],
         "parse_failed": False,
+        "error": None,
     }
     if not used:
         return "", {**meta, "token_usage": {"skipped": True, "reason": "no_recaps"}}
 
     user_message = build_user_message(period_start, period_end, [block for _, block in used])
-    raw, model_name, token_usage = await asyncio.to_thread(_call_llm, user_message)
+    try:
+        raw, model_name, token_usage = await asyncio.to_thread(_call_llm, user_message)
+    except Exception as exc:
+        error = _describe(exc)
+        log.warning("newsletter_summary_failed", error=error, weeks_used=len(weeks))
+        return "", {**meta, "token_usage": {"skipped": True, "reason": "llm_error"}, "error": error}
     text = _paragraph(raw)
     grounder = grounding.Grounder(grounding.Known.build(text=user_message), cve_marker=CVE_MARKER)
     text = grounder.free_text("summary", text)
