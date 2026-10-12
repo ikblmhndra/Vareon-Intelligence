@@ -10,6 +10,7 @@ import contextlib
 import datetime
 import json
 import re
+from collections.abc import Callable
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
@@ -25,6 +26,7 @@ from cti_core.db.models.tweet import Tweet
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.auth import AsyncClientRepo
 from cti_core.db.repositories.ioc import AsyncIOCRepo
+from cti_core.db.repositories.recap import AsyncRecapRepo
 from cti_core.db.repositories.ta import AsyncTARepo
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -600,7 +602,7 @@ async def test_weekly_prompt_lists_the_campaigns_of_its_own_week_and_collapses_e
     assert result["counts"]["campaigns"] == 1
     assert result["counts"]["articles"] == 3  # total sebenarnya
     assert result["token_usage"]["prompt_items"]["articles"] == 1  # satu baris untuk satu klaster
-    assert len(re.findall(r"^- \[S\d\]", user_msg, flags=re.MULTILINE)) == 1
+    assert len(re.findall(r"^- \[#\d+\] \[S\d\]", user_msg, flags=re.MULTILINE)) == 1
     assert "| cluster: 3 articles" in user_msg
     assert "— 3 articles | actors: Apt41" in user_msg
 
@@ -725,3 +727,511 @@ async def test_a_legacy_row_without_a_period_reads_as_a_one_day_range(
         "2026-09-01",
         "2026-09-01",
     )
+
+
+# --- kualitas recap mingguan (#21, PR 3) ------------------------------------------------------
+
+WEEK_BEFORE = datetime.date(2026, 2, 23)
+"""Senin pekan SEBELUM `WEEK_START`: satu-satunya pekan yang dibandingkan dan di-review."""
+
+
+def _scripted(
+    sent: list[dict[str, Any]], reply: Callable[[str], dict[str, Any] | str]
+) -> SimpleNamespace:
+    """Client LLM palsu yang menyusun balasannya DARI prompt yang diterimanya, seperti model
+    sungguhan: id artikel dibaca dari penanda `[#id]` di pesan, bukan ditebak test."""
+
+    def create(**kw: Any) -> SimpleNamespace:
+        sent.append(kw)
+        out = reply(kw["messages"][1]["content"])
+        return _fake_completion(out if isinstance(out, str) else json.dumps(out))
+
+    return SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+
+
+def _article_id(msg: str, title_start: str) -> int:
+    found = re.search(rf"\[#(\d+)\] \[CISA\] {re.escape(title_start)}", msg)
+    assert found, f"{title_start!r} tidak ada di prompt"
+    return int(found.group(1))
+
+
+async def _previous_week(
+    session: AsyncSession,
+    *,
+    events: list[Any] | None = None,
+    counts: dict[str, int] | None = None,
+    recap: dict[str, Any] | None = None,
+    day: datetime.date = WEEK_BEFORE,
+) -> None:
+    """Baris mingguan pekan lalu seperti yang dibuat SEBELUM PR 3: tanpa id event dan tanpa
+    `quality`."""
+    await AsyncRecapRepo(session).upsert(
+        day.isoformat(),
+        kind="weekly",
+        period_start=day,
+        period_end=day + datetime.timedelta(days=6),
+        headline="last week",
+        yesterday=recap if recap is not None else {},
+        forecast={"summary": "f", "likely_events": events if events is not None else []},
+        counts=counts if counts is not None else {},
+        generated_at=datetime.datetime.now(datetime.UTC),
+        model="m",
+        token_usage={},
+    )
+
+
+LAST_WEEKS_EVENTS = [
+    {"event": "Ransomware wave continues", "basis": "three hospital hits", "confidence": "high"},
+    {"event": "VPN exploitation grows", "basis": "PoC published", "confidence": "med"},
+]
+
+
+def _busy_reply(msg: str) -> dict[str, Any]:
+    """Balasan yang memuat yang NYATA dan yang KARANGAN, di tiap bagian yang diperiksa."""
+    hospital = _article_id(msg, "Ransomware gang hits")
+    return {
+        "headline": "Busy week incl. CVE-2026-8888",
+        "recap": {
+            "summary": "Ransomware dominated; CVE-2026-0004 and CVE-2026-8888 were notable.",
+            "top_stories": [
+                {
+                    "article_id": hospital,
+                    "title": "Hospital network hit by a ransomware gang",
+                    "why_it_matters": "patients",
+                    "source": "Reuters",
+                },
+                {"article_id": 424242, "title": "A story that does not exist", "source": "CISA"},
+                {"title": "A story without an id", "why_it_matters": "y"},
+            ],
+            "notable_cves": ["CVE-2026-0004", "cve-2026-0003", "CVE-2026-8888"],
+            "active_threat_actors": ["Lazarus", "Midnight Blizzard"],
+            "new_threat_actors_added": [
+                {"name": "Apt41", "source": "manual"},
+                {"name": "Ghost", "source": "x"},
+            ],
+            "active_campaigns": [{"theme": "Operation ShadowGate", "article_count": 9}],
+        },
+        "forecast": {
+            "summary": "s",
+            "likely_events": [
+                {"event": "Another wave", "basis": "CVE-2026-0004 PoC", "confidence": "high"},
+                {"event": "Botnet returns", "basis": "takedown", "confidence": "low"},
+            ],
+        },
+    }
+
+
+async def test_weekly_recap_removes_what_the_model_invented_and_lists_every_removal(
+    async_db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _today(monkeypatch, MONDAY_AFTER)
+    await _seed_busy_week(async_db_session)
+
+    with structlog.testing.capture_logs() as logs:
+        result = await _generate_weekly(async_db_session, _scripted([], _busy_reply))
+
+    recap = result["yesterday"]
+    [story] = recap["top_stories"]
+    assert story["title"] == "Hospital network hit by a ransomware gang"  # judul tidak dibandingkan
+    assert story["url"] == "https://x.com/week-0"  # tautan ke artikelnya sendiri
+    assert story["source"] == "CISA"  # sumber artikelnya, bukan "Reuters" tulisan model
+    assert recap["notable_cves"] == ["CVE-2026-0004", "cve-2026-0003"]  # varian nyata tetap
+    assert recap["active_threat_actors"] == ["Lazarus"]
+    assert recap["new_threat_actors_added"] == [{"name": "Apt41", "source": "manual"}]
+    assert recap["active_campaigns"] == []
+    assert (
+        recap["summary"] == "Ransomware dominated; CVE-2026-0004 and [unverified CVE] were notable."
+    )
+    assert result["headline"] == "Busy week incl. [unverified CVE]"
+    dropped = {
+        (d["field"], d["value"], d["reason"]) for d in result["quality"]["grounding"]["dropped"]
+    }
+    assert dropped == {
+        ("recap.top_stories.source", "Reuters", "not_in_input"),
+        ("recap.top_stories", "A story that does not exist [#424242]", "unknown_article_id"),
+        ("recap.top_stories", "A story without an id", "no_article_id"),
+        ("recap.notable_cves", "CVE-2026-8888", "not_in_input"),
+        ("recap.active_threat_actors", "Midnight Blizzard", "not_in_input"),
+        ("recap.new_threat_actors_added", "Ghost", "not_in_input"),
+        ("recap.active_campaigns", "Operation ShadowGate", "not_in_input"),
+        ("recap.summary", "CVE-2026-8888", "not_in_input"),
+        ("headline", "CVE-2026-8888", "not_in_input"),
+    }
+    assert result["quality"]["grounding"]["count"] == 9
+    # Yang dibaca ulang dari DB sama dengan yang dikembalikan saat generate.
+    stored = await recap_service.get_recap(async_db_session, "2026-03-02", "weekly")
+    assert stored is not None and stored["quality"] == result["quality"]
+    assert stored["yesterday"] == recap
+    [entry] = [e for e in logs if e["event"] == "recap_weekly_generated"]
+    assert entry["grounding_dropped"] == 9
+    assert entry["scorecard"] is None  # pekan pertama: tidak ada yang di-review
+
+
+async def test_the_models_event_ids_are_written_by_code_by_position(
+    async_db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _today(monkeypatch, MONDAY_AFTER)
+    await _seed_busy_week(async_db_session)
+
+    result = await _generate_weekly(async_db_session, _scripted([], _busy_reply))
+
+    events = result["forecast"]["likely_events"]
+    assert [(e["id"], e["event"]) for e in events] == [
+        ("f1", "Another wave"),
+        ("f2", "Botnet returns"),
+    ]
+    assert events[0]["basis"] == "CVE-2026-0004 PoC"  # CVE nyata di teks bebas: tidak diganti
+
+
+async def test_a_quiet_but_clean_reply_records_an_empty_grounding_report(
+    async_db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _today(monkeypatch, MONDAY_AFTER)
+    await _seed_busy_week(async_db_session)
+
+    result = await _generate_weekly(async_db_session, _capturing_client([], usage=None))
+
+    assert result["quality"] == {"grounding": {"dropped": [], "count": 0}}
+
+
+# --- perbandingan dengan pekan sebelumnya -----------------------------------------------------
+
+
+async def test_the_comparison_is_made_against_the_week_before_from_its_stored_row(
+    async_db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _today(monkeypatch, MONDAY_AFTER)
+    await _seed_busy_week(async_db_session)
+    await _previous_week(
+        async_db_session,
+        counts={"articles": 4, "tweets": 0, "iocs": 6, "cves": 4, "campaigns": 0},
+        recap={"active_threat_actors": ["Apt41"], "notable_cves": ["CVE-2026-0003"]},
+    )
+
+    result = await _generate_weekly(async_db_session, _scripted([], _busy_reply))
+
+    comparison = result["quality"]["comparison"]
+    assert comparison["previous"] == {
+        "date": "2026-02-23",
+        "period_start": "2026-02-23",
+        "period_end": "2026-03-01",
+    }
+    assert comparison["counts"]["articles"] == {
+        "current": 5,
+        "previous": 4,
+        "delta": 1,
+        "delta_pct": 25.0,
+    }
+    assert comparison["counts"]["tweets"]["delta_pct"] is None  # dari nol: tidak ada persen
+    assert comparison["counts"]["iocs"]["delta"] == -3
+    assert comparison["counts"]["cves"]["delta_pct"] == 0.0
+    # "Baru" dihitung dari keluaran yang SUDAH lolos grounding: karangan yang dibuang tidak ikut.
+    assert comparison["new_this_week"] == {
+        "threat_actors": ["Lazarus"],
+        "campaigns": [],
+        "cves": ["CVE-2026-0004"],
+    }
+
+
+async def test_the_first_week_has_no_comparison_and_no_scorecard(
+    async_db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _today(monkeypatch, MONDAY_AFTER)
+    await _seed_busy_week(async_db_session)
+    sent: list[dict[str, Any]] = []
+
+    result = await _generate_weekly(async_db_session, _scripted(sent, _busy_reply))
+
+    assert set(result["quality"]) == {"grounding"}
+    assert "LAST WEEK'S FORECAST" not in sent[0]["messages"][1]["content"]
+
+
+async def test_a_week_that_is_not_adjacent_is_not_compared_or_reviewed(
+    async_db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Baris ada tapi dua pekan sebelumnya: itu bukan "dibanding pekan lalu", dan forecast dua
+    pekan lalu sudah melewati horizonnya."""
+    _today(monkeypatch, MONDAY_AFTER)
+    await _seed_busy_week(async_db_session)
+    await _previous_week(
+        async_db_session,
+        events=LAST_WEEKS_EVENTS,
+        counts={"articles": 4},
+        day=datetime.date(2026, 2, 16),
+    )
+    sent: list[dict[str, Any]] = []
+
+    result = await _generate_weekly(async_db_session, _scripted(sent, _busy_reply))
+
+    assert set(result["quality"]) == {"grounding"}
+    assert "LAST WEEK'S FORECAST" not in sent[0]["messages"][1]["content"]
+
+
+async def test_a_quiet_week_is_still_compared_but_makes_no_llm_call_and_has_no_scorecard(
+    async_db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _today(monkeypatch, MONDAY_AFTER)
+    await _ensure_clients(async_db_session)
+    await _previous_week(
+        async_db_session, events=LAST_WEEKS_EVENTS, counts={"articles": 4, "cves": 2}
+    )
+
+    with _no_llm():
+        result = await recap_service.generate_weekly_recap(async_db_session, WEEK_START)
+
+    assert set(result["quality"]) == {
+        "comparison"
+    }  # tanpa keluaran model: tak ada grounding/review
+    assert result["quality"]["comparison"]["counts"]["articles"]["delta"] == -4
+    assert result["quality"]["comparison"]["counts"]["articles"]["delta_pct"] == -100.0
+    assert result["quality"]["comparison"]["new_this_week"]["cves"] == []
+
+
+# --- scorecard forecast --------------------------------------------------------------------------
+
+
+def _review_reply(msg: str) -> dict[str, Any]:
+    reply = _busy_reply(msg)
+    reply["forecast_review"] = [
+        {"id": "f1", "verdict": "Happened", "evidence": "Two more hospitals were hit."},
+        {"id": "f2", "verdict": "mostly", "evidence": "Partial reports."},
+        {"id": "f9", "verdict": "happened", "evidence": "an id nobody asked about"},
+    ]
+    return reply
+
+
+async def test_last_weeks_forecast_is_reviewed_in_the_same_call_even_for_a_row_without_ids(
+    async_db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Baris pekan lalu dibuat sebelum PR 3: `likely_events` tanpa id. Id diturunkan dari posisi
+    saat membangun masukan review, dan barisnya sendiri TIDAK diubah."""
+    _today(monkeypatch, MONDAY_AFTER)
+    await _seed_busy_week(async_db_session)
+    await _previous_week(async_db_session, events=LAST_WEEKS_EVENTS)
+    sent: list[dict[str, Any]] = []
+
+    result = await _generate_weekly(async_db_session, _scripted(sent, _review_reply))
+
+    assert len(sent) == 1  # satu panggilan: review tidak menambah panggilan
+    msg = sent[0]["messages"][1]["content"]
+    assert "== LAST WEEK'S FORECAST (" in msg
+    assert "- [f1] Ransomware wave continues | basis: three hospital hits | confidence: high" in msg
+    assert "- [f2] VPN exploitation grows | basis: PoC published | confidence: med" in msg
+    scorecard = result["quality"]["scorecard"]
+    assert scorecard["reviewed"] == {
+        "date": "2026-02-23",
+        "period_start": "2026-02-23",
+        "period_end": "2026-03-01",
+    }
+    assert scorecard["events"] == [
+        {
+            "id": "f1",
+            "event": "Ransomware wave continues",
+            "basis": "three hospital hits",
+            "confidence": "high",
+            "verdict": "happened",  # "Happened" dinormalkan
+            "evidence": "Two more hospitals were hit.",
+        },
+        {
+            "id": "f2",
+            "event": "VPN exploitation grows",
+            "basis": "PoC published",
+            "confidence": "med",
+            "verdict": "unclear",  # "mostly" bukan verdict yang dikenal
+            "evidence": "Partial reports.",
+        },
+    ]  # f9 tidak diminta: diabaikan
+    untouched = await recap_service.get_recap(async_db_session, "2026-02-23", "weekly")
+    assert untouched is not None
+    assert "id" not in untouched["forecast"]["likely_events"][0]  # baris lama tidak dimigrasi
+    assert untouched["quality"] == {}
+
+
+async def test_a_week_whose_previous_forecast_was_empty_has_nothing_to_review(
+    async_db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _today(monkeypatch, MONDAY_AFTER)
+    await _seed_busy_week(async_db_session)
+    await _previous_week(async_db_session, events=[])
+    sent: list[dict[str, Any]] = []
+
+    result = await _generate_weekly(async_db_session, _scripted(sent, _review_reply))
+
+    assert "scorecard" not in result["quality"]
+    assert "comparison" in result["quality"]  # pekan lalu ada: perbandingan tetap dibuat
+    assert "LAST WEEK'S FORECAST" not in sent[0]["messages"][1]["content"]
+
+
+async def test_an_event_the_model_does_not_answer_is_unclear_so_analysts_can_still_judge_it(
+    async_db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _today(monkeypatch, MONDAY_AFTER)
+    await _seed_busy_week(async_db_session)
+    await _previous_week(async_db_session, events=LAST_WEEKS_EVENTS)
+
+    result = await _generate_weekly(async_db_session, _scripted([], _busy_reply))  # tanpa review
+
+    events = result["quality"]["scorecard"]["events"]
+    assert [(e["id"], e["verdict"]) for e in events] == [("f1", "unclear"), ("f2", "unclear")]
+
+
+async def test_scorecard_result_is_logged_as_verdict_counts(
+    async_db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _today(monkeypatch, MONDAY_AFTER)
+    await _seed_busy_week(async_db_session)
+    await _previous_week(async_db_session, events=LAST_WEEKS_EVENTS)
+
+    with structlog.testing.capture_logs() as logs:
+        await _generate_weekly(async_db_session, _scripted([], _review_reply))
+
+    [entry] = [e for e in logs if e["event"] == "recap_weekly_generated"]
+    assert entry["scorecard"] == {"happened": 1, "partly": 0, "not_happened": 0, "unclear": 1}
+    assert entry["grounding_dropped"] == 9
+
+
+async def test_an_unparseable_reply_keeps_the_raw_text_and_leaves_every_event_for_the_analyst(
+    async_db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _today(monkeypatch, MONDAY_AFTER)
+    await _seed_busy_week(async_db_session)
+    await _previous_week(async_db_session, events=LAST_WEEKS_EVENTS)
+
+    result = await _generate_weekly(async_db_session, _scripted([], lambda msg: "not json"))
+
+    assert (result["raw_llm"], result["yesterday"]) == ("not json", {})
+    assert result["quality"]["grounding"] == {"dropped": [], "count": 0}
+    assert [e["verdict"] for e in result["quality"]["scorecard"]["events"]] == ["unclear"] * 2
+
+
+async def test_force_regeneration_recomputes_the_models_verdict_but_keeps_analyst_overrides(
+    async_db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _today(monkeypatch, MONDAY_AFTER)
+    await _seed_busy_week(async_db_session)
+    await _previous_week(async_db_session, events=LAST_WEEKS_EVENTS)
+    first = await _generate_weekly(async_db_session, _scripted([], _review_reply))
+    await recap_service.override_scorecard(
+        async_db_session, first["id"], "f1", "not_happened", "ana"
+    )
+    await recap_service.override_scorecard(async_db_session, first["id"], "f2", "happened", "ana")
+    # Pekan lalu diregenerasi: event f2 sekarang teks lain, f1 tetap.
+    changed = [LAST_WEEKS_EVENTS[0], {**LAST_WEEKS_EVENTS[1], "event": "DDoS season"}]
+    await _previous_week(async_db_session, events=changed)
+
+    def partly(msg: str) -> dict[str, Any]:
+        reply = _busy_reply(msg)
+        reply["forecast_review"] = [{"id": "f1", "verdict": "partly", "evidence": "new"}]
+        return reply
+
+    again = await _generate_weekly(async_db_session, _scripted([], partly), force=True)
+
+    f1, f2 = again["quality"]["scorecard"]["events"]
+    assert (f1["verdict"], f1["evidence"]) == ("partly", "new")  # model dihitung ulang
+    assert f1["override"]["verdict"] == "not_happened"  # pekerjaan analis dibawa
+    assert f1["override"]["by"] == "ana"
+    assert f2["event"] == "DDoS season"
+    assert "override" not in f2  # event lain di slot yang sama: override lama tidak berlaku
+
+
+# --- override analis dan hit rate -------------------------------------------------------------
+
+
+async def _reviewed_week(session: AsyncSession, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+    _today(monkeypatch, MONDAY_AFTER)
+    await _seed_busy_week(session)
+    await _previous_week(session, events=LAST_WEEKS_EVENTS)
+    return await _generate_weekly(session, _scripted([], _review_reply))
+
+
+async def test_an_override_is_stored_next_to_the_models_verdict_and_wins_in_the_hit_rate(
+    async_db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    week = await _reviewed_week(async_db_session, monkeypatch)
+    before = await recap_service.get_hit_rate(async_db_session)
+
+    doc = await recap_service.override_scorecard(
+        async_db_session, week["id"], "f2", "not_happened", "analyst1"
+    )
+
+    f1, f2 = doc["quality"]["scorecard"]["events"]
+    assert f2["verdict"] == "unclear"  # verdict model tetap
+    assert f2["override"]["verdict"] == "not_happened"
+    assert f2["override"]["by"] == "analyst1"
+    assert datetime.datetime.fromisoformat(f2["override"]["at"]).tzinfo is not None
+    assert "override" not in f1
+    after = await recap_service.get_hit_rate(async_db_session)
+    assert before["by_confidence"]["med"]["judged"] == 0  # "unclear" tidak masuk penyebut
+    assert after["by_confidence"]["med"] == {
+        "events": 1,
+        "judged": 1,
+        "unclear": 0,
+        "hits": 0.0,
+        "rate_pct": 0.0,
+    }
+    assert after["by_confidence"]["high"]["rate_pct"] == 100.0  # f1: "happened" dari model
+    # Yang dibaca ulang dari DB memuat override itu.
+    stored = await recap_service.get_recap(async_db_session, "2026-03-02", "weekly")
+    assert (
+        stored is not None
+        and stored["quality"]["scorecard"]["events"][1]["override"]["by"] == "analyst1"
+    )
+
+
+async def test_overriding_something_that_does_not_exist_is_a_not_found_error(
+    async_db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    week = await _reviewed_week(async_db_session, monkeypatch)
+    daily_row = await AsyncRecapRepo(async_db_session).upsert(
+        "2026-03-03"
+    )  # harian, tanpa scorecard
+
+    for recap_id, event_id, message in [
+        (week["id"] + 10_000, "f1", "No recap with id"),
+        (daily_row.id, "f1", "has no forecast scorecard"),
+        (week["id"], "f9", "no scorecard entry f9"),
+    ]:
+        with pytest.raises(recap_service.ScorecardNotFoundError, match=message):
+            await recap_service.override_scorecard(
+                async_db_session, recap_id, event_id, "happened", "ana"
+            )
+
+
+async def test_hit_rate_looks_at_the_eight_newest_weekly_rows_only(
+    async_db_session: AsyncSession,
+) -> None:
+    repo = AsyncRecapRepo(async_db_session)
+    scorecard = {"events": [{"id": "f1", "confidence": "high", "verdict": "happened"}]}
+    start = datetime.date(2026, 1, 5)
+    for week in range(10):  # 10 pekan: dua yang paling lama tidak ikut
+        monday = (start + datetime.timedelta(weeks=week)).isoformat()
+        await repo.upsert(monday, kind="weekly", quality={"scorecard": scorecard})
+    await repo.upsert("2026-03-30", quality={"scorecard": scorecard})  # harian: tidak ikut
+
+    out = await recap_service.get_hit_rate(async_db_session)
+
+    assert (out["weeks"], out["reviewed_weeks"]) == (8, 8)
+    assert (out["first_week"], out["last_week"]) == ("2026-01-19", "2026-03-09")
+    assert out["overall"]["events"] == 8
+
+
+async def test_hit_rate_with_no_weekly_recaps_is_an_empty_answer(
+    async_db_session: AsyncSession,
+) -> None:
+    out = await recap_service.get_hit_rate(async_db_session)
+
+    assert (out["weeks"], out["overall"]["rate_pct"]) == (0, None)
+
+
+async def test_every_recap_document_carries_its_quality_and_a_daily_one_has_none(
+    async_db_session: AsyncSession,
+) -> None:
+    await _ensure_clients(async_db_session)
+    fake_client = _capturing_client([], usage=None)
+    with patch.object(recap_service, "get_llm_client", return_value=(fake_client, "m")):
+        daily = await recap_service.generate_daily_recap(async_db_session, date="2026-03-04")
+
+    assert daily["quality"] == {}  # jalur harian tidak menghitung apa pun di sini
+    assert (await recap_service.get_recap(async_db_session, "2026-03-04"))["quality"] == {}  # type: ignore[index]
+    listed = await recap_service.list_recaps(async_db_session)
+    assert "quality" not in listed[0]  # /list tidak membawanya

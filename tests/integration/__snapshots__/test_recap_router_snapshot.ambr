@@ -1,4 +1,395 @@
 # serializer version: 1
+# name: test_a_weekly_recap_returns_its_quality_with_grounding_comparison_and_scorecard
+  dict({
+    'cached': False,
+    'counts': dict({
+      'articles': 1,
+      'campaigns': 0,
+      'cves': 0,
+      'iocs': 0,
+      'new_threat_actors': 0,
+      'tweets': 0,
+    }),
+    'date': '2026-03-02',
+    'forecast': dict({
+      'likely_events': list([
+        dict({
+          'basis': 'the story',
+          'confidence': 'high',
+          'event': 'Another hit',
+          'id': 'f1',
+        }),
+      ]),
+      'summary': 's',
+    }),
+    'generated_at': str,
+    'headline': 'Hospital week',
+    'id': int,
+    'kind': 'weekly',
+    'model': 'test-model',
+    'period_end': '2026-03-08',
+    'period_start': '2026-03-02',
+    'quality': dict({
+      'comparison': dict({
+        'counts': dict({
+          'articles': dict({
+            'current': 1,
+            'delta': 1,
+            'delta_pct': None,
+            'previous': 0,
+          }),
+          'campaigns': dict({
+            'current': 0,
+            'delta': 0,
+            'delta_pct': 0.0,
+            'previous': 0,
+          }),
+          'cves': dict({
+            'current': 0,
+            'delta': 0,
+            'delta_pct': 0.0,
+            'previous': 0,
+          }),
+          'iocs': dict({
+            'current': 0,
+            'delta': 0,
+            'delta_pct': 0.0,
+            'previous': 0,
+          }),
+          'new_threat_actors': dict({
+            'current': 0,
+            'delta': 0,
+            'delta_pct': 0.0,
+            'previous': 0,
+          }),
+          'tweets': dict({
+            'current': 0,
+            'delta': 0,
+            'delta_pct': 0.0,
+            'previous': 0,
+          }),
+        }),
+        'new_this_week': dict({
+          'campaigns': list([
+          ]),
+          'cves': list([
+          ]),
+          'threat_actors': list([
+          ]),
+        }),
+        'previous': dict({
+          'date': '2026-02-23',
+          'period_end': '2026-03-01',
+          'period_start': '2026-02-23',
+        }),
+      }),
+      'grounding': dict({
+        'count': 2,
+        'dropped': list([
+          dict({
+            'field': 'recap.top_stories',
+            'reason': 'unknown_article_id',
+            'value': 'Not a real article [#424242]',
+          }),
+          dict({
+            'field': 'recap.summary',
+            'reason': 'not_in_input',
+            'value': 'CVE-2026-9999',
+          }),
+        ]),
+      }),
+      'scorecard': dict({
+        'events': list([
+          dict({
+            'basis': 'hits',
+            'confidence': 'high',
+            'event': 'Ransomware wave continues',
+            'evidence': 'The hospital story.',
+            'id': 'f1',
+            'verdict': 'happened',
+          }),
+          dict({
+            'basis': 'PoC',
+            'confidence': 'med',
+            'event': 'VPN exploitation grows',
+            'evidence': 'Nothing seen.',
+            'id': 'f2',
+            'verdict': 'not_happened',
+          }),
+        ]),
+        'reviewed': dict({
+          'date': '2026-02-23',
+          'period_end': '2026-03-01',
+          'period_start': '2026-02-23',
+        }),
+      }),
+    }),
+    'raw_llm': None,
+    'token_usage': dict({
+      'completion_tokens': 20,
+      'input_chars': int,
+      'prompt_items': dict({
+        'articles': 1,
+        'campaigns': 0,
+        'cves': 0,
+        'iocs': 0,
+        'new_threat_actors': 0,
+        'tweets': 0,
+      }),
+      'prompt_tokens': 100,
+      'total_tokens': 120,
+      'wall_ms': 7,
+    }),
+    'yesterday': dict({
+      'summary': 'One story, see [unverified CVE].',
+      'top_stories': list([
+        dict({
+          'article_id': int,
+          'source': 'CISA',
+          'title': 'Hospital hit',
+          'url': 'https://example.com/weekly-router',
+          'why_it_matters': 'patients',
+        }),
+      ]),
+    }),
+  })
+# ---
+# name: test_an_analyst_override_is_saved_audited_and_changes_the_hit_rate
+  dict({
+    'hit_rate': dict({
+      'by_confidence': dict({
+        'high': dict({
+          'events': 1,
+          'hits': 1.0,
+          'judged': 1,
+          'rate_pct': 100.0,
+          'unclear': 0,
+        }),
+        'low': dict({
+          'events': 0,
+          'hits': 0.0,
+          'judged': 0,
+          'rate_pct': None,
+          'unclear': 0,
+        }),
+        'med': dict({
+          'events': 1,
+          'hits': 1.0,
+          'judged': 1,
+          'rate_pct': 100.0,
+          'unclear': 0,
+        }),
+      }),
+      'first_week': '2026-02-23',
+      'last_week': '2026-03-02',
+      'overall': dict({
+        'events': 2,
+        'hits': 2.0,
+        'judged': 2,
+        'rate_pct': 100.0,
+        'unclear': 0,
+      }),
+      'reviewed_weeks': 1,
+      'weeks': 2,
+    }),
+    'recap': dict({
+      'cached': True,
+      'counts': dict({
+        'articles': 1,
+        'campaigns': 0,
+        'cves': 0,
+        'iocs': 0,
+        'new_threat_actors': 0,
+        'tweets': 0,
+      }),
+      'date': '2026-03-02',
+      'forecast': dict({
+        'likely_events': list([
+          dict({
+            'basis': 'the story',
+            'confidence': 'high',
+            'event': 'Another hit',
+            'id': 'f1',
+          }),
+        ]),
+        'summary': 's',
+      }),
+      'generated_at': str,
+      'headline': 'Hospital week',
+      'id': int,
+      'kind': 'weekly',
+      'model': 'test-model',
+      'period_end': '2026-03-08',
+      'period_start': '2026-03-02',
+      'quality': dict({
+        'comparison': dict({
+          'counts': dict({
+            'articles': dict({
+              'current': 1,
+              'delta': 1,
+              'delta_pct': None,
+              'previous': 0,
+            }),
+            'campaigns': dict({
+              'current': 0,
+              'delta': 0,
+              'delta_pct': 0.0,
+              'previous': 0,
+            }),
+            'cves': dict({
+              'current': 0,
+              'delta': 0,
+              'delta_pct': 0.0,
+              'previous': 0,
+            }),
+            'iocs': dict({
+              'current': 0,
+              'delta': 0,
+              'delta_pct': 0.0,
+              'previous': 0,
+            }),
+            'new_threat_actors': dict({
+              'current': 0,
+              'delta': 0,
+              'delta_pct': 0.0,
+              'previous': 0,
+            }),
+            'tweets': dict({
+              'current': 0,
+              'delta': 0,
+              'delta_pct': 0.0,
+              'previous': 0,
+            }),
+          }),
+          'new_this_week': dict({
+            'campaigns': list([
+            ]),
+            'cves': list([
+            ]),
+            'threat_actors': list([
+            ]),
+          }),
+          'previous': dict({
+            'date': '2026-02-23',
+            'period_end': '2026-03-01',
+            'period_start': '2026-02-23',
+          }),
+        }),
+        'grounding': dict({
+          'count': 2,
+          'dropped': list([
+            dict({
+              'field': 'recap.top_stories',
+              'reason': 'unknown_article_id',
+              'value': 'Not a real article [#424242]',
+            }),
+            dict({
+              'field': 'recap.summary',
+              'reason': 'not_in_input',
+              'value': 'CVE-2026-9999',
+            }),
+          ]),
+        }),
+        'scorecard': dict({
+          'events': list([
+            dict({
+              'basis': 'hits',
+              'confidence': 'high',
+              'event': 'Ransomware wave continues',
+              'evidence': 'The hospital story.',
+              'id': 'f1',
+              'verdict': 'happened',
+            }),
+            dict({
+              'basis': 'PoC',
+              'confidence': 'med',
+              'event': 'VPN exploitation grows',
+              'evidence': 'Nothing seen.',
+              'id': 'f2',
+              'override': dict({
+                'at': str,
+                'by': 'analyst1',
+                'verdict': 'happened',
+              }),
+              'verdict': 'not_happened',
+            }),
+          ]),
+          'reviewed': dict({
+            'date': '2026-02-23',
+            'period_end': '2026-03-01',
+            'period_start': '2026-02-23',
+          }),
+        }),
+      }),
+      'raw_llm': None,
+      'token_usage': dict({
+        'completion_tokens': 20,
+        'input_chars': int,
+        'prompt_items': dict({
+          'articles': 1,
+          'campaigns': 0,
+          'cves': 0,
+          'iocs': 0,
+          'new_threat_actors': 0,
+          'tweets': 0,
+        }),
+        'prompt_tokens': 100,
+        'total_tokens': 120,
+        'wall_ms': 7,
+      }),
+      'yesterday': dict({
+        'summary': 'One story, see [unverified CVE].',
+        'top_stories': list([
+          dict({
+            'article_id': int,
+            'source': 'CISA',
+            'title': 'Hospital hit',
+            'url': 'https://example.com/weekly-router',
+            'why_it_matters': 'patients',
+          }),
+        ]),
+      }),
+    }),
+  })
+# ---
+# name: test_latest_and_the_weekly_read_carry_the_hit_rate_and_a_daily_read_does_not
+  dict({
+    'by_confidence': dict({
+      'high': dict({
+        'events': 1,
+        'hits': 1.0,
+        'judged': 1,
+        'rate_pct': 100.0,
+        'unclear': 0,
+      }),
+      'low': dict({
+        'events': 0,
+        'hits': 0.0,
+        'judged': 0,
+        'rate_pct': None,
+        'unclear': 0,
+      }),
+      'med': dict({
+        'events': 1,
+        'hits': 0.0,
+        'judged': 1,
+        'rate_pct': 0.0,
+        'unclear': 0,
+      }),
+    }),
+    'first_week': '2026-02-23',
+    'last_week': '2026-03-02',
+    'overall': dict({
+      'events': 2,
+      'hits': 1.0,
+      'judged': 2,
+      'rate_pct': 50.0,
+      'unclear': 0,
+    }),
+    'reviewed_weeks': 1,
+    'weeks': 2,
+  })
+# ---
 # name: test_recap_generate
   dict({
     'recap': dict({
@@ -22,6 +413,8 @@
       'model': 'test-model',
       'period_end': str,
       'period_start': str,
+      'quality': dict({
+      }),
       'raw_llm': None,
       'token_usage': dict({
         'completion_tokens': 20,
@@ -67,6 +460,13 @@
       'model': 'test-model',
       'period_end': '2026-03-08',
       'period_start': '2026-03-02',
+      'quality': dict({
+        'grounding': dict({
+          'count': 0,
+          'dropped': list([
+          ]),
+        }),
+      }),
       'raw_llm': None,
       'token_usage': dict({
         'completion_tokens': 20,
@@ -116,6 +516,8 @@
       'model': '',
       'period_end': '2026-03-08',
       'period_start': '2026-03-02',
+      'quality': dict({
+      }),
       'raw_llm': None,
       'token_usage': dict({
         'reason': 'no_activity',
@@ -149,6 +551,42 @@
 # name: test_recap_latest_none
   dict({
     'date': str,
+    'hit_rate': dict({
+      'by_confidence': dict({
+        'high': dict({
+          'events': 0,
+          'hits': 0.0,
+          'judged': 0,
+          'rate_pct': None,
+          'unclear': 0,
+        }),
+        'low': dict({
+          'events': 0,
+          'hits': 0.0,
+          'judged': 0,
+          'rate_pct': None,
+          'unclear': 0,
+        }),
+        'med': dict({
+          'events': 0,
+          'hits': 0.0,
+          'judged': 0,
+          'rate_pct': None,
+          'unclear': 0,
+        }),
+      }),
+      'first_week': None,
+      'last_week': None,
+      'overall': dict({
+        'events': 0,
+        'hits': 0.0,
+        'judged': 0,
+        'rate_pct': None,
+        'unclear': 0,
+      }),
+      'reviewed_weeks': 0,
+      'weeks': 0,
+    }),
     'kind': 'weekly',
     'recap': None,
   })

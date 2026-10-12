@@ -58,14 +58,37 @@ tetap terlihat walau gateway tidak melaporkan token.
 - Pekan tanpa artikel, tweet, maupun CVE TIDAK memanggil LLM: hasil deterministik "tidak ada
   aktivitas" (`model=""`, `token_usage` menandai panggilan dilewati).
 - Isi recap mingguan disimpan di kolom `yesterday` (nama lama, lihat `DailyRecap`); `kind='weekly'`
-  membedakannya dari baris harian di Senin yang sama."""
+  membedakannya dari baris harian di Senin yang sama.
+
+**Kualitas recap mingguan (#21, PR 3, 2026-10-12)** -- semuanya dihitung KODE dan disimpan di
+`quality`, tanpa panggilan LLM tambahan; recap harian TIDAK tersentuh (prompt, keluaran, dan alurnya
+sama persis).
+- `grounding` (modul bersama `services/grounding.py`, dipakai lagi newsletter di PR 8): tiap CVE id,
+  actor, tema kampanye, dan sumber di keluaran harus ada di masukan prompt; story diverifikasi lewat
+  `article_id` (tiap baris artikel di prompt membawa `[#<id>]`), bukan judul, dan yang lolos mendapat
+  `url`. Yang gagal dibuang dari yang ditampilkan DAN dicatat di `quality.grounding.dropped`.
+  Pembangun prompt mengembalikan himpunan masukannya bersama prompt (`WeeklyPrompt.known`), jadi
+  pemeriksaan tidak pernah memakai himpunan yang berbeda dari yang dilihat model.
+- `comparison` (`services/recap_quality.py`): selisih `counts` dan item baru terhadap baris mingguan
+  pekan SEBELUMNYA yang bersebelahan (tanggal tepat 7 hari sebelumnya). Pekan yang bolong tidak
+  dibandingkan dengan pekan yang lebih jauh: itu bukan lagi "dibanding pekan lalu".
+- `scorecard`: panggilan LLM yang sama juga me-review forecast pekan lalu (id `f1`, `f2`, ... ditulis
+  kode menurut posisi; baris lama tanpa id diturunkan dari posisi, tidak dimigrasi). Override analis
+  disimpan di samping verdict model dan dibawa saat force regen. Hit rate 8 pekan dihitung saat
+  dibaca (`get_hit_rate`), karena override mengubah pekan yang sudah lewat.
+- Pekan pertama (tanpa baris sebelumnya) tidak punya `comparison` maupun `scorecard`; pekan sepi
+  (tanpa LLM) tidak punya `grounding` maupun `scorecard`. Pekan yang dibuat TIDAK berurutan (mis. 5
+  Okt sebelum 28 Sep) tidak mendapat perbandingan/scorecard itu sampai di-force-regen, karena hanya
+  dihitung saat dibuat."""
 
 from __future__ import annotations
 
 import asyncio
+import copy
 import dataclasses
 import datetime
 import time
+from collections.abc import Callable
 from typing import Any
 
 import structlog
@@ -80,6 +103,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_api.services import campaign as campaign_service
+from cti_api.services import grounding, recap_quality
 from cti_api.services.source_score import get_source_reliability
 
 log = structlog.get_logger()
@@ -220,9 +244,14 @@ def _prompt_items(
     }
 
 
-def _article_line(a: Any) -> str:
+def _article_line(a: Any, *, with_id: bool = False) -> str:
+    """`with_id`: awali baris dengan `[#<id>]` (prompt MINGGUAN: story diverifikasi lewat id itu).
+    Bawaannya tanpa id, supaya prompt harian tidak berubah satu byte pun."""
     actors = ", ".join(t.threat_actor for t in a.threat_actors[:3])
-    return f"- [{a.source}] {_truncate(a.title, 200)}" + (f" | actors: {actors}" if actors else "")
+    tag = f"[#{a.id}] " if with_id else ""
+    return f"- {tag}[{a.source}] {_truncate(a.title, 200)}" + (
+        f" | actors: {actors}" if actors else ""
+    )
 
 
 def _tweet_line(t: Any) -> str:
@@ -439,7 +468,7 @@ Output STRICT JSON (no markdown, no code fences). Schema:
   "recap": {
     "summary": "<4-6 sentence narrative recap of the week's notable cyber events from both news and social/X chatter: lead with the biggest stories and the trend, not a day-by-day list>",
     "top_stories": [
-      {"title": "<article title>", "why_it_matters": "<1 sentence>", "source": "<source name>"}
+      {"article_id": <int, the number in the [#id] marker of the article line this story is about>, "title": "<article title>", "why_it_matters": "<1 sentence>", "source": "<source name>"}
     ],
     "top_tweets": [
       {"author": "<username>", "summary": "<what they reported>", "signal": "<incident|cve|ttp|other>"}
@@ -458,7 +487,10 @@ Output STRICT JSON (no markdown, no code fences). Schema:
       {"event": "<predicted event>", "basis": "<concrete signal that justifies this — must reference items in the input>", "confidence": "low|med|high"}
     ],
     "watch_items": ["<thing analysts should keep an eye on next week>", "..."]
-  }
+  },
+  "forecast_review": [
+    {"id": "<id of a LAST WEEK'S FORECAST item, e.g. f1>", "verdict": "happened|partly|not_happened|unclear", "evidence": "<one line from this week's input>"}
+  ]
 }
 
 """
@@ -468,6 +500,9 @@ _WEEKLY_RULES = f"""Rules:
 - Ground every forecast item in a concrete input signal. If there is no basis, omit the item.
 - Do not invent CVE IDs, threat actor names, or campaigns not in the input.
 - Keep top_stories to <={_WEEKLY_MAX_TOP_STORIES}, top_tweets to <={_WEEKLY_MAX_TOP_TWEETS}, likely_events to <={_WEEKLY_MAX_LIKELY_EVENTS}.
+- Every top_stories item MUST carry the article_id of the single article line it is based on: the number in that line's [#id] marker (123 for [#123]). A story without a valid article_id is discarded.
+- Copy CVE IDs, threat actor names and campaign themes exactly as they appear in the input. Anything that does not appear in the input is discarded.
+- If the input has a "LAST WEEK'S FORECAST" section, return exactly one forecast_review item per listed id, judged ONLY from this week's input: happened (it occurred), partly (it partly occurred), not_happened (the input shows it did not occur), unclear (the input says nothing either way), each with one line of evidence. Without that section return an empty forecast_review.
 - If the week had no notable activity, say so plainly — do not fabricate.
 """
 WEEKLY_SYSTEM_PROMPT = _WEEKLY_SCHEMA + _WEEKLY_RULES
@@ -657,20 +692,63 @@ def _of(total: int, shown: int, how: str) -> str:
     return f"{total} total" if shown >= total else f"{total} total, {shown} {how} shown"
 
 
-def _build_weekly_user_message(inputs: WeeklyInputs) -> str:
+@dataclasses.dataclass(frozen=True)
+class WeeklyPrompt:
+    """Pesan user prompt mingguan DAN apa yang BOLEH muncul di keluarannya (`known`).
+
+    Himpunan itu dibangun dari baris-baris yang SAMA yang ditulis ke pesan, di fungsi yang sama:
+    pemeriksaan grounding tidak pernah memakai himpunan yang berbeda dari yang dilihat model."""
+
+    user_message: str
+    known: grounding.Known
+
+
+def _prompt_actor_names(inputs: WeeklyInputs, campaigns: list[dict[str, Any]]) -> list[str]:
+    """Nama threat actor yang TERCETAK di prompt. Irisan `[:3]` meniru `_article_line`,
+    `_tweet_line`, dan `_campaign_line`: yang tidak tercetak tidak ikut dianggap dikenal."""
+    names = [t.threat_actor for a, _ in inputs.articles for t in a.threat_actors[:3]]
+    for tweet in inputs.tweets:
+        names += ((tweet.scan_results or {}).get("mentioned_group") or [])[:3]
+    for campaign in campaigns:
+        names += (campaign.get("threat_actors") or [])[:3]
+    return names + [ta.name for ta in inputs.new_tas]
+
+
+def _review_line(event: dict[str, str]) -> str:
+    return (
+        f"- [{event['id']}] {_truncate(event['event'], 200)}"
+        f" | basis: {_truncate(event['basis'], 240) or 'n/a'}"
+        f" | confidence: {event['confidence'] or 'n/a'}"
+    )
+
+
+def _build_weekly_prompt(
+    inputs: WeeklyInputs, review_events: list[dict[str, str]] | None = None
+) -> WeeklyPrompt:
+    """`review_events` = forecast pekan lalu (`recap_quality.events_for_review`): kalau ada, prompt
+    memuat seksi "LAST WEEK'S FORECAST" dan model me-review tiap id di `forecast_review`, di
+    panggilan yang sama (tanpa panggilan tambahan). Pekan pertama tidak punya seksi itu."""
     start, end = inputs.start.isoformat(), inputs.end.isoformat()
     window = f"{start}..{end}"
 
     article_lines = [
-        _article_line(a) + (f" | cluster: {size} articles" if size else "")
+        _article_line(a, with_id=True) + (f" | cluster: {size} articles" if size else "")
         for a, size in inputs.articles
     ]
     tweet_lines = [_tweet_line(t) for t in inputs.tweets]
     cve_lines = [_cve_line(c) for c in inputs.cves]
-    camp_lines = [_campaign_line(c) for c in inputs.campaigns[:_WEEKLY_MAX_CAMPAIGNS]]
+    shown_campaigns = inputs.campaigns[:_WEEKLY_MAX_CAMPAIGNS]
+    camp_lines = [_campaign_line(c) for c in shown_campaigns]
     new_ta_lines = [_new_ta_line(ta) for ta in inputs.new_tas]
+    review_lines = [_review_line(e) for e in review_events or []]
+    review_section = (
+        "\n== LAST WEEK'S FORECAST (judge each item against this week's input; return one "
+        "forecast_review item per id) ==\n" + "\n".join(review_lines) + "\n"
+        if review_lines
+        else ""
+    )
 
-    return f"""WEEKLY RECAP WINDOW: {start} (Monday) to {end} (Sunday), UTC calendar dates
+    message = f"""WEEKLY RECAP WINDOW: {start} (Monday) to {end} (Sunday), UTC calendar dates
 The counts below are exact totals for the whole week; each list holds only the strongest items.
 
 == NEWS ROOM ARTICLES POSTED {window} ({_of(inputs.articles_total, len(article_lines), "story lines")}; articles of one campaign collapsed into one line) ==
@@ -690,9 +768,19 @@ The counts below are exact totals for the whole week; each list holds only the s
 
 == ACTIVE CAMPAIGN CLUSTERS {window} ({_of(len(inputs.campaigns), len(camp_lines), "most severe")}; momentum context for forecast) ==
 {chr(10).join(camp_lines) if camp_lines else "  (none)"}
-
+{review_section}
 Now produce the JSON recap+forecast per the schema. Remember: forecast must cite concrete signals from above.
 """
+    known = grounding.Known.build(
+        text=message,
+        threat_actors=_prompt_actor_names(inputs, shown_campaigns),
+        campaigns=[c.get("theme") or c.get("label") or "" for c in shown_campaigns],
+        sources=[a.source for a, _ in inputs.articles],
+        articles={
+            a.id: grounding.ArticleRef(url=a.url, source=a.source) for a, _ in inputs.articles
+        },
+    )
+    return WeeklyPrompt(user_message=message, known=known)
 
 
 def _weekly_prompt_items(inputs: WeeklyInputs) -> dict[str, int]:
@@ -760,6 +848,34 @@ async def _warn_unless_db_is_utc(session: AsyncSession) -> None:
         )
 
 
+def _ground_weekly(
+    parsed: dict[str, Any], known: grounding.Known
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Keluaran model terhadap masukannya: `(keluaran yang sudah bersih, laporan grounding)`.
+
+    Bagian terstruktur dulu (daftar CVE, actor, kampanye, story), lalu CVE id di teks bebas seluruh
+    keluaran (termasuk `forecast_review`), supaya jalur di laporan cocok dengan yang disimpan dan id
+    yang sudah keluar dari daftar tidak dicatat dua kali. Balasan yang bukan JSON (`_raw`) tidak
+    punya apa-apa untuk diperiksa."""
+    grounder = grounding.Grounder(known)
+    if "_raw" in parsed:
+        return {}, grounder.report()
+    output = copy.deepcopy(parsed)
+    recap = output.get("recap")
+
+    def check(field: str, method: Callable[..., list[Any]], *args: Any, **kwargs: Any) -> None:
+        if isinstance(recap, dict) and field in recap:
+            recap[field] = method(f"recap.{field}", recap[field], *args, **kwargs)
+
+    check("top_stories", grounder.stories)
+    check("notable_cves", grounder.cve_list)
+    check("active_threat_actors", grounder.name_list, "threat_actors")
+    check("new_threat_actors_added", grounder.name_list, "threat_actors", key="name")
+    check("active_campaigns", grounder.name_list, "campaigns", key="theme")
+    cleaned: dict[str, Any] = grounder.free_text("", output)
+    return cleaned, grounder.report()
+
+
 async def generate_weekly_recap(
     session: AsyncSession, week_start: datetime.date | None = None, force: bool = False
 ) -> dict[str, Any]:
@@ -768,49 +884,85 @@ async def generate_weekly_recap(
     ditolak (`RecapWindowError`), juga dengan `force`. Recap pekan ini sudah ada dan `force=False`:
     balikin yang lama, tanpa LLM.
 
-    Pekan tanpa artikel, tweet, dan CVE tidak memanggil LLM (`_no_activity_result`)."""
+    Pekan tanpa artikel, tweet, dan CVE tidak memanggil LLM (`_no_activity_result`).
+
+    Kualitasnya (#21, PR 3) disimpan di `quality`, semuanya dihitung kode: `grounding` (keluaran
+    model diperiksa terhadap masukannya), `scorecard` (panggilan LLM yang SAMA me-review forecast
+    pekan lalu) dan `comparison` (terhadap pekan sebelumnya yang bersebelahan). Force regen
+    menghitung ulang semuanya; override analis di scorecard dibawa, tidak dihapus."""
     today = _today_utc()
     start, end = week_window(week_start if week_start is not None else default_week_start())
     ensure_week_finished(end, today)
     week_iso = start.isoformat()
     repo = AsyncRecapRepo(session)
 
-    if not force:
-        existing = await repo.get(week_iso, "weekly")
-        if existing is not None:
-            return _to_dict(existing, cached=True)
+    existing = await repo.get(week_iso, "weekly")
+    if existing is not None and not force:
+        return _to_dict(existing, cached=True)
 
     await _warn_unless_db_is_utc(session)
     inputs = await _collect_weekly(session, start, end)
+    # Hanya pekan yang BERSEBELAHAN (tanggal tepat 7 hari sebelumnya): pekan yang bolong tidak
+    # dibandingkan dengan yang lebih jauh, itu bukan lagi "dibanding pekan lalu".
+    previous_row = await repo.get((start - datetime.timedelta(days=7)).isoformat(), "weekly")
+    previous = _to_dict(previous_row, cached=True) if previous_row is not None else None
+    quality: dict[str, Any] = {}
 
     if inputs.has_activity:
-        user_msg = _build_weekly_user_message(inputs)
+        review_events = (
+            recap_quality.events_for_review(previous["forecast"], limit=_WEEKLY_MAX_LIKELY_EVENTS)
+            if previous is not None
+            else []
+        )
+        prompt = _build_weekly_prompt(inputs, review_events)
         raw, model_name, llm_usage = await asyncio.to_thread(
-            _call_llm, user_msg, WEEKLY_SYSTEM_PROMPT
+            _call_llm, prompt.user_message, WEEKLY_SYSTEM_PROMPT
         )
         parsed = _extract_json(raw)
+        output, quality["grounding"] = _ground_weekly(parsed, prompt.known)
+        if previous is not None and review_events:
+            quality["scorecard"] = recap_quality.build_scorecard(
+                recap_quality.week_ref(previous),
+                review_events,
+                output.get("forecast_review"),
+                replacing=(existing.quality or {}).get("scorecard") if existing else None,
+            )
         token_usage = {
             **llm_usage,
-            "input_chars": len(user_msg),
+            "input_chars": len(prompt.user_message),
             "prompt_items": _weekly_prompt_items(inputs),
         }
         raw_llm = raw if "_raw" in parsed else None
     else:
-        parsed, model_name, raw_llm = _no_activity_result(start, end), "", None
+        output, model_name, raw_llm = _no_activity_result(start, end), "", None
         token_usage = {"skipped": True, "reason": "no_activity"}
+
+    recap_body = output.get("recap", {})
+    forecast = output.get("forecast", {})
+    if isinstance(forecast, dict) and "likely_events" in forecast:
+        forecast = {
+            **forecast,
+            "likely_events": recap_quality.stamp_event_ids(forecast["likely_events"]),
+        }
+    # Dihitung dari keluaran yang SUDAH lolos grounding: "baru pekan ini" tidak boleh memuat
+    # karangan yang sudah dibuang.
+    comparison = recap_quality.build_comparison(inputs.counts, recap_body, previous)
+    if comparison is not None:
+        quality["comparison"] = comparison
 
     row = await repo.upsert(
         week_iso,
         kind="weekly",
         period_start=start,
         period_end=end,
-        headline=parsed.get("headline", ""),
-        yesterday=parsed.get("recap", {}),
-        forecast=parsed.get("forecast", {}),
+        headline=output.get("headline", ""),
+        yesterday=recap_body,
+        forecast=forecast,
         counts=inputs.counts,
         generated_at=datetime.datetime.now(datetime.UTC),
         model=model_name,
         token_usage=token_usage,
+        quality=quality,
         raw_llm=raw_llm,
     )
     log.info(
@@ -823,6 +975,8 @@ async def generate_weekly_recap(
         model=model_name,
         skipped=not inputs.has_activity,
         parse_failed=raw_llm is not None,
+        grounding_dropped=quality.get("grounding", {}).get("count", 0),
+        scorecard=recap_quality.verdict_counts(quality.get("scorecard")),
         force=force,
     )
     return _to_dict(row, cached=False)
@@ -853,6 +1007,7 @@ def _to_dict(row: Any, *, cached: bool) -> dict[str, Any]:
         "generated_at": row.generated_at.isoformat(),
         "model": row.model,
         "token_usage": row.token_usage,
+        "quality": row.quality or {},
         "raw_llm": row.raw_llm,
         "cached": cached,
     }
@@ -891,3 +1046,45 @@ async def list_recaps(session: AsyncSession, limit: int = 30) -> list[dict[str, 
             }
         )
     return items
+
+
+# ── Scorecard: override analis dan hit rate ──────────────────────────────────
+
+
+class ScorecardNotFoundError(LookupError):
+    """Recap, scorecard-nya, atau event yang mau di-override tidak ada. Router menjawabnya 404."""
+
+
+async def override_scorecard(
+    session: AsyncSession, recap_id: int, event_id: str, verdict: str, username: str
+) -> dict[str, Any]:
+    """Verdict analis (`happened | partly | not_happened | unclear`) untuk event `event_id` di
+    scorecard recap `recap_id`, disimpan DI SAMPING verdict model dengan siapa dan kapan; hit rate
+    memakainya. `recap_id` = baris yang MEMUAT scorecard (recap pekan yang me-review), `event_id` =
+    id event forecast pekan sebelumnya yang di-review di sana.
+
+    Barisnya dikunci (`FOR UPDATE`) sampai transaksi selesai: `quality` dibaca, satu entri diubah,
+    lalu seluruh JSONB ditulis, jadi dua analis yang menimpa event berbeda di saat yang sama akan
+    saling menghapus tanpa kunci itu. Pemanggil yang commit (dan menulis audit log)."""
+    row = await AsyncRecapRepo(session).get_by_id(recap_id, for_update=True)
+    if row is None:
+        raise ScorecardNotFoundError(f"No recap with id {recap_id}")
+    scorecard = (row.quality or {}).get("scorecard")
+    if not isinstance(scorecard, dict):
+        raise ScorecardNotFoundError(f"Recap {recap_id} has no forecast scorecard")
+    try:
+        updated = recap_quality.apply_override(
+            scorecard, event_id, verdict, by=username, at=datetime.datetime.now(datetime.UTC)
+        )
+    except LookupError as e:
+        raise ScorecardNotFoundError(f"Recap {recap_id} has no scorecard entry {event_id}") from e
+    row.quality = {**row.quality, "scorecard": updated}  # objek baru: ORM tak melihat mutasi JSONB
+    await session.flush()
+    return _to_dict(row, cached=True)
+
+
+async def get_hit_rate(session: AsyncSession) -> dict[str, Any]:
+    """Hit rate scorecard di `recap_quality.HIT_RATE_WEEKS` recap mingguan terakhir, dihitung SAAT
+    DIBACA: override analis mengubah pekan yang sudah lewat, jadi angka yang disimpan akan basi."""
+    rows = await AsyncRecapRepo(session).list_latest("weekly", recap_quality.HIT_RATE_WEEKS)
+    return recap_quality.hit_rate([{"date": r.date, "quality": r.quality} for r in rows])
