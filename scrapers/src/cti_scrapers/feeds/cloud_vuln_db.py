@@ -10,7 +10,7 @@ class CloudVulnDB(RSSScraper):
         id="cloud_vuln_db",
         source="cloudvulndb.org",
         schedule=spread("*/15 * * * *", "cloud_vuln_db"),
-        tags=("vendor",),
+        tags=("Cloud Vulnerability Database",),
         legacy_label="Cloud Vulnerability Database",
         legacy_script="cloud_vuln_db",
     )

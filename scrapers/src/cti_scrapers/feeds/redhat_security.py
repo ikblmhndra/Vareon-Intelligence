@@ -10,7 +10,7 @@ class RedHatSecurity(RSSScraper):
         id="redhat_security",
         source="redhat.com",
         schedule=spread("*/15 * * * *", "redhat_security"),
-        tags=("vendor",),
+        tags=("Red Hat Security Blog",),
         legacy_label="Red Hat Security Blog",
         legacy_script="redhat_security",
     )

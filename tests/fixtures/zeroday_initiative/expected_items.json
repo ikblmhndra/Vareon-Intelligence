@@ -1,0 +1,254 @@
+{
+  "2026-10-13": [
+    {
+      "title": "ZDI-CAN-33446: Microsoft",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-33830: Microsoft",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-33523: Microsoft",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-33521: Microsoft",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-33293: libgme",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-33831: Microsoft",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-31412: mySCADA",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-31442: mySCADA",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-32168: Malwarebytes",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-32167: Malwarebytes",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-30758: Malwarebytes",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-32725: Parallels",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-33457: Apple",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-32740: Parallels",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-34061: Fuji Electric",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-31705: Avira",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-32347: MindsDB",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-35161: Microsoft",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-31440: Apple",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-30240: Adobe",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-33268: Adobe",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-33218: LiteLLM",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-34578: LiteLLM",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-32552: Hugging Face",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-34302: LiteLLM",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-33447: Sangoma",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-31717: Apple",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-33494: Sangoma",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-33493: Sangoma",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-35282: Redis",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-28318: Valkey",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-31742: TrendAI",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-33574: Cisco",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-33418: Autodesk",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-33257: PDF-XChange",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-31391: NoMachine",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-33599: Cisco",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-33817: SoftMaker",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-32835: Adobe",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-33157: Adobe",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-33156: Adobe",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-32875: Adobe",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-33155: Adobe",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-33440: Adobe",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-33246: Adobe",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-35116: ATEN",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-28504: ATEN",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-34489: MailEnable",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-33033: OpenPrinting",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "ZDI-CAN-31722: LG",
+      "url": "http://www.zerodayinitiative.com/advisories/upcoming/",
+      "posted_on": "2026-10-13"
+    }
+  ]
+}
