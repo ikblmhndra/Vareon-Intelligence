@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:atom="http://www.w3.org/2005/Atom" version="2.0" xml:base="https://www.redhat.com/en/rss/blog/channel/security">
+    <channel>
+        <title>Red Hat Security</title>
+        <link>https://www.redhat.com/en/rss/blog/channel/security</link>
+        <description>Discover how we reduce risk in any environment and across the open source ecosystem</description>
+        <language>en</language>
+                    <atom:link href="https://www.redhat.com/en/rss/blog/channel/security" rel="self" type="application/rss+xml"/>
+                            <copyright>Copyright ©2026 Red Hat, Inc.</copyright>
+            <dc:rights>Copyright ©2026 Red Hat, Inc.</dc:rights>
+                                                    <item>
+                    <title>Why "secure by design" is the new standard for open source</title>
+                    <link>https://www.redhat.com/en/blog/why-secure-design-new-standard-open-source</link>
+                    <description>Open source software faces significant regulatory shifts, making "secure by design" development practices increasingly important. The Cyber Resilience Act (CRA) takes effect on December 11, 2027, and as of September 11, 2026, the first CRA vulnerability and incident reporting obligations were live. These new cybersecurity regulations impact all companies that sell software or hardware to the European market and will have a huge impact on open source as a whole.The readiness gap and the cost of inactionDespite the looming deadline, the software industry remains unprepared. According to The Linu</description>
+                    <pubDate>Fri, 09 Oct 2026 00:00:00 +0000</pubDate>
+                    <guid isPermaLink="true">https://www.redhat.com/en/blog/why-secure-design-new-standard-open-source</guid>
+                    <dc:date>Fri, 09 Oct 2026 00:00:00 +0000</dc:date>
+                </item>
+                            <item>
+                    <title>Using on-premise Red Hat Lightspeed capabilities to monitor vulnerabilities and apply advisor remediations</title>
+                    <link>https://www.redhat.com/en/blog/using-premise-red-hat-lightspeed-capabilities-monitor-vulnerabilities-and-apply-advisor-remediations</link>
+                    <description>Managing vulnerabilities across a fleet of Red Hat Enterprise Linux (RHEL) systems is a continuous challenge. Between tracking Common Vulnerabilities and Exposures (CVEs), prioritizing by business risk, planning RHEL upgrades, and remediating issues, operations teams juggle multiple tools and workflows daily. Red Hat Lightspeed brings a greater level of situational awareness into your on-premise environment to help you discover, prioritize, and fix security and other issues, without your system data ever leaving your network.In a previous blog post we’ve outlined how to install Red Hat Light</description>
+                    <pubDate>Thu, 08 Oct 2026 00:00:00 +0000</pubDate>
+                    <guid isPermaLink="true">https://www.redhat.com/en/blog/using-premise-red-hat-lightspeed-capabilities-monitor-vulnerabilities-and-apply-advisor-remediations</guid>
+                    <dc:date>Thu, 08 Oct 2026 00:00:00 +0000</dc:date>
+                </item>
+                            <item>
+                    <title>Zero CVEs at delivery: Why container security belongs in the supply chain</title>
+                    <link>https://www.redhat.com/en/blog/zero-cves-delivery-why-container-security-belongs-supply-chain</link>
+                    <description>Back in 2010, I wrote a small web tool to generate random galactic sectors for a tabletop role playing game. It started as a Perl application, but these days it’s a single, static Go binary with all of its assets compiled right into the executable. Thousands of game masters have used it, it runs quietly in the public cloud, and for years I rarely touched it.Like thousands of community tools across the open source ecosystem, my app seems pretty harmless. But harmless code running on top of an unmaintained container image is an open door. The moment you push an image to a registry and walk awa</description>
+                    <pubDate>Wed, 07 Oct 2026 00:00:00 +0000</pubDate>
+                    <guid isPermaLink="true">https://www.redhat.com/en/blog/zero-cves-delivery-why-container-security-belongs-supply-chain</guid>
+                    <dc:date>Wed, 07 Oct 2026 00:00:00 +0000</dc:date>
+                </item>
+                            <item>
+                    <title>What enterprises need to know about the software they depend on</title>
+                    <link>https://www.redhat.com/en/blog/what-enterprises-need-to-know-about-the-software-they-depend-on</link>
+                    <description>Knowing an application contains open source components is not the same as understanding the software and communities behind them.For many organizations, the software supply chain extends across thousands of dependencies, developed and maintained by communities, foundations, vendors, and individual contributors. Red Hat Chief Technology Officer Chris Wright described this as the enterprise software fabric: a shared network where developers from different companies, projects, and communities build and maintain code together.That collaboration is one of open source's greatest strengths. It allows</description>
+                    <pubDate>Fri, 02 Oct 2026 00:00:00 +0000</pubDate>
+                    <guid isPermaLink="true">https://www.redhat.com/en/blog/what-enterprises-need-to-know-about-the-software-they-depend-on</guid>
+                    <dc:date>Fri, 02 Oct 2026 00:00:00 +0000</dc:date>
+                </item>
+                            <item>
+                    <title>What enterprises need to know about the Cyber Resilience Act and software supply chain risk</title>
+                    <link>https://www.redhat.com/en/blog/what-enterprises-need-to-know-about-the-cyber-resilience-act-and-software-supply-chain-risk</link>
+                    <description>In part 1 of this series, we examined why enterprises need more than an inventory of the open source components in their software. Understanding where dependencies come from, whether they are maintained, how they handle vulnerabilities, and what options exist when problems emerge is increasingly important to managing software supply chain risk.The European Union’s Cyber Resilience Act (CRA) brings this broader lifecycle perspective into sharper focus for organizations that manufacture or place products with digital elements on the EU market. The CRA requires manufacturers to address cybersec</description>
+                    <pubDate>Fri, 02 Oct 2026 00:00:00 +0000</pubDate>
+                    <guid isPermaLink="true">https://www.redhat.com/en/blog/what-enterprises-need-to-know-about-the-cyber-resilience-act-and-software-supply-chain-risk</guid>
+                    <dc:date>Fri, 02 Oct 2026 00:00:00 +0000</dc:date>
+                </item>
+                            <item>
+                    <title>Securing AI agents requires securing the systems around them</title>
+                    <link>https://www.redhat.com/en/blog/securing-ai-agents-requires-securing-systems-around-them</link>
+                    <description>Enterprise AI is changing from software that primarily generates information to software that can take action. AI agents can call APIs, invoke tools, access files and credentials, communicate over networks and interact directly with business systems. That capability is useful precisely because it gives agents more reach and more authority. It also changes what enterprises need to secure.Model safeguards remain important, but they cannot carry the entire security burden. Once an agent can act on enterprise systems, security must extend beyond what the model is instructed to do. Organizations al</description>
+                    <pubDate>Mon, 28 Sep 2026 00:00:00 +0000</pubDate>
+                    <guid isPermaLink="true">https://www.redhat.com/en/blog/securing-ai-agents-requires-securing-systems-around-them</guid>
+                    <dc:date>Mon, 28 Sep 2026 00:00:00 +0000</dc:date>
+                </item>
+                            <item>
+                    <title>Red Hat Enterprise Linux 10 STIG automation now matches DISA STIG V1R2</title>
+                    <link>https://www.redhat.com/en/blog/red-hat-enterprise-linux-10-stig-automation-now-matches-disa-stig-v1r2</link>
+                    <description>For the U.S. Department of Defense (DoD) and its contractors, security has to hold up against a published baseline—not a general claim that systems are “secure.” The Defense Information Systems Agency (DISA) defines that baseline in Security Technical Implementation Guides (STIGs), and STIG compliance is required for information systems that connect to DoD networks.In March 2026, the Defense Information Systems Agency (DISA) published a Security Technical Implementation Guide (STIG) for Red Hat Enterprise Linux (RHEL) 10. The scap-security-guide version 0.1.82 STIG profile is now availab</description>
+                    <pubDate>Fri, 25 Sep 2026 00:00:00 +0000</pubDate>
+                    <guid isPermaLink="true">https://www.redhat.com/en/blog/red-hat-enterprise-linux-10-stig-automation-now-matches-disa-stig-v1r2</guid>
+                    <dc:date>Fri, 25 Sep 2026 00:00:00 +0000</dc:date>
+                </item>
+                            <item>
+                    <title>Turning security complexity into useful intelligence: What’s new in Red Hat Lightspeed</title>
+                    <link>https://www.redhat.com/en/blog/turning-security-complexity-useful-intelligence-whats-new-red-hat-lightspeed</link>
+                    <description>In a post-Mythos world, IT teams face a mounting crisis. Many are doing more with the same staff, and security work hasn’t gotten simpler. Alerts still land without context. Compliance still means chasing down answers across tools. A single incident can consume an afternoon before anyone knows the real risk.To help teams move from static notification to proactive execution, Red Hat Lightspeed now delivers a series of updates to bridge the skills gap, break down operational barriers, and simplify security at scale.From cryptic data to immediate, confident actionThe cybersecurity skills gap me</description>
+                    <pubDate>Mon, 21 Sep 2026 00:00:00 +0000</pubDate>
+                    <guid isPermaLink="true">https://www.redhat.com/en/blog/turning-security-complexity-useful-intelligence-whats-new-red-hat-lightspeed</guid>
+                    <dc:date>Mon, 21 Sep 2026 00:00:00 +0000</dc:date>
+                </item>
+                            <item>
+                    <title>2026 update: The road to quantum-safe cryptography in Red Hat OpenShift</title>
+                    <link>https://www.redhat.com/en/blog/road-to-quantum-safe-cryptography-red-hat-openshift</link>
+                    <description>A year ago, I wrote about the road to quantum-safe cryptography in Red Hat OpenShift. At the time, much of that road was forward-looking: TLS 1.3 was not yet the default, Go did not support post-quantum algorithms, and the first NIST post-quantum cryptography (PQC) standards had only just been finalized. A lot has changed. This update covers where we are today, what shipped, what is next, and, critically, why digital signatures (ML-DSA) are the harder half of the quantum-safe migration.What shipped: ML-KEM is in productionRed Hat OpenShift 4.22 ships ML-KEM (FIPS 203) by default. When a capabl</description>
+                    <pubDate>Mon, 21 Sep 2026 00:00:00 +0000</pubDate>
+                    <guid isPermaLink="true">https://www.redhat.com/en/blog/road-to-quantum-safe-cryptography-red-hat-openshift</guid>
+                    <dc:date>Mon, 21 Sep 2026 00:00:00 +0000</dc:date>
+                </item>
+                            <item>
+                    <title>Stop rewriting stable code: How Lightwell protects your bottom line and developer velocity</title>
+                    <link>https://www.redhat.com/en/blog/stop-rewriting-stable-code-how-lightwell-protects-your-bottom-line-and-developer-velocity</link>
+                    <description>How Lightwell breaks the forced-upgrade cycle to keep your systems protected and your developers focused on innovation.The Monday morning CISO nightmarePicture this: It’s Monday morning. A critical, high-severity Common Vulnerabilities and Exposures (CVE) recently surfaced in an open source library buried deep within your core customer-facing application.Your CISO rightfully demands an immediate fix to protect your data and brand reputation. But when you ask the application development lead to patch it, their face pales."To get that security patch," they explain, "we have to upgrade the enti</description>
+                    <pubDate>Wed, 16 Sep 2026 00:00:00 +0000</pubDate>
+                    <guid isPermaLink="true">https://www.redhat.com/en/blog/stop-rewriting-stable-code-how-lightwell-protects-your-bottom-line-and-developer-velocity</guid>
+                    <dc:date>Wed, 16 Sep 2026 00:00:00 +0000</dc:date>
+                </item>
+                        </channel>
+</rss>
