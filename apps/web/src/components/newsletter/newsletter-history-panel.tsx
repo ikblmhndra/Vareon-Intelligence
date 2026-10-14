@@ -8,11 +8,12 @@ import { api } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { MindmapWidget } from "@/components/mindmap/mindmap-widget";
 import type { NewsletterSections } from "@/lib/api/loose-types";
+import { formatPeriodRange } from "@/lib/newsletter/format";
 
 interface Props {
   refreshKey: number;
-  onPreview: (id: number, week: number, year: number) => void;
-  onResend: (id: number, week: number, year: number) => void;
+  onPreview: (id: number, label: string) => void;
+  onResend: (id: number, label: string) => void;
   resendingId: number | null;
 }
 
@@ -67,21 +68,23 @@ export function NewsletterHistoryPanel({ refreshKey, onPreview, onResend, resend
           <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
             {newsletters.map((n) => {
               const sections = n.sections as unknown as NewsletterSections | undefined;
-              const apacLen = sections?.apac?.length ?? 0;
-              const globalLen = sections?.global_news?.length ?? 0;
-              const indonesiaLen = sections?.indonesia?.length ?? 0;
+              // Kartu penuh + baris "Also Noted": edisi padat punya sedikit kartu dan banyak baris.
+              const apacLen = (sections?.apac?.length ?? 0) + (sections?.apac_compact?.length ?? 0);
+              const globalLen = (sections?.global_news?.length ?? 0) + (sections?.global_news_compact?.length ?? 0);
+              const indonesiaLen = (sections?.indonesia?.length ?? 0) + (sections?.indonesia_compact?.length ?? 0);
               const highlightTitle = sections?.highlight?.title;
               return (
                 <div key={n.id} className="rounded-xl border border-border bg-background p-3">
-                  <div className="font-mono text-[13px] text-primary">
-                    Week {n.week}, {n.year}
-                  </div>
+                  <div className="font-mono text-[13px] text-primary">{n.label}</div>
+                  {n.period_start && n.period_end && (
+                    <div className="font-mono text-xs text-muted-foreground">{formatPeriodRange(n.period_start, n.period_end)}</div>
+                  )}
                   <div className="mt-0.5 font-mono text-xs text-muted-foreground">
                     {n.generated_at} · by {n.created_by}
                   </div>
                   {highlightTitle && (
                     <div className="mt-1.5 truncate text-[13px] text-foreground" title={highlightTitle}>
-                      <SectionIcon section="highlight" className="mr-1 inline" /> {highlightTitle}
+                      <SectionIcon section="highlights" className="mr-1 inline" /> {highlightTitle}
                     </div>
                   )}
                   <div className="mt-1.5 font-mono text-xs text-muted-foreground">
@@ -90,7 +93,7 @@ export function NewsletterHistoryPanel({ refreshKey, onPreview, onResend, resend
                     <span className="inline-flex items-center gap-1"><SectionIcon section="indonesia" /> {indonesiaLen}</span>
                   </div>
                   <div className="mt-2 flex gap-1.5">
-                    <Button variant="outline" size="sm" className="h-6 flex-1 px-2 text-xs" onClick={() => onPreview(n.id, n.week, n.year)}>
+                    <Button variant="outline" size="sm" className="h-6 flex-1 px-2 text-xs" onClick={() => onPreview(n.id, n.label)}>
                       Preview
                     </Button>
                     <Button
@@ -98,12 +101,12 @@ export function NewsletterHistoryPanel({ refreshKey, onPreview, onResend, resend
                       size="sm"
                       className="h-6 flex-1 px-2 text-xs"
                       disabled={resendingId === n.id}
-                      onClick={() => onResend(n.id, n.week, n.year)}
+                      onClick={() => onResend(n.id, n.label)}
                     >
                       {resendingId === n.id ? "…" : "Resend"}
                     </Button>
                   </div>
-                  <MindmapWidget featureType="newsletter" docId={String(n.id)} title={`Newsletter — Week ${n.week}, ${n.year}`} />
+                  <MindmapWidget featureType="newsletter" docId={String(n.id)} title={`Newsletter — ${n.label}`} />
                 </div>
               );
             })}

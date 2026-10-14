@@ -1868,6 +1868,9 @@ export interface paths {
          *
          *     `html` = versi untuk browser (logo sebagai data URI). `html_bytes` dan `size_warning` mengukur
          *     versi `cid:` yang akan DIKIRIM, bukan `html` ini; `size_warning` null di bawah ~90 KB.
+         *     `period_label`/`period_range` = bulan yang diliput (judul dialog di composer, bukan lagi
+         *     "Week N"); `body_sources` = per artikel kartu penuh, `fetched` atau `metadata` (ringkasan dari
+         *     metadata saja, ditandai di composer).
          */
         post: operations["preview_newsletter_api_newsletter_preview_post"];
         delete?: never;
@@ -4348,18 +4351,13 @@ export interface components {
         /** NewsletterSectionsBody */
         NewsletterSectionsBody: {
             /**
-             * Apac
-             * @default []
-             */
-            apac: number[];
-            /**
              * Apac Compact
              * @description Asia Pacific articles shown as one-line rows built from stored metadata only (no page fetch, no LLM call); at most 15.
              */
             apac_compact?: number[];
             /**
              * Apac Full
-             * @description Asia Pacific articles shown as full cards (key points + summary); at most 4. Replaces the legacy `apac`; do not combine with the legacy fields.
+             * @description Asia Pacific articles shown as full cards (key points + summary); at most 4.
              */
             apac_full?: number[];
             /**
@@ -4383,25 +4381,18 @@ export interface components {
              */
             custom_intro: string;
             /**
-             * Global News
-             * @default []
-             */
-            global_news: number[];
-            /**
              * Global News Compact
              * @description Global articles shown as one-line rows (no fetch, no LLM call); at most 15.
              */
             global_news_compact?: number[];
             /**
              * Global News Full
-             * @description Global articles shown as full cards; at most 4. Replaces the legacy `global_news`; do not combine with the legacy fields.
+             * @description Global articles shown as full cards; at most 4.
              */
             global_news_full?: number[];
-            /** Highlight */
-            highlight?: number | null;
             /**
              * Highlights
-             * @description Articles for the Highlights block, shown as full cards; at most 3. Replaces the legacy `highlight`; do not combine with the legacy fields.
+             * @description Articles for the Highlights block, shown as full cards; at least one, at most 3.
              */
             highlights?: number[];
             /**
@@ -4410,18 +4401,13 @@ export interface components {
              */
             include_clusters: boolean;
             /**
-             * Indonesia
-             * @default []
-             */
-            indonesia: number[];
-            /**
              * Indonesia Compact
              * @description Indonesia articles shown as one-line rows (no fetch, no LLM call); at most 15.
              */
             indonesia_compact?: number[];
             /**
              * Indonesia Full
-             * @description Indonesia articles shown as full cards; at most 4. Replaces the legacy `indonesia`; do not combine with the legacy fields.
+             * @description Indonesia articles shown as full cards; at most 4.
              */
             indonesia_full?: number[];
             /**

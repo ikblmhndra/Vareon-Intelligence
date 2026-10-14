@@ -86,7 +86,7 @@ async def test_preview_shows_the_logo_as_a_data_uri_and_measures_the_cid_version
 
     with patched_pipeline():
         resp = await api_client.post(
-            "/api/newsletter/preview", headers=auth_header(), json={"highlight": highlight}
+            "/api/newsletter/preview", headers=auth_header(), json={"highlights": [highlight]}
         )
 
     assert resp.status_code == 200
@@ -94,7 +94,13 @@ async def test_preview_shows_the_logo_as_a_data_uri_and_measures_the_cid_version
     # Kunci lama tetap ada; yang baru hanya ditambahkan.
     assert {"html", "week", "year", "newsletter_id"} <= set(body)
     assert body["newsletter_id"] is None
-    assert set(body) - {"html", "week", "year", "newsletter_id"} == {"html_bytes", "size_warning"}
+    assert set(body) - {"html", "week", "year", "newsletter_id"} == {
+        "html_bytes",
+        "size_warning",
+        "period_label",
+        "period_range",
+        "body_sources",
+    }
 
     shown = body["html"]
     assert "cid:" not in shown  # browser tidak mengerti cid: -> logo jadi data URI
@@ -114,7 +120,7 @@ async def test_preview_warns_above_90_kb_but_still_returns_the_edition(
     auth_header: Callable[..., dict[str, str]],
 ) -> None:
     [highlight] = await seed_articles(api_session, 1)
-    payload = {"highlight": highlight, "custom_intro": "<p>" + "x" * 95_000 + "</p>"}
+    payload = {"highlights": [highlight], "custom_intro": "<p>" + "x" * 95_000 + "</p>"}
 
     with patched_pipeline():
         resp = await api_client.post("/api/newsletter/preview", headers=auth_header(), json=payload)
@@ -124,6 +130,65 @@ async def test_preview_warns_above_90_kb_but_still_returns_the_edition(
     assert body["html_bytes"] > newsletter_service.HTML_WARN_BYTES
     assert "KB" in body["size_warning"] and "Gmail" in body["size_warning"]
     assert body["html"].startswith("<!DOCTYPE html>")
+
+
+async def test_preview_names_the_month_and_marks_summaries_written_from_metadata_only(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+) -> None:
+    """Composer memakai `period_label`/`period_range` untuk judul dialog (bukan lagi "Week N") dan
+    `body_sources` untuk menandai kartu yang ringkasannya dari metadata. Kartu compact tidak punya
+    ringkasan baru, jadi tidak ada di `body_sources`."""
+    first, second, third = await seed_articles(api_session, 3)
+    payload = {"highlights": [first], "apac_full": [second], "global_news_compact": [third]}
+
+    with patched_pipeline(body=None):
+        resp = await api_client.post("/api/newsletter/preview", headers=auth_header(), json=payload)
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["period_label"] == "October 2026"  # NOW = 2 Nov -> edisi Oktober
+    assert body["period_range"] == "1 \N{EN DASH} 31 October 2026"
+    assert body["body_sources"] == {str(first): "metadata", str(second): "metadata"}
+
+    with patched_pipeline():  # halaman terbaca; ringkasan sebelumnya sudah di-cache per artikel
+        fetched = await api_client.post(
+            "/api/newsletter/preview", headers=auth_header(), json=payload
+        )
+    # Cache membawa `body_source` aslinya: build kedua tidak mengubah tandanya.
+    assert fetched.json()["body_sources"] == {str(first): "metadata", str(second): "metadata"}
+
+
+async def test_preview_marks_a_card_whose_page_was_read_as_fetched(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+) -> None:
+    [highlight] = await seed_articles(api_session, 1)
+
+    with patched_pipeline():
+        resp = await api_client.post(
+            "/api/newsletter/preview", headers=auth_header(), json={"highlights": [highlight]}
+        )
+
+    assert resp.json()["body_sources"] == {str(highlight): "fetched"}
+
+
+async def test_draft_response_carries_the_month_label_and_range(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+) -> None:
+    [highlight] = await seed_articles(api_session, 1)
+
+    with patched_pipeline(), patch(_GRAPH, MagicMock(return_value="graph-1")):
+        body = await _draft(api_client, auth_header, {"highlights": [highlight]})
+
+    assert body["period_label"] == "October 2026"
+    assert body["period_range"] == "1 \N{EN DASH} 31 October 2026"
+    # Kunci lama tidak berubah: web lama membaca `week`/`year` untuk toast.
+    assert {"email_id", "method", "subject", "week", "year", "newsletter_id"} <= set(body)
 
 
 # ── Draft: lampiran, subject, HTML tersimpan ─────────────────────────────────
@@ -137,7 +202,7 @@ async def test_draft_attaches_the_logo_and_stores_the_cid_version(
     [highlight] = await seed_articles(api_session, 1)
 
     with patched_pipeline(), patch(_GRAPH, MagicMock(return_value="graph-1")) as graph:
-        body = await _draft(api_client, auth_header, {"highlight": highlight})
+        body = await _draft(api_client, auth_header, {"highlights": [highlight]})
 
     graph.assert_called_once()
     sent_html, sent_subject = graph.call_args.args
@@ -161,7 +226,7 @@ async def test_the_history_view_maps_cid_to_a_data_uri_without_touching_the_stor
 ) -> None:
     [highlight] = await seed_articles(api_session, 1)
     with patched_pipeline(), patch(_GRAPH, MagicMock(return_value="graph-1")):
-        saved = await _draft(api_client, auth_header, {"highlight": highlight})
+        saved = await _draft(api_client, auth_header, {"highlights": [highlight]})
 
     resp = await api_client.get(
         f"/api/newsletter/{saved['newsletter_id']}/html", headers=auth_header()
@@ -205,7 +270,7 @@ async def test_resend_reattaches_the_logo_and_uses_the_same_subject_helper(
 ) -> None:
     [highlight] = await seed_articles(api_session, 1)
     with patched_pipeline(), patch(_GRAPH, MagicMock(return_value="graph-1")) as graph:
-        drafted = await _draft(api_client, auth_header, {"highlight": highlight})
+        drafted = await _draft(api_client, auth_header, {"highlights": [highlight]})
     stored_html = graph.call_args.args[0]
 
     with patch(_GRAPH, MagicMock(return_value="graph-2")) as resend_graph:
@@ -272,7 +337,7 @@ async def test_the_graph_payloads_of_create_and_resend_both_carry_the_inline_log
 ) -> None:
     [highlight] = await seed_articles(api_session, 1)
     with patched_pipeline():
-        drafted = await _draft(api_client, auth_header, {"highlight": highlight})
+        drafted = await _draft(api_client, auth_header, {"highlights": [highlight]})
     resp = await api_client.post(
         f"/api/newsletter/{drafted['newsletter_id']}/resend", headers=auth_header()
     )
@@ -317,7 +382,7 @@ async def test_an_explicit_period_names_the_subject_and_the_draft_response(
     auth_header: Callable[..., dict[str, str]],
 ) -> None:
     [highlight] = await seed_articles(api_session, 1)
-    payload = {"highlight": highlight, "period_start": "2026-09-01", "period_end": "2026-09-30"}
+    payload = {"highlights": [highlight], "period_start": "2026-09-01", "period_end": "2026-09-30"}
 
     with patched_pipeline(), patch(_GRAPH, MagicMock(return_value="graph-1")) as graph:
         body = await _draft(api_client, auth_header, payload)

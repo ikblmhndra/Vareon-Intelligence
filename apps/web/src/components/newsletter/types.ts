@@ -1,32 +1,10 @@
 import type { components } from "@/lib/api/schema";
 
-type Article = components["schemas"]["ArticleOut"];
+type NewsletterSectionsBody = components["schemas"]["NewsletterSectionsBody"];
 
-/** Port `SECTIONS` (`newsletter.html:436-441`). */
-export type SectionKey = "highlight" | "apac" | "global_news" | "indonesia";
-
-export const SECTION_MAX: Record<SectionKey, number> = {
-  highlight: 1,
-  apac: 5,
-  global_news: 5,
-  indonesia: 5,
-};
-
-export const SECTION_DEFS: { key: SectionKey; label: string }[] = [
-  { key: "highlight", label: "Highlight" },
-  { key: "apac", label: "APAC" },
-  { key: "global_news", label: "Global" },
-  { key: "indonesia", label: "Indonesia" },
-];
-
-export interface ComposerState {
-  highlight: Article | null;
-  apac: Article[];
-  global_news: Article[];
-  indonesia: Article[];
-  notes: Record<string, string>;
-}
-
+/** Isi bagian "Customize Template". Intro (`customIntro`) diedit di blok Executive Summary, bukan
+ * di panel template: itu field yang SAMA (`custom_intro`), yang dirender template email sebagai
+ * Executive Summary. */
 export interface TemplateState {
   customCss: string;
   customIntro: string;
@@ -34,14 +12,6 @@ export interface TemplateState {
   includeClusters: boolean;
   clusterDays: number;
 }
-
-export const EMPTY_COMPOSER_STATE: ComposerState = {
-  highlight: null,
-  apac: [],
-  global_news: [],
-  indonesia: [],
-  notes: {},
-};
 
 export const DEFAULT_TEMPLATE_STATE: TemplateState = {
   customCss: "",
@@ -51,19 +21,29 @@ export const DEFAULT_TEMPLATE_STATE: TemplateState = {
   clusterDays: 7,
 };
 
+export type SummaryLanguage = "id" | "en";
+
 export interface PreviewDialogState {
   open: boolean;
-  title: string;
+  /** Label edisi ("October 2026" atau "Week N, YYYY" untuk baris lama); kosong sebelum ada jawaban. */
+  label: string;
   html: string | null;
   mode: "compose" | "saved";
   savedId?: number;
-  week?: number;
-  year?: number;
+  /** Request yang baru di-preview. Draft dibuat dari PERSIS ini, bukan dari composer yang bisa saja
+   * sudah berubah, jadi yang dibuat = yang barusan dilihat analis. */
+  body?: NewsletterSectionsBody;
+  /** Peringatan yang membuat tombol draft berubah jadi "anyway": ukuran email dan penanda CVE. */
+  warnings: string[];
+  /** Judul kartu yang ringkasannya ditulis dari metadata saja (informasi, bukan peringatan). */
+  metadataTitles: string[];
 }
 
 export const PREVIEW_DIALOG_CLOSED: PreviewDialogState = {
   open: false,
-  title: "",
+  label: "",
   html: null,
   mode: "compose",
+  warnings: [],
+  metadataTitles: [],
 };

@@ -518,10 +518,10 @@ def test_the_request_defaults_to_indonesian_and_accepts_only_id_or_en() -> None:
     from pydantic import ValidationError
 
     assert DEFAULT_SUMMARY_LANGUAGE == "id"
-    assert NewsletterSectionsBody(highlight=1).language == "id"
-    assert NewsletterSectionsBody(highlight=1, language="en").language == "en"
+    assert NewsletterSectionsBody(highlights=[1]).language == "id"
+    assert NewsletterSectionsBody(highlights=[1], language="en").language == "en"
     with pytest.raises(ValidationError):
-        NewsletterSectionsBody(highlight=1, language="fr")  # type: ignore[arg-type]
+        NewsletterSectionsBody(highlights=[1], language="fr")  # type: ignore[arg-type]
 
 
 async def test_the_indonesian_prompt_asks_for_indonesian_keeps_names_and_carries_the_glossary(
@@ -675,3 +675,22 @@ async def test_a_requested_period_sets_the_range_but_not_the_publication_date(
 
     assert ctx["period_range"] == "28 September \N{EN DASH} 4 October 2026"
     assert ctx["published_label"] == "Monday, 2 November 2026"
+
+
+def test_body_sources_lists_every_full_card_by_id_and_skips_compact_rows() -> None:
+    """Dasar tanda "ringkasan dari metadata saja" di composer: satu entri per kartu penuh
+    (highlight dan tiga section), kunci string karena JSON; baris compact tidak punya ringkasan."""
+    context = {
+        "highlights": [{"id": 1, "body_source": "fetched"}, {"id": 2, "body_source": "metadata"}],
+        "apac": [{"id": 3, "body_source": "metadata"}],
+        "global_news": [],
+        "indonesia": [{"id": 4}],  # baris lama tanpa `body_source`: kosong, bukan error
+        "apac_compact": [{"id": 5}],
+    }
+
+    assert newsletter_service.body_sources(context) == {
+        "1": "fetched",
+        "2": "metadata",
+        "3": "metadata",
+        "4": "",
+    }

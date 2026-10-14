@@ -30,10 +30,6 @@ COMPACT (satu baris dari metadata tersimpan, tanpa fetch dan tanpa LLM). SATU te
 angkanya: deskripsi field di bawah, validasi (`services/newsletter_edition.py`), dan test
 memakai konstanta ini. Angkanya titik mulai yang akan disetel setelah edisi pertama."""
 
-LEGACY_MAX_PER_SECTION = 5
-"""Batas field LAMA (`apac`/`global_news`/`indonesia`, semuanya kartu penuh). Hapus bersama
-field-nya begitu composer baru (PR 9) hidup; sampai itu perilaku request lama tidak berubah."""
-
 SectionName = Literal["apac", "global_news", "indonesia"]
 TierName = Literal["highlight", "full", "compact"]
 """Section = nama field request tier (`<section>_full` / `<section>_compact`, lihat
@@ -43,35 +39,21 @@ suggestion langsung bisa dipetakan ke field request tier."""
 
 
 class NewsletterSectionsBody(BaseModel):
-    # Dua bentuk request yang TIDAK boleh dicampur (lihat `_valid_shape`):
-    #  - lama: `highlight`, `apac`, `global_news`, `indonesia`. Satu highlight dan maks 5 kartu
-    #    penuh per section. Masih dipakai web sampai composer baru (PR 9); perilakunya tidak
-    #    berubah, jadi jangan diubah di sini.
-    #  - tier: `highlights` plus `<section>_full` / `<section>_compact`. Batasnya konstanta
-    #    `MAX_*` di atas, dicek `services/newsletter_edition.py`.
-    # Dicampur ditolak karena batas "full <= 4" jadi tidak berarti kalau `apac` (5) dan
-    # `apac_full` (4) boleh dijumlah.
-    # Template email merender semua `highlights`, kartu penuh, dan baris compact ("Also Noted");
-    # bentuk lama sama-sama jadi kartu penuh dengan baris compact kosong.
-    highlight: int | None = None
-    apac: list[int] = []
-    global_news: list[int] = []
-    indonesia: list[int] = []
-
+    # Bentuk request = tier: `highlights` plus `<section>_full` / `<section>_compact`. Batasnya
+    # konstanta `MAX_*` di atas, dicek `services/newsletter_edition.py`. Template email merender
+    # semua `highlights`, kartu penuh, dan baris compact ("Also Noted").
     highlights: list[int] = Field(
         default_factory=list,
         description=(
-            f"Articles for the Highlights block, shown as full cards; at most {MAX_HIGHLIGHTS}. "
-            "Replaces the "
-            "legacy `highlight`; do not combine with the legacy fields."
+            f"Articles for the Highlights block, shown as full cards; at least one, at most "
+            f"{MAX_HIGHLIGHTS}."
         ),
     )
     apac_full: list[int] = Field(
         default_factory=list,
         description=(
             f"Asia Pacific articles shown as full cards (key points + summary); at most "
-            f"{MAX_FULL_PER_SECTION}. "
-            "Replaces the legacy `apac`; do not combine with the legacy fields."
+            f"{MAX_FULL_PER_SECTION}."
         ),
     )
     apac_compact: list[int] = Field(
@@ -83,11 +65,7 @@ class NewsletterSectionsBody(BaseModel):
     )
     global_news_full: list[int] = Field(
         default_factory=list,
-        description=(
-            f"Global articles shown as full cards; at most {MAX_FULL_PER_SECTION}. Replaces the "
-            "legacy `global_news`; "
-            "do not combine with the legacy fields."
-        ),
+        description=f"Global articles shown as full cards; at most {MAX_FULL_PER_SECTION}.",
     )
     global_news_compact: list[int] = Field(
         default_factory=list,
@@ -98,11 +76,7 @@ class NewsletterSectionsBody(BaseModel):
     )
     indonesia_full: list[int] = Field(
         default_factory=list,
-        description=(
-            f"Indonesia articles shown as full cards; at most {MAX_FULL_PER_SECTION}. Replaces the "
-            "legacy `indonesia`; "
-            "do not combine with the legacy fields."
-        ),
+        description=f"Indonesia articles shown as full cards; at most {MAX_FULL_PER_SECTION}.",
     )
     indonesia_compact: list[int] = Field(
         default_factory=list,
@@ -154,26 +128,9 @@ class NewsletterSectionsBody(BaseModel):
 
     @model_validator(mode="after")
     def _valid_shape(self) -> NewsletterSectionsBody:
-        legacy = self.highlight is not None or any((self.apac, self.global_news, self.indonesia))
-        tiered = any(
-            (
-                self.highlights,
-                self.apac_full,
-                self.apac_compact,
-                self.global_news_full,
-                self.global_news_compact,
-                self.indonesia_full,
-                self.indonesia_compact,
-            )
-        )
-        if legacy and tiered:
-            raise ValueError(
-                "use either the legacy fields (highlight, apac, global_news, indonesia) or the "
-                "tier fields (highlights, *_full, *_compact), not both"
-            )
-        # Template saat ini selalu merender satu highlight; dulu `highlight` wajib (422).
-        if self.highlight is None and not self.highlights:
-            raise ValueError("a highlight is required: set `highlight` or `highlights`")
+        # Template saat ini selalu merender minimal satu highlight.
+        if not self.highlights:
+            raise ValueError("a highlight is required: set `highlights`")
         if (self.period_start is None) != (self.period_end is None):
             raise ValueError("set both period_start and period_end, or neither")
         if (
