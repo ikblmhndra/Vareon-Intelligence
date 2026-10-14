@@ -1,11 +1,14 @@
 # Implementation plan: #21 Recap and #22 Newsletter
 
-> **Status (2026-10-11): PR 1 is merged (#34) and deployed to the dev instance, and its baseline is in `docs/ROADMAP.md` #21.
-> PR 2, 3 and 5 are being built in separate sessions; the rest is plan only.** Scope and decisions are in `docs/ROADMAP.md` (#21, #22); this file
-> turns them into pull requests, in order, with the files each one touches, the tests it needs and how to roll it back.
+> **Status (2026-10-14): all nine pull requests are merged into `main` (2026-10-11 to 2026-10-14); the table in section 3
+> has the numbers.** What is left is operational (deploy to dev and prod, a real-mailbox check, releases 0.5.0 and
+> 0.6.0) and is tracked in `docs/ROADMAP.md` #21 and #22, which also hold the measurements. Scope and decisions are
+> there too; this file turns them into pull requests, in order, with the files each one touches, the tests it needs and
+> how to roll it back. The rest of the text is the plan as written, **not** a description of the finished code.
 > Written 2026-10-10 from the code on `main` (0.4.1 + PRs #29-#31) and revised 2026-10-11 after each claim was checked
-> against the code. The mockup is `docs/mockups/newsletter-redesign.html`. Choices marked "recommended" in section 7
-> are still open for the user to confirm.
+> against the code. The mockup is `docs/mockups/newsletter-redesign.html`. The "recommended" choices in section 7 were
+> used as written (the user told us to proceed); what stayed open is the APAC country set and the real-client rendering
+> (the PR 6 / PR 9 acceptance).
 
 ## 1. Target and the date that drives the order
 
@@ -55,6 +58,26 @@ PR 7  ranking + suggestions (API)                    (#22)  needs PR 5 (and PR 2
 PR 8  monthly schedule + executive summary           (#22)  needs PR 2, 7 (and PR 3 for the grounding helper)
 PR 9  composer (web)                                 (#22)  needs PR 6, 7, 8
 ```
+
+**Status (2026-10-14)**: every PR is merged. The merge order was not the planned one for PR 5 and PR 2, which is why #37
+exists.
+
+| PR | Pull request | Merged | Migration |
+|---|---|---|---|
+| 1 | #34 | 2026-10-11 | none |
+| 2 | #36 | 2026-10-11 | `f6c3a9d2b8e1` (`kind`, `period_start`, `period_end` on `daily_recaps`) |
+| 5 | #35 | 2026-10-11 | `a042eff910ac` (summary cache, period columns); its parent was re-pointed to `f6c3a9d2b8e1` by #37 |
+| 7 | #38 | 2026-10-12 | `1dbf6006abaf` (`newsletter_suggestions`) |
+| 6 | #39 | 2026-10-12 | none |
+| 3 | #40 | 2026-10-12 | `7e51efe6d78b` (`daily_recaps.quality`) |
+| 4 | #42 | 2026-10-12 | none |
+| 8 | #43 | 2026-10-12 | none |
+| 9 | #44 | 2026-10-14 | none |
+
+Lesson for the next stack of PRs that carry migrations: PR 5 was merged two minutes before PR 2 without its migration being
+re-pointed, which left two alembic heads on `main` and would have made `migrate` fail on the next deploy. Open a PR with a
+migration only after the one it depends on is merged, then re-point `down_revision`, and check `alembic heads` on `origin/main`
+after every merge.
 
 Recommended sequence, driven by 2 Nov: **PR 1, PR 2** first (they unblock the backfill and the summary), then **PR 5,
 PR 6** (the visible improvement, usable by hand on 2 Nov), then **PR 7, PR 8, PR 9**, with **PR 3, PR 4** (recap quality)
