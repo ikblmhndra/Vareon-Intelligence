@@ -271,6 +271,15 @@ the end of the flow is an Outlook draft created through Microsoft Graph.
   summary came from the article's metadata instead of its page (`body_sources` = `metadata` in the preview response,
   usually a paywall) carries a badge and a "Re-summarise" toggle. The dialog title, the toasts and the history use the
   month label and range (`period_label`, `period_range`, for example "September 2026"; old rows still show "Week N").
+- **The email has no dark mode** (decision 2026-10-14, after the first real draft in Outlook). The template declares
+  `color-scheme: light only`, which Apple Mail and similar clients honour, but Outlook (web, the new Outlook, the Mac app)
+  inverts colours on its own and ignores it. What works there is the override Outlook documents: it marks what it changed
+  and a rule `[data-ogsc] <selector> { color: ... !important; }` (text) or `[data-ogsb] <selector> { background-color: ...
+  !important; }` puts the original colour back. The rules live in one table at the top of `newsletter_email.html`
+  (`dm_text`, `dm_bg`), keyed by classes the template already has so that a card or a row costs no extra bytes (the
+  heaviest edition went from 95 to 101 KB, still under Gmail's clip). Every inline colour must be covered by a rule with the
+  same value: `tests/unit/test_newsletter_template.py` fails when a new colour is added without one. Gmail's apps invert on
+  their own and cannot be pinned from the email.
 - **Not persisted**: the composer state lives in the page. A reload fills it again from the suggestion and drops the
   analyst's edits (storing it in `localStorage` is a listed follow-up, ROADMAP #22).
 

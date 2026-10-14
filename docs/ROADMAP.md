@@ -942,12 +942,20 @@ API output on dev, the page itself not yet looked at there**; tests, **met** (al
   Executive Summary of 938 characters, no error and no CVE dropped. It covers only the week of 28 Sep because dev holds one
   weekly recap in September, and `uncovered` says so (1-27 Sep). One quality observation: the first highlight is titled
   like a file name (`2026-09-28-AgtaBackup-RAT-Campaign.txt`), which an analyst would rewrite; the ranking does not filter
-  such titles. **No draft has been created through the real Microsoft Graph**, so the inline logo, the 640 px layout and
-  the HTML size in Outlook and Gmail are **not verified**.
+  such titles.
+- **Real draft in Outlook (2026-10-14, screenshots from the team)**: the September draft was created through the real
+  Microsoft Graph and opened in Outlook (the new Outlook: Aptos font, rounded window). In **light mode** it is right: the
+  logo shows inline without a white panel, the burgundy header, the "September 2026 Edition" label, the period line and
+  the Indonesian Executive Summary all render as designed. In **dark mode** Outlook inverted the colours on its own (the
+  burgundy header turned a muddy pink, white text turned dark, the cards went grey) because Outlook ignores `color-scheme`.
+  The team decided the email needs **no dark mode**, so the template now pins its light palette with the `[data-ogsc]` /
+  `[data-ogsb]` overrides Outlook honours (`docs/ARCHITECTURE.md` section 3.6); this needs a second look in Outlook dark
+  mode after the fix is deployed, and Gmail's apps invert on their own and cannot be pinned from the email. Still
+  **not verified**: Outlook desktop (classic), Outlook web, and Gmail.
 - **Open**:
-  1. On dev: let an analyst read the Indonesian wording of the September suggestion, create a real draft from it and
-     capture screenshots from Outlook desktop, Outlook web and Gmail. Decide whether file-name titles should be filtered
-     out of the suggestions.
+  1. On dev: let an analyst read the Indonesian wording of the September suggestion, re-check the draft in Outlook dark
+     mode after the dark-mode fix is deployed, and capture screenshots from Outlook desktop, Outlook web and Gmail.
+     Decide whether file-name titles should be filtered out of the suggestions.
   2. The team confirms the **APAC country set** in `cti_core/regions.py` (World Bank East Asia & Pacific plus South Asia;
      Central Asia, the Middle East and Russia are out). It is a new decision: the pipeline had no APAC list before. The
      `mentioned` role also holds the actor's country, so a US victim hit by a Chinese actor lands in APAC; that follows
@@ -1141,8 +1149,9 @@ cache, the grounding check and the no-duplicate-row case.
 **Status of each criterion (2026-10-14)**: suggested content prepared on the first working day, **code and tests merged, the
 scheduled run itself not yet seen** (first real one: Mon 2 Nov; rebuild by hand to try it earlier); the composer loads it
 and the Newsroom flow still works, **met** (browser check, local stack); month label, range and logo on every edition,
-**met in code, logo not seen in a real client**; Indonesian summaries under English headings, **met in code, wording not
-yet reviewed by an analyst**; Outlook desktop / Outlook web / Gmail screenshots and the size limit on a real draft,
-**not done**; recommended articles with their reasons, **met**; one send, one history row, and a second preview with no
+**met in code, and the inline logo was seen in the new Outlook (light mode, 2026-10-14)**; Indonesian summaries under English headings, **met in code, wording not
+yet reviewed by an analyst**; screenshots of a real draft: **new Outlook in light mode done (2026-10-14), dark mode
+fixed and waiting for a re-check, Outlook desktop / Outlook web / Gmail not done**; the size limit on a real draft, **not
+measured**; recommended articles with their reasons, **met**; one send, one history row, and a second preview with no
 new LLM or Playwright call, **met** (integration tests); an Executive Summary that is one grounded, editable paragraph,
 **met**; the listed tests, **met**.
