@@ -1,8 +1,8 @@
 # Implementation plan: #21 Recap and #22 Newsletter
 
 > **Status (2026-10-14): all nine pull requests are merged into `main` (2026-10-11 to 2026-10-14); the table in section 3
-> has the numbers.** What is left is operational (the prod deploy, a real-mailbox check, and the release, cut as a single
-> 0.5.0 for #21 and #22) and is tracked in `docs/ROADMAP.md` #21 and #22, which also hold the measurements. Scope and decisions are
+> has the numbers.** What is left is operational (the prod deploy and the remaining real-mailbox checks; the release was cut on 2026-10-14
+> as a single 0.5.0 for #21 and #22) and is tracked in `docs/ROADMAP.md` #21 and #22, which also hold the measurements. Scope and decisions are
 > there too; this file turns them into pull requests, in order, with the files each one touches, the tests it needs and
 > how to roll it back. The rest of the text is the plan as written, **not** a description of the finished code.
 > Written 2026-10-10 from the code on `main` (0.4.1 + PRs #29-#31) and revised 2026-10-11 after each claim was checked
