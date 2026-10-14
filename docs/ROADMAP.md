@@ -11,8 +11,8 @@ Each item contains: **what** was asked, **the current state** (facts from the re
 
 | # | Item | Needs from the user | Depends on |
 |---|---|---|---|
-| 21 | **PRIORITY (team feedback 2026-10-10)** -- **Improve the Recap feature**: weekly instead of daily (a manual daily trigger stays), fewer/cheaper LLM calls, week-over-week comparison, grounding check, forecast scorecard -- **code merged 2026-10-11/12 (PR 1-4: #34, #36, #40, #42); the dev instance has run PR 1-4 since 2026-10-14 and the weekly recap, the comparison, the grounding check and the scorecard are proven there; left: deploy to prod, release 0.5.0** | nothing open (week boundary and time confirmed 2026-10-11); a go-ahead to deploy and release | -- |
-| 22 | **PRIORITY (team feedback 2026-10-10)** -- **Newsletter**: monthly (first working day of the month), Indonesian article summaries under English headings, redesigned template with the company logo (mockup drawn, `docs/mockups/newsletter-redesign.html`), recommended articles in the composer, denser layout (full cards plus a compact list), executive summary paragraph from the weekly recaps, per-article summary cache and one history row per send -- **code merged 2026-10-11/14 (PR 5-9: #35, #39, #38, #43, #44); deployed to dev 2026-10-14 (a September suggestion with its Indonesian summary was built there), never checked in a real mailbox, no edition sent yet (the October edition is due Mon 2 Nov)** | the team: confirm the APAC country set; Outlook desktop / Outlook web / Gmail screenshots of a real draft | #21 (the executive summary reads the weekly recaps; shared LLM usage logging) |
+| 21 | **PRIORITY (team feedback 2026-10-10)** -- **Improve the Recap feature**: weekly instead of daily (a manual daily trigger stays), fewer/cheaper LLM calls, week-over-week comparison, grounding check, forecast scorecard -- **code merged 2026-10-11/12 (PR 1-4: #34, #36, #40, #42); the dev instance has run it since 2026-10-14 and the weekly recap, the comparison, the grounding check and the scorecard are proven there; released as 0.5.0 (tag 2026-10-14); left: deploy to prod** | nothing open (week boundary and time confirmed 2026-10-11); a go-ahead to deploy and release | -- |
+| 22 | **PRIORITY (team feedback 2026-10-10)** -- **Newsletter**: monthly (first working day of the month), Indonesian article summaries under English headings, redesigned template with the company logo (mockup drawn, `docs/mockups/newsletter-redesign.html`), recommended articles in the composer, denser layout (full cards plus a compact list), executive summary paragraph from the weekly recaps, per-article summary cache and one history row per send -- **code merged 2026-10-11/14 (PR 5-9: #35, #39, #38, #43, #44); released as 0.5.0 (tag 2026-10-14) and deployed to dev; a September draft was checked in the new Outlook (light mode right, dark mode being fixed), Outlook web/desktop and Gmail not seen yet, no edition sent yet (the October edition is due Mon 2 Nov)** | the team: confirm the APAC country set; Outlook desktop / Outlook web / Gmail screenshots of a real draft | #21 (the executive summary reads the weekly recaps; shared LLM usage logging) |
 | 1 | Rebranding the platform name + UI (colour palette, typography, animation) -- **DONE 2026-10-02, the SVG logo remains** | brand assets | -- |
 | 2 | Rebranding the `newsletter_email` and `cve_notification_email` templates -- **code done 2026-10-02, email client verification not yet** | (the same assets as #1) | #1 |
 | 3 | (probably superseded by #19) A "Populate now" button in the CVE Tracker (all / only newly added) | a small decision (see the item) | -- |
@@ -44,7 +44,7 @@ Scope was decided with the user on 2026-10-10 (which proposed additions were app
 listed in each item); both are written out at the end of this file. The implementation plan (nine pull requests, order,
 tests, rollback) is `docs/PLAN_RECAP_NEWSLETTER.md`. **All nine pull requests are merged into `main` (2026-10-11 to
 2026-10-14).** Each item has an "Implementation status" block: what was built, what was proven on the dev instance, and
-what is still open (the prod deploy, a real-mailbox check, release 0.5.0). The sections "Current state" below describe
+what is still open (the prod deploy and the remaining real-mailbox checks; 0.5.0 is tagged). The sections "Current state" below describe
 the code **before** these pull requests.
 
 ---
@@ -63,8 +63,8 @@ PRs #2-#31 are all merged into `main` (release tags in `CHANGELOG.md`: 0.2.0, 0.
 | 13 | Partly done | PR #11 (CI green on `main`, run #23) | one Deploy that passes: runs #8-#10 were all `cancelled`; check the prod host state |
 | 14 | Done | PR #9 (pillow), CI image build green in PR #12 | nothing |
 | 19 | Code done, merged | PR #12 (release 0.3.0), PR #27 (cutover runbook fix) | operational only: map 34 entries on dev, shadow mode, cutover dev then prod |
-| 21 | Code merged, **priority** | PRs #34, #36, #40, #42 (PR 1-4 of `docs/PLAN_RECAP_NEWSLETTER.md`) | prod (`make deploy`, `beat` restart, backfill), release 0.5.0 |
-| 22 | Code merged, **priority** | PRs #35, #39, #38, #43, #44 (PR 5-9) + #37 (alembic head fix) | a real draft from dev and Outlook/Gmail screenshots, confirm the APAC set, prod, release 0.5.0 |
+| 21 | Code merged, **priority** | PRs #34, #36, #40, #42 (PR 1-4 of `docs/PLAN_RECAP_NEWSLETTER.md`) | prod (`make deploy`, `beat` restart, backfill) |
+| 22 | Code merged, **priority** | PRs #35, #39, #38, #43, #44 (PR 5-9) + #37 (alembic head fix) | re-check a new draft in Outlook dark mode, Outlook web/desktop and Gmail screenshots, confirm the APAC set, prod |
 | 4-12, 15-18 | Open | -- | not started; only prerequisites exist (e.g. the `raw_enrichment` audit trail for #12, the `published_at` column for #15). See each item |
 
 **Merged PRs by release**
@@ -84,8 +84,9 @@ PRs #2-#31 are all merged into `main` (release tags in `CHANGELOG.md`: 0.2.0, 0.
 | after 0.4.1 (2026-10-11 to 2026-10-14) | #35, #37, #38, #39, #43, #44 | **#22 newsletter**: summary cache, side-effect-free preview and one row per send (PR 5); alembic head fix (#37); ranking and `newsletter_suggestions` (PR 7); new template, inline logo, Indonesian summaries (PR 6); monthly schedule and Executive Summary (PR 8); composer filled with the suggestion (PR 9) |
 | after 0.4.1 | #41, #45 | scraper additions (`aws_security`, news scraper); not part of #21/#22 |
 
-Release 0.5.0 (2026-10-14) carries everything after 0.4.1: the plan expected 0.5.0 after #21 and 0.6.0 after #22, but both
-were on `main` before either was cut, so there is one release. Follow-ups found while delivering 0.4.x are collected in #20
+Release 0.5.0 (tag `0.5.0`, GitHub Release `v0.5.0`, 2026-10-14) carries everything after 0.4.1 and sits on `f55132d`, the
+merge of #48, so the dark-mode fix is inside (the `CHANGELOG.md` line about it was added after the tag). The plan expected 0.5.0 after #21 and 0.6.0 after #22, but both were on `main` before either was cut, so
+there is one release. Follow-ups found while delivering 0.4.x are collected in #20
 below.
 
 ---
@@ -733,7 +734,7 @@ formally; order = a suggestion.
   grounding helper is shared with #22; migration `7e51efe6d78b`), PR 4 #42 (the Recap page shows them). Manual trigger
   kept: `kind` defaults to `daily`, `kind=weekly` takes the week's Monday. No new setting; `LLM__RATE_LIMIT` is left
   alone (removing the field would stop the prod app, see Design: LLM optimisation).
-- **Proven on the dev instance** (it runs PR 1-9 since 2026-10-14; `/healthz` still says 0.4.1 until the release): the
+- **Proven on the dev instance** (it runs 0.5.0, deployed from `f55132d` on 2026-10-14; `/healthz` says 0.5.0): the
   baseline and the weekly measurements below, and the scheduled run: on Monday 12 Oct at 00:15 UTC `beat` created the
   recap of 5-11 Oct by itself (318 articles, 49 CVEs, 30.8 s). A week that has not ended and a date that is not a Monday
   are refused with 400.
@@ -747,7 +748,7 @@ formally; order = a suggestion.
   reviewed the 5 forecast events of 28 Sep: 2 happened, 1 partly, 2 unclear, a hit rate of 83.3% over the 3 judged events.
   Only the API output was read; the rendering of the page was not looked at.
 - **Open**: deploy to prod (`make deploy`, restart `beat`, backfill the weeks that ended before the deploy: 28 Sep and
-  5 Oct, in that order; later weeks come from the schedule; deadline Fri 30 Oct, see the plan); release 0.5.0.
+  5 Oct, in that order; later weeks come from the schedule; deadline Fri 30 Oct, see the plan). Released as 0.5.0.
 
 **Asked (team feedback 2026-10-10)**: (1) make the recap weekly; (2) optimise the LLM call(s); (3) "any more suggestions?"
 
@@ -936,7 +937,7 @@ API output on dev, the page itself not yet looked at there**; tests, **met** (al
   31 Oct is a Saturday and the week of 26 Oct ends on Sunday 1 Nov).
 - **Checked so far**: unit and integration tests with router snapshots in every PR; the template rendered in Chromium; the
   composer in a browser against an isolated local stack (fake LLM, September data, widths 375/1024/1440, both themes).
-  **Dev has run PR 1-9 since 2026-10-14** (the api container holds the new modules and `beat` lists
+  **Dev has run PR 1-9 since 2026-10-14, and 0.5.0 with the dark-mode fix since the afternoon of that day** (the api container holds the new modules and `beat` lists
   `newsletter-prepare-monthly`). A suggestion for **September 2026** was built there the same morning (06:35 UTC, by the
   team): 40 articles (3 highlights, 8 full cards, 29 compact rows; 20 APAC, 19 Global, 1 Indonesia), an Indonesian
   Executive Summary of 938 characters, no error and no CVE dropped. It covers only the week of 28 Sep because dev holds one
@@ -949,8 +950,8 @@ API output on dev, the page itself not yet looked at there**; tests, **met** (al
   the Indonesian Executive Summary all render as designed. In **dark mode** Outlook inverted the colours on its own (the
   burgundy header turned a muddy pink, white text turned dark, the cards went grey) because Outlook ignores `color-scheme`.
   The team decided the email needs **no dark mode**, so the template now pins its light palette with the `[data-ogsc]` /
-  `[data-ogsb]` overrides Outlook honours (`docs/ARCHITECTURE.md` section 3.6); this needs a second look in Outlook dark
-  mode after the fix is deployed, and Gmail's apps invert on their own and cannot be pinned from the email. Still
+  `[data-ogsb]` overrides Outlook honours (`docs/ARCHITECTURE.md` section 3.6); the fix is on dev since 2026-10-14 and a **new** draft (old ones keep their stored HTML)
+  still needs a second look in Outlook dark mode, and Gmail's apps invert on their own and cannot be pinned from the email. Still
   **not verified**: Outlook desktop (classic), Outlook web, and Gmail.
 - **Open**:
   1. On dev: let an analyst read the Indonesian wording of the September suggestion, re-check the draft in Outlook dark
@@ -962,7 +963,7 @@ API output on dev, the page itself not yet looked at there**; tests, **met** (al
      the "victim or mentioned" rule of the design.
   3. Ranking weights are starting values (constants at the top of `newsletter_ranking.py`); tune them after the first edition.
   4. Prod: the October edition is prepared on Mon 2 Nov at 09:00 WIB and needs the recap of 26 Oct-1 Nov, which the schedule
-     creates at 07:15 WIB that morning; if it is late, rebuild the suggestion by hand. Release: 0.5.0 carries both #21 and #22.
+     creates at 07:15 WIB that morning; if it is late, rebuild the suggestion by hand. Release: 0.5.0 (tagged 2026-10-14) carries both #21 and #22.
   5. Small follow-ups: the composer state is not persisted (a reload refills it from the suggestion and drops edits;
      `localStorage` would fix it), the draft error that names a Graph id has no copy button, and the composer itself is not
      described in `docs/ARCHITECTURE.md` yet (section 3.6 added with this status update).

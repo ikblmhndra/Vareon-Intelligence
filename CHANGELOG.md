@@ -67,7 +67,9 @@ skrip atau klien API (lihat langkah upgrade dan Diubah). Rancangan dan hasil uku
   suggestion bila belum ada saran), bisa dinaik-turunkan tier-nya, ditukar, dan dibuang; Executive Summary bisa disunting
   dengan peringatan untuk ekor bulan yang belum tercakup; peringatan ukuran email sebelum draft; badge untuk kartu yang
   diringkas dari metadata dengan tombol Re-summarise; pilihan bahasa `id`/`en`.
-- **Template email baru** (layout tabel dengan CSS inline, tanpa flex, kontainer 640 px, fallback Outlook desktop) dengan
+- **Template email baru** (layout tabel dengan CSS inline, tanpa flex, kontainer 640 px, fallback Outlook desktop; **tanpa mode
+  gelap**: Outlook membalik warna email sendiri dan mengabaikan `color-scheme`, jadi palet terang dikunci dengan aturan
+  `[data-ogsc]` / `[data-ogsb]`, sedangkan app Gmail membalik sendiri dan tidak bisa dikunci) dengan
   **logo perusahaan inline** (lampiran `cid:` pada draft Graph, tanpa panel putih) dan **ringkasan artikel berbahasa
   Indonesia** (glosarium istilah `newsletter_glossary.py`; heading tetap Inggris termasuk "Campaigns").
 - **Cache ringkasan artikel** (`newsletter_article_summaries`, kunci `(article_id, language)`): preview dan draft tidak lagi
@@ -89,18 +91,20 @@ skrip atau klien API (lihat langkah upgrade dan Diubah). Rancangan dan hasil uku
   dan baris compact.
 
 ### Diketahui / belum dikerjakan
-- **Belum diverifikasi di klien email sungguhan**: draft lewat Microsoft Graph asli, logo inline, dan tampilan di Outlook
-  desktop, Outlook web, dan Gmail belum dilihat (template baru baru dirender di Chromium). Tangkapan layar menutup
-  ROADMAP #22.
+- **Draft Graph asli sudah dilihat hanya di new Outlook**: mode terang rapi (logo inline, header, Executive Summary
+  Indonesia), mode gelap dikunci ke palet terang tetapi belum dicek ulang di draft baru. Outlook desktop (klasik), Outlook
+  web, dan Gmail belum dilihat; tangkapan layar menutup ROADMAP #22.
 - **Set negara APAC** (`cti_core/regions.py`: Bank Dunia East Asia & Pacific dan South Asia) adalah keputusan baru dan
   belum dikonfirmasi tim; bobot ranking adalah nilai awal yang disetel setelah edisi pertama.
 - Ringkasan bulanan tidak mencakup ekor bulan yang pekannya belum selesai pada hari kerja pertama (bulan yang berakhir di
   tengah pekan; edisi Oktober tidak terkena). Ekor itu tercatat di `summary_meta.uncovered` dan tetap ada di artikel
   ter-ranking.
 - State composer newsletter tidak disimpan: reload mengisi ulang dari saran dan menghapus suntingan.
-- Prompt recap mingguan dengan `article_id` dan review prakiraan belum diuji ke gateway asli: kalau model tidak mengisi
-  `article_id`, semua top story dibuang oleh pemeriksaan grounding. Cek `quality.grounding.dropped` setelah regenerasi
-  pertama.
+- Saat tidak ada klaster kampanye di data, model tetap mengarang tema `active_campaigns` dan nama actor; pemeriksaan
+  grounding membuangnya (`quality.grounding.dropped`, terlihat di dev) sehingga tidak tampil, tetapi promptnya belum
+  dirapikan untuk kasus itu. `article_id` terisi untuk semua top story di dev.
+- Judul artikel yang berupa nama file (mis. `2026-09-28-AgtaBackup-RAT-Campaign.txt`) bisa menjadi highlight di saran;
+  ranking belum menyaringnya, analis menulis ulang judulnya.
 
 ## [0.4.1] - 2026-10-09
 
