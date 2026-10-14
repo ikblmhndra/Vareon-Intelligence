@@ -244,6 +244,36 @@ Runbook:
 - **Rollback**: remove the `newsletter-prepare-monthly` entry in `beat.py` and restart `beat`; the composer works without
   a suggestion.
 
+### 3.6 Newsletter composer (web)
+
+The composer (`apps/web/src/components/newsletter/*`; the pure logic is in `apps/web/src/lib/newsletter/composer.ts` and
+`summary.ts`) is where an analyst reviews the suggestion from 3.5 before anything reaches Outlook. Nothing in it sends mail:
+the end of the flow is an Outlook draft created through Microsoft Graph.
+
+- **On open**: an empty queue (the "+ Newsletter" list kept in the browser's `localStorage`) loads the suggestion and fills
+  Highlights, Asia Pacific, Global and Indonesia (full cards plus the compact "Also Noted" rows), each article with the
+  reasons it was suggested. When the analyst already has a queue, a banner offers **Use suggestion** (replaces the
+  composer and takes the summary; articles placed by the suggestion leave the queue, articles the analyst had placed that
+  the suggestion does not hold go back to it) or **Merge** (adds the suggestion and leaves the summary alone). When the
+  server answers 404 there is no suggestion yet and **Build suggestion** calls the rebuild endpoint.
+- **Tiers**: promote, demote, move between sections, swap with a suggested or queued article, remove. The limits (3
+  highlights, 4 full cards and 15 compact rows per section, constants in `schemas/newsletter.py`) are checked in the
+  composer, which names the slot that is full instead of moving another article, and again by the API. The request only has
+  the tier fields (`highlights`, `<section>_full`, `<section>_compact`), `period_start`/`period_end`, `language` (`id` by
+  default) and `custom_intro`; the older `highlight`/`apac`/`global_news`/`indonesia` fields were removed in PR 9.
+- **Executive Summary**: `summary_text` fills `custom_intro` (escaped, wrapped in `<p>`), which stays one editable field.
+  The composer reads `summary_meta` to say why the field may be empty or incomplete: the LLM call failed (`error`), the
+  reply was unusable (`parse_failed`), there was no recap, or nothing is known. `uncovered` (the tail of a month whose
+  last week is not finished) is a warning, not an error. A `[CVE tidak terverifikasi]` marker left by the grounding check
+  is flagged with a "Find next" button, and rebuilding asks before it overwrites a summary the analyst edited.
+- **Draft**: only from the preview dialog. It shows, above the preview, the email size warning from the server (about
+  90 KB; Gmail clips a message above roughly 102 KB) and the unverified-CVE marker check from the composer. A card whose
+  summary came from the article's metadata instead of its page (`body_sources` = `metadata` in the preview response,
+  usually a paywall) carries a badge and a "Re-summarise" toggle. The dialog title, the toasts and the history use the
+  month label and range (`period_label`, `period_range`, for example "September 2026"; old rows still show "Week N").
+- **Not persisted**: the composer state lives in the page. A reload fills it again from the suggestion and drops the
+  analyst's edits (storing it in `localStorage` is a listed follow-up, ROADMAP #22).
+
 ## 4. Data stores and access patterns
 
 Postgres is reached through two drivers: **sync psycopg** in Celery and the CLI (`cti_core.db.engine.

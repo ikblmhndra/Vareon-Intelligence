@@ -11,8 +11,8 @@ Each item contains: **what** was asked, **the current state** (facts from the re
 
 | # | Item | Needs from the user | Depends on |
 |---|---|---|---|
-| 21 | **PRIORITY (team feedback 2026-10-10)** -- **Improve the Recap feature**: weekly instead of daily (a manual daily trigger stays), fewer/cheaper LLM calls, week-over-week comparison, grounding check, forecast scorecard -- **scope decided 2026-10-10, not built** | the recommended defaults in `docs/PLAN_RECAP_NEWSLETTER.md` section 7 (week boundary and time confirmed 2026-10-11) | -- |
-| 22 | **PRIORITY (team feedback 2026-10-10)** -- **Newsletter**: monthly (first working day of the month), Indonesian article summaries under English headings, redesigned template with the company logo (mockup drawn, `docs/mockups/newsletter-redesign.html`), recommended articles in the composer, denser layout (full cards plus a compact list), executive summary paragraph from the weekly recaps, per-article summary cache and one history row per send -- **scope decided 2026-10-10, not built** | the recommended defaults in `docs/PLAN_RECAP_NEWSLETTER.md` section 7 (logo, heading, language, 09:00 WIB and "no holiday list" answered 2026-10-11) | #21 (the executive summary reads the weekly recaps; shared LLM usage logging) |
+| 21 | **PRIORITY (team feedback 2026-10-10)** -- **Improve the Recap feature**: weekly instead of daily (a manual daily trigger stays), fewer/cheaper LLM calls, week-over-week comparison, grounding check, forecast scorecard -- **code merged 2026-10-11/12 (PR 1-4: #34, #36, #40, #42); the weekly recap already runs on schedule on the dev instance; left: deploy PR 3-4 to dev, deploy to prod, release 0.5.0** | nothing open (week boundary and time confirmed 2026-10-11); a go-ahead to deploy and release | -- |
+| 22 | **PRIORITY (team feedback 2026-10-10)** -- **Newsletter**: monthly (first working day of the month), Indonesian article summaries under English headings, redesigned template with the company logo (mockup drawn, `docs/mockups/newsletter-redesign.html`), recommended articles in the composer, denser layout (full cards plus a compact list), executive summary paragraph from the weekly recaps, per-article summary cache and one history row per send -- **code merged 2026-10-11/14 (PR 5-9: #35, #39, #38, #43, #44); not yet deployed to dev, never checked in a real mailbox, no edition built yet (the October edition is due Mon 2 Nov)** | the team: confirm the APAC country set; Outlook desktop / Outlook web / Gmail screenshots of a real draft | #21 (the executive summary reads the weekly recaps; shared LLM usage logging) |
 | 1 | Rebranding the platform name + UI (colour palette, typography, animation) -- **DONE 2026-10-02, the SVG logo remains** | brand assets | -- |
 | 2 | Rebranding the `newsletter_email` and `cve_notification_email` templates -- **code done 2026-10-02, email client verification not yet** | (the same assets as #1) | #1 |
 | 3 | (probably superseded by #19) A "Populate now" button in the CVE Tracker (all / only newly added) | a small decision (see the item) | -- |
@@ -42,8 +42,10 @@ The team asked for two items to be treated as priorities; they go before everyth
 **#21 Recap first** (it introduces LLM usage logging and the weekly content that #22 reuses), then **#22 Newsletter**.
 Scope was decided with the user on 2026-10-10 (which proposed additions were approved and which were left out are
 listed in each item); both are written out at the end of this file. The implementation plan (nine pull requests, order,
-tests, rollback) is `docs/PLAN_RECAP_NEWSLETTER.md`. Nothing is built yet. The questions that still block
-work are under **Needed** in each item.
+tests, rollback) is `docs/PLAN_RECAP_NEWSLETTER.md`. **All nine pull requests are merged into `main` (2026-10-11 to
+2026-10-14).** Each item has an "Implementation status" block: what was built, what was proven on the dev instance, and
+what is still open (deploys, a real-mailbox check, releases 0.5.0 and 0.6.0). The sections "Current state" below describe
+the code **before** these pull requests.
 
 ---
 
@@ -61,7 +63,8 @@ PRs #2-#31 are all merged into `main` (release tags in `CHANGELOG.md`: 0.2.0, 0.
 | 13 | Partly done | PR #11 (CI green on `main`, run #23) | one Deploy that passes: runs #8-#10 were all `cancelled`; check the prod host state |
 | 14 | Done | PR #9 (pillow), CI image build green in PR #12 | nothing |
 | 19 | Code done, merged | PR #12 (release 0.3.0), PR #27 (cutover runbook fix) | operational only: map 34 entries on dev, shadow mode, cutover dev then prod |
-| 21, 22 | Open, **priority** | -- | scoped 2026-10-10, waiting on the answers listed in each item |
+| 21 | Code merged, **priority** | PRs #34, #36, #40, #42 (PR 1-4 of `docs/PLAN_RECAP_NEWSLETTER.md`) | deploy PR 3-4 to dev, then prod (`beat` restart, backfill), release 0.5.0 |
+| 22 | Code merged, **priority** | PRs #35, #39, #38, #43, #44 (PR 5-9) + #37 (alembic head fix) | deploy to dev and check a real draft, confirm the APAC set, Outlook/Gmail screenshots, prod, release 0.6.0 |
 | 4-12, 15-18 | Open | -- | not started; only prerequisites exist (e.g. the `raw_enrichment` audit trail for #12, the `published_at` column for #15). See each item |
 
 **Merged PRs by release**
@@ -76,9 +79,13 @@ PRs #2-#31 are all merged into `main` (release tags in `CHANGELOG.md`: 0.2.0, 0.
 | 0.4.0 (2026-10-09) | #14-#23 | CVE Tracker logic review: NVD window offset, client scope, article mentions, ticket numbers, stats; CVE id validation; FP per client; `acknowledged_by` from the login, first ack wins; purge/write protections; "last updated" line + manual **Check for new CVEs**; release |
 | 0.4.1 (2026-10-09) | #24-#28 | `affected` text no longer starts with `<=` twice (+ `tools/ops/fix_affected_double_operator.sql`), Exec "Critical CVEs" caption, Dashboard "unrated" tile, runbook fix; release |
 | after 0.4.1 | #29, #30, #31 | Exec KPI cards: Critical CVEs and KEV CVEs separate with full totals (2026-10-09); `docs/ARCHITECTURE.md` + all docs in English (2026-10-10); a URL that is already an article is not re-enriched or re-alerted (2026-10-10) |
+| after 0.4.1 (2026-10-10 to 2026-10-12) | #32, #33 | roadmap status update ("Delivered so far", #20); the #21/#22 implementation plan |
+| after 0.4.1 (2026-10-11 to 2026-10-14) | #34, #36, #40, #42 | **#21 recap**: token usage stored and one row per CVE (PR 1); weekly Monday-Sunday recap on a Monday 00:15 UTC schedule (PR 2); week-over-week comparison, grounding check and forecast scorecard (PR 3); the Recap page shows them (PR 4) |
+| after 0.4.1 (2026-10-11 to 2026-10-14) | #35, #37, #38, #39, #43, #44 | **#22 newsletter**: summary cache, side-effect-free preview and one row per send (PR 5); alembic head fix (#37); ranking and `newsletter_suggestions` (PR 7); new template, inline logo, Indonesian summaries (PR 6); monthly schedule and Executive Summary (PR 8); composer filled with the suggestion (PR 9) |
+| after 0.4.1 | #41, #45 | scraper additions (`aws_security`, news scraper); not part of #21/#22 |
 
-Not yet released as a version: #29-#31 are on `main` after 0.4.1. Follow-ups found while delivering 0.4.x are
-collected in #20 below.
+Not yet released as a version: everything after 0.4.1 is on `main`. The plan expects one release after #21 (0.5.0) and one
+after #22 (0.6.0). Follow-ups found while delivering 0.4.x are collected in #20 below.
 
 ---
 
@@ -714,8 +721,26 @@ formally; order = a suggestion.
 
 ## 21. Improve the Recap feature (PRIORITY)
 
-> **Priority item, requested by the team on 2026-10-10. Scope decided with the user the same day. Nothing is built
-> yet.** This section records the current state, what was decided, the design of each part, and what is still open.
+> **Priority item, requested by the team on 2026-10-10. Scope decided with the user the same day. Built in PR 1-4
+> (#34, #36, #40, #42), merged 2026-10-11 and 2026-10-12.** This section records the current state (as it was **before**
+> those pull requests), what was decided, the design of each part, the measurements, and what is still open.
+
+**Implementation status (2026-10-14)**
+- **Merged**: PR 1 #34 (token usage stored, one CVE row per `cve_id` in a fixed order), PR 2 #36 (weekly Monday-Sunday
+  recap built from aggregates, `kind` + `period_start`/`period_end` on `daily_recaps` with a unique `(kind, date)`,
+  beat entry Monday 00:15 UTC, migration `f6c3a9d2b8e1`), PR 3 #40 (`quality`: comparison, grounding, scorecard; the
+  grounding helper is shared with #22; migration `7e51efe6d78b`), PR 4 #42 (the Recap page shows them). Manual trigger
+  kept: `kind` defaults to `daily`, `kind=weekly` takes the week's Monday. No new setting; `LLM__RATE_LIMIT` is left
+  alone (removing the field would stop the prod app, see Design: LLM optimisation).
+- **Proven on the dev instance** (last deployed 2026-10-11 with PR 1, 2 and 5; PR 3 and 4 are **not deployed there**): the baseline and the
+  weekly measurement below, and the scheduled run: on Monday 12 Oct at 00:15 UTC `beat` created the recap of 5-11 Oct
+  by itself (318 articles, 49 CVEs, 30.8 s). A week that has not ended and a date that is not a Monday are refused with 400.
+- **Not seen on real data yet** (needs PR 3 on dev): `quality.grounding.dropped` (the risk is a model that leaves
+  `article_id` empty, which would drop every top story) and the scorecard, which only fills once two weekly recaps
+  are regenerated **in chronological order** (28 Sep, then 5 Oct, and so on). Dev has had no tweets since 3 Oct (the X
+  feed stopped) and no campaign clusters, so those prompt sections were empty in the later weeks.
+- **Open**: deploy to dev, then prod (`make deploy`, restart `beat`, backfill the weeks that ended before the deploy:
+  28 Sep and 5 Oct; later weeks come from the schedule; deadline Fri 30 Oct, see the plan); release 0.5.0.
 
 **Asked (team feedback 2026-10-10)**: (1) make the recap weekly; (2) optimise the LLM call(s); (3) "any more suggestions?"
 
@@ -735,8 +760,10 @@ formally; order = a suggestion.
 - **One LLM call per recap** (`temperature=0`, free-form JSON parsed with `parse_json_response`). The prompt holds up to
   60 articles, 50 tweets, 30 CVEs, an IOC count line, the new threat actors and 8 campaign clusters (collected from up to
   200 / 150 / 50 / 200 rows first, then cut). The article list is sorted by a source-name heuristic, not by importance.
-- **Nothing measures the cost**: `token_usage` is always stored as `{}` (the completion's `usage` is never read), and
-  `LlmSettings.rate_limit` ("global spend throttle, Redis token bucket") is declared in `config.py` but has no consumer.
+- **Nothing measured the cost** (fixed by PR 1, merged 2026-10-11, #34): `token_usage` used to be stored as `{}` (the
+  completion's `usage` was never read); it now holds the gateway's tokens, `wall_ms`, `input_chars` and the items per
+  prompt section. `LlmSettings.rate_limit` ("global spend throttle, Redis token bucket") is still declared in `config.py`
+  with no consumer.
   The client retries twice (`max_retries=2`, 60 s timeout), then the task fails; a reply that is not JSON is stored as
   an empty recap with the text in `raw_llm`.
 - The CVE list is **global**: `_collect_cves` -> `list_registered_on` returns tracker rows of every client, capped at 50
@@ -785,6 +812,47 @@ formally; order = a suggestion.
    `.env.prod.template`, and with `extra="forbid"` a key left in the prod `.env` after its field is gone stops the app
    from starting (checked 2026-10-11), so the key goes first and the field later.
 
+**Baseline (measured 2026-10-11)**: the seven daily recaps of 4-10 Oct 2026 (UTC), regenerated with Force Regen on the dev
+instance right after PR 1 was deployed there (gateway model `my-combo`; the dev data has no tweets and no campaign clusters,
+so those prompt sections were empty). One LLM call per day:
+
+| Measure | Sum of the 7 calls | Per call (average, range) |
+|---|---|---|
+| User message (`input_chars`) | 41,188 chars | 5,884 (1,122 - 10,794) |
+| Prompt tokens | 73,833 | 10,548 (8,237 - 12,918) |
+| Completion tokens | 12,501 | 1,786 |
+| Total tokens | 86,334 | 12,333 |
+| Wall time of the LLM call | 121.9 s | 17.4 s |
+
+Collected that week: 320 articles (237 reached a prompt: the daily cap is 60), 79 CVEs, IOC rows at the collector cap (200) on
+4 of the 7 days. Reproduce one day with Force Regen on the Recap page (or `POST /api/recap/generate?date=D&force=true`) and read
+`token_usage` and `counts` in `GET /api/recap/D`.
+
+Reading the numbers: the gateway reports about 7.9k prompt tokens even for an almost empty message. A least-squares fit over the
+seven calls gives roughly `7,900 + 0.45 x chars` prompt tokens (an estimate): the fixed part is far larger than our ~2.2k-character
+system prompt, so most of it is overhead outside our text, most likely the gateway. A weekly call pays that fixed part once
+instead of seven times, and beats the 73.8k prompt-token sum as long as its user message stays under ~147k characters (aim for far
+less). Compare the weekly recap against this table using `input_chars` and the total tokens in its `token_usage`; the daily
+figures are a sample of one week, not a constant. The 4-10 Oct rows stored on dev were overwritten (three) or created (four)
+by this measurement.
+
+**Weekly measurement (dev, 2026-10-11)**: the week 28 Sep-4 Oct, generated by hand right after PR 2 was deployed to dev
+(one call; collected 480 articles, 33 CVEs, 162 tweets, 2,043 IOC rows), against the seven daily calls above:
+
+| Measure | 7 daily calls (4-10 Oct) | 1 weekly call (28 Sep-4 Oct) | Change |
+|---|---|---|---|
+| User message (`input_chars`) | 41,188 chars | 29,826 chars | -28% |
+| Prompt tokens | 73,833 | 21,142 | -71% |
+| Completion tokens | 12,501 | 2,644 | -79% |
+| Total tokens | 86,334 | 23,786 | -72% |
+| Wall time of the LLM call | 121.9 s | 32.7 s | -73% |
+
+How far to trust it: the two samples are **different weeks** (the weekly one is the busier: 480 articles against 320, and
+it still had tweets, which the daily week did not), so the saving is conservative, but it is one sample. The fit above
+predicted about 21.3k prompt tokens for 29,826 characters and the call used 21.1k, so the fixed gateway overhead is paid
+once instead of seven times, as expected. It was measured **before PR 3**, which adds article ids and the previous
+forecast items to the prompt: repeat it after PR 3 is deployed (the same week, Force Regen) and write the new row here.
+
 **Design: approved additions**
 - **Week-over-week comparison**: compare `counts` with the previous weekly recap (articles, tweets, IOCs, CVEs, campaigns,
   new threat actors) as absolute and percentage deltas, plus "new this week" for threat actors, campaigns and CVEs that
@@ -814,17 +882,56 @@ grounding/comparison/window, integration for the repository and the router snaps
 `rate_limit` left alone, hit-rate rule).
 **Done when**: a weekly recap is generated on schedule and shown with its date range; a day can still be generated by
 hand; every run records its token usage; the measured input size/tokens per recap is lower than the recorded baseline
-(numbers written here); a run with no activity makes no LLM call; the page shows the week-over-week deltas, the
+(written above, 2026-10-11); a run with no activity makes no LLM call; the page shows the week-over-week deltas, the
 dropped-item count from the grounding check and the forecast scorecard; tests cover the weekly window, aggregation,
 comparison, grounding and the no-activity path.
+**Status of each criterion (2026-10-14)**: weekly recap on schedule with its range, **met** (dev, 12 Oct); a day by hand,
+**met** (PR 2); token usage recorded on every run, **met**; lower than the baseline, **met on dev** (-72% total tokens,
+table above, to be repeated after PR 3); no LLM call without activity, **met** (`token_usage` = `skipped`, reason
+`no_activity`, covered by tests); the page shows deltas, dropped items and the scorecard, **code merged, not yet seen on
+real data**; tests, **met** (all gates green in each PR).
 
 ---
 
 ## 22. Newsletter: monthly, Indonesian, redesign, recommended articles (PRIORITY)
 
-> **Priority item, requested by the team on 2026-10-10. Scope decided with the user the same day. Nothing is built
-> yet** (the template is only drawn: `docs/mockups/newsletter-redesign.html`). Depends on #21 for the executive summary
-> and for LLM usage logging.
+> **Priority item, requested by the team on 2026-10-10. Scope decided with the user the same day. Built in PR 5-9
+> (#35, #39, #38, #43, #44, plus #37), merged 2026-10-11 to 2026-10-14** (the template was first drawn in
+> `docs/mockups/newsletter-redesign.html`). Depends on #21 for the executive summary and for LLM usage logging. The
+> "Current state" below is the code **before** those pull requests.
+
+**Implementation status (2026-10-14)**
+- **Merged**: PR 5 #35 (summary cache `newsletter_article_summaries` keyed by `(article_id, language)`, a preview with no
+  side effects, one history row per send, period columns on `newsletters`, the 3/4/15 tier limits; migration
+  `a042eff910ac`), PR 6 #39 (table-based template that no longer extends `_base_email.html`, the logo as an inline
+  attachment, Indonesian summaries with a glossary, a subject built from the period), PR 7 #38 (the ranking with reasons,
+  `newsletter_suggestions`, `GET /api/newsletter/suggestion` and `POST .../rebuild`; migration `1dbf6006abaf`), PR 8 #43
+  (beat entry `newsletter-prepare-monthly`, Monday-Friday 02:00 UTC; the Executive Summary; see
+  `docs/ARCHITECTURE.md` section 3.5), PR 9 #44 (the composer opens filled with the suggestion; the old request fields
+  `highlight`, `apac`, `global_news` and `indonesia` are removed from the API). #37 fixed the second alembic head that
+  appeared when PR 5 and PR 2 were merged in the wrong order. No new setting, no new dependency.
+- **Differences from the design below**: a failed summary call **keeps the ranking** (empty summary, `summary_meta.error` holds
+  only the exception class and HTTP status, never the message, because it can echo a key; the following weekdays of the
+  catch-up window retry only the summary). Recap weeks are used whole, so a month that ends mid-week leaves a tail that is
+  **not** in the summary: `summary_meta.uncovered` lists it and the composer warns (the October edition is not affected:
+  31 Oct is a Saturday and the week of 26 Oct ends on Sunday 1 Nov).
+- **Checked so far**: unit and integration tests with router snapshots in every PR; the template rendered in Chromium; the
+  composer in a browser against an isolated local stack (fake LLM, September data, widths 375/1024/1440, both themes).
+  **Dev was last deployed on 2026-10-11 (PR 5 is the only #22 part there; PR 6-9 are not)**, and **no draft has been created through the real Microsoft
+  Graph**, so the inline logo, the 640 px layout and the HTML size in Outlook and Gmail are **not verified**.
+- **Open**:
+  1. Deploy to dev; build the suggestion for September 2026 (`POST /api/newsletter/suggestion/rebuild`), read the
+     Indonesian wording, create a real draft and capture screenshots from Outlook desktop, Outlook web and Gmail.
+  2. The team confirms the **APAC country set** in `cti_core/regions.py` (World Bank East Asia & Pacific plus South Asia;
+     Central Asia, the Middle East and Russia are out). It is a new decision: the pipeline had no APAC list before. The
+     `mentioned` role also holds the actor's country, so a US victim hit by a Chinese actor lands in APAC; that follows
+     the "victim or mentioned" rule of the design.
+  3. Ranking weights are starting values (constants at the top of `newsletter_ranking.py`); tune them after the first edition.
+  4. Prod: the October edition is prepared on Mon 2 Nov at 09:00 WIB and needs the recap of 26 Oct-1 Nov, which the schedule
+     creates at 07:15 WIB that morning; if it is late, rebuild the suggestion by hand. Release 0.6.0.
+  5. Small follow-ups: the composer state is not persisted (a reload refills it from the suggestion and drops edits;
+     `localStorage` would fix it), the draft error that names a Graph id has no copy button, and the composer itself is not
+     described in `docs/ARCHITECTURE.md` yet (section 3.6 added with this status update).
 
 **Asked (team feedback 2026-10-10)**: (1) biweekly (changed to **monthly** the same day); (2) translate the content to Indonesian; (3) redesign the template;
 (4) add recommendations for the newsletter content; (5) "any more suggestions?"
@@ -1005,3 +1112,11 @@ the composer shows recommended articles with their reasons; one send creates exa
 of the same articles makes no new LLM or Playwright call; the Executive Summary is one grounded paragraph and editable;
 tests cover the language switch, the first-working-day and catch-up logic, the period label, the ranking and tiers, the
 cache, the grounding check and the no-duplicate-row case.
+**Status of each criterion (2026-10-14)**: suggested content prepared on the first working day, **code and tests merged, the
+scheduled run itself not yet seen** (first real one: Mon 2 Nov; rebuild by hand to try it earlier); the composer loads it
+and the Newsroom flow still works, **met** (browser check, local stack); month label, range and logo on every edition,
+**met in code, logo not seen in a real client**; Indonesian summaries under English headings, **met in code, wording not
+yet reviewed by an analyst**; Outlook desktop / Outlook web / Gmail screenshots and the size limit on a real draft,
+**not done**; recommended articles with their reasons, **met**; one send, one history row, and a second preview with no
+new LLM or Playwright call, **met** (integration tests); an Executive Summary that is one grounded, editable paragraph,
+**met**; the listed tests, **met**.
