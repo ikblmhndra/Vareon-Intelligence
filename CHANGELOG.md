@@ -6,6 +6,102 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
+## [0.5.0] - 2026-10-14
+
+Dua fitur prioritas dari masukan tim (ROADMAP #21 dan #22): **Recap mingguan** yang lebih murah dan diperiksa kualitasnya,
+dan **Newsletter bulanan** berbahasa Indonesia dengan template baru, logo, dan artikel yang sudah disarankan. Ada **empat
+revisi migrasi**, **tanpa kunci `.env` baru** dan **tanpa dependensi baru**. Beberapa perilaku berubah dan bisa memutus
+skrip atau klien API (lihat langkah upgrade dan Diubah). Rancangan dan hasil ukur: `docs/ROADMAP.md` #21/#22 dan
+`docs/PLAN_RECAP_NEWSLETTER.md`; alur teknis: `docs/ARCHITECTURE.md` bagian 3.5 dan 3.6.
+
+**Saat upgrade dari 0.4.1:**
+1. Deploy biasa (bangun ulang image api, worker, dan web). Service `migrate` menjalankan empat revisi berurutan:
+   `f6c3a9d2b8e1` (recap: `kind`, `period_start`, `period_end`; kunci unik pindah dari `date` ke `(kind, date)`),
+   `a042eff910ac` (cache ringkasan artikel newsletter dan kolom periode), `1dbf6006abaf` (tabel `newsletter_suggestions`),
+   `7e51efe6d78b` (kolom `daily_recaps.quality`). Semuanya aditif kecuali pergantian kunci unik di `daily_recaps`;
+   downgrade revisi pertama bisa gagal kalau recap mingguan dan harian sudah berbagi tanggal. Backup Postgres dari
+   `make deploy` tepat sebelumnya adalah jalan mundurnya.
+2. **Restart `beat`** (deploy yang membuat ulang container sudah cukup): jadwal dibangun sekali saat import. Entri recap
+   harian hilang; muncul `recap-generate-weekly` (Senin 00:15 UTC = 07:15 WIB) dan `newsletter-prepare-monthly`
+   (Senin-Jumat 02:00 UTC = 09:00 WIB, hanya bekerja di hari kerja pertama bulan dan 7 hari sesudahnya).
+3. **Backfill recap mingguan** untuk pekan yang sudah berakhir sebelum deploy dan belum punya recap (untuk edisi Oktober:
+   pekan Senin 28 Sep, 5, 12, dan 19 Okt; pekan yang berakhir sesudah deploy datang dari jadwal): halaman Recap, pilih **Week**, pilih tanggal di pekan itu, Generate, atau
+   `POST /api/recap/generate?kind=weekly&week_start=<Senin>`. **Buat berurutan dari yang paling lama**: perbandingan dan
+   scorecard hanya dihitung saat sebuah pekan dibuat dan memakai pekan sebelumnya. Pekan yang dibuat sebelum 0.5.0 tidak
+   punya data `quality`; regenerasi dengan `force=true`. Edisi newsletter Oktober (Senin 2 Nov) memakai recap pekan
+   28 Sep sampai 1 Nov, jadi recap pekan 26 Okt harus lahir dari jadwal Senin 2 Nov 00:15 UTC (atau dipicu tangan).
+4. **Klien API newsletter**: field request `highlight`, `apac`, `global_news`, dan `indonesia` dihapus dari
+   `POST /api/newsletter/preview` dan `/draft-email`. Pakai `highlights` (minimal satu) dan `<section>_full` /
+   `<section>_compact`. Satu-satunya pemakai field lama yang diketahui adalah halaman Newsletter di web, dan itu sudah diganti.
+5. **Build newsletter berbahasa Indonesia yang pertama lebih mahal**: semua cache ringkasan yang ada berbahasa Inggris,
+   jadi tiap kartu penuh diringkas ulang (satu fetch dan satu panggilan LLM per kartu; baris compact tidak kena).
+6. `LLM__RATE_LIMIT` tidak dipakai siapa pun tetapi **jangan dihapus** dari `.env` prod: fieldnya masih ada di `Settings`
+   dan tetap diterima.
+
+### Ditambah
+- **Recap mingguan** (#21): recap Senin-Minggu menurut tanggal UTC, dibuat otomatis Senin 07:15 WIB. Prompt dibangun dari
+  agregat (artikel satu klaster jadi satu baris, batas per kategori), sehingga satu panggilan LLM menggantikan tujuh.
+  Pekan yang Minggunya belum lewat dan tanggal yang bukan Senin ditolak (400); pekan tanpa artikel, tweet, dan CVE tidak
+  memanggil LLM. Pemicu tangan satu hari tetap ada (`kind=daily`, default). Hasil ukur di dev: dibanding tujuh recap harian,
+  token prompt -71%, total token -72%, waktu -73% (pekan beda, lihat ROADMAP #21).
+- **Token usage tercatat** di tiap recap (`token_usage`: token dari gateway, `wall_ms`, `input_chars`, jumlah item per
+  seksi prompt) dan halaman Recap menampilkannya.
+- **Kualitas recap**: perbandingan dengan pekan sebelumnya (selisih mutlak dan persen, plus "baru pekan ini" untuk threat
+  actor, kampanye, dan CVE; dihitung di kode, tanpa LLM), **pemeriksaan grounding** (CVE id, nama actor, tema kampanye, dan
+  sumber story harus ada di masukan; yang gagal dibuang dari tampilan dan dicatat di `quality.grounding.dropped`), dan
+  **scorecard prakiraan** (panggilan yang sama menilai prakiraan pekan lalu: happened / partly / not_happened / unclear;
+  analis bisa meng-override lewat `PATCH /api/recap/{recap_id}/scorecard/{event_id}`; hit rate 8 pekan, `partly` = 0,5,
+  `unclear` tidak dihitung). Semuanya tampil di halaman Recap, termasuk tautan ke artikel sumber tiap story.
+- **Newsletter bulanan** (#22): jadwal `newsletter.prepare_monthly` menyiapkan saran edisi bulan sebelumnya di hari kerja
+  pertama (Senin-Jumat, tanpa daftar libur), dengan kejar sampai 7 hari kalau worker sempat mati. Tidak ada yang dikirim
+  otomatis; hasilnya menunggu di tabel `newsletter_suggestions`.
+- **Saran artikel dengan alasan**: ranking dari data tersimpan (KEV, PoC, insiden terkonfirmasi, tech terpantau, negara
+  client, Indonesia/APAC, liputan, sumber, confidence) menempatkan artikel ke Highlights, Asia Pacific, Global, dan
+  Indonesia dalam tiga tier (kartu highlight, kartu penuh, baris compact "Also Noted"). `GET /api/newsletter/suggestion`
+  dan `POST /api/newsletter/suggestion/rebuild`. Set negara APAC baru ada di `cti_core/regions.py`.
+- **Executive Summary** berbahasa Indonesia: satu panggilan LLM merangkum recap mingguan yang menyentuh bulan itu, dengan
+  pemeriksaan grounding yang sama (CVE karangan diganti `[CVE tidak terverifikasi]`). Kalau panggilan gagal, ranking tetap
+  tersimpan, ringkasan kosong, dan `summary_meta.error` hanya memuat nama exception dan kode HTTP (tanpa pesan, karena bisa
+  memuat potongan kunci); hari kerja berikutnya mengulang hanya langkah ringkasan.
+- **Composer newsletter** terbuka sudah terisi saran (banner Use suggestion / Merge bila antrean sudah ada, tombol Build
+  suggestion bila belum ada saran), bisa dinaik-turunkan tier-nya, ditukar, dan dibuang; Executive Summary bisa disunting
+  dengan peringatan untuk ekor bulan yang belum tercakup; peringatan ukuran email sebelum draft; badge untuk kartu yang
+  diringkas dari metadata dengan tombol Re-summarise; pilihan bahasa `id`/`en`.
+- **Template email baru** (layout tabel dengan CSS inline, tanpa flex, kontainer 640 px, fallback Outlook desktop) dengan
+  **logo perusahaan inline** (lampiran `cid:` pada draft Graph, tanpa panel putih) dan **ringkasan artikel berbahasa
+  Indonesia** (glosarium istilah `newsletter_glossary.py`; heading tetap Inggris termasuk "Campaigns").
+- **Cache ringkasan artikel** (`newsletter_article_summaries`, kunci `(article_id, language)`): preview dan draft tidak lagi
+  mengulang fetch Playwright dan panggilan LLM.
+- **Scraper baru**: AWS Security Blog (`aws_security`), Red Hat Security, Cloud Vulnerability Database, dan Zeroday
+  Initiative.
+
+### Diubah
+- **Daftar CVE di prompt recap**: satu baris per `cve_id` (dulu CVE yang sama dihitung per client), diurutkan KEV, PoC, CVSS
+  menurun (dulu urutannya sembarang), baris false-positive dibuang lebih dulu.
+- **Recap harian tidak lagi dijadwalkan**; entri beat dan task `recap.generate_daily` dihapus. Halaman Recap membuka recap
+  mingguan terbaru dan punya toggle Day/Week.
+- **Newsletter**: subject memakai periode (`[CTI Newsletter] Threat Intelligence Digest — October 2026`; baris riwayat lama
+  tetap "Week N, YYYY"); `preview` tidak lagi menyimpan baris riwayat dan tidak menulis IOC atau mention CVE; draft yang
+  gagal di Graph tidak meninggalkan baris; satu pengiriman = satu baris. `newsletter_id` di respons preview selalu `null`.
+- **Batas isi newsletter**: Highlights maksimal 3, kartu penuh maksimal 4 dan baris compact maksimal 15 per section (dulu
+  satu highlight dan maksimal 5 kartu per section). Field request lama dihapus (langkah upgrade 4).
+- Dialog preview newsletter selebar email (dulu terkunci 24 rem di desktop); jumlah per section di riwayat menjumlah kartu
+  dan baris compact.
+
+### Diketahui / belum dikerjakan
+- **Belum diverifikasi di klien email sungguhan**: draft lewat Microsoft Graph asli, logo inline, dan tampilan di Outlook
+  desktop, Outlook web, dan Gmail belum dilihat (template baru baru dirender di Chromium). Tangkapan layar menutup
+  ROADMAP #22.
+- **Set negara APAC** (`cti_core/regions.py`: Bank Dunia East Asia & Pacific dan South Asia) adalah keputusan baru dan
+  belum dikonfirmasi tim; bobot ranking adalah nilai awal yang disetel setelah edisi pertama.
+- Ringkasan bulanan tidak mencakup ekor bulan yang pekannya belum selesai pada hari kerja pertama (bulan yang berakhir di
+  tengah pekan; edisi Oktober tidak terkena). Ekor itu tercatat di `summary_meta.uncovered` dan tetap ada di artikel
+  ter-ranking.
+- State composer newsletter tidak disimpan: reload mengisi ulang dari saran dan menghapus suntingan.
+- Prompt recap mingguan dengan `article_id` dan review prakiraan belum diuji ke gateway asli: kalau model tidak mengisi
+  `article_id`, semua top story dibuang oleh pemeriksaan grounding. Cek `quality.grounding.dropped` setelah regenerasi
+  pertama.
+
 ## [0.4.1] - 2026-10-09
 
 Perbaikan kecil hasil pemeriksaan 0.4.0 di server dev: teks versi terdampak (`affected`) yang diawali `<=` dua kali, dua
