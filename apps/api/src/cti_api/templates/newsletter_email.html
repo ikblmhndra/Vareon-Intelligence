@@ -19,8 +19,37 @@
   Judul bagian = bahasa Inggris (keputusan tim); isi ringkasan artikel = bahasa permintaan (Indonesia).
   Komentar Jinja ini tidak ikut ke output (komentar HTML akan ikut menambah ukuran email).
 -#}
+{#- Dark mode Outlook (ROADMAP #22): Outlook (web, new Outlook, app Mac) membalik warna email sendiri dan tidak menghormati
+    `color-scheme`; header burgundy jadi merah muda dan teks putih jadi gelap. Yang bisa dilakukan hanya menimpa hasil
+    pembaliknya dengan aturan `[data-ogsc]` (teks) / `[data-ogsb]` (latar) ber-!important di <style> yang mengembalikan
+    warna aslinya. Aturan memakai kelas yang SUDAH ada (`.article-card .art-meta`, ...) supaya tiap kartu/baris tidak
+    membengkak (email terberat sudah dekat batas klip Gmail); kelas token `c-<hex>` / `b-<hex>` dan kelas chip `kb kg kr kp`
+    hanya untuk elemen yang jarang atau yang warnanya beragam. SETIAP warna inline harus tercakup satu aturan di bawah ini
+    dengan nilai yang sama: dijaga tests/unit/test_newsletter_template.py. -#}
+{%- set dm_text = [
+  ('.page', '4a2a36'), ('.header-label', 'e6cfd6'), ('.header-title', 'ffffff'), ('.header-meta', 'e6cfd6'),
+  ('.exec-title', '430a23'), ('.custom-intro', '4a2a36'), ('.custom-intro p', '4a2a36'),
+  ('.article-card .art-title a', '430a23'), ('.article-card .art-meta', '6b4452'),
+  ('.article-card .key-points', '4a2a36'), ('.article-card .key-points span', 'd0002f'), ('.article-card .art-summary', '4a2a36'),
+  ('.highlight-card .art-title a', 'fbbfa1'), ('.highlight-card .art-meta', 'e6cfd6'),
+  ('.highlight-card .key-points', 'f2e8dd'), ('.highlight-card .key-points span', 'fbbfa1'), ('.highlight-card .art-summary', 'e6cfd6'),
+  ('.analyst-note td', '4a2a36'), ('.analyst-note span', 'b45309'),
+  ('.also-noted a', '430a23'), ('.also-noted div', '6b4452'),
+  ('.campaign-name', '430a23'), ('.campaign-meta', '6b4452'),
+  ('.footer', 'e6cfd6'), ('.footer strong', 'fbbfa1'), ('.footer a', 'fbbfa1'),
+  ('.kb', '256a8a'), ('.kg', '17703f'), ('.kr', '8a0c2f'), ('.kp', '6b4a9e'),
+  ('.c-430a23', '430a23'), ('.c-856404', '856404'), ('.c-256a8a', '256a8a'), ('.c-6b4a9e', '6b4a9e'), ('.c-8a1c1c', '8a1c1c'), ('.c-6b4452', '6b4452'),
+] -%}
+{%- set dm_bg = [
+  ('.page', 'f2e8dd'), ('.header', '430a23'), ('.rule', 'd0002f'), ('.body', 'ffffff'), ('.footer', '430a23'),
+  ('.exec-card', 'fbf6f1'), ('.article-card', 'fbf6f1'), ('.highlight-card', '430a23'), ('.analyst-note', 'fffbe6'),
+  ('.campaign', 'fbf6f1'), ('.also-head', 'f2e8dd'),
+  ('.kb', 'dcebf2'), ('.kg', 'def2e5'), ('.kr', 'fbe0e6'), ('.kp', 'ebe3f5'),
+  ('.b-d0002f', 'd0002f'), ('.b-256a8a', '256a8a'), ('.b-6b4a9e', '6b4a9e'), ('.b-8a1c1c', '8a1c1c'), ('.b-430a23', '430a23'),
+] -%}
 {%- macro chip(text, bg, fg, upper=True) -%}
-<span style="display:inline-block;padding:2px 8px;border-radius:3px;font-size:10px;font-weight:700;{% if upper %}letter-spacing:.5px;text-transform:uppercase;{% endif %}background:{{ bg }};color:{{ fg }};">{{ text }}</span>
+{%- set kind = {'#dcebf2': 'kb', '#def2e5': 'kg', '#fbe0e6': 'kr', '#ebe3f5': 'kp'}[bg] -%}
+<span class="{{ kind }}" style="display:inline-block;padding:2px 8px;border-radius:3px;font-size:10px;font-weight:700;{% if upper %}letter-spacing:.5px;text-transform:uppercase;{% endif %}background:{{ bg }};color:{{ fg }};">{{ text }}</span>
 {%- endmacro -%}
 
 {%- macro meta_line(a) -%}
@@ -42,7 +71,7 @@
 
 {#- Judul bagian: batang warna di kiri (sel tabel, bukan span inline-block yang diabaikan mesin Word) + label. -#}
 {%- macro heading(label, bar, color) -%}
-<tr><td class="section-header" style="padding:26px 0 12px;border-bottom:2px solid #e8dacb;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td width="6" bgcolor="{{ bar }}" style="background:{{ bar }};width:6px;font-size:0;line-height:0;">&nbsp;</td><td class="section-name" style="padding-left:8px;font-size:13px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:{{ color }};">{{ label }}</td></tr></table></td></tr>
+<tr><td class="section-header" style="padding:26px 0 12px;border-bottom:2px solid #e8dacb;"><table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td class="b-{{ bar[1:] }}" width="6" bgcolor="{{ bar }}" style="background:{{ bar }};width:6px;font-size:0;line-height:0;">&nbsp;</td><td class="section-name c-{{ color[1:] }}" style="padding-left:8px;font-size:13px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:{{ color }};">{{ label }}</td></tr></table></td></tr>
 {%- endmacro -%}
 
 {#- Kartu penuh biasa (APAC / Global / Indonesia). -#}
@@ -87,8 +116,8 @@
 
 {#- "Also Noted": satu baris per artikel compact (judul, sumber, tanggal, tipe), tanpa ringkasan. -#}
 {%- macro also_noted(label, rows) -%}
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e8dacb;border-radius:8px;">
-<tr><td bgcolor="#f2e8dd" style="background:#f2e8dd;padding:8px 18px;font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6b4452;border-radius:8px 8px 0 0;">Also Noted &nbsp;·&nbsp; {{ label }}</td></tr>
+<table role="presentation" class="also-noted" width="100%" cellpadding="0" cellspacing="0" border="0" style="border:1px solid #e8dacb;border-radius:8px;">
+<tr><td class="also-head c-6b4452" bgcolor="#f2e8dd" style="background:#f2e8dd;padding:8px 18px;font-size:10px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#6b4452;border-radius:8px 8px 0 0;">Also Noted &nbsp;·&nbsp; {{ label }}</td></tr>
 {%- for r in rows %}
 <tr><td style="padding:9px 18px;{% if not loop.last %}border-bottom:1px solid #e8dacb;{% endif %}"><div style="font-size:13px;line-height:1.4;font-weight:700;"><a href="{{ r.url | http_url }}" target="_blank" style="color:#430a23;text-decoration:none;">{{ r.title }}</a></div><div style="font-size:11px;color:#6b4452;padding-top:2px;">{{ meta_line(r) }}</div></td></tr>
 {%- endfor %}
@@ -116,11 +145,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="color-scheme" content="light">
-<meta name="supported-color-schemes" content="light">
+<meta name="color-scheme" content="light only">
+<meta name="supported-color-schemes" content="light only">
 <title>{{ platform_name }} | Threat Intelligence Newsletter, {{ period_label }}</title>
 <!--[if mso]><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml><![endif]-->
 <style>
+  :root { color-scheme: light only; supported-color-schemes: light only; }
+{%- for sel, hexa in dm_text %}
+  [data-ogsc] {{ sel }} { color: #{{ hexa }} !important; }
+{%- endfor %}
+{%- for sel, hexa in dm_bg %}
+  [data-ogsb] {{ sel }} { background-color: #{{ hexa }} !important; }
+{%- endfor %}
   @media only screen and (max-width: 480px) {
     .px { padding-left: 18px !important; padding-right: 18px !important; }
     .h1 { font-size: 22px !important; }
@@ -131,9 +167,9 @@
 </style>
 {% if custom_css %}<style>{{ custom_css | safe }}</style>{% endif %}
 </head>
-<body style="margin:0;padding:0;background:#f2e8dd;font-family:'Google Sans Flex','Segoe UI',-apple-system,BlinkMacSystemFont,Roboto,Arial,sans-serif;color:#4a2a36;">
+<body class="page" style="margin:0;padding:0;background:#f2e8dd;font-family:'Google Sans Flex','Segoe UI',-apple-system,BlinkMacSystemFont,Roboto,Arial,sans-serif;color:#4a2a36;">
 <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:#f2e8dd;opacity:0;">{{ preheader }}</div>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f2e8dd" style="background:#f2e8dd;">
+<table role="presentation" class="page" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f2e8dd" style="background:#f2e8dd;">
 <tr><td align="center" style="padding:24px 12px;">
 <!--[if mso]><table role="presentation" align="center" width="640" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
 <table role="presentation" class="container wrapper" width="640" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:640px;">
@@ -150,14 +186,14 @@
 {%- endif %}
 </table>
 </td></tr>
-<tr><td height="4" bgcolor="#d0002f" style="background:#d0002f;font-size:0;line-height:0;mso-line-height-rule:exactly;">&nbsp;</td></tr>
+<tr><td class="rule" height="4" bgcolor="#d0002f" style="background:#d0002f;font-size:0;line-height:0;mso-line-height-rule:exactly;">&nbsp;</td></tr>
 
 <tr><td class="px body" bgcolor="#ffffff" style="background:#ffffff;padding:8px 36px 32px;">
 
 {%- if custom_intro %}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-<tr><td style="padding:24px 0 10px;font-size:12px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:#430a23;border-bottom:2px solid #e8dacb;">Executive Summary</td></tr>
-<tr><td style="padding:16px 0 4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#fbf6f1" style="background:#fbf6f1;border:1px solid #e8dacb;border-radius:8px;"><tr><td class="custom-intro exec-body" style="padding:16px 18px;font-size:14px;line-height:1.7;color:#4a2a36;">{{ custom_intro | safe }}</td></tr></table></td></tr>
+<tr><td class="exec-title" style="padding:24px 0 10px;font-size:12px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:#430a23;border-bottom:2px solid #e8dacb;">Executive Summary</td></tr>
+<tr><td style="padding:16px 0 4px;"><table role="presentation" class="exec-card" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#fbf6f1" style="background:#fbf6f1;border:1px solid #e8dacb;border-radius:8px;"><tr><td class="custom-intro exec-body" style="padding:16px 18px;font-size:14px;line-height:1.7;color:#4a2a36;">{{ custom_intro | safe }}</td></tr></table></td></tr>
 </table>
 {%- endif %}
 
@@ -170,9 +206,9 @@
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
 {{ heading('Campaigns', '#430a23', '#430a23') }}
 {%- for c in campaign_clusters %}
-<tr><td style="padding-top:{{ 16 if loop.first else 10 }}px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#fbf6f1" style="background:#fbf6f1;border:1px solid #e8dacb;border-radius:8px;">
-<tr><td style="padding:14px 18px 2px;font-size:14px;font-weight:700;color:#430a23;">{{ c.name }}</td></tr>
-<tr><td style="padding:0 18px 8px;font-size:11px;color:#6b4452;">{{ c.size }} articles &nbsp;·&nbsp; {{ c.first_seen | short_date }}{% if c.last_seen and c.last_seen != c.first_seen %} &ndash; {{ c.last_seen | short_date }}{% endif %}</td></tr>
+<tr><td style="padding-top:{{ 16 if loop.first else 10 }}px;"><table role="presentation" class="campaign" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#fbf6f1" style="background:#fbf6f1;border:1px solid #e8dacb;border-radius:8px;">
+<tr><td class="campaign-name" style="padding:14px 18px 2px;font-size:14px;font-weight:700;color:#430a23;">{{ c.name }}</td></tr>
+<tr><td class="campaign-meta" style="padding:0 18px 8px;font-size:11px;color:#6b4452;">{{ c.size }} articles &nbsp;·&nbsp; {{ c.first_seen | short_date }}{% if c.last_seen and c.last_seen != c.first_seen %} &ndash; {{ c.last_seen | short_date }}{% endif %}</td></tr>
 {%- if c.dominant_tas or c.attack_techniques or c.cve_ids %}
 <tr><td style="padding:0 18px 14px;">
 {%- for ta in c.dominant_tas %}{{ chip(ta, '#fbe0e6', '#8a0c2f', upper=False) }} {% endfor -%}

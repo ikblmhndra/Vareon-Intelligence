@@ -70,7 +70,7 @@ def _squash(text: str) -> str:
 
 
 def _section_labels(html: str) -> list[str]:
-    return re.findall(r'class="section-name"[^>]*>([^<]+)<', html)
+    return re.findall(r'class="section-name[^"]*"[^>]*>([^<]+)<', html)
 
 
 # ── 1. Aturan klien email ────────────────────────────────────────────────────
@@ -142,6 +142,118 @@ def test_a_very_long_preheader_is_cut_to_what_inboxes_show() -> None:
     [preheader] = re.findall(r'<div style="display:none;[^"]*">([^<]*)</div>', html)
     assert len(preheader) <= 141
     assert preheader.endswith("…")
+
+
+class _Dom(HTMLParser):
+    """Pohon elemen minimal (tag, atribut, kelas, induk) untuk mencocokkan selector turunan."""
+
+    VOID: ClassVar[set[str]] = {"meta", "img", "br", "hr", "link", "input"}
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.stack: list[dict[str, Any]] = []
+        self.elements: list[dict[str, Any]] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attributes = {name: value or "" for name, value in attrs}
+        node = {
+            "tag": tag,
+            "attrs": attributes,
+            "classes": set(attributes.get("class", "").split()),
+            "parent": self.stack[-1] if self.stack else None,
+        }
+        self.elements.append(node)
+        if tag not in self.VOID:
+            self.stack.append(node)
+
+    def handle_endtag(self, tag: str) -> None:
+        for index in range(len(self.stack) - 1, -1, -1):
+            if self.stack[index]["tag"] == tag:
+                del self.stack[index:]
+                return
+
+
+def _part_matches(node: dict[str, Any], part: str) -> bool:
+    return part[1:] in node["classes"] if part.startswith(".") else node["tag"] == part
+
+
+def _selector_matches(node: dict[str, Any], selector: str) -> bool:
+    """Selector turunan sederhana (`.kelas`, `tag`, dipisah spasi): satu-satunya bentuk yang
+    dipakai aturan dark mode di template."""
+    *ancestors, last = selector.split()
+    if not _part_matches(node, last):
+        return False
+    current = node["parent"]
+    for part in reversed(ancestors):
+        while current is not None and not _part_matches(current, part):
+            current = current["parent"]
+        if current is None:
+            return False
+        current = current["parent"]
+    return True
+
+
+def _dark_mode_rules(css: str, attribute: str, prop: str) -> list[tuple[str, str]]:
+    return re.findall(
+        rf"\[{attribute}\] ([^{{]+?) \{{ {prop}: #([0-9a-f]{{6}}) !important; \}}", css
+    )
+
+
+def test_the_email_stays_in_its_light_palette_when_outlook_inverts_colours() -> None:
+    """Outlook (web, new Outlook, app Mac) membalik warna email sendiri dan tidak menghormati
+    `color-scheme`: header burgundy jadi merah muda, teks putih jadi gelap. Satu-satunya cara
+    mengembalikannya: aturan `[data-ogsc]` (teks) / `[data-ogsb]` (latar) ber-!important di
+    <style> yang menimpa hasil pembalikan. Tes ini menjaga KONSISTENSI-nya: setiap warna inline
+    harus tercakup satu aturan dengan nilai yang sama. Warna baru di template tanpa aturan =
+    Outlook mode gelap merusak elemen itu lagi, dan tes ini yang gagal."""
+    html = _render()
+    css_match = re.search(r"<style>(.*?)</style>", html, re.DOTALL)
+    assert css_match is not None
+    css = css_match.group(1)
+    text_rules = _dark_mode_rules(css, "data-ogsc", "color")
+    bg_rules = _dark_mode_rules(css, "data-ogsb", "background-color")
+    assert text_rules
+    assert bg_rules
+    dom = _Dom()
+    dom.feed(html)
+
+    for node in dom.elements:
+        inline = node["attrs"].get("style", "")
+        if "display:none" in inline:  # preheader tersembunyi: tidak terlihat, tidak ikut dibalik
+            continue
+        label = f'<{node["tag"]} class="{" ".join(sorted(node["classes"]))}">'
+        for hexa in re.findall(r"(?<![-\w])color:#([0-9a-f]{6})", inline):
+            assert any(
+                value == hexa and _selector_matches(node, selector)
+                for selector, value in text_rules
+            ), f"{label} berwarna teks #{hexa} tanpa aturan [data-ogsc] yang cocok"
+        backgrounds = re.findall(r"(?<![-\w])background:#([0-9a-f]{6})", inline)
+        backgrounds += re.findall(r"#([0-9a-f]{6})", node["attrs"].get("bgcolor", "").lower())
+        for hexa in backgrounds:
+            assert any(
+                value == hexa and _selector_matches(node, selector) for selector, value in bg_rules
+            ), f"{label} berlatar #{hexa} tanpa aturan [data-ogsb] yang cocok"
+
+    # Aturan yang tidak cocok ke elemen mana pun = selector salah ketik atau sisa. Footer dan
+    # intro ketikan analis (tautan, <p>) hanya ada di render kedua.
+    typed = _Dom()
+    typed.feed(_render(custom_footer='Hubungi <a href="https://example.com">tim</a>'))
+    for selector, _ in [*text_rules, *bg_rules]:
+        assert any(
+            _selector_matches(node, selector) for node in [*dom.elements, *typed.elements]
+        ), f"aturan dark mode `{selector}` tidak cocok ke elemen mana pun"
+
+
+def test_the_email_asks_clients_to_keep_the_light_scheme_and_defines_no_dark_variant() -> None:
+    """Keputusan tim (2026-10-14): email tidak punya mode gelap, di klien mana pun yang mau
+    menurut. Apple Mail dan klien lain yang membaca meta/`color-scheme` tetap terang; Gmail app
+    membalik sendiri dan tidak bisa dicegah dari sisi email."""
+    html = _render()
+
+    assert '<meta name="color-scheme" content="light only">' in html
+    assert '<meta name="supported-color-schemes" content="light only">' in html
+    assert ":root { color-scheme: light only; supported-color-schemes: light only; }" in html
+    assert "prefers-color-scheme" not in _squash(html)
 
 
 class _Nesting(HTMLParser):
