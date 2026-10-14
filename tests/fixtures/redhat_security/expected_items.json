@@ -1,0 +1,54 @@
+{
+  "2026-10-13": [
+    {
+      "title": "Why \"secure by design\" is the new standard for open source",
+      "url": "https://www.redhat.com/en/blog/why-secure-design-new-standard-open-source",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "Using on-premise Red Hat Lightspeed capabilities to monitor vulnerabilities and apply advisor remediations",
+      "url": "https://www.redhat.com/en/blog/using-premise-red-hat-lightspeed-capabilities-monitor-vulnerabilities-and-apply-advisor-remediations",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "Zero CVEs at delivery: Why container security belongs in the supply chain",
+      "url": "https://www.redhat.com/en/blog/zero-cves-delivery-why-container-security-belongs-supply-chain",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "What enterprises need to know about the software they depend on",
+      "url": "https://www.redhat.com/en/blog/what-enterprises-need-to-know-about-the-software-they-depend-on",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "What enterprises need to know about the Cyber Resilience Act and software supply chain risk",
+      "url": "https://www.redhat.com/en/blog/what-enterprises-need-to-know-about-the-cyber-resilience-act-and-software-supply-chain-risk",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "Securing AI agents requires securing the systems around them",
+      "url": "https://www.redhat.com/en/blog/securing-ai-agents-requires-securing-systems-around-them",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "Red Hat Enterprise Linux 10 STIG automation now matches DISA STIG V1R2",
+      "url": "https://www.redhat.com/en/blog/red-hat-enterprise-linux-10-stig-automation-now-matches-disa-stig-v1r2",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "Turning security complexity into useful intelligence: What’s new in Red Hat Lightspeed",
+      "url": "https://www.redhat.com/en/blog/turning-security-complexity-useful-intelligence-whats-new-red-hat-lightspeed",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "2026 update: The road to quantum-safe cryptography in Red Hat OpenShift",
+      "url": "https://www.redhat.com/en/blog/road-to-quantum-safe-cryptography-red-hat-openshift",
+      "posted_on": "2026-10-13"
+    },
+    {
+      "title": "Stop rewriting stable code: How Lightwell protects your bottom line and developer velocity",
+      "url": "https://www.redhat.com/en/blog/stop-rewriting-stable-code-how-lightwell-protects-your-bottom-line-and-developer-velocity",
+      "posted_on": "2026-10-13"
+    }
+  ]
+}

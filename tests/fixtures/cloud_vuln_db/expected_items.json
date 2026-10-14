@@ -1,0 +1,254 @@
+{
+  "2026-10-13": [
+    {
+      "title": "Entra ID actor token validation bug allowing cross-tenant global admin",
+      "url": "https://www.cloudvulndb.org/global-admin-entra-id-actor-tokens",
+      "posted_on": "2025-09-17"
+    },
+    {
+      "title": "Dataform cross-tenant path traversal",
+      "url": "https://www.cloudvulndb.org/dataform-path-traversal",
+      "posted_on": "2025-08-21"
+    },
+    {
+      "title": "AWS ECS Agent Information Disclosure Vulnerability",
+      "url": "https://www.cloudvulndb.org/aws-ecs-agent-information-disclosure-vulnerability",
+      "posted_on": "2025-08-14"
+    },
+    {
+      "title": "Remote Prompt Injection in GitLab Duo Leaks Source Code",
+      "url": "https://www.cloudvulndb.org/gitlab-duo-prompt-injection-leak",
+      "posted_on": "2025-05-22"
+    },
+    {
+      "title": "AWS Security Tool Introduces Privilege Escalation Risk",
+      "url": "https://www.cloudvulndb.org/aws-security-tool-risk",
+      "posted_on": "2025-05-19"
+    },
+    {
+      "title": "FreeRTOS and coreSNTP Security Advisories",
+      "url": "https://www.cloudvulndb.org/freertos-coresntp-advisories",
+      "posted_on": "2025-05-10"
+    },
+    {
+      "title": "Azure AZNFS-mount Utility Root Privilege Escalation",
+      "url": "https://www.cloudvulndb.org/azure-aznfs-mount-privilege-escalation",
+      "posted_on": "2025-05-06"
+    },
+    {
+      "title": "AWS Default Roles Can Lead to Service Takeover",
+      "url": "https://www.cloudvulndb.org/aws-default-roles-service-takeover",
+      "posted_on": "2025-04-29"
+    },
+    {
+      "title": "Google Cloud ConfusedComposer Privilege Escalation Vulnerability",
+      "url": "https://www.cloudvulndb.org/gcp-confused-composer-vulnerability",
+      "posted_on": "2025-04-22"
+    },
+    {
+      "title": "Burning Data with Malicious Firewall Rules in Azure SQL",
+      "url": "https://www.cloudvulndb.org/burning-data-azure-sql-firewall",
+      "posted_on": "2025-04-15"
+    },
+    {
+      "title": "Path Traversal in AWS SSM Agent Plugin ID Validation",
+      "url": "https://www.cloudvulndb.org/aws-ssm-agent-path-traversal",
+      "posted_on": "2025-04-09"
+    },
+    {
+      "title": "ImageRunner: Privilege Escalation Vulnerability in GCP Cloud Run",
+      "url": "https://www.cloudvulndb.org/imagerunner",
+      "posted_on": "2025-04-01"
+    },
+    {
+      "title": "CodeQLEAKED - CodeQL Supply Chain Attack via Exposed Secret",
+      "url": "https://www.cloudvulndb.org/codeql-supply-chain-attack-exposed-secret",
+      "posted_on": "2025-03-26"
+    },
+    {
+      "title": "Entra ID Bug Creates Immutable Users",
+      "url": "https://www.cloudvulndb.org/entra-id-immutable-users-bug",
+      "posted_on": "2025-03-25"
+    },
+    {
+      "title": "AWS CDK CLI Issue with Custom Credential Plugins",
+      "url": "https://www.cloudvulndb.org/aws-cdk-cli-credential-plugin-issue",
+      "posted_on": "2025-03-21"
+    },
+    {
+      "title": "Azure API Connections Expose Backend Secrets",
+      "url": "https://www.cloudvulndb.org/azure-api-connections-secrets",
+      "posted_on": "2025-03-10"
+    },
+    {
+      "title": "Issue with AWS Temporary Elevated Access Management",
+      "url": "https://www.cloudvulndb.org/aws-team-cve-2025-1969",
+      "posted_on": "2025-03-04"
+    },
+    {
+      "title": "Silent Reaper (Azure LogicApp Secrets Control Plane Exfiltration)",
+      "url": "https://www.cloudvulndb.org/azure-logic-apps-secrets-control-plane-exfiltration",
+      "posted_on": "2025-02-26"
+    },
+    {
+      "title": "Vault Recon (Azure KeyVault Secrets Metadata Control Plane Exfiltration)",
+      "url": "https://www.cloudvulndb.org/azure-vault-recon-keyvault-secret-metadata-control-plane-exfiltration",
+      "posted_on": "2025-02-26"
+    },
+    {
+      "title": "AWS EKS Logged ServiceAccount Tokens in Plaintext",
+      "url": "https://www.cloudvulndb.org/eks-logged-serviceaccount-tokens-plaintext",
+      "posted_on": "2025-02-26"
+    },
+    {
+      "title": "Abusing AWS Serverless Image Handler Configuration Weakness",
+      "url": "https://www.cloudvulndb.org/aws-serverless-image-handler-weakness",
+      "posted_on": "2025-02-19"
+    },
+    {
+      "title": "Entra ID Allows Users to Update Principal Names",
+      "url": "https://www.cloudvulndb.org/entra-id-upn-update-flaw",
+      "posted_on": "2025-01-24"
+    },
+    {
+      "title": "AWS Sign-in IAM User Login Flow Username Enumeration",
+      "url": "https://www.cloudvulndb.org/aws-iam-login-username-enumeration",
+      "posted_on": "2025-01-23"
+    },
+    {
+      "title": "Finding SSRFs in Azure DevOps",
+      "url": "https://www.cloudvulndb.org/ssrfs-azure-devops",
+      "posted_on": "2025-01-17"
+    },
+    {
+      "title": "CloudWatch Dashboard Sharing Exposes EC2 Tags",
+      "url": "https://www.cloudvulndb.org/cloudwatch-dashboard-sharing-exposes-tags",
+      "posted_on": "2025-01-16"
+    },
+    {
+      "title": "Issue with Amazon WorkSpaces and AppStream 2.0 Clients",
+      "url": "https://www.cloudvulndb.org/amazon-workspaces-appstream-vulnerability",
+      "posted_on": "2025-01-15"
+    },
+    {
+      "title": "Hijacking Azure Machine Learning Notebooks",
+      "url": "https://www.cloudvulndb.org/azure-ml-notebook-hijacking",
+      "posted_on": "2025-01-08"
+    },
+    {
+      "title": "AWS Neuron SDK Dependency Confusion Vulnerability Recurs",
+      "url": "https://www.cloudvulndb.org/aws-neuron-sdk-dependency-confusion",
+      "posted_on": "2024-12-29"
+    },
+    {
+      "title": "Dirty DAG - Azure Apache Airflow Integration Vulnerabilities",
+      "url": "https://www.cloudvulndb.org/azure-airflow-vulnerabilities",
+      "posted_on": "2024-12-16"
+    },
+    {
+      "title": "Bedrock API Logging Issue",
+      "url": "https://www.cloudvulndb.org/bedrock-api-logging-issue",
+      "posted_on": "2024-12-12"
+    },
+    {
+      "title": "Code Execution in Azure API Management Developer Portal",
+      "url": "https://www.cloudvulndb.org/azure-api-management-dev-portal-rce",
+      "posted_on": "2024-12-11"
+    },
+    {
+      "title": "ModeLeak: LLM Model Exfiltration Vulnerability in Vertex AI",
+      "url": "https://www.cloudvulndb.org/gcp-vertexai-vulnerabilities",
+      "posted_on": "2024-11-12"
+    },
+    {
+      "title": "Sketchy Cheat Sheet",
+      "url": "https://www.cloudvulndb.org/cloud-architecture-tool-vulnerabilities",
+      "posted_on": "2024-11-09"
+    },
+    {
+      "title": "Issue with data.all Framework Multiple CVEs",
+      "url": "https://www.cloudvulndb.org/data-all-framework-cves",
+      "posted_on": "2024-11-08"
+    },
+    {
+      "title": "Confused Deputy Vulnerability in Amazon DataZone",
+      "url": "https://www.cloudvulndb.org/datazone-confused-deputy-vulnerability",
+      "posted_on": "2024-11-01"
+    },
+    {
+      "title": "Repo swatting attack deletes/blocks GitHub and GitLab accounts",
+      "url": "https://www.cloudvulndb.org/repo-swatting-attack-deletes-github-gitlab-accounts",
+      "posted_on": "2024-11-01"
+    },
+    {
+      "title": "AWS CDK Bucket Squatting Risk",
+      "url": "https://www.cloudvulndb.org/aws-cdk-squatting",
+      "posted_on": "2024-10-24"
+    },
+    {
+      "title": "Missing JWT issuer and signer validation in ALB middleware",
+      "url": "https://www.cloudvulndb.org/missing-jwt-issuer",
+      "posted_on": "2024-10-21"
+    },
+    {
+      "title": "CloudShell Vulnerability Grants Unintended AWS Access",
+      "url": "https://www.cloudvulndb.org/cloudshell-aws-access-vulnerability",
+      "posted_on": "2024-10-15"
+    },
+    {
+      "title": "Data exfil via VPC endpoint denials in CloudTrail",
+      "url": "https://www.cloudvulndb.org/vpc-endpoint-log-data-exfil",
+      "posted_on": "2024-10-15"
+    },
+    {
+      "title": "Subdomain Takeover Vulnerability in GitLab Pages",
+      "url": "https://www.cloudvulndb.org/subdomain-takeover-vulnerability-gitlab-pages",
+      "posted_on": "2024-10-09"
+    },
+    {
+      "title": "Google Cloud Data Fusion GitHub Actions Vulnerabilities",
+      "url": "https://www.cloudvulndb.org/data-fusion-github-actions-vulns",
+      "posted_on": "2024-09-26"
+    },
+    {
+      "title": "CloudImposer",
+      "url": "https://www.cloudvulndb.org/cloudimposer-gcp",
+      "posted_on": "2024-09-16"
+    },
+    {
+      "title": "Document AI data exfiltration",
+      "url": "https://www.cloudvulndb.org/gcp-document-ai-data-exfil",
+      "posted_on": "2024-09-16"
+    },
+    {
+      "title": "Escalating from Reader to Contributor in Azure API Management",
+      "url": "https://www.cloudvulndb.org/azure-apim-reader-contributor-escalation",
+      "posted_on": "2024-09-13"
+    },
+    {
+      "title": "Security Flaw in AWS Transit Gateway Peering Attachments",
+      "url": "https://www.cloudvulndb.org/aws-transit-gateway-peering-flaw",
+      "posted_on": "2024-09-12"
+    },
+    {
+      "title": "Copilot Studio information disclosure via SSRF",
+      "url": "https://www.cloudvulndb.org/copilot-studio-infoleak-ssrf",
+      "posted_on": "2024-08-20"
+    },
+    {
+      "title": "WireServing Up Credentials in Azure Kubernetes Services",
+      "url": "https://www.cloudvulndb.org/wireserving-credentials-azure-kubernetes",
+      "posted_on": "2024-08-19"
+    },
+    {
+      "title": "AWS Direct Connect route injection issue",
+      "url": "https://www.cloudvulndb.org/aws-direct-connect-route-injection",
+      "posted_on": "2024-08-15"
+    },
+    {
+      "title": "Azue Health privilege escalation via SSRF",
+      "url": "https://www.cloudvulndb.org/azure-health-pe-ssrf",
+      "posted_on": "2024-08-13"
+    }
+  ]
+}
