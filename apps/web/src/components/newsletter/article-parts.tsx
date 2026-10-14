@@ -55,7 +55,8 @@ export function DestinationMenu({ state, current, onPick, trigger, triggerLabel,
       <DropdownMenuTrigger render={trigger} aria-label={triggerLabel} title={triggerLabel}>
         {children}
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
+      {/* Lebar tetap: bawaan popup = lebar tombol pemicu (ikon kecil), label jadi bertumpuk. */}
+      <DropdownMenuContent align="end" className="w-72 max-w-[90vw]">
         {SLOTS.filter((s) => s.key !== current).map((s) => {
           const full = state.slots[s.key].length >= s.cap;
           return (

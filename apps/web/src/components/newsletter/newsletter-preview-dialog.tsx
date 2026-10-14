@@ -32,7 +32,7 @@ export function NewsletterPreviewDialog({ state, onOpenChange, onSendDraft, send
   const hasNotices = compose && (state.warnings.length > 0 || state.metadataTitles.length > 0);
   return (
     <Dialog open={state.open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[90vh] max-w-3xl flex-col gap-0 overflow-hidden p-0">
+      <DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
         <DialogHeader className="border-b border-border px-4 py-3">
           <DialogTitle className="font-mono text-xs tracking-[0.1em] text-primary">{title}</DialogTitle>
         </DialogHeader>
