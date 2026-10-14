@@ -1,8 +1,8 @@
 # Implementation plan: #21 Recap and #22 Newsletter
 
 > **Status (2026-10-14): all nine pull requests are merged into `main` (2026-10-11 to 2026-10-14); the table in section 3
-> has the numbers.** What is left is operational (deploy to dev and prod, a real-mailbox check, releases 0.5.0 and
-> 0.6.0) and is tracked in `docs/ROADMAP.md` #21 and #22, which also hold the measurements. Scope and decisions are
+> has the numbers.** What is left is operational (the prod deploy, a real-mailbox check, and the release, cut as a single
+> 0.5.0 for #21 and #22) and is tracked in `docs/ROADMAP.md` #21 and #22, which also hold the measurements. Scope and decisions are
 > there too; this file turns them into pull requests, in order, with the files each one touches, the tests it needs and
 > how to roll it back. The rest of the text is the plan as written, **not** a description of the finished code.
 > Written 2026-10-10 from the code on `main` (0.4.1 + PRs #29-#31) and revised 2026-10-11 after each claim was checked
@@ -39,7 +39,7 @@ read the first output on the Recap page.
 - Gates before pushing: `ruff check`, `ruff format --check`, `mypy` (strict, `cti-core` and `cti-scraper` only), unit +
   contract tests, and the integration tests for what changed. Web PRs: lint, `next typegen` + `tsc --noEmit`, build.
 - Code comments, docstrings and commit messages in Indonesian, docs in English (CLAUDE.md). Releases bump the version
-  files and `CHANGELOG.md` (Indonesian): one release after #21 (0.5.0) and one after #22 (0.6.0).
+  files and `CHANGELOG.md` (Indonesian): one release after #21 (0.5.0) and one after #22 (0.6.0); in practice both were cut together as 0.5.0.
 - LLM calls always go through one helper that records token usage (PR 1), so every later PR logs usage for free.
 
 ## 3. Order and dependencies
@@ -320,7 +320,7 @@ All of it is invisible to readers, and it removes the defects found while scopin
 - Remove the old request fields once the web uses the new ones.
 - Done check: lint, `tsc`, build, then a manual run of the whole flow on a copy of production data (suggestion, edit,
   preview twice, create the draft once).
-- **Release 0.6.0** after PR 9.
+- **Release** after PR 9 (cut as 0.5.0 together with #21).
 
 ## 5. Cross-cutting
 
