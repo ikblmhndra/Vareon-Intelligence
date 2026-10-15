@@ -6,6 +6,75 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
+## [0.6.0] - 2026-10-15
+
+**Enrichment reputasi IOC** (ROADMAP #4: AbuseIPDB, VirusTotal, OTX), **tiga panel baru di Dashboard CVE** (#17), dan
+beberapa perbaikan kebenaran data dari #20. **Tanpa migrasi dan tanpa dependensi baru**; ada **kunci `.env` baru yang
+opsional** (kosong = provider mati, jadi `.env` prod yang ada tetap start) dan **satu entri beat baru**. Rancangan:
+`docs/ROADMAP.md` #4/#17/#20 dan `docs/ARCHITECTURE.md` bagian 3.7.
+
+**Saat upgrade dari 0.5.0:**
+1. Deploy biasa (bangun ulang image api, worker, dan web). Tidak ada migrasi.
+2. **Restart `beat`** (deploy yang membuat ulang container sudah cukup): jadwal dibangun sekali saat import, dan entri
+   `ioc-enrich-pending` (tiap 15 menit, antrean `maintenance`) baru muncul sesudahnya.
+3. **OTX langsung aktif** kalau `OTX__API_KEY` sudah terisi (di prod sudah): sekitar 3.300 IOC bertipe IP, domain, dan hash
+   mengantre, dan batas 25 per run (empat run per jam) membuat backfill-nya makan kira-kira satu setengah hari. Jatahnya
+   `OTX__RATE` (bawaan `300/hour`).
+4. **Opsional**: isi `ABUSEIPDB__API_KEY` (gratis 1000 cek per hari; jatah platform `ABUSEIPDB__RATE=40/hour`). **Jangan
+   isi `VIRUSTOTAL__API_KEY` dengan key gratis**: dokumentasi VirusTotal melarang API publiknya untuk produk atau layanan
+   komersial. Syarat pemakaian AbuseIPDB dan OTX belum dicek.
+5. Default `max_items` scraper `new_cve` naik dari 300 ke 600. Override dari control plane (`scraper_config`) tetap menang atas
+   default; kalau pernah diset kecil (mis. 100) saat memadamkan masalah, reset supaya default baru berlaku.
+
+### Ditambah
+- **Enrichment reputasi IOC** (#4, #55, #58): task `ioc.enrich_pending` mengisi kartu "TIP Enrichment" di detail IOC (UI-nya
+  sudah ada, belum ada yang menulisnya). Provider: **AbuseIPDB** (IP), **VirusTotal** (IP, domain, URL, hash), dan **OTX**
+  (IP, domain, hash); hanya lookup (GET), tidak pernah mengirim atau memindai apa pun. Dipilih IOC yang belum punya kartu
+  provider itu atau kartunya lebih tua dari TTL (3, 30, dan 7 hari), terbaru dulu; nilai di-refang; IP non-publik tidak
+  dikirim; jatah per jam lewat Redis; commit per IOC. Satu IOC gagal tidak menghentikan yang lain; 401/403/429 atau tiga
+  kegagalan beruntun menghentikan provider itu di run tersebut; log hanya memuat nama kelas exception dan kode status
+  (tanpa pesan, karena bisa memuat potongan kunci). Setting baru: `ABUSEIPDB__API_KEY`/`ABUSEIPDB__RATE`,
+  `VIRUSTOTAL__API_KEY`/`VIRUSTOTAL__RATE`, `OTX__RATE`.
+- **Tiga panel Dashboard CVE** (#17, #54): **Unresolved backlog by age** (CVE yang belum selesai per severity dan pita umur
+  0-7, 8-14, 15-30, 31+ hari, plus jumlah yang melewati 14 hari), **Exploited or likely to be exploited, still
+  unresolved** (KEV atau EPSS >= 0,1 yang belum selesai, KEV dulu, 10 teratas dengan jumlah sebenarnya), dan **Most
+  affected tech**. Respons `GET /api/cve/dashboard` mendapat `backlog`, `exploit_risk`, `exploit_risk_total`, dan `top_tech`
+  (hanya menambah).
+- `make check-orphaned-tickets [ARGS='--client acme']` (#52): daftar tiket CVE tanpa baris tracker (sisa `purge-orphaned`
+  lama). Hanya membaca dan sengaja tanpa `--apply`; di prod hasilnya 0.
+- Dashboard CVE: baris `UNRATED` di tabel "Mean time metrics by severity" (hanya bila ada CVE tanpa severity dan tanpa skor)
+  dan kolom Unrated di tabel volume bulanan (#51).
+
+### Diubah
+- **`new_cve`** (#50): kandidat diproses bergiliran antar tech (dulu menurut urutan abjad techstack, sehingga tech di
+  belakang abjad kelaparan saat cap tercapai); run yang berhenti karena `max_items` kini berstatus **`partial`** dan mencatat
+  peringatan `cve_max_items_reached` (dulu `ok` tanpa jejak); default `max_items` 300 menjadi 600. Status `partial` kini
+  benar-benar dikeluarkan `Runner` (sebelumnya dikenali DB dan UI tetapi tidak pernah muncul); CLI memperlakukannya sebagai
+  run selesai.
+- **Ranking newsletter** (#53): judul yang utuh satu nama berkas (tanpa spasi, berakhiran ekstensi dokumen) tidak lagi
+  mengambil slot Highlight; artikelnya tetap disarankan di section-nya. Judul di Newsroom tidak berubah.
+- Respons `POST /api/cve/cisa-lookup` dan task `cve.enrichment_sweep` memuat `removed_cves` dan `reset_skipped` (hanya menambah).
+
+### Diperbaiki
+- **Flag KEV tidak pernah turun** (#52): CVE yang dicabut CISA dari katalog KEV tetap bertanda `cisa_kev` dan
+  `active_exploitation` selamanya. `run_cisa_kev_lookup` kini menurunkannya untuk CVE yang dicek, **hanya bila katalog berisi
+  minimal 1000 entri** (respons kosong atau terpotong, mis. bentuk JSON yang berubah, tidak boleh menurunkan flag semua CVE;
+  dilewati dengan `reset_skipped` dan peringatan `cisa_kev_reset_skipped`). Isian analis di tiket tidak tersentuh.
+- **Crossref PIR dan aktor** (#51): CVE yang valid di dua client keluar dua kali dan memakai dua slot dari batas 50/30; kini
+  satu baris per CVE (baris terkuat), dedupe dilakukan sebelum batas.
+
+### Diketahui / belum dikerjakan
+- **Provider enrichment belum pernah dipanggil ke layanan sungguhan**: pemetaan dan klien dites dengan respons tiruan, dan
+  bentuk respons OTX serta atribut VirusTotal dicek ke dokumentasi atau endpoint publiknya. Hasilnya belum memengaruhi
+  `confidence_score` atau `actionability_*`. URL belum didukung di OTX; urlscan, GreyNoise, dan Shodan belum ada.
+- **Tiga panel Dashboard CVE belum dilihat di browser** (lolos `tsc`, `eslint`, dan build). `OVERDUE_DAYS` (14) dan `EPSS_HIGH`
+  (0,1) adalah nilai awal; belum ada target SLA per severity (ROADMAP #16). Grafik stacked bulanan tidak memuat CVE
+  unrated.
+- Judul Newsroom untuk artikel dari `blackorbird` tetap berupa nama berkas (keputusan membersihkannya di scraper belum diambil).
+- `trending_cve` hanya mencari tahun berjalan; mulai terasa awal Januari 2027 (ROADMAP #20).
+- `new_cve` masih bergantung pada pencarian kata kunci NVD: di prod 14 run `fetch_error` dalam tiga hari terakhir karena NVD
+  503. Akar masalahnya (nama tech dicocokkan sebagai teks) baru hilang setelah cutover #19.
+
 ## [0.5.0] - 2026-10-14
 
 Dua fitur prioritas dari masukan tim (ROADMAP #21 dan #22): **Recap mingguan** yang lebih murah dan diperiksa kualitasnya,
