@@ -53,13 +53,14 @@ _STOP_STATUSES = frozenset({401, 403, 429})
 _MAX_CONSECUTIVE_FAILURES = 3
 
 AllowFn = Callable[[str, str], bool]
+_Lookup = Callable[[str, str], Awaitable[dict[str, Any]]]
 SleepFn = Callable[[float], Awaitable[None]]
 
 
 @dataclass(frozen=True)
 class ProviderSpec:
-    """Satu provider yang aktif. `lookup` menerima nilai IOC yang SUDAH di-refang dan mengembalikan
-    kartu (lihat `ioc_providers`); kegagalan dilempar, bukan dikembalikan."""
+    """Satu provider yang aktif. `lookup(ioc_type, value)` menerima nilai IOC yang SUDAH di-refang
+    dan mengembalikan kartu (lihat `ioc_providers`); kegagalan dilempar, bukan dikembalikan."""
 
     key: str
     name: str
@@ -67,11 +68,24 @@ class ProviderSpec:
     ttl: datetime.timedelta
     rate: str
     min_interval: float
-    lookup: Callable[[str], Awaitable[dict[str, Any]]]
+    lookup: Callable[[str, str], Awaitable[dict[str, Any]]]
+
+
+_HASHES = ("sha256", "sha1", "md5")
+_VT_MIN_INTERVAL_S = 15.0
+"""API publik VirusTotal: 4 permintaan/menit, jadi minimal 15 detik antar panggilan."""
+
+
+def _ip_only(lookup: Callable[[str], Awaitable[dict[str, Any]]]) -> _Lookup:
+    async def run(ioc_type: str, value: str) -> dict[str, Any]:
+        return await lookup(value)
+
+    return run
 
 
 def build_specs(settings: Settings, http: httpx.AsyncClient) -> list[ProviderSpec]:
-    """Provider yang kuncinya terisi; kunci kosong = provider mati (tidak ada panggilan)."""
+    """Provider yang kuncinya terisi (urutan tetap: AbuseIPDB, VirusTotal, OTX); kunci kosong =
+    provider mati (tidak ada panggilan)."""
     specs: list[ProviderSpec] = []
     abuse = settings.abuseipdb
     if abuse.api_key:
@@ -83,7 +97,35 @@ def build_specs(settings: Settings, http: httpx.AsyncClient) -> list[ProviderSpe
                 ttl=datetime.timedelta(days=3),
                 rate=abuse.rate,
                 min_interval=0.0,
-                lookup=partial(ioc_providers.lookup_abuseipdb, http, abuse.api_key),
+                lookup=_ip_only(partial(ioc_providers.lookup_abuseipdb, http, abuse.api_key)),
+            )
+        )
+    vt = settings.virustotal
+    if vt.api_key:
+        specs.append(
+            ProviderSpec(
+                key=ioc_providers.VIRUSTOTAL,
+                name=ioc_providers.VIRUSTOTAL_NAME,
+                types=frozenset({"ip", "domain", "url", *_HASHES}),
+                # 30 hari: dengan jatah 20/jam (480/hari) volume produksi (~140 IOC didukung baru
+                # per hari + penyegaran) muat; TTL pendek tidak akan pernah terkejar.
+                ttl=datetime.timedelta(days=30),
+                rate=vt.rate,
+                min_interval=_VT_MIN_INTERVAL_S,
+                lookup=partial(ioc_providers.lookup_virustotal, http, vt.api_key),
+            )
+        )
+    otx = settings.otx
+    if otx.api_key:
+        specs.append(
+            ProviderSpec(
+                key=ioc_providers.OTX,
+                name=ioc_providers.OTX_NAME,
+                types=frozenset({"ip", "domain", *_HASHES}),
+                ttl=datetime.timedelta(days=7),
+                rate=otx.rate,
+                min_interval=0.0,
+                lookup=partial(ioc_providers.lookup_otx, http, otx.api_key),
             )
         )
     return specs
@@ -150,7 +192,7 @@ async def enrich_pending(
             looked_up += 1
 
             try:
-                card = await spec.lookup(value)
+                card = await spec.lookup(ioc.type, value)
             except httpx.HTTPStatusError as exc:
                 status = exc.response.status_code
                 log.warning(
