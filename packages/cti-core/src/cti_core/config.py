@@ -142,6 +142,8 @@ class XSettings(_StrictModel):
 
 class OtxSettings(_StrictModel):
     api_key: str = ""
+    rate: str = "300/hour"
+    """Jatah lookup enrichment IOC per jam (batas OTX jauh lebih longgar, ini sengaja kecil)."""
 
 
 class AbuseipdbSettings(_StrictModel):

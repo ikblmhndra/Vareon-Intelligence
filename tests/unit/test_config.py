@@ -89,3 +89,8 @@ def test_ioc_provider_keys_default_to_off_and_read_their_env(
 def test_a_typo_in_an_ioc_provider_key_fails_loud(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(ValidationError):
         _settings(monkeypatch, ABUSEIPDB__APIKEY="typo")
+
+
+def test_otx_rate_defaults_and_reads_its_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    assert _settings(monkeypatch).otx.rate == "300/hour"
+    assert _settings(monkeypatch, OTX__RATE="50/hour").otx.rate == "50/hour"
