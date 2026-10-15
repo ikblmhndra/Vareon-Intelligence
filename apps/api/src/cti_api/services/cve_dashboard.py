@@ -65,6 +65,9 @@ dilihat analis."""
 _TZ = zoneinfo.ZoneInfo(TIMEZONE)
 
 SEVERITIES = ("CRITICAL", "HIGH", "MEDIUM", "LOW")
+UNRATED = "UNRATED"
+"""Baris `by_severity` untuk CVE tanpa severity tersimpan dan tanpa skor CVSS (`severity_of`
+-> `None`). Hanya dikirim kalau ada, supaya tabel menjumlah ke `summary.total`."""
 UNASSIGNED = "Unassigned"
 SLOWEST_LIMIT = 10
 NOT_AFFECTED_RISK = "No Risk (Not Affected)"
@@ -239,16 +242,19 @@ def build_dashboard(rows: Iterable[DashRow], *, year: int, years: list[int]) -> 
         no_solution_yet=sum(1 for c in items if _no_solution(c.row.solutions)),
     )
 
-    by_severity = [
-        SeverityMetrics(
-            severity=s,
-            count=sev_counts[s],
-            mttd=_stat(c.mttd for c in items if c.severity == s),
-            mtta=_stat(c.mtta for c in items if c.severity == s),
-            mttr=_stat(c.mttr for c in items if c.severity == s),
+    def severity_metrics(label: str, group: list[_Computed]) -> SeverityMetrics:
+        return SeverityMetrics(
+            severity=label,
+            count=len(group),
+            mttd=_stat(c.mttd for c in group),
+            mtta=_stat(c.mtta for c in group),
+            mttr=_stat(c.mttr for c in group),
         )
-        for s in SEVERITIES
-    ]
+
+    by_severity = [severity_metrics(s, [c for c in items if c.severity == s]) for s in SEVERITIES]
+    unrated_items = [c for c in items if c.severity is None]
+    if unrated_items:
+        by_severity.append(severity_metrics(UNRATED, unrated_items))
 
     teams: dict[str, list[_Computed]] = defaultdict(list)
     for c in items:
@@ -275,6 +281,7 @@ def build_dashboard(rows: Iterable[DashRow], *, year: int, years: list[int]) -> 
                 high=sum(1 for c in m if c.severity == "HIGH"),
                 medium=sum(1 for c in m if c.severity == "MEDIUM"),
                 low=sum(1 for c in m if c.severity == "LOW"),
+                unrated=sum(1 for c in m if c.severity is None),
                 completed=sum(1 for c in m if c.bucket == "completed"),
                 not_affected=sum(1 for c in m if c.bucket == "not_affected"),
                 in_progress=sum(1 for c in m if c.bucket == "in_progress"),

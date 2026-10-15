@@ -2209,6 +2209,11 @@
             "default": 0,
             "title": "Total",
             "type": "integer"
+          },
+          "unrated": {
+            "default": 0,
+            "title": "Unrated",
+            "type": "integer"
           }
         },
         "required": [
