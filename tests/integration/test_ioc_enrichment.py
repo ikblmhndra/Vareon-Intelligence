@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import datetime
 from collections.abc import Awaitable, Callable
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any
 
@@ -47,14 +48,14 @@ class FakeLookup:
         self.values: list[str] = []
         self.errors = errors or {}
 
-    async def __call__(self, value: str) -> dict[str, Any]:
+    async def __call__(self, ioc_type: str, value: str) -> dict[str, Any]:
         self.values.append(value)
         if value in self.errors:
             raise self.errors[value]
         return _card()
 
 
-def _spec(lookup: Callable[[str], Awaitable[dict[str, Any]]], **kw: Any) -> ProviderSpec:
+def _spec(lookup: Callable[[str, str], Awaitable[dict[str, Any]]], **kw: Any) -> ProviderSpec:
     base: dict[str, Any] = {
         "key": "abuseipdb",
         "name": "AbuseIPDB",
@@ -66,6 +67,12 @@ def _spec(lookup: Callable[[str], Awaitable[dict[str, Any]]], **kw: Any) -> Prov
     }
     base.update(kw)
     return ProviderSpec(**base)
+
+
+def _settings_with(**providers: SimpleNamespace) -> SimpleNamespace:
+    """`Settings` mini untuk `build_specs`: provider yang tidak disebut kuncinya kosong (mati)."""
+    off = SimpleNamespace(api_key="", rate="1/hour")
+    return SimpleNamespace(**{"abuseipdb": off, "virustotal": off, "otx": off, **providers})
 
 
 def _allow_all(key: str, rate: str) -> bool:
@@ -317,7 +324,7 @@ async def test_build_specs_wires_the_real_abuseipdb_client_end_to_end(
         data = {"abuseConfidenceScore": 91, "totalReports": 30, "countryCode": "US"}
         return httpx.Response(200, json={"data": data})
 
-    settings = SimpleNamespace(abuseipdb=SimpleNamespace(api_key="test-key", rate="40/hour"))
+    settings = _settings_with(abuseipdb=SimpleNamespace(api_key="test-key", rate="40/hour"))
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
         specs = build_specs(settings, http)  # type: ignore[arg-type]
         summary = await enrich_pending(api_session, specs=specs, allow=_allow_all, now=NOW)
@@ -328,3 +335,42 @@ async def test_build_specs_wires_the_real_abuseipdb_client_end_to_end(
     await api_session.refresh(ioc)
     (card,) = ioc.enrichment["providers"]
     assert (card["verdict"], card["score"], card["raw"]["country"]) == ("malicious", 91, "US")
+
+
+async def test_virustotal_and_otx_are_wired_and_a_404_becomes_an_unknown_card(
+    api_session: AsyncSession,
+) -> None:
+    file_ioc = await _ioc(api_session, "sha256", "a" * 64)
+    domain_ioc = await _ioc(
+        api_session, "domain", "evil.example", last_seen_at=NOW - datetime.timedelta(hours=1)
+    )
+    paths: list[tuple[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        paths.append((request.url.host, request.url.path))
+        if request.url.host == "www.virustotal.com":
+            return httpx.Response(404, json={})  # belum pernah dilihat VirusTotal
+        pulses = [{"name": "p", "tags": ["c2"], "malware_families": []}] * 3
+        return httpx.Response(200, json={"pulse_info": {"count": 3, "pulses": pulses}})
+
+    settings = _settings_with(
+        virustotal=SimpleNamespace(api_key="vt-key", rate="20/hour"),
+        otx=SimpleNamespace(api_key="otx-key", rate="300/hour"),
+    )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        specs = build_specs(settings, http)  # type: ignore[arg-type]
+        specs = [replace(s, min_interval=0.0) for s in specs]  # tanpa jeda 15 detik di tes
+        summary = await enrich_pending(api_session, specs=specs, allow=_allow_all, now=NOW)
+
+    assert [s.key for s in specs] == ["virustotal", "otx"]
+    assert summary["virustotal"]["checked"] == 2 and summary["otx"]["checked"] == 2
+    assert ("www.virustotal.com", f"/api/v3/files/{'a' * 64}") in paths
+    assert ("otx.alienvault.com", "/api/v1/indicators/domain/evil.example/general") in paths
+
+    await api_session.refresh(file_ioc)
+    cards = {c["key"]: c for c in file_ioc.enrichment["providers"]}
+    assert cards["virustotal"]["verdict"] == "unknown"
+    assert cards["virustotal"]["raw"] == {"note": "not seen by VirusTotal"}
+    assert cards["otx"]["verdict"] == "malicious" and cards["otx"]["tags"] == ["c2"]
+    await api_session.refresh(domain_ioc)
+    assert sorted(c["key"] for c in domain_ioc.enrichment["providers"]) == ["otx", "virustotal"]
