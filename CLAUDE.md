@@ -89,7 +89,8 @@ Same Postgres, two drivers: async (`asyncpg`, FastAPI) and sync (`psycopg`, Cele
 
 ### CVE Tracker
 
-Alur lengkap yang sekarang (ingest `new_cve`, upsert, enrichment, scope tab CVEs, ticket, notifikasi, tujuh
+Peta end-to-end (dua jalur ingest `new_cve` dan mirror, diagram mermaid, operasi, dan alur troubleshooting
+"CVE X tidak muncul"): `docs/CVE_END_TO_END.md`; mulai dari situ. Alur lengkap yang sekarang (ingest `new_cve`, upsert, enrichment, scope tab CVEs, ticket, notifikasi, tujuh
 pencocok nama tech, dan checklist invarian saat mengubah desain) ada di `docs/CVE_TRACKER_FLOW.md`; baca itu
 sebelum menyentuh `cve_tracker`, `techstack_entries`, atau `new_cve`. Rencana katalog tech + mirror CVE:
 `docs/ROADMAP.md` #19; rancangan teknis: `docs/CVE_CATALOG_DESIGN.md` (irisan 1-5 sudah ada di kode:
