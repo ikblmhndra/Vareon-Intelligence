@@ -25,6 +25,11 @@ Aturan yang SENGAJA begitu:
   sebelum dedup (kanonik = yang pertama). Banyaknya sumber lain yang melaporkan cerita yang sama
   dihitung sebagai sinyal liputan; artikel dari sumber yang sama (mis. seri mingguan) tidak
   menambah liputan.
+- **Judul berupa nama berkas tidak jadi Highlight.** Scraper repo GitHub (mis. `blackorbird`)
+  memakai nama berkas sebagai judul (`2026-09-28-AgtaBackup-RAT-Campaign.txt`), dan kartu pembuka
+  edisi tidak boleh berjudul begitu. Artikelnya tetap disarankan (kartu penuh/compact di
+  section-nya, skor dan alasannya tidak berubah); Highlights diisi artikel teratas yang judulnya
+  bukan nama berkas.
 - **Urutan pasti**: skor terbesar, lalu `posted_on` terbaru, lalu `article_id` terkecil. Hasilnya
   tidak bergantung urutan masukan.
 
@@ -35,6 +40,7 @@ tier); hanya urutan relatifnya yang bermakna. Tiap poin selalu punya satu alasan
 from __future__ import annotations
 
 import datetime
+import re
 from collections.abc import Collection, Iterable, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
@@ -97,6 +103,14 @@ linear sampai `POINTS_CONFIDENCE_MAX` di 100."""
 
 _LISTED = 3
 """Maksimum nama/id yang disebut di teks alasan; sisanya "(+N more)"."""
+
+_FILE_NAME = re.compile(r"\S+\.(?:txt|pdf|docx?|xlsx?|pptx?|md|html?|csv|json|zip)", re.IGNORECASE)
+
+
+def looks_like_filename(title: str) -> bool:
+    """Judul yang utuh berupa satu nama berkas: tanpa spasi dan berakhiran ekstensi dokumen yang
+    dikenal. Judul berita yang kebetulan berakhir `invoice.pdf` punya spasi, jadi tidak ikut."""
+    return _FILE_NAME.fullmatch(title.strip()) is not None
 
 
 @dataclass(frozen=True, slots=True)
@@ -342,10 +356,12 @@ def rank_candidates(
     final = sorted(_collapse_duplicates(pool, ctx), key=_order)
 
     taken = dict.fromkeys(SECTIONS, 0)
+    highlights = 0
     ranked: list[RankedArticle] = []
-    for position, item in enumerate(final):
-        if position < MAX_HIGHLIGHTS:
+    for item in final:
+        if highlights < MAX_HIGHLIGHTS and not looks_like_filename(item.candidate.title):
             tier = TIER_HIGHLIGHT
+            highlights += 1
         else:
             used = taken[item.section]
             if used < MAX_FULL_PER_SECTION:

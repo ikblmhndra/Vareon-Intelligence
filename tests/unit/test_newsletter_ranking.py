@@ -297,6 +297,72 @@ def test_highlights_are_the_top_overall_and_are_not_repeated_in_their_section() 
     assert len(set(_ids(ranked))) == len(ranked)
 
 
+@pytest.mark.parametrize(
+    "title",
+    [
+        "2026-09-28-AgtaBackup-RAT-Campaign.txt",
+        "APT41_report.pdf",
+        "Q3-Threat-Landscape.DOCX",
+        "  notes.md  ",
+    ],
+)
+def test_a_bare_file_name_is_recognised(title: str) -> None:
+    assert ranking.looks_like_filename(title)
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "",
+        "Fortinet appliances are being probed",
+        # judul sungguhan yang kebetulan berakhir dengan nama berkas: ada spasi, jadi bukan berkas
+        "Attackers hide malware in invoice.pdf",
+        "report.txt dropped by the loader",
+        "CVE-2026-1234",
+    ],
+)
+def test_a_headline_is_not_taken_for_a_file_name(title: str) -> None:
+    assert not ranking.looks_like_filename(title)
+
+
+def test_a_file_name_title_never_takes_a_highlight_slot_but_stays_in_its_section() -> None:
+    """Scraper repo GitHub (mis. `blackorbird`) memakai nama berkas sebagai judul; kartu pembuka
+    edisi tidak boleh berjudul `2026-09-28-AgtaBackup-RAT-Campaign.txt`. Artikelnya tetap
+    disarankan (kartu penuh di section-nya), hanya tidak jadi Highlight."""
+    candidates = [
+        _c(
+            1,
+            title="2026-09-28-AgtaBackup-RAT-Campaign.txt",
+            kev_cves=("CVE-2026-1",),
+            poc_cves=("CVE-2026-1",),
+            confirmed_incident=True,
+        ),
+        _c(2, confirmed_incident=True, kev_cves=("CVE-2026-2",)),
+        _c(3, confirmed_incident=True),
+        _c(4, mentioned_countries=("ID",)),
+        _c(5, mentioned_countries=("JP",)),
+    ]
+
+    ranked = rank_candidates(candidates)
+
+    by_id = {r.article_id: r for r in ranked}
+    assert [r.article_id for r in ranked if r.tier == "highlight"] == [2, 3, 4][:MAX_HIGHLIGHTS]
+    assert by_id[1].tier == "full"
+    assert by_id[1].section == "global_news"
+    assert sorted(by_id) == [1, 2, 3, 4, 5]
+
+
+def test_when_every_title_is_a_file_name_there_are_no_highlights() -> None:
+    # Judul sengaja tak berbagi kata: dedup menyatukan judul yang mirip (lihat docstring modul).
+    titles = ["quartz-ledger.pdf", "walnut-meadow.pdf"]
+    ranked = rank_candidates(
+        [_c(n, title=title, confirmed_incident=True) for n, title in enumerate(titles, 1)]
+    )
+
+    assert sorted(_ids(ranked)) == [1, 2]
+    assert {r.tier for r in ranked} == {"full"}
+
+
 def test_ranks_are_contiguous_and_follow_the_score() -> None:
     ranked = rank_candidates(
         [_c(n, confidence_score=100 - n, victim_countries=("ID",)) for n in range(1, 30)]
