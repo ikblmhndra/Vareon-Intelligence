@@ -196,6 +196,77 @@
         "title": "ArticleOut",
         "type": "object"
       },
+      "Backlog": {
+        "description": "Beban kerja yang belum selesai (belum di-acknowledge, menunggu status, Open, atau In\nProgress), dikelompokkan menurut umur sejak terdeteksi (hari kalender WIB).",
+        "properties": {
+          "as_of": {
+            "title": "As Of",
+            "type": "string"
+          },
+          "bands": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Bands",
+            "type": "array"
+          },
+          "by_severity": {
+            "items": {
+              "$ref": "#/components/schemas/BacklogSeverity"
+            },
+            "title": "By Severity",
+            "type": "array"
+          },
+          "overdue": {
+            "default": 0,
+            "title": "Overdue",
+            "type": "integer"
+          },
+          "threshold_days": {
+            "title": "Threshold Days",
+            "type": "integer"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "as_of",
+          "threshold_days",
+          "bands",
+          "by_severity"
+        ],
+        "title": "Backlog",
+        "type": "object"
+      },
+      "BacklogSeverity": {
+        "properties": {
+          "bands": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Bands",
+            "type": "array"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "severity",
+          "bands"
+        ],
+        "title": "BacklogSeverity",
+        "type": "object"
+      },
       "Body_import_lockfile_endpoint_api_pkgvuln_import_lockfile_post": {
         "properties": {
           "file": {
@@ -699,6 +770,9 @@
       },
       "CveDashboard": {
         "properties": {
+          "backlog": {
+            "$ref": "#/components/schemas/Backlog"
+          },
           "by_severity": {
             "items": {
               "$ref": "#/components/schemas/SeverityMetrics"
@@ -712,6 +786,18 @@
             },
             "title": "By Team",
             "type": "array"
+          },
+          "exploit_risk": {
+            "items": {
+              "$ref": "#/components/schemas/ExploitRiskCve"
+            },
+            "title": "Exploit Risk",
+            "type": "array"
+          },
+          "exploit_risk_total": {
+            "default": 0,
+            "title": "Exploit Risk Total",
+            "type": "integer"
           },
           "monthly": {
             "items": {
@@ -746,6 +832,13 @@
             "title": "Timezone",
             "type": "string"
           },
+          "top_tech": {
+            "items": {
+              "$ref": "#/components/schemas/TechCount"
+            },
+            "title": "Top Tech",
+            "type": "array"
+          },
           "year": {
             "title": "Year",
             "type": "integer"
@@ -770,7 +863,10 @@
           "by_severity",
           "by_team",
           "monthly",
-          "slowest"
+          "slowest",
+          "backlog",
+          "exploit_risk",
+          "top_tech"
         ],
         "title": "CveDashboard",
         "type": "object"
@@ -1643,6 +1739,56 @@
           "cve_ids"
         ],
         "title": "DraftEmailBody",
+        "type": "object"
+      },
+      "ExploitRiskCve": {
+        "description": "CVE yang belum selesai tetapi terbukti/berpeluang tinggi dieksploitasi.",
+        "properties": {
+          "age_days": {
+            "default": 0,
+            "title": "Age Days",
+            "type": "integer"
+          },
+          "cisa_kev": {
+            "default": false,
+            "title": "Cisa Kev",
+            "type": "boolean"
+          },
+          "cve_id": {
+            "title": "Cve Id",
+            "type": "string"
+          },
+          "epss_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Epss Score"
+          },
+          "severity": {
+            "default": "",
+            "title": "Severity",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "tech": {
+            "default": "",
+            "title": "Tech",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cve_id",
+          "status"
+        ],
+        "title": "ExploitRiskCve",
         "type": "object"
       },
       "FeedbackBody": {
@@ -5494,6 +5640,39 @@
           "mttr"
         ],
         "title": "TeamMetrics",
+        "type": "object"
+      },
+      "TechCount": {
+        "properties": {
+          "backlog": {
+            "default": 0,
+            "title": "Backlog",
+            "type": "integer"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "critical": {
+            "default": 0,
+            "title": "Critical",
+            "type": "integer"
+          },
+          "high": {
+            "default": 0,
+            "title": "High",
+            "type": "integer"
+          },
+          "tech": {
+            "title": "Tech",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tech",
+          "count"
+        ],
+        "title": "TechCount",
         "type": "object"
       },
       "TechStackAdd": {

@@ -341,3 +341,115 @@ def test_slowest_ranks_by_mttr_then_mtta_and_is_capped() -> None:
 
     many = [_row(f"CVE-2026-{i:04d}", acknowledge_time=_ack(4 + i % 20)) for i in range(1, 40)]
     assert len(build_dashboard(many, year=2026, years=[2026]).slowest) == SLOWEST_LIMIT
+
+
+# ── Backlog, risiko eksploitasi, tech teratas ────────────────────────────────────────────────
+
+TODAY = datetime.date(2026, 3, 20)
+
+
+def _aged(cve_id: str, days: int, **kw: Any) -> DashRow:
+    """CVE yang terdeteksi `days` hari sebelum `TODAY` (jam 10:00 WIB)."""
+    detected = datetime.datetime(2026, 3, 20, 3, 0, tzinfo=UTC) - datetime.timedelta(days=days)
+    return _row(cve_id, detected_on=detected, **kw)
+
+
+def test_backlog_groups_unresolved_cves_by_severity_and_age_band() -> None:
+    rows = [
+        _aged("CVE-2026-0001", 2, severity_label="CRITICAL"),  # unacknowledged
+        _aged("CVE-2026-0002", 20, severity_label="CRITICAL", remediation_status="Open"),
+        _aged("CVE-2026-0003", 10, severity_label="HIGH", remediation_status="In Progress"),
+        _aged("CVE-2026-0004", 40, severity_label="HIGH", has_ticket=True),  # awaiting_status
+        _aged("CVE-2026-0005", 15, severity_label="MEDIUM", remediation_status="Open"),
+        _aged("CVE-2026-0006", 3, severity_label="", score=None),  # unrated
+        # sudah bukan beban: selesai, risiko diterima, tidak terdampak
+        _aged("CVE-2026-0007", 50, remediation_status="Resolved"),
+        _aged("CVE-2026-0008", 50, remediation_status="Risk Accepted"),
+        _aged("CVE-2026-0009", 50, risk_acceptance="No Risk (Not Affected)"),
+    ]
+
+    d = build_dashboard(rows, year=2026, years=[2026], today=TODAY)
+
+    b = d.backlog
+    assert (b.as_of, b.threshold_days, b.total, b.overdue) == ("2026-03-20", 14, 6, 3)
+    assert b.bands == ["0-7 days", "8-14 days", "15-30 days", "31+ days"]
+    assert {s.severity: (s.total, s.bands) for s in b.by_severity} == {
+        "CRITICAL": (2, [1, 0, 1, 0]),
+        "HIGH": (2, [0, 1, 0, 1]),
+        "MEDIUM": (1, [0, 0, 1, 0]),
+        "LOW": (0, [0, 0, 0, 0]),
+        "UNRATED": (1, [1, 0, 0, 0]),
+    }
+    assert sum(s.total for s in b.by_severity) == b.total
+
+
+def test_backlog_has_no_unrated_row_when_nothing_is_unrated() -> None:
+    d = build_dashboard([_aged("CVE-2026-0001", 1)], year=2026, years=[2026], today=TODAY)
+
+    assert [s.severity for s in d.backlog.by_severity] == ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+
+
+def test_exploit_risk_lists_unresolved_kev_or_high_epss_cves_worst_first() -> None:
+    rows = [
+        _aged("CVE-2026-0001", 5, cisa_kev=True, epss_score=0.02, remediation_status="Open"),
+        _aged("CVE-2026-0002", 9, epss_score=0.95),
+        _aged("CVE-2026-0003", 1, epss_score=0.10, remediation_status="In Progress"),  # batas: ikut
+        _aged("CVE-2026-0004", 3, epss_score=0.05),  # EPSS rendah, bukan KEV: tidak ikut
+        _aged("CVE-2026-0005", 8, cisa_kev=True, remediation_status="Resolved"),  # sudah selesai
+        _aged("CVE-2026-0006", 30, cisa_kev=True, epss_score=0.5),
+    ]
+
+    d = build_dashboard(rows, year=2026, years=[2026], today=TODAY)
+
+    # KEV dulu (EPSS menurun di antaranya), lalu sisanya menurut EPSS menurun.
+    assert [c.cve_id for c in d.exploit_risk] == [
+        "CVE-2026-0006",
+        "CVE-2026-0001",
+        "CVE-2026-0002",
+        "CVE-2026-0003",
+    ]
+    assert d.exploit_risk_total == 4
+    first = d.exploit_risk[0]
+    assert (first.cisa_kev, first.epss_score, first.age_days, first.status) == (
+        True,
+        0.5,
+        30,
+        "unacknowledged",
+    )
+
+
+def test_exploit_risk_is_capped_but_reports_the_full_count() -> None:
+    rows = [_aged(f"CVE-2026-{n:04d}", n, cisa_kev=True) for n in range(1, 13)]
+
+    d = build_dashboard(rows, year=2026, years=[2026], today=TODAY)
+
+    assert len(d.exploit_risk) == 10
+    assert d.exploit_risk_total == 12
+
+
+def test_top_tech_counts_per_tech_and_how_many_are_still_unresolved() -> None:
+    rows = [
+        _aged("CVE-2026-0001", 1, tech="nginx", severity_label="CRITICAL"),
+        _aged("CVE-2026-0002", 1, tech="nginx", severity_label="HIGH"),
+        _aged("CVE-2026-0003", 1, tech="nginx", remediation_status="Resolved"),
+        _aged("CVE-2026-0004", 1, tech="apache"),
+        _aged("CVE-2026-0005", 1, tech="apache"),
+        _aged("CVE-2026-0006", 1, tech=""),
+    ]
+
+    d = build_dashboard(rows, year=2026, years=[2026], today=TODAY)
+
+    # `_row` memberi severity HIGH bila tidak disebut; nginx yang selesai tidak masuk `backlog`.
+    assert [(t.tech, t.count, t.critical, t.high, t.backlog) for t in d.top_tech] == [
+        ("nginx", 3, 1, 2, 2),
+        ("apache", 2, 0, 2, 2),
+        ("(none)", 1, 0, 1, 1),
+    ]
+
+
+def test_top_tech_is_capped_at_ten_techs() -> None:
+    rows = [_aged(f"CVE-2026-{n:04d}", 1, tech=f"tech{n:02d}") for n in range(1, 13)]
+
+    d = build_dashboard(rows, year=2026, years=[2026], today=TODAY)
+
+    assert len(d.top_tech) == 10

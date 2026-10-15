@@ -108,6 +108,51 @@ class SlowestCve(BaseModel):
     detected_on: str = ""
 
 
+class BacklogSeverity(BaseModel):
+    severity: str
+    """Sama dengan `SeverityMetrics.severity` (`UNRATED` hanya bila ada)."""
+    total: int = 0
+    bands: list[int]
+    """Banyaknya CVE per pita umur, urutan = `Backlog.bands`."""
+
+
+class Backlog(BaseModel):
+    """Beban kerja yang belum selesai (belum di-acknowledge, menunggu status, Open, atau In
+    Progress), dikelompokkan menurut umur sejak terdeteksi (hari kalender WIB)."""
+
+    as_of: str
+    """`YYYY-MM-DD` (WIB) tempat umur dihitung."""
+    threshold_days: int
+    """Batas "terlalu lama": `overdue` = CVE yang umurnya LEBIH dari ini."""
+    bands: list[str]
+    total: int = 0
+    overdue: int = 0
+    by_severity: list[BacklogSeverity]
+
+
+class ExploitRiskCve(BaseModel):
+    """CVE yang belum selesai tetapi terbukti/berpeluang tinggi dieksploitasi."""
+
+    cve_id: str
+    severity: str = ""
+    tech: str = ""
+    status: str
+    """Key bucket `StatusBreakdown`."""
+    cisa_kev: bool = False
+    epss_score: float | None = None
+    age_days: int = 0
+
+
+class TechCount(BaseModel):
+    tech: str
+    """`"(none)"` untuk CVE tanpa nama tech."""
+    count: int
+    critical: int = 0
+    high: int = 0
+    backlog: int = 0
+    """Berapa dari `count` yang belum selesai (definisi sama dengan `Backlog`)."""
+
+
 class CveDashboard(BaseModel):
     year: int
     years: list[int]
@@ -122,3 +167,8 @@ class CveDashboard(BaseModel):
     by_team: list[TeamMetrics]
     monthly: list[MonthMetrics]
     slowest: list[SlowestCve]
+    backlog: Backlog
+    exploit_risk: list[ExploitRiskCve]
+    """Paling berisiko dulu, dipotong 10; jumlah sebenarnya di `exploit_risk_total`."""
+    exploit_risk_total: int = 0
+    top_tech: list[TechCount]
