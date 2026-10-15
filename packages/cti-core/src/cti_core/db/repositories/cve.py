@@ -531,18 +531,17 @@ class AsyncCveTrackerRepo:
     async def get_by_threat_actor_exact(self, actor_name: str) -> list[CveTracker]:
         """Exact-match (case-insensitive) `threat_actors`, urut `cve_score`
         desc, limit 30 -- port `cross_reference_service.get_ta_crossrefs()`.
-        Baris yang ditandai FP oleh clientnya sendiri tidak ikut (`is_false_positive_row`)."""
-        stmt = (
-            select(CveTracker)
-            .join(CveThreatActor)
-            .where(
-                func.lower(CveThreatActor.threat_actor) == actor_name.lower(),
-                ~is_false_positive_row(),
-            )
+        Baris yang ditandai FP oleh clientnya sendiri tidak ikut (`is_false_positive_row`).
+        Satu baris per `cve_id` (lihat `_strongest_per_cve`)."""
+        return await self._strongest_per_cve(
+            CveTracker.id.in_(
+                select(CveThreatActor.cve_tracker_id).where(
+                    func.lower(CveThreatActor.threat_actor) == actor_name.lower()
+                )
+            ),
+            ~is_false_positive_row(),
+            limit=30,
         )
-        stmt = stmt.order_by(CveTracker.cve_score.desc().nulls_last()).limit(30)
-        result = await self.session.execute(stmt)
-        return list(result.scalars().unique().all())
 
     async def search_crossref(
         self,
@@ -557,7 +556,7 @@ class AsyncCveTrackerRepo:
         clause -> query balik ke "bukan FP" doang (match-all), port
         perilaku sama persis `cve_conditions = []` -> `$or` gak keisi di
         kode lama. FP = baris yang ditandai FP oleh clientnya sendiri
-        (`is_false_positive_row`)."""
+        (`is_false_positive_row`). Satu baris per `cve_id` (lihat `_strongest_per_cve`)."""
         conditions = []
         if threat_actors:
             lowered = [t.lower() for t in threat_actors]
@@ -575,10 +574,37 @@ class AsyncCveTrackerRepo:
         if tech_list:
             conditions.append(CveTracker.tech.in_(tech_list))
 
-        stmt = select(CveTracker).where(~is_false_positive_row())
+        where = [~is_false_positive_row()]
         if conditions:
-            stmt = stmt.where(or_(*conditions))
-        stmt = stmt.order_by(CveTracker.cve_score.desc().nulls_last()).limit(50)
+            where.append(or_(*conditions))
+        return await self._strongest_per_cve(*where, limit=50)
+
+    async def _strongest_per_cve(self, *where: ColumnElement[bool], limit: int) -> list[CveTracker]:
+        """Satu baris per `cve_id` dari baris yang lolos `where`, urut skor CVSS menurun (NULL
+        terakhir, seri -> `cve_id`), dipotong `limit` SESUDAH dedupe.
+
+        Tracker menyimpan satu baris PER CLIENT, jadi CVE yang valid di dua client dulu keluar dua
+        kali dan memakai dua slot dari `limit` (#20). Yang mewakili = baris terkuat (KEV, lalu PoC,
+        lalu CVSS tertinggi, seri -> `id` terkecil), aturan yang sama dengan
+        `list_registered_between`. `where` dipakai SEBELUM memilih, jadi baris FP atau yang tak
+        cocok kriteria tak pernah mengalahkan baris yang cocok."""
+        strength = (
+            CveTracker.cisa_kev.desc(),
+            CveTracker.poc_available.desc(),
+            CveTracker.cve_score.desc().nulls_last(),
+        )
+        strongest_ids = (
+            select(CveTracker.id)
+            .where(*where)
+            .distinct(CveTracker.cve_id)
+            .order_by(CveTracker.cve_id, *strength, CveTracker.id)
+        )
+        stmt = (
+            select(CveTracker)
+            .where(CveTracker.id.in_(strongest_ids))
+            .order_by(CveTracker.cve_score.desc().nulls_last(), CveTracker.cve_id)
+            .limit(limit)
+        )
         result = await self.session.execute(stmt)
         return list(result.scalars().unique().all())
 
