@@ -16,9 +16,9 @@ Each item contains: **what** was asked, **the current state** (facts from the re
 | 1 | Rebranding the platform name + UI (colour palette, typography, animation) -- **DONE 2026-10-02, the SVG logo remains** | brand assets | -- |
 | 2 | Rebranding the `newsletter_email` and `cve_notification_email` templates -- **code done 2026-10-02, email client verification not yet** | (the same assets as #1) | #1 |
 | 3 | (probably superseded by #19) A "Populate now" button in the CVE Tracker (all / only newly added) | a small decision (see the item) | -- |
-| 4 | IOC enrichment + reputation (VirusTotal, AbuseIPDB, urlscan, Shodan/GreyNoise) | an API key per service, quotas | -- |
+| 4 | IOC enrichment + reputation (VirusTotal, AbuseIPDB, urlscan, Shodan/GreyNoise) -- **code merged 2026-10-15 (#55, #58): AbuseIPDB, VirusTotal and OTX; not deployed yet; urlscan, GreyNoise and Shodan are not built** | the AbuseIPDB key, and a VirusTotal key from a plan whose licence allows commercial use (the OTX key is already set on prod) | -- |
 | 5 | Outbound IOC/CVE feeds (TAXII 2.1 and/or CSV/JSON) + integration API keys | target tooling (Wazuh/Splunk/Fortinet?) | #4 |
-| 6 | IOC lifecycle: first/last seen, sightings, expiry/decay | an IOC age decision | #4 |
+| 6 | IOC lifecycle: first/last seen, sightings, expiry/decay -- **first/last seen, sighting count and confidence decay already exist; only expiry in the outbound feed is missing** | an IOC age decision | #4, #5 |
 | 7 | Relevance to our own assets: threats x techstack, alerts for actors targeting our stack | tidy asset data | -- |
 | 8 | MISP/OpenCTI connector (import + export) | a target instance | #5 |
 | 9 | Dark web monitoring through aggregator sources (breaches, ransomware leak sites, Telegram) -- not crawling onions ourselves | budget, a list of executive domains/emails, internal approval | -- |
@@ -29,10 +29,10 @@ Each item contains: **what** was asked, **the current state** (facts from the re
 | 14 | Logo missing from the CVE Tracker Excel export (Pillow is not yet a dependency) -- **done 2026-10-07 (PR #9); the API image build with pillow is green in CI (PR #12)** | -- | -- |
 | 15 | Use `published_at` in the UI/API/dashboard + align the export date formats | a decision on the format of the Acknowledged column | the `published_at` backfill in production |
 | 16 | CVE dashboard: SLA per severity (replacing fixed-threshold ratings) | ack/remediation SLA targets per severity | -- |
-| 17 | CVE dashboard: backlog/aging panels, KEV/EPSS, most frequently affected products | a choice of panels | -- |
+| 17 | CVE dashboard: backlog/aging panels, KEV/EPSS, most frequently affected products -- **DONE 2026-10-15 (#54); not yet looked at in a browser** | -- | -- |
 | 18 | CVE ticket field validation + a ticket model decision (1 ticket per CVE vs one ticket for many CVEs) | a list of standard values, the model decision | -- |
 | 19 | **Tech catalog from the CVE mirror + Monitor** (new direction 2026-10-07, replacing the alias/phase 2-3 plan; the `aliases` column is dropped): mirror every CVE (calendar-year retention) -> a vendor+product catalog -> All Tech / Monitored Tech tabs -> the CVEs tab only for monitored techs. **Code done (slices 1-7), merged to `main` 2026-10-08 (PR #12, release 0.3.0)**; what remains is operational: mapping the 34 entries on dev, shadow mode, cutover (`docs/CVE_CATALOG_CUTOVER.md`); design `docs/CVE_CATALOG_DESIGN.md` | manual mapping + shadow on dev | test on the dev server first, then prod |
-| 20 | **Known follow-ups from releases 0.4.0 / 0.4.1** (found while reviewing the CVE Tracker; none is blocking) | product decisions on the points marked (D) | -- |
+| 20 | **Known follow-ups from releases 0.4.0 / 0.4.1** (found while reviewing the CVE Tracker; none is blocking) -- **the data-correctness points were fixed 2026-10-15 (#51, #52) or earlier (#21); what is left is marked in the item** | product decisions on the points marked (D) | -- |
 
 ---
 
@@ -83,6 +83,7 @@ PRs #2-#31 are all merged into `main` (release tags in `CHANGELOG.md`: 0.2.0, 0.
 | after 0.4.1 (2026-10-11 to 2026-10-14) | #34, #36, #40, #42 | **#21 recap**: token usage stored and one row per CVE (PR 1); weekly Monday-Sunday recap on a Monday 00:15 UTC schedule (PR 2); week-over-week comparison, grounding check and forecast scorecard (PR 3); the Recap page shows them (PR 4) |
 | after 0.4.1 (2026-10-11 to 2026-10-14) | #35, #37, #38, #39, #43, #44 | **#22 newsletter**: summary cache, side-effect-free preview and one row per send (PR 5); alembic head fix (#37); ranking and `newsletter_suggestions` (PR 7); new template, inline logo, Indonesian summaries (PR 6); monthly schedule and Executive Summary (PR 8); composer filled with the suggestion (PR 9) |
 | after 0.4.1 | #41, #45 | scraper additions (`aws_security`, news scraper); not part of #21/#22 |
+| after 0.5.0 (2026-10-15) | #50-#56, #58 | `new_cve` no longer drops CVEs silently at `max_items` (#50); dashboard UNRATED bucket and one crossref row per CVE (#51); KEV flag reset and the read-only `check-orphaned-tickets` tool (#52); file-name titles never take a newsletter Highlight (#53); dashboard backlog, exploit-risk and top-tech panels, **#17** (#54); IOC enrichment writer with AbuseIPDB, **#4** (#55) and VirusTotal + OTX (#56 was merged into the #55 branch because that branch had not been deleted yet, so it reached `main` through #58) |
 
 Release 0.5.0 (tag `0.5.0`, GitHub Release `v0.5.0`, 2026-10-14) carries everything after 0.4.1 and sits on `f55132d`, the
 merge of #48, so the dark-mode fix is inside (the `CHANGELOG.md` line about it was added after the tag). The plan expected 0.5.0 after #21 and 0.6.0 after #22, but both were on `main` before either was cut, so
@@ -255,12 +256,46 @@ connecting** to other tooling. `git grep` results in `apps packages scrapers`: z
 
 **Asked (proposal)**: every IOC is enriched automatically (VirusTotal, AbuseIPDB, urlscan, Shodan/GreyNoise)
 with its score/verdict and its source stored.
-**Current state**: IOCs are extracted from articles (`cti-enrich`); there is no external enrichment yet.
+**Current state** (before #55): IOCs are extracted from articles (`cti-enrich`); there was no external enrichment, although
+the `iocs.enrichment` column, the API serialisation and the "TIP Enrichment" cards in `ioc-detail-dialog.tsx` already
+existed: nothing wrote them.
 **Needed**: an API key + quota per service (stored through the same secret mechanism as
 `docs/SECRETS_ROTATION.md`), a decision on which IOCs are enriched (all vs only those linked to priority CVEs/actors)
 so quotas do not run out.
 **Done when**: the IOC detail shows the verdict + a source link, results are cached, rate limits are respected,
 and one service failing does not fail the others.
+
+**Status 2026-10-15 -- code merged (#55 AbuseIPDB, #58 VirusTotal + OTX), not deployed, never run against a real service**
+- **Only the writer was missing**, so the work was backend-only: the periodic task `ioc.enrich_pending` (maintenance queue,
+  every 15 minutes, no-op without a provider key) -> `cti_api.services.ioc_enrichment.enrich_pending` -> provider clients and
+  card mapping in `ioc_providers`. The card shape is the one the UI already read (`key`, `name`, `verdict`, `score`, `raw`,
+  `tags`, `malware_families`, plus `checked_at`); `iocs.enrichment.updated_at` is shown by the dialog. See
+  `docs/ARCHITECTURE.md` section 3.7.
+- **Why a periodic task and not a pipeline stage**: the enrichment pipeline already costs 10-13 s + an LLM call per article;
+  a slow or dead provider must not hold articles back.
+- **Selection**: supported types, not `auto_suppressed`, no card for that provider or a card older than its TTL, newest first.
+  No priority filter: measured on prod (2026-10-15) about 143 non-CVE IOCs and 24 IPs per day (791 IPs in total), far below
+  the free quotas, so every supported IOC is checked, capped by an hourly budget (Redis fixed window, `<PROVIDER>__RATE`).
+- **Providers** (a key left empty keeps that provider off; lookups only, nothing is ever submitted or scanned):
+
+  | Provider | Types | Verdict | TTL | Budget |
+  |---|---|---|---|---|
+  | AbuseIPDB (`ABUSEIPDB__API_KEY`) | ip | confidence >= 75 malicious, >= 25 suspicious, reports but low = clean, no reports = unknown | 3 days | `40/hour` (free plan: 1000/day) |
+  | VirusTotal (`VIRUSTOTAL__API_KEY`) | ip, domain, url, hashes | >= 3 engines malicious = malicious, 1-2 (or >= 3 suspicious) = suspicious; `score` = % of engines flagging | 30 days | `20/hour`, >= 15 s between calls (public API: 4/min, 500/day) |
+  | OTX (`OTX__API_KEY`) | ip, domain, hashes (URL not supported) | pulse count >= 3 malicious, 1-2 suspicious, 0 unknown; no score | 7 days | `300/hour` |
+
+  The thresholds are starting values (constants at the top of `ioc_providers.py`).
+- **Failure isolation**: one failed IOC leaves no card and is retried on the next run; 401/403/429 or three failures in a row
+  stop that provider for the run; the log carries the exception class and the status code only, never the message (it can
+  echo a key). A private or invalid IP is not sent anywhere: it gets a `skipped` card so it is not picked again.
+- **Licence**: VirusTotal's own documentation says the public (free) API must not be used in commercial products or
+  services. Fill `VIRUSTOTAL__API_KEY` only from a plan that allows it. AbuseIPDB's and OTX's terms of use were NOT checked
+  (only AbuseIPDB's API documentation, which does not mention commercial use): confirm before relying on a free plan.
+- **OTX starts on its own at deploy**, because `OTX__API_KEY` is already set on prod: about 3,300 IOCs of the supported types
+  are waiting, and the 25-per-run cap (four runs an hour) makes the backfill take roughly a day and a half.
+- **Open**: deploy; fill the AbuseIPDB key (and a VirusTotal key if the licence question is settled); look at a real card in
+  the IOC detail; urlscan, GreyNoise and Shodan are not built; no scoring integration (`confidence_score` and
+  `actionability_*` ignore the verdicts for now); OTX URL lookups need the path encoding checked against the real API.
 
 ## 5. Outbound feeds + integration API keys
 
@@ -276,8 +311,9 @@ is recorded in the audit log, and the result is scoped to `client_id`.
 ## 6. IOC lifecycle
 
 **Asked (proposal)**: first/last seen, sighting counts, expiry or decay, and false positive/allowlist.
-**Current state**: the allowlist already exists (`IocAllowlistEntry`); whether first/last seen, sightings, and expiry
-exist **has not been checked yet** -- the first step of this item proves it against the `iocs` schema.
+**Current state** (checked 2026-10-15): the allowlist exists (`IocAllowlistEntry`), and `iocs` already has `first_seen_at`,
+`last_seen_at`, `seen_count`, `confidence_score` + `confidence_decayed_at` (the `ioc.decay_sweep` task keeps the decay
+current). What does not exist is **expiry**: nothing drops an old IOC out of a feed, and there is no feed yet (#5).
 **Needed**: a decision on IOC age per type (IP vs hash vs domain).
 **Done when**: expired IOCs automatically drop out of the feed (#5) without being deleted from history.
 
@@ -434,10 +470,19 @@ to the production regex.
 and none has passed. The cause is still unknown (the logs are not readable from the development session), so
 "Done when" is not met. Check on the prod host what the interrupted runs left behind (`docker compose ps`, `:prev` tags,
 `alembic current`: whether `migrate` got to run).
-**Finding NOT yet worked on**: that ~0.45 ms per character cost is itself real in production -- `extract_iocs()`
-on one ~12KB article takes ~5 seconds of synchronous CPU in the enrichment stage. Not ReDoS and not part of #13; if
-it is to be optimised, the spot is `_RE_DOMAIN_DEFANGED` (e.g. a pre-filter before running the regex), with the
-`tests/unit/test_ioc_extractor.py` corpus as a byte-identical safety net.
+**Decision 2026-10-15**: the Deploy workflow is disabled on purpose (user); production is updated with `make deploy`.
+This item is no longer pursued.
+
+**Finding, corrected 2026-10-15**: the earlier claim that `extract_iocs()` takes ~5 seconds on a ~12KB article only holds for
+artificial text. Measured: ordinary prose of 12,000 characters takes 26-32 ms; only `"word. " x 2000` (12,004 characters)
+takes 4.7 s, which is the shape the ReDoS test uses. On 100 real pages from the test fixtures (tags stripped by hand, so
+inflated) the median was 19 ms and p90 361 ms; the slow ones were pages of 1-2 million characters, and two pages of 5.4-5.9
+million characters took more than 8 s. In production `fetch_text` gives article text, so the cost is small; the only risk is
+an outlier of huge text, and there is no overall length cap in `fetch_text.py` (only a 1500-character per-block limit).
+If it is ever worth guarding: skip `_RE_DOMAIN_DEFANGED` when the text contains none of its mandatory defang separators
+(`[.`, `.  ]`, `(.)`, `{.}`, `[dot]`, `(dot)`). The output is identical by construction (checked on three samples) and the
+pathological case drops from 4.7 s to 2.5 ms; the check must run on the same string given to `findall`
+(`text_no_urls_or_paths`). Not planned.
 
 ## 14. Logo missing from the CVE Tracker Excel export
 
@@ -507,6 +552,19 @@ with high KEV/EPSS that are not yet remediated; (c) the most frequently affected
 **Needed**: a choice of useful panels and a "too long" threshold for aging.
 **Done when**: each panel has a test in `tests/unit/test_cve_dashboard.py` and one integration test that
 locks the client/techstack scope like the existing panels.
+
+**Status 2026-10-15 -- done in #54 (merged), not yet looked at in a browser** (`tsc`, `eslint` and `pnpm build` pass; the
+panels were not rendered against real data). Computed in `build_dashboard`, drawn in `cve-dashboard-view.tsx`:
+- **Unresolved backlog by age**: CVEs that are unacknowledged, awaiting status, Open or In Progress (Completed, Risk Accepted
+  and Not Affected are not backlog), by severity x age band (0-7, 8-14, 15-30, 31+ calendar days in WIB since detection).
+  `OVERDUE_DAYS = 14` is the same limit as the "Fair" MTTA rating; there is no per-severity SLA yet (#16).
+- **Exploited or likely to be exploited, still unresolved**: unresolved CVEs in the CISA KEV catalog or with EPSS >= 0.1 (the
+  same threshold the CVEs tab colours as a warning), KEV first, then EPSS descending, then the oldest; capped at 10 with the
+  real count in `exploit_risk_total`. `list_dashboard_rows` now also reads `cisa_kev` and `epss_score`.
+- **Most affected tech**: top 10 techs by CVEs detected in the year (critical, high, and how many are unresolved).
+- `build_dashboard(today=)` takes the day the ages are measured from (default: today in WIB) so tests and the response
+  snapshot do not move with the clock.
+- **Open**: look at the three panels on the dev or prod instance; `OVERDUE_DAYS` and `EPSS_HIGH` are starting values.
 
 ## 18. CVE ticket field validation + the ticket model
 
@@ -702,19 +760,28 @@ formally; order = a suggestion.
   analyst can trigger it.
 
 **Data correctness**
-- `cisa_kev` / `active_exploitation` are never reset to `false` when CISA removes an entry from the KEV catalog.
+- **Fixed 2026-10-15 (#52)**: `cisa_kev` / `active_exploitation` were never reset to `false` when CISA removed an entry from
+  the KEV catalog. `run_cisa_kev_lookup` now clears them for checked CVEs missing from the catalog, but only when the catalog
+  has at least 1000 entries (an empty or truncated response must not clear every flag; the summary then says
+  `reset_skipped`). `CveTracker.active_exploitation` is written by KEV only; the analyst's value lives on the ticket.
 - Status "Resolved" without `actual_remediation_date` is not counted in MTTR (visible in the `n` on the dashboard);
   field validation for tickets is #18.
-- Tickets orphaned by an old `purge-orphaned` are not cleaned automatically (check: a ticket without a tracker row).
-- `recap` and `crossref` return one row per client, so a CVE tracked by two clients appears twice.
+- **Checked 2026-10-15 (#52)**: tickets orphaned by an old `purge-orphaned` are not cleaned automatically. `make
+  check-orphaned-tickets` lists them (read-only, deliberately without `--apply`: an orphan reconnects by itself if its tracker
+  row is created again, e.g. by the mirror promotion after the #19 cutover). On prod there were 0.
+- **Fixed**: `recap` and `crossref` returned one row per client, so a CVE tracked by two clients appeared twice. Recap was
+  fixed in #21 (`list_registered_between`), the PIR and actor crossrefs in #51 (`_strongest_per_cve`, one row per CVE, limit
+  applied after the dedupe).
 - `cve_newsletter_mentions` is written to only one tracker row (any client) and nothing reads it yet.
 - No code writes `cve_threat_actors` and `cve_ttps`, so the TA/TTP branch of `crossref` has no data.
-- The dashboard tables "Mean time metrics by severity" and "Monthly CVE volume by severity" do not show unrated CVEs yet
-  (the API does not send that bucket).
+- **Fixed 2026-10-15 (#51)**: the dashboard tables "Mean time metrics by severity" and "Monthly CVE volume by severity" did
+  not show unrated CVEs. `by_severity` now ends with an `UNRATED` row (only when there are unrated CVEs) and
+  `MonthMetrics.unrated` exists; the stacked chart is unchanged (no colour token for unrated).
 
 **Coverage**
 - `trending_cve` only searches `CVE-<current year>-`; last year's CVEs that are trending are missed (adding them costs more
-  X API tweets and the query syntax must be validated against the real API).
+  X API tweets and the query syntax must be validated against the real API). **It starts to matter in early January 2027**,
+  when December's CVE-2026 ids are still trending: check the cost, then search the previous year too until about March.
 
 **Done when**: each point is either fixed (with a test) or dropped with a one-line reason here.
 
@@ -942,8 +1009,8 @@ API output on dev, the page itself not yet looked at there**; tests, **met** (al
   team): 40 articles (3 highlights, 8 full cards, 29 compact rows; 20 APAC, 19 Global, 1 Indonesia), an Indonesian
   Executive Summary of 938 characters, no error and no CVE dropped. It covers only the week of 28 Sep because dev holds one
   weekly recap in September, and `uncovered` says so (1-27 Sep). One quality observation: the first highlight is titled
-  like a file name (`2026-09-28-AgtaBackup-RAT-Campaign.txt`), which an analyst would rewrite; the ranking does not filter
-  such titles.
+  like a file name (`2026-09-28-AgtaBackup-RAT-Campaign.txt`), which an analyst would rewrite; the ranking did not filter
+  such titles (fixed 2026-10-15, #53: see Open 1).
 - **Real draft in Outlook (2026-10-14, screenshots from the team)**: the September draft was created through the real
   Microsoft Graph and opened in Outlook (the new Outlook: Aptos font, rounded window). In **light mode** it is right: the
   logo shows inline without a white panel, the burgundy header, the "September 2026 Edition" label, the period line and
@@ -956,7 +1023,10 @@ API output on dev, the page itself not yet looked at there**; tests, **met** (al
 - **Open**:
   1. On dev: let an analyst read the Indonesian wording of the September suggestion, re-check the draft in Outlook dark
      mode after the dark-mode fix is deployed, and capture screenshots from Outlook desktop, Outlook web and Gmail.
-     Decide whether file-name titles should be filtered out of the suggestions.
+     File-name titles: decided and merged 2026-10-15 (#53): a title that is one bare file name (no spaces, a document
+     extension) never takes a Highlight slot; the article stays in its section. The source is the `blackorbird` scraper
+     (`blackorbird/APT_REPORT` uses the file name as the title); the Newsroom still shows the file name, and cleaning it
+     in the scraper is a separate, undecided change.
   2. The team confirms the **APAC country set** in `cti_core/regions.py` (World Bank East Asia & Pacific plus South Asia;
      Central Asia, the Middle East and Russia are out). It is a new decision: the pipeline had no APAC list before. The
      `mentioned` role also holds the actor's country, so a US victim hit by a Chinese actor lands in APAC; that follows
