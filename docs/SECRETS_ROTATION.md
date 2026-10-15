@@ -57,6 +57,8 @@ Listed here so they are included in periodic rotation and moved to Vault later.
 |---|---|---|
 | `TWITTER__API_KEY` | twitterapi.io (the DEFAULT Twitter source: `tweet_alerts_*`, `trending_cve`, `monitor_x`) | Issue/rotate in the twitterapi.io dashboard. |
 | `X__BEARER_TOKEN` | the OFFICIAL X v2 API (alternative source, selected per scraper in the control plane) | **Bearer only (app-only).** The consumer key/secret and access token/secret are NOT used (reading/search does not need them; they are for posting) -- do not put them on the server. Rotation: regenerate in the X Developer Console. Pay-per-use: set a **spending limit** in the console; every tweet read is billed. **ONE underscore** between `BEARER` and `TOKEN` (`__` = the nesting separator; `X__BEARER__TOKEN` makes the container fail to start). |
+| `ABUSEIPDB__API_KEY` | AbuseIPDB IP reputation (IOC enrichment, ROADMAP #4) | Issue/rotate in the AbuseIPDB account. Empty = provider off. The free plan allows 1000 checks/day; `ABUSEIPDB__RATE` (default `40/hour`) keeps the platform under it. |
+| `VIRUSTOTAL__API_KEY` | VirusTotal reputation (IOC enrichment, ROADMAP #4) | Empty = provider off. **The public (free) API must not be used in commercial products or services** (per VirusTotal's own terms): use a key from a plan whose licence allows it. `VIRUSTOTAL__RATE` defaults to `20/hour` (public limits: 4/min, 500/day). |
 
 ---
 

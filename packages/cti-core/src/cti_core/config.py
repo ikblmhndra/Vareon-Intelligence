@@ -144,6 +144,26 @@ class OtxSettings(_StrictModel):
     api_key: str = ""
 
 
+class AbuseipdbSettings(_StrictModel):
+    """Reputasi IP (ROADMAP #4). Kunci kosong = provider mati (tidak ada panggilan sama sekali)."""
+
+    api_key: str = ""
+    rate: str = "40/hour"
+    """Jatah lookup per jam (`cti_scraper.ratelimit.parse_rate`). 40/jam = 960/hari, di bawah batas
+    gratis 1000 cek/hari."""
+
+
+class VirustotalSettings(_StrictModel):
+    """Reputasi IP/domain/URL/hash (ROADMAP #4). Kunci kosong = provider mati.
+
+    API publik (gratis) VirusTotal dilarang untuk produk/layanan komersial; platform ini dipakai
+    perusahaan, jadi isi kunci dari plan yang lisensinya mengizinkan."""
+
+    api_key: str = ""
+    rate: str = "20/hour"
+    """20/jam = 480/hari, di bawah batas publik 500/hari (4/menit dijaga jeda antar panggilan)."""
+
+
 class ScraperSettings(_StrictModel):
     default_rate_limit: str = "20/minute"
     default_timeout_s: float = 30.0
@@ -280,6 +300,8 @@ class Settings(BaseSettings):
     twitter: TwitterSettings = Field(default_factory=TwitterSettings)
     x: XSettings = Field(default_factory=XSettings)
     otx: OtxSettings = Field(default_factory=OtxSettings)
+    abuseipdb: AbuseipdbSettings = Field(default_factory=AbuseipdbSettings)
+    virustotal: VirustotalSettings = Field(default_factory=VirustotalSettings)
     scraper: ScraperSettings = Field(default_factory=ScraperSettings)
     worker: WorkerSettings = Field(default_factory=WorkerSettings)
     cve_mirror: CveMirrorSettings = Field(default_factory=CveMirrorSettings)

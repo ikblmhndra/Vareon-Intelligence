@@ -67,3 +67,25 @@ def test_vault_backend_with_token_ok(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_telegram_thread_ids_parses_json_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     s = _settings(monkeypatch, TELEGRAM__THREAD_IDS='{"apac": 12, "ot": 19}')
     assert s.telegram.thread_ids == {"apac": 12, "ot": 19}
+
+
+def test_ioc_provider_keys_default_to_off_and_read_their_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    off = _settings(monkeypatch)
+    assert off.abuseipdb.api_key == "" and off.virustotal.api_key == ""
+    assert (off.abuseipdb.rate, off.virustotal.rate) == ("40/hour", "20/hour")
+
+    on = _settings(
+        monkeypatch,
+        ABUSEIPDB__API_KEY="abuse-key",
+        VIRUSTOTAL__API_KEY="vt-key",
+        VIRUSTOTAL__RATE="5/hour",
+    )
+    assert (on.abuseipdb.api_key, on.virustotal.api_key) == ("abuse-key", "vt-key")
+    assert on.virustotal.rate == "5/hour"
+
+
+def test_a_typo_in_an_ioc_provider_key_fails_loud(monkeypatch: pytest.MonkeyPatch) -> None:
+    with pytest.raises(ValidationError):
+        _settings(monkeypatch, ABUSEIPDB__APIKEY="typo")

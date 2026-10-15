@@ -137,6 +137,13 @@ def _refang(value: str) -> str:
     return v.strip()
 
 
+def refang(value: str) -> str:
+    """Bentuk yang bisa dikirim ke layanan luar: `1[.]2[.]3[.]4` -> `1.2.3.4`,
+    `hxxps://evil[.]com` -> `https://evil.com`. IOC disimpan apa adanya dari artikel (masih
+    defanged kalau artikelnya begitu), jadi enrichment wajib memanggil ini dulu."""
+    return _refang(value)
+
+
 def _is_private_ip(raw: str) -> bool:
     clean = _RE_DEFANG_DOT.sub(".", raw)
     try:
