@@ -1,6 +1,60 @@
 # serializer version: 1
 # name: test_dashboard_response_shape
   dict({
+    'backlog': dict({
+      'as_of': '2026-10-01',
+      'bands': list([
+        '0-7 days',
+        '8-14 days',
+        '15-30 days',
+        '31+ days',
+      ]),
+      'by_severity': list([
+        dict({
+          'bands': list([
+            0,
+            0,
+            1,
+            0,
+          ]),
+          'severity': 'CRITICAL',
+          'total': 1,
+        }),
+        dict({
+          'bands': list([
+            0,
+            0,
+            0,
+            0,
+          ]),
+          'severity': 'HIGH',
+          'total': 0,
+        }),
+        dict({
+          'bands': list([
+            0,
+            0,
+            0,
+            0,
+          ]),
+          'severity': 'MEDIUM',
+          'total': 0,
+        }),
+        dict({
+          'bands': list([
+            0,
+            0,
+            1,
+            0,
+          ]),
+          'severity': 'LOW',
+          'total': 1,
+        }),
+      ]),
+      'overdue': 2,
+      'threshold_days': 14,
+      'total': 2,
+    }),
     'by_severity': list([
       dict({
         'count': 1,
@@ -159,6 +213,9 @@
         'team': 'Unassigned',
       }),
     ]),
+    'exploit_risk': list([
+    ]),
+    'exploit_risk_total': 0,
     'monthly': list([
       dict({
         'completed': 1,
@@ -420,6 +477,22 @@
       'unrated': 0,
     }),
     'timezone': 'Asia/Jakarta',
+    'top_tech': list([
+      dict({
+        'backlog': 1,
+        'count': 2,
+        'critical': 0,
+        'high': 1,
+        'tech': 'nginx',
+      }),
+      dict({
+        'backlog': 1,
+        'count': 2,
+        'critical': 1,
+        'high': 0,
+        'tech': 'WordPress',
+      }),
+    ]),
     'year': 2026,
     'years': list([
       2026,

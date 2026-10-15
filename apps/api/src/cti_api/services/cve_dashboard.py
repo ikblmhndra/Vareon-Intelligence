@@ -49,14 +49,18 @@ from cti_core.db.repositories.cve import AsyncCveTrackerRepo
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_api.schemas.cve_dashboard import (
+    Backlog,
+    BacklogSeverity,
     CveDashboard,
     DashboardSummary,
+    ExploitRiskCve,
     MetricStat,
     MonthMetrics,
     SeverityMetrics,
     SlowestCve,
     StatusBreakdown,
     TeamMetrics,
+    TechCount,
 )
 
 TIMEZONE = "Asia/Jakarta"
@@ -81,6 +85,21 @@ _BUCKETS = (
     "completed",
     "not_affected",
 )
+
+BACKLOG_BUCKETS = frozenset({"unacknowledged", "awaiting_status", "open", "in_progress"})
+"""Bucket yang masih menjadi beban kerja. `risk_accepted` (keputusan sudah diambil), `completed`,
+dan `not_affected` bukan beban."""
+BACKLOG_BANDS = ((0, 7), (8, 14), (15, 30), (31, None))
+"""Pita umur (hari sejak terdeteksi), batas atas inklusif; `None` = tanpa batas."""
+OVERDUE_DAYS = 14
+"""Ambang "terlalu lama", sama dengan batas MTTA "Fair" di `ratingForMtta` (web). Belum ada target
+SLA per severity (ROADMAP #16), jadi ini angka awal yang bisa disetel."""
+EPSS_HIGH = 0.1
+"""EPSS (peluang dieksploitasi 30 hari ke depan) dari angka ini dianggap tinggi; hanya segelintir
+kecil CVE yang sampai sini. Angka awal, bisa disetel."""
+EXPLOIT_RISK_LIMIT = 10
+TOP_TECH_LIMIT = 10
+NO_TECH = "(none)"
 
 _STATUS_ALIASES = {
     "open": "open",
@@ -112,6 +131,8 @@ class DashRow:
     risk_acceptance: str
     acknowledge_time: datetime.datetime | None
     actual_remediation_date: datetime.date | None
+    cisa_kev: bool = False
+    epss_score: float | None = None
 
 
 @dataclass(frozen=True)
@@ -220,7 +241,106 @@ def _no_solution(solutions: str) -> bool:
     return not text or text == "no solution yet"
 
 
-def build_dashboard(rows: Iterable[DashRow], *, year: int, years: list[int]) -> CveDashboard:
+def _today() -> datetime.date:
+    """Hari ini (WIB). Satu-satunya pembaca jam di modul ini selain tahun bawaan di `get_dashboard`;
+    tes menggantinya supaya umur backlog (dan snapshot respons) tidak berubah tiap hari."""
+    return datetime.datetime.now(_TZ).date()
+
+
+def _band_label(low: int, high: int | None) -> str:
+    return f"{low}+ days" if high is None else f"{low}-{high} days"
+
+
+def _band_index(age: int) -> int:
+    for i, (_, high) in enumerate(BACKLOG_BANDS):
+        if high is None or age <= high:
+            return i
+    return len(BACKLOG_BANDS) - 1  # tak tercapai: pita terakhir tanpa batas
+
+
+def _backlog(items: list[_Computed], today: datetime.date) -> Backlog:
+    unresolved = [c for c in items if c.bucket in BACKLOG_BUCKETS]
+    ages = {id(c): _days(today, c.detected_local.date()) for c in unresolved}
+
+    def severity_row(label: str, group: list[_Computed]) -> BacklogSeverity:
+        bands = [0] * len(BACKLOG_BANDS)
+        for c in group:
+            bands[_band_index(ages[id(c)])] += 1
+        return BacklogSeverity(severity=label, total=len(group), bands=bands)
+
+    rows = [severity_row(s, [c for c in unresolved if c.severity == s]) for s in SEVERITIES]
+    unrated = [c for c in unresolved if c.severity is None]
+    if unrated:
+        rows.append(severity_row(UNRATED, unrated))
+    return Backlog(
+        as_of=today.isoformat(),
+        threshold_days=OVERDUE_DAYS,
+        bands=[_band_label(low, high) for low, high in BACKLOG_BANDS],
+        total=len(unresolved),
+        overdue=sum(1 for c in unresolved if ages[id(c)] > OVERDUE_DAYS),
+        by_severity=rows,
+    )
+
+
+def _exploit_risk(items: list[_Computed], today: datetime.date) -> tuple[list[ExploitRiskCve], int]:
+    """CVE yang belum selesai dan berstatus KEV atau ber-EPSS tinggi; KEV dulu, lalu EPSS menurun,
+    lalu yang terlama. Mengembalikan daftar yang dipotong dan jumlah sebenarnya."""
+    risky = [
+        c
+        for c in items
+        if c.bucket in BACKLOG_BUCKETS
+        and (c.row.cisa_kev or (c.row.epss_score is not None and c.row.epss_score >= EPSS_HIGH))
+    ]
+    risky.sort(
+        key=lambda c: (
+            not c.row.cisa_kev,
+            -(c.row.epss_score if c.row.epss_score is not None else -1.0),
+            c.detected_local,
+            c.row.cve_id,
+        )
+    )
+    shown = [
+        ExploitRiskCve(
+            cve_id=c.row.cve_id,
+            severity=c.severity or "",
+            tech=c.row.tech,
+            status=c.bucket,
+            cisa_kev=c.row.cisa_kev,
+            epss_score=c.row.epss_score,
+            age_days=_days(today, c.detected_local.date()),
+        )
+        for c in risky[:EXPLOIT_RISK_LIMIT]
+    ]
+    return shown, len(risky)
+
+
+def _top_tech(items: list[_Computed]) -> list[TechCount]:
+    groups: dict[str, list[_Computed]] = defaultdict(list)
+    for c in items:
+        groups[c.row.tech.strip() or NO_TECH].append(c)
+    ordered = sorted(groups, key=lambda t: (-len(groups[t]), t.lower()))
+    return [
+        TechCount(
+            tech=t,
+            count=len(groups[t]),
+            critical=sum(1 for c in groups[t] if c.severity == "CRITICAL"),
+            high=sum(1 for c in groups[t] if c.severity == "HIGH"),
+            backlog=sum(1 for c in groups[t] if c.bucket in BACKLOG_BUCKETS),
+        )
+        for t in ordered[:TOP_TECH_LIMIT]
+    ]
+
+
+def build_dashboard(
+    rows: Iterable[DashRow],
+    *,
+    year: int,
+    years: list[int],
+    today: datetime.date | None = None,
+) -> CveDashboard:
+    """`today` = hari (WIB) tempat umur backlog dihitung; kosong = hari ini. Satu-satunya masukan
+    yang bergantung jam, jadi tes mengisinya."""
+    today = today or _today()
     items = [c for c in map(_compute, rows) if c.detected_local.year == year]
 
     status = StatusBreakdown(**{b: sum(1 for c in items if c.bucket == b) for b in _BUCKETS})
@@ -315,6 +435,7 @@ def build_dashboard(rows: Iterable[DashRow], *, year: int, years: list[int]) -> 
         for c in ranked[:SLOWEST_LIMIT]
     ]
 
+    exploit_risk, exploit_risk_total = _exploit_risk(items, today)
     return CveDashboard(
         year=year,
         years=years,
@@ -328,6 +449,10 @@ def build_dashboard(rows: Iterable[DashRow], *, year: int, years: list[int]) -> 
         by_team=by_team,
         monthly=monthly,
         slowest=slowest,
+        backlog=_backlog(items, today),
+        exploit_risk=exploit_risk,
+        exploit_risk_total=exploit_risk_total,
+        top_tech=_top_tech(items),
     )
 
 
@@ -346,6 +471,8 @@ def _to_row(r: Any) -> DashRow:
         risk_acceptance=r.risk_acceptance or "",
         acknowledge_time=r.acknowledge_time,
         actual_remediation_date=r.actual_remediation_date,
+        cisa_kev=bool(r.cisa_kev),
+        epss_score=r.epss_score,
     )
 
 
@@ -360,6 +487,7 @@ async def get_dashboard(
     """`year=None` = tahun berjalan (WIB) kalau punya data, kalau tidak tahun
     terbaru yang ada datanya."""
     repo = AsyncCveTrackerRepo(session)
+    today = _today()
     years = await repo.list_detected_years(
         client_id=client_id, timezone=TIMEZONE, tech=tech, exclude_cve_ids=exclude_cve_ids
     )
@@ -373,4 +501,4 @@ async def get_dashboard(
         tech=tech,
         exclude_cve_ids=exclude_cve_ids,
     )
-    return build_dashboard([_to_row(r) for r in raw], year=year, years=years)
+    return build_dashboard([_to_row(r) for r in raw], year=year, years=years, today=today)

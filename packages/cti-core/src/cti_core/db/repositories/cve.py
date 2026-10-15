@@ -805,6 +805,8 @@ class AsyncCveTrackerRepo:
                 CveTracker.published,
                 CveTracker.detected_on,
                 CveTracker.solutions,
+                CveTracker.cisa_kev,
+                CveTracker.epss_score,
                 CveTicket.ticket_id,
                 CveTicket.owner_team,
                 CveTicket.remediation_status,

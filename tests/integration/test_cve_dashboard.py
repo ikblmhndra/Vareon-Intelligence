@@ -13,11 +13,13 @@ from collections.abc import Callable
 from typing import Any
 
 import pytest
+from cti_api.services import cve_dashboard as dashboard_service
 from cti_core.db.models.cve import CveTicket, CveTracker
 from cti_core.db.models.techstack import TechStackEntry
 from cti_core.db.repositories.auth import AsyncClientRepo
 from cti_core.db.repositories.cve import AsyncCveFalsePositiveRepo
 from httpx import AsyncClient
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 from syrupy.assertion import SnapshotAssertion
 
@@ -186,6 +188,43 @@ async def test_dashboard_scopes_and_computes_from_real_rows(
     assert d["slowest"][0]["detected_on"] == "2026-01-15 10:00"
 
 
+async def test_dashboard_exploit_risk_backlog_and_top_tech_read_the_joined_columns(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+) -> None:
+    """`cisa_kev` dan `epss_score` ikut di SELECT `list_dashboard_rows`; yang sudah selesai tidak
+    masuk daftar risiko, dan angka backlog/tech konsisten dengan scope yang sama."""
+    await _seed(api_session)
+    await api_session.execute(
+        update(CveTracker)
+        .where(CveTracker.cve_id == "CVE-2026-7103")
+        .values(cisa_kev=True, epss_score=0.7)
+    )
+    await api_session.execute(  # 7104 sudah Resolved: tak boleh muncul walau KEV
+        update(CveTracker).where(CveTracker.cve_id == "CVE-2026-7104").values(cisa_kev=True)
+    )
+    await api_session.flush()
+
+    resp = await api_client.get("/api/cve/dashboard?year=2026", headers=auth_header())
+    assert resp.status_code == 200
+    d = resp.json()
+
+    assert [c["cve_id"] for c in d["exploit_risk"]] == ["CVE-2026-7103"]
+    risky = d["exploit_risk"][0]
+    assert (risky["cisa_kev"], risky["epss_score"], risky["status"]) == (
+        True,
+        0.7,
+        "unacknowledged",
+    )
+    assert d["exploit_risk_total"] == 1
+
+    # belum selesai = 7101 (In Progress) dan 7103 (belum di-ack); 7102 Not Affected, 7104 Resolved
+    assert d["backlog"]["total"] == 2
+    assert sum(sum(s["bands"]) for s in d["backlog"]["by_severity"]) == 2
+    assert sum(t["count"] for t in d["top_tech"]) == d["summary"]["total"] == 4
+
+
 async def test_dashboard_other_year_and_client_scope(
     api_client: AsyncClient,
     api_session: AsyncSession,
@@ -253,7 +292,10 @@ async def test_dashboard_response_shape(
     api_session: AsyncSession,
     auth_header: Callable[..., dict[str, str]],
     snapshot: SnapshotAssertion,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Umur backlog dihitung dari "hari ini": tanpa tanggal tetap, snapshot ini berubah tiap hari.
+    monkeypatch.setattr(dashboard_service, "_today", lambda: datetime.date(2026, 10, 1))
     await _seed(api_session)
     resp = await api_client.get("/api/cve/dashboard?year=2026", headers=auth_header())
     assert resp.status_code == 200

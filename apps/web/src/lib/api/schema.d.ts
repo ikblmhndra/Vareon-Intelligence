@@ -3448,6 +3448,43 @@ export interface components {
              */
             year: number;
         };
+        /**
+         * Backlog
+         * @description Beban kerja yang belum selesai (belum di-acknowledge, menunggu status, Open, atau In
+         *     Progress), dikelompokkan menurut umur sejak terdeteksi (hari kalender WIB).
+         */
+        Backlog: {
+            /** As Of */
+            as_of: string;
+            /** Bands */
+            bands: string[];
+            /** By Severity */
+            by_severity: components["schemas"]["BacklogSeverity"][];
+            /**
+             * Overdue
+             * @default 0
+             */
+            overdue: number;
+            /** Threshold Days */
+            threshold_days: number;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+        };
+        /** BacklogSeverity */
+        BacklogSeverity: {
+            /** Bands */
+            bands: number[];
+            /** Severity */
+            severity: string;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+        };
         /** Body_import_lockfile_endpoint_api_pkgvuln_import_lockfile_post */
         Body_import_lockfile_endpoint_api_pkgvuln_import_lockfile_post: {
             /** File */
@@ -3624,10 +3661,18 @@ export interface components {
         };
         /** CveDashboard */
         CveDashboard: {
+            backlog: components["schemas"]["Backlog"];
             /** By Severity */
             by_severity: components["schemas"]["SeverityMetrics"][];
             /** By Team */
             by_team: components["schemas"]["TeamMetrics"][];
+            /** Exploit Risk */
+            exploit_risk: components["schemas"]["ExploitRiskCve"][];
+            /**
+             * Exploit Risk Total
+             * @default 0
+             */
+            exploit_risk_total: number;
             /** Monthly */
             monthly: components["schemas"]["MonthMetrics"][];
             mtta: components["schemas"]["MetricStat"];
@@ -3639,6 +3684,8 @@ export interface components {
             summary: components["schemas"]["DashboardSummary"];
             /** Timezone */
             timezone: string;
+            /** Top Tech */
+            top_tech: components["schemas"]["TechCount"][];
             /** Year */
             year: number;
             /** Years */
@@ -4081,6 +4128,38 @@ export interface components {
              * @default
              */
             ticket_id: string;
+        };
+        /**
+         * ExploitRiskCve
+         * @description CVE yang belum selesai tetapi terbukti/berpeluang tinggi dieksploitasi.
+         */
+        ExploitRiskCve: {
+            /**
+             * Age Days
+             * @default 0
+             */
+            age_days: number;
+            /**
+             * Cisa Kev
+             * @default false
+             */
+            cisa_kev: boolean;
+            /** Cve Id */
+            cve_id: string;
+            /** Epss Score */
+            epss_score?: number | null;
+            /**
+             * Severity
+             * @default
+             */
+            severity: string;
+            /** Status */
+            status: string;
+            /**
+             * Tech
+             * @default
+             */
+            tech: string;
         };
         /** FeedbackBody */
         FeedbackBody: {
@@ -5603,6 +5682,28 @@ export interface components {
             mttr: components["schemas"]["MetricStat"];
             /** Team */
             team: string;
+        };
+        /** TechCount */
+        TechCount: {
+            /**
+             * Backlog
+             * @default 0
+             */
+            backlog: number;
+            /** Count */
+            count: number;
+            /**
+             * Critical
+             * @default 0
+             */
+            critical: number;
+            /**
+             * High
+             * @default 0
+             */
+            high: number;
+            /** Tech */
+            tech: string;
         };
         /**
          * TechStackAdd
