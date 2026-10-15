@@ -30,7 +30,7 @@ scraper (`new_cve`). Everything else (enrichment, tickets, dashboard, export) wo
 ## 2. Ingest: the `new_cve` scraper
 
 `scrapers/src/cti_scrapers/feeds/new_cve.py`. `meta`: `id="new_cve"`, schedule `spread("0 * * * *")` (hourly,
-minute shifted), `rate_limit="60/minute"`, `max_items=300`, `credential="nvd"` (so it goes to the `scrape.api` queue),
+minute shifted), `rate_limit="60/minute"`, `max_items=600`, `credential="nvd"` (so it goes to the `scrape.api` queue),
 `reference_data=("techstack", "techstack_by_client")`, `dedup_key()` = `None`
 (**always re-upserts**, because MITRE can update scores).
 
@@ -47,8 +47,19 @@ The steps of one run (`NewCve.fetch`):
    CNA's vendor/product/packageName/CPE; if the CNA did not fill in a product (or a placeholder `n/a`...)
    it falls back to the summary. Rejections are logged as `cve_candidate_tech_not_affected`.
 6. **Projection to clients**: for each client that has one of the affected techs, one `CveItem`. If
-   a client has several affected techs, the **alphabetically first** one is used. Stops at
-   `max_items` (300).
+   a client has several affected techs, the **alphabetically first** one is used.
+   **Order and cap**: candidates are processed **round-robin across techs** (one per tech per round, techs in
+   `techstack` order, `NewCve._fair_order`), not tech by tech. The run stops at `max_items` (600; one row per
+   (CVE, client)), and when it stops with candidates left it is **not silent**: the log has
+   `cve_max_items_reached` (`remaining_candidates` = an upper bound, some may fail the relevance gate;
+   `first_tech`, `pending_techs`) and the run status is **`partial`** (reason in the run's `errors`, badge on
+   `/scrapers`). Before, candidates ran in alphabetical tech order, so a low `max_items` starved the late techs
+   (prod 2026-10-15: override `max_items=100`, every run `ok` with FOUND=100, no Palo Alto CVE ever recorded).
+   The default was raised 300 → 600 because the real window load was ~310 rows (one client with a techstack), so even the
+   default cut it; the contract ceiling is 1000. The cap counts rows, but the cost driver is one MITRE call per
+   candidate (rejected ones included, they do not count towards the cap).
+   A `partial` run still counts as checked (`/freshness` `SUCCESS_STATUSES`); if it repeats, raise or reset the
+   `max_items` override on `/scrapers`.
 7. `CveItem` (`cti_scraper/items.py`) → sink (`cti_scraper/sinks.py::_cve_sink`) → `CveTrackerRepo.upsert`.
 
 Important `upsert` behaviour (`cti_core/db/repositories/cve.py`):

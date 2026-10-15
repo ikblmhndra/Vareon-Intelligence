@@ -212,8 +212,12 @@ PY
 Check: the item count makes sense, titles and URLs are right, dates are filled in, and there is no
 `ERROR [...]` in the `dry-run` output.
 
-Possible statuses: `ok`, `empty` (zero items), `parse_error` (structure changed),
+Possible statuses: `ok`, `empty` (zero items), `partial` (see below), `parse_error` (structure changed),
 `fetch_error`, `rate_limited`, `backpressure`.
+
+`partial`: if `fetch()` deliberately stops before every source candidate is processed (a `max_items` cut-off
+with candidates left), call `ctx.mark_partial("reason")` instead of returning silently. The run is recorded as
+`partial` (the reason goes to the run's errors), not `ok`; items already yielded are processed normally.
 
 Dry-run can also be run in the prod container (read-only with respect to data):
 

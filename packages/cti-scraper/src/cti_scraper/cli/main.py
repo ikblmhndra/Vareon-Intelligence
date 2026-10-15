@@ -108,7 +108,7 @@ def dry_run(
     )
     for err in result.errors:
         typer.echo(f"  ERROR [{err['stage']}] {err['type']}: {err['message']}", err=True)
-    if result.status not in ("ok", "empty"):
+    if result.status not in ("ok", "empty", "partial"):
         raise typer.Exit(1)
 
 
@@ -145,7 +145,7 @@ def run_scraper(
         f"items_new={result.items_new} items_dropped={result.items_dropped} "
         f"items_failed={result.items_failed} duration_ms={result.duration_ms}"
     )
-    if result.status not in ("ok", "empty"):
+    if result.status not in ("ok", "empty", "partial"):
         raise typer.Exit(1)
 
 

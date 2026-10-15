@@ -192,6 +192,17 @@ class ScrapeContext:
     scraper gak pernah nyentuh jaringan beneran -- byte-nya dari fixture
     Fase 0. Produksi selalu `None`; jalur network asli gak berubah."""
 
+    partial_reason: str | None = None
+    """Alasan run ini TERPOTONG, diisi lewat `mark_partial()`; `None` = run lengkap. `Runner`
+    membacanya SESUDAH `fetch()` habis dan mencatat status `partial` (bukan `ok`)."""
+
+    def mark_partial(self, reason: str) -> None:
+        """Tandai run ini terpotong sebelum semua kandidat sumber diproses (mis. kena
+        `meta.max_items`). Cuma menaikkan status ke `partial` -- item yang sudah di-`yield`
+        tetap diproses normal, dan error (`fetch_error` dst.) tetap menang atas `partial`.
+        Pemanggilan kedua menimpa alasan sebelumnya."""
+        self.partial_reason = reason
+
     @contextmanager
     def page(self, **kwargs: Any) -> Iterator[Page]:
         """Playwright page. Raise `ConfigError` kalau `meta.runtime` bukan
