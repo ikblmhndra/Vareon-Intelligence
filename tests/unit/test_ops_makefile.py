@@ -54,3 +54,12 @@ def test_help_lists_the_target() -> None:
     ).stdout
 
     assert "make backfill-published-at" in out
+
+
+def test_check_orphaned_tickets_runs_the_read_only_tool_in_the_worker_service() -> None:
+    cmd = make_n("check-orphaned-tickets", "ARGS=--client acme")
+
+    assert "--entrypoint python worker" in cmd and ":/tools:ro" in cmd
+    assert cmd.endswith("/tools/ops/check_orphaned_tickets.py --client acme")
+    assert (ROOT / "tools/ops/check_orphaned_tickets.py").is_file()
+    assert "--apply" not in make_n("check-orphaned-tickets")  # tool ini memang tak punya --apply

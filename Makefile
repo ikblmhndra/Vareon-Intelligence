@@ -1,6 +1,6 @@
 # Jalan pintas operasional. Detail: README.md dan docs/CUTOVER_RUNBOOK.md.
 .PHONY: help fresh-deploy fresh-status deploy backfill-published-at backfill-cve-mirror
-.PHONY: promote-cve-mirror compare-promotion-shadow catalog-mapping
+.PHONY: promote-cve-mirror compare-promotion-shadow catalog-mapping check-orphaned-tickets
 
 help:
 	@echo "make fresh-deploy [ARGS='--skip-build --skip-nginx']  deploy dari nol di host ini (idempoten)"
@@ -12,6 +12,7 @@ help:
 	@echo "make compare-promotion-shadow SINCE=2026-09-01 [ARGS='--client acme']  bandingkan bayangan dengan cve_tracker (hanya baca)"
 	@echo "make catalog-mapping CMD=export|import|suggest [ARGS='--file /work/mapping.json --apply']  pemetaan techstack->katalog sebagai berkas (import = laporan saja tanpa --apply)"
 	@echo "make backfill-published-at [ARGS='--apply --client acme']  isi jam publish MITRE CVE lama (laporan saja tanpa --apply)"
+	@echo "make check-orphaned-tickets [ARGS='--client acme']  daftar tiket CVE tanpa baris tracker (hanya baca)"
 
 fresh-deploy:
 	bash tools/ops/fresh_deploy.sh $(ARGS)
@@ -30,6 +31,12 @@ backfill-published-at:
 	docker compose --env-file docker/stack.env --profile app run --rm --no-deps -T \
 	  -v "$(CURDIR)/tools:/tools:ro" --entrypoint python worker \
 	  /tools/ops/backfill_cve_published_at.py $(ARGS)
+
+# Tiket CVE yang tidak punya baris tracker (sisa `purge-orphaned` lama). HANYA MEMBACA, tidak ada --apply.
+check-orphaned-tickets:
+	docker compose --env-file docker/stack.env --profile app run --rm --no-deps -T \
+	  -v "$(CURDIR)/tools:/tools:ro" --entrypoint python worker \
+	  /tools/ops/check_orphaned_tickets.py $(ARGS)
 
 # Isi awal mirror CVE + katalog tech (ROADMAP #19). SOURCE = clone cvelistV5 atau zip rilisnya di host;
 # di-mount read-only ke /data. Tanpa ARGS = laporan saja (di-rollback); `ARGS=--apply` baru menulis.
