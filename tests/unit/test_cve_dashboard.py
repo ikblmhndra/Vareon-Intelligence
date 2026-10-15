@@ -212,7 +212,55 @@ def test_severity_counts_fall_back_to_score_and_count_unrated() -> None:
     sm = d.summary
     assert (sm.critical, sm.high, sm.medium, sm.low, sm.unrated) == (1, 1, 0, 0, 1)
     assert sm.critical + sm.high + sm.medium + sm.low + sm.unrated == sm.total
-    assert [s.count for s in d.by_severity] == [1, 1, 0, 0]
+    assert [s.count for s in d.by_severity] == [1, 1, 0, 0, 1]
+
+
+def test_by_severity_shows_unrated_row_only_when_there_are_unrated_cves() -> None:
+    """Tabel "Mean time metrics by severity" harus menjumlah ke total: kalau ada CVE tanpa
+    severity dan tanpa skor, barisnya `UNRATED` ikut dikirim (di ujung, setelah LOW); kalau
+    tidak ada, bentuk daftarnya tetap empat baris seperti sebelumnya."""
+    rated = _row("CVE-2026-0001", severity_label="HIGH", score=7.5)
+    unrated = _row(
+        "CVE-2026-0002",
+        severity_label="",
+        score=None,
+        acknowledge_time=_ack(6),  # 3 hari setelah terdeteksi (3 Mar)
+    )
+    with_unrated = build_dashboard([rated, unrated], year=2026, years=[2026])
+    assert [s.severity for s in with_unrated.by_severity] == [
+        "CRITICAL",
+        "HIGH",
+        "MEDIUM",
+        "LOW",
+        "UNRATED",
+    ]
+    last = with_unrated.by_severity[-1]
+    assert last.count == 1
+    assert last.mtta.n == 1 and last.mtta.mean == 3.0
+    assert sum(s.count for s in with_unrated.by_severity) == with_unrated.summary.total
+
+    only_rated = build_dashboard([rated], year=2026, years=[2026])
+    assert [s.severity for s in only_rated.by_severity] == ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+
+
+def test_monthly_counts_unrated_so_each_month_sums_to_its_total() -> None:
+    rows = [
+        _row("CVE-2026-0001", severity_label="CRITICAL", score=9.9),
+        _row("CVE-2026-0002", severity_label="", score=None),
+        _row("CVE-2026-0003", severity_label="", score=None),
+        _row(
+            "CVE-2026-0004",
+            severity_label="",
+            score=None,
+            detected_on=datetime.datetime(2026, 4, 3, 3, 0, tzinfo=UTC),
+        ),
+    ]
+    d = build_dashboard(rows, year=2026, years=[2026])
+    mar, apr = d.monthly[2], d.monthly[3]
+    assert (mar.total, mar.critical, mar.unrated) == (3, 1, 2)
+    assert (apr.total, apr.unrated) == (1, 1)
+    for m in d.monthly:
+        assert m.critical + m.high + m.medium + m.low + m.unrated == m.total
 
 
 def test_no_solution_yet_counts_blank_and_placeholder() -> None:

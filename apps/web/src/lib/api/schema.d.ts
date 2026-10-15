@@ -4311,6 +4311,11 @@ export interface components {
              * @default 0
              */
             total: number;
+            /**
+             * Unrated
+             * @default 0
+             */
+            unrated: number;
         };
         /** NewsletterListItem */
         NewsletterListItem: {

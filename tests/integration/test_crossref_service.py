@@ -136,3 +136,32 @@ async def test_get_ta_crossrefs_no_profile(async_db_session: AsyncSession) -> No
     assert result["has_profile"] is False
     assert result["profile_summary"] is None
     assert result["matched_cves"] == []
+
+
+async def test_pir_and_actor_crossrefs_list_a_cve_tracked_by_two_clients_once(
+    async_db_session: AsyncSession,
+) -> None:
+    """Tracker menyimpan satu baris PER CLIENT: CVE yang valid di dua client dulu muncul dua kali
+    (dan memakai dua slot dari batas 50/30). Sekarang satu per `cve_id`, baris terkuat (skor CVSS
+    tertinggi) yang mewakili."""
+    clients = AsyncClientRepo(async_db_session)
+    await clients.ensure_default()
+    await clients.create(client_id="acme", name="Acme", countries=[])
+    for client_id, score in (("default", 7.0), ("acme", 9.8)):
+        row = CveTracker(cve_id="CVE-2026-7777", client_id=client_id, tech="nginx", cve_score=score)
+        row.threat_actors = [CveThreatActor(threat_actor="Apt41")]
+        async_db_session.add(row)
+    async_db_session.add(
+        CveTracker(cve_id="CVE-2026-7778", client_id="default", tech="nginx", cve_score=5.0)
+    )
+    await async_db_session.flush()
+    pir = await AsyncPIRRepo(async_db_session).create(
+        {"title": "Watch nginx", "criteria": {"industries": ["nginx"]}}, client_id="default"
+    )
+
+    by_pir = await crossref_service.get_pir_crossrefs(async_db_session, pir.id)
+    by_actor = await crossref_service.get_ta_crossrefs(async_db_session, "Apt41")
+
+    assert [c["cve_id"] for c in by_pir["matched_cves"]] == ["CVE-2026-7777", "CVE-2026-7778"]
+    assert by_pir["matched_cves"][0]["score"] == 9.8
+    assert [c["cve_id"] for c in by_actor["matched_cves"]] == ["CVE-2026-7777"]

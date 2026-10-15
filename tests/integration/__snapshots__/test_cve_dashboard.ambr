@@ -173,6 +173,7 @@
         'mttr_mean': 5.0,
         'not_affected': 0,
         'total': 1,
+        'unrated': 0,
       }),
       dict({
         'completed': 0,
@@ -187,6 +188,7 @@
         'mttr_mean': None,
         'not_affected': 0,
         'total': 0,
+        'unrated': 0,
       }),
       dict({
         'completed': 0,
@@ -201,6 +203,7 @@
         'mttr_mean': None,
         'not_affected': 0,
         'total': 0,
+        'unrated': 0,
       }),
       dict({
         'completed': 0,
@@ -215,6 +218,7 @@
         'mttr_mean': None,
         'not_affected': 0,
         'total': 0,
+        'unrated': 0,
       }),
       dict({
         'completed': 0,
@@ -229,6 +233,7 @@
         'mttr_mean': None,
         'not_affected': 0,
         'total': 0,
+        'unrated': 0,
       }),
       dict({
         'completed': 0,
@@ -243,6 +248,7 @@
         'mttr_mean': None,
         'not_affected': 0,
         'total': 0,
+        'unrated': 0,
       }),
       dict({
         'completed': 0,
@@ -257,6 +263,7 @@
         'mttr_mean': None,
         'not_affected': 0,
         'total': 0,
+        'unrated': 0,
       }),
       dict({
         'completed': 0,
@@ -271,6 +278,7 @@
         'mttr_mean': None,
         'not_affected': 0,
         'total': 0,
+        'unrated': 0,
       }),
       dict({
         'completed': 0,
@@ -285,6 +293,7 @@
         'mttr_mean': None,
         'not_affected': 1,
         'total': 3,
+        'unrated': 0,
       }),
       dict({
         'completed': 0,
@@ -299,6 +308,7 @@
         'mttr_mean': None,
         'not_affected': 0,
         'total': 0,
+        'unrated': 0,
       }),
       dict({
         'completed': 0,
@@ -313,6 +323,7 @@
         'mttr_mean': None,
         'not_affected': 0,
         'total': 0,
+        'unrated': 0,
       }),
       dict({
         'completed': 0,
@@ -327,6 +338,7 @@
         'mttr_mean': None,
         'not_affected': 0,
         'total': 0,
+        'unrated': 0,
       }),
     ]),
     'mtta': dict({

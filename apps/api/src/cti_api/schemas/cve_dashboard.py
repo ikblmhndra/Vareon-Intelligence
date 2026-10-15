@@ -58,6 +58,8 @@ class DashboardSummary(BaseModel):
 
 class SeverityMetrics(BaseModel):
     severity: str
+    """`CRITICAL`/`HIGH`/`MEDIUM`/`LOW`, ditambah `UNRATED` di ujung HANYA kalau tahun itu punya
+    CVE tanpa severity tersimpan dan tanpa skor CVSS."""
     count: int
     mttd: MetricStat
     mtta: MetricStat
@@ -82,6 +84,9 @@ class MonthMetrics(BaseModel):
     high: int = 0
     medium: int = 0
     low: int = 0
+    unrated: int = 0
+    """CVE bulan itu tanpa severity dan tanpa skor, supaya
+    `critical + high + medium + low + unrated == total` berlaku per bulan."""
     completed: int = 0
     not_affected: int = 0
     in_progress: int = 0
