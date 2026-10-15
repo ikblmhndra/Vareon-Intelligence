@@ -67,8 +67,8 @@ class RunResult:
     run_id: str
     scraper_id: str
     status: str
-    """ok | empty | parse_error | fetch_error | rate_limited | backpressure |
-    disabled."""
+    """ok | empty | partial | parse_error | fetch_error | rate_limited | backpressure |
+    disabled. `partial` = run selesai tapi terpotong (`ScrapeContext.mark_partial`)."""
     items_found: int = 0
     items_new: int = 0
     items_dropped: int = 0
@@ -308,6 +308,15 @@ class Runner:
 
             if result.items_found == 0:
                 result.status = "empty"
+            if ctx.partial_reason is not None:
+                # Scraper bilang sendiri run-nya terpotong (mis. kena `max_items`): jangan
+                # tampil `ok` di control plane. Alasannya masuk `errors` supaya terbaca di
+                # detail run, bukan cuma di log worker.
+                result.status = "partial"
+                result.errors.append(
+                    {"stage": "fetch", "type": "Partial", "message": ctx.partial_reason}
+                )
+                log.warning("run_partial", reason=ctx.partial_reason)
 
         except ParseError as e:
             result.status = "parse_error"

@@ -33,6 +33,12 @@ Bandingkan sama `ScraperNews/newCveThreat.py` asli (391 baris):
   dst. Sekarang kandidat hanya lolos kalau nama tech muncul di vendor/product/packageName/CPE
   record MITRE (lihat `relevant_techs`). Satu CVE juga dikelompokkan per `cve_id` -- dulu `seen`
   global membuat CVE yang kena beberapa tech menempel ke tech pertama yang kebetulan ketemu.
+- **`max_items` tidak boleh membuang CVE diam-diam** (prod 2026-10-15: override `max_items=100`,
+  tiap run FOUND=100 persis berstatus `ok`, CVE Palo Alto -- huruf "p" -- tak pernah tercatat).
+  Dulu kandidat diproses menurut urutan `techstack` (abjad) lalu `return` begitu cap tercapai, jadi
+  tech di belakang abjad kelaparan setiap kali tech awal ramai. Sekarang kandidat diproses
+  round-robin antar tech (`_fair_order`) dan run yang berhenti karena cap ditandai `partial`
+  + warning `cve_max_items_reached` (lihat `_report_cap_reached`).
 """
 
 from __future__ import annotations
@@ -105,9 +111,11 @@ class NewCve(BaseScraper):
         self._tenable_candidates(ctx, tech_list, candidates)
 
         tech_order = {tech.strip(): i for i, tech in enumerate(tech_list)}
+        ordered = self._fair_order(candidates, tech_order)
         found = 0
-        for cand in candidates.values():
+        for pos, cand in enumerate(ordered):
             if found >= self.meta.max_items:
+                self._report_cap_reached(ctx, ordered[pos:], tech_order)
                 return
 
             techs = [t for t in cand["techs"] if t in tech_to_clients]
@@ -139,9 +147,63 @@ class NewCve(BaseScraper):
 
             for client_id, tech in client_tech.items():
                 if found >= self.meta.max_items:
+                    # Kandidat ini baru sebagian client yang tercatat -- ikut dihitung sisa.
+                    self._report_cap_reached(ctx, ordered[pos:], tech_order)
                     return
                 found += 1
                 yield CveItem(client_id=client_id, tech=tech, **detail.fields)
+
+    @staticmethod
+    def _fair_order(
+        candidates: dict[str, dict[str, Any]], tech_order: dict[str, int]
+    ) -> list[dict[str, Any]]:
+        """Urutan proses kandidat: round-robin antar tech, bukan tech demi tech.
+
+        `candidates` terisi menurut urutan `techstack` (abjad), jadi diproses apa adanya cap
+        `max_items` selalu menghantam tech paling belakang (palo alto, proofpoint, splunk, ...)
+        ketika tech awal (fortinet, gitlab, ...) ramai. Di sini tiap putaran mengambil satu
+        kandidat dari antrean tiap tech (urutan antar tech tetap `techstack`, urutan dalam satu
+        tech tetap urutan NVD/Tenable), sehingga bila cap memotong run, sisa yang tak terproses
+        tersebar tipis di semua tech -- bukan satu huruf yang hilang total. Kandidat yang dibawa
+        beberapa tech cuma diproses sekali (di antrean tech yang lebih dulu mengambilnya); `cve_id`
+        dan pemilihan tech per client (abjad, di `fetch`) tidak berubah.
+        """
+        queues: dict[str, list[dict[str, Any]]] = {}
+        for cand in candidates.values():
+            for tech in cand["techs"]:
+                queues.setdefault(tech, []).append(cand)
+
+        techs = sorted(queues, key=tech_order.__getitem__)
+        ordered: list[dict[str, Any]] = []
+        taken: set[str] = set()
+        for depth in range(max(map(len, queues.values()), default=0)):
+            for tech in techs:
+                if depth < len(queues[tech]) and queues[tech][depth]["id"] not in taken:
+                    cand = queues[tech][depth]
+                    taken.add(cand["id"])
+                    ordered.append(cand)
+        return ordered
+
+    def _report_cap_reached(
+        self, ctx: ScrapeContext, remaining: list[dict[str, Any]], tech_order: dict[str, int]
+    ) -> None:
+        """`fetch()` berhenti karena `max_items`, bukan karena kandidat habis: log + tandai run
+        `partial` supaya control plane tidak menampilkan `ok`. `remaining` itu batas ATAS CVE yang
+        tak terproses -- sebagian mungkin akan dibuang gate relevansi teks kalau diperiksa."""
+        pending_techs = sorted(
+            {tech for cand in remaining for tech in cand["techs"]}, key=tech_order.__getitem__
+        )
+        ctx.log.warning(
+            "cve_max_items_reached",
+            max_items=self.meta.max_items,
+            remaining_candidates=len(remaining),
+            first_tech=pending_techs[0],
+            pending_techs=pending_techs,
+        )
+        ctx.mark_partial(
+            f"max_items={self.meta.max_items} tercapai; {len(remaining)} kandidat CVE belum "
+            f"diproses (tech pertama yang terdampak: {pending_techs[0]})"
+        )
 
     @staticmethod
     def _add_candidate(
