@@ -135,6 +135,108 @@ async def test_apply_cisa_kev_hits_matches_and_sets_active_exploitation(
     assert untouched[0].cisa_kev is False
 
 
+async def test_clear_cisa_kev_removed_unflags_only_checked_cves_missing_from_the_catalog(
+    async_db_session: AsyncSession,
+) -> None:
+    """Kebalikan `apply_cisa_kev_hits`: CISA kadang mencabut entri KEV, dan flag di tracker dulu
+    tak pernah turun lagi (ROADMAP #20)."""
+    await _ensure_clients(async_db_session)
+    flagged = {"cisa_kev": True, "active_exploitation": True, "cisa_kev_detail": {"vendor": "x"}}
+    async_db_session.add_all(
+        [
+            # dicabut CISA, di-track dua client -> keduanya turun
+            CveTracker(cve_id="CVE-2026-2001", client_id="default", tech="nginx", **flagged),
+            CveTracker(cve_id="CVE-2026-2001", client_id="acme", tech="nginx", **flagged),
+            # masih di katalog -> tetap
+            CveTracker(cve_id="CVE-2026-2002", client_id="default", tech="nginx", **flagged),
+            # tidak ikut dicek (bukan bagian `tp_cve_ids`) -> tidak disentuh
+            CveTracker(cve_id="CVE-2026-2003", client_id="default", tech="nginx", **flagged),
+            # tidak pernah bertanda -> tidak muncul di hasil
+            CveTracker(cve_id="CVE-2026-2004", client_id="default", tech="nginx"),
+        ]
+    )
+    await async_db_session.flush()
+
+    repo = AsyncCveTrackerRepo(async_db_session)
+    cleared = await repo.clear_cisa_kev_removed(
+        {"CVE-2026-2002": {}}, ["CVE-2026-2001", "cve-2026-2002", "CVE-2026-2004"]
+    )
+
+    assert cleared == ["CVE-2026-2001"]
+    rows = await repo.list_by_cve_ids_any_client(
+        ["CVE-2026-2001", "CVE-2026-2002", "CVE-2026-2003", "CVE-2026-2004"]
+    )
+    state = {(r.cve_id, r.client_id): (r.cisa_kev, r.active_exploitation) for r in rows}
+    assert state[("CVE-2026-2001", "default")] == (False, False)
+    assert state[("CVE-2026-2001", "acme")] == (False, False)
+    assert state[("CVE-2026-2002", "default")] == (True, True)
+    assert state[("CVE-2026-2003", "default")] == (True, True)
+    assert state[("CVE-2026-2004", "default")] == (False, False)
+    removed = next(r for r in rows if r.cve_id == "CVE-2026-2001")
+    assert removed.cisa_kev_detail == {}
+    assert removed.cisa_kev_checked_at is not None
+
+
+async def test_run_cisa_kev_lookup_unflags_cves_cisa_removed(
+    async_db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await _ensure_clients(async_db_session)
+    async_db_session.add_all(
+        [
+            CveTracker(
+                cve_id="CVE-2026-2101",
+                client_id="default",
+                tech="nginx",
+                cisa_kev=True,
+                active_exploitation=True,
+            ),
+            CveTracker(cve_id="CVE-2026-2102", client_id="default", tech="nginx"),
+        ]
+    )
+    await async_db_session.flush()
+    monkeypatch.setattr(cve_lookup_service, "_MIN_KEV_CATALOG_FOR_RESET", 1)
+
+    catalog = {"CVE-2026-2102": {"vendorProject": "nginx"}}
+    with patch.object(cve_lookup_service, "_fetch_cisa_kev", AsyncMock(return_value=catalog)):
+        summary = await cve_lookup_service.run_cisa_kev_lookup(async_db_session)
+
+    assert summary["matched_cves"] == ["CVE-2026-2102"]
+    assert summary["removed_cves"] == ["CVE-2026-2101"]
+    assert summary["reset_skipped"] is False
+    rows = await AsyncCveTrackerRepo(async_db_session).list_by_cve_ids_any_client(
+        ["CVE-2026-2101", "CVE-2026-2102"]
+    )
+    assert {r.cve_id: r.cisa_kev for r in rows} == {"CVE-2026-2101": False, "CVE-2026-2102": True}
+
+
+async def test_run_cisa_kev_lookup_keeps_flags_when_the_catalog_looks_truncated(
+    async_db_session: AsyncSession,
+) -> None:
+    """Katalog KEV asli berisi ribuan entri. Respons kosong atau terpotong (bentuk JSON berubah,
+    fetch parsial) tidak boleh menurunkan flag ratusan CVE sekaligus."""
+    await _ensure_clients(async_db_session)
+    async_db_session.add(
+        CveTracker(
+            cve_id="CVE-2026-2201",
+            client_id="default",
+            tech="nginx",
+            cisa_kev=True,
+            active_exploitation=True,
+        )
+    )
+    await async_db_session.flush()
+
+    with patch.object(cve_lookup_service, "_fetch_cisa_kev", AsyncMock(return_value={})):
+        summary = await cve_lookup_service.run_cisa_kev_lookup(async_db_session)
+
+    assert summary["removed_cves"] == []
+    assert summary["reset_skipped"] is True
+    row = (
+        await AsyncCveTrackerRepo(async_db_session).list_by_cve_ids_any_client(["CVE-2026-2201"])
+    )[0]
+    assert row.cisa_kev is True and row.active_exploitation is True
+
+
 async def test_apply_exploit_hits_dedups_per_row_and_sets_poc_available(
     async_db_session: AsyncSession,
 ) -> None:

@@ -21,8 +21,11 @@ import re
 from typing import Any
 
 import httpx
+import structlog
 from cti_core.db.repositories.cve import AsyncCveTrackerRepo
 from sqlalchemy.ext.asyncio import AsyncSession
+
+log = structlog.get_logger()
 
 _HEADERS = {
     "User-Agent": (
@@ -101,21 +104,49 @@ async def _fetch_cisa_kev() -> dict[str, dict[str, Any]]:
     return catalog
 
 
+_MIN_KEV_CATALOG_FOR_RESET = 1000
+"""Katalog KEV sungguhan berisi ribuan entri dan hanya bertambah (>1.400 sejak 2025). Di bawah
+angka ini katalog dianggap kosong/terpotong (bentuk JSON berubah, fetch parsial, halaman galat
+berstatus 200) dan flag `cisa_kev` TIDAK diturunkan: `data.get("vulnerabilities", [])` pada bentuk
+yang tak dikenal menghasilkan katalog kosong tanpa galat, dan tanpa pengaman itu satu respons buruk
+menurunkan flag semua CVE."""
+
+
 async def run_cisa_kev_lookup(
     session: AsyncSession, *, client_id: str | None = None
 ) -> dict[str, Any]:
-    """Cross-reference semua CVE true-positive di DB vs katalog KEV penuh."""
+    """Cross-reference semua CVE true-positive di DB vs katalog KEV penuh.
+
+    Dua arah: CVE yang ada di katalog diberi flag (`apply_cisa_kev_hits`), dan CVE bertanda yang
+    sudah dicabut CISA diturunkan (`clear_cisa_kev_removed`), yang kedua hanya bila katalognya
+    masuk akal (`_MIN_KEV_CATALOG_FOR_RESET`); bila dilewati, `reset_skipped` bernilai True dan
+    ada peringatan di log."""
     repo = AsyncCveTrackerRepo(session)
     tp_ids = await repo.list_true_positive_cve_ids(client_id)
 
     catalog = await _fetch_cisa_kev()
     matched = await repo.apply_cisa_kev_hits(catalog, tp_ids)
 
+    reset_skipped = len(catalog) < _MIN_KEV_CATALOG_FOR_RESET
+    removed: list[str] = []
+    if reset_skipped:
+        log.warning(
+            "cisa_kev_reset_skipped",
+            catalog_size=len(catalog),
+            min_size=_MIN_KEV_CATALOG_FOR_RESET,
+        )
+    else:
+        removed = await repo.clear_cisa_kev_removed(catalog, tp_ids)
+        if removed:
+            log.info("cisa_kev_removed", count=len(removed), cve_ids=removed)
+
     return {
         "checked": len(tp_ids),
         "matched": len(matched),
         "catalog_size": len(catalog),
         "matched_cves": matched,
+        "removed_cves": removed,
+        "reset_skipped": reset_skipped,
     }
 
 

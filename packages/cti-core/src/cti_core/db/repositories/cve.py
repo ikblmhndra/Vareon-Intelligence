@@ -498,6 +498,40 @@ class AsyncCveTrackerRepo:
         await self.session.flush()
         return matched
 
+    async def clear_cisa_kev_removed(
+        self, catalog: dict[str, dict[str, Any]], tp_cve_ids: Sequence[str]
+    ) -> list[str]:
+        """Kebalikan `apply_cisa_kev_hits`: baris (lintas client) dari `tp_cve_ids` yang masih
+        bertanda `cisa_kev` padahal CVE-nya TIDAK ada lagi di `catalog` diturunkan
+        (`cisa_kev`, `active_exploitation`, `cisa_kev_detail`). CISA kadang mencabut entri KEV, dan
+        flag-nya dulu tak pernah turun (ROADMAP #20), jadi KPI KEV di dashboard dan prioritas CVE
+        memakai status basi.
+
+        `CveTracker.active_exploitation` HANYA ditulis oleh KEV (`apply_cisa_kev_hits`); isian
+        analis ada di `CveTicket.active_exploitation` (kolom lain, string), jadi ikut diturunkan di
+        sini dan tiket tidak tersentuh. Yang dicek hanya `tp_cve_ids`, himpunan yang sama dengan
+        yang dicocokkan `apply_cisa_kev_hits`.
+
+        Balikin cve_id (huruf besar, urut) yang diturunkan. PEMANGGIL wajib memastikan `catalog`
+        utuh: katalog kosong atau terpotong akan menurunkan semua flag (lihat
+        `cve_lookup.run_cisa_kev_lookup`)."""
+        candidates = sorted({cid.upper() for cid in tp_cve_ids} - catalog.keys())
+        if not candidates:
+            return []
+        rows = await self.list_by_cve_ids_any_client(candidates)
+        now = datetime.datetime.now(datetime.UTC)
+        cleared: set[str] = set()
+        for cve in rows:
+            if not cve.cisa_kev:
+                continue
+            cve.cisa_kev = False
+            cve.active_exploitation = False
+            cve.cisa_kev_detail = {}
+            cve.cisa_kev_checked_at = now
+            cleared.add(cve.cve_id.upper())
+        await self.session.flush()
+        return sorted(cleared)
+
     async def apply_exploit_hits(self, cve_id: str, exploits: list[dict[str, Any]]) -> None:
         """Update SEMUA baris (lintas client) buat SATU cve_id -- port
         `save_exploit_hits()` lama. **Dedup POC per-baris** (cek existing

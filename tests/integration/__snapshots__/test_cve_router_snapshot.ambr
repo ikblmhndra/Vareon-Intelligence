@@ -48,6 +48,9 @@
     'matched_cves': list([
       'CVE-2026-7001',
     ]),
+    'removed_cves': list([
+    ]),
+    'reset_skipped': True,
   })
 # ---
 # name: test_cve_stats
