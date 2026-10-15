@@ -57,7 +57,12 @@ def test_one_entry_per_enabled_scraper_on_the_right_queue(monkeypatch: pytest.Mo
         assert entry["options"]["queue"] == queue_for(cls.meta)
         assert set(entry["options"]) == {"queue", "expires"}
     # task periodik (Fase 7.8 + 9) ikut ada -- bukan cuma scraper
-    for name in ("pir-check-p1-alerts", "ioc-decay-sweep", "scraper-health-digest"):
+    for name in (
+        "pir-check-p1-alerts",
+        "ioc-decay-sweep",
+        "ioc-enrich-pending",
+        "scraper-health-digest",
+    ):
         assert name in schedule
 
 

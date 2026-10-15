@@ -12,7 +12,7 @@ from __future__ import annotations
 import signal
 
 import pytest
-from cti_core.ioc.extractor import extract_iocs
+from cti_core.ioc.extractor import extract_iocs, refang
 
 
 def test_extracts_ip() -> None:
@@ -117,3 +117,16 @@ def test_domain_defanged_regex_does_not_catastrophically_backtrack() -> None:
     finally:
         signal.alarm(0)
         signal.signal(signal.SIGALRM, old_handler)
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("1[.]2[.]3[.]4", "1.2.3.4"),
+        ("evil(.)example[dot]com", "evil.example.com"),
+        ("hxxps://evil[.]com/path", "https://evil.com/path"),
+        ("  198.51.100.7  ", "198.51.100.7"),
+    ],
+)
+def test_refang_restores_defanged_indicators(raw: str, expected: str) -> None:
+    assert refang(raw) == expected

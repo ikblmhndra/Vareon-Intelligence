@@ -150,6 +150,13 @@ def _periodic_schedule() -> dict[str, dict[str, object]]:
             "schedule": crontab(hour=4, minute=0),
             "options": {"queue": QUEUE_MAINTENANCE},
         },
+        "ioc-enrich-pending": {
+            "task": "ioc.enrich_pending",
+            # Tiap 15 menit; jatah per jam (bukan jadwal ini) yang membatasi panggilan ke provider,
+            # dan task-nya no-op kalau tak ada kunci provider yang terisi.
+            "schedule": crontab(minute="*/15"),
+            "options": {"queue": QUEUE_MAINTENANCE},
+        },
         "recap-generate-weekly": {
             "task": "recap.generate_weekly",
             # Senin 00:15 UTC = 07:15 WIB: pekan Senin-Minggu (tanggal UTC) baru utuh setelah

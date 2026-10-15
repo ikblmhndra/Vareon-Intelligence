@@ -7,8 +7,9 @@ from __future__ import annotations
 
 import datetime
 from collections.abc import Sequence
+from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import DateTime, bindparam, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -203,6 +204,52 @@ class AsyncIOCRepo:
             .limit(limit)
         )
         return list(result.scalars().all())
+
+    async def list_needing_enrichment(
+        self,
+        *,
+        provider: str,
+        types: Sequence[str],
+        checked_before: datetime.datetime,
+        limit: int,
+    ) -> list[IOC]:
+        """IOC bertipe `types` (bukan yang `auto_suppressed`) yang BELUM punya kartu `provider` di
+        `enrichment.providers`, atau yang kartunya dicek sebelum `checked_before`. Terbaru dilihat
+        dulu (`last_seen_at`), supaya jatah provider dipakai untuk IOC yang paling relevan.
+
+        Kartu dicari lewat `jsonb_array_elements`: `enrichment` kosong (`{}`) tidak punya
+        `providers`, jadi `COALESCE` ke array kosong dan IOC-nya terhitung belum dicek."""
+        fresh_card = text(
+            "NOT EXISTS (SELECT 1 FROM jsonb_array_elements("
+            "COALESCE(iocs.enrichment -> 'providers', '[]'::jsonb)) AS card "
+            "WHERE card ->> 'key' = :provider "
+            "AND (card ->> 'checked_at')::timestamptz > :checked_before)"
+        ).bindparams(
+            bindparam("provider", provider),
+            bindparam("checked_before", checked_before, type_=DateTime(timezone=True)),
+        )
+        stmt = (
+            select(IOC)
+            .where(IOC.type.in_(types), IOC.auto_suppressed.is_(False), fresh_card)
+            .order_by(IOC.last_seen_at.desc(), IOC.id)
+            .limit(limit)
+        )
+        return list((await self.session.execute(stmt)).scalars().all())
+
+    async def set_enrichment_provider(
+        self, ioc: IOC, card: dict[str, Any], *, now: datetime.datetime
+    ) -> None:
+        """Tulis kartu SATU provider ke `enrichment.providers` (mengganti kartu `key` yang sama,
+        kartu provider lain tidak disentuh) dan perbarui `updated_at`. Kolom JSONB diganti dengan
+        dict BARU, bukan dimutasi di tempat, supaya perubahannya terdeteksi."""
+        current = dict(ioc.enrichment or {})
+        cards = [c for c in current.get("providers", []) if c.get("key") != card["key"]]
+        cards.append(card)
+        cards.sort(key=lambda c: str(c.get("key", "")))
+        current["providers"] = cards
+        current["updated_at"] = now.strftime("%Y-%m-%d %H:%M UTC")
+        ioc.enrichment = current
+        await self.session.flush()
 
     async def list_filtered(
         self,
