@@ -1,6 +1,6 @@
 [project]
 name = "cti-alerts"
-version = "0.5.0"
+version = "0.6.0"
 description = "Outbound alerting — one Telegram sender, one Graph/SMTP mailer"
 requires-python = ">=3.12"
 dependencies = [

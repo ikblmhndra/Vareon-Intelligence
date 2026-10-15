@@ -1,6 +1,6 @@
 [project]
 name = "cti-scraper"
-version = "0.5.0"
+version = "0.6.0"
 description = "Scraper plugin framework — BaseScraper, registry, dedup, run heartbeats"
 requires-python = ">=3.12"
 dependencies = [
