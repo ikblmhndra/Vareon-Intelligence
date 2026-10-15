@@ -78,7 +78,10 @@ class NewCve(BaseScraper):
         source="NVD/Tenable CVE Tracker",
         schedule=spread("0 * * * *", "new_cve"),
         rate_limit="60/minute",
-        max_items=300,  # fan-out per client bisa ngalahin 50 default gampang
+        # Satu baris per (CVE, client) dari window 8 hari yang di-upsert ulang tiap jam. Prod
+        # 2026-10-15: beban nyata ~310 baris (satu client berstack), jadi 300 masih memotong.
+        # 600 = ~2x headroom; batas keras kontrak scraper 1000 (`test_max_items_is_bounded`).
+        max_items=600,
         credential="nvd",
         reference_data=("techstack", "techstack_by_client"),
         tags=("migrated", "bespoke", "cve"),
