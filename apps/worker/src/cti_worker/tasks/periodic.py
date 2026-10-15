@@ -166,6 +166,38 @@ def ioc_decay_sweep(self: Any) -> dict[str, object]:
     return _run_async(_run_ioc_decay_sweep())
 
 
+# ── IOC enrichment ───────────────────────────────────────────────────────────
+
+
+async def _run_ioc_enrich_pending() -> dict[str, Any]:
+    import redis as redis_lib
+    from cti_api.services import ioc_providers
+    from cti_api.services.ioc_enrichment import build_specs, enrich_pending
+    from cti_core.config import get_settings
+    from cti_core.db.engine import async_session
+    from cti_scraper.ratelimit import TokenBucket
+
+    settings = get_settings()
+    bucket = TokenBucket(redis_lib.Redis.from_url(settings.redis.url))
+
+    def allow(provider: str, rate: str) -> bool:
+        return bucket.acquire(f"ioc-enrich:{provider}", rate)
+
+    async with ioc_providers.make_client() as http:
+        specs = build_specs(settings, http)
+        if not specs:  # tidak ada kunci provider yang terisi: tidak ada yang dikerjakan
+            return {}
+        async with async_session() as session:
+            return await enrich_pending(session, specs=specs, allow=allow)
+
+
+@app.task(bind=True, name="ioc.enrich_pending", queue=QUEUE_MAINTENANCE)
+def ioc_enrich_pending(self: Any) -> dict[str, object]:
+    """Reputasi IOC dari provider luar (ROADMAP #4). Tanpa kunci terisi = no-op. Gagal sekali tidak
+    di-retry: tick berikutnya (15 menit) memilih IOC yang sama lagi."""
+    return _run_async(_run_ioc_enrich_pending())
+
+
 # ── Weekly recap ─────────────────────────────────────────────────────────────
 # Recap harian tidak lagi dijadwalkan (#21): task `recap.generate_daily` dibuang bersama entri
 # beat-nya, tinggal pemicu tangan lewat `POST /api/recap/generate?kind=daily`.
