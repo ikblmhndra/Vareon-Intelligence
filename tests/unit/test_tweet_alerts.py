@@ -7,12 +7,16 @@ routing teruji dengan sinyal sungguhan. HTTP ke MITRE (`_check_cve_vendor`) di-p
 from __future__ import annotations
 
 import datetime
+import html
 
 import httpx
 import pytest
 from cti_enrich.stages.classify import ClassifyResult, OpenAIQuotaExhausted
+from cti_enrich.stages.score import ScoreResult
+from cti_scraper import sinks
 from cti_scraper.errors import ParseError
 from cti_scraper.items import TweetItem
+from cti_scrapers.collectors import _twitter as tw
 from cti_scrapers.collectors import tweet_alerts
 from cti_scrapers.collectors.trending_cve import TrendingCve
 from cti_scrapers.collectors.tweet_alerts import TweetAlerts1h, TweetAlerts30m
@@ -203,6 +207,128 @@ def test_a_cve_related_to_the_tech_stack_goes_to_tech_stack(
     [n] = run(TweetAlerts1h, Api([tweet(1, "CVE-2026-1111 exploited")]))
 
     assert n.topic == "tech_stack"
+
+
+# --- batas Telegram: satu notice <= 4096 karakter ------------------------------------------------
+
+TRUNCATED = "… [truncated, see Tweet URL]"
+TWEET_LABEL = "<b>Tweet</b> : "
+
+
+def tweet_line(text: str) -> str:
+    """Isi baris `Tweet` pada pesan (sudah di-escape), apa adanya termasuk penanda terpotong."""
+    start = text.index(TWEET_LABEL) + len(TWEET_LABEL)
+    return text[start : text.index("\n<b>Posted On</b>")]
+
+
+def links_of(*urls: str) -> dict:
+    return {"urls": [{"expanded_url": u} for u in urls]}
+
+
+def test_the_alert_limit_is_the_one_the_notice_sink_enforces() -> None:
+    assert tweet_alerts._TELEGRAM_LIMIT == sinks._TELEGRAM_TEXT_LIMIT == 4096
+
+
+def test_a_short_tweet_message_is_byte_for_byte_what_it_was_before_the_limit() -> None:
+    [n] = run(TweetAlerts1h, Api([tweet(1, "hello")]))
+
+    assert n.text == (
+        "\n=== <b>NEW TWEET FROM BLACKORBIRD</b> ===\n"
+        "<b>Author</b> : blackorbird\n"
+        "<b>Tweet</b> : hello\n"
+        "<b>Posted On</b> : 17:00:00 on 2026-09-26\n"
+        "<b>Tweet URL</b> : <a href='https://x.com/blackorbird/status/1'>See Tweet</a>\n"
+    )
+
+
+def test_many_long_links_are_kept_whole_while_the_whole_message_still_fits() -> None:
+    urls = [f"https://blog.example/{i}/" + "p" * 100 for i in range(12)]  # ~1900 karakter tautan
+
+    [n] = run(TweetAlerts1h, Api([tweet(1, "short", entities=links_of(*urls))]))
+
+    assert n.text.count("See Link") == 12 and "more" not in n.text and "truncated" not in n.text
+
+
+def test_a_6000_char_tweet_is_cut_to_fit_and_keeps_every_other_line() -> None:
+    body = ("word " * 1200).strip()  # 5999 karakter
+    t = tweet(1, body, entities=links_of("https://blog.example/post"))
+
+    [n] = run(TweetAlerts1h, Api([t]))
+
+    assert 4000 < len(n.text) <= 4096  # memakai ruang yang ada, bukan dipotong berlebihan
+    assert tweet_line(n.text).endswith(TRUNCATED)
+    assert "=== <b>NEW TWEET FROM BLACKORBIRD</b> ===" in n.text
+    assert "<b>Author</b> : blackorbird" in n.text
+    assert "<b>Posted On</b> : 17:00:00 on 2026-09-26" in n.text
+    assert "<a href='https://x.com/blackorbird/status/1'>See Tweet</a>" in n.text
+    assert "<a href='https://blog.example/post'>See Link</a>" in n.text
+
+
+@pytest.mark.parametrize("shift", range(6))  # menggeser posisi potong ke tiap offset entitas
+def test_escaped_text_is_cut_on_whole_entities_never_inside_one(shift: int) -> None:
+    body = "a" * shift + "<&>\"'" * 2000  # tiap karakter jadi 4-6 karakter setelah escape
+
+    [n] = run(TweetAlerts1h, Api([tweet(1, body)]))
+
+    assert len(n.text) <= 4096
+    shown = tweet_line(n.text).removesuffix(TRUNCATED)
+    assert shown != tweet_line(n.text)  # memang terpotong
+    # Entitas terbelah ("&am") tinggal literal waktu di-unescape dan bukan lagi awalan teks asli.
+    assert body.startswith(html.unescape(shown)) and len(html.unescape(shown)) > 500
+    assert n.text.count("<a ") == n.text.count("</a>")
+    assert n.text.count("<b>") == n.text.count("</b>")
+
+
+def test_a_long_link_list_is_limited_without_breaking_a_tag_and_keeps_the_tweet_url() -> None:
+    urls = [f"https://blog.example/{i}/" + "p" * 120 for i in range(40)]  # ~7000 karakter tautan
+    t = tweet(1, "x " * 1750, entities=links_of(*urls))  # 3500 karakter teks
+
+    [n] = run(TweetAlerts1h, Api([t]))
+
+    assert len(n.text) <= 4096
+    assert "<a href='https://x.com/blackorbird/status/1'>See Tweet</a>" in n.text
+    assert "<a href='https://blog.example/0/" in n.text  # tautan pertama tetap ada
+    assert n.text.count("<a ") == n.text.count("</a>")
+    assert 0 < n.text.count("See Link") < 40 and " || +" in n.text and " more" in n.text
+
+
+def test_long_mention_lists_are_limited_and_the_message_still_fits() -> None:
+    scan = ScoreResult(
+        mentioned_group=[f"group-{i}" for i in range(300)],
+        mentioned_countries=[f"country-{i}" for i in range(300)],
+        mentioned_apac_people=[f"person-{i}" for i in range(300)],
+    )
+    t = tw.Tweet(
+        id="1", text="x " * 3000, username="blackorbird", created_at=NOW,
+        url="https://x.com/blackorbird/status/1",
+    )  # fmt: skip
+
+    msg = tweet_alerts.build_message(t, scan)
+
+    assert len(msg) <= 4096
+    assert "<b>Mentioned Group</b> : Group-0 || Group-1" in msg
+    assert "<b>Mentioned APAC Country/People</b> : Country-0" in msg
+    assert msg.count(" more") == 2  # satu ringkasan "+N more" per daftar yang dipotong
+    assert "<a href='https://x.com/blackorbird/status/1'>See Tweet</a>" in msg
+
+
+def test_routing_and_the_ransomware_filter_still_read_the_whole_tweet() -> None:
+    filler = "analysis " * 600  # 5400 karakter: penanda di ekor berada di luar bagian yang dikirim
+
+    [n] = run(TweetAlerts1h, Api([tweet(1, filler + "#threatreport")]))
+    dropped = run_all(TweetAlerts1h, Api([tweet(2, filler + "Ransomware Alert: acme")]))
+
+    assert n.topic == "vendor_report" and "#threatreport" not in n.text and len(n.text) <= 4096
+    assert dropped == []
+
+
+def test_a_truncated_alert_still_archives_the_full_tweet() -> None:
+    body = ("word " * 1200).strip()
+
+    [archive, notice] = run_all(TweetAlerts1h, Api([tweet(1, body)]))
+
+    assert isinstance(archive, TweetItem) and archive.text == body
+    assert tweet_line(notice.text).endswith(TRUNCATED)
 
 
 # --- arsip ke `tweets` (tab X Intel) ----------------------------------------------------------
