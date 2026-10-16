@@ -34,7 +34,10 @@ export function TweetCard({ tweet: t, onClick }: { tweet: Tweet; onClick: () => 
       </Avatar>
       <div className="min-w-0 flex-1">
         <div className="mb-1 flex flex-wrap items-baseline gap-2">
-          <span className="text-sm font-semibold text-foreground">{t.author_name}</span>
+          {/* tweet dari jalur alert (X resmi) tak membawa nama penulis: jangan render span kosong */}
+          {t.author_name && (
+            <span className="text-sm font-semibold text-foreground">{t.author_name}</span>
+          )}
           <span className="font-mono text-xs text-muted-foreground">@{t.author_username}</span>
           <span className="ml-auto text-xs text-muted-foreground">{timeAgo(t.posted_on)}</span>
         </div>

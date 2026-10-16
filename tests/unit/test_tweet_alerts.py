@@ -12,6 +12,7 @@ import httpx
 import pytest
 from cti_enrich.stages.classify import ClassifyResult, OpenAIQuotaExhausted
 from cti_scraper.errors import ParseError
+from cti_scraper.items import TweetItem
 from cti_scrapers.collectors import tweet_alerts
 from cti_scrapers.collectors.trending_cve import TrendingCve
 from cti_scrapers.collectors.tweet_alerts import TweetAlerts1h, TweetAlerts30m
@@ -52,9 +53,15 @@ def _llm_and_mitre(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("cti_enrich.stages.score._check_cve_vendor", lambda cve, stack: False)
 
 
-def run(cls, api: Api, **kw):
+def run_all(cls, api: Api, **kw):
+    """SEMUA item `fetch()`: notice Telegram dan arsip `TweetItem`."""
     ctx = make_ctx(cls, api, reference=REFERENCE, **kw)
     return list(cls().fetch(ctx))
+
+
+def run(cls, api: Api, **kw):
+    """Hanya yang dikirim ke Telegram (notice) -- arsip `TweetItem` dites terpisah."""
+    return [i for i in run_all(cls, api, **kw) if not isinstance(i, TweetItem)]
 
 
 # --- pencarian ---------------------------------------------------------------------
@@ -122,7 +129,7 @@ def test_a_plain_cyber_tweet_becomes_a_feed_twitter_alert_with_wib_time_and_clea
     ],
 )
 def test_noise_is_dropped(t: dict) -> None:
-    assert run(TweetAlerts1h, Api([t])) == []
+    assert run_all(TweetAlerts1h, Api([t])) == []  # tidak dikirim DAN tidak diarsipkan
 
 
 def test_per_account_filters_match_the_old_script() -> None:
@@ -196,6 +203,105 @@ def test_a_cve_related_to_the_tech_stack_goes_to_tech_stack(
     [n] = run(TweetAlerts1h, Api([tweet(1, "CVE-2026-1111 exploited")]))
 
     assert n.topic == "tech_stack"
+
+
+# --- arsip ke `tweets` (tab X Intel) ----------------------------------------------------------
+
+
+def test_a_cyber_tweet_is_archived_once_before_its_notices_even_with_two_topics() -> None:
+    items = run_all(TweetAlerts1h, Api([tweet(1, "Attack on critical infrastructure today")]))
+
+    [archive, *notices] = items
+    assert isinstance(archive, TweetItem)
+    assert [n.key for n in notices] == ["1:ot", "1:feed_twitter"]  # dua topik, satu arsip
+    assert archive.dedup_key() == "1"
+    assert {"apac_indicator", "cve_list", "ot_status", "mentioned_group"} <= set(
+        archive.scan_results
+    )
+    assert archive.author_username == "blackorbird" and archive.text.startswith("Attack on")
+
+
+def test_the_archive_carries_profile_media_and_llm_fields_of_the_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        tweet_alerts,
+        "classify",
+        lambda text: ClassifyResult(
+            related_cyber=True,
+            confidence=0.8,
+            confirmed_incident=True,
+            victim_name="Acme",
+            incident_confidence=0.6,
+        ),
+    )
+    full = tweet(
+        7,
+        "Acme confirmed a breach",
+        author={
+            "userName": "blackorbird",
+            "name": "Black Orbird",
+            "profilePicture": "https://pbs.example/a.jpg",
+            "followers": 1234,
+        },
+        lang="en",
+        extendedEntities={"media": [{"media_url_https": "https://pbs.example/m.jpg"}]},
+    )
+
+    [archive, *_] = run_all(TweetAlerts1h, Api([full]))
+
+    assert isinstance(archive, TweetItem)
+    assert (archive.author_name, archive.author_avatar, archive.author_followers) == (
+        "Black Orbird",
+        "https://pbs.example/a.jpg",
+        1234,
+    )
+    assert archive.lang == "en" and archive.media_urls == ["https://pbs.example/m.jpg"]
+    assert archive.posted_on == datetime.datetime(2026, 9, 26, 10, 0, 0)
+    assert (archive.confidence_score, archive.confirmed_incident, archive.victim_name) == (
+        80,
+        True,
+        "Acme",
+    )
+    assert archive.incident_confidence == 60
+
+
+def test_a_source_without_profile_data_still_archives_with_empty_profile() -> None:
+    [archive, *_] = run_all(TweetAlerts1h, Api([tweet(1, "plain tweet")]))
+
+    assert isinstance(archive, TweetItem)
+    assert (archive.author_name, archive.author_avatar, archive.author_followers) == (
+        None,
+        None,
+        None,
+    )
+    assert archive.media_urls == []
+
+
+def test_a_tweet_without_author_is_still_alerted_but_not_archived() -> None:
+    items = run_all(TweetAlerts1h, Api([tweet(1, "plain tweet", author={})]))
+
+    assert [type(i).__name__ for i in items] == ["NoticeItem"]
+
+
+def test_a_tweet_whose_classification_failed_is_not_archived_either(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def broken(text: str) -> ClassifyResult:
+        raise ConnectionError("gateway down")
+
+    monkeypatch.setattr(tweet_alerts, "classify", broken)
+
+    assert run_all(TweetAlerts1h, Api([tweet(1, "boom")])) == []
+
+
+def test_the_per_run_cap_counts_notices_only_not_the_archive() -> None:
+    many = [tweet(n, f"tweet {n}") for n in range(1, 100)]
+
+    items = run_all(TweetAlerts1h, Api(many))
+
+    notices = [i for i in items if not isinstance(i, TweetItem)]
+    assert len(notices) == TweetAlerts1h.meta.max_items == 40
 
 
 # --- LLM ------------------------------------------------------------------------------------

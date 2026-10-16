@@ -3,8 +3,13 @@
 daftar akun (`usernames_1hour.txt` / `usernames_130hour.txt`).
 
 Bedakan dari `monitor_x` (Fase 5): itu MENYIMPAN tweet akun `monitored_accounts` ke
-tabel `tweets` buat tab X Intel dan TIDAK mengirim alert; ini sebaliknya -- tidak
-menyimpan apa-apa, cuma mengirim alert berkategori ke channel Telegram.
+tabel `tweets` buat tab X Intel dan TIDAK mengirim alert; ini mengirim alert berkategori ke
+channel Telegram. Sejak 2026-10-16 tweet yang lolos klasifikasi JUGA disimpan ke `tweets`
+(satu `TweetItem` per tweet, sebelum notice-nya; `tweets.source` = id scraper ini): di prod
+`monitor_x` mati sejak 2026-10-02 (kunci twitterapi.io ditolak, ia tak punya opsi `provider`)
+sementara tiga scraper lain pindah ke X resmi, dan tiga akun alert (`blueteamsec1`,
+`DarkWebInformer`, `VECERTRadar`) memang tak ada di `monitored_accounts`. Scan dan verdict LLM
+sudah dihitung buat alert, jadi menyimpannya tidak menambah panggilan LLM.
 
 Alur per tweet (urutan penting: yang murah dulu, LLM terakhir):
   1. balasan / retweet dibuang (query + cek `isReply`, awalan "RT ");
@@ -48,8 +53,9 @@ from cti_enrich.stages.classify import OpenAIQuotaExhausted, classify
 from cti_enrich.stages.score import ScoreResult, score_with_lists
 from cti_enrich.tweet_routing import TweetRoutingInput, route_tweet
 from cti_scraper.base import BaseScraper, ScrapeContext, ScraperMeta
-from cti_scraper.items import NoticeItem
+from cti_scraper.items import NoticeItem, TweetItem
 
+from cti_scrapers.collectors import _tweet_item
 from cti_scrapers.collectors import _twitter as tw
 
 _WIB = datetime.timedelta(hours=7)
@@ -114,7 +120,7 @@ class TweetAlertScraper(BaseScraper):
     accounts: ClassVar[tuple[str, ...]]
     window: ClassVar[datetime.timedelta]
 
-    def fetch(self, ctx: ScrapeContext) -> Iterator[NoticeItem]:
+    def fetch(self, ctx: ScrapeContext) -> Iterator[NoticeItem | TweetItem]:
         spec = tw.TweetSearch(since=ctx.now - self.window, accounts=self.accounts)
 
         techstack: list[str] = ctx.reference["techstack"]
@@ -123,20 +129,22 @@ class TweetAlertScraper(BaseScraper):
 
         found = 0
         for tweet in tw.by_id(tw.search(ctx, spec)):
-            for notice in self._notices(ctx, tweet, techstack, groups, people):
-                if found >= self.meta.max_items:
-                    return
-                found += 1
-                yield notice
+            for item in self._items(ctx, tweet, techstack, groups, people):
+                # Batas per run cuma buat pesan Telegram; arsip `TweetItem` tidak ikut dihitung.
+                if isinstance(item, NoticeItem):
+                    if found >= self.meta.max_items:
+                        return
+                    found += 1
+                yield item
 
-    def _notices(
+    def _items(
         self,
         ctx: ScrapeContext,
         tweet: tw.Tweet,
         techstack: list[str],
         groups: list[str],
         people: list[str],
-    ) -> Iterator[NoticeItem]:
+    ) -> Iterator[NoticeItem | TweetItem]:
         text = tweet.text
         user = tweet.username
         if not text or tweet.is_reply or text.startswith("RT "):
@@ -170,6 +178,12 @@ class TweetAlertScraper(BaseScraper):
             return
         if not verdict.related_cyber:
             return
+
+        if user:
+            # Arsip X Intel: SEKALI per tweet (bukan per topik), sebelum notice-nya, jadi gagal
+            # kirim Telegram tidak menghilangkan arsip dan sebaliknya (dedup `tweet_id` vs
+            # `tweet_id:topik` terpisah). Tanpa username kolom `author_username` (NOT NULL) kosong.
+            yield _tweet_item.from_tweet(tweet, scan, verdict)
 
         topics = route_tweet(
             TweetRoutingInput(

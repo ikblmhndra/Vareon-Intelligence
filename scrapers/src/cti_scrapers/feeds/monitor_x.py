@@ -61,7 +61,7 @@ from cti_scraper.errors import ParseError
 from cti_scraper.items import TweetItem
 from cti_scraper.ratelimit import parse_rate
 
-from cti_scrapers.collectors import _twitterapi
+from cti_scrapers.collectors import _tweet_item, _twitterapi
 
 _MAX_PAGES_PER_ACCOUNT = 3
 _ACCOUNT_WIDE_ERRORS = frozenset({401, 402, 403})
@@ -134,18 +134,6 @@ def _build_tweet_item(
         for m in tweet.get("extendedEntities", {}).get("media", [])
         if m.get("media_url_https")
     ]
-    apac_indicator = bool(scan.mentioned_countries or scan.mentioned_apac_people)
-    scan_results = {
-        "apac_indicator": apac_indicator,
-        "mentioned_group": scan.mentioned_group,
-        "mentioned_apac_country": scan.mentioned_countries,
-        "mentioned_apac_people": scan.mentioned_apac_people,
-        "cve_list": scan.cve_list_title,
-        "zero_day_list": scan.zero_day_list,
-        "databreach_list": scan.databreach_list,
-        "ot_status": scan.ot_status,
-        "report_status": scan.report_status,
-    }
     return TweetItem(
         tweet_id=str(tweet["id"]),
         url=tweet.get("url", ""),
@@ -157,19 +145,8 @@ def _build_tweet_item(
         posted_on=_parse_created_at(tweet.get("createdAt", "")),
         lang=tweet.get("lang", "en"),
         media_urls=media_urls,
-        scan_results=scan_results,
-        confidence_score=(round(llm.confidence * 100) if llm and llm.confidence else None),
-        confirmed_incident=bool(llm.confirmed_incident) if llm else False,
-        industries_impacted=llm.industries_impacted if llm else [],
-        victim_countries=llm.victim_countries if llm else [],
-        actor_countries=llm.actor_countries if llm else [],
-        victim_name=llm.victim_name if llm else None,
-        incident_confidence=(
-            round(llm.incident_confidence * 100)
-            if llm and llm.incident_confidence is not None
-            else None
-        ),
-        incident_indicators=llm.incident_indicators if llm else [],
+        scan_results=_tweet_item.scan_results(scan),
+        **_tweet_item.llm_fields(llm),
     )
 
 

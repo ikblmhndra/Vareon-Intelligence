@@ -131,7 +131,11 @@ def _resolve_tweet_last_seen_ids(session: Session) -> dict[str, str]:
     from cti_core.db.models.tweet import Tweet
     from sqlalchemy import select
 
-    rows = session.execute(select(Tweet.author_username, Tweet.tweet_id)).all()
+    # Cuma baris `monitor_x`: jalur `tweet_alerts_*` juga menulis `tweets`, dan tweet alert yang
+    # lebih baru tidak boleh menggeser `since_id` (tweet yang ditolak filter alert terlewat).
+    rows = session.execute(
+        select(Tweet.author_username, Tweet.tweet_id).where(Tweet.source == "monitor_x")
+    ).all()
     result: dict[str, str] = {}
     for username, tweet_id in rows:
         key = username.lower()
