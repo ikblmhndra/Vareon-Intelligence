@@ -113,11 +113,17 @@ def parse_created_at(raw: str) -> datetime.datetime | None:
 
 
 def to_tweet(raw: dict[str, Any]) -> Tweet:
-    user = str((raw.get("author") or {}).get("userName", ""))
+    author = raw.get("author") or {}
+    user = str(author.get("userName", ""))
     links = tuple(
         str(u["expanded_url"])
         for u in (raw.get("entities") or {}).get("urls", []) or []
         if u.get("expanded_url")
+    )
+    media = tuple(
+        str(m["media_url_https"])
+        for m in (raw.get("extendedEntities") or {}).get("media", []) or []
+        if m.get("media_url_https")
     )
     return Tweet(
         id=str(raw["id"]),
@@ -127,4 +133,9 @@ def to_tweet(raw: dict[str, Any]) -> Tweet:
         url=str(raw.get("url") or f"https://twitter.com/{user}/status/{raw['id']}"),
         links=links,
         is_reply=bool(raw.get("isReply")),
+        author_name=author.get("name") or None,
+        author_avatar=author.get("profilePicture") or None,
+        author_followers=int(author.get("followers") or 0) if "followers" in author else None,
+        lang=raw.get("lang") or None,
+        media_urls=media,
     )

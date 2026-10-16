@@ -16,7 +16,7 @@ WITH_OPTIONS = sorted(sid for sid, cls in registry.discover().items() if cls.met
 
 
 def test_the_twitter_scrapers_are_the_ones_with_a_selectable_source() -> None:
-    assert set(WITH_OPTIONS) == {"tweet_alerts_1h", "tweet_alerts_30m", "trending_cve"}
+    assert set(WITH_OPTIONS) == {"tweet_alerts_1h", "tweet_alerts_30m", "trending_cve", "monitor_x"}
 
 
 @pytest.mark.parametrize("scraper_id", WITH_OPTIONS)

@@ -19,7 +19,8 @@ API, jadi pindah sumber di tengah jalan tidak bikin alert dobel.
 
 Modul BUKAN scraper (tanpa subclass `BaseScraper`) -- awalan `_` menandai helper internal
 paket `collectors`. `monitor_x.py` (Fase 5, tab X Intel) punya klien twitterapi.io sendiri
-dan sengaja tidak ikut dipindah ke sini.
+(per akun, `since_id`, field profil lengkap) dan sengaja tidak ikut dipindah ke sini; sejak
+2026-10-16 ia memakai modul ini hanya untuk opsi `provider=x_official`.
 """
 
 from __future__ import annotations
@@ -83,6 +84,14 @@ class Tweet:
     links: tuple[str, ...] = ()
     """URL hasil expand yang ada di isi tweet."""
     is_reply: bool = False
+    author_name: str | None = None
+    author_avatar: str | None = None
+    author_followers: int | None = None
+    lang: str | None = None
+    media_urls: tuple[str, ...] = ()
+    """Profil penulis, bahasa, dan media -- hanya yang disediakan sumbernya (twitterapi.io: semua;
+    X resmi: nama, avatar, followers, lang; tanpa media). Dipakai `tweet_alerts` untuk menyimpan
+    tweet ke `tweets` (tab X Intel); `None`/kosong = sumber tidak menyediakan."""
 
 
 @dataclass(frozen=True, slots=True)

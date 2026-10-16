@@ -51,6 +51,15 @@ class Tweet(TimestampMixin, Base):
     author_avatar: Mapped[str | None] = mapped_column(Text)
     author_followers: Mapped[int | None] = mapped_column(Integer)
 
+    source: Mapped[str] = mapped_column(
+        String(100), nullable=False, default="monitor_x", server_default="monitor_x"
+    )
+    """`scraper_id` yang PERTAMA menyimpan tweet ini (`monitor_x`, `tweet_alerts_1h`,
+    `tweet_alerts_30m`); tweet yang sudah ada tidak diperbarui (insert-only), jadi ini bukan
+    "pernah di-alert". Dipakai `tweet_last_seen_ids` (cuma baris `monitor_x`): tanpa itu, tweet
+    alert yang lebih baru menggeser `since_id` `monitor_x` dan tweet yang ditolak filter alert
+    tidak pernah terambil. Baris lama bernilai `monitor_x` (dulu satu-satunya penulis)."""
+
     posted_on: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
     lang: Mapped[str | None] = mapped_column(String(10))
     media_urls: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)

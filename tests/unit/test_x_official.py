@@ -16,6 +16,7 @@ import structlog
 from cti_enrich.stages.classify import ClassifyResult
 from cti_scraper.base import ConfigError
 from cti_scraper.errors import ParseError, TransientFetchError
+from cti_scraper.items import TweetItem
 from cti_scrapers.collectors import _twitter as tw
 from cti_scrapers.collectors import _x_official as x
 from cti_scrapers.collectors import tweet_alerts
@@ -314,8 +315,15 @@ def test_tweet_alerts_works_end_to_end_on_the_official_api() -> None:
     )
     ctx = make_ctx(TweetAlerts1h, api, reference=REFERENCE, options=OFFICIAL)
 
-    [n] = list(TweetAlerts1h().fetch(ctx))
+    [archive, n] = list(TweetAlerts1h().fetch(ctx))
 
+    # arsip ke `tweets`: X resmi hanya memberi username, jadi profil dan media kosong
+    assert isinstance(archive, TweetItem) and archive.tweet_id == "2"
+    assert (archive.author_username, archive.author_name, archive.media_urls) == (
+        "blackorbird",
+        None,
+        [],
+    )
     assert (n.topic, n.key) == (
         "feed_twitter",
         "2:feed_twitter",

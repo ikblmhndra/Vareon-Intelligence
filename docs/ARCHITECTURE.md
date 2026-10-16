@@ -105,6 +105,36 @@ full it raises `BackpressureError`: the runner releases the lease and stops the 
 **Other sinks** (ransomware victims, CVEs, PoCs, malware trends, IOC feeds, tweets, CVE mentions, notices)
 write Postgres directly from the scrape worker.
 
+**X Intel vs tweet alerts.** Two separate scraper families read X/Twitter, and only one of them feeds the X
+Intel tab:
+
+| | `monitor_x` | `tweet_alerts_1h` / `tweet_alerts_30m` |
+|---|---|---|
+| Accounts | the active rows of `monitored_accounts` (X Intel → Monitored Accounts) | two hardcoded lists in `collectors/tweet_alerts.py` (10 + 11 accounts) |
+| Item type / sink | `TweetItem` → `tweets` (insert-only) | `NoticeItem` → Telegram, plus one `TweetItem` → `tweets` per tweet that passes `classify()` |
+| Enrichment | regex scan + `classify()`; saves author, media and LLM fields | regex scan + `classify()` + topic routing; per-account filters; the same scan and LLM fields are saved with the tweet (no extra LLM call) |
+| Provider | twitterapi.io (default) or X official, chosen per scraper in the Scrapers tab | same |
+
+`tweets.source` records the scraper that stored a row first (`monitor_x`, `tweet_alerts_1h`, `tweet_alerts_30m`);
+the sink is insert-only, so a tweet both families see keeps the first writer's row and `source` does not mean
+"was alerted". Rows from the alert scrapers have no author name or followers when the provider is X official
+(the adapter only requests `username`), and no media; the UI hides those fields. The alert scrapers also
+leave a `scraper_items` row per notice (title `@user: text[:100]`, URL, accepted or not), purged after
+`worker.scraper_item_retention_days` (30), plus the `scraper_seen` dedup key.
+
+`monitor_x`, `tweet_alerts_*` and `trending_cve` all have the `provider` option (`monitor_x` gained it on
+2026-10-16, after an invalid twitterapi.io key stopped it for two weeks while the alert scrapers kept running
+on X official). The twitterapi.io path of `monitor_x` is unchanged (one search per account, `since_id`). On
+X official it keeps the per-account loop and the `rate_limit` pause between accounts, but reads each account
+through the shared adapter with a 6 h window (X official has no `since_id` in `TweetSearch`) and drops tweet
+ids at or below the stored maximum before the scan and the LLM call; rows have no author name, avatar,
+followers or media.
+
+`monitor_x` resolves `since_id` per account from the highest stored `tweet_id` of its
+own rows (`reference_data._resolve_tweet_last_seen_ids`: `source = 'monitor_x'`, lowercase keys because
+`tweets.author_username` keeps the casing the API returns). Alert rows are excluded; otherwise a newer alert
+tweet would move `since_id` past tweets the alert filters rejected.
+
 **Enrichment** (`cti_enrich.pipeline.run_pipeline`):
 
 1. `classify(title)`. If `related_cyber` is false, write a light `rejected_articles` row and return.
