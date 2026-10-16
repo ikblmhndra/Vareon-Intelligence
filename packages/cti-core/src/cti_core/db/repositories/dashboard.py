@@ -255,6 +255,24 @@ class AsyncDashboardRepo:
         rows = (await self.session.execute(stmt)).all()
         return [(d, cnt) for d, cnt in rows]
 
+    async def coverage_counts(self, **filters: Any) -> dict[str, int]:
+        """Jumlah ARTIKEL (bukan baris) yang punya minimal satu negara / threat
+        actor / TTP. Penyebut buat chart dashboard: di prod cuma ~16% / 7% /
+        46% artikel yang punya datanya, jadi tanpa angka ini chart kelihatan
+        lebih penuh daripada basis datanya."""
+        out: dict[str, int] = {}
+        for key, model in (
+            ("with_country", ArticleCountry),
+            ("with_actor", ArticleThreatActor),
+            ("with_ttp", ArticleTTP),
+        ):
+            stmt = _apply_article_filters(
+                select(func.count(func.distinct(Article.id))).select_from(Article).join(model),
+                **filters,
+            )
+            out[key] = int((await self.session.execute(stmt)).scalar_one())
+        return out
+
     # ── exec_dashboard v2 -- tier 2/3 ───────────────────────────────────────
 
     async def ttp_counts(self, *, limit: int = 15, **filters: Any) -> list[tuple[str, str, int]]:

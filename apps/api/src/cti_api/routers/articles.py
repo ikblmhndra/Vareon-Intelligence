@@ -151,10 +151,21 @@ async def list_filters(session: AsyncSession = Depends(get_db)) -> FilterOptions
 async def dashboard_stats(
     posted_on_start: datetime.date | None = None,
     posted_on_end: datetime.date | None = None,
+    days: int | None = Query(
+        None,
+        ge=1,
+        le=3650,
+        description="`days` hari terakhir + pembanding periode lalu; menang atas `posted_on_*`.",
+    ),
+    incident_only: bool = False,
     session: AsyncSession = Depends(get_db),
 ) -> DashboardStats:
     result = await article_dashboard.get_dashboard_stats(
-        session, posted_on_start=posted_on_start, posted_on_end=posted_on_end
+        session,
+        posted_on_start=posted_on_start,
+        posted_on_end=posted_on_end,
+        days=days,
+        incident_only=incident_only,
     )
     return DashboardStats(**result)
 

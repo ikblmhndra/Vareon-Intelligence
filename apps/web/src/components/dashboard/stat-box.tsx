@@ -25,6 +25,22 @@ export function StatBox({ label, value, sub, className, spark }: StatBoxProps) {
   );
 }
 
+/** Selisih vs periode sebelumnya buat `StatBox.sub`. `prev` null/undefined (all-time:
+ * gak ada periode sebelumnya) -> gak render apa-apa. Netral (bukan merah/hijau):
+ * naik/turun jumlah artikel gak otomatis baik atau buruk. */
+export function Delta({ value, prev, label }: { value: number; prev: number | null | undefined; label: string }) {
+  if (prev == null) return null;
+  const diff = value - prev;
+  let text: string;
+  if (diff === 0) text = `no change vs prev ${label}`;
+  else {
+    const arrow = diff > 0 ? "▲" : "▼";
+    const amount = prev === 0 ? `+${diff.toLocaleString()}` : `${Math.abs(Math.round((diff / prev) * 100))}%`;
+    text = `${arrow} ${amount} vs prev ${label}`;
+  }
+  return <span> · {text}</span>;
+}
+
 /** Judul section (`.dash-section-label` lama). */
 export function DashboardSectionLabel({
   children,
@@ -49,26 +65,38 @@ export function DashboardSectionLabel({
 export function ChartCard({
   title,
   height,
+  note,
   children,
 }: {
   title: string;
   height: number;
+  note?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
-      <div className="mb-3 text-base font-semibold text-foreground">{title}</div>
+      <CardHeader title={title} note={note} />
       <div style={{ height }}>{children}</div>
     </div>
   );
 }
 
 /** Kartu untuk konten berukuran bebas (peta, daftar) -- tanpa tinggi tetap. */
-export function MapCard({ title, children }: { title: string; children: ReactNode }) {
+export function MapCard({ title, note, children }: { title: string; note?: ReactNode; children: ReactNode }) {
   return (
     <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
-      <div className="mb-3 text-base font-semibold text-foreground">{title}</div>
+      <CardHeader title={title} note={note} />
       {children}
+    </div>
+  );
+}
+
+/** `note` = catatan penyebut ("dari N artikel") di bawah judul kartu. */
+function CardHeader({ title, note }: { title: string; note?: ReactNode }) {
+  return (
+    <div className="mb-3">
+      <div className="text-base font-semibold text-foreground">{title}</div>
+      {note && <div className="mt-0.5 text-xs text-muted-foreground">{note}</div>}
     </div>
   );
 }

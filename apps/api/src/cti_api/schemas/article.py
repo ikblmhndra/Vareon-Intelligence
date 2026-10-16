@@ -60,11 +60,30 @@ class TimelinePoint(BaseModel):
     count: int
 
 
+class DashboardCoverage(BaseModel):
+    """Jumlah ARTIKEL yang punya minimal satu negara / threat actor / TTP --
+    penyebut buat chart dashboard (bandingkan dengan `total_articles`)."""
+
+    with_country: int
+    with_actor: int
+    with_ttp: int
+
+
 class DashboardStats(BaseModel):
     total_articles: int
     total_sources: int
     total_countries: int
     total_threat_actors: int
+    confirmed_incidents: int
+    # `None` kalau tanpa `days` (all-time): gak ada periode sebelumnya buat dibandingkan.
+    prev_total_articles: int | None
+    prev_confirmed_incidents: int | None
+    # Artikel berlabel industri "General" (gak punya sektor spesifik); sengaja
+    # TIDAK ada di `top_industries` supaya bar teratas gak selalu "General".
+    industry_unspecified: int
+    coverage: DashboardCoverage
+    # ISO UTC saat angka ini dihitung (cache 15 menit, jadi bukan "sekarang").
+    generated_at: str
     top_countries: list[TopItem]
     # Semua negara (bukan cuma top-10) -- dipakai peta dunia di dashboard.
     country_counts: list[TopItem]

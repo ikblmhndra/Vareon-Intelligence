@@ -35,6 +35,8 @@ _NORMALIZE = path_type(
     {
         r"(.*\.)?id$": (int,),
         r"(.*\.)?posted_on$": (str,),
+        # `/api/dashboard` -> `generated_at` = jam hitung (berubah tiap run).
+        r"(.*\.)?generated_at$": (str,),
         # `compute_article_confidence` balikin `article_id` (bukan `id`
         # polos) -- pattern `id$` gak nangkep ini karena diawali `_`
         # bukan `.` (fullmatch, bukan search). Field lain yang berakhiran
@@ -138,7 +140,7 @@ async def test_dashboard_stats(
     article_dashboard._dashboard_cache.clear()
     resp = await api_client.get("/api/dashboard", headers=auth_header())
     assert resp.status_code == 200
-    assert resp.json() == snapshot
+    assert resp.json() == snapshot(matcher=_NORMALIZE)
 
 
 async def test_compute_article_confidence(
