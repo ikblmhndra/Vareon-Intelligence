@@ -41,6 +41,7 @@ Each item contains: **what** was asked, **the current state** (facts from the re
 | 18 | **Open** | CVE ticket field validation + a ticket model decision (1 ticket per CVE vs one ticket for many CVEs) | a list of standard values, the model decision | -- |
 | 19 | **Open** (operational) | **Tech catalog from the CVE mirror + Monitor** (new direction 2026-10-07, replacing the alias/phase 2-3 plan; the `aliases` column is dropped): mirror every CVE (calendar-year retention) -> a vendor+product catalog -> All Tech / Monitored Tech tabs -> the CVEs tab only for monitored techs. **Code done (slices 1-7), merged to `main` 2026-10-08 (PR #12, release 0.3.0)**; what remains is operational: finish the mapping (prod, 2026-10-15: 25 of 35 entries mapped), shadow mode (not started), cutover (the runbook and design documents were removed from the repository on 2026-10-16) | manual mapping + shadow on dev | test on the dev server first, then prod |
 | 20 | **Mostly done** | **Known follow-ups from releases 0.4.0 / 0.4.1** (found while reviewing the CVE Tracker; none is blocking) -- **the data-correctness points were fixed 2026-10-15 (#51, #52) or earlier (#21); what is left (the (D) decisions, the KEV/EPSS/Exploit-DB access point, `trending_cve` in January) is marked in the item** | product decisions on the points marked (D) | -- |
+| 23 | **Open** (design agreed 2026-10-16) | **Runtime secrets** (asked 2026-10-16): manage the third-party keys (LLM, Telegram, Graph, NVD, GitHub, twitterapi.io, X, OTX, AbuseIPDB, VirusTotal) from a superadmin-only admin page, encrypted in the database and applied without a restart or rebuild; the deployment-level secrets (database, Redis, JWT/session, OIDC) stay in `.env` -- **design agreed 2026-10-16, nothing built** | a go-ahead; a master key set in the prod `.env` before the API/UI pull requests are used; the re-auth decision for OIDC-only superadmins | -- (touches #11 for the OIDC question) |
 ---
 
 ## Priority queue (team feedback 2026-10-10)
@@ -78,6 +79,7 @@ PRs #2-#59 are all merged into `main` (release tags in `CHANGELOG.md`: 0.2.0, 0.
 | 22 | Live | PRs #35, #39, #38, #43, #44 (0.5.0), #53 (0.6.0), on prod by 2026-10-15 | the first real edition, Mon 2 Nov |
 | 5, 8, 9, 10, 11 | Parked | -- | set aside by the user on 2026-10-15; do not start without a trigger |
 | 6, 7, 12, 15, 16, 18 | Open | -- | see each item; #6 mostly exists (only expiry is missing), #7 waits for the #19 cutover, #15 waits for the `published_at` backfill (7 prod rows), #12 for labelled examples, #16 and #18 for SLA targets and the list of ticket values |
+| 23 | Open (design agreed 2026-10-16) | -- | all three pull requests (see the item) |
 
 **Merged PRs by release**
 
@@ -1288,3 +1290,132 @@ fixed and waiting for a re-check, Outlook desktop / Outlook web / Gmail not done
 measured**; recommended articles with their reasons, **met**; one send, one history row, and a second preview with no
 new LLM or Playwright call, **met** (integration tests); an Executive Summary that is one grounded, editable paragraph,
 **met**; the listed tests, **met**.
+
+---
+
+## 23. Runtime secrets: manage third-party keys from the admin UI
+
+**Asked (2026-10-16)**: is it safe to manage the third-party keys (LLM vendor, Twitter API, OTX, ...) from an admin menu
+for operations (change a key, and so on)? Pros and cons first, then a plan. Clarified in the same conversation: the
+product is becoming multi-workspace (SaaS), so the keys that change often must be changeable **without a restart or a
+rebuild**; the deployment-level secrets (database, Redis, JWT/session, OIDC) are initial-deployment config that rarely
+changes and stay in `.env`. Not the same as #5 (that is about keys **we issue** to other tools); this item is about the keys
+we **use**. It also makes the keys needed by #4 (AbuseIPDB, VirusTotal, OTX) changeable without touching the prod host.
+**Current state** (facts from the repo, nothing built yet):
+- Every third-party key lives only in `.env` and is read through `get_settings()` (`lru_cache`, per process,
+  `packages/cti-core/src/cti_core/config.py`). Changing one means editing the file on the host and restarting `api`,
+  `worker`, `worker-browser`, `worker-nlp` and `beat`.
+- The read points already resolve the key **when it is used**, not at import: `cti_scraper/credentials.py`
+  (`resolve_credential_headers`, called per run by `Runner`), `cti_core/llm/client.py` (`get_llm_client` builds a new client on
+  every call), `cti_alerts/telegram.py` (a `Bot` per send), `cti_alerts/mailer.py` (an MSAL app per call),
+  `services/ioc_enrichment.py` (`build_specs`, called from `tasks/periodic.py`) and `services/newsletter_summary.py` (log
+  scrub). That is why a hot reload needs one overlay on `Settings` and not a rewrite of the consumers.
+- Tenancy today: the `clients` table and a `client_id` on the analysis tables (techstack, PIR, RFI, CVE tracker, IOC, TA).
+  Ingestion, the LLM, Telegram and Graph are global singletons (one key, one bot, one chat, one sender).
+- Building blocks that exist: `require_superadmin`, the `audit_log` table, the singleton precedent `PasswordPolicy`, the
+  current-password re-check in `routers/auth.py` (change password), `rate_limit.is_rate_limited`, the read-only provider probes
+  in `tools/ops/check_secrets.py` (LLM, Telegram, NVD, GitHub, twitterapi.io, X; Graph is only reported as set), and the admin
+  page `apps/web/src/app/(app)/admin/users` made of sections. `psycopg[binary]` is already a `cti-core` dependency;
+  `cryptography` is only transitive (through `python-jose` in `apps/api`).
+- `SECRETS_BACKEND=vault` is accepted by `Settings` but no Vault reader exists.
+- An existing gap, independent of this item: `_scrub_secrets` in `tasks/enrich.py` does not cover `x.bearer_token`, `otx`,
+  `abuseipdb` or `virustotal`, so those can still appear in an error message.
+
+**Decision record (2026-10-16)**
+- Pros: a leaked key is rotated in minutes without SSH or a restart; fewer people need a shell on the prod host; the page
+  shows which providers are filled and whether the key is still accepted (an empty key silently turns a provider off today);
+  there is an audit trail; a mistyped key is caught before it goes live.
+- Decided with the user: **platform scope first** (the operator holds every vendor key; per-workspace keys, BYOK, are not built,
+  but the table keeps a nullable `client_id` so they can follow additively) and **superadmin only**.
+- Risks and how the design answers them:
+
+| Risk | Answer in the design |
+|---|---|
+| One stolen superadmin session reads or rotates every key; writing is worse than reading (pointing `LLM__URL` at an attacker host sends all article text there, a swapped Telegram token redirects alerts) | the API never returns a secret value; the **current password is required on every write and delete**; audit; rate limit; an allowlist for the LLM URL |
+| Keys land in Postgres and in its backups | Fernet encryption at rest; the master key lives only in `.env` (later Vault), kept apart from the DB backups, so a backup alone opens nothing |
+| Two sources of truth (`.env` and the database) make "which key is live?" hard to answer | DB over `.env`, a `source` shown per provider (db / env / unset), and a "Revert to .env" action |
+| Five long-lived processes each cache their settings | an overlay with a 30-second per-process cache; no restart |
+| New leak surfaces: responses, logs, error text | no secret in any response or audit row; one helper builds the scrub list for all providers (also closes the existing gap above) |
+| A wrong key stalls the pipeline or bills the wrong account | the candidate key is probed **before** it is saved; a failed probe means nothing is stored |
+| SSRF through a custom LLM URL once admins other than the operator exist | outside `dev` only hosts in an env allowlist, https only |
+| Bootstrap secrets cannot live in the database they unlock | they stay in `.env` |
+| Conflict with the planned Vault | `overlay.py` is the seam where a Vault reader plugs in later |
+
+**Design (agreed 2026-10-16)**
+- **Table `runtime_secrets`** (`cti_core/db/models/runtime_secret.py` + a hand-written migration after head `7e51efe6d78b`):
+  `provider`, `client_id` (nullable FK to `clients`, NULL = platform, only NULL is written in this item), `values` JSONB
+  (non-secret fields), `secrets_enc` bytea (a Fernet token of `{provider, fields}`; the provider is checked on decrypt),
+  `updated_by`, `updated_at`, `last_test_ok`, `last_test_at`. Two partial unique indexes (platform: `provider`; client:
+  `client_id, provider`).
+- **Overridable fields** (one registry, `cti_core/runtime_secrets/registry.py`): `llm.api_key|provider|model|url`,
+  `telegram.bot_token`, `graph.client_secret`, `nvd.api_key`, `github.token`, `twitter.api_key`, `x.bearer_token`,
+  `otx.api_key`, `abuseipdb.api_key`, `virustotal.api_key`. Deliberately **not** editable from the page: the Telegram chat and
+  thread ids, the Graph identity (tenant, client, sender, cc), rates and timeouts. Those are deployment decisions or change as
+  one set; they stay in `.env`.
+- **Crypto**: `MultiFernet` built from `SECRETS_ENCRYPTION_KEYS` (comma-separated; the first key encrypts, all of them
+  decrypt, so the master key can be rotated without a data migration). `cryptography` becomes a direct `cti-core` dependency.
+- **Overlay** (`cti_core/runtime_secrets/overlay.py`): `effective_settings()` is `get_settings()` plus the database overrides,
+  cached per process for 30 seconds (`invalidate()` in the process that just wrote). The loader is synchronous through
+  `sync_session()`. It **fails open**: a database or decryption failure falls back to `.env` with a structured error log and
+  never raises. A field that has no override falls back to `.env`.
+- **Consumers** change only their default expression `get_settings()` to `effective_settings()`: `cti_alerts/telegram.py`,
+  `cti_alerts/mailer.py`, `cti_core/llm/client.py`, `cti_scraper/credentials.py`, the settings handed to `build_specs` in
+  `tasks/periodic.py`, `services/newsletter_summary.py`. The two scrub sites use a new `configured_secret_values()` helper.
+- **API** (`routers/secrets.py` + `services/runtime_secrets.py`, all `require_superadmin`): `GET /api/secrets` (per provider:
+  `source`, non-secret fields as they are, secret fields only as `set` plus the last four characters, `updated_by/at`,
+  `last_test`); `PUT /api/secrets/{provider}` with `{fields: {name: value | null}, current_password}` (a string sets, `null`
+  removes the override, an absent field is unchanged, an **empty string is rejected** so a working `.env` key is never
+  overwritten with a blank; the order is registry check, LLM URL check, probe the candidate, encrypt, upsert, invalidate, audit);
+  `DELETE /api/secrets/{provider}` (also needs the password); `POST /api/secrets/{provider}/test`. Audit actions `secret_set`,
+  `secret_clear`, `secret_test` with `target_id=provider` and `detail={fields, last4}`, never a value.
+- **LLM URL guard**: outside `dev`, only hosts listed in `SECRETS_LLM_URL_ALLOWED_HOSTS` (empty by default, so the page cannot set a
+  custom URL in prod) and only https; in `dev` anything goes (local gateways such as 9router).
+- **Probes** move from `tools/ops/check_secrets.py` into `apps/api/.../services/secret_probes.py` (the API image does not ship
+  `tools/`); the CLI stays and keeps exporting `run_checks`, `CHECKS`, `Result`, `exit_code` and `main`, and
+  `tests/unit/test_check_secrets.py` (it mocks HTTP with `respx`) is the regression net. Add an API-only Graph probe that
+  only acquires a token (it never creates a message). For AbuseIPDB, VirusTotal and OTX use the cheapest read-only endpoint
+  and **check it against the vendor docs while building**; if none is free of quota, show "not tested" instead of guessing.
+- **Web** (`apps/web/src/components/admin/secrets-section.tsx` plus an edit dialog): one card per provider with the source
+  badge, the masked tail, Test, Edit and "Revert to .env". Password inputs, `autocomplete="new-password"`, never pre-filled,
+  cleared on close and on submit. Mounted for `superadmin` in `admin/users/page.tsx` like `ClientsSection`. Follow
+  `apps/web/CLAUDE.md` (Base UI: `render=`, not `asChild`; a `SelectItem` takes one string).
+- **New config** (both optional, empty by default, so a deploy never fails on them): `SECRETS_ENCRYPTION_KEYS`,
+  `SECRETS_LLM_URL_ALLOWED_HOSTS`; update `.env.example`, `.env.prod.template`, `tests/unit/test_config.py` and
+  `tests/unit/test_env_prod_template.py` in the same commit. Without a master key writes are refused (503), the overlay reads
+  nothing, and behaviour is exactly today's.
+
+**Pull requests** (in order, each reviewable on its own)
+1. **Core**, inert while the table is empty: dependency, config, model and migration, sync and async repositories, registry,
+   crypto, overlay, the consumers switched, the scrub list widened.
+2. **API**: probes extracted, service and router, audit, re-auth, rate limit, `docs/openapi.json` and `schema.d.ts` regenerated.
+3. **Web and docs**: the section, a "Runtime secrets" part in `docs/ARCHITECTURE.md`, the config table in the README.
+   `CHANGELOG.md` and the version bump wait for the release pull request (`routers/changelog.py` parses the header format
+   strictly).
+
+**Touch points**: `packages/cti-core/src/cti_core/{config.py, runtime_secrets/*, db/models/runtime_secret.py,
+db/models/__init__.py, db/repositories/runtime_secret.py, llm/client.py}`, `alembic/env.py` (model import) and
+`alembic/versions/` (new revision), `packages/cti-alerts/src/cti_alerts/{telegram.py, mailer.py}`,
+`packages/cti-scraper/src/cti_scraper/credentials.py`, `apps/worker/src/cti_worker/tasks/{enrich.py, periodic.py}`,
+`apps/api/src/cti_api/{routers/secrets.py, services/runtime_secrets.py, services/secret_probes.py,
+services/newsletter_summary.py, main.py}`, `tools/ops/check_secrets.py`, `.env.example`, `.env.prod.template`,
+`pyproject.toml` of `cti-core` and `uv.lock`, `docs/openapi.json`, `apps/web/src/lib/api/schema.d.ts`,
+`apps/web/src/components/admin/secrets-section.tsx`, `apps/web/src/app/(app)/admin/users/page.tsx`.
+**Needed from the user**: a go-ahead per pull request; for prod, a generated Fernet key set as `SECRETS_ENCRYPTION_KEYS` in the
+prod `.env` before the API and UI are used (pull request 1 is safe without it), and `SECRETS_LLM_URL_ALLOWED_HOSTS` only if a
+custom LLM gateway is wanted; whether any prod superadmin signs in **only** through OIDC (see the assumptions); the quota
+limits of the AbuseIPDB and VirusTotal plans, for the probes.
+**Done when**: a superadmin can set, test and revert every provider above from the admin page, and a key changed there is
+used by the next scraper run, LLM call, Telegram send and IOC lookup within 30 seconds **without restarting any service**
+(shown on the dev instance); no endpoint response, log line or audit row contains a secret value (tests assert it) and `psql`
+shows `secrets_enc` is not plaintext; an admin who is not a superadmin gets 403, a wrong password is refused, and a candidate
+key that fails its probe is not saved; with no master key set the behaviour is identical to today; a database restored without
+the master key leaves the platform running from `.env`; the scrub list covers every provider; all repo gates are green and
+`docs/openapi.json` and `schema.d.ts` do not drift.
+**Not in scope**: per-workspace keys (BYOK) and the client-aware enrichment and alert consumers they would need, the Vault
+reader (`overlay.py` is its seam), editing the deployment-level secrets from the page, Telegram chat and thread ids, the Graph
+identity, rates and timeouts, a version history of keys (rollback is "Revert to .env" or typing the old key again; the
+probe-before-save already covers a mistyped key), and turning off a provider whose key is in `.env` from the page.
+**Assumptions to confirm**: Telegram is limited to `bot_token` and Graph to `client_secret` because rotation is the operational
+need (moving the chat or the sender stays a deploy decision); re-auth uses the local password, and a superadmin who signs in only
+through OIDC may have none, so check `OIDC__ENABLED` on prod and pick a fallback (for example a fresh login within a few
+minutes) before pull request 2; the section lives on the existing admin page and is easy to move to its own route.
