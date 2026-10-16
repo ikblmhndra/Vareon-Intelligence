@@ -6,6 +6,46 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
+## [0.6.1] - 2026-10-16
+
+Perbaikan hasil pemeriksaan prod untuk 0.6.0: **enrichment OTX macet di 45 dari 60 run** dalam 16 jam karena IOC yang ditolak
+provider dengan HTTP 400. **Tanpa migrasi, tanpa kunci `.env` baru, tanpa dependensi baru, dan tanpa entri beat baru.**
+
+**Saat upgrade dari 0.6.0:**
+1. Deploy biasa (bangun ulang image api dan worker). Tidak ada migrasi.
+2. Sesudah deploy, IOC yang ditolak provider tampil sebagai kartu `unknown` dengan `raw.skipped` berawalan "rejected by provider".
+   Untuk melihat nilai mana yang ditolak (penyebab 400-nya belum diketahui):
+
+   ```sql
+   select i.id, i.type, left(i.value, 80) as value, p ->> 'key' as provider, p -> 'raw' ->> 'skipped' as reason
+   from iocs i, jsonb_array_elements(i.enrichment -> 'providers') p
+   where p -> 'raw' ->> 'skipped' like 'rejected by provider%';
+   ```
+3. Backlog OTX (3.076 IOC tanpa kartu per 2026-10-16) kini terkejar normal, 25 per run dan empat run per jam.
+
+### Diperbaiki
+- **Enrichment IOC berhenti oleh IOC yang ditolak provider** (#4): IOC yang gagal tidak mendapat kartu, jadi dipilih ulang di kepala
+  antrean tiap run, dan tiga yang begitu menghentikan seluruh provider untuk run itu (log:
+  `ioc_enrich_failed provider=otx status=400`). Error 4xx selain 401/403/429 kini disimpan sebagai kartu `unknown` ("rejected by
+  provider (HTTP 400)") dan baru dicek ulang sesudah TTL provider (AbuseIPDB 3 hari, OTX 7, VirusTotal 30), serta tidak dihitung
+  sebagai kegagalan beruntun. Lima penolakan beruntun tanpa satu keberhasilan menghentikan provider itu di run tersebut: kalau
+  semua permintaan ditolak, yang salah bentuk permintaan kita, dan kartu `unknown` berumur TTL tidak boleh ditulis untuk seluruh
+  IOC. 5xx, jaringan putus, dan respons aneh tetap tanpa kartu dan dicoba lagi di run berikutnya.
+
+### Diubah
+- Log `ioc_enrich_failed` memuat `ioc_id` dan `ioc_type` (cukup untuk menemukan IOC-nya di DB); nilai IOC dan pesan exception tetap
+  tidak dicatat. Ringkasan run `ioc.enrich_pending` mendapat kunci `rejected`, dan `stopped` bisa bernilai `consecutive_rejections`.
+- Dokumentasi: `docs/ROADMAP.md` mendapat kolom Status per item (Done, Live, Mostly done, Open, Parked, Dropped, Superseded) dan fakta prod
+  per 2026-10-16; `docs/ARCHITECTURE.md` 3.7 memuat penanganan penolakan.
+
+### Diketahui / belum dikerjakan
+- **Penyebab HTTP 400 dari OTX belum diketahui**: nilai yang gagal tidak dicatat sebelum ini. Tiga IOC dari kepala antrean yang
+  dicoba langsung ke endpoint publik OTX (satu IPv4, dua domain) dijawab normal, jadi kemungkinan bukan mereka.
+- **Ambang verdict OTX** (tiga pulse atau lebih = malicious) tampak agresif: 151 dari 453 kartu OTX di prod (33%) berstatus
+  `malicious`. Nilai awal, konstanta di `ioc_providers.py`; belum diubah.
+- Yang tercatat di 0.6.0 tetap berlaku (verdict belum memengaruhi `confidence_score`, urlscan/GreyNoise/Shodan belum ada, panel dashboard
+  belum dilihat di browser, cutover #19 belum dijalankan).
+
 ## [0.6.0] - 2026-10-15
 
 **Enrichment reputasi IOC** (ROADMAP #4: AbuseIPDB, VirusTotal, OTX), **tiga panel baru di Dashboard CVE** (#17), dan
