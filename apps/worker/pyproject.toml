@@ -1,6 +1,6 @@
 [project]
 name = "cti-worker"
-version = "0.6.1"
+version = "0.6.2"
 description = "Celery worker -- eksekusi scraper terjadwal + enrichment artikel"
 requires-python = ">=3.12"
 dependencies = [
