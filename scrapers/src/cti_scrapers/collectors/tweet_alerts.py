@@ -32,6 +32,11 @@ Perbedaan dari skrip lama:
     dibanding kehilangan tweet kalau satu run terlewat).
   - Skrip lama `exit()` di tengah loop kalau satu akun error -> akun sisanya tidak
     pernah diproses. Sekarang error API = `ParseError` sekali di awal.
+  - Pesan dibatasi 4096 karakter (setelah `html.escape`): sejak provider pindah ke X resmi, post
+    panjang (`note_tweet`) datang utuh sampai ribuan karakter dan `_notice_sink` menolak notice
+    yang lebih panjang (prod 2026-10-16: ~30 item `accepted=false`, 4.139-9.531 karakter). Teks
+    tweet yang dipotong, ditutup penanda "truncated"; Tweet URL tetap ada. Filter dan routing
+    tetap membaca tweet utuh. Lihat `build_message`.
 
 Bug lama yang DIPERTAHANKAN (perilaku, bukan salah ketik yang perlu diseragamkan):
   - `falconfeedsio`: kondisi hashtag berakhir dengan `re.search(" ", text)` yang
@@ -61,6 +66,16 @@ from cti_scrapers.collectors import _twitter as tw
 _WIB = datetime.timedelta(hours=7)
 _RE_TCO = re.compile(r"(https:\/\/t.co\/\w+)")
 
+_TELEGRAM_LIMIT = 4096
+"""Batas satu pesan; SAMA dengan `_TELEGRAM_TEXT_LIMIT` di `cti_scraper.sinks` (dijaga tes). Lebih
+dari ini `_notice_sink` menolak notice (`ValueError`), jadi alert tidak terkirim dan item gagal."""
+_TRUNCATED = "… [truncated, see Tweet URL]"
+_LINKS_MAX = 800
+_MENTIONS_MAX = 300
+"""Batas daftar tautan dan tiap daftar "Mentioned ..." HANYA saat pesan melewati `_TELEGRAM_LIMIT`.
+Bagian tetap (judul, Author, Posted On, Tweet URL) kurang dari 500 karakter, jadi teks tweet tetap
+kebagian lebih dari 2000 karakter dalam kasus terburuk (semua daftar penuh)."""
+
 
 def _passes_account_filter(user: str, text: str) -> bool:
     low = text.lower()
@@ -76,7 +91,24 @@ def _passes_account_filter(user: str, text: str) -> bool:
     return True
 
 
-def _links(tweet: tw.Tweet) -> str:
+def _join_capped(parts: list[str], sep: str, limit: int | None) -> str:
+    """Gabung `parts` dengan `sep`. Kalau hasilnya > `limit`, ambil bagian dari depan yang
+    muat dan ringkas sisanya jadi "+N more". Satu bagian tidak pernah dipotong di tengah, jadi
+    tag `<a>` dan entitas HTML tetap utuh. `limit=None` = tanpa batas."""
+    joined = sep.join(parts)
+    if limit is None or len(joined) <= limit:
+        return joined
+    used = len(f"+{len(parts)} more")  # tempat ringkasan; N paling banyak len(parts)
+    kept: list[str] = []
+    for part in parts:
+        if used + len(part) + len(sep) > limit:
+            break
+        kept.append(part)
+        used += len(part) + len(sep)
+    return "".join(p + sep for p in kept) + f"+{len(parts) - len(kept)} more"
+
+
+def _links(tweet: tw.Tweet, limit: int | None = None) -> str:
     seen: list[str] = []
     parts: list[str] = []
     for expanded in tweet.links:
@@ -84,34 +116,68 @@ def _links(tweet: tw.Tweet) -> str:
             continue
         seen.append(expanded)
         parts.append(f"<a href='{html.escape(expanded, quote=True)}'>See Link</a>")
-    return " || ".join(parts)
+    return _join_capped(parts, " || ", limit)
 
 
-def _cap(names: list[str]) -> str:
-    return " || ".join(n.capitalize().replace("\\-", "-") for n in names)
+def _cap(names: list[str], limit: int | None = None) -> str:
+    """Nama di-escape SEBELUM digabung supaya `limit` menghitung panjang yang benar-benar terkirim."""
+    escaped = [html.escape(n.capitalize().replace("\\-", "-")) for n in names]
+    return _join_capped(escaped, " || ", limit)
 
 
-def build_message(tweet: tw.Tweet, scan: ScoreResult) -> str:
+def _clip_text(text: str, budget: int) -> str:
+    """`html.escape(text)` yang panjangnya <= `budget`; kalau kepanjangan, teks dipotong dan
+    ditutup `_TRUNCATED`. Pemotongan di teks ASLI (sebelum escape) per karakter: satu `<` atau
+    `&` jadi 4-5 karakter, dan memotong hasil escape bisa menyisakan entitas setengah ("&am")."""
+    escaped = html.escape(text)
+    if len(escaped) <= budget:
+        return escaped
+    room = budget - len(_TRUNCATED)
+    end = used = 0
+    for char in text:
+        used += len(html.escape(char))
+        if used > room:
+            break
+        end += 1
+    return html.escape(text[:end].rstrip()) + _TRUNCATED
+
+
+def build_message(
+    tweet: tw.Tweet, scan: ScoreResult, *, limit: int | None = _TELEGRAM_LIMIT
+) -> str:
+    """Pesan Telegram (HTML). Panjangnya, setelah `html.escape`, <= `limit`: teks tweet yang
+    memotong (post panjang `note_tweet` bisa ribuan karakter), setelah daftar tautan dan
+    "Mentioned ..." dibatasi. Pesan yang sudah muat TIDAK diubah sama sekali. `limit=None` =
+    pesan utuh, dipakai filter dan routing yang harus membaca seluruh tweet."""
     user = tweet.username
     posted = (tweet.created_at + _WIB).strftime("%H:%M:%S on %Y-%m-%d") if tweet.created_at else "-"
     text = _RE_TCO.sub(" ", tweet.text.replace("\n", " "))
     url = tweet.url
-
-    msg = (
-        f"\n=== <b>NEW TWEET FROM {html.escape(user.upper())}</b> ===\n"
-        f"<b>Author</b> : {html.escape(user)}\n"
-        f"<b>Tweet</b> : {html.escape(text)}\n"
-        f"<b>Posted On</b> : {posted}\n"
-        f"<b>Tweet URL</b> : <a href='{html.escape(url, quote=True)}'>See Tweet</a>\n"
-    )
-    if links := _links(tweet):
-        msg += f"<b>Link</b> : {links}"
-    if scan.mentioned_group:
-        msg += f"\n<b>Mentioned Group</b> : {html.escape(_cap(scan.mentioned_group))}"
     regional = [*scan.mentioned_countries, *scan.mentioned_apac_people]
-    if regional:
-        msg += f"\n<b>Mentioned APAC Country/People</b> : {html.escape(_cap(regional))}"
-    return msg
+
+    def compose(tweet_html: str, capped: bool) -> str:
+        links_max = _LINKS_MAX if capped else None
+        mentions_max = _MENTIONS_MAX if capped else None
+        msg = (
+            f"\n=== <b>NEW TWEET FROM {html.escape(user.upper())}</b> ===\n"
+            f"<b>Author</b> : {html.escape(user)}\n"
+            f"<b>Tweet</b> : {tweet_html}\n"
+            f"<b>Posted On</b> : {posted}\n"
+            f"<b>Tweet URL</b> : <a href='{html.escape(url, quote=True)}'>See Tweet</a>\n"
+        )
+        if links := _links(tweet, links_max):
+            msg += f"<b>Link</b> : {links}"
+        if scan.mentioned_group:
+            msg += f"\n<b>Mentioned Group</b> : {_cap(scan.mentioned_group, mentions_max)}"
+        if regional:
+            msg += f"\n<b>Mentioned APAC Country/People</b> : {_cap(regional, mentions_max)}"
+        return msg
+
+    msg = compose(html.escape(text), capped=False)
+    if limit is None or len(msg) <= limit:
+        return msg
+    fixed = len(compose("", capped=True))  # semua selain teks tweet
+    return compose(_clip_text(text, limit - fixed), capped=True)
 
 
 class TweetAlertScraper(BaseScraper):
@@ -161,7 +227,10 @@ class TweetAlertScraper(BaseScraper):
         )
         if scan.funding_keyword:
             return  # noise pendanaan (`tweet_indicator = False` di skrip lama)
-        message = build_message(tweet, scan)
+        # Utuh (tanpa batas Telegram): filter dan routing harus membaca SELURUH tweet, bukan
+        # hanya bagian yang muat di pesan; penanda seperti "#threatreport" sering ada di ekor
+        # post panjang. Yang dikirim ke Telegram adalah `build_message(tweet, scan)` di bawah.
+        message = build_message(tweet, scan, limit=None)
         if "Ransomware Alert:" in message:
             return
 
@@ -199,10 +268,11 @@ class TweetAlertScraper(BaseScraper):
             )
         )
         created = tweet.created_at
+        notice_text = build_message(tweet, scan)  # <= batas Telegram; `message` bisa lebih panjang
         for topic in topics:
             yield NoticeItem(
                 topic=topic,
-                text=message,
+                text=notice_text,
                 key=f"{tweet.id}:{topic}",
                 title=f"@{user}: {text[:100]}",
                 url=tweet.url,
