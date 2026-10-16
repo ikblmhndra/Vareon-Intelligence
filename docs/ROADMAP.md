@@ -24,7 +24,7 @@ Each item contains: **what** was asked, **the current state** (facts from the re
 | 1 | **Done** | Rebranding the platform name + UI (colour palette, typography, animation) -- **DONE 2026-10-02; the SVG logo is parked by the user (2026-10-15)** | brand assets | -- |
 | 2 | **Mostly done** | Rebranding the `newsletter_email` and `cve_notification_email` templates -- **code 2026-10-02; the newsletter email is verified in real clients (new Outlook light and dark mode seen 2026-10-14; Outlook web, Outlook desktop and Gmail confirmed fine by the user on 2026-10-15); the `cve_notification_email` was not mentioned in those checks and has not been looked at in real clients** | (the same assets as #1) | #1 |
 | 3 | **Superseded** | (probably superseded by #19) A "Populate now" button in the CVE Tracker (all / only newly added) | a small decision (see the item) | -- |
-| 4 | **Live** (1 bug) | IOC enrichment + reputation (VirusTotal, AbuseIPDB, urlscan, Shodan/GreyNoise) -- **code merged 2026-10-15 (#55, #58), released as 0.6.0 and deployed to prod; all three keys (AbuseIPDB, VirusTotal, OTX) are set there and 956 of 7,375 IOCs already carry cards (2026-10-16); OTX is stalled in most runs by HTTP 400 on some IOCs (fix pending, see the item); urlscan, GreyNoise and Shodan are not built** | a fix for the OTX 400 stall; whether the VirusTotal plan behind the key allows commercial use is the owner's call | -- |
+| 4 | **Live** | IOC enrichment + reputation (VirusTotal, AbuseIPDB, urlscan, Shodan/GreyNoise) -- **code merged 2026-10-15 (#55, #58), released as 0.6.0 and deployed to prod; all three keys (AbuseIPDB, VirusTotal, OTX) are set there and 956 of 7,375 IOCs already carry cards (2026-10-16); OTX was stalled in most runs by HTTP 400 on some IOCs (fixed in 0.6.1, see the item); urlscan, GreyNoise and Shodan are not built** | after deploying 0.6.1, a look at which IOCs OTX rejects; whether the VirusTotal plan behind the key allows commercial use is the owner's call | -- |
 | 5 | **Parked** | Outbound IOC/CVE feeds (TAXII 2.1 and/or CSV/JSON) + integration API keys | target tooling (Wazuh/Splunk/Fortinet?) | #4 |
 | 6 | **Open** | IOC lifecycle: first/last seen, sightings, expiry/decay -- **first/last seen, sighting count and confidence decay already exist; only expiry in the outbound feed is missing** | an IOC age decision | #4, #5 |
 | 7 | **Open** | Relevance to our own assets: threats x techstack, alerts for actors targeting our stack | tidy asset data | -- |
@@ -68,7 +68,7 @@ PRs #2-#59 are all merged into `main` (release tags in `CHANGELOG.md`: 0.2.0, 0.
 | 1 | Done | PRs #3, #4 (+ the rename to Vareon Intelligence, 2026-10-05) | the SVG logo (parked by the user) |
 | 2 | Mostly done | PR #3; newsletter email verified 2026-10-14/15 | a look at `cve_notification_email` in real clients |
 | 3 | Superseded by #19 | PR #12 | nothing, do not work on it |
-| 4 | Live (1 bug) | PRs #55, #58 (0.6.0), on prod since 2026-10-15/16 | OTX stalls on HTTP 400 (fix); urlscan/GreyNoise/Shodan; scoring integration |
+| 4 | Live | PRs #55, #58 (0.6.0), the OTX 400 fix (0.6.1); on prod since 2026-10-15/16 | which IOCs OTX rejects (after 0.6.1); OTX threshold review; urlscan/GreyNoise/Shodan; scoring integration |
 | 13 | Dropped | PR #11 (CI green on `main`) | nothing: the Deploy workflow is disabled on purpose |
 | 14 | Done | PR #9 (pillow), CI image build green in PR #12 | nothing |
 | 17 | Done | PR #54 (0.6.0) | look at the panels in a browser |
@@ -96,11 +96,14 @@ PRs #2-#59 are all merged into `main` (release tags in `CHANGELOG.md`: 0.2.0, 0.
 | after 0.4.1 (2026-10-11 to 2026-10-14) | #35, #37, #38, #39, #43, #44 | **#22 newsletter**: summary cache, side-effect-free preview and one row per send (PR 5); alembic head fix (#37); ranking and `newsletter_suggestions` (PR 7); new template, inline logo, Indonesian summaries (PR 6); monthly schedule and Executive Summary (PR 8); composer filled with the suggestion (PR 9) |
 | after 0.4.1 | #41, #45 | scraper additions (`aws_security`, news scraper); not part of #21/#22 |
 | 0.6.0 (2026-10-16) | #50-#56, #58, #59 | `new_cve` no longer drops CVEs silently at `max_items` (#50); dashboard UNRATED bucket and one crossref row per CVE (#51); KEV flag reset and the read-only `check-orphaned-tickets` tool (#52); file-name titles never take a newsletter Highlight (#53); dashboard backlog, exploit-risk and top-tech panels, **#17** (#54); IOC enrichment writer with AbuseIPDB, **#4** (#55) and VirusTotal + OTX (#56 was merged into the #55 branch because that branch had not been deleted yet, so it reached `main` through #58); the release PR #59 also synced this file and `docs/ARCHITECTURE.md` |
+| 0.6.1 (2026-10-16) | the 0.6.1 release PR | fix release: enrichment no longer stalls on IOCs a provider rejects with HTTP 400 (OTX stalled in 45 of 60 runs on prod); roadmap status column and prod facts |
 
 Release 0.5.0 (tag `0.5.0`, GitHub Release `v0.5.0`, 2026-10-14) carries everything after 0.4.1 and sits on `f55132d`, the
 merge of #48, so the dark-mode fix is inside (the `CHANGELOG.md` line about it was added after the tag). The plan expected 0.5.0 after #21 and 0.6.0 after #22, but both were on `main` before either was cut, so
 there is one release. Follow-ups found while delivering 0.4.x are collected in #20
 below.
+
+Release 0.6.1 (2026-10-16) is a fix release on top of 0.6.0: the OTX 400 stall described in #4, and this status update.
 
 Release 0.6.0 (tag `0.6.0`, GitHub Release `v0.6.0`, 2026-10-16) is the merge of #59 (`3015304`) and carries everything after
 0.5.0 (#50-#58) plus the docs sync; CI on that commit was green. It is deployed on prod (`/healthz` says 0.6.0 on 2026-10-16,
@@ -309,8 +312,8 @@ and one service failing does not fail the others.
   | OTX (`OTX__API_KEY`) | ip, domain, hashes (URL not supported) | pulse count >= 3 malicious, 1-2 suspicious, 0 unknown; no score | 7 days | `300/hour` |
 
   The thresholds are starting values (constants at the top of `ioc_providers.py`).
-- **Failure isolation**: one failed IOC leaves no card and is retried on the next run; 401/403/429 or three failures in a row
-  stop that provider for the run; the log carries the exception class and the status code only, never the message (it can
+- **Failure isolation**: one failed IOC (network, 5xx) leaves no card and is retried on the next run (a 4xx rejection stores an
+  `unknown` card since 0.6.1); 401/403/429 or three failures in a row stop that provider for the run; the log carries the exception class and the status code only, never the message (it can
   echo a key). A private or invalid IP is not sent anywhere: it gets a `skipped` card so it is not picked again.
 - **Licence**: VirusTotal's own documentation says the public (free) API must not be used in commercial products or
   services. Fill `VIRUSTOTAL__API_KEY` only from a plan that allows it. AbuseIPDB's and OTX's terms of use were NOT checked
@@ -334,9 +337,12 @@ and one service failing does not fail the others.
   were tried directly against OTX's public endpoint and answered normally, so they are probably not the cause; the failing values
   are still unidentified. 3,076 IOCs still have no OTX card
   (domains 1,142, sha256 810, IPs 713, md5 295, sha1 116).
-- **Fix to make** (not done): a client error that is about the IOC itself (HTTP 4xx other than 401/403/429, i.e. 400 first of all)
-  should store an `unknown` card ("rejected by provider (HTTP 400)") like the `skipped` card, so the IOC is not retried until its TTL
-  and does not count toward the three-in-a-row stop. 5xx and network errors keep the current behaviour (retry next run).
+- **Fixed in 0.6.1**: a client error that is about the IOC itself (HTTP 4xx other than 401/403/429, 400 first of all) now stores an
+  `unknown` card ("rejected by provider (HTTP 400)"), like the `skipped` card, so the IOC is not retried until its TTL and does not
+  count toward the three-in-a-row stop; five rejections in a row stop the provider for the run (a wrong request shape must not
+  poison every IOC). 5xx and network errors keep the old behaviour (retry next run). The log line now carries `ioc_id` and
+  `ioc_type`. **The cause of the 400 is still unknown**: after deploying 0.6.1 the rejected IOCs can be listed (cards whose
+  `raw.skipped` starts with "rejected by provider") and looked at.
 - **Thresholds to review**: 151 of 453 OTX cards (33%) are `malicious` with the "three or more pulses" rule; OTX pulses can list
   benign indicators as context, so the rule may be too eager. Starting values, constants in `ioc_providers.py`.
 
