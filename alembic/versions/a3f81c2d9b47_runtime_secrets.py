@@ -12,7 +12,7 @@ Downgrade membuang tabel beserta isinya: key yang sudah diatur dari UI hilang da
 nilai `.env` (yang sengaja dibiarkan terisi sebagai fallback), jadi tidak ada yang berhenti jalan.
 
 Revision ID: a3f81c2d9b47
-Revises: 7e51efe6d78b
+Revises: a3d91c5e7b24
 Create Date: 2026-10-16 18:00:00.000000
 
 """
@@ -25,7 +25,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "a3f81c2d9b47"
-down_revision: str | None = "7e51efe6d78b"
+down_revision: str | None = "a3d91c5e7b24"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

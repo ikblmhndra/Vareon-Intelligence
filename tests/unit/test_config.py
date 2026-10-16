@@ -165,3 +165,24 @@ def test_a_failed_validation_never_prints_the_input_or_any_secret(
     for value in secrets.values():
         assert value not in text
     assert "bukan-kunci" not in text  # kunci master yang salah ketik bisa mirip kunci aslinya
+
+
+# --- SECRETS_LLM_URL_ALLOWED_HOSTS (runtime secrets, ROADMAP #23) -----------------------------
+
+
+def test_secrets_llm_url_allowed_hosts_defaults_to_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Kosong = halaman admin tidak bisa mengisi URL LLM kustom di luar dev; deploy tidak pecah."""
+    monkeypatch.delenv("SECRETS_LLM_URL_ALLOWED_HOSTS", raising=False)
+
+    assert _settings(monkeypatch).secrets_llm_url_allowed_hosts == ""
+
+
+def test_secrets_llm_url_allowed_hosts_reads_its_env_as_is(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """String mentah dipisah koma; pemecahan dan strip spasi ada di `validate_llm_url`."""
+    hosts = "gw.example.com, llm.example.org"
+
+    s = _settings(monkeypatch, SECRETS_LLM_URL_ALLOWED_HOSTS=hosts)
+
+    assert s.secrets_llm_url_allowed_hosts == hosts

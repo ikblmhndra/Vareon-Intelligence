@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import threading
 import time
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, NamedTuple
 
@@ -97,13 +97,23 @@ def load_snapshot(
     keys = (base if base is not None else get_settings()).secrets_encryption_keys
     if not crypto.is_configured(keys):
         return OverlaySnapshot()
-    kept = previous.overrides if previous is not None else {}
     try:
         rows = _fetch_rows()
     except Exception as e:
         _log_load_failure(e)
+        kept = previous.overrides if previous is not None else {}
         return OverlaySnapshot(overrides=dict(kept), errors={"*": type(e).__name__})
+    return snapshot_from_rows(rows, keys, previous)
 
+
+def snapshot_from_rows(
+    rows: Iterable[RuntimeSecret], keys: str, previous: OverlaySnapshot | None = None
+) -> OverlaySnapshot:
+    """Dekripsi baris-baris `runtime_secrets` jadi snapshot. Dipisah dari `load_snapshot` supaya
+    endpoint admin (yang sudah membaca baris lewat sesi async) memakai aturan yang SAMA persis:
+    baris client dan provider tak dikenal dilewati, gagal dekripsi/cacat dicatat per provider dan
+    tidak menjatuhkan provider lain, dan override lama dipertahankan untuk provider yang gagal."""
+    kept = previous.overrides if previous is not None else {}
     overrides: dict[str, dict[str, str]] = {}
     errors: dict[str, str] = {}
     for row in rows:

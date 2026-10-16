@@ -18,8 +18,12 @@ from cti_core.config import get_settings
 from cti_core.db.engine import async_session
 from cti_core.db.repositories.auth import AsyncClientRepo
 from cti_core.logging import configure_logging, get_logger
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -49,6 +53,7 @@ from cti_api.routers import recap as recap_router
 from cti_api.routers import rfi as rfi_router
 from cti_api.routers import roles as roles_router
 from cti_api.routers import scraper as scraper_router
+from cti_api.routers import secrets as secrets_router
 from cti_api.routers import source_reliability as source_reliability_router
 from cti_api.routers import stix as stix_router
 from cti_api.routers import ta_groups as ta_groups_router
@@ -107,10 +112,24 @@ def create_app() -> FastAPI:
         allow_headers=["Authorization", "Content-Type", "X-Client-ID"],
     )
 
+    @app.exception_handler(RequestValidationError)
+    async def _validation_error(request: Request, exc: RequestValidationError) -> Response:
+        # Respons 422 bawaan FastAPI memantulkan `input` (SELURUH body) di tiap galat. Untuk
+        # halaman Third-party Keys itu mengembalikan key yang baru diketik dan password konfirmasi
+        # ke browser dan ke apa pun yang merekam respons. Di sana cukup `type`, `loc`, dan `msg`.
+        if request.url.path.startswith("/api/secrets"):
+            errors = [
+                {k: v for k, v in e.items() if k not in ("input", "ctx", "url")}
+                for e in exc.errors()
+            ]
+            return JSONResponse(status_code=422, content={"detail": jsonable_encoder(errors)})
+        return await request_validation_exception_handler(request, exc)
+
     app.include_router(health_router.router)
     app.include_router(auth_router.router)
     app.include_router(clients_router.router)
     app.include_router(roles_router.router)
+    app.include_router(secrets_router.router)
     app.include_router(articles_router.router)
     app.include_router(iocs_router.router)
     app.include_router(techstack_router.router)

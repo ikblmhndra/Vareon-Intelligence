@@ -20,7 +20,12 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_api.deps import AuthedUser, get_db, get_redis, request_ip, require_admin, require_auth
-from cti_api.rate_limit import is_rate_limited
+from cti_api.rate_limit import (
+    check_password_lockout,
+    clear_password_failures,
+    is_rate_limited,
+    note_password_failure,
+)
 from cti_api.schemas.auth import (
     ChangePasswordRequest,
     LoginRequest,
@@ -161,10 +166,20 @@ async def change_password(
     current = await AsyncUserRepo(session).get_by_username(user["username"])
     if current is None:
         raise HTTPException(status_code=404, detail="User not found")
-    if not current.password_hash or not verify_password(
-        body.current_password, current.password_hash
-    ):
+    # Penghitung kegagalan dipakai bersama halaman Third-party Keys (lihat `rate_limit`): endpoint
+    # ini dulu menerima tebakan password tanpa batas dari pemegang cookie sesi, lalu hasilnya bisa
+    # dipakai untuk mengonfirmasi perubahan key di tempat lain.
+    await check_password_lockout(redis, user["username"])
+    try:
+        password_ok = bool(current.password_hash) and verify_password(
+            body.current_password, current.password_hash
+        )
+    except ValueError:  # bcrypt menolak password > 72 byte: itu tebakan yang salah, bukan 500
+        password_ok = False
+    if not password_ok:
+        await note_password_failure(redis, user["username"])
         raise HTTPException(status_code=400, detail="Current password is incorrect")
+    await clear_password_failures(redis, user["username"])
     policy = await policy_service.get_policy(session)
     errors = policy_service.validate_password(body.new_password, policy)
     if errors:

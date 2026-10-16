@@ -52,7 +52,12 @@ menit -- heartbeat (ditulis per tick) jadi kasar. 60 = heartbeat paling basi
 ~1 menit pas beat sehat; ambang `beat_heartbeat_stale_s` (300) = 5 tick
 kelewat. Biayanya cuma satu iterasi heap per menit."""
 
-from celery.signals import worker_process_init, worker_ready  # noqa: E402
+from celery.signals import (  # noqa: E402
+    after_setup_logger,
+    after_setup_task_logger,
+    worker_process_init,
+    worker_ready,
+)
 
 
 @worker_ready.connect
@@ -61,6 +66,16 @@ def _start_beat_watchdog(**_kwargs: object) -> None:
     from cti_worker import beat_watchdog
 
     beat_watchdog.start()
+
+
+@after_setup_logger.connect
+@after_setup_task_logger.connect
+def _quiet_http_loggers(**_kwargs: object) -> None:
+    """Worker tidak memanggil `configure_logging`, jadi tanpa ini httpx mencatat URL penuh di INFO
+    dan token bot Telegram (path URL-nya) masuk log container tiap alert terkirim."""
+    from cti_core.logging import quiet_http_loggers
+
+    quiet_http_loggers()
 
 
 @worker_process_init.connect

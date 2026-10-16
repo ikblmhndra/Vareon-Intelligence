@@ -67,9 +67,15 @@ Options: `make fresh-deploy ARGS='--skip-build'` (images already built), `--skip
 | `OTX__API_KEY` | optional | |
 | `GRAPH__*` | optional | email delivery (newsletter, CVE) via Microsoft Graph |
 | `OIDC__*` | optional | SSO |
+| `SECRETS_ENCRYPTION_KEYS` | optional | master key (Fernet, comma-separated: the first encrypts, all decrypt) for the keys managed on the admin page **Third-party Keys**. Empty turns that feature off and every key stays in `.env`. Generate with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` and keep it apart from the database backups |
+| `SECRETS_LLM_URL_ALLOWED_HOSTS` | optional | hostnames (comma-separated) the admin page may set as a custom LLM URL outside `ENVIRONMENT=dev`; empty means no custom URL |
 
 The script runs `tools/ops/check_secrets.py` (a read-only probe against each provider that never prints a
 secret) before starting anything. Empty optional keys are reported as `SKIP`, not as failures.
+
+Once `SECRETS_ENCRYPTION_KEYS` is set, a superadmin can change the third-party keys from
+**Admin > Third-party Keys** without a restart; the `.env` values stay as the fallback (see
+`docs/ARCHITECTURE.md` section 3.8). `check_secrets.py` still reads `.env` only.
 
 ### What the script does
 

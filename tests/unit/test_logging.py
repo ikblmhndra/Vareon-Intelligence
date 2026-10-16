@@ -1,5 +1,8 @@
 import json
+import logging
+from collections.abc import Iterator
 
+import pytest
 import structlog
 from cti_core.logging import configure_logging, get_logger
 
@@ -30,3 +33,49 @@ def test_configure_logging_is_idempotent() -> None:
     configure_logging(json=False)
     structlog.reset_defaults()
     configure_logging(json=True)
+
+
+@pytest.fixture
+def restore_httpx_level() -> Iterator[None]:
+    """`configure_logging` menyetel level logger "httpx" (global proses): kembalikan setelah tes."""
+    logger = logging.getLogger("httpx")
+    before = logger.level
+    yield
+    logger.setLevel(before)
+
+
+def test_configure_logging_lowers_the_httpx_logger_to_warning(
+    restore_httpx_level: None,
+) -> None:
+    """httpx mencatat URL lengkap di INFO, dan token bot Telegram ada di path URL-nya (token itu
+    sekarang bisa diatur dari halaman admin): INFO dari httpx tidak boleh sampai ke log
+    container."""
+    logging.getLogger("httpx").setLevel(logging.NOTSET)
+
+    configure_logging(level="INFO")
+
+    assert logging.getLogger("httpx").level == logging.WARNING
+
+
+def test_httpx_info_records_with_the_full_url_are_dropped_after_configure_logging(
+    restore_httpx_level: None, caplog: pytest.LogCaptureFixture
+) -> None:
+    configure_logging(level="INFO")
+    url = "https://api.telegram.org/bot111222333:probe-telegram-aaaaaa/sendMessage"
+
+    with caplog.at_level(logging.INFO):
+        logging.getLogger("httpx").info('HTTP Request: POST %s "HTTP/1.1 200 OK"', url)
+
+    assert "probe-telegram-aaaaaa" not in caplog.text
+
+
+def test_httpx_warnings_still_get_through_after_configure_logging(
+    restore_httpx_level: None, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Menurunkan ke WARNING, bukan membisukan: kegagalan sungguhan tetap tercatat."""
+    configure_logging(level="INFO")
+
+    with caplog.at_level(logging.INFO):
+        logging.getLogger("httpx").warning("kegagalan httpx sungguhan")
+
+    assert "kegagalan httpx sungguhan" in caplog.text

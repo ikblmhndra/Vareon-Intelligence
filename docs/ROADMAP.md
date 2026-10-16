@@ -41,7 +41,7 @@ Each item contains: **what** was asked, **the current state** (facts from the re
 | 18 | **Open** | CVE ticket field validation + a ticket model decision (1 ticket per CVE vs one ticket for many CVEs) | a list of standard values, the model decision | -- |
 | 19 | **Open** (operational) | **Tech catalog from the CVE mirror + Monitor** (new direction 2026-10-07, replacing the alias/phase 2-3 plan; the `aliases` column is dropped): mirror every CVE (calendar-year retention) -> a vendor+product catalog -> All Tech / Monitored Tech tabs -> the CVEs tab only for monitored techs. **Code done (slices 1-7), merged to `main` 2026-10-08 (PR #12, release 0.3.0)**; what remains is operational: finish the mapping (prod, 2026-10-15: 25 of 35 entries mapped), shadow mode (not started), cutover (the runbook and design documents were removed from the repository on 2026-10-16) | manual mapping + shadow on dev | test on the dev server first, then prod |
 | 20 | **Mostly done** | **Known follow-ups from releases 0.4.0 / 0.4.1** (found while reviewing the CVE Tracker; none is blocking) -- **the data-correctness points were fixed 2026-10-15 (#51, #52) or earlier (#21); what is left (the (D) decisions, the KEV/EPSS/Exploit-DB access point, `trending_cve` in January) is marked in the item** | product decisions on the points marked (D) | -- |
-| 23 | **Open** (design agreed 2026-10-16) | **Runtime secrets** (asked 2026-10-16): manage the third-party keys (LLM, Telegram, Graph, NVD, GitHub, twitterapi.io, X, OTX, AbuseIPDB, VirusTotal) from a superadmin-only admin page, encrypted in the database and applied without a restart or rebuild; the deployment-level secrets (database, Redis, JWT/session, OIDC) stay in `.env` -- **design agreed 2026-10-16, nothing built** | a go-ahead; a master key set in the prod `.env` before the API/UI pull requests are used; the re-auth decision for OIDC-only superadmins | -- (touches #11 for the OIDC question) |
+| 23 | **Done in code, waiting for merge** (ONE pull request, release 0.7.0) | **Runtime secrets** (asked 2026-10-16): manage the third-party keys (LLM, Telegram, Graph, NVD, GitHub, twitterapi.io, X, OTX, AbuseIPDB, VirusTotal) from a superadmin-only admin page, encrypted in the database and applied without a restart or rebuild; the deployment-level secrets (database, Redis, JWT/session, OIDC) stay in `.env` -- **built 2026-10-16 as a single pull request on branch `feat/runtime-secrets-core` (the user chose not to split it), with the 0.7.0 release commit in it** | merge; then on prod: `make deploy`, a generated master key in `SECRETS_ENCRYPTION_KEYS`, and a restart of api and workers once; the re-auth decision for OIDC-only superadmins | -- (touches #11 for the OIDC question) |
 ---
 
 ## Priority queue (team feedback 2026-10-10)
@@ -79,7 +79,7 @@ PRs #2-#59 are all merged into `main` (release tags in `CHANGELOG.md`: 0.2.0, 0.
 | 22 | Live | PRs #35, #39, #38, #43, #44 (0.5.0), #53 (0.6.0), on prod by 2026-10-15 | the first real edition, Mon 2 Nov |
 | 5, 8, 9, 10, 11 | Parked | -- | set aside by the user on 2026-10-15; do not start without a trigger |
 | 6, 7, 12, 15, 16, 18 | Open | -- | see each item; #6 mostly exists (only expiry is missing), #7 waits for the #19 cutover, #15 waits for the `published_at` backfill (7 prod rows), #12 for labelled examples, #16 and #18 for SLA targets and the list of ticket values |
-| 23 | Open (design agreed 2026-10-16) | -- | all three pull requests (see the item) |
+| 23 | Code done (one pull request, release 0.7.0) | branch `feat/runtime-secrets-core` | merge, tag `0.7.0`, `make deploy`, set `SECRETS_ENCRYPTION_KEYS` on prod and try the page |
 
 **Merged PRs by release**
 
@@ -1342,7 +1342,7 @@ we **use**. It also makes the keys needed by #4 (AbuseIPDB, VirusTotal, OTX) cha
 | Conflict with the planned Vault | `overlay.py` is the seam where a Vault reader plugs in later |
 
 **Design (agreed 2026-10-16)**
-- **Table `runtime_secrets`** (`cti_core/db/models/runtime_secret.py` + a hand-written migration after head `7e51efe6d78b`):
+- **Table `runtime_secrets`** (`cti_core/db/models/runtime_secret.py` + a hand-written migration after head `a3d91c5e7b24`):
   `provider`, `client_id` (nullable FK to `clients`, NULL = platform, only NULL is written in this item), `secrets_enc`
   bytea (NOT NULL; a Fernet token of `{provider, client_id, fields}` holding **every** overridden field, secret or not,
   so there is no plaintext column an attacker with write access to the database could use to change behaviour, for
@@ -1375,14 +1375,18 @@ we **use**. It also makes the keys needed by #4 (AbuseIPDB, VirusTotal, OTX) cha
   removes the override, an absent field is unchanged, an **empty string is rejected** so a working `.env` key is never
   overwritten with a blank; the order is registry check, LLM URL check, probe the candidate, encrypt, upsert, invalidate, audit);
   `DELETE /api/secrets/{provider}` (also needs the password); `POST /api/secrets/{provider}/test`. Audit actions `secret_set`,
-  `secret_clear`, `secret_test` with `target_id=provider` and `detail={fields, last4}`, never a value.
+  `secret_clear`, `secret_test`, `secret_set_rejected`, `secret_reauth_failed` with `target_id=provider`; `secret_set` carries
+  `detail={fields, values}` where `values` are the non-secret fields only (so the new `llm.url` can be traced), never a secret.
 - **LLM URL guard**: outside `dev`, only hosts listed in `SECRETS_LLM_URL_ALLOWED_HOSTS` (empty by default, so the page cannot set a
   custom URL in prod) and only https; in `dev` anything goes (local gateways such as 9router).
 - **Probes** move from `tools/ops/check_secrets.py` into `apps/api/.../services/secret_probes.py` (the API image does not ship
   `tools/`); the CLI stays and keeps exporting `run_checks`, `CHECKS`, `Result`, `exit_code` and `main`, and
   `tests/unit/test_check_secrets.py` (it mocks HTTP with `respx`) is the regression net. Add an API-only Graph probe that
-  only acquires a token (it never creates a message). For AbuseIPDB, VirusTotal and OTX use the cheapest read-only endpoint
-  and **check it against the vendor docs while building**; if none is free of quota, show "not tested" instead of guessing.
+  only acquires a token (it never creates a message). AbuseIPDB and VirusTotal are probed with the production lookup of
+  `8.8.8.8` (no verifiable "check key" endpoint exists, and it tests the real code path; it costs one lookup of the daily quota,
+  so the Test endpoint has a 30-second cooldown per provider). OTX is probed with `GET /api/v1/users/me` because its indicator
+  lookup is public (a fake key also gets 200: confirmed with a live request); that endpoint rejects a fake key with 403, and
+  its answer for a valid key should be confirmed once with the real key on prod.
 - **Web** (`apps/web/src/components/admin/secrets-section.tsx` plus an edit dialog): one card per provider with the source
   badge, the masked tail, Test, Edit and "Revert to .env". Password inputs, `autocomplete="new-password"`, never pre-filled,
   cleared on close and on submit. Mounted for `superadmin` in `admin/users/page.tsx` like `ClientsSection`. Follow
@@ -1392,22 +1396,17 @@ we **use**. It also makes the keys needed by #4 (AbuseIPDB, VirusTotal, OTX) cha
   `tests/unit/test_env_prod_template.py` in the same commit. Without a master key writes are refused (503), the overlay reads
   nothing, and behaviour is exactly today's.
 
-**Pull requests** (in order, each reviewable on its own)
-1. **Core**, inert while the table is empty: dependency, config, model and migration, a read-only sync repository (the write side comes with the API in pull request 2), registry,
-   crypto, overlay, the consumers switched, the scrub list widened.
-2. **API**: probes extracted, service and router, audit, re-auth, rate limit, `docs/openapi.json` and `schema.d.ts` regenerated.
-   Notes from the pull request 1 review: the upsert targets a partial **index**, so it needs
-   `on_conflict_do_update(index_elements=["provider"], index_where=text("client_id IS NULL"))` (a
-   constraint name does not work), and it must set `updated_at=func.now()` in `set_` because the ORM
-   `onupdate` does not run for `ON CONFLICT DO UPDATE`. A write to `llm` must carry `provider`, `model` and `url`
-   together (an empty `url` means the vendor default), so a new key can never be sent to a gateway URL that is still in
-   `.env`. `tools/ops/check_secrets.py` keeps reading `.env`; the API probes check the effective values. `httpx` logs
-   full URLs at INFO and the Telegram token is in the URL path, so lower the `httpx` log level when the page can set
-   that token. Still open from the review: nothing re-encrypts rows when the master key is rotated (a `MultiFernet.rotate`
-   helper), and an old token replayed from a backup is accepted (no version in the payload).
-3. **Web and docs**: the section, a "Runtime secrets" part in `docs/ARCHITECTURE.md`, the config table in the README.
-   `CHANGELOG.md` and the version bump wait for the release pull request (`routers/changelog.py` parses the header format
-   strictly).
+**Delivered as ONE pull request** (decision 2026-10-16: do not split this roadmap item), in this order inside the branch: the
+core (dependency, config, model and migration, registry, crypto, overlay, consumers switched, scrub list widened), the API
+(probes extracted, service and router, audit, re-auth, rate limit, `docs/openapi.json` and `schema.d.ts`), the web section,
+the docs, and the `chore(release): 0.7.0` commit (version bump and `CHANGELOG.md`, as the release convention asks). Findings
+from the agent reviews that shaped the final code (all fixed in the branch): serve-stale instead of reverting to `.env` on a
+database error; every overridden field inside the authenticated blob (no plaintext column); a shared per-user failure counter
+with session revocation, because `POST /api/auth/change-password` had no limit and would have let a stolen cookie guess the
+password; an advisory lock per provider; the OTX probe moved to `users/me` (its lookup endpoint answers 200 without a key);
+the URL allowlist re-checked on every `llm` write; the `httpx` log level lowered in the Celery worker too; and the server's
+error messages actually reaching the UI. Still open: nothing re-encrypts rows when the master key is rotated (a
+`MultiFernet.rotate` helper), and an old token replayed from a backup is accepted (no version in the payload).
 
 **Touch points**: `packages/cti-core/src/cti_core/{config.py, runtime_secrets/*, db/models/runtime_secret.py,
 db/models/__init__.py, db/repositories/runtime_secret.py, llm/client.py}`, `alembic/env.py` (model import) and

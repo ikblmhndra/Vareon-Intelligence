@@ -347,6 +347,57 @@ flowchart LR
   (it can echo a key) or the IOC value.
 - **Values** are re-fanged before they are sent (`cti_core.ioc.extractor.refang`); only lookups are made, nothing is submitted or scanned.
 
+### 3.8 Third-party keys (runtime secrets)
+
+The third-party keys (LLM, Telegram, Graph, NVD, GitHub, twitterapi.io, X, OTX, AbuseIPDB, VirusTotal) can be changed from
+the admin page **Third-party Keys** (superadmin only) and apply without a restart. The deployment-level secrets (database,
+Redis, JWT/session, OIDC and the master key itself) stay in `.env`: they are needed before the database can be read.
+
+```mermaid
+flowchart LR
+  ui["Admin page<br/>Third-party Keys"] -->|"PUT /api/secrets/{provider}<br/>fields + current password"| api["routers/secrets.py<br/>superadmin, 5 writes/min"]
+  api --> reauth{"password OK?"}
+  reauth -->|"no"| deny["403 + audit<br/>secret_reauth_failed"]
+  reauth -->|"yes"| probe["secret_probes.run_probe<br/>candidate = .env + new override"]
+  probe -->|"FAIL"| rej["422, nothing saved"]
+  probe -->|"OK / NOTE / SKIP"| save["Fernet encrypt -> runtime_secrets<br/>audit secret_set, overlay.invalidate()"]
+  use["Runner, get_llm_client, telegram,<br/>mailer, ioc.enrich_pending"] --> eff["overlay.effective_settings()<br/>get_settings() + overrides, 30 s cache"]
+  save -.-> eff
+```
+
+- **Storage**: one `runtime_secrets` row per provider (platform scope, `client_id` NULL; the column exists so per-workspace keys
+  can follow). Every overridden field, secret or not, sits in one Fernet token (`secrets_enc`) bound to the provider and the
+  `client_id`, so no plaintext column can change behaviour (for example by pointing `llm.url` at another host). The master key
+  is `SECRETS_ENCRYPTION_KEYS` (several keys allowed: the first encrypts, all decrypt). With it empty the feature is off and
+  the code behaves exactly as before.
+- **Read path**: consumers call `overlay.effective_settings()` instead of `get_settings()`. It returns `get_settings()` itself
+  when there is nothing to apply. The loader is synchronous (`sync_session()`, 5-second connect timeout) and cached per process
+  for 30 seconds, so a new key reaches every process within about 30 seconds; the process that wrote it sees it at once.
+- **Failure behaviour**: it never raises and it serves stale instead of reverting. If the database cannot be read it keeps the
+  last healthy overrides (a blip never brings back a key that was already revoked) and retries after 10 seconds; only a
+  process that has never had a healthy snapshot falls back to `.env`. A row that cannot be decrypted skips that provider and
+  keeps its previous override if there was one. Logged as `runtime_secrets_load_failed`, `runtime_secret_decrypt_failed`,
+  `runtime_secret_invalid_row`, with the exception class only (a DSN or key can sit in the message).
+- **Guards on writes**: the current password (a stolen session cookie must not be enough to rotate a key to the attacker's own).
+  Wrong passwords are counted per username **together with `POST /api/auth/change-password`** (same counter, 5 in 15 minutes):
+  past the limit the endpoints answer 429 and every session of that account is revoked, so a stolen cookie cannot guess the
+  password through the one endpoint that used to have no limit. A probe of the candidate settings before saving (a mistyped key
+  never goes live; a vendor outage also blocks the save, and the fallback is `.env` or trying again later), an `llm` override
+  that always carries provider, model and url together, and for `llm.url` outside `dev` only https, port 443 hosts listed in
+  `SECRETS_LLM_URL_ALLOWED_HOSTS` (checked again on every `llm` write, except a value equal to `LLM__URL` in `.env`, which the
+  operator already trusts). Writes and clears of one provider are serialised with a Postgres advisory lock, so two admins
+  cannot overwrite each other's fields while a probe runs. Resending a value that is already stored changes nothing (no probe,
+  no audit row). The `PUT` response carries the probe result: a key saved with status other than `OK` is stored but unverified.
+  Secret values never appear in responses, logs or the audit trail (the audit rows hold field names and the values of the
+  non-secret fields, such as the new `llm.url`).
+- **Probes** (`cti_api.services.secret_probes`, shared with `tools/ops/check_secrets.py`): one read-only call per provider, with
+  a 45-second total limit; any exception becomes `FAIL "probe error (<type>)"` instead of a 500. AbuseIPDB and VirusTotal use a
+  real lookup of `8.8.8.8` through the production code (`ioc_providers.lookup_*`), so a test costs one lookup from that
+  provider's quota (hence a 30-second cooldown per provider on the Test endpoint). OTX is different: its indicator lookup is
+  public (a fake key also gets HTTP 200), so it is probed with `GET /api/v1/users/me`, which rejects a fake key with 403.
+- **Scrub**: `overlay.scrub_candidates()` returns the `.env` values and the overridden ones (and the master keys), longest
+  first; `_scrub_secrets` and `newsletter_summary._log_detail` use it.
+
 ## 4. Data stores and access patterns
 
 Postgres is reached through two drivers: **sync psycopg** in Celery and the CLI (`cti_core.db.engine.
@@ -364,6 +415,7 @@ sync_session`), and **async asyncpg** in FastAPI (`deps.get_db`). The schema has
 | `cve_tracker` (+ `cve_references`, `cve_affected`, ...) | `(cve_id, client_id)` | `_cve_sink`, `_promote_live`, `cve.enrichment_sweep` | API (CVE tab, dashboards, export) |
 | `cve_records` (+ `cve_record_products`) | `cve_id` | `cve.mirror_sync` | promotion, API (CVE DB) |
 | `job_state` | key | `cve.mirror_sync` (cursor, pending retries) | `cve.mirror_sync` |
+| `runtime_secrets` | `provider` (platform scope: `client_id` NULL) | API (`/api/secrets`) | `overlay.effective_settings()` in every process (30 s cache) |
 
 Redis plays four roles at once:
 
@@ -467,3 +519,23 @@ Read these in order. Each starts at a real entry point.
    3 hours with no freshness filter (Exploit-DB is the heaviest: per-CVE HTTP in batches of 5).
 9. **Two CVE ingest paths coexist** with different matchers until cutover. Shadow mode exists to compare
    them; see `docs/CVE_CATALOG_CUTOVER.md`.
+10. **Keys managed from the admin page are read with a synchronous database call.** `effective_settings()` runs one small query
+    per process every 30 seconds, also from the API event loop. The sync engine has a 5-second `connect_timeout` for that reason
+    (it applies to every sync connection, Celery included), but a database that answers slowly still blocks the loop for that
+    query.
+11. **A revoked key left in `.env` comes back.** The `.env` value is the fallback for a process that starts while the database
+    cannot be read, for a lost or changed master key, and for "Revert to .env". Rotating a key from the page does not touch
+    `.env`: keep it equal to the active key, or blank, never the revoked one.
+12. **Master key rotation is manual.** Put the new key first in `SECRETS_ENCRYPTION_KEYS` and keep the old one until every row
+    has been saved again (nothing re-encrypts rows yet); dropping the old key early makes those rows undecryptable and the
+    providers fall back to `.env`. An old token replayed from a backup is accepted (the payload has no version).
+13. **`tools/ops/check_secrets.py` reads `.env` only.** After a key was changed from the page, use the Test button (it probes
+    the effective value); the CLI keeps reporting the `.env` one (it now prints a note when the master key is set).
+14. **The LLM probe proves reachability and the model, not always the key.** It calls `GET /models`, which some gateways serve
+    without authentication (OpenRouter does), so a mistyped key can pass there.
+15. **The production OpenAI client follows redirects** (`follow_redirects=True` is the SDK default), while the probe does not.
+    An allow-listed gateway that answers 307/308 with another host would be sent the request body (article text); the
+    `Authorization` header is dropped across origins. Left as is: turning redirects off could break gateways that rely on them.
+16. **The `llm.url` allowlist is off when `ENVIRONMENT=dev`, which is also the default.** A prod `.env` that forgets
+    `ENVIRONMENT=prod` loses the guard (`.env.prod.template` sets it). In `dev` the probe can also be used as a blind SSRF
+    oracle by a superadmin.

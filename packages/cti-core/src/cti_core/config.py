@@ -301,6 +301,12 @@ class Settings(BaseSettings):
     sebelum fitur ini ada (deploy tidak pecah kalau key ini belum diisi di host). Bikin lewat
     `Fernet.generate_key()` (paket `cryptography`). Simpan TERPISAH dari backup DB, itu inti
     pengamannya."""
+    secrets_llm_url_allowed_hosts: str = ""
+    """Hostname (tanpa skema/port, dipisah koma) yang BOLEH dipakai sebagai `llm.url` dari halaman
+    admin di luar `ENVIRONMENT=dev`. Kosong = halaman admin tidak bisa mengisi URL kustom sama
+    sekali (provider/model/key tetap bisa). Alasannya SSRF dan eksfiltrasi: URL ini menerima key
+    LLM beserta seluruh teks artikel, jadi di staging/prod hanya gateway yang memang disetujui yang
+    boleh."""
 
     database: DatabaseSettings
     redis: RedisSettings = Field(default_factory=RedisSettings)
