@@ -51,6 +51,7 @@ from cti_core.db.models.ransomware import RansomwareVictim
 from cti_core.db.models.recap import DailyRecap
 from cti_core.db.models.report_state import CveMention, JobState
 from cti_core.db.models.rfi import RFIRequest
+from cti_core.db.models.runtime_secret import RuntimeSecret
 from cti_core.db.models.scraper import ScraperConfig, ScraperItem, ScraperRun, ScraperSeen
 from cti_core.db.models.source_reliability import SourceReliabilityEntry
 from cti_core.db.models.ta import TAProfile, TAWatchlistEntry, TAWhitelistEntry
@@ -117,6 +118,7 @@ __all__ = [
     "RansomwareVictim",
     "RejectedArticle",
     "Role",
+    "RuntimeSecret",
     "ScraperConfig",
     "ScraperItem",
     "ScraperRun",

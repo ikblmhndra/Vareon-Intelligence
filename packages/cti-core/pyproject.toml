@@ -13,6 +13,9 @@ dependencies = [
     "structlog>=24.1",
     "celery[redis]>=5.4",
     "openai>=1.30",
+    # Fernet buat secret yang dikelola lewat UI admin (ROADMAP #23). Sebelumnya cuma ikut transitif
+    # lewat python-jose di apps/api; cti-core sekarang memakainya langsung, jadi dideklarasikan sendiri.
+    "cryptography>=42",
 ]
 
 [build-system]

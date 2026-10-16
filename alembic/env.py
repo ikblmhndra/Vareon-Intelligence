@@ -28,6 +28,7 @@ from cti_core.db.models import (  # noqa: F401
     ransomware,
     recap,
     rfi,
+    runtime_secret,
     scraper,
     source_reliability,
     ta,

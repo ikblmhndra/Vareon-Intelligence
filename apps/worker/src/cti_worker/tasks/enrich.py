@@ -67,18 +67,13 @@ def _scrub_secrets(text: str) -> str:
     """Buang secret yang DIKONFIGURASI dari teks error sebelum masuk DB/UI:
     provider kadang ngecho (sebagian) API key di pesan errornya."""
     try:
-        from cti_core.config import get_settings
+        from cti_core.runtime_secrets.overlay import scrub_candidates
 
-        s = get_settings()
-        secrets = [
-            s.llm.api_key, s.telegram.bot_token, s.nvd.api_key, s.github.token,
-            s.twitter.api_key, s.graph.client_secret, s.auth.jwt_secret,
-        ]  # fmt: skip
+        secrets = scrub_candidates()
     except Exception:  # settings gak bisa dimuat: jangan sampai gagal nyatet gara-gara ini
         return text
     for secret in secrets:
-        if secret and len(secret) >= 6:
-            text = text.replace(secret, "***")
+        text = text.replace(secret, "***")
     return text
 
 

@@ -1281,8 +1281,10 @@ we **use**. It also makes the keys needed by #4 (AbuseIPDB, VirusTotal, OTX) cha
 
 **Design (agreed 2026-10-16)**
 - **Table `runtime_secrets`** (`cti_core/db/models/runtime_secret.py` + a hand-written migration after head `7e51efe6d78b`):
-  `provider`, `client_id` (nullable FK to `clients`, NULL = platform, only NULL is written in this item), `values` JSONB
-  (non-secret fields), `secrets_enc` bytea (a Fernet token of `{provider, fields}`; the provider is checked on decrypt),
+  `provider`, `client_id` (nullable FK to `clients`, NULL = platform, only NULL is written in this item), `secrets_enc`
+  bytea (NOT NULL; a Fernet token of `{provider, client_id, fields}` holding **every** overridden field, secret or not,
+  so there is no plaintext column an attacker with write access to the database could use to change behaviour, for
+  example by pointing `llm.url` at their own host; provider and `client_id` are checked on decrypt),
   `updated_by`, `updated_at`, `last_test_ok`, `last_test_at`. Two partial unique indexes (platform: `provider`; client:
   `client_id, provider`).
 - **Overridable fields** (one registry, `cti_core/runtime_secrets/registry.py`): `llm.api_key|provider|model|url`,
@@ -1294,11 +1296,17 @@ we **use**. It also makes the keys needed by #4 (AbuseIPDB, VirusTotal, OTX) cha
   decrypt, so the master key can be rotated without a data migration). `cryptography` becomes a direct `cti-core` dependency.
 - **Overlay** (`cti_core/runtime_secrets/overlay.py`): `effective_settings()` is `get_settings()` plus the database overrides,
   cached per process for 30 seconds (`invalidate()` in the process that just wrote). The loader is synchronous through
-  `sync_session()`. It **fails open**: a database or decryption failure falls back to `.env` with a structured error log and
-  never raises. A field that has no override falls back to `.env`.
+  `sync_session()`. It never raises, and it **serves stale rather than reverting**: if the database cannot be read it keeps
+  the last healthy overrides (so a database blip never brings back a key that was already revoked) and retries after
+  10 seconds; only a process that has never had a healthy snapshot falls back to `.env`. A row that cannot be decrypted
+  skips that provider (keeping its previous override if there was one) and the others carry on. A refresh never makes
+  another thread wait, and `invalidate()` does not wait for I/O. The sync engine gets a 5-second `connect_timeout`
+  because this loader runs on the API event loop. A field that has no override falls back to `.env`; an empty
+  non-secret field is a real override ("vendor default", so `llm.url=""` replaces a gateway URL in `.env`), while an empty
+  secret is ignored.
 - **Consumers** change only their default expression `get_settings()` to `effective_settings()`: `cti_alerts/telegram.py`,
   `cti_alerts/mailer.py`, `cti_core/llm/client.py`, `cti_scraper/credentials.py`, the settings handed to `build_specs` in
-  `tasks/periodic.py`, `services/newsletter_summary.py`. The two scrub sites use a new `configured_secret_values()` helper.
+  `tasks/periodic.py`, `services/newsletter_summary.py`. The two scrub sites use `scrub_candidates()`: the `.env` values **and** the overridden ones (a key that was just rotated can still appear in an error from a call that was already running), longest first, never raising, and the master keys included.
 - **API** (`routers/secrets.py` + `services/runtime_secrets.py`, all `require_superadmin`): `GET /api/secrets` (per provider:
   `source`, non-secret fields as they are, secret fields only as `set` plus the last four characters, `updated_by/at`,
   `last_test`); `PUT /api/secrets/{provider}` with `{fields: {name: value | null}, current_password}` (a string sets, `null`
@@ -1323,9 +1331,18 @@ we **use**. It also makes the keys needed by #4 (AbuseIPDB, VirusTotal, OTX) cha
   nothing, and behaviour is exactly today's.
 
 **Pull requests** (in order, each reviewable on its own)
-1. **Core**, inert while the table is empty: dependency, config, model and migration, sync and async repositories, registry,
+1. **Core**, inert while the table is empty: dependency, config, model and migration, a read-only sync repository (the write side comes with the API in pull request 2), registry,
    crypto, overlay, the consumers switched, the scrub list widened.
 2. **API**: probes extracted, service and router, audit, re-auth, rate limit, `docs/openapi.json` and `schema.d.ts` regenerated.
+   Notes from the pull request 1 review: the upsert targets a partial **index**, so it needs
+   `on_conflict_do_update(index_elements=["provider"], index_where=text("client_id IS NULL"))` (a
+   constraint name does not work), and it must set `updated_at=func.now()` in `set_` because the ORM
+   `onupdate` does not run for `ON CONFLICT DO UPDATE`. A write to `llm` must carry `provider`, `model` and `url`
+   together (an empty `url` means the vendor default), so a new key can never be sent to a gateway URL that is still in
+   `.env`. `tools/ops/check_secrets.py` keeps reading `.env`; the API probes check the effective values. `httpx` logs
+   full URLs at INFO and the Telegram token is in the URL path, so lower the `httpx` log level when the page can set
+   that token. Still open from the review: nothing re-encrypts rows when the master key is rotated (a `MultiFernet.rotate`
+   helper), and an old token replayed from a backup is accepted (no version in the payload).
 3. **Web and docs**: the section, a "Runtime secrets" part in `docs/ARCHITECTURE.md`, the config table in the README.
    `CHANGELOG.md` and the version bump wait for the release pull request (`routers/changelog.py` parses the header format
    strictly).

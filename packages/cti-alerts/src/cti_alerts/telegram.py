@@ -24,7 +24,8 @@ import asyncio
 from typing import Any
 
 import telegram
-from cti_core.config import TelegramSettings, get_settings
+from cti_core.config import TelegramSettings
+from cti_core.runtime_secrets.overlay import effective_settings
 
 
 class UnknownAlertTopic(Exception):
@@ -42,7 +43,7 @@ async def _send(settings: TelegramSettings, msg: str, thread_id: int | None) -> 
 
 
 def send_alert(topic: str, msg: str, *, settings: TelegramSettings | None = None) -> None:
-    settings = settings or get_settings().telegram
+    settings = settings or effective_settings().telegram
     if topic not in settings.thread_ids:
         raise UnknownAlertTopic(
             f"topic alert '{topic}' gak terdaftar di TELEGRAM__THREAD_IDS -- "
@@ -73,7 +74,7 @@ def send_file(
 ) -> None:
     """Port `send_file`/`send_report_file`/`send_alert_news_of_the_day` --
     ketiganya sama-sama "kirim dokumen ke satu thread", beda cuma topic-nya."""
-    settings = settings or get_settings().telegram
+    settings = settings or effective_settings().telegram
     if topic not in settings.thread_ids:
         raise UnknownAlertTopic(
             f"topic alert '{topic}' gak terdaftar di TELEGRAM__THREAD_IDS -- "

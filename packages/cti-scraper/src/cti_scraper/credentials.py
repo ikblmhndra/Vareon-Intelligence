@@ -39,8 +39,8 @@ _CREDENTIAL_RESOLVERS: dict[str, _Resolver] = {
 def resolve_credential_headers(name: str, *, settings: Settings | None = None) -> dict[str, str]:
     """`name` -> header dict siap pasang ke `ScraperHttpClient(default_headers=...)`.
     Raise `ConfigError` (bukan diam-diam kirim request tanpa auth) kalau
-    nama gak dikenal atau secret-nya kosong di `.env` -- gagal pas start
-    run, bukan 401 yang membingungkan di tengah fetch.
+    nama gak dikenal atau secret-nya kosong (di `.env` DAN di override halaman admin) -- gagal pas
+    start run, bukan 401 yang membingungkan di tengah fetch.
 
     `settings`: buat testing doang -- `get_settings()` di-cache lintas
     proses (lihat docstring-nya), jadi test yang mau env beda-beda harus
@@ -52,13 +52,15 @@ def resolve_credential_headers(name: str, *, settings: Settings | None = None) -
         )
 
     if settings is None:
-        from cti_core.config import get_settings
+        from cti_core.runtime_secrets.overlay import effective_settings
 
-        settings = get_settings()
+        settings = effective_settings()
 
     headers = resolver(settings)
     if headers is None:
         raise ConfigError(
-            f"credential '{name}' butuh secret yang masih kosong di .env (lihat .env.example)"
+            f"credential '{name}' butuh secret yang masih kosong di .env dan di override halaman "
+            "admin (lihat .env.example; kalau seharusnya terisi dari halaman admin, cek log "
+            "runtime_secrets_*)"
         )
     return headers

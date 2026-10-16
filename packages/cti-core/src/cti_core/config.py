@@ -278,6 +278,10 @@ class Settings(BaseSettings):
         env_nested_delimiter="__",
         extra="forbid",
         case_sensitive=False,
+        # Tanpa ini ValidationError mencetak `input_value=` (kepala dan ekor dict masukan, yang
+        # berisi SEMUA secret), jadi satu salah ketik di env bisa menaruh potongan JWT/DB password
+        # di log boot.
+        hide_input_in_errors=True,
     )
 
     service_name: str = "cti"
@@ -289,6 +293,14 @@ class Settings(BaseSettings):
     secrets_backend: Literal["env", "vault"] = "env"
     vault_addr: str = "http://vault:8200"
     vault_token: str = ""
+
+    secrets_encryption_keys: str = ""
+    """Master key Fernet buat secret yang dikelola lewat halaman admin (ROADMAP #23), daftar dipisah
+    koma: kunci PERTAMA mengenkripsi, SEMUA mendekripsi, jadi rotasi master key cukup menaruh kunci
+    baru di depan. Kosong = fitur mati total: overlay tidak menyentuh DB dan perilaku persis seperti
+    sebelum fitur ini ada (deploy tidak pecah kalau key ini belum diisi di host). Bikin lewat
+    `Fernet.generate_key()` (paket `cryptography`). Simpan TERPISAH dari backup DB, itu inti
+    pengamannya."""
 
     database: DatabaseSettings
     redis: RedisSettings = Field(default_factory=RedisSettings)
@@ -320,6 +332,25 @@ class Settings(BaseSettings):
                 "lihat docs/SECRETS_ROTATION.md) -- tapi kalau backend ini "
                 "dipilih, token minimal harus ada."
             )
+        return self
+
+    @model_validator(mode="after")
+    def _encryption_keys_must_be_valid_fernet(self) -> Settings:
+        """Salah ketik = gagal start (sama filosofi `extra="forbid"`), bukan baru ketahuan pas
+        simpan key pertama dari UI. Pesan TIDAK memuat nilainya."""
+        keys = [k.strip() for k in self.secrets_encryption_keys.split(",") if k.strip()]
+        if not keys:
+            return self
+        from cryptography.fernet import Fernet
+
+        for position, key in enumerate(keys, start=1):
+            try:
+                Fernet(key)
+            except ValueError as e:
+                raise ValueError(
+                    f"SECRETS_ENCRYPTION_KEYS: kunci ke-{position} bukan kunci Fernet yang valid "
+                    "(harus 32 byte base64 url-safe, lihat komentar field di config.py)."
+                ) from e
         return self
 
 
