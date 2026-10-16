@@ -77,6 +77,15 @@
   --color-chart-10: var(--chart-10);
 }
 
+/* Bayangan bertinta Burgundy (#430a23, sama dengan band "Need Attention") menggantikan
+   hitam generik bawaan Tailwind: di atas halaman putih terbaca hangat, bukan abu kusam.
+   Satu sumber cahaya (atas), alfa rendah supaya kartu tetap ditentukan warna surface. */
+@theme {
+  --shadow-sm: 0 1px 2px 0 rgb(67 10 35 / 0.06), 0 1px 3px 0 rgb(67 10 35 / 0.08);
+  --shadow-md: 0 2px 4px -1px rgb(67 10 35 / 0.07), 0 6px 12px -2px rgb(67 10 35 / 0.1);
+  --shadow-lg: 0 4px 8px -2px rgb(67 10 35 / 0.08), 0 12px 24px -4px rgb(67 10 35 / 0.14);
+}
+
 :root {
   --background: #ffffff; /* halaman putih polos; card yang berwarna (beige) */
   --foreground: #2b0d19; /* Burgundy gelap */
@@ -196,6 +205,11 @@
   }
   h1, h2, h3 {
     letter-spacing: -0.01em;
+    /* Hindari satu kata yatim di baris terakhir judul. */
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
   }
   /* Ikon lucide sebaris teks (badge/span) ikut ukuran font; di dalam Button utilitas `size-*` menang. */
   svg.lucide {
@@ -205,6 +219,22 @@
     vertical-align: -0.15em;
     flex-shrink: 0;
   }
+}
+
+/* Latar halaman auth (login/404/error): dua cahaya radial -- merah brand dari kiri atas,
+   beige dari kanan bawah -- supaya halaman tanpa konten padat tidak terasa datar. */
+.auth-backdrop {
+  background-image:
+    radial-gradient(
+      60rem 38rem at 12% -8%,
+      color-mix(in oklab, var(--primary) 12%, transparent),
+      transparent 62%
+    ),
+    radial-gradient(
+      52rem 34rem at 104% 108%,
+      color-mix(in oklab, var(--panel) 85%, transparent),
+      transparent 62%
+    );
 }
 
 /* Scrollbar tipis -- port `custom.css` lama apa adanya. */

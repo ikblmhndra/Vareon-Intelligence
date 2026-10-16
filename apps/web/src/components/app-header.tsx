@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 
 import { useAuth } from "@/components/providers/auth-provider";
+import { BrandMark } from "@/components/brand-mark";
 import { ChangelogDialog } from "@/components/changelog-dialog";
 import { ClientSwitcher } from "@/components/client-switcher";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -54,12 +55,7 @@ function Brand() {
       href="/dashboard"
       className="flex items-center gap-3 rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
     >
-      <span
-        aria-hidden
-        className="grid size-10 shrink-0 place-items-center rounded-full bg-primary font-heading text-lg font-bold text-primary-foreground"
-      >
-        V
-      </span>
+      <BrandMark />
       <span className="font-heading text-lg leading-tight font-extrabold tracking-tight text-foreground">
         Vareon
         <br />
@@ -103,7 +99,7 @@ function NavLinks({ orientation }: { orientation: "vertical" | "horizontal" }) {
 /** Sidebar desktop (>= lg). Di bawah itu nav pindah ke `AppTopbar`. */
 export function AppSidebar() {
   return (
-    <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col gap-8 overflow-y-auto border-r border-border bg-background px-4 py-6 lg:flex">
+    <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col gap-8 overflow-y-auto border-r border-border bg-background px-4 py-6 lg:flex">
       <div className="px-2">
         <Brand />
       </div>
@@ -116,7 +112,7 @@ export function AppSidebar() {
 export function AppTopbar() {
   const { user } = useAuth();
   return (
-    <header className="sticky top-0 z-30 border-b border-border bg-background">
+    <header className="sticky top-0 z-30 border-b border-border bg-background supports-[backdrop-filter]:bg-background/80 supports-[backdrop-filter]:backdrop-blur-md">
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-8">
         <div className="lg:hidden">
           <Brand />

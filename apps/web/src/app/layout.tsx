@@ -23,7 +23,8 @@ const ibmPlexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: PLATFORM_NAME,
+  // Segmen route mengisi `%s` lewat `metadata.title` mereka, jadi tab browser membedakan halaman.
+  title: { default: PLATFORM_NAME, template: `%s · ${PLATFORM_NAME}` },
   description: "Cyber threat intelligence platform",
 };
 
