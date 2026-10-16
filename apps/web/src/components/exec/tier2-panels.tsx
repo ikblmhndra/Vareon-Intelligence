@@ -27,7 +27,7 @@ export function SpikeBanner({ d }: { d: ExecDashboardV2 }) {
             <span
               className={cn(
                 "rounded px-1.5 py-0.5 text-xs",
-                sp.severity === "high" ? "bg-destructive/20 text-destructive" : "bg-primary/20 text-primary",
+                sp.severity === "high" ? "bg-destructive/20 text-destructive-text" : "bg-primary/20 text-primary-text",
               )}
             >
               {sp.severity.toUpperCase()}

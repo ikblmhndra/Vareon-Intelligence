@@ -31,7 +31,7 @@ export function HealthSummaryBar({
   }
   if (query.isError || !query.data) {
     return (
-      <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-xs text-destructive">
+      <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-xs text-destructive-text">
         Failed to load scraper health.
       </div>
     );

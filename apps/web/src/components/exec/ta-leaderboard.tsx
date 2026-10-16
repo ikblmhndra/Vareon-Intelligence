@@ -44,7 +44,7 @@ export function TaLeaderboard({ d }: { d: ExecDashboardV2 }) {
                 <span
                   className={cn(
                     "shrink-0 rounded px-1 py-0.5 text-xs",
-                    isNew ? "bg-success/20 text-success" : "bg-muted text-muted-foreground",
+                    isNew ? "bg-success/20 text-success-text" : "bg-muted text-muted-foreground",
                   )}
                 >
                   {isNew ? "NEW" : "REC"}

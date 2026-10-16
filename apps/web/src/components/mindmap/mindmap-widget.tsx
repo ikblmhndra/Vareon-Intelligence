@@ -55,7 +55,7 @@ export function MindmapWidget({ featureType, docId, title }: MindmapWidgetProps)
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          className="rounded-full border border-primary/30 bg-primary/8 px-2 py-0.5 font-mono text-xs text-primary"
+          className="rounded-full border border-primary/30 bg-primary/8 px-2 py-0.5 font-mono text-xs text-primary-text"
         >
           {expanded ? "⬡ Hide Map" : "⬡ Mind Map"}
         </button>

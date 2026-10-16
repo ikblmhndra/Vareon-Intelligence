@@ -13,7 +13,7 @@ export default function ErrorPage({
   reset: () => void;
 }) {
   return (
-    <div className="auth-backdrop flex min-h-dvh items-center justify-center px-6">
+    <main className="auth-backdrop flex min-h-dvh items-center justify-center px-6">
       <div role="alert" className="w-full max-w-md">
         <BrandMark />
         <h1 className="mt-8 font-heading text-3xl font-extrabold tracking-tight text-foreground">
@@ -32,6 +32,6 @@ export default function ErrorPage({
           </Link>
         </div>
       </div>
-    </div>
+    </main>
   );
 }

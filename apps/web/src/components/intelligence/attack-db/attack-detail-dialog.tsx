@@ -230,7 +230,7 @@ function SoftwareDetail({ s, onNavigate }: { s: AttackSoftwareDetail; onNavigate
           <div className="mt-0.5 text-base font-bold text-foreground">{s.name}</div>
           <div className="mt-1 text-xs">
             <span
-              className={`mr-1.5 rounded px-1.5 py-0.5 ${s.software_type === "malware" ? "bg-destructive/15 text-destructive" : "bg-primary/15 text-primary"}`}
+              className={`mr-1.5 rounded px-1.5 py-0.5 ${s.software_type === "malware" ? "bg-destructive/15 text-destructive-text" : "bg-primary/15 text-primary-text"}`}
             >
               {s.software_type}
             </span>

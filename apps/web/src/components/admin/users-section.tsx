@@ -34,9 +34,9 @@ import { useAdminUsers, useClients, useRoles } from "@/components/admin/hooks";
 const USERS_KEY = ["admin", "users"] as const;
 
 function roleBadgeClass(role: string): string {
-  if (role === "superadmin") return "border-warning/40 bg-warning/10 text-warning";
+  if (role === "superadmin") return "border-warning/40 bg-warning/10 text-warning-text";
   if (role === "admin") return "border-ring/40 bg-ring/10 text-ring";
-  return "border-primary/30 bg-primary/10 text-primary";
+  return "border-primary/30 bg-primary/10 text-primary-text";
 }
 
 /** Port section "Users" + "Add User" + row action dropdown (⋮) di
@@ -232,7 +232,7 @@ function AddUserForm() {
           <Input id="add-user-clients" value={clientIds} onChange={(e) => setClientIds(e.target.value)} className="font-mono text-xs" />
         </div>
         {error && (
-          <p className="rounded-md border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
+          <p className="rounded-md border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-xs text-destructive-text">
             {error}
           </p>
         )}

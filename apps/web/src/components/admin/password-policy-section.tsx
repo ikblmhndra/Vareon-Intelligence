@@ -77,7 +77,7 @@ export function PasswordPolicySection() {
           <div className="space-y-1.5">
             <Label className="text-sm font-medium text-muted-foreground">Min Length</Label>
             <Input
-              type="number"
+              type="number" aria-label="Min length"
               min={4}
               max={128}
               value={minLength}

@@ -10,10 +10,10 @@ import { cn } from "@/lib/utils";
 import type { RiskMatrixResponse } from "@/lib/api/loose-types";
 
 function riskTierClass(score: number): { bg: string; text: string } {
-  if (score <= 25) return { bg: "bg-success/20", text: "text-success" };
-  if (score <= 50) return { bg: "bg-info/20", text: "text-info" };
-  if (score <= 75) return { bg: "bg-warning/25", text: "text-warning" };
-  return { bg: "bg-severity-critical/25", text: "text-severity-critical" };
+  if (score <= 25) return { bg: "bg-success/20", text: "text-success-text" };
+  if (score <= 50) return { bg: "bg-info/20", text: "text-info-text" };
+  if (score <= 75) return { bg: "bg-warning/25", text: "text-warning-text" };
+  return { bg: "bg-severity-critical/25", text: "text-severity-critical-text" };
 }
 
 /** Port `risk_matrix.js` (90 baris) -- matriks Industry × Country, skor
@@ -50,7 +50,7 @@ export function RiskMatrixView() {
         <div className="flex flex-col gap-1">
           <Label className="text-sm font-medium text-muted-foreground">Period (days)</Label>
           <Input
-            type="number"
+            type="number" aria-label="Period (days)"
             min={7}
             max={90}
             value={days}
@@ -61,7 +61,7 @@ export function RiskMatrixView() {
         <div className="flex flex-col gap-1">
           <Label className="text-sm font-medium text-muted-foreground">Compare period (days)</Label>
           <Input
-            type="number"
+            type="number" aria-label="Compare period (days)"
             min={7}
             max={90}
             value={compareDays}
@@ -72,7 +72,7 @@ export function RiskMatrixView() {
         <div className="flex flex-col gap-1">
           <Label className="text-sm font-medium text-muted-foreground">Min risk score</Label>
           <Input
-            type="number"
+            type="number" aria-label="Min risk score"
             min={0}
             max={100}
             value={minScore}

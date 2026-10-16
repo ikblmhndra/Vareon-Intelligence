@@ -104,11 +104,11 @@ export function CampaignsPanel() {
       <div className="mb-3 flex flex-wrap items-end gap-2 border-b border-border pb-3">
         <div className="flex flex-col gap-1">
           <Label className="text-sm font-medium text-muted-foreground">Days</Label>
-          <Input type="number" min={1} max={90} value={days} onChange={(e) => setDays(Number(e.target.value) || 7)} className="w-20 font-mono text-xs" />
+          <Input type="number" aria-label="Days" min={1} max={90} value={days} onChange={(e) => setDays(Number(e.target.value) || 7)} className="w-20 font-mono text-xs" />
         </div>
         <div className="flex flex-col gap-1">
           <Label className="text-sm font-medium text-muted-foreground">Min Size</Label>
-          <Input type="number" min={2} max={50} value={minSize} onChange={(e) => setMinSize(Number(e.target.value) || 3)} className="w-20 font-mono text-xs" />
+          <Input type="number" aria-label="Min size" min={2} max={50} value={minSize} onChange={(e) => setMinSize(Number(e.target.value) || 3)} className="w-20 font-mono text-xs" />
         </div>
         <span className="ml-auto font-mono text-[13px] text-muted-foreground">
           {campaigns.length} campaign cluster{campaigns.length !== 1 ? "s" : ""} found
@@ -130,7 +130,7 @@ export function CampaignsPanel() {
                 key={o.key}
                 type="button"
                 onClick={() => setSort(o.key)}
-                className={cn("rounded-md border px-2 py-1", sort === o.key ? "border-primary/50 bg-primary/15 text-primary" : "border-border text-muted-foreground")}
+                className={cn("rounded-md border px-2 py-1", sort === o.key ? "border-primary/50 bg-primary/15 text-primary-text" : "border-border text-muted-foreground")}
               >
                 {o.label}
               </button>
@@ -219,12 +219,12 @@ function CampaignRow({
           <span className="text-foreground">{c.summary_title || c.cluster_id}</span>
           {trendQuery.data && <TrendArrow direction={trendQuery.data.trend_direction} growthRate={trendQuery.data.growth_rate} />}
           <SeverityBadge label={c.severity_label} score={c.severity_score} />
-          {c.matched_pirs.length > 0 && <span className="ml-1 rounded-full border border-destructive/30 bg-destructive/10 px-1.5 py-0.5 font-mono text-xs text-destructive">PIR</span>}
+          {c.matched_pirs.length > 0 && <span className="ml-1 rounded-full border border-destructive/30 bg-destructive/10 px-1.5 py-0.5 font-mono text-xs text-destructive-text">PIR</span>}
         </td>
         <td className="px-2 py-1.5 text-center whitespace-nowrap text-foreground">
           {c.size}
           <VelocityBadge label={c.velocity_label} articlesPerDay={c.velocity_articles_per_day} />
-          {c.new_iocs_24h > 0 && <span className="ml-1 rounded-full border border-success/35 bg-success/12 px-1.5 py-0.5 font-mono text-xs text-success">NEW: {c.new_iocs_24h} IOCs</span>}
+          {c.new_iocs_24h > 0 && <span className="ml-1 rounded-full border border-success/35 bg-success/12 px-1.5 py-0.5 font-mono text-xs text-success-text">NEW: {c.new_iocs_24h} IOCs</span>}
         </td>
         <td className="px-2 py-1.5">
           <SeverityBadge label={c.severity_label} score={c.severity_score} />
@@ -247,7 +247,7 @@ function CampaignRow({
           </div>
         </td>
         <td className="px-2 py-1.5">
-          <button type="button" onClick={onHuntPack} className="rounded-full border border-primary/30 bg-primary/8 px-2 py-1 font-mono text-xs text-primary">
+          <button type="button" onClick={onHuntPack} className="rounded-full border border-primary/30 bg-primary/8 px-2 py-1 font-mono text-xs text-primary-text">
             Hunt Pack
           </button>
         </td>

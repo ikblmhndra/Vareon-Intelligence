@@ -51,7 +51,7 @@ export function ThreatActorRoomView() {
             onClick={() => setTab(t.value)}
             className={cn(
               "shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-sm font-medium transition-colors duration-200",
-              tab === t.value ? "border-primary/30 bg-primary/10 text-primary" : "border-border bg-surface text-muted-foreground hover:bg-muted hover:text-foreground",
+              tab === t.value ? "border-primary/30 bg-primary/10 text-primary-text" : "border-border bg-surface text-muted-foreground hover:bg-muted hover:text-foreground",
             )}
           >
             {t.label}

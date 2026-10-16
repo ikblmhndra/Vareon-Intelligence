@@ -194,9 +194,9 @@ export function GroundingBlock({ grounding }: { grounding: RecapGrounding }) {
 }
 
 const VERDICT_TONE: Record<RecapVerdict, string> = {
-  happened: "bg-success/10 text-success",
-  partly: "bg-warning/10 text-warning",
-  not_happened: "bg-destructive/10 text-destructive",
+  happened: "bg-success/10 text-success-text",
+  partly: "bg-warning/10 text-warning-text",
+  not_happened: "bg-destructive/10 text-destructive-text",
   unclear: "bg-muted text-muted-foreground",
 };
 

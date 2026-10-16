@@ -124,7 +124,7 @@ export function SecretsSection() {
           the active key or blank, and never leave a revoked key there.
         </p>
         {secrets.data && !secrets.data.enabled && (
-          <p className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive">
+          <p className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive-text">
             The server has no encryption key (<span className="font-mono">SECRETS_ENCRYPTION_KEYS</span>
             ), so keys cannot be changed here. Showing the <span className="font-mono">.env</span>{" "}
             status only.

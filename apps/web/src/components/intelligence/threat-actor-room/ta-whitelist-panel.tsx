@@ -115,7 +115,7 @@ export function TaWhitelistPanel() {
                     <button
                       type="button"
                       onClick={() => setRestoreTarget(item.name)}
-                      className="rounded-full border border-success/35 bg-success/10 px-1.5 py-0.5 font-mono text-xs text-success"
+                      className="rounded-full border border-success/35 bg-success/10 px-1.5 py-0.5 font-mono text-xs text-success-text"
                     >
                       ↩ RESTORE
                     </button>

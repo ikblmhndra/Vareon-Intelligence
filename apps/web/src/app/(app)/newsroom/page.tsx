@@ -63,7 +63,7 @@ export default function NewsroomPage() {
           className={cn(
             "shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-sm font-medium transition-colors duration-200",
             view === "cyber"
-              ? "border-primary/30 bg-primary/10 text-primary"
+              ? "border-primary/30 bg-primary/10 text-primary-text"
               : "border-border bg-surface text-muted-foreground hover:bg-muted hover:text-foreground",
           )}
         >
@@ -75,7 +75,7 @@ export default function NewsroomPage() {
             className={cn(
               "shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-sm font-medium transition-colors duration-200",
               view === "filtered"
-                ? "border-destructive/40 bg-destructive/10 text-destructive"
+                ? "border-destructive/40 bg-destructive/10 text-destructive-text"
                 : "border-border bg-surface text-muted-foreground hover:bg-muted hover:text-foreground",
             )}
           >

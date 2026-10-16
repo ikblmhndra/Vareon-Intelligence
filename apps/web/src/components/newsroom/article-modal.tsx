@@ -204,7 +204,7 @@ export function ArticleModal({ article: a, onOpenChange }: { article: Article | 
               <div className="flex flex-col gap-1.5">
                 {iocEntries.map(([field, vals]) => (
                   <div key={field} className="flex items-start gap-2">
-                    <Badge variant="outline" className="border-warning/30 bg-warning/10 font-mono text-xs text-warning">
+                    <Badge variant="outline" className="border-warning/30 bg-warning/10 font-mono text-xs text-warning-text">
                       {IOC_FIELD_LABEL[field] ?? field.toUpperCase()}
                     </Badge>
                     <div className="flex flex-wrap gap-1">

@@ -198,8 +198,8 @@ export function TaGroupsPanel() {
                         type="button"
                         onClick={() => void toggleWatch(g.name, isWatched)}
                         className={cn(
-                          "mr-1.5 rounded-full border px-1.5 py-0.5 font-mono text-xs",
-                          isWatched ? "border-primary/30 bg-primary/10 text-primary" : "border-border text-muted-foreground",
+                          "mr-1.5 min-h-6 rounded-full border px-1.5 py-0.5 font-mono text-xs",
+                          isWatched ? "border-primary/30 bg-primary/10 text-primary-text" : "border-border text-muted-foreground",
                         )}
                       >
                         {isWatched ? "◎ UNWATCH" : "⊕ WATCH"}
@@ -207,7 +207,7 @@ export function TaGroupsPanel() {
                       <button
                         type="button"
                         onClick={() => setRemoveTarget(g)}
-                        className="rounded-full border border-destructive/35 bg-destructive/10 px-1.5 py-0.5 font-mono text-xs text-destructive"
+                        className="min-h-6 rounded-full border border-destructive/35 bg-destructive/10 px-1.5 py-0.5 font-mono text-xs text-destructive-text"
                       >
                         <XIcon aria-hidden /> REMOVE
                       </button>

@@ -69,6 +69,18 @@
   --color-severity-medium: var(--severity-medium);
   --color-severity-low: var(--severity-low);
   --color-info: var(--info);
+  /* Warna TEKS untuk di atas tint (`bg-X/10..25`). Token dasarnya (`--primary`, `--success`, ...)
+     tetap untuk isian solid, garis, dan teks di atas permukaan polos; di atas tint rasionya jatuh ke
+     3.6-4.1:1 (di bawah AA 4.5:1). Hasil audit visual 2026-10-17. */
+  --color-primary-text: var(--primary-text);
+  --color-destructive-text: var(--destructive-text);
+  --color-success-text: var(--success-text);
+  --color-warning-text: var(--warning-text);
+  --color-info-text: var(--info-text);
+  --color-severity-critical-text: var(--severity-critical-text);
+  --color-severity-high-text: var(--severity-high-text);
+  --color-severity-medium-text: var(--severity-medium-text);
+  --color-severity-low-text: var(--severity-low-text);
   --color-tag-violet: var(--tag-violet);
   --color-chart-6: var(--chart-6);
   --color-chart-7: var(--chart-7);
@@ -122,6 +134,16 @@
   --severity-high: #b04a00;
   --severity-medium: #7a5c00;
   --severity-low: #17703f;
+  /* Teks di atas tint: >= 4.5:1 terhadap tint terburuk (/25 di atas surface beige). */
+  --primary-text: #a8001f;
+  --destructive-text: #9a1c12;
+  --success-text: #0f5c32;
+  --warning-text: #7d3b00;
+  --info-text: #1b5873;
+  --severity-critical-text: #9a1c12;
+  --severity-high-text: #8a3f00;
+  --severity-medium-text: #6b4f00;
+  --severity-low-text: #0f5c32;
   --chart-1: #256a8a;
   --chart-2: #17703f;
   --chart-3: #b04a00;
@@ -172,6 +194,16 @@
   --severity-high: #ffa164;
   --severity-medium: #f5cf5a;
   --severity-low: #76ce93;
+  /* Mode gelap sudah lolos AA di atas tint: teks memakai token dasarnya. */
+  --primary-text: var(--primary);
+  --destructive-text: var(--destructive);
+  --success-text: var(--success);
+  --warning-text: var(--warning);
+  --info-text: var(--info);
+  --severity-critical-text: var(--severity-critical);
+  --severity-high-text: var(--severity-high);
+  --severity-medium-text: var(--severity-medium);
+  --severity-low-text: var(--severity-low);
   --chart-1: #92bbd1;
   --chart-2: #76ce93;
   --chart-3: #ffa164;

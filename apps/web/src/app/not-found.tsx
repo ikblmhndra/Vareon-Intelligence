@@ -6,7 +6,7 @@ import { PLATFORM_NAME } from "@/lib/brand";
 
 export default function NotFound() {
   return (
-    <div className="auth-backdrop flex min-h-dvh items-center justify-center px-6">
+    <main className="auth-backdrop flex min-h-dvh items-center justify-center px-6">
       <div className="w-full max-w-md">
         <div className="flex items-center gap-3">
           <BrandMark />
@@ -25,6 +25,6 @@ export default function NotFound() {
           Kembali ke Dashboard
         </Link>
       </div>
-    </div>
+    </main>
   );
 }

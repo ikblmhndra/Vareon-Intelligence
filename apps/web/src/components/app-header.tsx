@@ -133,7 +133,7 @@ function NavLinks({
         const active = pathname.startsWith(href);
         const className = cn(
           "flex shrink-0 items-center rounded-full text-sm outline-none transition-colors duration-200 focus-visible:ring-3 focus-visible:ring-ring/50",
-          rail ? "size-11 justify-center" : cn("gap-3 px-4", orientation === "vertical" ? "h-11" : "h-10"),
+          rail ? "size-11 justify-center" : "h-11 gap-3 px-4",
           active
             ? "bg-primary font-semibold text-primary-foreground shadow-sm"
             : "font-medium text-muted-foreground hover:bg-muted hover:text-foreground",

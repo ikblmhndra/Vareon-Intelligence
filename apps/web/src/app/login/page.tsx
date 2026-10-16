@@ -100,10 +100,10 @@ function LoginForm() {
 // gak muncul di `pnpm dev` (Turbopack dev gak prerender).
 export default function LoginPage() {
   return (
-    <div className="auth-backdrop flex min-h-dvh items-center justify-center bg-background px-4">
+    <main className="auth-backdrop flex min-h-dvh items-center justify-center bg-background px-4">
       <Suspense>
         <LoginForm />
       </Suspense>
-    </div>
+    </main>
   );
 }

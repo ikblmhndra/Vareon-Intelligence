@@ -194,7 +194,7 @@ export default function RecapPage() {
           {mode === "week" ? "Week of" : "Recap Date"}
         </span>
         <Input
-          type="date"
+          type="date" aria-label={mode === "week" ? "Week of" : "Recap date"}
           value={inputDate}
           onChange={(e) => setInputDate(e.target.value)}
           className="w-auto font-mono text-xs"

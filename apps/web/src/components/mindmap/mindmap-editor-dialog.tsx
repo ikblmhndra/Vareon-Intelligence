@@ -155,7 +155,7 @@ function MindmapEditorForm({
             title="Use level-based colors instead"
             className={cn(
               "rounded-full border px-1.5 py-0.5 font-mono text-xs",
-              isAuto ? "border-primary/40 bg-primary/12 text-primary" : "border-border text-muted-foreground",
+              isAuto ? "border-primary/40 bg-primary/12 text-primary-text" : "border-border text-muted-foreground",
             )}
           >
             Auto

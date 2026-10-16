@@ -177,7 +177,7 @@ export function IocDetailDialog({ target, onClose, onDeleted }: IocDetailDialogP
               {ioc.tags.length > 0 && (
                 <div className="mb-4 flex flex-wrap gap-1.5">
                   {ioc.tags.map((t) => (
-                    <span key={t} className="rounded-full border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-xs text-primary">
+                    <span key={t} className="rounded-full border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-xs text-primary-text">
                       {t}
                     </span>
                   ))}
@@ -223,7 +223,7 @@ export function IocDetailDialog({ target, onClose, onDeleted }: IocDetailDialogP
                             <div className="mb-1 text-xs text-muted-foreground">MALWARE FAMILIES</div>
                             <div className="flex flex-wrap gap-1">
                               {families.map((f) => (
-                                <span key={f} className="rounded-full border border-destructive/30 bg-destructive/10 px-1.5 py-0.5 text-xs text-destructive">
+                                <span key={f} className="rounded-full border border-destructive/30 bg-destructive/10 px-1.5 py-0.5 text-xs text-destructive-text">
                                   {f}
                                 </span>
                               ))}
@@ -314,19 +314,19 @@ function IocTaLinksSection({
                 <div className="flex flex-wrap items-center">
                   <span className="text-[12px] text-foreground">{ta.name}</span>
                   {ta.is_watched && (
-                    <span className="ml-1.5 rounded-full border border-warning/40 bg-warning/10 px-1.5 py-0.5 text-xs text-warning">WATCHED</span>
+                    <span className="ml-1.5 rounded-full border border-warning/40 bg-warning/10 px-1.5 py-0.5 text-xs text-warning-text">WATCHED</span>
                   )}
                   {ta.attack_group_id && (
                     <span className="ml-1.5 rounded-full border border-tag-violet/35 bg-tag-violet/15 px-1.5 py-0.5 text-xs text-tag-violet">{ta.attack_group_id}</span>
                   )}
                   {ta.source === "manual" && (
-                    <span className="ml-1.5 rounded-full border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-xs text-primary">MANUAL</span>
+                    <span className="ml-1.5 rounded-full border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-xs text-primary-text">MANUAL</span>
                   )}
                   {ta.source === "both" && (
-                    <span className="ml-1.5 rounded-full border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-xs text-primary">MANUAL+ART</span>
+                    <span className="ml-1.5 rounded-full border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-xs text-primary-text">MANUAL+ART</span>
                   )}
                   {isManual && (
-                    <button type="button" onClick={() => onRemove(ta.name)} className="ml-2 text-[13px] text-muted-foreground hover:text-destructive">
+                    <button type="button" aria-label={`Remove ${ta.name}`} onClick={() => onRemove(ta.name)} className="ml-2 text-[13px] text-muted-foreground hover:text-destructive">
                       <XIcon aria-hidden />
                     </button>
                   )}

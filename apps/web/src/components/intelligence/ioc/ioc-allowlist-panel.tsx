@@ -67,7 +67,7 @@ export function IocAllowlistPanel() {
 
   return (
     <div>
-      <h3 className="mb-3 text-sm font-semibold text-muted-foreground">IOC Allowlist</h3>
+      <h2 className="mb-3 text-sm font-semibold text-muted-foreground">IOC Allowlist</h2>
       <div className="mb-3 flex flex-wrap items-end gap-2">
         <div className="flex flex-col gap-1">
           <Label className="text-sm font-medium text-muted-foreground">Type</Label>
@@ -123,7 +123,7 @@ export function IocAllowlistPanel() {
             {query.data.entries.map((e) => (
               <TableRow key={e.id}>
                 <TableCell>
-                  <span className="rounded-full border border-primary/25 bg-primary/10 px-1.5 py-0.5 font-mono text-xs text-primary">
+                  <span className="rounded-full border border-primary/25 bg-primary/10 px-1.5 py-0.5 font-mono text-xs text-primary-text">
                     {TYPE_LABEL[e.type] || e.type}
                   </span>
                 </TableCell>
@@ -131,7 +131,7 @@ export function IocAllowlistPanel() {
                 <TableCell className="font-mono text-xs text-muted-foreground">{e.added_by || "—"}</TableCell>
                 <TableCell className="font-mono text-xs text-muted-foreground">{e.added_at.slice(0, 10)}</TableCell>
                 <TableCell className="text-center">
-                  <button type="button" onClick={() => void remove(e.id)} className="text-xs text-muted-foreground hover:text-destructive">
+                  <button type="button" aria-label={`Remove ${e.value} from allowlist`} onClick={() => void remove(e.id)} className="text-xs text-muted-foreground hover:text-destructive">
                     <XIcon aria-hidden />
                   </button>
                 </TableCell>

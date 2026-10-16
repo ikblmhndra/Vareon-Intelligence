@@ -279,7 +279,7 @@ export function IocTable({ onSelect }: { onSelect: (target: IocTarget) => void }
                       disabled={feedbackPending === ioc.id}
                       onClick={() => void submitFeedback(ioc.id, "tp")}
                       title="True Positive"
-                      className={cn("rounded-full border border-success/35 bg-success/10 px-1.5 py-0.5 text-[13px] text-success", feedbackPending === ioc.id && "opacity-50")}
+                      className={cn("rounded-full border border-success/35 bg-success/10 px-1.5 py-0.5 text-[13px] text-success-text", feedbackPending === ioc.id && "opacity-50")}
                     >
                       <ThumbsUpIcon aria-hidden />
                     </button>
@@ -288,7 +288,7 @@ export function IocTable({ onSelect }: { onSelect: (target: IocTarget) => void }
                       disabled={feedbackPending === ioc.id}
                       onClick={() => void submitFeedback(ioc.id, "fp")}
                       title="False Positive"
-                      className={cn("ml-1 rounded-full border border-destructive/35 bg-destructive/10 px-1.5 py-0.5 text-[13px] text-destructive", feedbackPending === ioc.id && "opacity-50")}
+                      className={cn("ml-1 rounded-full border border-destructive/35 bg-destructive/10 px-1.5 py-0.5 text-[13px] text-destructive-text", feedbackPending === ioc.id && "opacity-50")}
                     >
                       <ThumbsDownIcon aria-hidden />
                     </button>

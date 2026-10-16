@@ -34,7 +34,7 @@ function VictimRow({ v }: { v: Victim }) {
       </div>
       <div className="font-mono text-xs text-muted-foreground">
         <div title="Published">{(v.published ?? "").slice(0, 10)}</div>
-        <div className="opacity-60" title="Discovered">
+        <div className="italic" title="Discovered">
           {(v.discovered ?? "").slice(0, 10)}
         </div>
       </div>

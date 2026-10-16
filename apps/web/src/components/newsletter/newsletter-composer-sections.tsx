@@ -287,7 +287,7 @@ function ArticleCard({ article, note, bodySource, regenerate, onNoteChange, onTo
           <div className="flex flex-wrap items-center gap-2">
             <Badge
               variant="outline"
-              className="border-warning/40 bg-warning/10 text-xs text-warning"
+              className="border-warning/40 bg-warning/10 text-xs text-warning-text"
               title="The page could not be read (paywall or fetch failure), so the summary was written from the title and metadata only. Check it before sending."
             >
               <TriangleAlertIcon aria-hidden /> Summary from metadata only

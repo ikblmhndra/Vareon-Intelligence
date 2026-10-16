@@ -50,7 +50,7 @@ export function SchedulerStatus() {
   return (
     <div
       role="alert"
-      className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-xs text-destructive"
+      className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-xs text-destructive-text"
     >
       <div className="font-semibold">
         {scheduler.state === "stale" ? "Scheduler (beat) is DOWN or stuck" : "Scheduler (beat) heartbeat missing"}

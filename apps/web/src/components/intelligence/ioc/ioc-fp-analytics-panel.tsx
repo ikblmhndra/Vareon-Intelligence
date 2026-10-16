@@ -66,7 +66,7 @@ export function IocFpAnalyticsPanel() {
 
   return (
     <div>
-      <h3 className="mb-3 text-sm font-semibold text-muted-foreground">FP Analytics</h3>
+      <h2 className="mb-3 text-sm font-semibold text-muted-foreground">FP Analytics</h2>
 
       {query.isPending && <p className="py-4 text-center text-xs text-muted-foreground">Loading…</p>}
       {query.isError && <p className="py-4 text-center text-xs text-destructive">Failed to load FP analytics.</p>}
@@ -166,7 +166,7 @@ function FpBucketTable({ rows, nameHeader, showTypeBadge }: { rows: [string, Ioc
               <TableCell className="font-mono text-xs text-foreground">
                 {showTypeBadge ? <IocTypeBadge type={name} /> : name}
                 {highFp && (
-                  <span className="ml-1.5 rounded-full border border-destructive/35 bg-destructive/12 px-1 py-0.5 text-xs text-destructive">HIGH FP</span>
+                  <span className="ml-1.5 rounded-full border border-destructive/35 bg-destructive/12 px-1 py-0.5 text-xs text-destructive-text">HIGH FP</span>
                 )}
               </TableCell>
               <TableCell className="text-center font-mono text-xs text-muted-foreground">

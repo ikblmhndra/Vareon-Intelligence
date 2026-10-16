@@ -27,8 +27,8 @@ export function EmptyNote() {
 export function ConfidenceBadge({ confidence }: { confidence?: string }) {
   const c = (confidence || "low").toLowerCase();
   const styles: Record<string, string> = {
-    high: "border-success/50 bg-success/10 text-success",
-    med: "border-warning/50 bg-warning/10 text-warning",
+    high: "border-success/50 bg-success/10 text-success-text",
+    med: "border-warning/50 bg-warning/10 text-warning-text",
     low: "border-muted-foreground/50 bg-muted text-muted-foreground",
   };
   return (
@@ -49,7 +49,7 @@ export function Chips({ items }: { items?: string[] }) {
         <Badge
           key={v}
           variant="outline"
-          className="border-primary/40 bg-primary/10 font-mono text-sm text-primary"
+          className="border-primary/40 bg-primary/10 font-mono text-sm text-primary-text"
         >
           {v}
         </Badge>
