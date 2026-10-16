@@ -57,7 +57,8 @@ def graph_http() -> Any:
     app.acquire_token_for_client.return_value = {"access_token": "fake-token"}
     with (
         patch(
-            "cti_alerts.mailer.get_settings", return_value=SimpleNamespace(graph=_GRAPH_SETTINGS)
+            "cti_alerts.mailer.effective_settings",
+            return_value=SimpleNamespace(graph=_GRAPH_SETTINGS),
         ),
         patch("cti_alerts.mailer.msal.ConfidentialClientApplication", return_value=app),
         patch("cti_alerts.mailer.httpx.post", return_value=response) as post,

@@ -173,11 +173,11 @@ async def _run_ioc_enrich_pending() -> dict[str, Any]:
     import redis as redis_lib
     from cti_api.services import ioc_providers
     from cti_api.services.ioc_enrichment import build_specs, enrich_pending
-    from cti_core.config import get_settings
     from cti_core.db.engine import async_session
+    from cti_core.runtime_secrets.overlay import effective_settings
     from cti_scraper.ratelimit import TokenBucket
 
-    settings = get_settings()
+    settings = effective_settings()
     bucket = TokenBucket(redis_lib.Redis.from_url(settings.redis.url))
 
     def allow(provider: str, rate: str) -> bool:

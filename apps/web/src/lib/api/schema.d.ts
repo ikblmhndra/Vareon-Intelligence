@@ -2729,6 +2729,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/secrets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Secrets */
+        get: operations["get_secrets_api_secrets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/secrets/{provider}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Put Secret */
+        put: operations["put_secret_api_secrets__provider__put"];
+        post?: never;
+        /** Delete Secret */
+        delete: operations["delete_secret_api_secrets__provider__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/secrets/{provider}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test Secret */
+        post: operations["test_secret_api_secrets__provider__test_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/source-scores": {
         parameters: {
             query?: never;
@@ -5522,6 +5574,80 @@ export interface components {
             scraper_id: string;
             /** Trigger */
             trigger: string;
+        };
+        /** SecretClearBody */
+        SecretClearBody: {
+            /** Current Password */
+            current_password: string;
+        };
+        /** SecretFieldOut */
+        SecretFieldOut: {
+            /** Choices */
+            choices: string[];
+            /** Last4 */
+            last4: string | null;
+            /** Name */
+            name: string;
+            /** Secret */
+            secret: boolean;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "db" | "env" | "unset";
+            /** Value */
+            value: string | null;
+        };
+        /** SecretProviderOut */
+        SecretProviderOut: {
+            /** Error */
+            error: string | null;
+            /** Fields */
+            fields: components["schemas"]["SecretFieldOut"][];
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Last Test At */
+            last_test_at: string | null;
+            /** Last Test Ok */
+            last_test_ok: boolean | null;
+            probe?: components["schemas"]["SecretTestOut"] | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "db" | "env" | "unset";
+            /** Updated At */
+            updated_at: string | null;
+            /** Updated By */
+            updated_by: string | null;
+        };
+        /** SecretSetBody */
+        SecretSetBody: {
+            /** Current Password */
+            current_password: string;
+            /** Fields */
+            fields: {
+                [key: string]: string | null;
+            };
+        };
+        /** SecretTestOut */
+        SecretTestOut: {
+            /** Detail */
+            detail: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "OK" | "FAIL" | "SKIP" | "NOTE";
+        };
+        /** SecretsStatusOut */
+        SecretsStatusOut: {
+            /** Enabled */
+            enabled: boolean;
+            /** Providers */
+            providers: components["schemas"]["SecretProviderOut"][];
         };
         /** SeverityMetrics */
         SeverityMetrics: {
@@ -12110,6 +12236,243 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    get_secrets_api_secrets_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretsStatusOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_secret_api_secrets__provider__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SecretSetBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretProviderOut"];
+                };
+            };
+            /** @description Not a superadmin, wrong password, or the account has no local password */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown provider, or no override to clear */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The stored override cannot be read (master key changed); clear it first */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid field, or the probe failed and nothing was saved. `detail` is a string, or an object `{message, probe: {status, detail}}` for a failed probe */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Rate limit, test cooldown, or too many failed password attempts */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description SECRETS_ENCRYPTION_KEYS is not configured on the server */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    delete_secret_api_secrets__provider__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SecretClearBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretProviderOut"];
+                };
+            };
+            /** @description Not a superadmin, wrong password, or the account has no local password */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown provider, or no override to clear */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The stored override cannot be read (master key changed); clear it first */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid field, or the probe failed and nothing was saved. `detail` is a string, or an object `{message, probe: {status, detail}}` for a failed probe */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Rate limit, test cooldown, or too many failed password attempts */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description SECRETS_ENCRYPTION_KEYS is not configured on the server */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    test_secret_api_secrets__provider__test_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SecretTestOut"];
+                };
+            };
+            /** @description Not a superadmin, wrong password, or the account has no local password */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown provider, or no override to clear */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The stored override cannot be read (master key changed); clear it first */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid field, or the probe failed and nothing was saved. `detail` is a string, or an object `{message, probe: {status, detail}}` for a failed probe */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Rate limit, test cooldown, or too many failed password attempts */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description SECRETS_ENCRYPTION_KEYS is not configured on the server */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

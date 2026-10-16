@@ -54,6 +54,10 @@ def get_sync_engine() -> Engine:
         pool_size=s.database.pool_size,
         max_overflow=s.database.max_overflow,
         pool_pre_ping=True,
+        # Tanpa batas, host DB yang tidak menjawab (SYN hilang) menahan `connect()` sampai timeout
+        # TCP OS (~2 menit). `runtime_secrets.overlay` memanggil sesi sync ini dari dalam event loop
+        # API, jadi koneksi yang menggantung membekukan SELURUH proses API, bukan cuma satu request.
+        connect_args={"connect_timeout": 5},
     )
 
 

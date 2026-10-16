@@ -16,6 +16,14 @@ from typing import Any
 import structlog
 
 
+def quiet_http_loggers() -> None:
+    """httpx mencatat `POST https://api.telegram.org/bot<TOKEN>/sendMessage` di INFO: token bot
+    (yang sekarang bisa diatur dari halaman admin) akan masuk log container tiap kirim. WARNING
+    tetap memunculkan kegagalan sungguhan. Dipanggil `configure_logging` (API, beat) DAN worker
+    Celery lewat sinyal logger-nya, karena worker tidak memanggil `configure_logging`."""
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
+
 def configure_logging(*, level: str = "INFO", json: bool = True) -> None:
     """Panggil sekali di entrypoint tiap proses (API, worker, CLI).
 
@@ -28,6 +36,8 @@ def configure_logging(*, level: str = "INFO", json: bool = True) -> None:
         stream=sys.stdout,
         level=getattr(logging, level.upper(), logging.INFO),
     )
+
+    quiet_http_loggers()
 
     shared_processors: list[structlog.typing.Processor] = [
         structlog.contextvars.merge_contextvars,

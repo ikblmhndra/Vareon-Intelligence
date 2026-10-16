@@ -37,7 +37,8 @@ from dataclasses import dataclass
 
 import httpx
 import msal
-from cti_core.config import GraphSettings, get_settings
+from cti_core.config import GraphSettings
+from cti_core.runtime_secrets.overlay import effective_settings
 
 
 class GraphAuthError(Exception):
@@ -101,7 +102,7 @@ def create_graph_draft(
     (Graph menerima `attachments` saat membuat pesan, selama tiap lampiran di bawah ~3 MB; logo
     newsletter beberapa KB). Kosong (default) = payload persis seperti sebelumnya, jadi pemanggil
     lama (email CVE) tidak berubah."""
-    settings = settings or get_settings().graph
+    settings = settings or effective_settings().graph
 
     authority = f"https://login.microsoftonline.com/{settings.tenant_id}"
     app = msal.ConfidentialClientApplication(

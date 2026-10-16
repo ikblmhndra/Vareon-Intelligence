@@ -6,6 +6,59 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
+## [0.7.0] - 2026-10-16
+
+**Key third-party bisa diganti dari UI admin, tanpa restart** (ROADMAP #23). Halaman baru **Admin > Third-party Keys**
+(khusus superadmin) mengelola key LLM, Telegram, Microsoft Graph, NVD, GitHub, twitterapi.io, X, OTX, AbuseIPDB, dan VirusTotal:
+disimpan terenkripsi di database dan berlaku di semua proses dalam sekitar 30 detik, tanpa restart atau rebuild. Secret level
+deployment (database, Redis, JWT/session, OIDC) tetap di `.env`. **Ada satu migrasi baru, dua kunci `.env` baru yang opsional,
+dan satu dependensi langsung baru (`cryptography`, sebelumnya hanya ikut transitif). Tanpa `SECRETS_ENCRYPTION_KEYS` fiturnya
+mati dan perilaku sama persis seperti 0.6.2.**
+
+**Saat upgrade dari 0.6.2:** deploy biasa (`make deploy`): migrasi `a3f81c2d9b47` (tabel `runtime_secrets`, baru dan kosong) jalan
+lewat service `migrate`. Untuk MENGAKTIFKAN fiturnya: bikin master key (`python -c "from cryptography.fernet import Fernet;
+print(Fernet.generate_key().decode())"`), taruh di `.env` host sebagai `SECRETS_ENCRYPTION_KEYS`, simpan salinannya TERPISAH dari
+backup database, lalu restart api dan semua worker sekali supaya memuatnya. Sesudah itu key diganti dari halaman, tanpa restart.
+`SECRETS_LLM_URL_ALLOWED_HOSTS` hanya perlu diisi kalau mau memakai gateway LLM kustom dari halaman (di luar `dev` URL kustom
+ditolak kecuali hostnya terdaftar). Nilai key di `.env` tetap jadi cadangan: samakan dengan key yang aktif atau kosongkan, jangan
+biarkan key yang sudah dicabut di sana.
+
+### Ditambah
+- **Halaman Third-party Keys** (`/admin/users`, hanya superadmin): status per provider (sumber: override admin, `.env`, atau kosong;
+  empat karakter terakhir key; hasil tes terakhir), tombol **Test**, **Edit**, dan **Revert to .env**. Nilai key tidak pernah
+  dikirim balik dari server. Edit dan revert meminta password akun yang sedang login. Key baru diprobe ke vendor SEBELUM disimpan:
+  key salah ketik ditolak dan tidak ada yang tersimpan. API: `GET /api/secrets`, `PUT` dan `DELETE /api/secrets/{provider}`,
+  `POST /api/secrets/{provider}/test` (batas 5 tulis dan 10 tes per menit per user, cooldown 30 detik per provider untuk
+  AbuseIPDB, VirusTotal, dan OTX karena tiap tes memakai kuotanya; audit `secret_set`, `secret_clear`, `secret_test`,
+  `secret_set_rejected`, `secret_reauth_failed` tanpa nilai secret). Tulis dan hapus pada satu provider diserialisasi dengan
+  advisory lock, dan kirim ulang nilai yang sama tidak memakai kuota vendor.
+- **Tabel `runtime_secrets` dan `effective_settings()`**: satu blob Fernet per provider berisi semua field override, terikat ke
+  provider dan scope; pengganti `get_settings()` di konsumen key (Runner scraper, klien LLM, Telegram, Graph, enrichment IOC).
+  Gagal baca database tidak menghidupkan lagi key yang sudah dicabut: override terakhir yang sehat tetap dipakai dan dicoba ulang
+  tiap 10 detik. Override `llm` selalu satu paket (provider, model, url).
+- **Probe baru**: Graph (cukup meminta token, tidak membuat email), serta AbuseIPDB, VirusTotal, dan OTX (satu lookup `8.8.8.8`
+  lewat kode produksi, jadi tes memakai satu lookup dari kuota provider itu).
+
+### Diubah
+- **Ganti password (`POST /api/auth/change-password`) sekarang dibatasi**: 5 kegagalan dalam 15 menit memberi 429 dan MENCABUT semua
+  sesi akun itu (penghitungnya dipakai bersama konfirmasi password di Third-party Keys). Sebelumnya endpoint ini menerima tebakan
+  password tanpa batas dari pemegang cookie sesi, yang sekarang bisa dipakai untuk mengonfirmasi perubahan key.
+- Galat validasi 422 di `/api/secrets` tidak lagi memuat `input` (body request): bawaan FastAPI memantulkan key yang baru
+  diketik dan password konfirmasi.
+- Probe OTX memakai `GET /api/v1/users/me` (endpoint lookup indikatornya publik, jadi key salah pun lolos). 429 dari NVD, GitHub,
+  twitterapi.io, dan X di probe sekarang NOTE (key diterima tapi kena batas), bukan FAIL; semua exception probe jadi
+  `FAIL "probe error (<tipe>)"`, bukan 500.
+- Probe `tools/ops/check_secrets.py` pindah ke `cti_api.services.secret_probes` (halaman admin memakai kode yang sama). CLI-nya
+  berperilaku sama dan tetap hanya membaca `.env`.
+- Engine sync memakai `connect_timeout` 5 detik (berlaku untuk semua koneksi sync, termasuk Celery) supaya host database yang tidak
+  menjawab tidak membekukan event loop API.
+- `Settings` memakai `hide_input_in_errors`: galat validasi tidak lagi mencetak potongan nilai secret. Log `httpx` diturunkan ke
+  WARNING karena token bot Telegram ada di path URL-nya.
+
+### Diperbaiki
+- Daftar penyamaran secret di pesan error (`rejected_articles`, log) tidak mencakup `X__BEARER_TOKEN`, OTX, AbuseIPDB, dan
+  VirusTotal; sekarang diturunkan dari satu registry, memuat nilai `.env` dan override, serta master key.
+
 ## [0.6.2] - 2026-10-16
 
 **Dashboard utama dan Exec lebih informatif**: perbaikan angka yang menyesatkan di prod. Penyebabnya dua: 62% artikel berlabel

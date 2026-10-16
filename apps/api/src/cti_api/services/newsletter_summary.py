@@ -64,10 +64,10 @@ import time
 from typing import Any
 
 import structlog
-from cti_core.config import get_settings
 from cti_core.db.models.recap import DailyRecap
 from cti_core.db.repositories.recap import AsyncRecapRepo
 from cti_core.llm.client import get_llm_client, parse_json_response, usage_from
+from cti_core.runtime_secrets.overlay import scrub_candidates
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_api.services import grounding, newsletter_edition, newsletter_glossary
@@ -265,14 +265,14 @@ def _describe(exc: Exception) -> str:
 
 
 def _log_detail(exc: Exception) -> str:
-    """Pesan exception untuk log server: satu baris, terpotong, dan kunci LLM yang dikonfigurasi
-    disamarkan kalau gateway mengembalikannya di pesan errornya (penyamaran gagal = pesan apa
-    adanya: mencatat kegagalan lebih penting daripada gagal karena settings tidak termuat)."""
+    """Pesan exception untuk log server: satu baris, terpotong, dan secret yang dikonfigurasi (kunci
+    LLM dan provider lain) disamarkan kalau gateway mengembalikannya di pesan errornya (penyamaran
+    gagal = pesan apa adanya: mencatat kegagalan lebih penting daripada gagal karena settings tidak
+    termuat)."""
     detail = " ".join(str(exc).split())
     try:
-        key = get_settings().llm.api_key
-        if key and len(key) >= 6:
-            detail = detail.replace(key, "***")
+        for secret in scrub_candidates():
+            detail = detail.replace(secret, "***")
     except Exception:
         pass
     return detail[:LOG_DETAIL_CLIP]

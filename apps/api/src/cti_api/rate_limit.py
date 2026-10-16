@@ -12,7 +12,10 @@ from functools import lru_cache
 from typing import cast
 
 from cti_core.config import get_settings
+from fastapi import HTTPException
 from redis.asyncio import Redis
+
+from cti_api.token_revocation import revoke_user_tokens
 
 
 async def is_rate_limited(
@@ -26,6 +29,39 @@ async def is_rate_limited(
         pipe.incr(name)
         results = await pipe.execute()
     return cast(int, results[-1]) > max_requests
+
+
+PASSWORD_FAILURE_LIMIT = 5
+PASSWORD_FAILURE_WINDOW_S = 900
+
+
+async def check_password_lockout(redis: Redis, username: str) -> None:
+    """429 kalau `username` sudah gagal konfirmasi password >= `PASSWORD_FAILURE_LIMIT` kali dalam
+    `PASSWORD_FAILURE_WINDOW_S`. Satu penghitung dipakai SEMUA tempat yang meminta password akun
+    yang sedang login (ganti password, ubah key third-party): kalau tidak, pemegang cookie sesi
+    curian menebak password lewat endpoint yang tidak dibatasi, lalu memakainya di endpoint yang
+    dibatasi."""
+    value = await redis.get(f"failures:pw:{username}")
+    if value is not None and int(value) >= PASSWORD_FAILURE_LIMIT:
+        raise HTTPException(
+            status_code=429, detail="Too many failed password attempts, try again later"
+        )
+
+
+async def note_password_failure(redis: Redis, username: str) -> None:
+    """Catat satu kegagalan. Begitu batasnya tercapai SEMUA sesi akun itu dicabut: cookie yang
+    dipakai menebak mati, dan pemilik sah cukup login ulang dengan password-nya."""
+    name = f"failures:pw:{username}"
+    async with redis.pipeline(transaction=True) as pipe:
+        pipe.set(name, 0, ex=PASSWORD_FAILURE_WINDOW_S, nx=True)
+        pipe.incr(name)
+        results = await pipe.execute()
+    if cast(int, results[-1]) >= PASSWORD_FAILURE_LIMIT:
+        await revoke_user_tokens(redis, username)
+
+
+async def clear_password_failures(redis: Redis, username: str) -> None:
+    await redis.delete(f"failures:pw:{username}")
 
 
 @lru_cache(maxsize=1)

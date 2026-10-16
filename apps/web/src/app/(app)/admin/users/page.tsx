@@ -7,6 +7,7 @@ import { RolesSection } from "@/components/admin/roles-section";
 import { PasswordPolicySection } from "@/components/admin/password-policy-section";
 import { AuditLogSection } from "@/components/admin/audit-log-section";
 import { ClientsSection } from "@/components/admin/clients-section";
+import { SecretsSection } from "@/components/admin/secrets-section";
 
 /**
  * Port `tab_usermgmt.html`. Role-gate di level HALAMAN (bukan cuma
@@ -38,6 +39,7 @@ export default function AdminUsersPage() {
       <PasswordPolicySection />
       <AuditLogSection />
       {user?.role === "superadmin" && <ClientsSection />}
+      {user?.role === "superadmin" && <SecretsSection />}
     </div>
   );
 }

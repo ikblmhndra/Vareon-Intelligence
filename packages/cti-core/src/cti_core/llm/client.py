@@ -40,7 +40,8 @@ from typing import Any
 
 from openai import OpenAI
 
-from cti_core.config import LlmSettings, get_settings
+from cti_core.config import LlmSettings
+from cti_core.runtime_secrets.overlay import effective_settings
 
 _RE_THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 _RE_CODE_FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE)
@@ -59,7 +60,7 @@ _DEFAULT_BASE_URLS = {
 
 def get_llm_client(*, settings: LlmSettings | None = None) -> tuple[OpenAI, str]:
     """Return (OpenAI-compatible client, resolved model name)."""
-    settings = settings or get_settings().llm
+    settings = settings or effective_settings().llm
     provider = settings.provider.lower()
     if provider not in _DEFAULT_MODELS:
         raise ValueError(f"Unknown LLM provider '{provider}'. Valid: {list(_DEFAULT_MODELS)}")
@@ -79,7 +80,7 @@ def store_param(settings: LlmSettings | None = None) -> dict[str, Any]:
     """`{'store': True}` cuma buat OpenAI ASLI (provider openai TANPA `url`
     custom) -- provider lain, dan gateway custom kayak 9router, gak jamin
     dukung param ini walau ngaku provider="openai"."""
-    settings = settings or get_settings().llm
+    settings = settings or effective_settings().llm
     if settings.provider.lower() == "openai" and not settings.url:
         return {"store": True}
     return {}

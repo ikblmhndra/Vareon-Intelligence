@@ -3,6 +3,7 @@ waktu Fase 2: extra="forbid" di Settings gak otomatis nurun ke nested
 BaseModel, jadi typo semacam TELEGRAM__BOTTOKEN diam-diam ke-drop."""
 
 import pytest
+from cryptography.fernet import Fernet
 from cti_core.config import Settings
 from pydantic import ValidationError
 
@@ -94,3 +95,94 @@ def test_a_typo_in_an_ioc_provider_key_fails_loud(monkeypatch: pytest.MonkeyPatc
 def test_otx_rate_defaults_and_reads_its_env(monkeypatch: pytest.MonkeyPatch) -> None:
     assert _settings(monkeypatch).otx.rate == "300/hour"
     assert _settings(monkeypatch, OTX__RATE="50/hour").otx.rate == "50/hour"
+
+
+# --- SECRETS_ENCRYPTION_KEYS (runtime secrets, ROADMAP #23) -----------------------------------
+
+
+def _fernet_key() -> str:
+    return Fernet.generate_key().decode()
+
+
+def test_secrets_encryption_keys_defaults_to_empty_so_a_deploy_never_fails_on_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("SECRETS_ENCRYPTION_KEYS", raising=False)
+
+    assert _settings(monkeypatch).secrets_encryption_keys == ""
+
+
+def test_secrets_encryption_keys_reads_its_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    key = _fernet_key()
+
+    assert _settings(monkeypatch, SECRETS_ENCRYPTION_KEYS=key).secrets_encryption_keys == key
+
+
+def test_a_value_that_is_not_a_fernet_key_fails_loud(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Kunci master yang salah ketik tidak boleh baru ketahuan saat admin menyimpan key pertama
+    (atau lebih buruk, saat dekripsi diam-diam gagal): proses gagal start."""
+    with pytest.raises(ValidationError, match=r"(?i)secrets_encryption_keys"):
+        _settings(monkeypatch, SECRETS_ENCRYPTION_KEYS="bukan-kunci")
+
+
+def test_one_bad_key_in_a_list_of_valid_ones_fails_loud(monkeypatch: pytest.MonkeyPatch) -> None:
+    with pytest.raises(ValidationError):
+        _settings(monkeypatch, SECRETS_ENCRYPTION_KEYS=f"{_fernet_key()},bukan-kunci")
+
+
+def test_a_comma_separated_list_of_valid_keys_is_accepted_as_is(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    keys = f"{_fernet_key()},{_fernet_key()}"
+
+    assert _settings(monkeypatch, SECRETS_ENCRYPTION_KEYS=keys).secrets_encryption_keys == keys
+
+
+def test_spaces_around_the_commas_do_not_fail_validation(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sama dengan `crypto`, yang menoleransi spasi di sekitar koma: `.env` ditulis tangan."""
+    keys = f"  {_fernet_key()}  ,  {_fernet_key()}  "
+
+    assert _settings(monkeypatch, SECRETS_ENCRYPTION_KEYS=keys).secrets_encryption_keys
+
+
+def test_a_failed_validation_never_prints_the_input_or_any_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Tanpa `hide_input_in_errors`, `ValidationError` mencetak `input_value=` (potongan dict
+    masukan yang berisi SEMUA secret): satu salah ketik di env menaruh potongan JWT/token di log
+    boot."""
+    secrets = {
+        "AUTH__JWT_SECRET": "jwt-unik-aaaaaa",  # gitleaks:allow
+        "AUTH__SESSION_SECRET_KEY": "sess-unik-bbbbbb",  # gitleaks:allow
+        "VAULT_TOKEN": "vault-unik-cccccc",  # gitleaks:allow
+    }
+
+    with pytest.raises(ValidationError) as excinfo:
+        _settings(monkeypatch, SECRETS_ENCRYPTION_KEYS="bukan-kunci", **secrets)
+
+    text = str(excinfo.value)
+    assert "input_value" not in text
+    for value in secrets.values():
+        assert value not in text
+    assert "bukan-kunci" not in text  # kunci master yang salah ketik bisa mirip kunci aslinya
+
+
+# --- SECRETS_LLM_URL_ALLOWED_HOSTS (runtime secrets, ROADMAP #23) -----------------------------
+
+
+def test_secrets_llm_url_allowed_hosts_defaults_to_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Kosong = halaman admin tidak bisa mengisi URL LLM kustom di luar dev; deploy tidak pecah."""
+    monkeypatch.delenv("SECRETS_LLM_URL_ALLOWED_HOSTS", raising=False)
+
+    assert _settings(monkeypatch).secrets_llm_url_allowed_hosts == ""
+
+
+def test_secrets_llm_url_allowed_hosts_reads_its_env_as_is(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """String mentah dipisah koma; pemecahan dan strip spasi ada di `validate_llm_url`."""
+    hosts = "gw.example.com, llm.example.org"
+
+    s = _settings(monkeypatch, SECRETS_LLM_URL_ALLOWED_HOSTS=hosts)
+
+    assert s.secrets_llm_url_allowed_hosts == hosts
