@@ -5312,7 +5312,7 @@ realistis**: beberapa hal yang dikira udah ada ternyata belum. Temuan
         494 tiket (setelah dedup 11 pasangan) bermigrasi tanpa error; `microsoft 365` (multi-kata) tersimpan
         dengan nama asli. Test 17 (`tests/integration/test_cve_migrate.py`), 11 mutasi 0 selamat. Ditambahkan
         sebagai langkah 8 di `CUTOVER_RUNBOOK.md` (opsional tapi disarankan, sebelum nyalakan beat).
-      - **Menunggu user**: nama lengkap yang ada di dump (`dyah.palupi`, `Michael`, `michael.dragon`) dianggap
+      - **Menunggu user**: nama lengkap yang ada di dump dianggap
         aman dimigrasi apa adanya (nama analis internal, bukan PII pelanggan) -- user belum eksplisit
         mengonfirmasi ini, cek sebelum jalan di produksi kalau ada keberatan.
       - **Validasi akhir (2026-09-30)**: simulasi CI penuh di checkout bersih (rsync `git ls-files`, `--with

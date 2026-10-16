@@ -149,7 +149,7 @@ def dump_data() -> dict[str, list[dict]]:
         ],
         "news_db/users": [
             {
-                "username": "dyah",
+                "username": "jane",
                 "role": "admin",
                 "hashed_password": "$2b$12$SECRETHASH",
                 "client_ids": ["default"],
@@ -378,7 +378,7 @@ def test_legacy_users_are_listed_without_password_hashes() -> None:
     users = seed.legacy_users(dump())
 
     assert [(u["username"], u["role"], u["clients"]) for u in users] == [
-        ("dyah", "admin", ["default"]),
+        ("jane", "admin", ["default"]),
         ("root", "superadmin", ["default"]),  # tanpa client_ids -> default
     ]
     assert "HASH" not in repr(users)

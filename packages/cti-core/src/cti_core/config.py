@@ -238,10 +238,10 @@ class WorkerSettings(_StrictModel):
     news_of_the_day_max_titles: int = 400
     """Fase 10.E -- batas judul yang dikirim ke LLM per kategori per hari."""
     logbook_interval_days: int = 14
-    logbook_preparer_name: str = "Dyah Retno Palupi"
-    logbook_preparer_title: str = "Threat Intel"
-    logbook_approver_name: str = "Ikbal Mahendra"
-    logbook_approver_title: str = "Infrastructure Security, Lead"
+    logbook_preparer_name: str = "Jane Doe"
+    logbook_preparer_title: str = "Threat Intelligence"
+    logbook_approver_name: str = "John Doe"
+    logbook_approver_title: str = "Threat Intelligence, Lead"
     """Fase 10.E -- kolom tanda tangan logbook (hardcoded di `logbook.py` lama)."""
     beat_lock_ttl_s: int = 30
     """Fase 10.1d -- umur lock singleton beat (`cti_worker.beat_main`).
