@@ -36,7 +36,7 @@ export function RecapHistory({ items, selected, onSelect }: RecapHistoryProps) {
               <span className={active ? "text-primary" : "text-foreground"}>
                 {weekly ? formatRange(it.period_start, it.period_end) : it.date}
               </span>
-              <span className="text-[10px] tracking-wide text-muted-foreground uppercase">
+              <span className="text-[11px] tracking-wide text-muted-foreground uppercase">
                 {weekly ? "week" : "day"}
               </span>
             </div>

@@ -127,7 +127,7 @@ export function IocAllowlistPanel() {
                     {TYPE_LABEL[e.type] || e.type}
                   </span>
                 </TableCell>
-                <TableCell className="font-mono text-xs text-foreground">{e.value}</TableCell>
+                <TableCell className="font-code text-xs text-foreground">{e.value}</TableCell>
                 <TableCell className="font-mono text-xs text-muted-foreground">{e.added_by || "—"}</TableCell>
                 <TableCell className="font-mono text-xs text-muted-foreground">{e.added_at.slice(0, 10)}</TableCell>
                 <TableCell className="text-center">

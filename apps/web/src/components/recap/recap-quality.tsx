@@ -61,7 +61,7 @@ const NEW_THIS_WEEK: { key: "threat_actors" | "campaigns" | "cves"; label: strin
  * rapat lagi dan boleh membungkus: lebar HP (375px) tidak cukup buat lima kolom di ukuran biasa, dan
  * kolom selisih yang terpotong (harus digeser) menggagalkan tujuan tabelnya. */
 const CELL = "px-1.5 py-1.5 text-xs whitespace-normal sm:px-2 sm:text-sm sm:whitespace-nowrap";
-const HEAD = "h-8 px-1.5 text-[10px] tracking-normal sm:px-2 sm:text-xs sm:tracking-wide";
+const HEAD = "h-8 px-1.5 text-[11px] tracking-normal sm:px-2 sm:text-xs sm:tracking-wide";
 
 function pct(n: number): string {
   return `${n > 0 ? "+" : n < 0 ? "−" : ""}${Math.abs(n).toFixed(1)}%`;

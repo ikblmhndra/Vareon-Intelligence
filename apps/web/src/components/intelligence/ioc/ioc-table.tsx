@@ -261,7 +261,7 @@ export function IocTable({ onSelect }: { onSelect: (target: IocTarget) => void }
                   <TableCell>
                     <IocTypeBadge type={ioc.type} />
                   </TableCell>
-                  <TableCell className="max-w-[320px] truncate font-mono text-[13px] text-foreground" title={ioc.value}>
+                  <TableCell className="max-w-[320px] truncate font-code text-[13px] text-foreground" title={ioc.value}>
                     {ioc.value}
                   </TableCell>
                   <TableCell className="text-center">

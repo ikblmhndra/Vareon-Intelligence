@@ -407,7 +407,7 @@ function OptionField({
         </SelectTrigger>
         <SelectContent>
           {option.choices.map((c) => (
-            <SelectItem key={c.value} value={c.value} className="font-mono text-xs">
+            <SelectItem key={c.value} value={c.value} className="font-code text-xs">
               {c.label}
             </SelectItem>
           ))}

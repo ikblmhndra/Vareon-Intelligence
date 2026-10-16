@@ -116,7 +116,7 @@ export function IocFpAnalyticsPanel() {
                   <TableCell>
                     <IocTypeBadge type={s.ioc_type} />
                   </TableCell>
-                  <TableCell className="max-w-[280px] truncate font-mono text-[13px] text-foreground" title={s.value}>
+                  <TableCell className="max-w-[280px] truncate font-code text-[13px] text-foreground" title={s.value}>
                     {s.value}
                   </TableCell>
                   <TableCell className="text-center font-mono text-xs text-destructive">{s.fp_count} FP</TableCell>

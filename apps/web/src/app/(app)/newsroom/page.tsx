@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 import { useAuth } from "@/components/providers/auth-provider";
-import { cn } from "@/lib/utils";
+import { TabPills, type TabPillItem } from "@/components/ui/tab-pills";
 import { defaultNewsroomFilters, type NewsroomFilters } from "@/lib/newsroom/filters";
 import type { components } from "@/lib/api/schema";
 import { FilterBar } from "@/components/newsroom/filter-bar";
@@ -54,35 +54,21 @@ export default function NewsroomPage() {
   const [draft, setDraft] = useState<NewsroomFilters>(defaultNewsroomFilters);
   const [filters, setFilters] = useState<NewsroomFilters>(defaultNewsroomFilters);
   const [selected, setSelected] = useState<Article | null>(null);
+  // Tab "Not Related Cyber" hanya untuk admin (sama dengan sebelumnya: tombolnya tidak dirender).
+  const viewTabs: TabPillItem<"cyber" | "filtered">[] = [
+    { value: "cyber", label: "Cyber News" },
+    ...(isAdmin ? [{ value: "filtered" as const, label: "Not Related Cyber", tone: "destructive" as const }] : []),
+  ];
 
   return (
     <div className="pb-10">
-      <div className="mb-4 flex gap-1.5 border-b border-border pb-3 overflow-x-auto">
-        <button
-          onClick={() => setView("cyber")}
-          className={cn(
-            "shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-sm font-medium transition-colors duration-200",
-            view === "cyber"
-              ? "border-primary/30 bg-primary/10 text-primary-text"
-              : "border-border bg-surface text-muted-foreground hover:bg-muted hover:text-foreground",
-          )}
-        >
-          Cyber News
-        </button>
-        {isAdmin && (
-          <button
-            onClick={() => setView("filtered")}
-            className={cn(
-              "shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-sm font-medium transition-colors duration-200",
-              view === "filtered"
-                ? "border-destructive/40 bg-destructive/10 text-destructive-text"
-                : "border-border bg-surface text-muted-foreground hover:bg-muted hover:text-foreground",
-            )}
-          >
-            Not Related Cyber
-          </button>
-        )}
-      </div>
+      <TabPills
+        aria-label="Newsroom views"
+        className="mb-4 border-b border-border pb-3"
+        items={viewTabs}
+        value={view}
+        onChange={setView}
+      />
 
       {view === "cyber" ? (
         <>

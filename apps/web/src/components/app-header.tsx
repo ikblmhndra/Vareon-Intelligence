@@ -127,7 +127,7 @@ function NavLinks({
     <nav
       id={orientation === "vertical" ? "app-sidebar-nav" : undefined}
       aria-label="Main"
-      className={cn(orientation === "vertical" ? "flex flex-col gap-1" : "flex gap-1 overflow-x-auto")}
+      className={cn(orientation === "vertical" ? "flex flex-col gap-1" : "flex gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden")}
     >
       {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
         const active = pathname.startsWith(href);

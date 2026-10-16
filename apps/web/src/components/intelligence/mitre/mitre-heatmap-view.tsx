@@ -75,7 +75,7 @@ export function MitreHeatmapView() {
             </SelectTrigger>
             <SelectContent>
               {VIEWS.map((v) => (
-                <SelectItem key={v.value} value={v.value} className="font-mono text-xs">
+                <SelectItem key={v.value} value={v.value} className="font-code text-xs">
                   {v.label}
                 </SelectItem>
               ))}

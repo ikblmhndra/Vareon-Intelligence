@@ -46,3 +46,22 @@ there is no input in the form at all (unless `uncheckedValue` is set). So
 extraction via `FormData` must check whether the key EXISTS
 (`fd.get('x') != null`), NOT `=== 'on'`. FOUND in Group E
 (`CveTicketTab`'s `escalation_required` checkbox, uncontrolled ticket form).
+
+# Visual conventions (from the 2026-10-17 redesign and visual audit)
+
+- **Page header**: every route has a `layout.tsx` that renders `<PageHeader title description />` (the page's only
+  `<h1>`) and exports `metadata.title`. Section headings below it are `<h2>`, then `<h3>` (do not skip levels).
+- **Surfaces**: cards use `surface-raised` (tinted shadow + 7% hairline ring), never `border border-border bg-surface`.
+  Hierarchy is hero band (burgundy) > raised > flat (no box). Use `Card`, `Table framed`, `ChartCard`, `MapCard`.
+- **Text on tints**: a tinted badge (`bg-X/10..25`) must use `text-X-text` (`text-primary-text`, `text-success-text`, ...),
+  not `text-X`; the base token only reaches 3.6-4.1:1 on its own tint (AA needs 4.5:1). Heatmap cells cap the tint
+  alpha instead of flipping the text color. Never dim text with `opacity-*` (use a lighter token).
+- **Fonts**: `font-mono` is NOT monospace here (`--font-mono` = Google Sans Flex). Use `font-code` (IBM Plex Mono) for
+  data values: IOC, hash, IP, CVE/TTP ID, cron schedules.
+- **No `backdrop-blur`/`backdrop-filter`** (commit 8f0655e removed it: heavy render, screenshot timeouts).
+- **Markdown** (`.prose`): colors come from `--tw-prose-*` mapped to theme tokens in `globals.css`; never add `prose-invert`.
+- **Accessibility**: every input needs an `aria-label` or an associated `<label htmlFor>` (a `<Label>` next to it is not
+  associated); icon-only buttons and checkboxes need `aria-label`; interactive targets are at least 24px, and primary
+  controls are 44px below 640px (`max-sm:h-11` on `Button`/`Input`/`Select`); tab switchers use `TabPills`.
+- **Verify in both modes**: after changing global tokens or shared primitives, check contrast in light AND dark on the
+  dense pages (Risk Matrix, IOC, Exec, Scrapers), plus the dialogs (changelog, brief, ticket).

@@ -45,7 +45,9 @@ export function Delta({ value, prev, label }: { value: number; prev: number | nu
   if (diff === 0) text = `no change vs prev ${label}`;
   else {
     const arrow = diff > 0 ? "▲" : "▼";
-    const amount = prev === 0 ? `+${diff.toLocaleString()}` : `${Math.abs(Math.round((diff / prev) * 100))}%`;
+    // Pembanding kecil (< 10) -> selisih absolut: "▲ 28400%" dari 3 artikel ke 855 menyesatkan.
+    const amount =
+      prev < 10 ? `${diff > 0 ? "+" : "-"}${Math.abs(diff).toLocaleString()}` : `${Math.abs(Math.round((diff / prev) * 100))}%`;
     text = `${arrow} ${amount} vs prev ${label}`;
   }
   return <span> · {text}</span>;

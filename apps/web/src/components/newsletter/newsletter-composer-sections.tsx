@@ -244,7 +244,7 @@ function SwapMenu({ outId, pool, onSwap }: { outId: number; pool: PoolEntry[]; o
                 <DropdownMenuItem key={p.article.id} onClick={() => onSwap(outId, p)} className="items-start">
                   <span className="min-w-0 flex-1">
                     <span className="line-clamp-2 text-xs font-medium">{p.article.title}</span>
-                    <span className="block font-mono text-[11px] text-muted-foreground">
+                    <span className="block font-mono text-xs text-muted-foreground">
                       {p.article.source} · {p.article.posted_on}
                     </span>
                   </span>
@@ -324,7 +324,7 @@ function ArticleRow({ article, state, ...rest }: ItemProps) {
           <div className="truncate text-xs font-medium text-foreground" title={article.title}>
             {article.title}
           </div>
-          <div className="font-mono text-[11px] text-muted-foreground">
+          <div className="font-mono text-xs text-muted-foreground">
             {article.source} · {article.posted_on}
             {article.news_type ? ` · ${article.news_type}` : ""}
           </div>

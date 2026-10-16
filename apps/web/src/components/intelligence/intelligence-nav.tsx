@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { cn } from "@/lib/utils";
+import { tabPillClass } from "@/components/ui/tab-pills";
 
 /** Port `intelSwitchView()` (`intel.js:5-10`) -- legacy nge-switch 11
  * sub-view lewat 1 shell (`['clusters','scores','spikes','mitre',
@@ -29,21 +29,17 @@ const NAV_ITEMS = [
 export function IntelligenceNav() {
   const pathname = usePathname();
   return (
-    <div className="mb-4 flex gap-1.5 border-b border-border pb-3 overflow-x-auto">
+    <nav aria-label="Intelligence sections" className="mb-4 flex gap-1.5 border-b border-border pb-3 overflow-x-auto">
       {NAV_ITEMS.map((item) => (
         <Link
           key={item.href}
           href={item.href}
-          className={cn(
-            "shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-sm font-medium transition-colors duration-200",
-            pathname === item.href
-              ? "border-primary/30 bg-primary/10 text-primary-text"
-              : "border-border bg-surface text-muted-foreground hover:bg-muted hover:text-foreground",
-          )}
+          aria-current={pathname === item.href ? "page" : undefined}
+          className={tabPillClass(pathname === item.href)}
         >
           {item.label}
         </Link>
       ))}
-    </div>
+    </nav>
   );
 }

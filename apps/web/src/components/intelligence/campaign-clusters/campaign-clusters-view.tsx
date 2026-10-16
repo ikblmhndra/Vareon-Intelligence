@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { cn } from "@/lib/utils";
+import { TabPills } from "@/components/ui/tab-pills";
 import { SimpleClustersPanel } from "@/components/intelligence/campaign-clusters/simple-clusters-panel";
 import { CampaignsPanel } from "@/components/intelligence/campaign-clusters/campaigns-panel";
 
@@ -24,21 +24,7 @@ export function CampaignClustersView() {
 
   return (
     <div>
-      <div className="mb-4 flex gap-1.5 overflow-x-auto">
-        {TABS.map((t) => (
-          <button
-            key={t.value}
-            type="button"
-            onClick={() => setTab(t.value)}
-            className={cn(
-              "shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-sm font-medium transition-colors duration-200",
-              tab === t.value ? "border-primary/30 bg-primary/10 text-primary-text" : "border-border bg-surface text-muted-foreground hover:bg-muted hover:text-foreground",
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <TabPills aria-label="Campaign views" className="mb-4" items={TABS} value={tab} onChange={setTab} />
 
       {tab === "campaigns" && <CampaignsPanel />}
       {tab === "clusters" && <SimpleClustersPanel />}

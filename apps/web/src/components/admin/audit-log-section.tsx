@@ -115,7 +115,7 @@ export function AuditLogSection() {
                     <TableCell className="max-w-[180px] truncate font-mono text-xs text-muted-foreground">
                       {l.detail && Object.keys(l.detail).length ? JSON.stringify(l.detail) : "—"}
                     </TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">{l.ip}</TableCell>
+                    <TableCell className="font-code text-xs text-muted-foreground">{l.ip}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

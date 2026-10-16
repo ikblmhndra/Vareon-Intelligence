@@ -140,7 +140,7 @@ export function IocDetailDialog({ target, onClose, onDeleted }: IocDetailDialogP
             <div className="font-mono text-xs">
               <div className="mb-3 flex flex-wrap items-center gap-2.5">
                 <IocTypeBadge type={ioc.type} />
-                <span className="text-[13px] break-all text-foreground">{ioc.value}</span>
+                <span className="font-code text-[13px] break-all text-foreground">{ioc.value}</span>
                 <IocConfidenceChip score={ioc.confidence_score} />
                 <IocActionabilityChip label={ioc.actionability_label} />
                 <Button

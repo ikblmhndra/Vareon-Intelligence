@@ -218,7 +218,7 @@ function VulnsTable({ items }: { items: TaExploitedVuln[] | undefined }) {
       <tbody>
         {items.map((v, i) => (
           <tr key={i} className="border-b border-border last:border-none">
-            <td className="py-1 pr-2 font-mono text-warning">{v.cve_id || "—"}</td>
+            <td className="py-1 pr-2 font-code text-warning">{v.cve_id || "—"}</td>
             <td className="py-1 pr-2">{v.product || "—"}</td>
             <td className="py-1 text-muted-foreground">{v.notes || "—"}</td>
           </tr>

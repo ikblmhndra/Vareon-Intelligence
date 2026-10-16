@@ -75,7 +75,7 @@ export function HealthSummaryBar({
                 title={p.last_status ? `last run: ${p.last_status}` : "never run"}
               >
                 <StatusBadge status={p.status} />
-                <span className="font-mono text-xs text-foreground">{p.id}</span>
+                <span className="font-code text-xs text-foreground">{p.id}</span>
               </button>
             ))}
           </div>

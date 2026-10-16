@@ -185,7 +185,7 @@ export function ArticleModal({ article: a, onOpenChange }: { article: Article | 
                 <TableBody>
                   {a.ttps.map((t) => (
                     <TableRow key={t.id}>
-                      <TableCell className="font-mono text-xs text-primary">{t.id}</TableCell>
+                      <TableCell className="font-code text-xs text-primary">{t.id}</TableCell>
                       <TableCell className="text-xs">{t.name}</TableCell>
                       <TableCell>
                         <D3fendToggle ttpId={t.id} />
