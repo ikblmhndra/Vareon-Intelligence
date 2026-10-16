@@ -1,28 +1,39 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 
 import { api } from "@/lib/api/client";
 import type { TaStats } from "@/lib/api/loose-types";
-import { ChartCard, DashboardSectionLabel, MapCard, StatBox } from "@/components/dashboard/stat-box";
+import { ChartCard, DashboardSectionLabel, Delta, MapCard, StatBox } from "@/components/dashboard/stat-box";
 import { AttentionBand } from "@/components/dashboard/attention-band";
 import { BreakdownList } from "@/components/dashboard/breakdown-list";
 import { CountryMap } from "@/components/dashboard/country-map";
 import { HorizontalBarChart, TimelineChart } from "@/components/dashboard/charts";
+import {
+  DEFAULT_DASHBOARD_FILTERS,
+  DashboardFilterBar,
+  type DashboardFilters,
+} from "@/components/dashboard/dashboard-filters";
 import { Skeleton } from "@/components/ui/skeleton";
 
 function toTitleCase(s: string): string {
   return s.replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1));
 }
 
-function useDashboardStats() {
+function useDashboardStats(filters: DashboardFilters) {
   return useQuery({
-    queryKey: ["dashboard", "stats"],
+    queryKey: ["dashboard", "stats", filters.days, filters.incidentOnly],
     queryFn: async () => {
-      const { data, error } = await api.GET("/api/dashboard");
+      const { data, error } = await api.GET("/api/dashboard", {
+        params: { query: { days: filters.days ?? undefined, incident_only: filters.incidentOnly } },
+      });
       if (error) throw error;
       return data;
     },
+    // Ganti periode/toggle: tetap tampilkan angka lama (diredupkan) sampai yang baru datang,
+    // bukan mengosongkan semua kartu lalu menggambar ulang.
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -49,33 +60,62 @@ function useTaStats() {
  * dapet halaman SENDIRI (`/scrapers`), bukan digabung ke dashboard umum.
  */
 export default function DashboardPage() {
-  const dashboard = useDashboardStats();
+  const [filters, setFilters] = useState<DashboardFilters>(DEFAULT_DASHBOARD_FILTERS);
+  const dashboard = useDashboardStats(filters);
   const ta = useTaStats();
+
+  const stats = dashboard.data;
+  const periodLabel = filters.days ? `Last ${filters.days} days` : "All time";
+  const prevLabel = filters.days ? `${filters.days}d` : "";
+  // Penyebut chart: cuma sebagian artikel yang punya negara/aktor/TTP, jadi sebut basisnya.
+  const basis = (n: number | undefined, what: string) =>
+    stats && n !== undefined ? `${n.toLocaleString()} of ${stats.total_articles.toLocaleString()} articles ${what}` : undefined;
 
   return (
     <div className="space-y-1 pb-10">
-      <header className="mb-6">
-        <div className="text-sm text-muted-foreground">Ringkasan intelijen</div>
-        <h1 className="font-heading text-3xl font-extrabold tracking-tight text-foreground">Dashboard</h1>
+      <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <div className="text-sm text-muted-foreground">Ringkasan intelijen</div>
+          <h1 className="font-heading text-3xl font-extrabold tracking-tight text-foreground">Dashboard</h1>
+        </div>
+        <DashboardFilterBar filters={filters} onChange={setFilters} updatedAt={stats?.generated_at} />
       </header>
 
       <AttentionBand />
 
       {/* ── KPI ── */}
-      {(dashboard.isPending || ta.isPending) && <StatGridSkeleton count={4} />}
+      {(dashboard.isPending || ta.isPending) && <StatGridSkeleton count={5} />}
       {dashboard.isError && <ErrorNote />}
-      {dashboard.data && ta.data && (
-        <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {stats && ta.data && (
+        <div
+          className={`mt-6 grid grid-cols-1 gap-4 transition-opacity sm:grid-cols-2 xl:grid-cols-5 ${dashboard.isPlaceholderData ? "opacity-60" : ""}`}
+        >
           <StatBox
             label="Total Articles"
-            value={dashboard.data.total_articles}
-            sub="In database"
-            spark={dashboard.data.timeline.map((x) => x.count)}
+            value={stats.total_articles}
+            sub={
+              <>
+                {periodLabel}
+                {filters.incidentOnly ? " · incidents only" : ""}
+                <Delta value={stats.total_articles} prev={stats.prev_total_articles} label={prevLabel} />
+              </>
+            }
+            spark={stats.timeline.map((x) => x.count)}
           />
-          <StatBox label="Countries Mentioned" value={dashboard.data.total_countries} sub="Unique geographies" />
           <StatBox
-            label="Threat Actors Tracked"
-            value={dashboard.data.total_threat_actors}
+            label="Confirmed Incidents"
+            value={stats.confirmed_incidents}
+            sub={
+              <>
+                of {stats.total_articles.toLocaleString()} articles
+                <Delta value={stats.confirmed_incidents} prev={stats.prev_confirmed_incidents} label={prevLabel} />
+              </>
+            }
+          />
+          <StatBox label="Countries Mentioned" value={stats.total_countries} sub="Unique geographies" />
+          <StatBox
+            label="Threat Actors in News"
+            value={stats.total_threat_actors}
             sub={`${ta.data.total_groups.toLocaleString()} APT groups · ${ta.data.total_whitelisted} whitelisted`}
           />
           <StatBox
@@ -88,44 +128,60 @@ export default function DashboardPage() {
 
       {/* ── News Intelligence charts ── */}
       <DashboardSectionLabel>News Intelligence</DashboardSectionLabel>
-      {dashboard.data && (
-        <div className="space-y-3">
+      {stats && (
+        <div className={`space-y-3 transition-opacity ${dashboard.isPlaceholderData ? "opacity-60" : ""}`}>
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <MapCard title="Mentioned Countries">
-              <CountryMap data={dashboard.data.country_counts} />
+            <MapCard title="Mentioned Countries" note={basis(stats.coverage.with_country, "name a country")}>
+              <CountryMap data={stats.country_counts} />
             </MapCard>
             <MapCard title="Articles by News Type">
-              <BreakdownList items={dashboard.data.by_news_type.map((x) => ({ label: toTitleCase(x.name), count: x.count }))} limit={9} />
+              <BreakdownList items={stats.by_news_type.map((x) => ({ label: toTitleCase(x.name), count: x.count }))} limit={9} />
             </MapCard>
           </div>
 
           <ChartCard title="Articles Over Time" height={200}>
             <TimelineChart
-              labels={dashboard.data.timeline.map((x) => x.date)}
-              data={dashboard.data.timeline.map((x) => x.count)}
+              labels={stats.timeline.map((x) => x.date)}
+              data={stats.timeline.map((x) => x.count)}
             />
           </ChartCard>
 
-          <ChartCard title="Top Threat Actors" height={280}>
+          <ChartCard
+            title="Top Threat Actors"
+            height={280}
+            note={basis(stats.coverage.with_actor, "name a threat actor")}
+          >
             <HorizontalBarChart
-              labels={dashboard.data.top_threat_actors.map((x) => toTitleCase(x.name))}
-              data={dashboard.data.top_threat_actors.map((x) => x.count)}
+              labels={stats.top_threat_actors.map((x) => toTitleCase(x.name))}
+              data={stats.top_threat_actors.map((x) => x.count)}
               tone="critical"
             />
           </ChartCard>
 
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <ChartCard title="Top Targeted Industries" height={280}>
+            <ChartCard
+              title="Top Targeted Industries"
+              height={280}
+              note={
+                stats.industry_unspecified > 0
+                  ? `${stats.industry_unspecified.toLocaleString()} articles with no specific sector (General) not shown`
+                  : undefined
+              }
+            >
               <HorizontalBarChart
-                labels={dashboard.data.top_industries.map((x) => toTitleCase(x.name))}
-                data={dashboard.data.top_industries.map((x) => x.count)}
+                labels={stats.top_industries.map((x) => toTitleCase(x.name))}
+                data={stats.top_industries.map((x) => x.count)}
                 tone="warning"
               />
             </ChartCard>
-            <ChartCard title="Top MITRE ATT&CK TTPs" height={280}>
+            <ChartCard
+              title="Top MITRE ATT&CK TTPs"
+              height={280}
+              note={basis(stats.coverage.with_ttp, "map to a TTP")}
+            >
               <HorizontalBarChart
-                labels={dashboard.data.top_ttps.map((x) => toTitleCase(x.name))}
-                data={dashboard.data.top_ttps.map((x) => x.count)}
+                labels={stats.top_ttps.map((x) => toTitleCase(x.name))}
+                data={stats.top_ttps.map((x) => x.count)}
                 tone="success"
               />
             </ChartCard>
@@ -133,8 +189,8 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ── Threat Actor Room charts ── */}
-      <DashboardSectionLabel>Threat Actor Room — Charts</DashboardSectionLabel>
+      {/* ── Threat Actor Room charts ── (`/api/ta/stats` gak punya filter periode) */}
+      <DashboardSectionLabel>Threat Actor Room — Charts · all time</DashboardSectionLabel>
       {ta.data && (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <MapCard title="APT Groups by Source">
@@ -162,7 +218,7 @@ export default function DashboardPage() {
 
 function StatGridSkeleton({ count }: { count: number }) {
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
       {Array.from({ length: count }, (_, i) => (
         <Skeleton key={i} className="h-20 w-full" />
       ))}

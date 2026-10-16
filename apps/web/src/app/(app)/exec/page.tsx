@@ -139,6 +139,9 @@ export default function ExecDashboardPage() {
           <ExecChartsSection d={d} />
 
           <DashboardSectionLabel>CVE Exposure</DashboardSectionLabel>
+          <p className="-mt-2 mb-2 text-xs text-muted-foreground">
+            All tracked CVEs across clients (false positives excluded), not filtered by the period above.
+          </p>
           <CveExposureTable d={d} />
 
           <DashboardSectionLabel>Sector Activity Heatmap</DashboardSectionLabel>
@@ -182,7 +185,7 @@ export default function ExecDashboardPage() {
                 )}
                 {d.view_config.sections.critical_cve_feed && (
                   <div className="rounded-xl border border-border bg-background p-3 lg:col-span-2">
-                    <div className="mb-2 font-mono text-xs text-muted-foreground">Critical CVE Feed</div>
+                    <div className="mb-2 font-mono text-xs text-muted-foreground">KEV CVE Feed — CISA known exploited</div>
                     <CriticalCveFeed d={d} />
                   </div>
                 )}

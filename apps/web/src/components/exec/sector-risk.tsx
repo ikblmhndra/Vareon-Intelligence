@@ -44,6 +44,19 @@ export function SectorRiskMatrix({ d }: { d: ExecDashboardV2 }) {
           </div>
         );
       })}
+      {/* Catatan penyebut: apa yang TIDAK ikut peringkat, dan kenapa skornya bisa tampak datar. */}
+      {d.sector_unspecified > 0 && (
+        <p className="pt-1 font-mono text-xs text-muted-foreground">
+          {d.sector_unspecified.toLocaleString()} of {d.total_incidents.toLocaleString()} incidents have no
+          specific sector (General) and are not ranked.
+        </p>
+      )}
+      {d.risk_volume_only && (
+        <p className="font-mono text-xs text-muted-foreground">
+          Score = volume only: trend and spike components stay off until at least two earlier months have
+          enough data.
+        </p>
+      )}
     </div>
   );
 }

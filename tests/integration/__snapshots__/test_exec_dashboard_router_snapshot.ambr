@@ -12,12 +12,14 @@
     'news_type_breakdown': list([
     ]),
     'prev_active_sectors': 0,
+    'prev_period_reliable': False,
     'prev_total': 0,
     'prev_unique_ta': 0,
     'sector_heatmap': list([
     ]),
     'sector_trend': list([
     ]),
+    'sector_unspecified': 0,
     'ta_leaderboard': list([
     ]),
     'top_countries': list([
@@ -59,13 +61,16 @@
     }),
     'pending_fp_queue': list([
     ]),
+    'pending_fp_total': 0,
     'prev_active_sectors': 0,
+    'prev_period_reliable': False,
     'prev_ta_names': list([
     ]),
     'prev_total': 0,
     'prev_unique_ta': 0,
     'recent_clusters_summary': list([
     ]),
+    'risk_volume_only': True,
     'sector_actor_matrix': dict({
       'actors': list([
       ]),
@@ -83,6 +88,7 @@
     ]),
     'sector_trend': list([
     ]),
+    'sector_unspecified': 0,
     'source_reliability_spread': dict({
     }),
     'ta_confidence': dict({

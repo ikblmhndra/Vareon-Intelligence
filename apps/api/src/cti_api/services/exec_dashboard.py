@@ -48,6 +48,19 @@ NON_INCIDENT_TYPES = {
     "Security Technology & Best Practices",
 }
 
+# Label "tidak ada sektor spesifik" dari klasifikasi (`cti_enrich.stages.classify`: "General" menang
+# kalau muncul). Bukan sektor, jadi tidak ikut peringkat/heatmap/spike sektor -- di prod 62% artikel
+# berlabel ini, jadi tanpa dipisah ia selalu jadi baris teratas.
+UNSPECIFIED_INDUSTRY = "General"
+
+# Periode pembanding (`prev_*`) dianggap andal bila minimal separuh harinya punya artikel. Di prod
+# data baru ±4 minggu: jendela 30 hari dibanding 3 artikel nyasar menghasilkan "↑32767%".
+PREV_MIN_DAY_COVERAGE = 0.5
+
+# Bucket bulan baru dihitung sebagai RIWAYAT risk score/velocity bila total insidennya >= ini. Bulan
+# hampir kosong (awal ingest) bikin komponen trend/spike membaca ramp ingestion sebagai lonjakan.
+MIN_BUCKET_INCIDENTS = 30
+
 
 class _DateFilters(TypedDict):
     """Bentuk filter yang dipakai ULANG lintas hampir semua query
@@ -108,18 +121,28 @@ async def get_exec_dashboard(
         "confirmed_only": confirmed_only,
     }
 
-    sector_trend_raw = await repo.monthly_industry_counts(**base)
+    sector_trend_all = await repo.monthly_industry_counts(**base)
+    sector_trend_raw = [r for r in sector_trend_all if r[0] != UNSPECIFIED_INDUSTRY]
+    sector_unspecified = sum(cnt for ind, _, cnt in sector_trend_all if ind == UNSPECIFIED_INDUSTRY)
     country_trend_raw = await repo.monthly_country_counts(**base)
     ta_raw = await repo.top_threat_actors(limit=10, **base)
     unique_ta_count = await repo.unique_threat_actor_count(**base)
     news_type_raw = await repo.news_type_breakdown(**base)
     prev_unique_ta_count = await repo.unique_threat_actor_count(**prev_base)
-    prev_active_sectors = await repo.unique_industry_count(**prev_base)
+    # Dua-duanya TIDAK dibatasi top-8 (`active_sectors` dulu `len(top_sectors)` <= 8 vs
+    # `prev_active_sectors` tanpa batas, jadi trennya timpang) dan tanpa "General".
+    active_sectors = await repo.unique_industry_count(exclude_industry=UNSPECIFIED_INDUSTRY, **base)
+    prev_active_sectors = await repo.unique_industry_count(
+        exclude_industry=UNSPECIFIED_INDUSTRY, **prev_base
+    )
     total = await repo.count_articles(**base)
     prev_total = await repo.count_articles(**prev_base)
+    prev_days_with_data = await repo.distinct_day_count(**prev_base)
     cve_raw = await repo.cve_tech_severity_breakdown(limit=10)
 
-    months_set = {mo for _, mo, _ in sector_trend_raw}
+    # Bulan diambil dari SEMUA baris (termasuk "General") supaya bulan yang isinya cuma artikel
+    # tanpa sektor spesifik tetap muncul di sumbu.
+    months_set = {mo for _, mo, _ in sector_trend_all}
     months = sorted(months_set)
 
     sector_map: dict[str, dict[str, int]] = {}
@@ -152,9 +175,13 @@ async def get_exec_dashboard(
     return {
         "total_incidents": total,
         "prev_total": prev_total,
+        # False = periode sebelumnya kosong/jarang (mis. platform baru jalan): `prev_*` jangan
+        # dibandingkan dan penanda NEW/REC aktor tidak bermakna.
+        "prev_period_reliable": prev_days_with_data >= days * PREV_MIN_DAY_COVERAGE,
+        "sector_unspecified": sector_unspecified,
         "unique_ta_count": unique_ta_count,
         "prev_unique_ta": prev_unique_ta_count,
-        "active_sectors": len(top_sectors),
+        "active_sectors": active_sectors,
         "prev_active_sectors": prev_active_sectors,
         "months": months,
         "top_sectors": top_sectors,
@@ -174,7 +201,21 @@ async def get_exec_dashboard(
 # ── v2 tier helpers -- port byte-identik ────────────────────────────────────
 
 
-def _compute_sector_risk_scores(sector_trend: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _history_counts(counts: list[int], usable: list[bool] | None) -> list[int]:
+    """Deret yang dipakai komponen trend/spike: bulan sebelum terakhir yang `usable` (cukup data,
+    lihat `MIN_BUCKET_INCIDENTS`) + bulan terakhir. `usable=None` = semua bucket (perilaku lama)."""
+    if usable is None or not counts:
+        return counts
+    return [c for i, c in enumerate(counts[:-1]) if usable[i]] + [counts[-1]]
+
+
+def _compute_sector_risk_scores(
+    sector_trend: list[dict[str, Any]], usable: list[bool] | None = None
+) -> list[dict[str, Any]]:
+    """Volume (0-50) + trend (0-20) + spike (0-30). Trend/spike hanya memakai bucket bulan yang
+    `usable`: bulan hampir kosong (awal ingest) bikin lonjakan ingestion terbaca sebagai lonjakan
+    ancaman, dan di prod itu mengangkat hampir semua sektor ke MED/HIGH. Selama riwayat belum
+    cukup, skor = volume saja (lihat `risk_volume_only` di payload v2)."""
     if not sector_trend:
         return []
 
@@ -183,7 +224,7 @@ def _compute_sector_risk_scores(sector_trend: list[dict[str, Any]]) -> list[dict
 
     results: list[dict[str, Any]] = []
     for s in sector_trend:
-        counts = s["data"]
+        counts = _history_counts(s["data"], usable)
         last = counts[-1] if counts else 0
 
         vol_score = (last / max_last) * 50
@@ -225,7 +266,9 @@ def _compute_sector_risk_scores(sector_trend: list[dict[str, Any]]) -> list[dict
 
 
 def _compute_ta_velocity(
-    ta_monthly_raw: list[tuple[str, str, int]], months: list[str]
+    ta_monthly_raw: list[tuple[str, str, int]],
+    months: list[str],
+    usable: list[bool] | None = None,
 ) -> list[dict[str, Any]]:
     series: dict[str, dict[str, int]] = defaultdict(dict)
     for actor, month, count in ta_monthly_raw:
@@ -237,7 +280,11 @@ def _compute_ta_velocity(
         if len(counts) < 2 or sum(counts) == 0:
             continue
         last = counts[-1]
-        prev = counts[:-1]
+        # Pembanding = rata-rata bulan sebelumnya yang `usable` saja; tanpa riwayat yang cukup
+        # velocity tidak bisa dihitung (bukan "NEW" untuk semua aktor).
+        prev = _history_counts(counts, usable)[:-1]
+        if not prev:
+            continue
         avg_prev = statistics.mean(prev) if prev else 0
         if avg_prev > 0:
             velocity_pct = round((last / avg_prev - 1) * 100)
@@ -439,8 +486,18 @@ async def get_exec_dashboard_v2(
 
     # ── Tier 1 ──
     cve_exposure_v2 = cve_v2_raw
-    sector_risk_scores = _compute_sector_risk_scores(base_dash["sector_trend"])
-    industry_spikes = spike_data.get("industries", [])[:6]
+    # Bucket bulan "cukup data": total insiden SEMUA artikel per bulan, bukan cuma top-8 sektor.
+    month_totals: dict[str, int] = defaultdict(int)
+    for _nt, mo, cnt in newstype_monthly_raw:
+        month_totals[mo] += cnt
+    usable_months = [month_totals.get(m, 0) >= MIN_BUCKET_INCIDENTS for m in months]
+    # Spike butuh >= 2 bulan riwayat usable (+ bulan terakhir), trend >= 3; di bawah itu skor =
+    # volume saja.
+    risk_volume_only = sum(usable_months[:-1]) < 2
+    sector_risk_scores = _compute_sector_risk_scores(base_dash["sector_trend"], usable_months)
+    industry_spikes = [
+        sp for sp in spike_data.get("industries", []) if sp["entity"] != UNSPECIFIED_INDUSTRY
+    ][:6]
 
     # ── Tier 2 ──
     vc_map: dict[str, dict[str, int]] = {}
@@ -453,7 +510,7 @@ async def get_exec_dashboard_v2(
     ]
 
     top_ttps = [{"id": tid, "name": name or tid, "count": cnt} for tid, name, cnt in ttp_raw]
-    ta_velocity = _compute_ta_velocity(ta_monthly_raw, months)
+    ta_velocity = _compute_ta_velocity(ta_monthly_raw, months, usable_months)
     sector_cooccurrence = _compute_sector_cooccurrence(cooccur_map)
     newstype_trend = _build_newstype_trend(newstype_monthly_raw, months)
     sector_actor_matrix = _build_sector_actor_matrix(
@@ -487,6 +544,7 @@ async def get_exec_dashboard_v2(
     pending_fp_queue = (
         await _get_pending_fp_queue(session) if sections.get("fp_feedback_queue") else []
     )
+    pending_fp_total = await repo.pending_fp_count() if sections.get("fp_feedback_queue") else 0
     source_reliability_spread = (
         await _get_source_reliability_spread(session)
         if sections.get("source_reliability_spread")
@@ -512,5 +570,7 @@ async def get_exec_dashboard_v2(
         "critical_cves": critical_cves,
         "recent_clusters_summary": recent_clusters_summary,
         "pending_fp_queue": pending_fp_queue,
+        "pending_fp_total": pending_fp_total,
+        "risk_volume_only": risk_volume_only,
         "source_reliability_spread": source_reliability_spread,
     }

@@ -323,12 +323,14 @@ def _ioc_feed_sink(item: IocFeedItem, meta: ScraperMeta, session: Session) -> No
 @sink_for(TweetItem)
 def _tweet_sink(item: TweetItem, meta: ScraperMeta, session: Session) -> None:
     """Insert-only ke `tweets` -- gantiin `monitorX.py::upsert_tweet`
-    (`$setOnInsert`, gak pernah update tweet yang udah ada)."""
+    (`$setOnInsert`, gak pernah update tweet yang udah ada). `source` = scraper yang nulis
+    (`monitor_x` atau `tweet_alerts_*`); kalau tweet-nya udah disimpan scraper lain, ini no-op."""
     from cti_core.db.repositories.tweet import TweetRepo
 
     repo = TweetRepo(session)
     repo.insert(
         tweet_id=item.tweet_id,
+        source=meta.id,
         url=item.url,
         text=item.text,
         author_username=item.author_username,

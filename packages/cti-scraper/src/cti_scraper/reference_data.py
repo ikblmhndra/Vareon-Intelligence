@@ -121,16 +121,27 @@ def _resolve_tweet_last_seen_ids(session: Session) -> dict[str, str]:
     `monitorX.py`'s `state.json` lokal (`load_state`/`save_state`). Query
     SEKALI di sini (bukan per-akun di `fetch()`) karena ini reference data,
     diresolve Runner SEBELUM `fetch()` jalan -- `fetch()` gak pegang
-    Session (lihat docstring modul)."""
+    Session (lihat docstring modul).
+
+    Kunci di-lowercase: `Tweet.author_username` menyimpan `userName` persis seperti dikembalikan
+    API (`FalconFeedsio`, `MonThreat`, `GroupIB_TI`), sedangkan `monitored_accounts.username`
+    selalu lowercase. Tanpa normalisasi, `last_seen.get(akun)` meleset untuk handle bercampur
+    huruf besar, `since_id` tidak pernah dipakai, dan `monitor_x` jatuh ke jendela 3 jam tiap run
+    (ketemu di prod 2026-10-16: 5 dari 10 akun yang punya tweet tersimpan bercampur huruf)."""
     from cti_core.db.models.tweet import Tweet
     from sqlalchemy import select
 
-    rows = session.execute(select(Tweet.author_username, Tweet.tweet_id)).all()
+    # Cuma baris `monitor_x`: jalur `tweet_alerts_*` juga menulis `tweets`, dan tweet alert yang
+    # lebih baru tidak boleh menggeser `since_id` (tweet yang ditolak filter alert terlewat).
+    rows = session.execute(
+        select(Tweet.author_username, Tweet.tweet_id).where(Tweet.source == "monitor_x")
+    ).all()
     result: dict[str, str] = {}
     for username, tweet_id in rows:
-        current = result.get(username)
+        key = username.lower()
+        current = result.get(key)
         if current is None or int(tweet_id) > int(current):
-            result[username] = tweet_id
+            result[key] = tweet_id
     return result
 
 

@@ -37,8 +37,18 @@
   dict({
     'by_news_type': list([
     ]),
+    'confirmed_incidents': 0,
     'country_counts': list([
     ]),
+    'coverage': dict({
+      'with_actor': 0,
+      'with_country': 0,
+      'with_ttp': 0,
+    }),
+    'generated_at': str,
+    'industry_unspecified': 0,
+    'prev_confirmed_incidents': None,
+    'prev_total_articles': None,
     'timeline': list([
       dict({
         'count': 1,

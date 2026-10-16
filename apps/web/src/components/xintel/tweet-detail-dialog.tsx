@@ -109,11 +109,16 @@ export function TweetDetailDialog({
             <AvatarFallback className="text-muted-foreground">𝕏</AvatarFallback>
           </Avatar>
           <div className="flex-1">
-            <div className="text-[15px] font-bold text-foreground">{t.author_name}</div>
+            {/* nama/followers kosong untuk tweet dari jalur alert (X resmi): sembunyikan */}
+            {t.author_name && (
+              <div className="text-[15px] font-bold text-foreground">{t.author_name}</div>
+            )}
             <div className="font-mono text-xs text-muted-foreground">@{t.author_username}</div>
-            <div className="mt-0.5 text-xs text-muted-foreground">
-              {(t.author_followers || 0).toLocaleString()} followers
-            </div>
+            {t.author_followers > 0 && (
+              <div className="mt-0.5 text-xs text-muted-foreground">
+                {t.author_followers.toLocaleString()} followers
+              </div>
+            )}
           </div>
           <div className="text-right font-mono text-xs text-muted-foreground">
             <div>{t.posted_on ? `${t.posted_on.slice(0, 16).replace("T", " ")} UTC` : "—"}</div>

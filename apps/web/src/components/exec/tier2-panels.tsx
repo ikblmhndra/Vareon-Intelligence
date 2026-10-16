@@ -12,7 +12,7 @@ export function SpikeBanner({ d }: { d: ExecDashboardV2 }) {
   return (
     <div className="mb-4 rounded-xl border border-border bg-background p-3">
       <div className="mb-2 text-sm font-semibold text-primary">
-        <ZapIcon aria-hidden /> Anomaly Alerts — Sectors with statistically significant activity spikes
+        <ZapIcon aria-hidden /> Anomaly Alerts — Sectors above their recent baseline (z ≥ 1.5)
       </div>
       <div className="flex flex-wrap gap-2">
         {d.industry_spikes.map((sp, i) => (
@@ -75,7 +75,7 @@ export function TtpList({ d }: { d: ExecDashboardV2 }) {
 /** Port TA Velocity (`exec.js:372-392`). */
 export function TaVelocity({ d }: { d: ExecDashboardV2 }) {
   if (d.ta_velocity.length === 0) {
-    return <p className="py-2 font-mono text-xs text-muted-foreground">No TA data</p>;
+    return <p className="py-2 font-mono text-xs text-muted-foreground">Not enough history yet — needs an earlier month with enough data</p>;
   }
   return (
     <div className="space-y-1.5">

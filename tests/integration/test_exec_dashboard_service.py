@@ -207,3 +207,113 @@ async def test_get_risk_matrix_scores_high_activity_cell(async_db_session: Async
     )
     assert cell["risk_score"] == 100
     assert set(cell["top_actors"]) == {"Apt41", "Lazarus"}
+
+
+async def test_exec_dashboard_leaves_general_out_of_sector_views(
+    async_db_session: AsyncSession,
+) -> None:
+    """ "General" = tanpa sektor spesifik (62% artikel di prod), bukan sektor: gak ikut peringkat,
+    heatmap, jumlah sektor aktif, dan spike; jumlahnya dilaporkan lewat `sector_unspecified`."""
+    await _ensure_clients(async_db_session)
+    for i in range(2):
+        await _seed_incident_article(
+            async_db_session,
+            url=f"https://x.com/general/{i}",
+            industries=["General"],
+            actors=[],
+            posted_on=_TODAY,
+        )
+    await _seed_incident_article(
+        async_db_session,
+        url="https://x.com/manufacturing",
+        industries=["Manufacturing"],
+        actors=[],
+        posted_on=_TODAY,
+    )
+
+    result = await exec_dashboard_service.get_exec_dashboard_v2(
+        async_db_session, days=30, client_id="default", role="analyst"
+    )
+    assert result["total_incidents"] == 3
+    assert result["top_sectors"] == ["Manufacturing"]
+    assert [r["sector"] for r in result["sector_risk_scores"]] == ["Manufacturing"]
+    assert [h["sector"] for h in result["sector_heatmap"]] == ["Manufacturing"]
+    assert result["active_sectors"] == 1
+    assert result["sector_unspecified"] == 2
+    assert all(sp["entity"] != "General" for sp in result["industry_spikes"])
+
+
+async def test_exec_dashboard_active_sectors_is_not_capped_at_top_8(
+    async_db_session: AsyncSession,
+) -> None:
+    await _ensure_clients(async_db_session)
+    for i in range(10):
+        await _seed_incident_article(
+            async_db_session,
+            url=f"https://x.com/sector/{i}",
+            industries=[f"Sector {i}"],
+            actors=[],
+            posted_on=_TODAY,
+        )
+
+    result = await exec_dashboard_service.get_exec_dashboard(async_db_session, days=30)
+    assert len(result["top_sectors"]) == 8  # tampilan tetap top-8
+    assert result["active_sectors"] == 10  # KPI = jumlah sebenarnya
+
+
+async def test_exec_dashboard_prev_period_reliable_needs_half_the_days_covered(
+    async_db_session: AsyncSession,
+) -> None:
+    """Periode pembanding dianggap andal bila >= separuh harinya punya artikel -- 3 artikel nyasar
+    di jendela 30 hari sebelumnya bukan "ada data" (kasus prod: delta "↑32767%")."""
+    await _ensure_clients(async_db_session)
+    prev_start = _TODAY - datetime.timedelta(days=59)  # jendela sebelumnya: today-60 .. today-31
+    for i in range(14):  # 14 hari < 15 (= 30 * 0.5)
+        await _seed_incident_article(
+            async_db_session,
+            url=f"https://x.com/prev/{i}",
+            industries=["Manufacturing"],
+            actors=[],
+            posted_on=prev_start + datetime.timedelta(days=i),
+        )
+
+    sparse = await exec_dashboard_service.get_exec_dashboard(async_db_session, days=30)
+    assert sparse["prev_total"] == 14
+    assert sparse["prev_period_reliable"] is False
+
+    await _seed_incident_article(
+        async_db_session,
+        url="https://x.com/prev/14",
+        industries=["Manufacturing"],
+        actors=[],
+        posted_on=prev_start + datetime.timedelta(days=14),
+    )
+    covered = await exec_dashboard_service.get_exec_dashboard(async_db_session, days=30)
+    assert covered["prev_period_reliable"] is True
+
+
+async def test_exec_dashboard_v2_reports_fp_queue_depth_and_volume_only_risk(
+    async_db_session: AsyncSession,
+) -> None:
+    await _ensure_clients(async_db_session)
+    for i, score in enumerate([45, 60, 90]):  # antrean = skor 40..74 -> 2 dari 3
+        async_db_session.add(IOC(type="ip", value=f"203.0.113.{i + 10}", confidence_score=score))
+    await _seed_incident_article(
+        async_db_session,
+        url="https://x.com/one",
+        industries=["Manufacturing"],
+        actors=[],
+        posted_on=_TODAY,
+    )
+    await async_db_session.flush()
+
+    analyst = await exec_dashboard_service.get_exec_dashboard_v2(
+        async_db_session, days=90, client_id="default", role="analyst"
+    )
+    assert analyst["pending_fp_total"] == 2
+    assert analyst["risk_volume_only"] is True  # belum ada >= 2 bulan riwayat yang cukup data
+
+    soc = await exec_dashboard_service.get_exec_dashboard_v2(
+        async_db_session, days=90, client_id="default", role="soc"
+    )
+    assert soc["pending_fp_total"] == 0  # section FP tidak aktif untuk role soc

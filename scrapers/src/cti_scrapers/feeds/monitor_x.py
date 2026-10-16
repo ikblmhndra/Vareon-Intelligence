@@ -45,13 +45,24 @@ Bandingkan sama script lama:
   proaktif sebelum limitnya abis, bukan cuma reaktif sesudahnya (itu tetap ada di
   `_get_with_backoff`, buat kasus limit tetap abis walau sudah dijeda -- concurrent run
   `tweet_alerts`/`trending_cve` di domain yang sama, di luar kendali loop akun ini).
+- Opsi `provider` (2026-10-16): twitterapi.io (utama, perilaku di atas TIDAK berubah) atau X API resmi
+  (cadangan, dipilih dari control plane seperti `tweet_alerts_*`). Pemicunya prod: kunci twitterapi.io
+  ditolak (HTTP 401) sejak 2026-10-02 dan `monitor_x` -- satu-satunya scraper Twitter tanpa opsi ini --
+  mati dua minggu, sementara `tweet_alerts_*`/`trending_cve` sudah pindah ke X resmi dan jalan terus.
+  Di X resmi loop-nya sama (satu pencarian PER AKUN, jeda `rate_limit` antar akun) tapi lewat adapter
+  bersama (`_twitter.search`): X resmi tidak punya `since_id` di `TweetSearch`, jadi tiap akun dibaca
+  dengan jendela `_OFFICIAL_WINDOW` (2x jadwal, supaya satu run terlewat tidak menghilangkan tweet) lalu
+  tweet yang id-nya <= `tweet_last_seen_ids` dibuang SEBELUM scan/LLM (tanpa itu tiap tweet di jendela
+  yang tumpang-tindih diklasifikasi ulang). Baris yang disimpan tanpa nama/avatar/followers/media: X resmi
+  hanya mengirim username (lihat `_x_official.py`).
 """
 
 from __future__ import annotations
 
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import datetime, timedelta
+from functools import partial
 from typing import Any
 
 from cti_enrich.stages.classify import ClassifyResult, OpenAIQuotaExhausted, classify
@@ -61,11 +72,28 @@ from cti_scraper.errors import ParseError
 from cti_scraper.items import TweetItem
 from cti_scraper.ratelimit import parse_rate
 
-from cti_scrapers.collectors import _twitterapi
+from cti_scrapers.collectors import _tweet_item, _twitterapi
+from cti_scrapers.collectors import _twitter as tw
 
 _MAX_PAGES_PER_ACCOUNT = 3
 _ACCOUNT_WIDE_ERRORS = frozenset({401, 402, 403})
 _FIRST_RUN_WINDOW = timedelta(hours=3)
+_OFFICIAL_WINDOW = timedelta(hours=6)
+"""Jendela baca per akun di X resmi = 2x jadwal (`8 */3 * * *`), pola yang sama dengan `tweet_alerts_*`.
+Tweet yang sama di hari UTC yang sama tidak ditagih dua kali oleh X, jadi tumpang-tindih murah."""
+
+PROVIDER_OPTION = tw.provider_option(
+    "twitterapi.io = sumber UTAMA dan tetap dipakai selama masih bisa. X resmi = CADANGAN: pindah ke "
+    "sana hanya kalau twitterapi.io memang tidak bisa (kunci ditolak, kredit habis, layanan mati). "
+    "X resmi pay-per-use: tiap tweet yang dibaca ditagih (sekitar $0,005; tweet yang sama di hari "
+    "UTC yang sama tidak ditagih dua kali). Tiap akun dibaca dengan jendela 6 jam dan tweet yang "
+    "sudah tersimpan dilewati. Baris dari X resmi tanpa nama, avatar, followers, dan media penulis "
+    "(X hanya mengirim username). Pasang batas belanja di X Developer Console."
+)
+
+Candidate = tuple[str, str, Callable[[ScoreResult, ClassifyResult | None], TweetItem]]
+"""`(tweet_id, teks, pembangun TweetItem)` satu tweet, apa pun sumbernya. Pembangun dipanggil sesudah
+scan dan klasifikasi; dua sumber punya bentuk mentah berbeda (dict twitterapi.io vs `_twitter.Tweet`)."""
 
 
 def _parse_created_at(raw: str) -> datetime | None:
@@ -134,18 +162,6 @@ def _build_tweet_item(
         for m in tweet.get("extendedEntities", {}).get("media", [])
         if m.get("media_url_https")
     ]
-    apac_indicator = bool(scan.mentioned_countries or scan.mentioned_apac_people)
-    scan_results = {
-        "apac_indicator": apac_indicator,
-        "mentioned_group": scan.mentioned_group,
-        "mentioned_apac_country": scan.mentioned_countries,
-        "mentioned_apac_people": scan.mentioned_apac_people,
-        "cve_list": scan.cve_list_title,
-        "zero_day_list": scan.zero_day_list,
-        "databreach_list": scan.databreach_list,
-        "ot_status": scan.ot_status,
-        "report_status": scan.report_status,
-    }
     return TweetItem(
         tweet_id=str(tweet["id"]),
         url=tweet.get("url", ""),
@@ -157,20 +173,27 @@ def _build_tweet_item(
         posted_on=_parse_created_at(tweet.get("createdAt", "")),
         lang=tweet.get("lang", "en"),
         media_urls=media_urls,
-        scan_results=scan_results,
-        confidence_score=(round(llm.confidence * 100) if llm and llm.confidence else None),
-        confirmed_incident=bool(llm.confirmed_incident) if llm else False,
-        industries_impacted=llm.industries_impacted if llm else [],
-        victim_countries=llm.victim_countries if llm else [],
-        actor_countries=llm.actor_countries if llm else [],
-        victim_name=llm.victim_name if llm else None,
-        incident_confidence=(
-            round(llm.incident_confidence * 100)
-            if llm and llm.incident_confidence is not None
-            else None
-        ),
-        incident_indicators=llm.incident_indicators if llm else [],
+        scan_results=_tweet_item.scan_results(scan),
+        **_tweet_item.llm_fields(llm),
     )
+
+
+def _twitterapi_candidates(
+    ctx: ScrapeContext, account: str, since_id: str | None
+) -> list[Candidate]:
+    raw_tweets = _fetch_tweets_for_account(ctx, account, since_id)
+    raw_tweets.sort(key=lambda t: int(t["id"]))
+    return [(str(t["id"]), t.get("text", ""), partial(_build_tweet_item, t)) for t in raw_tweets]
+
+
+def _official_candidates(ctx: ScrapeContext, account: str, since_id: str | None) -> list[Candidate]:
+    """X resmi lewat adapter bersama. `ParseError` kalau API menolak (kunci/kredit/akses) -- tidak
+    pernah "nol tweet" diam-diam. Terlama dulu, dan id <= `since_id` dibuang sebelum scan/LLM."""
+    spec = tw.TweetSearch(since=ctx.now - _OFFICIAL_WINDOW, accounts=(account,))
+    found = tw.by_id(tw.search(ctx, spec))
+    if since_id:
+        found = [t for t in found if int(t.id) > int(since_id)]
+    return [(t.id, t.text, partial(_tweet_item.from_tweet, t)) for t in found]
 
 
 class MonitorX(BaseScraper):
@@ -184,6 +207,7 @@ class MonitorX(BaseScraper):
         rate_limit="10/minute",  # SAMA dengan tweet_alerts_1h/30m + trending_cve -- domain dibagi
         max_items=200,
         credential="twitter",
+        options=(PROVIDER_OPTION,),
         reference_data=(
             "monitored_accounts",
             "tweet_last_seen_ids",
@@ -214,6 +238,9 @@ class MonitorX(BaseScraper):
         Bukan pengganti `_get_with_backoff`: itu tetap jaring pengaman reaktif kalau limit tetap
         abis (run lain di domain sama, jam jatuh di kelipatan 15 menit yang sama)."""
 
+        official = ctx.options.get(tw.PROVIDER_KEY, tw.TWITTERAPI_IO) == tw.X_OFFICIAL
+        candidates_for = _official_candidates if official else _twitterapi_candidates
+
         found = 0
         for i, account in enumerate(accounts):
             if found >= self.meta.max_items:
@@ -221,14 +248,14 @@ class MonitorX(BaseScraper):
             if i > 0:
                 time.sleep(account_delay_s)
 
-            raw_tweets = _fetch_tweets_for_account(ctx, account, last_seen.get(account))
-            raw_tweets.sort(key=lambda t: int(t["id"]))
+            # `last_seen` berkunci lowercase (lihat `_resolve_tweet_last_seen_ids`); handle di
+            # `monitored_accounts` yang diseed dari dump lama bisa saja bercampur huruf.
+            candidates = candidates_for(ctx, account, last_seen.get(account.lower()))
 
-            for tweet in raw_tweets:
+            for tweet_id, text, build in candidates:
                 if found >= self.meta.max_items:
                     return
 
-                text = tweet.get("text", "")
                 scan = score_with_lists(
                     title=text,
                     body="",
@@ -245,7 +272,7 @@ class MonitorX(BaseScraper):
                     raise
                 except Exception:
                     ctx.log.warning(
-                        "monitor_x: classify() gagal, simpan tanpa LLM", tweet_id=tweet.get("id")
+                        "monitor_x: classify() gagal, simpan tanpa LLM", tweet_id=tweet_id
                     )
                     llm = None
 
@@ -253,4 +280,4 @@ class MonitorX(BaseScraper):
                     continue
 
                 found += 1
-                yield _build_tweet_item(tweet, scan, llm)
+                yield build(scan, llm)

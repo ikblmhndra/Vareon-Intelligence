@@ -14,7 +14,7 @@ import { cvssColorClass } from "@/lib/exec/format";
 import type { ExecDashboardV2, IocFeedbackResponse } from "@/lib/api/loose-types";
 
 function EmptyNote() {
-  return <p className="py-3 font-mono text-xs text-muted-foreground">No data yet — feature pending.</p>;
+  return <p className="py-3 font-mono text-xs text-muted-foreground">Nothing to show right now.</p>;
 }
 
 /** Port Cluster List role-gated (`exec.js:494-509`). Klik summary title
@@ -86,55 +86,61 @@ export function FpQueue({ d }: { d: ExecDashboardV2 }) {
   if (d.pending_fp_queue.length === 0) return <EmptyNote />;
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>IOC</TableHead>
-          <TableHead>Type</TableHead>
-          <TableHead>Last Seen</TableHead>
-          <TableHead>Confidence</TableHead>
-          <TableHead />
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {d.pending_fp_queue.map((ioc) => {
-          const conf = ioc.confidence_score || 0;
-          const confColor = conf >= 70 ? "text-primary" : conf >= 50 ? "text-foreground" : "text-destructive";
-          return (
-            <TableRow key={ioc.id}>
-              <TableCell className="font-mono text-xs text-primary">{ioc.value || "—"}</TableCell>
-              <TableCell className="font-mono text-xs text-muted-foreground">{ioc.type || "—"}</TableCell>
-              <TableCell className="font-mono text-xs text-muted-foreground">{ioc.last_seen || "—"}</TableCell>
-              <TableCell className={cn("font-mono text-xs", confColor)}>{conf}%</TableCell>
-              <TableCell>
-                <div className="flex gap-1">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-6 px-1.5 text-xs"
-                    disabled={voting === ioc.id}
-                    title="Mark as true positive"
-                    onClick={() => void vote(ioc.id, "tp")}
-                  >
-                    <ThumbsUpIcon aria-hidden />
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-6 px-1.5 text-xs"
-                    disabled={voting === ioc.id}
-                    title="Mark as false positive"
-                    onClick={() => void vote(ioc.id, "fp")}
-                  >
-                    <ThumbsDownIcon aria-hidden />
-                  </Button>
-                </div>
-              </TableCell>
-            </TableRow>
-          );
-        })}
-      </TableBody>
-    </Table>
+    <>
+      <p className="mb-2 font-mono text-xs text-muted-foreground">
+        Showing {d.pending_fp_queue.length} of {Math.max(d.pending_fp_total, d.pending_fp_queue.length).toLocaleString()}{" "}
+        pending (latest first)
+      </p>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>IOC</TableHead>
+            <TableHead>Type</TableHead>
+            <TableHead>Last Seen</TableHead>
+            <TableHead>Confidence</TableHead>
+            <TableHead />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {d.pending_fp_queue.map((ioc) => {
+            const conf = ioc.confidence_score || 0;
+            const confColor = conf >= 70 ? "text-primary" : conf >= 50 ? "text-foreground" : "text-destructive";
+            return (
+              <TableRow key={ioc.id}>
+                <TableCell className="font-mono text-xs text-primary">{ioc.value || "—"}</TableCell>
+                <TableCell className="font-mono text-xs text-muted-foreground">{ioc.type || "—"}</TableCell>
+                <TableCell className="font-mono text-xs text-muted-foreground">{ioc.last_seen || "—"}</TableCell>
+                <TableCell className={cn("font-mono text-xs", confColor)}>{conf}%</TableCell>
+                <TableCell>
+                  <div className="flex gap-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-6 px-1.5 text-xs"
+                      disabled={voting === ioc.id}
+                      title="Mark as true positive"
+                      onClick={() => void vote(ioc.id, "tp")}
+                    >
+                      <ThumbsUpIcon aria-hidden />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-6 px-1.5 text-xs"
+                      disabled={voting === ioc.id}
+                      title="Mark as false positive"
+                      onClick={() => void vote(ioc.id, "fp")}
+                    >
+                      <ThumbsDownIcon aria-hidden />
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </>
   );
 }
 

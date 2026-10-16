@@ -6,6 +6,92 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
+## [0.6.2] - 2026-10-16
+
+**Dashboard utama dan Exec lebih informatif**: perbaikan angka yang menyesatkan di prod. Penyebabnya dua: 62% artikel berlabel
+industri "General" (bukan sektor, tapi selalu jadi baris teratas), dan datanya baru ±4 minggu (3 artikel sebelum 21 Sep), jadi
+periode pembanding kosong dan lonjakan ingestion terbaca sebagai lonjakan ancaman. **Tanpa migrasi, tanpa kunci `.env` baru,
+tanpa dependensi baru, dan tanpa entri beat baru.**
+
+**Saat upgrade dari 0.6.1:** deploy biasa (bangun ulang image api dan web). Tidak ada migrasi dan `beat` tidak perlu restart.
+
+### Ditambah
+- **Dashboard utama**: selector periode (7/30/90 hari atau semua) dan "Incidents only"; kartu KPI **Confirmed Incidents**;
+  delta vs periode sebelumnya di Total Articles dan Confirmed Incidents; catatan penyebut di chart ("27 of 138 articles name a
+  country"; negara, aktor, dan TTP hanya ada di sebagian artikel); cap "Updated" (hasil di-cache 15 menit per proses).
+  `GET /api/dashboard` menerima `days` dan `incident_only` (bawaan tetap semua waktu dan semua tipe) dan mengembalikan
+  `confirmed_incidents`, `prev_total_articles`, `prev_confirmed_incidents`, `coverage`, `industry_unspecified`, `generated_at`.
+- **Exec**: `prev_period_reliable` (periode pembanding dianggap andal bila minimal separuh harinya punya artikel),
+  `sector_unspecified`, `risk_volume_only`, dan `pending_fp_total` di payload; total antrean FP tampil ("Showing 20 of N pending").
+
+### Diubah
+- **"General" tidak lagi dihitung sebagai sektor**: keluar dari "Top Targeted Industries" dan band "Need Attention" di dashboard
+  utama, serta dari Sector Risk Matrix, Highest-Risk Sector, Sector Trend, heatmap, Sector x Actor, dan spike di Exec. Jumlahnya
+  dicatat ("N articles with no specific sector"). Konsekuensi: `top_sectors` di payload Exec, yang juga dipakai ringkasan
+  Executive Brief, tidak lagi memuat "General".
+- **Exec, delta dan NEW/REC**: bila periode sebelumnya kosong atau jarang, KPI menulis "no prior-period data" (dulu "—" di 90 hari
+  dan "↑32767%" di 30 hari) dan penanda NEW/REC aktor disembunyikan (CSV: `n/a`).
+- **Exec, risk score dan TA velocity** hanya memakai bulan riwayat dengan minimal 30 insiden. Selama belum ada dua bulan seperti itu,
+  skor = volume saja (ada catatan di UI); komponen trend dan spike menyala sendiri sesudahnya. Untuk data yang sudah matang
+  gating ini tidak mengubah hasil (selain efek "General" keluar dari peringkat).
+- **Band "Need Attention"**: "Risk Score" (selalu 50/100 di jendela 30 hari) diganti jumlah insiden sektor teratas; "Open CVE
+  Critical" jadi "Critical CVEs (CVSS >= 9)" karena hitungannya tidak memfilter ack atau status.
+- Label: "Threat Actors Tracked" jadi "Threat Actors in News"; Exec "Active Spikes" menghitung sektor unik dan tidak lagi mengklaim
+  "statistically significant" (ambang z >= 1.5); "Critical CVE Feed" jadi "KEV CVE Feed" (isinya memang hanya KEV); "verified by
+  GPT-4o" jadi "verified by LLM"; catatan bahwa panel CVE di Exec tidak ikut periode; pesan panel kosong tidak lagi "feature
+  pending".
+
+### Diperbaiki
+- Exec "Active Sectors" tidak lagi mentok di 8 (dulu `len(top_sectors)`, sedangkan pembandingnya tanpa batas, jadi trennya timpang).
+- Kartu KPI dengan nilai teks panjang (nama sektor) tidak lagi kepotong.
+
+### Diketahui / belum dikerjakan
+- Belum dilihat di dev atau prod; dicek di stack lokal dengan data sintetik berbentuk prod.
+- Drill-down dari chart ke Newsroom dan panel "confirmed incident terbaru" belum ada (Newsroom belum membaca parameter URL).
+- Nama aktor belum dinormalisasi ("Cobalt strike" itu tool, bukan aktor). "Critical" punya dua definisi: band dashboard utama
+  memakai CVSS >= 9, Exec memakai `cve_severity`.
+- Yang tercatat di 0.6.1 tetap berlaku (penyebab HTTP 400 OTX belum diketahui, ambang verdict OTX agresif).
+
+## [0.6.1] - 2026-10-16
+
+Perbaikan hasil pemeriksaan prod untuk 0.6.0: **enrichment OTX macet di 45 dari 60 run** dalam 16 jam karena IOC yang ditolak
+provider dengan HTTP 400. **Tanpa migrasi, tanpa kunci `.env` baru, tanpa dependensi baru, dan tanpa entri beat baru.**
+
+**Saat upgrade dari 0.6.0:**
+1. Deploy biasa (bangun ulang image api dan worker). Tidak ada migrasi.
+2. Sesudah deploy, IOC yang ditolak provider tampil sebagai kartu `unknown` dengan `raw.skipped` berawalan "rejected by provider".
+   Untuk melihat nilai mana yang ditolak (penyebab 400-nya belum diketahui):
+
+   ```sql
+   select i.id, i.type, left(i.value, 80) as value, p ->> 'key' as provider, p -> 'raw' ->> 'skipped' as reason
+   from iocs i, jsonb_array_elements(i.enrichment -> 'providers') p
+   where p -> 'raw' ->> 'skipped' like 'rejected by provider%';
+   ```
+3. Backlog OTX (3.076 IOC tanpa kartu per 2026-10-16) kini terkejar normal, 25 per run dan empat run per jam.
+
+### Diperbaiki
+- **Enrichment IOC berhenti oleh IOC yang ditolak provider** (#4): IOC yang gagal tidak mendapat kartu, jadi dipilih ulang di kepala
+  antrean tiap run, dan tiga yang begitu menghentikan seluruh provider untuk run itu (log:
+  `ioc_enrich_failed provider=otx status=400`). Error 4xx selain 401/403/429 kini disimpan sebagai kartu `unknown` ("rejected by
+  provider (HTTP 400)") dan baru dicek ulang sesudah TTL provider (AbuseIPDB 3 hari, OTX 7, VirusTotal 30), serta tidak dihitung
+  sebagai kegagalan beruntun. Lima penolakan beruntun tanpa satu keberhasilan menghentikan provider itu di run tersebut: kalau
+  semua permintaan ditolak, yang salah bentuk permintaan kita, dan kartu `unknown` berumur TTL tidak boleh ditulis untuk seluruh
+  IOC. 5xx, jaringan putus, dan respons aneh tetap tanpa kartu dan dicoba lagi di run berikutnya.
+
+### Diubah
+- Log `ioc_enrich_failed` memuat `ioc_id` dan `ioc_type` (cukup untuk menemukan IOC-nya di DB); nilai IOC dan pesan exception tetap
+  tidak dicatat. Ringkasan run `ioc.enrich_pending` mendapat kunci `rejected`, dan `stopped` bisa bernilai `consecutive_rejections`.
+- Dokumentasi: `docs/ROADMAP.md` mendapat kolom Status per item (Done, Live, Mostly done, Open, Parked, Dropped, Superseded) dan fakta prod
+  per 2026-10-16; `docs/ARCHITECTURE.md` 3.7 memuat penanganan penolakan.
+
+### Diketahui / belum dikerjakan
+- **Penyebab HTTP 400 dari OTX belum diketahui**: nilai yang gagal tidak dicatat sebelum ini. Tiga IOC dari kepala antrean yang
+  dicoba langsung ke endpoint publik OTX (satu IPv4, dua domain) dijawab normal, jadi kemungkinan bukan mereka.
+- **Ambang verdict OTX** (tiga pulse atau lebih = malicious) tampak agresif: 151 dari 453 kartu OTX di prod (33%) berstatus
+  `malicious`. Nilai awal, konstanta di `ioc_providers.py`; belum diubah.
+- Yang tercatat di 0.6.0 tetap berlaku (verdict belum memengaruhi `confidence_score`, urlscan/GreyNoise/Shodan belum ada, panel dashboard
+  belum dilihat di browser, cutover #19 belum dijalankan).
+
 ## [0.6.0] - 2026-10-15
 
 **Enrichment reputasi IOC** (ROADMAP #4: AbuseIPDB, VirusTotal, OTX), **tiga panel baru di Dashboard CVE** (#17), dan

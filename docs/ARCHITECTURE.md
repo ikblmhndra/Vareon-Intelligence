@@ -105,6 +105,36 @@ full it raises `BackpressureError`: the runner releases the lease and stops the 
 **Other sinks** (ransomware victims, CVEs, PoCs, malware trends, IOC feeds, tweets, CVE mentions, notices)
 write Postgres directly from the scrape worker.
 
+**X Intel vs tweet alerts.** Two separate scraper families read X/Twitter, and only one of them feeds the X
+Intel tab:
+
+| | `monitor_x` | `tweet_alerts_1h` / `tweet_alerts_30m` |
+|---|---|---|
+| Accounts | the active rows of `monitored_accounts` (X Intel → Monitored Accounts) | two hardcoded lists in `collectors/tweet_alerts.py` (10 + 11 accounts) |
+| Item type / sink | `TweetItem` → `tweets` (insert-only) | `NoticeItem` → Telegram, plus one `TweetItem` → `tweets` per tweet that passes `classify()` |
+| Enrichment | regex scan + `classify()`; saves author, media and LLM fields | regex scan + `classify()` + topic routing; per-account filters; the same scan and LLM fields are saved with the tweet (no extra LLM call) |
+| Provider | twitterapi.io (default) or X official, chosen per scraper in the Scrapers tab | same |
+
+`tweets.source` records the scraper that stored a row first (`monitor_x`, `tweet_alerts_1h`, `tweet_alerts_30m`);
+the sink is insert-only, so a tweet both families see keeps the first writer's row and `source` does not mean
+"was alerted". Rows from the alert scrapers have no author name or followers when the provider is X official
+(the adapter only requests `username`), and no media; the UI hides those fields. The alert scrapers also
+leave a `scraper_items` row per notice (title `@user: text[:100]`, URL, accepted or not), purged after
+`worker.scraper_item_retention_days` (30), plus the `scraper_seen` dedup key.
+
+`monitor_x`, `tweet_alerts_*` and `trending_cve` all have the `provider` option (`monitor_x` gained it on
+2026-10-16, after an invalid twitterapi.io key stopped it for two weeks while the alert scrapers kept running
+on X official). The twitterapi.io path of `monitor_x` is unchanged (one search per account, `since_id`). On
+X official it keeps the per-account loop and the `rate_limit` pause between accounts, but reads each account
+through the shared adapter with a 6 h window (X official has no `since_id` in `TweetSearch`) and drops tweet
+ids at or below the stored maximum before the scan and the LLM call; rows have no author name, avatar,
+followers or media.
+
+`monitor_x` resolves `since_id` per account from the highest stored `tweet_id` of its
+own rows (`reference_data._resolve_tweet_last_seen_ids`: `source = 'monitor_x'`, lowercase keys because
+`tweets.author_username` keeps the casing the API returns). Alert rows are excluded; otherwise a newer alert
+tweet would move `since_id` past tweets the alert filters rejected.
+
 **Enrichment** (`cti_enrich.pipeline.run_pipeline`):
 
 1. `classify(title)`. If `related_cyber` is false, write a light `rejected_articles` row and return.
@@ -298,8 +328,9 @@ flowchart LR
   each -->|"private / invalid IP"| skip["'skipped' card, no call"]
   each -->|"budget left?<br/>Redis fixed window"| call["refang, then one GET<br/>(ioc_providers.lookup_*)"]
   call -->|"ok"| card["card -> iocs.enrichment.providers[]<br/>+ checked_at, updated_at; commit"]
-  call -->|"401 / 403 / 429, or 3 failures in a row"| stop["provider stops for this run"]
-  call -->|"other failure"| next["no card, retried next run"]
+  call -->|"401 / 403 / 429, 3 failures or 5 rejections in a row"| stop["provider stops for this run"]
+  call -->|"other 4xx (e.g. 400)"| rej["'unknown' card 'rejected by provider',<br/>not retried until the TTL"]
+  call -->|"5xx, network, bad payload"| next["no card, retried next run"]
 ```
 
 - **Cards**: one per provider in `iocs.enrichment.providers`, in the shape `ioc-detail-dialog.tsx` already renders (`key`, `name`,
@@ -308,7 +339,12 @@ flowchart LR
   answer ("not seen"), stored as an `unknown` card.
 - **Budget**: `allow(provider, rate)` is a `TokenBucket` call (`<PROVIDER>__RATE`, per hour); `cti_api` only receives the callable,
   because the API package must not import `cti_scraper`. VirusTotal also waits at least 15 s between calls.
-- **Failure handling**: only the exception class and the status code are logged, never the message (it can echo a key).
+- **Failure handling**: a 4xx that is about the IOC itself (400 first of all) stores an `unknown` card (`raw.skipped` = "rejected by
+  provider (HTTP 400)") so the IOC is not picked again at the head of the queue on every run (that stalled OTX on prod before
+  0.6.1); five rejections in a row stop the provider, because if everything is rejected the request shape is wrong and no card
+  with a TTL should be written for every IOC. 5xx, network errors and odd payloads leave no card and are retried next run (three
+  in a row stop the provider). Only the exception class, the status code, `ioc_id` and `ioc_type` are logged, never the message
+  (it can echo a key) or the IOC value.
 - **Values** are re-fanged before they are sent (`cti_core.ioc.extractor.refang`); only lookups are made, nothing is submitted or scanned.
 
 ## 4. Data stores and access patterns
