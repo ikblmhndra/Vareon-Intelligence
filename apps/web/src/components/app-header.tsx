@@ -230,7 +230,7 @@ export function AppSidebar() {
 export function AppTopbar() {
   const { user } = useAuth();
   return (
-    <header className="sticky top-0 z-30 border-b border-border bg-background supports-[backdrop-filter]:bg-background/80 supports-[backdrop-filter]:backdrop-blur-md">
+    <header className="sticky top-0 z-30 border-b border-border bg-background">
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-8">
         <div className="lg:hidden">
           <Brand />

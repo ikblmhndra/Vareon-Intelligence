@@ -30,7 +30,7 @@ export function ExecBriefModal({ brief, days, onOpenChange }: ExecBriefModalProp
             </p>
           )}
         </DialogHeader>
-        <div className="prose prose-invert prose-sm max-w-none text-xs leading-relaxed">
+        <div className="prose prose-sm max-w-none text-xs leading-relaxed">
           <Markdown>{brief?.brief ?? ""}</Markdown>
         </div>
         <DialogFooter>

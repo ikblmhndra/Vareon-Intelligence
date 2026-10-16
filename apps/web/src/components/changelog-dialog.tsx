@@ -107,7 +107,7 @@ function VersionDetail({ version, onBack }: { version: string; onBack: () => voi
       {isPending ? (
         <Skeleton className="h-40 w-full" />
       ) : (
-        <div className="prose prose-invert prose-sm max-w-none font-mono text-xs leading-relaxed">
+        <div className="prose prose-sm max-w-none font-mono text-xs leading-relaxed">
           <Markdown>{data?.content ?? ""}</Markdown>
         </div>
       )}
