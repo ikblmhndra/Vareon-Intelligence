@@ -36,7 +36,7 @@ export function TweetBadges({ tweet: t, limit = 99 }: { tweet: Tweet; limit?: nu
   }
   if (t.report_status) {
     badges.push(
-      <Badge key="report" variant="outline" className="border-ring/20 bg-ring/10 text-xs text-ring">
+      <Badge key="report" variant="outline" className="border-ring/20 bg-ring/10 text-xs text-primary-text">
         REPORT
       </Badge>,
     );

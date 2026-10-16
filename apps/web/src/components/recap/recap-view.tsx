@@ -107,7 +107,7 @@ export function RecapView({ doc, hitRate }: { doc: RecapDoc; hitRate?: RecapHitR
             {recap.top_tweets.map((t, i) => (
               <li key={i}>
                 <span className="font-medium">@{t.author || "?"}</span>{" "}
-                <Badge variant="outline" className="border-ring/40 bg-ring/10 font-mono text-xs text-ring">
+                <Badge variant="outline" className="border-ring/40 bg-ring/10 font-mono text-xs text-primary-text">
                   {t.signal || "other"}
                 </Badge>
                 {t.summary && <div className="mt-1 text-sm">{t.summary}</div>}

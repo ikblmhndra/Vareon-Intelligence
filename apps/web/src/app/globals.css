@@ -82,6 +82,7 @@
   --color-severity-medium-text: var(--severity-medium-text);
   --color-severity-low-text: var(--severity-low-text);
   --color-tag-violet: var(--tag-violet);
+  --color-tag-violet-text: var(--tag-violet-text);
   --color-chart-6: var(--chart-6);
   --color-chart-7: var(--chart-7);
   --color-chart-8: var(--chart-8);

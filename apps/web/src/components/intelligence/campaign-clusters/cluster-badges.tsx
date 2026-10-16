@@ -70,7 +70,7 @@ export function KillChainBadge({ label, score }: { label: string; score: number 
 const LINK_TYPE_STYLE: Record<string, string> = {
   same_actor: "bg-destructive/12 border-destructive/40 text-destructive-text",
   shared_infra: "bg-warning/12 border-warning/35 text-warning-text",
-  similar_ttp: "bg-tag-violet/15 border-tag-violet/35 text-tag-violet",
+  similar_ttp: "bg-tag-violet/15 border-tag-violet/35 text-tag-violet-text",
   related: "bg-muted-foreground/12 border-muted-foreground/30 text-muted-foreground",
 };
 const LINK_TYPE_LABEL: Record<string, string> = {

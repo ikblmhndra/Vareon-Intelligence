@@ -317,7 +317,7 @@ function IocTaLinksSection({
                     <span className="ml-1.5 rounded-full border border-warning/40 bg-warning/10 px-1.5 py-0.5 text-xs text-warning-text">WATCHED</span>
                   )}
                   {ta.attack_group_id && (
-                    <span className="ml-1.5 rounded-full border border-tag-violet/35 bg-tag-violet/15 px-1.5 py-0.5 text-xs text-tag-violet">{ta.attack_group_id}</span>
+                    <span className="ml-1.5 rounded-full border border-tag-violet/35 bg-tag-violet/15 px-1.5 py-0.5 text-xs text-tag-violet-text">{ta.attack_group_id}</span>
                   )}
                   {ta.source === "manual" && (
                     <span className="ml-1.5 rounded-full border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-xs text-primary-text">MANUAL</span>
