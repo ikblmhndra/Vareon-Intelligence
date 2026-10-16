@@ -69,7 +69,7 @@ export function MindmapWidget({ featureType, docId, title }: MindmapWidgetProps)
       </div>
 
       {expanded && (
-        <div className="max-h-[400px] overflow-auto rounded-2xl border border-border bg-surface  p-3">
+        <div className="max-h-[400px] overflow-auto rounded-2xl surface-raised  p-3">
           {query.isPending && <div className="font-mono text-xs text-muted-foreground">Loading…</div>}
           {query.isError && <div className="font-mono text-xs text-destructive">Failed to load mind map.</div>}
           <div ref={diagramRef} />

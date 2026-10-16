@@ -25,7 +25,7 @@ export function TaLeaderboard({ d }: { d: ExecDashboardV2 }) {
   const showStatus = d.prev_period_reliable;
 
   return (
-    <div className="space-y-1.5 rounded-2xl border border-border bg-surface p-5 shadow-sm">
+    <div className="space-y-1.5 rounded-2xl surface-raised p-5">
       {d.ta_leaderboard.map((ta) => {
         const isNew = !prevSet.has(ta.name.toLowerCase());
         const conf = taConf[ta.name] ?? taConf[ta.name.toLowerCase()] ?? null;

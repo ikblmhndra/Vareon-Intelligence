@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 
+import { PageHeader } from "@/components/page-header";
+
 export const metadata: Metadata = { title: "Newsletter" };
 
 export default function NewsletterLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
-      <h1 className="sr-only">Newsletter</h1>
+      <PageHeader title="Newsletter" description="Compose the newsletter from suggested articles, then preview it." />
       {children}
     </>
   );

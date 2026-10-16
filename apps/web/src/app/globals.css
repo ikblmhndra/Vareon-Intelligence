@@ -86,6 +86,13 @@
   --shadow-lg: 0 4px 8px -2px rgb(67 10 35 / 0.08), 0 12px 24px -4px rgb(67 10 35 / 0.14);
 }
 
+/* Permukaan "raised" untuk kartu konten utama: warna surface + bayangan bertinta, tepinya cuma
+   hairline 7% (bukan garis beige penuh), jadi kartu terbaca sebagai lapisan, bukan kotak.
+   Hierarki: hero (band burgundy) > raised (ini) > flat (tanpa latar, hanya spasi/pembatas). */
+@utility surface-raised {
+  @apply bg-surface shadow-sm ring-1 ring-foreground/[0.07];
+}
+
 :root {
   --background: #ffffff; /* halaman putih polos; card yang berwarna (beige) */
   --foreground: #2b0d19; /* Burgundy gelap */

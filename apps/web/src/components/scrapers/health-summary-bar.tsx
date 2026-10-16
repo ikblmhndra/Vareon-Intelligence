@@ -27,7 +27,7 @@ export function HealthSummaryBar({
   });
 
   if (query.isPending) {
-    return <div className="mb-4 h-16 animate-pulse rounded-2xl border border-border bg-surface shadow-sm" />;
+    return <div className="mb-4 h-16 animate-pulse rounded-2xl surface-raised" />;
   }
   if (query.isError || !query.data) {
     return (
@@ -41,7 +41,7 @@ export function HealthSummaryBar({
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
 
   return (
-    <div className="mb-4 rounded-2xl border border-border bg-surface shadow-sm p-4">
+    <div className="mb-4 rounded-2xl surface-raised p-4">
       <div className="mb-3 flex items-center justify-between">
         <div className="text-sm font-semibold text-muted-foreground">
           Fleet Health — {total} scraper

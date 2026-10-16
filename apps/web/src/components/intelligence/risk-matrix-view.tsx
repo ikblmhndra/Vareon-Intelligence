@@ -98,7 +98,7 @@ export function RiskMatrixView() {
               No cells meet the minimum risk score filter.
             </p>
           ) : (
-            <div className="overflow-x-auto rounded-2xl border border-border bg-surface p-4 shadow-sm">
+            <div className="overflow-x-auto rounded-2xl surface-raised p-4">
               <table className="w-full border-collapse text-sm">
                 <thead>
                   <tr>

@@ -1,11 +1,16 @@
 import type { Metadata } from "next";
 
+import { PageHeader } from "@/components/page-header";
+
 export const metadata: Metadata = { title: "Admin" };
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
-      <h1 className="sr-only">Admin</h1>
+      <PageHeader
+        title="Admin"
+        description="Users, roles, password policy, audit log, clients and third-party keys."
+      />
       {children}
     </>
   );

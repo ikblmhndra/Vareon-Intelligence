@@ -12,7 +12,7 @@ const RISK_FORMULA_TITLE =
 /** Port Sector Risk Matrix + peer benchmark (`exec.js:135-167`). */
 export function SectorRiskMatrix({ d }: { d: ExecDashboardV2 }) {
   return (
-    <div className="space-y-2 rounded-2xl border border-border bg-surface p-5 shadow-sm">
+    <div className="space-y-2 rounded-2xl surface-raised p-5">
       {d.sector_risk_scores.map((sr) => {
         const tier = riskTier(sr.risk_score);
         const bench = sectorPeerBenchmark(d.sector_trend, sr.sector);

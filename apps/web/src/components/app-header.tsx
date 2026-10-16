@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useSyncExternalStore } from "react";
 import {
   BotIcon,
   ClipboardListIcon,
@@ -9,6 +10,8 @@ import {
   LayoutDashboardIcon,
   MailIcon,
   NewspaperIcon,
+  PanelLeftCloseIcon,
+  PanelLeftOpenIcon,
   RadarIcon,
   RadioTowerIcon,
   SettingsIcon,
@@ -21,7 +24,9 @@ import { BrandMark } from "@/components/brand-mark";
 import { ChangelogDialog } from "@/components/changelog-dialog";
 import { ClientSwitcher } from "@/components/client-switcher";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { UserMenu } from "@/components/user-menu";
+import { PLATFORM_NAME } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 
 /** 9 route Fase 8 (docs/PROGRESS.md) -- padanan 8 tab lama + `/newsletter`
@@ -65,45 +70,158 @@ function Brand() {
   );
 }
 
-function NavLinks({ orientation }: { orientation: "vertical" | "horizontal" }) {
+/** Preferensi sidebar ringkas (icon rail): opt-in, default tetap terbuka dengan label. Disimpan di
+ * localStorage lewat `useSyncExternalStore` (bukan useState+useEffect: aturan lint
+ * `react-hooks/set-state-in-effect`, dan server selalu merender "terbuka" jadi tak ada mismatch
+ * hydration). `sidebarCollapsed` menjaga toggle tetap jalan di sesi ini walau localStorage diblokir. */
+const SIDEBAR_KEY = "cti.sidebar.collapsed";
+const sidebarListeners = new Set<() => void>();
+let sidebarCollapsed: boolean | null = null;
+
+function getSidebarCollapsed(): boolean {
+  if (sidebarCollapsed === null) {
+    try {
+      sidebarCollapsed = window.localStorage.getItem(SIDEBAR_KEY) === "1";
+    } catch {
+      sidebarCollapsed = false;
+    }
+  }
+  return sidebarCollapsed;
+}
+
+function setSidebarCollapsed(next: boolean) {
+  sidebarCollapsed = next;
+  try {
+    window.localStorage.setItem(SIDEBAR_KEY, next ? "1" : "0");
+  } catch {
+    // Penyimpanan diblokir (mode privat): pilihan berlaku sampai tab ditutup.
+  }
+  sidebarListeners.forEach((notify) => notify());
+}
+
+function subscribeSidebar(onChange: () => void) {
+  // Tab lain mengubah preferensi: buang cache supaya dibaca ulang dari localStorage.
+  const onStorage = () => {
+    sidebarCollapsed = null;
+    onChange();
+  };
+  sidebarListeners.add(onChange);
+  window.addEventListener("storage", onStorage);
+  return () => {
+    sidebarListeners.delete(onChange);
+    window.removeEventListener("storage", onStorage);
+  };
+}
+
+function NavLinks({
+  orientation,
+  collapsed = false,
+}: {
+  orientation: "vertical" | "horizontal";
+  /** Hanya berlaku untuk `vertical`: satu ikon per tujuan, label tetap ada di DOM (`sr-only`) + tooltip. */
+  collapsed?: boolean;
+}) {
   const pathname = usePathname();
+  const rail = collapsed && orientation === "vertical";
   return (
     <nav
+      id={orientation === "vertical" ? "app-sidebar-nav" : undefined}
       aria-label="Main"
       className={cn(orientation === "vertical" ? "flex flex-col gap-1" : "flex gap-1 overflow-x-auto")}
     >
       {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
         const active = pathname.startsWith(href);
-        return (
-          <Link
-            key={href}
-            href={href}
-            aria-current={active ? "page" : undefined}
-            className={cn(
-              "flex shrink-0 items-center gap-3 rounded-full px-4 text-sm outline-none transition-colors duration-200 focus-visible:ring-3 focus-visible:ring-ring/50",
-              orientation === "vertical" ? "h-11" : "h-10",
-              active
-                ? "bg-primary font-semibold text-primary-foreground shadow-sm"
-                : "font-medium text-muted-foreground hover:bg-muted hover:text-foreground",
-            )}
-          >
+        const className = cn(
+          "flex shrink-0 items-center rounded-full text-sm outline-none transition-colors duration-200 focus-visible:ring-3 focus-visible:ring-ring/50",
+          rail ? "size-11 justify-center" : cn("gap-3 px-4", orientation === "vertical" ? "h-11" : "h-10"),
+          active
+            ? "bg-primary font-semibold text-primary-foreground shadow-sm"
+            : "font-medium text-muted-foreground hover:bg-muted hover:text-foreground",
+        );
+        const content = (
+          <>
             <Icon aria-hidden className="size-[18px]" />
-            {label}
-          </Link>
+            <span className={rail ? "sr-only" : undefined}>{label}</span>
+          </>
+        );
+        if (!rail) {
+          return (
+            <Link key={href} href={href} aria-current={active ? "page" : undefined} className={className}>
+              {content}
+            </Link>
+          );
+        }
+        return (
+          <Tooltip key={href}>
+            <TooltipTrigger
+              render={<Link href={href} aria-current={active ? "page" : undefined} className={className} />}
+            >
+              {content}
+            </TooltipTrigger>
+            <TooltipContent side="right">{label}</TooltipContent>
+          </Tooltip>
         );
       })}
     </nav>
   );
 }
 
-/** Sidebar desktop (>= lg). Di bawah itu nav pindah ke `AppTopbar`. */
-export function AppSidebar() {
+function SidebarToggle({ collapsed }: { collapsed: boolean }) {
+  const label = collapsed ? "Expand sidebar" : "Collapse sidebar";
+  const className = cn(
+    "flex items-center rounded-full text-sm font-medium text-muted-foreground outline-none transition-colors duration-200 hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50",
+    collapsed ? "size-11 justify-center" : "h-11 w-full gap-3 px-4",
+  );
+  const Icon = collapsed ? PanelLeftOpenIcon : PanelLeftCloseIcon;
+  const content = (
+    <>
+      <Icon aria-hidden className="size-[18px]" />
+      <span className={collapsed ? "sr-only" : undefined}>{label}</span>
+    </>
+  );
+  const buttonProps = {
+    type: "button" as const,
+    onClick: () => setSidebarCollapsed(!collapsed),
+    "aria-expanded": !collapsed,
+    "aria-controls": "app-sidebar-nav",
+    className,
+  };
+  if (!collapsed) return <button {...buttonProps}>{content}</button>;
   return (
-    <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col gap-8 overflow-y-auto border-r border-border bg-background px-4 py-6 lg:flex">
-      <div className="px-2">
-        <Brand />
+    <Tooltip>
+      <TooltipTrigger render={<button {...buttonProps} />}>{content}</TooltipTrigger>
+      <TooltipContent side="right">{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** Sidebar desktop (>= lg). Di bawah itu nav pindah ke `AppTopbar`. Bisa diciutkan jadi icon rail 72px. */
+export function AppSidebar() {
+  const collapsed = useSyncExternalStore(subscribeSidebar, getSidebarCollapsed, () => false);
+  return (
+    <aside
+      className={cn(
+        "sticky top-0 hidden h-dvh shrink-0 flex-col gap-8 overflow-y-auto border-r border-border bg-background py-6 lg:flex",
+        collapsed ? "w-[72px] items-center px-3" : "w-64 px-4",
+      )}
+    >
+      {collapsed ? (
+        <Link
+          href="/dashboard"
+          aria-label={PLATFORM_NAME}
+          className="rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+        >
+          <BrandMark />
+        </Link>
+      ) : (
+        <div className="px-2">
+          <Brand />
+        </div>
+      )}
+      <NavLinks orientation="vertical" collapsed={collapsed} />
+      <div className={cn("mt-auto", !collapsed && "w-full")}>
+        <SidebarToggle collapsed={collapsed} />
       </div>
-      <NavLinks orientation="vertical" />
     </aside>
   );
 }
