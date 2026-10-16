@@ -17,7 +17,15 @@ export function StatBox({ label, value, sub, className, spark }: StatBoxProps) {
     <div className={cn("rounded-2xl border border-border bg-surface px-5 py-4 shadow-sm", className)}>
       <div className="text-sm font-medium text-muted-foreground">{label}</div>
       <div className="mt-1 flex items-end justify-between gap-3">
-        <div className="font-heading text-4xl font-bold tracking-tight text-foreground tabular-nums">{value ?? "—"}</div>
+        {/* Nilai teks panjang (mis. nama sektor "Information Technology & Software") tidak muat di text-4xl. */}
+        <div
+          className={cn(
+            "font-heading font-bold tracking-tight text-foreground tabular-nums",
+            typeof value === "string" && value.length > 12 ? "min-w-0 text-xl leading-tight break-words" : "text-4xl",
+          )}
+        >
+          {value ?? "—"}
+        </div>
         {spark && spark.length > 1 && <Sparkline data={spark} />}
       </div>
       <div className="mt-1 text-sm text-muted-foreground">{sub}</div>

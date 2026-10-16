@@ -61,7 +61,7 @@ export function buildExecCsv(d: import("@/lib/api/loose-types").ExecDashboardV2)
     "",
     csvRow(["=== TOP THREAT ACTORS ==="]),
     csvRow(["Threat Actor", "Incident Count", "Status"]),
-    ...d.ta_leaderboard.map((ta) => csvRow([ta.name, ta.count, prevSet.has(ta.name.toLowerCase()) ? "RECURRING" : "NEW"])),
+    ...d.ta_leaderboard.map((ta) => csvRow([ta.name, ta.count, !d.prev_period_reliable ? "n/a" : prevSet.has(ta.name.toLowerCase()) ? "RECURRING" : "NEW"])),
     "",
     csvRow(["=== CVE EXPOSURE ==="]),
     csvRow(["Technology", "Total", "Critical", "High", "Medium", "Max CVSS", "PoC Count"]),

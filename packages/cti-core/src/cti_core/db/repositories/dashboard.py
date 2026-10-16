@@ -147,11 +147,27 @@ class AsyncDashboardRepo:
         result = await self.session.execute(stmt)
         return [r for r in result.scalars().all() if r]
 
-    async def unique_industry_count(self, **filters: Any) -> int:
+    async def unique_industry_count(
+        self, *, exclude_industry: str | None = None, **filters: Any
+    ) -> int:
         stmt = _apply_article_filters(
             select(func.count(func.distinct(ArticleIndustry.industry)))
             .select_from(Article)
             .join(ArticleIndustry),
+            **filters,
+        )
+        if exclude_industry is not None:
+            stmt = stmt.where(ArticleIndustry.industry != exclude_industry)
+        return int((await self.session.execute(stmt)).scalar_one())
+
+    async def distinct_day_count(self, **filters: Any) -> int:
+        """Jumlah HARI (`posted_on`) yang punya minimal satu artikel. Dipakai buat menilai apakah
+        periode pembanding punya data yang layak: 3 artikel nyasar di jendela 30 hari = 3 hari,
+        bukan "ada data"."""
+        stmt = _apply_article_filters(
+            select(func.count(func.distinct(Article.posted_on))).where(
+                Article.posted_on.is_not(None)
+            ),
             **filters,
         )
         return int((await self.session.execute(stmt)).scalar_one())
@@ -592,3 +608,13 @@ class AsyncDashboardRepo:
             .limit(limit)
         )
         return list((await self.session.execute(stmt)).scalars().all())
+
+    async def pending_fp_count(self) -> int:
+        """Total antrean FP (kondisi sama dengan `pending_fp_queue`, tanpa `limit`): panel cuma
+        menampilkan 20 baris teratas, jadi tanpa angka ini kedalaman antrean tidak kelihatan."""
+        stmt = (
+            select(func.count())
+            .select_from(IOC)
+            .where(IOC.confidence_score >= 40, IOC.confidence_score < 75)
+        )
+        return int((await self.session.execute(stmt)).scalar_one())

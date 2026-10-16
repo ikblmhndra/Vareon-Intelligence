@@ -22,14 +22,10 @@ from typing import Any
 from cti_core.db.repositories.dashboard import AsyncDashboardRepo
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_api.services.exec_dashboard import NON_INCIDENT_TYPES
+from cti_api.services.exec_dashboard import NON_INCIDENT_TYPES, UNSPECIFIED_INDUSTRY
 
 _dashboard_cache: dict[str, tuple[dict[str, Any], float]] = {}
 _CACHE_TTL = 900.0
-
-# Label "gak ada sektor spesifik" dari prompt klasifikasi
-# (`cti_enrich.stages.classify`: "General" menang kalau muncul).
-_UNSPECIFIED_INDUSTRY = "General"
 
 
 async def get_dashboard_stats(
@@ -95,8 +91,8 @@ async def _fetch_dashboard_stats(
     top_actors = await repo.top_threat_actors(limit=10, **filters)
     # 30 > 10 supaya "General" (hampir pasti teratas) terpisah tanpa menggeser 10 sektor spesifik.
     industries = await repo.top_industries(limit=30, **filters)
-    industry_unspecified = sum(cnt for i, cnt in industries if i == _UNSPECIFIED_INDUSTRY)
-    top_industries = [(i, cnt) for i, cnt in industries if i != _UNSPECIFIED_INDUSTRY][:10]
+    industry_unspecified = sum(cnt for i, cnt in industries if i == UNSPECIFIED_INDUSTRY)
+    top_industries = [(i, cnt) for i, cnt in industries if i != UNSPECIFIED_INDUSTRY][:10]
     top_ttps = await repo.ttp_counts(limit=10, **filters)
     by_type = await repo.news_type_breakdown(**filters)
     timeline = await repo.article_timeline(**filters)
