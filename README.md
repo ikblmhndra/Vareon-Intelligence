@@ -88,7 +88,9 @@ printed). 7. Syncs the MITRE ATT&CK catalog. 8. Workers, then **beat last** (bea
 2. Enter data through the UI. Without it some scrapers are idle by design:
    - **Admin**: clients + countries, other users;
    - **CVE → Techstack**: without a techstack, `new_cve` produces nothing;
-   - **X Intel → Monitored Accounts**: without accounts, `monitor_x` skips its runs.
+   - **X Intel → Monitored Accounts**: without accounts, `monitor_x` skips its runs. This list feeds only
+     the X Intel tab; the Telegram tweet alerts (`tweet_alerts_*`) use their own account lists (see
+     `docs/ARCHITECTURE.md`, "X Intel vs tweet alerts").
 3. The first time a scraper runs it uses *cold start* mode (at most 5 items per scraper). The Scrapers tab
    shows each scraper's status; scrapers missing their required data (point 2) show as `empty`/idle, which is
    expected.

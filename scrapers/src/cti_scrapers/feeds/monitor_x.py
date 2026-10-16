@@ -221,7 +221,9 @@ class MonitorX(BaseScraper):
             if i > 0:
                 time.sleep(account_delay_s)
 
-            raw_tweets = _fetch_tweets_for_account(ctx, account, last_seen.get(account))
+            # `last_seen` berkunci lowercase (lihat `_resolve_tweet_last_seen_ids`); handle di
+            # `monitored_accounts` yang diseed dari dump lama bisa saja bercampur huruf.
+            raw_tweets = _fetch_tweets_for_account(ctx, account, last_seen.get(account.lower()))
             raw_tweets.sort(key=lambda t: int(t["id"]))
 
             for tweet in raw_tweets:

@@ -105,6 +105,23 @@ full it raises `BackpressureError`: the runner releases the lease and stops the 
 **Other sinks** (ransomware victims, CVEs, PoCs, malware trends, IOC feeds, tweets, CVE mentions, notices)
 write Postgres directly from the scrape worker.
 
+**X Intel vs tweet alerts.** Two separate scraper families read X/Twitter, and only one of them feeds the X
+Intel tab:
+
+| | `monitor_x` | `tweet_alerts_1h` / `tweet_alerts_30m` |
+|---|---|---|
+| Accounts | the active rows of `monitored_accounts` (X Intel → Monitored Accounts) | two hardcoded lists in `collectors/tweet_alerts.py` (10 + 11 accounts) |
+| Item type / sink | `TweetItem` → `tweets` (insert-only) | `NoticeItem` → Telegram, nothing stored |
+| Enrichment | regex scan + `classify()`; saves author, media and LLM fields | regex scan + `classify()` + topic routing; per-account filters |
+| Provider | twitterapi.io only (no `provider` option) | twitterapi.io or X official, chosen per scraper in the Scrapers tab |
+
+The only trace an alert leaves is a `scraper_items` row (title `@user: text[:100]`, URL, accepted or not),
+purged after `worker.scraper_item_retention_days` (30), plus the `scraper_seen` dedup key. Because `monitor_x`
+cannot switch provider, an invalid twitterapi.io key or exhausted credits stops X Intel (`parse_error` on
+every run) while the alert scrapers keep running on X official. `monitor_x` resolves `since_id` per account
+from the highest stored `tweet_id` (`reference_data._resolve_tweet_last_seen_ids`); keys are lowercase because
+`tweets.author_username` keeps the casing the API returns.
+
 **Enrichment** (`cti_enrich.pipeline.run_pipeline`):
 
 1. `classify(title)`. If `related_cyber` is false, write a light `rejected_articles` row and return.
