@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 
 import { cn } from "@/lib/utils";
-import { taConfidenceColor } from "@/lib/exec/format";
+import { onTint, taConfidenceColor } from "@/lib/exec/format";
 import type { ExecDashboardV2 } from "@/lib/api/loose-types";
 
 function toTitleCase(s: string): string {
@@ -56,7 +56,7 @@ export function TaLeaderboard({ d }: { d: ExecDashboardV2 }) {
             </div>
             <span className="font-mono text-xs text-muted-foreground">{ta.count}</span>
             <span
-              className={cn("ml-auto shrink-0 rounded px-1 py-0.5 font-mono text-xs", confColor, confColor.replace("text-", "bg-") + "/15")}
+              className={cn("ml-auto shrink-0 rounded px-1 py-0.5 font-mono text-xs", onTint(confColor), confColor.replace("text-", "bg-") + "/15")}
               title="Signal quality: % of articles classified as incident type"
             >
               {conf === null ? "?" : `${conf}%`}

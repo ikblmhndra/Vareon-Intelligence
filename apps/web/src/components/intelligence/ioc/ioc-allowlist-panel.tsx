@@ -131,7 +131,7 @@ export function IocAllowlistPanel() {
                 <TableCell className="font-mono text-xs text-muted-foreground">{e.added_by || "—"}</TableCell>
                 <TableCell className="font-mono text-xs text-muted-foreground">{e.added_at.slice(0, 10)}</TableCell>
                 <TableCell className="text-center">
-                  <button type="button" aria-label={`Remove ${e.value} from allowlist`} onClick={() => void remove(e.id)} className="text-xs text-muted-foreground hover:text-destructive">
+                  <button type="button" aria-label={`Remove ${e.value} from allowlist`} onClick={() => void remove(e.id)} className="inline-flex min-h-6 min-w-6 items-center justify-center text-xs text-muted-foreground hover:text-destructive">
                     <XIcon aria-hidden />
                   </button>
                 </TableCell>

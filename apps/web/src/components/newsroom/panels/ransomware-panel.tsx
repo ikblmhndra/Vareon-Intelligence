@@ -39,7 +39,7 @@ function VictimRow({ v }: { v: Victim }) {
         </div>
       </div>
       {v.post_url && v.post_url !== "Unknown" ? (
-        <a href={v.post_url} target="_blank" rel="noopener noreferrer" className="text-destructive no-underline">
+        <a href={v.post_url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-6 min-w-6 items-center justify-center text-destructive no-underline">
           ↗
         </a>
       ) : (

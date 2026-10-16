@@ -147,6 +147,7 @@
   --severity-high-text: #8a3f00;
   --severity-medium-text: #6b4f00;
   --severity-low-text: #0f5c32;
+  --tag-violet-text: #5a3d87;
   --chart-1: #256a8a;
   --chart-2: #17703f;
   --chart-3: #b04a00;
@@ -207,6 +208,7 @@
   --severity-high-text: var(--severity-high);
   --severity-medium-text: var(--severity-medium);
   --severity-low-text: var(--severity-low);
+  --tag-violet-text: var(--tag-violet);
   --chart-1: #92bbd1;
   --chart-2: #76ce93;
   --chart-3: #ffa164;

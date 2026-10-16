@@ -371,7 +371,7 @@ function SecretEditDialog({
         <Label htmlFor={id} className="text-sm font-medium text-muted-foreground">
           {fieldLabel(f.name)}
           {f.secret && f.last4 && (
-            <span className="ml-1 font-code normal-case opacity-70">(current …{f.last4})</span>
+            <span className="ml-1 font-code normal-case">(current …{f.last4})</span>
           )}
         </Label>
         {f.secret ? (

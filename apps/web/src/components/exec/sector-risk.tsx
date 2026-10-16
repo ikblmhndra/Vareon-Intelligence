@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { riskTier, sectorPeerBenchmark } from "@/lib/exec/format";
+import { onTint, riskTier, sectorPeerBenchmark } from "@/lib/exec/format";
 import type { ExecDashboardV2 } from "@/lib/api/loose-types";
 
 function toTitleCase(s: string): string {
@@ -29,7 +29,7 @@ export function SectorRiskMatrix({ d }: { d: ExecDashboardV2 }) {
             <div
               className={cn(
                 "min-w-[32px] rounded px-1.5 py-0.5 text-center font-mono text-xs",
-                tier.colorClass,
+                onTint(tier.colorClass),
                 tier.colorClass.replace("text-", "bg-") + "/15",
               )}
             >

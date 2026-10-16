@@ -33,7 +33,7 @@ export function RecapHistory({ items, selected, onSelect }: RecapHistoryProps) {
             )}
           >
             <div className="flex items-center justify-between gap-2">
-              <span className={active ? "text-primary" : "text-foreground"}>
+              <span className={active ? "text-primary-text" : "text-foreground"}>
                 {weekly ? formatRange(it.period_start, it.period_end) : it.date}
               </span>
               <span className="text-[11px] tracking-wide text-muted-foreground uppercase">

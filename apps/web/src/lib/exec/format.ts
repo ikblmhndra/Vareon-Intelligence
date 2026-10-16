@@ -32,6 +32,16 @@ export function sectorPeerBenchmark(
   return { text: `${diff >= 0 ? "+" : ""}${diff.toFixed(1)}% vs avg`, colorClass };
 }
 
+/** Kelas teks untuk di atas tint `bg-X/15` yang diturunkan dari kelas warna dinamis. Pemetaan LITERAL
+ * (bukan string-concat `${c}-text`) supaya Tailwind menemukan dan meng-generate kelas `-text`-nya. */
+const ON_TINT: Record<string, string> = {
+  "text-destructive": "text-destructive-text",
+  "text-warning": "text-warning-text",
+  "text-success": "text-success-text",
+  "text-primary": "text-primary-text",
+};
+export const onTint = (colorClass: string): string => ON_TINT[colorClass] ?? colorClass;
+
 export function taConfidenceColor(conf: number | null): string {
   if (conf === null) return "text-muted-foreground";
   if (conf >= 80) return "text-success";

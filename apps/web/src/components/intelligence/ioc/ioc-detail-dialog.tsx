@@ -326,7 +326,7 @@ function IocTaLinksSection({
                     <span className="ml-1.5 rounded-full border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-xs text-primary-text">MANUAL+ART</span>
                   )}
                   {isManual && (
-                    <button type="button" aria-label={`Remove ${ta.name}`} onClick={() => onRemove(ta.name)} className="ml-2 text-[13px] text-muted-foreground hover:text-destructive">
+                    <button type="button" aria-label={`Remove ${ta.name}`} onClick={() => onRemove(ta.name)} className="ml-2 inline-flex min-h-6 min-w-6 items-center justify-center text-[13px] text-muted-foreground hover:text-destructive">
                       <XIcon aria-hidden />
                     </button>
                   )}
