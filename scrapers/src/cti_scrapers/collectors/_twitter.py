@@ -19,7 +19,8 @@ API, jadi pindah sumber di tengah jalan tidak bikin alert dobel.
 
 Modul BUKAN scraper (tanpa subclass `BaseScraper`) -- awalan `_` menandai helper internal
 paket `collectors`. `monitor_x.py` (Fase 5, tab X Intel) punya klien twitterapi.io sendiri
-dan sengaja tidak ikut dipindah ke sini.
+(per akun, `since_id`, field profil lengkap) dan sengaja tidak ikut dipindah ke sini; sejak
+2026-10-16 ia memakai modul ini hanya untuk opsi `provider=x_official`.
 """
 
 from __future__ import annotations
