@@ -1,39 +1,47 @@
 # Post-cutover roadmap
 
 A record of requests, written on 2026-09-26 (user requests, order = the order of work) and updated as they are
-delivered; **status as of 2026-10-10 is in "Delivered so far" right after the index**. Not a schedule commitment: each
-open item only needs the input/decision written under it.
-What is **already** running and not roadmap is in `docs/PROGRESS.md`; the cutover gate is in
-`docs/CUTOVER_RUNBOOK.md`.
+delivered; **status as of 2026-10-16: the "Status" column of the index below, and "Delivered so far" right after it**. Not a
+schedule commitment: each open item only needs the input/decision written under it.
+
+**Status legend**: **Done** = nothing left; **Live** = merged and running in production, with follow-ups listed in the item;
+**Mostly done** = the work is done, only decisions or small leftovers remain; **Open** = not done, the item says what it needs;
+**Parked** = set aside on purpose by the user, do not start without a trigger; **Superseded** / **Dropped** = no longer pursued.
+
+> Several internal documents that older text in this file points to were **removed from the repository on 2026-10-16**
+> (`docs/PROGRESS.md`, `CUTOVER_RUNBOOK.md`, `PLAN_RECAP_NEWSLETTER.md`, `CVE_CATALOG_DESIGN.md`, `CVE_CATALOG_CUTOVER.md`,
+> `SECRETS_ROTATION.md`, `PROD_PREP.md`, `KNOWN_BROKEN.md`, `PARALLEL_RUN_COMPARISON.md`, `docs/mockups/`, `docs/spikes/`).
+> Those references are historical and no longer resolve; `CHANGELOG.md`, `docs/ARCHITECTURE.md` and `docs/CVE_END_TO_END.md`
+> remain.
 
 Each item contains: **what** was asked, **the current state** (facts from the repo/staging, not guesses),
 **touch points** (files), **what is needed** before starting, and **how to prove it is done**.
 
-| # | Item | Needs from the user | Depends on |
-|---|---|---|---|
-| 21 | **PRIORITY (team feedback 2026-10-10)** -- **Improve the Recap feature**: weekly instead of daily (a manual daily trigger stays), fewer/cheaper LLM calls, week-over-week comparison, grounding check, forecast scorecard -- **code merged 2026-10-11/12 (PR 1-4: #34, #36, #40, #42); the dev instance has run it since 2026-10-14 and the weekly recap, the comparison, the grounding check and the scorecard are proven there; released as 0.5.0 (tag 2026-10-14); left: deploy to prod** | nothing open (week boundary and time confirmed 2026-10-11); a go-ahead to deploy and release | -- |
-| 22 | **PRIORITY (team feedback 2026-10-10)** -- **Newsletter**: monthly (first working day of the month), Indonesian article summaries under English headings, redesigned template with the company logo (mockup drawn, `docs/mockups/newsletter-redesign.html`), recommended articles in the composer, denser layout (full cards plus a compact list), executive summary paragraph from the weekly recaps, per-article summary cache and one history row per send -- **code merged 2026-10-11/14 (PR 5-9: #35, #39, #38, #43, #44); released as 0.5.0 (tag 2026-10-14) and deployed to dev; a September draft was checked in the new Outlook (light mode right, dark mode being fixed), Outlook web/desktop and Gmail not seen yet, no edition sent yet (the October edition is due Mon 2 Nov)** | the team: confirm the APAC country set; Outlook desktop / Outlook web / Gmail screenshots of a real draft | #21 (the executive summary reads the weekly recaps; shared LLM usage logging) |
-| 1 | Rebranding the platform name + UI (colour palette, typography, animation) -- **DONE 2026-10-02, the SVG logo remains** | brand assets | -- |
-| 2 | Rebranding the `newsletter_email` and `cve_notification_email` templates -- **code done 2026-10-02, email client verification not yet** | (the same assets as #1) | #1 |
-| 3 | (probably superseded by #19) A "Populate now" button in the CVE Tracker (all / only newly added) | a small decision (see the item) | -- |
-| 4 | IOC enrichment + reputation (VirusTotal, AbuseIPDB, urlscan, Shodan/GreyNoise) -- **code merged 2026-10-15 (#55, #58): AbuseIPDB, VirusTotal and OTX; not deployed yet; urlscan, GreyNoise and Shodan are not built** | the AbuseIPDB key, and a VirusTotal key from a plan whose licence allows commercial use (the OTX key is already set on prod) | -- |
-| 5 | Outbound IOC/CVE feeds (TAXII 2.1 and/or CSV/JSON) + integration API keys | target tooling (Wazuh/Splunk/Fortinet?) | #4 |
-| 6 | IOC lifecycle: first/last seen, sightings, expiry/decay -- **first/last seen, sighting count and confidence decay already exist; only expiry in the outbound feed is missing** | an IOC age decision | #4, #5 |
-| 7 | Relevance to our own assets: threats x techstack, alerts for actors targeting our stack | tidy asset data | -- |
-| 8 | MISP/OpenCTI connector (import + export) | a target instance | #5 |
-| 9 | Dark web monitoring through aggregator sources (breaches, ransomware leak sites, Telegram) -- not crawling onions ourselves | budget, a list of executive domains/emails, internal approval | -- |
-| 10 | Case/RFI workflow (assignment, SLA, status, audit) linked to CVE tickets | the team's workflow | -- |
-| 11 | Consistent TLP/PAP on every object + MFA/SSO | a TLP policy | #5 |
-| 12 | Improving the article classification prompt based on the audit trail (false accept / false reject) | examples of misclassified articles | the `raw_enrichment` audit trail (running since 2026-10-05) |
-| 13 | **CI on `main` is red** (3 jobs), so the Deploy job has never run (5 runs, all `skipped`) -- **green CI on `main` proven 2026-10-07 (run #23); Deploy has run 3 times (#8-#10, 2026-10-07/08) and all 3 were `cancelled`, none has passed, cause unknown** | -- | -- |
-| 14 | Logo missing from the CVE Tracker Excel export (Pillow is not yet a dependency) -- **done 2026-10-07 (PR #9); the API image build with pillow is green in CI (PR #12)** | -- | -- |
-| 15 | Use `published_at` in the UI/API/dashboard + align the export date formats | a decision on the format of the Acknowledged column | the `published_at` backfill in production |
-| 16 | CVE dashboard: SLA per severity (replacing fixed-threshold ratings) | ack/remediation SLA targets per severity | -- |
-| 17 | CVE dashboard: backlog/aging panels, KEV/EPSS, most frequently affected products -- **DONE 2026-10-15 (#54); not yet looked at in a browser** | -- | -- |
-| 18 | CVE ticket field validation + a ticket model decision (1 ticket per CVE vs one ticket for many CVEs) | a list of standard values, the model decision | -- |
-| 19 | **Tech catalog from the CVE mirror + Monitor** (new direction 2026-10-07, replacing the alias/phase 2-3 plan; the `aliases` column is dropped): mirror every CVE (calendar-year retention) -> a vendor+product catalog -> All Tech / Monitored Tech tabs -> the CVEs tab only for monitored techs. **Code done (slices 1-7), merged to `main` 2026-10-08 (PR #12, release 0.3.0)**; what remains is operational: mapping the 34 entries on dev, shadow mode, cutover (`docs/CVE_CATALOG_CUTOVER.md`); design `docs/CVE_CATALOG_DESIGN.md` | manual mapping + shadow on dev | test on the dev server first, then prod |
-| 20 | **Known follow-ups from releases 0.4.0 / 0.4.1** (found while reviewing the CVE Tracker; none is blocking) -- **the data-correctness points were fixed 2026-10-15 (#51, #52) or earlier (#21); what is left is marked in the item** | product decisions on the points marked (D) | -- |
-
+| # | Status | Item | Needs from the user | Depends on |
+|---|---|---|---|---|
+| 21 | **Done** | **PRIORITY (team feedback 2026-10-10)** -- **Improve the Recap feature**: weekly instead of daily (a manual daily trigger stays), fewer/cheaper LLM calls, week-over-week comparison, grounding check, forecast scorecard -- **code merged 2026-10-11/12 (PR 1-4: #34, #36, #40, #42), released as 0.5.0 (2026-10-14), deployed to prod (by the user; running 0.5.0 by 2026-10-15); the weekly recaps of 28 Sep and 5 Oct exist on prod and the Monday schedule is registered in `beat` (read-only check 2026-10-16)** | nothing | -- |
+| 22 | **Live** | **PRIORITY (team feedback 2026-10-10)** -- **Newsletter**: monthly (first working day of the month), Indonesian article summaries under English headings, redesigned template with the company logo (mockup drawn, `docs/mockups/newsletter-redesign.html`), recommended articles in the composer, denser layout (full cards plus a compact list), executive summary paragraph from the weekly recaps, per-article summary cache and one history row per send -- **code merged 2026-10-11/14 (PR 5-9: #35, #39, #38, #43, #44), released as 0.5.0 and deployed to prod (by the user; running 0.5.0 by 2026-10-15); the APAC set and the real-mailbox checks (new Outlook light and dark mode, Outlook web and desktop, Gmail) were confirmed by the user on 2026-10-15; file-name titles no longer take a Highlight (#53); no edition has been prepared yet (`newsletter_suggestions` is empty on prod; the October edition is due Mon 2 Nov)** | the first real edition on Mon 2 Nov | #21 (the executive summary reads the weekly recaps; shared LLM usage logging) |
+| 1 | **Done** | Rebranding the platform name + UI (colour palette, typography, animation) -- **DONE 2026-10-02; the SVG logo is parked by the user (2026-10-15)** | brand assets | -- |
+| 2 | **Mostly done** | Rebranding the `newsletter_email` and `cve_notification_email` templates -- **code 2026-10-02; the newsletter email is verified in real clients (new Outlook light and dark mode seen 2026-10-14; Outlook web, Outlook desktop and Gmail confirmed fine by the user on 2026-10-15); the `cve_notification_email` was not mentioned in those checks and has not been looked at in real clients** | (the same assets as #1) | #1 |
+| 3 | **Superseded** | (probably superseded by #19) A "Populate now" button in the CVE Tracker (all / only newly added) | a small decision (see the item) | -- |
+| 4 | **Live** | IOC enrichment + reputation (VirusTotal, AbuseIPDB, urlscan, Shodan/GreyNoise) -- **code merged 2026-10-15 (#55, #58), released as 0.6.0 and deployed to prod; all three keys (AbuseIPDB, VirusTotal, OTX) are set there and 956 of 7,375 IOCs already carry cards (2026-10-16); OTX was stalled in most runs by HTTP 400 on some IOCs (fixed in 0.6.1, see the item); urlscan, GreyNoise and Shodan are not built** | after deploying 0.6.1, a look at which IOCs OTX rejects; whether the VirusTotal plan behind the key allows commercial use is the owner's call | -- |
+| 5 | **Parked** | Outbound IOC/CVE feeds (TAXII 2.1 and/or CSV/JSON) + integration API keys | target tooling (Wazuh/Splunk/Fortinet?) | #4 |
+| 6 | **Open** | IOC lifecycle: first/last seen, sightings, expiry/decay -- **first/last seen, sighting count and confidence decay already exist; only expiry in the outbound feed is missing** | an IOC age decision | #4, #5 |
+| 7 | **Open** | Relevance to our own assets: threats x techstack, alerts for actors targeting our stack | tidy asset data | -- |
+| 8 | **Parked** | MISP/OpenCTI connector (import + export) | a target instance | #5 |
+| 9 | **Parked** | Dark web monitoring through aggregator sources (breaches, ransomware leak sites, Telegram) -- not crawling onions ourselves | budget, a list of executive domains/emails, internal approval | -- |
+| 10 | **Parked** | Case/RFI workflow (assignment, SLA, status, audit) linked to CVE tickets | the team's workflow | -- |
+| 11 | **Parked** | Consistent TLP/PAP on every object + MFA/SSO | a TLP policy | #5 |
+| 12 | **Open** | Improving the article classification prompt based on the audit trail (false accept / false reject) | examples of misclassified articles | the `raw_enrichment` audit trail (running since 2026-10-05) |
+| 13 | **Dropped** | **CI on `main` is red** (3 jobs), so the Deploy job has never run (5 runs, all `skipped`) -- **dropped 2026-10-15: CI on `main` is green; the Deploy workflow is disabled on purpose (user) and production is updated with `make deploy`** | -- | -- |
+| 14 | **Done** | Logo missing from the CVE Tracker Excel export (Pillow is not yet a dependency) -- **done 2026-10-07 (PR #9); the API image build with pillow is green in CI (PR #12)** | -- | -- |
+| 15 | **Open** | Use `published_at` in the UI/API/dashboard + align the export date formats -- **prod has 7 `cve_tracker` rows without `published_at` (2026-10-15)** | a decision on the format of the Acknowledged column | the `published_at` backfill in production |
+| 16 | **Open** | CVE dashboard: SLA per severity (replacing fixed-threshold ratings) | ack/remediation SLA targets per severity | -- |
+| 17 | **Done** | CVE dashboard: backlog/aging panels, KEV/EPSS, most frequently affected products -- **DONE (#54), released as 0.6.0 and deployed; the panels have not been looked at in a browser** | -- | -- |
+| 18 | **Open** | CVE ticket field validation + a ticket model decision (1 ticket per CVE vs one ticket for many CVEs) | a list of standard values, the model decision | -- |
+| 19 | **Open** (operational) | **Tech catalog from the CVE mirror + Monitor** (new direction 2026-10-07, replacing the alias/phase 2-3 plan; the `aliases` column is dropped): mirror every CVE (calendar-year retention) -> a vendor+product catalog -> All Tech / Monitored Tech tabs -> the CVEs tab only for monitored techs. **Code done (slices 1-7), merged to `main` 2026-10-08 (PR #12, release 0.3.0)**; what remains is operational: finish the mapping (prod, 2026-10-15: 25 of 35 entries mapped), shadow mode (not started), cutover (the runbook and design documents were removed from the repository on 2026-10-16) | manual mapping + shadow on dev | test on the dev server first, then prod |
+| 20 | **Mostly done** | **Known follow-ups from releases 0.4.0 / 0.4.1** (found while reviewing the CVE Tracker; none is blocking) -- **the data-correctness points were fixed 2026-10-15 (#51, #52) or earlier (#21); what is left (the (D) decisions, the KEV/EPSS/Exploit-DB access point, `trending_cve` in January) is marked in the item** | product decisions on the points marked (D) | -- |
+| 23 | **Open** (design agreed 2026-10-16) | **Runtime secrets** (asked 2026-10-16): manage the third-party keys (LLM, Telegram, Graph, NVD, GitHub, twitterapi.io, X, OTX, AbuseIPDB, VirusTotal) from a superadmin-only admin page, encrypted in the database and applied without a restart or rebuild; the deployment-level secrets (database, Redis, JWT/session, OIDC) stay in `.env` -- **design agreed 2026-10-16, nothing built** | a go-ahead; a master key set in the prod `.env` before the API/UI pull requests are used; the re-auth decision for OIDC-only superadmins | -- (touches #11 for the OIDC question) |
 ---
 
 ## Priority queue (team feedback 2026-10-10)
@@ -42,30 +50,36 @@ The team asked for two items to be treated as priorities; they go before everyth
 **#21 Recap first** (it introduces LLM usage logging and the weekly content that #22 reuses), then **#22 Newsletter**.
 Scope was decided with the user on 2026-10-10 (which proposed additions were approved and which were left out are
 listed in each item); both are written out at the end of this file. The implementation plan (nine pull requests, order,
-tests, rollback) is `docs/PLAN_RECAP_NEWSLETTER.md`. **All nine pull requests are merged into `main` (2026-10-11 to
+tests, rollback) was `docs/PLAN_RECAP_NEWSLETTER.md` (removed from the repository on 2026-10-16). **All nine pull requests are merged into `main` (2026-10-11 to
 2026-10-14).** Each item has an "Implementation status" block: what was built, what was proven on the dev instance, and
-what is still open (the prod deploy and the remaining real-mailbox checks; 0.5.0 is tagged). The sections "Current state" below describe
-the code **before** these pull requests.
+what is still open. **Both are deployed to prod (running 0.5.0 by 2026-10-15) and the real-mailbox checks are closed; the only thing
+left is the first real newsletter edition on Mon 2 Nov.** The sections "Current state" below describe the code **before**
+these pull requests.
 
 ---
 
-## Delivered so far (as of 2026-10-10)
+## Delivered so far (as of 2026-10-16)
 
-PRs #2-#31 are all merged into `main` (release tags in `CHANGELOG.md`: 0.2.0, 0.2.1, 0.3.0, 0.4.0, 0.4.1).
+PRs #2-#59 are all merged into `main` (release tags in `CHANGELOG.md`: 0.2.0, 0.2.1, 0.3.0, 0.4.0, 0.4.1, 0.5.0, 0.6.0).
 
 **Roadmap items by status**
 
 | # | Status | Delivered by | What is left |
 |---|---|---|---|
-| 1 | Done | PRs #3, #4 (+ the rename to Vareon Intelligence, 2026-10-05) | the SVG logo |
-| 2 | Code done | PR #3 | verification in real email clients |
+| 1 | Done | PRs #3, #4 (+ the rename to Vareon Intelligence, 2026-10-05) | the SVG logo (parked by the user) |
+| 2 | Mostly done | PR #3; newsletter email verified 2026-10-14/15 | a look at `cve_notification_email` in real clients |
 | 3 | Superseded by #19 | PR #12 | nothing, do not work on it |
-| 13 | Partly done | PR #11 (CI green on `main`, run #23) | one Deploy that passes: runs #8-#10 were all `cancelled`; check the prod host state |
+| 4 | Live | PRs #55, #58 (0.6.0), the OTX 400 fix (0.6.1); on prod since 2026-10-15/16 | which IOCs OTX rejects (after 0.6.1); OTX threshold review; urlscan/GreyNoise/Shodan; scoring integration |
+| 13 | Dropped | PR #11 (CI green on `main`) | nothing: the Deploy workflow is disabled on purpose |
 | 14 | Done | PR #9 (pillow), CI image build green in PR #12 | nothing |
-| 19 | Code done, merged | PR #12 (release 0.3.0), PR #27 (cutover runbook fix) | operational only: map 34 entries on dev, shadow mode, cutover dev then prod |
-| 21 | Code merged, **priority** | PRs #34, #36, #40, #42 (PR 1-4 of `docs/PLAN_RECAP_NEWSLETTER.md`) | prod (`make deploy`, `beat` restart, backfill) |
-| 22 | Code merged, **priority** | PRs #35, #39, #38, #43, #44 (PR 5-9) + #37 (alembic head fix) | re-check a new draft in Outlook dark mode, Outlook web/desktop and Gmail screenshots, confirm the APAC set, prod |
-| 4-12, 15-18 | Open | -- | not started; only prerequisites exist (e.g. the `raw_enrichment` audit trail for #12, the `published_at` column for #15). See each item |
+| 17 | Done | PR #54 (0.6.0) | look at the panels in a browser |
+| 19 | Code done, merged | PR #12 (release 0.3.0), PR #27 (cutover runbook fix) | operational only: finish the mapping (prod: 25 of 35), shadow mode, cutover dev then prod |
+| 20 | Mostly done | PRs #21, #51, #52, #53 (0.4.x-0.6.0) | the (D) decisions, the KEV/EPSS/Exploit-DB access point, `trending_cve` in January |
+| 21 | Done | PRs #34, #36, #40, #42 (0.5.0), on prod by 2026-10-15 | nothing |
+| 22 | Live | PRs #35, #39, #38, #43, #44 (0.5.0), #53 (0.6.0), on prod by 2026-10-15 | the first real edition, Mon 2 Nov |
+| 5, 8, 9, 10, 11 | Parked | -- | set aside by the user on 2026-10-15; do not start without a trigger |
+| 6, 7, 12, 15, 16, 18 | Open | -- | see each item; #6 mostly exists (only expiry is missing), #7 waits for the #19 cutover, #15 waits for the `published_at` backfill (7 prod rows), #12 for labelled examples, #16 and #18 for SLA targets and the list of ticket values |
+| 23 | Open (design agreed 2026-10-16) | -- | all three pull requests (see the item) |
 
 **Merged PRs by release**
 
@@ -83,12 +97,19 @@ PRs #2-#31 are all merged into `main` (release tags in `CHANGELOG.md`: 0.2.0, 0.
 | after 0.4.1 (2026-10-11 to 2026-10-14) | #34, #36, #40, #42 | **#21 recap**: token usage stored and one row per CVE (PR 1); weekly Monday-Sunday recap on a Monday 00:15 UTC schedule (PR 2); week-over-week comparison, grounding check and forecast scorecard (PR 3); the Recap page shows them (PR 4) |
 | after 0.4.1 (2026-10-11 to 2026-10-14) | #35, #37, #38, #39, #43, #44 | **#22 newsletter**: summary cache, side-effect-free preview and one row per send (PR 5); alembic head fix (#37); ranking and `newsletter_suggestions` (PR 7); new template, inline logo, Indonesian summaries (PR 6); monthly schedule and Executive Summary (PR 8); composer filled with the suggestion (PR 9) |
 | after 0.4.1 | #41, #45 | scraper additions (`aws_security`, news scraper); not part of #21/#22 |
-| after 0.5.0 (2026-10-15) | #50-#56, #58 | `new_cve` no longer drops CVEs silently at `max_items` (#50); dashboard UNRATED bucket and one crossref row per CVE (#51); KEV flag reset and the read-only `check-orphaned-tickets` tool (#52); file-name titles never take a newsletter Highlight (#53); dashboard backlog, exploit-risk and top-tech panels, **#17** (#54); IOC enrichment writer with AbuseIPDB, **#4** (#55) and VirusTotal + OTX (#56 was merged into the #55 branch because that branch had not been deleted yet, so it reached `main` through #58) |
+| 0.6.0 (2026-10-16) | #50-#56, #58, #59 | `new_cve` no longer drops CVEs silently at `max_items` (#50); dashboard UNRATED bucket and one crossref row per CVE (#51); KEV flag reset and the read-only `check-orphaned-tickets` tool (#52); file-name titles never take a newsletter Highlight (#53); dashboard backlog, exploit-risk and top-tech panels, **#17** (#54); IOC enrichment writer with AbuseIPDB, **#4** (#55) and VirusTotal + OTX (#56 was merged into the #55 branch because that branch had not been deleted yet, so it reached `main` through #58); the release PR #59 also synced this file and `docs/ARCHITECTURE.md` |
+| 0.6.1 (2026-10-16) | the 0.6.1 release PR | fix release: enrichment no longer stalls on IOCs a provider rejects with HTTP 400 (OTX stalled in 45 of 60 runs on prod); roadmap status column and prod facts |
 
 Release 0.5.0 (tag `0.5.0`, GitHub Release `v0.5.0`, 2026-10-14) carries everything after 0.4.1 and sits on `f55132d`, the
 merge of #48, so the dark-mode fix is inside (the `CHANGELOG.md` line about it was added after the tag). The plan expected 0.5.0 after #21 and 0.6.0 after #22, but both were on `main` before either was cut, so
 there is one release. Follow-ups found while delivering 0.4.x are collected in #20
 below.
+
+Release 0.6.1 (2026-10-16) is a fix release on top of 0.6.0: the OTX 400 stall described in #4, and this status update.
+
+Release 0.6.0 (tag `0.6.0`, GitHub Release `v0.6.0`, 2026-10-16) is the merge of #59 (`3015304`) and carries everything after
+0.5.0 (#50-#58) plus the docs sync; CI on that commit was green. It is deployed on prod (`/healthz` says 0.6.0 on 2026-10-16,
+Alembic head unchanged at `7e51efe6d78b`).
 
 ---
 
@@ -100,6 +121,10 @@ below.
 > the sidebar, dashboard + world map, every tab and the main dialogs checked on staging. Technical identifiers (`cti-platform`,
 > `cti_*`, images) deliberately stay. **Remaining**: the SVG logo (the header is still the letter "N" + text), and a `grep` for the old name in
 > LLM prompts ("Cyber Threat Intelligence" as a generic term) is deliberately left alone.
+>
+> **Update 2026-10-15**: the SVG logo is parked by the user. The header still shows a round "V" mark + the name
+> (`app-header.tsx`, `Brand()`); `apps/web/public/` is empty. It needs the brand's vector file. The newsletter uses a different
+> logo (the company PNG), not this one.
 
 **Asked**: change the platform name and the UI look -- *colour palette*, *typography*, *animation* -- according to
 assets the user will provide.
@@ -143,6 +168,10 @@ contrast meets WCAG AA in the themes used; a screenshot of each tab is attached;
 > Graph to a test account and checked in Outlook desktop/web, Gmail, mobile (the "Done when" criteria below). Note:
 > the newsletter preview on staging still fails with `500: Expecting value` on the server side (suspected LLM configuration
 > in `.env`), separate from this template.
+>
+> **Update 2026-10-15**: the newsletter no longer extends `_base_email.html` (new template, #22) and its real-client checks are
+> closed (new Outlook light and dark mode seen 2026-10-14; Outlook web, Outlook desktop and Gmail confirmed fine by the user).
+> What remains is `cve_notification_email`, which still extends `_base_email.html` and was not part of those checks.
 
 **Asked**: the `newsletter_email` and `cve_notification_email` templates follow the outcome of item 1.
 
@@ -285,8 +314,8 @@ and one service failing does not fail the others.
   | OTX (`OTX__API_KEY`) | ip, domain, hashes (URL not supported) | pulse count >= 3 malicious, 1-2 suspicious, 0 unknown; no score | 7 days | `300/hour` |
 
   The thresholds are starting values (constants at the top of `ioc_providers.py`).
-- **Failure isolation**: one failed IOC leaves no card and is retried on the next run; 401/403/429 or three failures in a row
-  stop that provider for the run; the log carries the exception class and the status code only, never the message (it can
+- **Failure isolation**: one failed IOC (network, 5xx) leaves no card and is retried on the next run (a 4xx rejection stores an
+  `unknown` card since 0.6.1); 401/403/429 or three failures in a row stop that provider for the run; the log carries the exception class and the status code only, never the message (it can
   echo a key). A private or invalid IP is not sent anywhere: it gets a `skipped` card so it is not picked again.
 - **Licence**: VirusTotal's own documentation says the public (free) API must not be used in commercial products or
   services. Fill `VIRUSTOTAL__API_KEY` only from a plan that allows it. AbuseIPDB's and OTX's terms of use were NOT checked
@@ -296,6 +325,28 @@ and one service failing does not fail the others.
 - **Open**: deploy; fill the AbuseIPDB key (and a VirusTotal key if the licence question is settled); look at a real card in
   the IOC detail; urlscan, GreyNoise and Shodan are not built; no scoring integration (`confidence_score` and
   `actionability_*` ignore the verdicts for now); OTX URL lookups need the path encoding checked against the real API.
+
+**Update 2026-10-16 -- deployed and running on prod (0.6.0), read-only check**
+- **All three keys are set** on prod (`OTX__API_KEY`, `ABUSEIPDB__API_KEY`, `VIRUSTOTAL__API_KEY`). Whether the VirusTotal plan behind the
+  key allows commercial use was not verified here; the licence is the owner's call (see the Licence point above).
+- **Cards written**: 956 of 7,375 IOCs carry at least one card. AbuseIPDB 591 (471 unknown, 85 clean, 18 suspicious, 17 malicious),
+  OTX 453 (160 unknown, 142 suspicious, 151 malicious; domains 177, hashes 166, IPs 110), VirusTotal 270 (31 unknown, 56 clean,
+  46 suspicious, 137 malicious), plus 7 `skipped` cards. AbuseIPDB and VirusTotal mostly stop on their hourly budget, as designed.
+- **Bug found: OTX is stalled in most runs.** In the last 16 hours 45 of 60 OTX runs stopped with `consecutive_failures` and 43 of
+  them checked nothing: the log shows `ioc_enrich_failed provider=otx status=400`. Cause: a failed IOC leaves no card, so it is
+  selected again at the head of the queue (newest first) on every run; three such IOCs block the whole provider for the run.
+  The failing values are not logged (by design). Three IOCs seen at the head of the queue later (an IPv4 address and two domains)
+  were tried directly against OTX's public endpoint and answered normally, so they are probably not the cause; the failing values
+  are still unidentified. 3,076 IOCs still have no OTX card
+  (domains 1,142, sha256 810, IPs 713, md5 295, sha1 116).
+- **Fixed in 0.6.1**: a client error that is about the IOC itself (HTTP 4xx other than 401/403/429, 400 first of all) now stores an
+  `unknown` card ("rejected by provider (HTTP 400)"), like the `skipped` card, so the IOC is not retried until its TTL and does not
+  count toward the three-in-a-row stop; five rejections in a row stop the provider for the run (a wrong request shape must not
+  poison every IOC). 5xx and network errors keep the old behaviour (retry next run). The log line now carries `ioc_id` and
+  `ioc_type`. **The cause of the 400 is still unknown**: after deploying 0.6.1 the rejected IOCs can be listed (cards whose
+  `raw.skipped` starts with "rejected by provider") and looked at.
+- **Thresholds to review**: 151 of 453 OTX cards (33%) are `malicious` with the "three or more pulses" rule; OTX pulses can list
+  benign indicators as context, so the rule may be too eager. Starting values, constants in `ioc_providers.py`.
 
 ## 5. Outbound feeds + integration API keys
 
@@ -518,6 +569,7 @@ time; the dashboard MTTD is computed in **days** (`detected_on` - `published`) b
 `services/cve_dashboard.py`, `cve-dashboard-view.tsx` (the MTTD definition text), `services/cve_export.py`.
 **Needed**: `tools/ops/backfill_cve_published_at.py --apply` has been run in production
 (without it old CVEs have no time); a decision on whether the Acknowledged column follows `HH:MM DD-MM-YYYY`.
+**Measured on prod 2026-10-15**: 382 tracker rows (one client), 7 without `published_at`, so the backfill is nearly complete.
 **Done when**: the Ticket tab shows the publish time, MTTD is shown in hours for CVEs that have
 `published_at` (and falls back to days for those that do not, with a separate `n` so the coverage is visible),
 the API contract is regenerated (`export_openapi` + `gen:api`), and the export column formats are consistent.
@@ -698,6 +750,11 @@ hides 1-CVE families (search still shows everything).
 Everything is tested on the **dev server first**, then production.
 
 ### Open (needs user confirmation)
+- **Status 2026-10-15 (prod, read-only check)**: `CVE_MIRROR__ENABLED=true`, `CVE_MIRROR__PROMOTE` not set (= `off`), `cve_promotion_shadow`
+  empty (shadow not started); the mirror holds 122,910 CVEs (newest published 2026-10-15), the catalog 15,303 vendors and 40,954
+  families; `cve_mirror_synced` is `failed=0`, `gap_unrecoverable=False`; **25 of 35 techstack entries are mapped** to the catalog.
+  `new_cve` is still the live ingest there: 14 of its runs in three days ended `fetch_error` (NVD 503 on keyword searches), the
+  failure class the cutover removes.
 - **Status 2026-10-10**: code done and merged (PR #12, release 0.3.0); what remains is manual mapping, shadow mode,
   and cutover (runbook). The worker log posted on 2026-10-08 shows the mirror ingest running (`cve_mirror_synced` is
   `ok`/`noop`, `failed=0`, no gap) with `CVE_MIRROR__PROMOTE=off`. **Before `live`**, clean the stored `affected` text (0.4.1 upgrade step 2,
@@ -814,8 +871,9 @@ formally; order = a suggestion.
   (the X feed stopped on 3 Oct), IOCs -30.3%, CVEs +48.5%, and new this week 4 threat actors and 8 CVEs. Its scorecard
   reviewed the 5 forecast events of 28 Sep: 2 happened, 1 partly, 2 unclear, a hit rate of 83.3% over the 3 judged events.
   Only the API output was read; the rendering of the page was not looked at.
-- **Open**: deploy to prod (`make deploy`, restart `beat`, backfill the weeks that ended before the deploy: 28 Sep and
-  5 Oct, in that order; later weeks come from the schedule; deadline Fri 30 Oct, see the plan). Released as 0.5.0.
+- **Closed 2026-10-15/16**: deployed to prod by the user (0.5.0, then 0.6.0). Read-only check on 2026-10-16: the weekly recaps of
+  28 Sep and 5 Oct exist (`daily_recaps`, `kind=weekly`, generated 2026-10-14), `recap-generate-weekly` is in the `beat`
+  schedule, Alembic head `7e51efe6d78b`. The week of 12 Oct is the first one the schedule creates on prod, on Mon 19 Oct 00:15 UTC.
 
 **Asked (team feedback 2026-10-10)**: (1) make the recap weekly; (2) optimise the LLM call(s); (3) "any more suggestions?"
 
@@ -1020,7 +1078,13 @@ API output on dev, the page itself not yet looked at there**; tests, **met** (al
   `[data-ogsb]` overrides Outlook honours (`docs/ARCHITECTURE.md` section 3.6); the fix is on dev since 2026-10-14 and a **new** draft (old ones keep their stored HTML)
   still needs a second look in Outlook dark mode, and Gmail's apps invert on their own and cannot be pinned from the email. Still
   **not verified**: Outlook desktop (classic), Outlook web, and Gmail.
-- **Open**:
+- **Update 2026-10-16**: open items 1 and 2 below are **closed** by the user on 2026-10-15 (the APAC set is confirmed; the Outlook
+  dark-mode re-check and the Outlook web/desktop and Gmail screenshots are fine), item 4 is **done** (0.5.0 and then 0.6.0 are on
+  prod; `recap-generate-weekly` and `newsletter-prepare-monthly` are registered in `beat`), and the file-name title question is closed
+  by #53. What is left: the first real edition (`newsletter_suggestions` is empty on prod, as expected before Mon 2 Nov; if the
+  recap of 26 Oct-1 Nov is late that morning, rebuild the suggestion by hand), tuning the ranking weights after it, and the small
+  follow-ups in item 5.
+- **Open** (as of 2026-10-14, kept for the record):
   1. On dev: let an analyst read the Indonesian wording of the September suggestion, re-check the draft in Outlook dark
      mode after the dark-mode fix is deployed, and capture screenshots from Outlook desktop, Outlook web and Gmail.
      File-name titles: decided and merged 2026-10-15 (#53): a title that is one bare file name (no spaces, a document
@@ -1226,3 +1290,132 @@ fixed and waiting for a re-check, Outlook desktop / Outlook web / Gmail not done
 measured**; recommended articles with their reasons, **met**; one send, one history row, and a second preview with no
 new LLM or Playwright call, **met** (integration tests); an Executive Summary that is one grounded, editable paragraph,
 **met**; the listed tests, **met**.
+
+---
+
+## 23. Runtime secrets: manage third-party keys from the admin UI
+
+**Asked (2026-10-16)**: is it safe to manage the third-party keys (LLM vendor, Twitter API, OTX, ...) from an admin menu
+for operations (change a key, and so on)? Pros and cons first, then a plan. Clarified in the same conversation: the
+product is becoming multi-workspace (SaaS), so the keys that change often must be changeable **without a restart or a
+rebuild**; the deployment-level secrets (database, Redis, JWT/session, OIDC) are initial-deployment config that rarely
+changes and stay in `.env`. Not the same as #5 (that is about keys **we issue** to other tools); this item is about the keys
+we **use**. It also makes the keys needed by #4 (AbuseIPDB, VirusTotal, OTX) changeable without touching the prod host.
+**Current state** (facts from the repo, nothing built yet):
+- Every third-party key lives only in `.env` and is read through `get_settings()` (`lru_cache`, per process,
+  `packages/cti-core/src/cti_core/config.py`). Changing one means editing the file on the host and restarting `api`,
+  `worker`, `worker-browser`, `worker-nlp` and `beat`.
+- The read points already resolve the key **when it is used**, not at import: `cti_scraper/credentials.py`
+  (`resolve_credential_headers`, called per run by `Runner`), `cti_core/llm/client.py` (`get_llm_client` builds a new client on
+  every call), `cti_alerts/telegram.py` (a `Bot` per send), `cti_alerts/mailer.py` (an MSAL app per call),
+  `services/ioc_enrichment.py` (`build_specs`, called from `tasks/periodic.py`) and `services/newsletter_summary.py` (log
+  scrub). That is why a hot reload needs one overlay on `Settings` and not a rewrite of the consumers.
+- Tenancy today: the `clients` table and a `client_id` on the analysis tables (techstack, PIR, RFI, CVE tracker, IOC, TA).
+  Ingestion, the LLM, Telegram and Graph are global singletons (one key, one bot, one chat, one sender).
+- Building blocks that exist: `require_superadmin`, the `audit_log` table, the singleton precedent `PasswordPolicy`, the
+  current-password re-check in `routers/auth.py` (change password), `rate_limit.is_rate_limited`, the read-only provider probes
+  in `tools/ops/check_secrets.py` (LLM, Telegram, NVD, GitHub, twitterapi.io, X; Graph is only reported as set), and the admin
+  page `apps/web/src/app/(app)/admin/users` made of sections. `psycopg[binary]` is already a `cti-core` dependency;
+  `cryptography` is only transitive (through `python-jose` in `apps/api`).
+- `SECRETS_BACKEND=vault` is accepted by `Settings` but no Vault reader exists.
+- An existing gap, independent of this item: `_scrub_secrets` in `tasks/enrich.py` does not cover `x.bearer_token`, `otx`,
+  `abuseipdb` or `virustotal`, so those can still appear in an error message.
+
+**Decision record (2026-10-16)**
+- Pros: a leaked key is rotated in minutes without SSH or a restart; fewer people need a shell on the prod host; the page
+  shows which providers are filled and whether the key is still accepted (an empty key silently turns a provider off today);
+  there is an audit trail; a mistyped key is caught before it goes live.
+- Decided with the user: **platform scope first** (the operator holds every vendor key; per-workspace keys, BYOK, are not built,
+  but the table keeps a nullable `client_id` so they can follow additively) and **superadmin only**.
+- Risks and how the design answers them:
+
+| Risk | Answer in the design |
+|---|---|
+| One stolen superadmin session reads or rotates every key; writing is worse than reading (pointing `LLM__URL` at an attacker host sends all article text there, a swapped Telegram token redirects alerts) | the API never returns a secret value; the **current password is required on every write and delete**; audit; rate limit; an allowlist for the LLM URL |
+| Keys land in Postgres and in its backups | Fernet encryption at rest; the master key lives only in `.env` (later Vault), kept apart from the DB backups, so a backup alone opens nothing |
+| Two sources of truth (`.env` and the database) make "which key is live?" hard to answer | DB over `.env`, a `source` shown per provider (db / env / unset), and a "Revert to .env" action |
+| Five long-lived processes each cache their settings | an overlay with a 30-second per-process cache; no restart |
+| New leak surfaces: responses, logs, error text | no secret in any response or audit row; one helper builds the scrub list for all providers (also closes the existing gap above) |
+| A wrong key stalls the pipeline or bills the wrong account | the candidate key is probed **before** it is saved; a failed probe means nothing is stored |
+| SSRF through a custom LLM URL once admins other than the operator exist | outside `dev` only hosts in an env allowlist, https only |
+| Bootstrap secrets cannot live in the database they unlock | they stay in `.env` |
+| Conflict with the planned Vault | `overlay.py` is the seam where a Vault reader plugs in later |
+
+**Design (agreed 2026-10-16)**
+- **Table `runtime_secrets`** (`cti_core/db/models/runtime_secret.py` + a hand-written migration after head `7e51efe6d78b`):
+  `provider`, `client_id` (nullable FK to `clients`, NULL = platform, only NULL is written in this item), `values` JSONB
+  (non-secret fields), `secrets_enc` bytea (a Fernet token of `{provider, fields}`; the provider is checked on decrypt),
+  `updated_by`, `updated_at`, `last_test_ok`, `last_test_at`. Two partial unique indexes (platform: `provider`; client:
+  `client_id, provider`).
+- **Overridable fields** (one registry, `cti_core/runtime_secrets/registry.py`): `llm.api_key|provider|model|url`,
+  `telegram.bot_token`, `graph.client_secret`, `nvd.api_key`, `github.token`, `twitter.api_key`, `x.bearer_token`,
+  `otx.api_key`, `abuseipdb.api_key`, `virustotal.api_key`. Deliberately **not** editable from the page: the Telegram chat and
+  thread ids, the Graph identity (tenant, client, sender, cc), rates and timeouts. Those are deployment decisions or change as
+  one set; they stay in `.env`.
+- **Crypto**: `MultiFernet` built from `SECRETS_ENCRYPTION_KEYS` (comma-separated; the first key encrypts, all of them
+  decrypt, so the master key can be rotated without a data migration). `cryptography` becomes a direct `cti-core` dependency.
+- **Overlay** (`cti_core/runtime_secrets/overlay.py`): `effective_settings()` is `get_settings()` plus the database overrides,
+  cached per process for 30 seconds (`invalidate()` in the process that just wrote). The loader is synchronous through
+  `sync_session()`. It **fails open**: a database or decryption failure falls back to `.env` with a structured error log and
+  never raises. A field that has no override falls back to `.env`.
+- **Consumers** change only their default expression `get_settings()` to `effective_settings()`: `cti_alerts/telegram.py`,
+  `cti_alerts/mailer.py`, `cti_core/llm/client.py`, `cti_scraper/credentials.py`, the settings handed to `build_specs` in
+  `tasks/periodic.py`, `services/newsletter_summary.py`. The two scrub sites use a new `configured_secret_values()` helper.
+- **API** (`routers/secrets.py` + `services/runtime_secrets.py`, all `require_superadmin`): `GET /api/secrets` (per provider:
+  `source`, non-secret fields as they are, secret fields only as `set` plus the last four characters, `updated_by/at`,
+  `last_test`); `PUT /api/secrets/{provider}` with `{fields: {name: value | null}, current_password}` (a string sets, `null`
+  removes the override, an absent field is unchanged, an **empty string is rejected** so a working `.env` key is never
+  overwritten with a blank; the order is registry check, LLM URL check, probe the candidate, encrypt, upsert, invalidate, audit);
+  `DELETE /api/secrets/{provider}` (also needs the password); `POST /api/secrets/{provider}/test`. Audit actions `secret_set`,
+  `secret_clear`, `secret_test` with `target_id=provider` and `detail={fields, last4}`, never a value.
+- **LLM URL guard**: outside `dev`, only hosts listed in `SECRETS_LLM_URL_ALLOWED_HOSTS` (empty by default, so the page cannot set a
+  custom URL in prod) and only https; in `dev` anything goes (local gateways such as 9router).
+- **Probes** move from `tools/ops/check_secrets.py` into `apps/api/.../services/secret_probes.py` (the API image does not ship
+  `tools/`); the CLI stays and keeps exporting `run_checks`, `CHECKS`, `Result`, `exit_code` and `main`, and
+  `tests/unit/test_check_secrets.py` (it mocks HTTP with `respx`) is the regression net. Add an API-only Graph probe that
+  only acquires a token (it never creates a message). For AbuseIPDB, VirusTotal and OTX use the cheapest read-only endpoint
+  and **check it against the vendor docs while building**; if none is free of quota, show "not tested" instead of guessing.
+- **Web** (`apps/web/src/components/admin/secrets-section.tsx` plus an edit dialog): one card per provider with the source
+  badge, the masked tail, Test, Edit and "Revert to .env". Password inputs, `autocomplete="new-password"`, never pre-filled,
+  cleared on close and on submit. Mounted for `superadmin` in `admin/users/page.tsx` like `ClientsSection`. Follow
+  `apps/web/CLAUDE.md` (Base UI: `render=`, not `asChild`; a `SelectItem` takes one string).
+- **New config** (both optional, empty by default, so a deploy never fails on them): `SECRETS_ENCRYPTION_KEYS`,
+  `SECRETS_LLM_URL_ALLOWED_HOSTS`; update `.env.example`, `.env.prod.template`, `tests/unit/test_config.py` and
+  `tests/unit/test_env_prod_template.py` in the same commit. Without a master key writes are refused (503), the overlay reads
+  nothing, and behaviour is exactly today's.
+
+**Pull requests** (in order, each reviewable on its own)
+1. **Core**, inert while the table is empty: dependency, config, model and migration, sync and async repositories, registry,
+   crypto, overlay, the consumers switched, the scrub list widened.
+2. **API**: probes extracted, service and router, audit, re-auth, rate limit, `docs/openapi.json` and `schema.d.ts` regenerated.
+3. **Web and docs**: the section, a "Runtime secrets" part in `docs/ARCHITECTURE.md`, the config table in the README.
+   `CHANGELOG.md` and the version bump wait for the release pull request (`routers/changelog.py` parses the header format
+   strictly).
+
+**Touch points**: `packages/cti-core/src/cti_core/{config.py, runtime_secrets/*, db/models/runtime_secret.py,
+db/models/__init__.py, db/repositories/runtime_secret.py, llm/client.py}`, `alembic/env.py` (model import) and
+`alembic/versions/` (new revision), `packages/cti-alerts/src/cti_alerts/{telegram.py, mailer.py}`,
+`packages/cti-scraper/src/cti_scraper/credentials.py`, `apps/worker/src/cti_worker/tasks/{enrich.py, periodic.py}`,
+`apps/api/src/cti_api/{routers/secrets.py, services/runtime_secrets.py, services/secret_probes.py,
+services/newsletter_summary.py, main.py}`, `tools/ops/check_secrets.py`, `.env.example`, `.env.prod.template`,
+`pyproject.toml` of `cti-core` and `uv.lock`, `docs/openapi.json`, `apps/web/src/lib/api/schema.d.ts`,
+`apps/web/src/components/admin/secrets-section.tsx`, `apps/web/src/app/(app)/admin/users/page.tsx`.
+**Needed from the user**: a go-ahead per pull request; for prod, a generated Fernet key set as `SECRETS_ENCRYPTION_KEYS` in the
+prod `.env` before the API and UI are used (pull request 1 is safe without it), and `SECRETS_LLM_URL_ALLOWED_HOSTS` only if a
+custom LLM gateway is wanted; whether any prod superadmin signs in **only** through OIDC (see the assumptions); the quota
+limits of the AbuseIPDB and VirusTotal plans, for the probes.
+**Done when**: a superadmin can set, test and revert every provider above from the admin page, and a key changed there is
+used by the next scraper run, LLM call, Telegram send and IOC lookup within 30 seconds **without restarting any service**
+(shown on the dev instance); no endpoint response, log line or audit row contains a secret value (tests assert it) and `psql`
+shows `secrets_enc` is not plaintext; an admin who is not a superadmin gets 403, a wrong password is refused, and a candidate
+key that fails its probe is not saved; with no master key set the behaviour is identical to today; a database restored without
+the master key leaves the platform running from `.env`; the scrub list covers every provider; all repo gates are green and
+`docs/openapi.json` and `schema.d.ts` do not drift.
+**Not in scope**: per-workspace keys (BYOK) and the client-aware enrichment and alert consumers they would need, the Vault
+reader (`overlay.py` is its seam), editing the deployment-level secrets from the page, Telegram chat and thread ids, the Graph
+identity, rates and timeouts, a version history of keys (rollback is "Revert to .env" or typing the old key again; the
+probe-before-save already covers a mistyped key), and turning off a provider whose key is in `.env` from the page.
+**Assumptions to confirm**: Telegram is limited to `bot_token` and Graph to `client_secret` because rotation is the operational
+need (moving the chat or the sender stays a deploy decision); re-auth uses the local password, and a superadmin who signs in only
+through OIDC may have none, so check `OIDC__ENABLED` on prod and pick a fallback (for example a fresh login within a few
+minutes) before pull request 2; the section lives on the existing admin page and is easy to move to its own route.

@@ -18,6 +18,7 @@ import httpx
 import pytest
 from cti_api.services.ioc_enrichment import ProviderSpec, build_specs, enrich_pending
 from cti_core.db.models.ioc import IOC
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog.testing import capture_logs
 
@@ -27,6 +28,11 @@ NOW = datetime.datetime(2026, 10, 15, 12, 0, tzinfo=datetime.UTC)
 # IP publik sungguhan (resolver DNS terkenal): rentang dokumentasi (198.51.100.0/24 dan
 # 203.0.113.0/24) bukan `is_global`, jadi dilewati sebagai non-publik. Tanpa panggilan jaringan.
 PUBLIC = ["8.8.8.8", "1.1.1.1", "9.9.9.9", "4.4.4.4", "8.8.4.4"]
+
+
+def _ip(n: int) -> str:
+    """IP publik (1.0.0.0/24, Cloudflare) untuk tes yang butuh banyak IOC."""
+    return f"1.0.0.{n}"
 
 
 def _card(key: str = "abuseipdb", score: int = 3) -> dict[str, Any]:
@@ -277,7 +283,7 @@ async def test_max_per_run_caps_the_batch(api_session: AsyncSession) -> None:
 async def test_failure_logs_carry_the_error_class_and_status_but_never_the_message(
     api_session: AsyncSession,
 ) -> None:
-    await _ioc(api_session, "ip", PUBLIC[0])
+    ioc = await _ioc(api_session, "ip", PUBLIC[0])
     lookup = FakeLookup({PUBLIC[0]: httpx.ConnectError("leaked-key-abc123 in message")})
 
     with capture_logs() as logs:
@@ -285,6 +291,8 @@ async def test_failure_logs_carry_the_error_class_and_status_but_never_the_messa
 
     failed = [entry for entry in logs if entry["event"] == "ioc_enrich_failed"]
     assert failed and failed[0]["error"] == "ConnectError"
+    # id dan tipe cukup untuk menemukan IOC-nya di DB; nilainya tidak perlu masuk log
+    assert (failed[0]["ioc_id"], failed[0]["ioc_type"]) == (ioc.id, "ip")
     assert "leaked-key" not in str(logs)
 
 
@@ -374,3 +382,88 @@ async def test_virustotal_and_otx_are_wired_and_a_404_becomes_an_unknown_card(
     assert cards["otx"]["verdict"] == "malicious" and cards["otx"]["tags"] == ["c2"]
     await api_session.refresh(domain_ioc)
     assert sorted(c["key"] for c in domain_ioc.enrichment["providers"]) == ["otx", "virustotal"]
+
+
+async def test_a_client_error_about_the_ioc_becomes_an_unknown_card_and_never_blocks_the_queue(
+    api_session: AsyncSession,
+) -> None:
+    """Produksi 2026-10-16: OTX menjawab HTTP 400 untuk sebagian IOC. IOC yang gagal tidak punya
+    kartu, jadi dipilih ulang di kepala antrean tiap run, dan tiga yang begitu menghentikan provider
+    di 45 dari 60 run. Kini error 4xx soal IOC-nya sendiri disimpan sebagai kartu `unknown` (tidak
+    dipilih ulang sebelum TTL) dan tidak dihitung sebagai kegagalan beruntun."""
+    for n in range(3):  # tiga yang ditolak provider, paling baru dilihat
+        await _ioc(api_session, "ip", _ip(n), last_seen_at=NOW - datetime.timedelta(minutes=n))
+    good = await _ioc(api_session, "ip", _ip(10), last_seen_at=NOW - datetime.timedelta(hours=5))
+    lookup = FakeLookup({_ip(n): _http_error(400) for n in range(3)})
+
+    summary = await enrich_pending(api_session, specs=[_spec(lookup)], allow=_allow_all, now=NOW)
+
+    assert summary["abuseipdb"] == {
+        "checked": 1,
+        "skipped": 0,
+        "rejected": 3,
+        "failed": 0,
+        "stopped": None,
+    }
+    assert lookup.values == [_ip(0), _ip(1), _ip(2), _ip(10)]
+    rejected = (await api_session.execute(select(IOC).where(IOC.value == _ip(1)))).scalar_one()
+    (card,) = rejected.enrichment["providers"]
+    assert card["verdict"] == "unknown" and "score" not in card
+    assert card["raw"] == {"skipped": "rejected by provider (HTTP 400)"}
+    assert card["checked_at"] == NOW.isoformat()
+    await api_session.refresh(good)
+    assert good.enrichment["providers"][0]["verdict"] == "clean"
+
+    # run berikutnya (TTL belum lewat): tidak ada yang dipilih ulang
+    again = FakeLookup()
+    await enrich_pending(api_session, specs=[_spec(again)], allow=_allow_all, now=NOW)
+    assert again.values == []
+
+
+async def test_five_rejections_in_a_row_stop_the_provider_so_a_bad_request_cannot_poison_every_ioc(
+    api_session: AsyncSession,
+) -> None:
+    """Kalau SEMUA permintaan ditolak 400 (mis. bentuk permintaan kita yang salah), jangan menulis
+    kartu `unknown` untuk seluruh IOC dengan TTL berhari-hari: berhenti setelah lima beruntun."""
+    for n in range(7):
+        await _ioc(api_session, "ip", _ip(n), last_seen_at=NOW - datetime.timedelta(minutes=n))
+    lookup = FakeLookup({_ip(n): _http_error(400) for n in range(7)})
+
+    summary = await enrich_pending(api_session, specs=[_spec(lookup)], allow=_allow_all, now=NOW)
+
+    assert len(lookup.values) == 5
+    assert summary["abuseipdb"]["rejected"] == 5
+    assert summary["abuseipdb"]["stopped"] == "consecutive_rejections"
+    untouched = (
+        await api_session.execute(select(IOC).where(IOC.value.in_([_ip(5), _ip(6)])))
+    ).scalars()
+    assert [i.enrichment for i in untouched] == [{}, {}]
+
+
+async def test_a_success_resets_the_rejection_streak(api_session: AsyncSession) -> None:
+    # tolak x4, berhasil, tolak x4, berhasil: tidak pernah lima beruntun
+    values = [_ip(n) for n in range(10)]
+    for n, value in enumerate(values):
+        await _ioc(api_session, "ip", value, last_seen_at=NOW - datetime.timedelta(minutes=n))
+    rejected = {v: _http_error(400) for i, v in enumerate(values) if i not in (4, 9)}
+    lookup = FakeLookup(rejected)
+
+    summary = await enrich_pending(api_session, specs=[_spec(lookup)], allow=_allow_all, now=NOW)
+
+    assert summary["abuseipdb"]["rejected"] == 8 and summary["abuseipdb"]["checked"] == 2
+    assert summary["abuseipdb"]["stopped"] is None
+
+
+async def test_a_5xx_still_leaves_no_card_and_is_retried_on_the_next_run(
+    api_session: AsyncSession,
+) -> None:
+    ioc = await _ioc(api_session, "ip", _ip(1))
+    broken = FakeLookup({_ip(1): _http_error(503)})
+    summary = await enrich_pending(api_session, specs=[_spec(broken)], allow=_allow_all, now=NOW)
+    assert (summary["abuseipdb"]["failed"], summary["abuseipdb"]["rejected"]) == (1, 0)
+    await api_session.refresh(ioc)
+    assert ioc.enrichment == {}
+
+    recovered = FakeLookup()
+    await enrich_pending(api_session, specs=[_spec(recovered)], allow=_allow_all, now=NOW)
+    assert recovered.values == [_ip(1)]

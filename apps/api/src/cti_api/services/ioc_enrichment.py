@@ -14,12 +14,21 @@ Aturan yang SENGAJA begitu:
   jatah per jam.
 - **Jatah**: `allow(provider, rate)` (bucket Redis per provider, disuntik task) dipanggil sebelum
   tiap lookup; habis = provider berhenti di run ini (`stopped="budget"`), run berikutnya lanjut.
-- **Isolasi kegagalan**: satu IOC gagal (jaringan, 5xx, respons aneh) tidak menghentikan yang lain
-  dan tidak meninggalkan kartu (dicoba lagi di run berikutnya). Status 401/403/429 (kunci salah,
-  kuota habis) menghentikan provider itu di run ini, dan tiga kegagalan beruntun juga, supaya
-  provider yang mati tidak dihantam puluhan kali per run. Provider lain tetap jalan.
-- **Log**: hanya nama kelas exception dan kode status, TIDAK pernah pesannya (pesan exception
-  httpx bisa memuat URL dengan kunci).
+- **Isolasi kegagalan**: satu IOC gagal karena provider atau jaringan (5xx, putus, respons aneh)
+  tidak menghentikan yang lain dan tidak meninggalkan kartu (dicoba lagi di run berikutnya).
+  Status 401/403/429 (kunci salah, kuota habis) menghentikan provider itu di run ini, dan tiga
+  kegagalan beruntun juga, supaya provider yang mati tidak dihantam puluhan kali per run. Provider
+  lain tetap jalan.
+- **Penolakan atas IOC itu sendiri** (error 4xx lain, mis. HTTP 400 untuk nilai yang tak mau
+  diterima OTX) disimpan sebagai kartu `unknown` ("rejected by provider (HTTP 400)") dan baru
+  dicek ulang sesudah TTL. Tanpa itu IOC-nya dipilih ulang di kepala antrean tiap run dan tiga
+  yang begitu menghentikan provider (produksi 2026-10-16: 45 dari 60 run OTX). Lima penolakan
+  beruntun tanpa satu pun keberhasilan menghentikan provider: kalau SEMUA permintaan ditolak,
+  yang salah bentuk permintaan kita, dan kartu `unknown` berumur TTL tidak boleh ditulis untuk
+  seluruh IOC.
+- **Log**: nama kelas exception, kode status, serta `ioc_id` dan `ioc_type` (cukup untuk menemukan
+  IOC-nya di DB), TIDAK pernah pesan exception (pesan httpx bisa memuat URL dengan kunci) dan
+  tidak nilai IOC-nya.
 - **Nilai di-refang** sebelum dikirim (IOC disimpan apa adanya dari artikel, mis. `1[.]2[.]3[.]4`).
   IP non-publik tidak dikirim; ia diberi kartu `skipped` supaya tidak dipilih ulang tiap run.
 - **Commit per IOC**: hasil yang sudah didapat (dan jatah yang sudah terpakai) tidak hilang kalau
@@ -51,6 +60,7 @@ MAX_PER_RUN = 25
 """Batas IOC per provider per run (task jalan tiap 15 menit); jatah per jam tetap yang membatasi."""
 _STOP_STATUSES = frozenset({401, 403, 429})
 _MAX_CONSECUTIVE_FAILURES = 3
+_MAX_CONSECUTIVE_REJECTIONS = 5
 
 AllowFn = Callable[[str, str], bool]
 _Lookup = Callable[[str, str], Awaitable[dict[str, Any]]]
@@ -144,7 +154,7 @@ def _skip_reason(ioc_type: str, value: str) -> str | None:
 
 
 def _new_stats() -> dict[str, Any]:
-    return {"checked": 0, "skipped": 0, "failed": 0, "stopped": None}
+    return {"checked": 0, "skipped": 0, "rejected": 0, "failed": 0, "stopped": None}
 
 
 async def enrich_pending(
@@ -156,9 +166,10 @@ async def enrich_pending(
     max_per_run: int = MAX_PER_RUN,
     sleep: SleepFn = asyncio.sleep,
 ) -> dict[str, dict[str, Any]]:
-    """Satu putaran untuk semua `specs`. Mengembalikan statistik per provider:
-    `checked`, `skipped`, `failed`, dan `stopped` (`None` | `"budget"` | `"HTTP <kode>"` |
-    `"consecutive_failures"`)."""
+    """Satu putaran untuk semua `specs`. Mengembalikan statistik per provider: `checked`, `skipped`
+    (tak layak dikirim), `rejected` (provider menolak IOC-nya dengan 4xx), `failed`, dan `stopped`
+    (`None` | `"budget"` | `"HTTP <kode>"` | `"consecutive_failures"` |
+    `"consecutive_rejections"`)."""
     now = now or datetime.datetime.now(datetime.UTC)
     repo = AsyncIOCRepo(session)
     summary: dict[str, dict[str, Any]] = {}
@@ -173,6 +184,7 @@ async def enrich_pending(
         )
         looked_up = 0
         failures_in_a_row = 0
+        rejections_in_a_row = 0
         for ioc in candidates:
             value = refang(ioc.value)
             reason = _skip_reason(ioc.type, value)
@@ -196,19 +208,43 @@ async def enrich_pending(
             except httpx.HTTPStatusError as exc:
                 status = exc.response.status_code
                 log.warning(
-                    "ioc_enrich_failed", provider=spec.key, error="HTTPStatusError", status=status
+                    "ioc_enrich_failed",
+                    provider=spec.key,
+                    ioc_id=ioc.id,
+                    ioc_type=ioc.type,
+                    error="HTTPStatusError",
+                    status=status,
                 )
                 if status in _STOP_STATUSES:
                     stats["stopped"] = f"HTTP {status}"
                     break
-                stats["failed"] += 1
-                failures_in_a_row += 1
+                if 400 <= status < 500:
+                    # Provider menolak IOC INI (bukan dirinya yang bermasalah): kartu `unknown`,
+                    # supaya tidak dipilih ulang di kepala antrean tiap run.
+                    card = ioc_providers.skipped_card(
+                        spec.key, spec.name, f"rejected by provider (HTTP {status})"
+                    )
+                    card["checked_at"] = now.isoformat()
+                    await repo.set_enrichment_provider(ioc, card, now=now)
+                    await session.commit()
+                    stats["rejected"] += 1
+                    rejections_in_a_row += 1
+                else:
+                    stats["failed"] += 1
+                    failures_in_a_row += 1
             except (httpx.TransportError, ValueError, KeyError, TypeError) as exc:
-                log.warning("ioc_enrich_failed", provider=spec.key, error=type(exc).__name__)
+                log.warning(
+                    "ioc_enrich_failed",
+                    provider=spec.key,
+                    ioc_id=ioc.id,
+                    ioc_type=ioc.type,
+                    error=type(exc).__name__,
+                )
                 stats["failed"] += 1
                 failures_in_a_row += 1
             else:
                 failures_in_a_row = 0
+                rejections_in_a_row = 0
                 card["checked_at"] = now.isoformat()
                 await repo.set_enrichment_provider(ioc, card, now=now)
                 await session.commit()
@@ -216,6 +252,9 @@ async def enrich_pending(
 
             if failures_in_a_row >= _MAX_CONSECUTIVE_FAILURES:
                 stats["stopped"] = "consecutive_failures"
+                break
+            if rejections_in_a_row >= _MAX_CONSECUTIVE_REJECTIONS:
+                stats["stopped"] = "consecutive_rejections"
                 break
 
     return summary

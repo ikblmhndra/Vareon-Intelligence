@@ -328,8 +328,9 @@ flowchart LR
   each -->|"private / invalid IP"| skip["'skipped' card, no call"]
   each -->|"budget left?<br/>Redis fixed window"| call["refang, then one GET<br/>(ioc_providers.lookup_*)"]
   call -->|"ok"| card["card -> iocs.enrichment.providers[]<br/>+ checked_at, updated_at; commit"]
-  call -->|"401 / 403 / 429, or 3 failures in a row"| stop["provider stops for this run"]
-  call -->|"other failure"| next["no card, retried next run"]
+  call -->|"401 / 403 / 429, 3 failures or 5 rejections in a row"| stop["provider stops for this run"]
+  call -->|"other 4xx (e.g. 400)"| rej["'unknown' card 'rejected by provider',<br/>not retried until the TTL"]
+  call -->|"5xx, network, bad payload"| next["no card, retried next run"]
 ```
 
 - **Cards**: one per provider in `iocs.enrichment.providers`, in the shape `ioc-detail-dialog.tsx` already renders (`key`, `name`,
@@ -338,7 +339,12 @@ flowchart LR
   answer ("not seen"), stored as an `unknown` card.
 - **Budget**: `allow(provider, rate)` is a `TokenBucket` call (`<PROVIDER>__RATE`, per hour); `cti_api` only receives the callable,
   because the API package must not import `cti_scraper`. VirusTotal also waits at least 15 s between calls.
-- **Failure handling**: only the exception class and the status code are logged, never the message (it can echo a key).
+- **Failure handling**: a 4xx that is about the IOC itself (400 first of all) stores an `unknown` card (`raw.skipped` = "rejected by
+  provider (HTTP 400)") so the IOC is not picked again at the head of the queue on every run (that stalled OTX on prod before
+  0.6.1); five rejections in a row stop the provider, because if everything is rejected the request shape is wrong and no card
+  with a TTL should be written for every IOC. 5xx, network errors and odd payloads leave no card and are retried next run (three
+  in a row stop the provider). Only the exception class, the status code, `ioc_id` and `ioc_type` are logged, never the message
+  (it can echo a key) or the IOC value.
 - **Values** are re-fanged before they are sent (`cti_core.ioc.extractor.refang`); only lookups are made, nothing is submitted or scanned.
 
 ## 4. Data stores and access patterns
