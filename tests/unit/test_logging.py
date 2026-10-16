@@ -37,11 +37,19 @@ def test_configure_logging_is_idempotent() -> None:
 
 @pytest.fixture
 def restore_httpx_level() -> Iterator[None]:
-    """`configure_logging` menyetel level logger "httpx" (global proses): kembalikan setelah tes."""
+    """`configure_logging` menyetel level logger "httpx" (global proses): kembalikan setelah tes.
+
+    `disabled` ikut dijaga. `alembic/env.py` memanggil `fileConfig`, yang menonaktifkan logger yang
+    sudah ada, dan di CI tes integrasi (migrasi) jalan SEBELUM tes ini. Logger yang `disabled`
+    membuang semua rekaman: tes "WARNING tetap lolos" gagal, dan tes "INFO dibuang" lulus tanpa
+    menguji apa pun.
+    """
     logger = logging.getLogger("httpx")
-    before = logger.level
+    level, disabled = logger.level, logger.disabled
+    logger.disabled = False
     yield
-    logger.setLevel(before)
+    logger.setLevel(level)
+    logger.disabled = disabled
 
 
 def test_configure_logging_lowers_the_httpx_logger_to_warning(
