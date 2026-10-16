@@ -4040,12 +4040,36 @@ export interface components {
              */
             risk_acceptance: string;
         };
+        /**
+         * DashboardCoverage
+         * @description Jumlah ARTIKEL yang punya minimal satu negara / threat actor / TTP --
+         *     penyebut buat chart dashboard (bandingkan dengan `total_articles`).
+         */
+        DashboardCoverage: {
+            /** With Actor */
+            with_actor: number;
+            /** With Country */
+            with_country: number;
+            /** With Ttp */
+            with_ttp: number;
+        };
         /** DashboardStats */
         DashboardStats: {
             /** By News Type */
             by_news_type: components["schemas"]["TopItem"][];
+            /** Confirmed Incidents */
+            confirmed_incidents: number;
             /** Country Counts */
             country_counts: components["schemas"]["TopItem"][];
+            coverage: components["schemas"]["DashboardCoverage"];
+            /** Generated At */
+            generated_at: string;
+            /** Industry Unspecified */
+            industry_unspecified: number;
+            /** Prev Confirmed Incidents */
+            prev_confirmed_incidents: number | null;
+            /** Prev Total Articles */
+            prev_total_articles: number | null;
             /** Timeline */
             timeline: components["schemas"]["TimelinePoint"][];
             /** Top Countries */
@@ -8702,6 +8726,9 @@ export interface operations {
             query?: {
                 posted_on_start?: string | null;
                 posted_on_end?: string | null;
+                /** @description `days` hari terakhir + pembanding periode lalu; menang atas `posted_on_*`. */
+                days?: number | null;
+                incident_only?: boolean;
             };
             header?: {
                 authorization?: string | null;

@@ -21,6 +21,8 @@ export function TaLeaderboard({ d }: { d: ExecDashboardV2 }) {
   const prevSet = new Set(d.prev_ta_names.map((n) => n.toLowerCase()));
   const taConf = d.ta_confidence;
   const maxTa = d.ta_leaderboard[0]?.count || 1;
+  // NEW/REC membandingkan dengan periode sebelumnya; kalau itu kosong, semua aktor "NEW" = noise.
+  const showStatus = d.prev_period_reliable;
 
   return (
     <div className="space-y-1.5 rounded-2xl border border-border bg-surface p-5 shadow-sm">
@@ -38,14 +40,16 @@ export function TaLeaderboard({ d }: { d: ExecDashboardV2 }) {
           >
             <span className="flex min-w-0 flex-1 items-center gap-1 truncate font-mono text-xs text-foreground">
               {toTitleCase(ta.name)}
-              <span
-                className={cn(
-                  "shrink-0 rounded px-1 py-0.5 text-xs",
-                  isNew ? "bg-success/20 text-success" : "bg-muted text-muted-foreground",
-                )}
-              >
-                {isNew ? "NEW" : "REC"}
-              </span>
+              {showStatus && (
+                <span
+                  className={cn(
+                    "shrink-0 rounded px-1 py-0.5 text-xs",
+                    isNew ? "bg-success/20 text-success" : "bg-muted text-muted-foreground",
+                  )}
+                >
+                  {isNew ? "NEW" : "REC"}
+                </span>
+              )}
             </span>
             <div className="mx-2 h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
               <div className="h-full rounded-full bg-primary/60" style={{ width: `${pct}%` }} />

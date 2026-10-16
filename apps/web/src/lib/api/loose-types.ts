@@ -477,6 +477,10 @@ export interface ExecDashboardV1 {
   prev_unique_ta: number;
   active_sectors: number;
   prev_active_sectors: number;
+  /** false = periode sebelumnya kosong/jarang: jangan bandingkan `prev_*`, penanda NEW/REC aktor tak bermakna. */
+  prev_period_reliable: boolean;
+  /** Insiden berlabel "General" (tanpa sektor spesifik): tidak ikut peringkat/heatmap sektor. */
+  sector_unspecified: number;
   months: string[];
   top_sectors: string[];
   top_countries: string[];
@@ -543,6 +547,8 @@ export interface ExecDashboardV2 extends ExecDashboardV1 {
   sector_actor_matrix: { sectors: string[]; actors: string[]; matrix: number[][]; max_val: number };
   ta_confidence: Record<string, number>;
   confirmed_incident_rate: number | null;
+  /** true = riwayat bulan belum cukup, risk score = volume saja (tanpa komponen trend/spike). */
+  risk_volume_only: boolean;
   view_config: ExecViewConfig;
   critical_cves: { cve_id: string; cve_score: number; cve_severity: string; cisa_kev: boolean; tech: string }[];
   recent_clusters_summary: {
@@ -556,6 +562,8 @@ export interface ExecDashboardV2 extends ExecDashboardV1 {
    * ke-serialize, padahal wajib buat manggil `POST
    * /api/iocs/{ioc_id}/feedback` (kontrak baru). */
   pending_fp_queue: { id: number; value: string; type: string; last_seen: string; confidence_score: number }[];
+  /** Total antrean FP; `pending_fp_queue` cuma memuat 20 teratas. */
+  pending_fp_total: number;
   source_reliability_spread: Record<string, number>;
 }
 

@@ -7,6 +7,7 @@ import type { ExecDashboardV2 } from "@/lib/api/loose-types";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const DAYS = 30;
+const UNSPECIFIED_SECTOR = "General";
 
 /** Band burgundy "Need Attention" di atas Dashboard (Arah A): satu titik
  * fokus berisi hal yang paling mendesak, dibaca dari dashboard exec + stats CVE. */
@@ -33,7 +34,15 @@ export function AttentionBand() {
   if (exec.isPending || cve.isPending) return <Skeleton className="h-36 w-full rounded-3xl" />;
   if (exec.isError && cve.isError) return null;
 
-  const top = exec.data?.sector_risk_scores[0];
+  // "General" = artikel tanpa sektor spesifik (62% artikel di prod), bukan sektor. Peringkat
+  // `sector_risk_scores` murni volume bulan terakhir (komponen trend/spike butuh >=3-4 bucket
+  // bulan, jendela 30 hari paling banyak dua), jadi tanpa penyaringan ini yang menang selalu "General".
+  const top = exec.data?.sector_risk_scores.find((s) => s.sector !== UNSPECIFIED_SECTOR);
+  // Skor itu cuma volume relatif terhadap sektor terbesar (selalu "General" -> leader 50/100),
+  // bukan sinyal risiko. Tampilkan jumlah insiden sektornya saja.
+  const topIncidents = top
+    ? exec.data?.sector_trend.find((s) => s.sector === top.sector)?.data.reduce((a, b) => a + b, 0)
+    : undefined;
 
   return (
     <section
@@ -47,8 +56,8 @@ export function AttentionBand() {
         </div>
         <div className="mt-1 text-sm text-[#e6cfd6]">Period {DAYS} days</div>
       </div>
-      <Metric value={cve.data?.critical} label="Open CVE Critical" accent />
-      <Metric value={top?.risk_score} suffix="/100" label={top ? `Risk Score ${top.sector}` : "Risk Score"} />
+      <Metric value={cve.data?.critical} label="Critical CVEs (CVSS ≥ 9)" accent />
+      <Metric value={topIncidents} label={top ? `Incidents in ${top.sector}` : "Incidents in top sector"} />
       <Metric value={exec.data?.total_incidents} label="Incidents" />
     </section>
   );

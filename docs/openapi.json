@@ -1555,6 +1555,30 @@
         "title": "CveTicketBody",
         "type": "object"
       },
+      "DashboardCoverage": {
+        "description": "Jumlah ARTIKEL yang punya minimal satu negara / threat actor / TTP --\npenyebut buat chart dashboard (bandingkan dengan `total_articles`).",
+        "properties": {
+          "with_actor": {
+            "title": "With Actor",
+            "type": "integer"
+          },
+          "with_country": {
+            "title": "With Country",
+            "type": "integer"
+          },
+          "with_ttp": {
+            "title": "With Ttp",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "with_country",
+          "with_actor",
+          "with_ttp"
+        ],
+        "title": "DashboardCoverage",
+        "type": "object"
+      },
       "DashboardStats": {
         "properties": {
           "by_news_type": {
@@ -1564,12 +1588,49 @@
             "title": "By News Type",
             "type": "array"
           },
+          "confirmed_incidents": {
+            "title": "Confirmed Incidents",
+            "type": "integer"
+          },
           "country_counts": {
             "items": {
               "$ref": "#/components/schemas/TopItem"
             },
             "title": "Country Counts",
             "type": "array"
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/DashboardCoverage"
+          },
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "industry_unspecified": {
+            "title": "Industry Unspecified",
+            "type": "integer"
+          },
+          "prev_confirmed_incidents": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prev Confirmed Incidents"
+          },
+          "prev_total_articles": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prev Total Articles"
           },
           "timeline": {
             "items": {
@@ -1635,6 +1696,12 @@
           "total_sources",
           "total_countries",
           "total_threat_actors",
+          "confirmed_incidents",
+          "prev_total_articles",
+          "prev_confirmed_incidents",
+          "industry_unspecified",
+          "coverage",
+          "generated_at",
           "top_countries",
           "country_counts",
           "top_sources",
@@ -6398,7 +6465,7 @@
   },
   "info": {
     "title": "Vareon Intelligence API",
-    "version": "0.6.1"
+    "version": "0.6.2"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -12443,6 +12510,36 @@
                 }
               ],
               "title": "Posted On End"
+            }
+          },
+          {
+            "description": "`days` hari terakhir + pembanding periode lalu; menang atas `posted_on_*`.",
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 3650,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`days` hari terakhir + pembanding periode lalu; menang atas `posted_on_*`.",
+              "title": "Days"
+            }
+          },
+          {
+            "in": "query",
+            "name": "incident_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Incident Only",
+              "type": "boolean"
             }
           },
           {
