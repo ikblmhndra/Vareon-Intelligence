@@ -107,7 +107,7 @@ export function FpQueue({ d }: { d: ExecDashboardV2 }) {
             const confColor = conf >= 70 ? "text-primary" : conf >= 50 ? "text-foreground" : "text-destructive";
             return (
               <TableRow key={ioc.id}>
-                <TableCell className="font-mono text-xs text-primary">{ioc.value || "—"}</TableCell>
+                <TableCell className="font-code text-xs text-primary">{ioc.value || "—"}</TableCell>
                 <TableCell className="font-mono text-xs text-muted-foreground">{ioc.type || "—"}</TableCell>
                 <TableCell className="font-mono text-xs text-muted-foreground">{ioc.last_seen || "—"}</TableCell>
                 <TableCell className={cn("font-mono text-xs", confColor)}>{conf}%</TableCell>

@@ -6,6 +6,35 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
+## [0.7.1] - 2026-10-17
+
+**Redesain tampilan web dan perbaikan aksesibilitas hasil audit visual.** Hanya frontend (`apps/web`): tanpa migrasi, tanpa kunci
+`.env` baru, tanpa perubahan API. Deploy biasa (`make deploy`); hanya container `web` yang berubah.
+
+### Diubah
+- Header halaman seragam (judul besar, deskripsi, slot aksi) di semua halaman, dan judul tab per halaman
+  ("CVE Tracker · Vareon Intelligence").
+- Kartu memakai satu gaya (`surface-raised`: bayangan bertinta burgundy + garis tipis); panel KPI dashboard jadi satu panel,
+  grid dashboard asimetris (peta 8/4, timeline 7/5, TTP 7/5), dan angka KPI memakai pemisah ribuan.
+- Sidebar bisa diciutkan jadi icon rail (opsional, default tetap terbuka, pilihan tersimpan di browser, tooltip + keyboard).
+- Ukuran teks data `text-xs` 12px → 13px. Di bawah 640px tombol, input, select, dan nav utama setinggi 44px.
+- Nilai data (IOC, CVE/TTP ID, ID dan jadwal scraper, IP audit, 4 karakter key) memakai IBM Plex Mono. Sebelumnya `font-mono`
+  ternyata Google Sans Flex (proporsional) di 582 tempat.
+- Tab pil jadi komponen `TabPills` (role tab, navigasi panah kiri/kanan); `/intelligence` jadi `<nav>` dengan `aria-current`.
+- Delta KPI dengan pembanding kecil (< 10) menampilkan selisih absolut ("+316") alih-alih persen ekstrem ("▲ 28400%").
+
+### Ditambah
+- Skip-link "Skip to content", skeleton shell saat sesi dimuat, dan halaman 404 / error / login bermerek.
+
+### Diperbaiki
+- Kontras mode terang (WCAG AA): Risk Matrix (87 elemen), IOC (73), Newsroom (20), X Intel (14), Exec (9), Admin (5), Scrapers (4),
+  Recap (1). Token teks-di-atas-tint baru (`--primary-text`, `--success-text`, dst.); heatmap Exec membatasi alfa tint.
+- Teks dialog Changelog dan Executive Brief tidak lagi putih di atas beige di mode terang (`prose-invert`).
+- Input date/number (19), checkbox baris CVE, dan tombol hapus IOC kini punya nama untuk pembaca layar; 404, error, dan login punya
+  landmark `<main>`; heading IOC tidak lagi melompat h1 → h3.
+- Target sentuh minimal 24px; scrollbar horizontal nav mobile tidak lagi tampil sebagai pil abu-abu; kolom Summary tabel CVE tidak
+  menyempit di mobile; `100vh` → `100dvh` (bug viewport iOS Safari).
+
 ## [0.7.0] - 2026-10-16
 
 **Key third-party bisa diganti dari UI admin, tanpa restart** (ROADMAP #23). Halaman baru **Admin > Third-party Keys**

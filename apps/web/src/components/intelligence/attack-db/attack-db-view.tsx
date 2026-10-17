@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { cn } from "@/lib/utils";
+import { TabPills } from "@/components/ui/tab-pills";
 import { SyncStatusCards } from "@/components/intelligence/attack-db/sync-status-cards";
 import { TechniquesPanel } from "@/components/intelligence/attack-db/techniques-panel";
 import { GroupsPanel } from "@/components/intelligence/attack-db/groups-panel";
@@ -30,23 +30,7 @@ export function AttackDbView() {
     <div>
       <SyncStatusCards />
 
-      <div className="mb-4 flex gap-1.5 overflow-x-auto">
-        {BROWSE_TABS.map((t) => (
-          <button
-            key={t.value}
-            type="button"
-            onClick={() => setTab(t.value)}
-            className={cn(
-              "shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-sm font-medium transition-colors duration-200",
-              tab === t.value
-                ? "border-primary/30 bg-primary/10 text-primary"
-                : "border-border bg-surface text-muted-foreground hover:bg-muted hover:text-foreground",
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <TabPills aria-label="ATT&CK collections" className="mb-4" items={BROWSE_TABS} value={tab} onChange={setTab} />
 
       {tab === "techniques" && <TechniquesPanel onSelect={setDetailTarget} />}
       {tab === "groups" && <GroupsPanel onSelect={setDetailTarget} />}

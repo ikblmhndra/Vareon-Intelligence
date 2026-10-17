@@ -69,12 +69,44 @@
   --color-severity-medium: var(--severity-medium);
   --color-severity-low: var(--severity-low);
   --color-info: var(--info);
+  /* Warna TEKS untuk di atas tint (`bg-X/10..25`). Token dasarnya (`--primary`, `--success`, ...)
+     tetap untuk isian solid, garis, dan teks di atas permukaan polos; di atas tint rasionya jatuh ke
+     3.6-4.1:1 (di bawah AA 4.5:1). Hasil audit visual 2026-10-17. */
+  --color-primary-text: var(--primary-text);
+  --color-destructive-text: var(--destructive-text);
+  --color-success-text: var(--success-text);
+  --color-warning-text: var(--warning-text);
+  --color-info-text: var(--info-text);
+  --color-severity-critical-text: var(--severity-critical-text);
+  --color-severity-high-text: var(--severity-high-text);
+  --color-severity-medium-text: var(--severity-medium-text);
+  --color-severity-low-text: var(--severity-low-text);
   --color-tag-violet: var(--tag-violet);
+  --color-tag-violet-text: var(--tag-violet-text);
   --color-chart-6: var(--chart-6);
   --color-chart-7: var(--chart-7);
   --color-chart-8: var(--chart-8);
   --color-chart-9: var(--chart-9);
   --color-chart-10: var(--chart-10);
+}
+
+/* Bayangan bertinta Burgundy (#430a23, sama dengan band "Need Attention") menggantikan
+   hitam generik bawaan Tailwind: di atas halaman putih terbaca hangat, bukan abu kusam.
+   Satu sumber cahaya (atas), alfa rendah supaya kartu tetap ditentukan warna surface. */
+@theme {
+  --shadow-sm: 0 1px 2px 0 rgb(67 10 35 / 0.06), 0 1px 3px 0 rgb(67 10 35 / 0.08);
+  --shadow-md: 0 2px 4px -1px rgb(67 10 35 / 0.07), 0 6px 12px -2px rgb(67 10 35 / 0.1);
+  --shadow-lg: 0 4px 8px -2px rgb(67 10 35 / 0.08), 0 12px 24px -4px rgb(67 10 35 / 0.14);
+  /* 12px -> 13px: `text-xs` adalah ukuran teks data dominan (67-88% teks di halaman padat).
+     Rasio line-height bawaan Tailwind (unitless) ikut membesar. */
+  --text-xs: 0.8125rem;
+}
+
+/* Permukaan "raised" untuk kartu konten utama: warna surface + bayangan bertinta, tepinya cuma
+   hairline 7% (bukan garis beige penuh), jadi kartu terbaca sebagai lapisan, bukan kotak.
+   Hierarki: hero (band burgundy) > raised (ini) > flat (tanpa latar, hanya spasi/pembatas). */
+@utility surface-raised {
+  @apply bg-surface shadow-sm ring-1 ring-foreground/[0.07];
 }
 
 :root {
@@ -106,6 +138,17 @@
   --severity-high: #b04a00;
   --severity-medium: #7a5c00;
   --severity-low: #17703f;
+  /* Teks di atas tint: >= 4.5:1 terhadap tint terburuk (/25 di atas surface beige). */
+  --primary-text: #a8001f;
+  --destructive-text: #9a1c12;
+  --success-text: #0f5c32;
+  --warning-text: #7d3b00;
+  --info-text: #1b5873;
+  --severity-critical-text: #9a1c12;
+  --severity-high-text: #8a3f00;
+  --severity-medium-text: #6b4f00;
+  --severity-low-text: #0f5c32;
+  --tag-violet-text: #5a3d87;
   --chart-1: #256a8a;
   --chart-2: #17703f;
   --chart-3: #b04a00;
@@ -156,6 +199,17 @@
   --severity-high: #ffa164;
   --severity-medium: #f5cf5a;
   --severity-low: #76ce93;
+  /* Mode gelap sudah lolos AA di atas tint: teks memakai token dasarnya. */
+  --primary-text: var(--primary);
+  --destructive-text: var(--destructive);
+  --success-text: var(--success);
+  --warning-text: var(--warning);
+  --info-text: var(--info);
+  --severity-critical-text: var(--severity-critical);
+  --severity-high-text: var(--severity-high);
+  --severity-medium-text: var(--severity-medium);
+  --severity-low-text: var(--severity-low);
+  --tag-violet-text: var(--tag-violet);
   --chart-1: #92bbd1;
   --chart-2: #76ce93;
   --chart-3: #ffa164;
@@ -196,6 +250,11 @@
   }
   h1, h2, h3 {
     letter-spacing: -0.01em;
+    /* Hindari satu kata yatim di baris terakhir judul. */
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
   }
   /* Ikon lucide sebaris teks (badge/span) ikut ukuran font; di dalam Button utilitas `size-*` menang. */
   svg.lucide {
@@ -207,9 +266,50 @@
   }
 }
 
+/* Typography plugin (`.prose`) memakai abu-abu bawaannya, dan `prose-invert` hanya benar di mode
+   gelap. Petakan ke token tema: otomatis benar di terang dan gelap, dan memakai palet brand.
+   Tanpa `prose-invert` di pemakainya (changelog, Executive Brief). */
+.prose {
+  --tw-prose-body: var(--foreground);
+  --tw-prose-headings: var(--foreground);
+  --tw-prose-lead: var(--muted-foreground);
+  --tw-prose-links: var(--primary);
+  --tw-prose-bold: var(--foreground);
+  --tw-prose-counters: var(--muted-foreground);
+  --tw-prose-bullets: var(--muted-foreground);
+  --tw-prose-hr: var(--border);
+  --tw-prose-quotes: var(--foreground);
+  --tw-prose-quote-borders: var(--border);
+  --tw-prose-captions: var(--muted-foreground);
+  --tw-prose-code: var(--foreground);
+  --tw-prose-pre-code: var(--foreground);
+  --tw-prose-pre-bg: var(--panel);
+  --tw-prose-th-borders: var(--border);
+  --tw-prose-td-borders: var(--border);
+}
+
+/* Latar halaman auth (login/404/error): dua cahaya radial -- merah brand dari kiri atas,
+   beige dari kanan bawah -- supaya halaman tanpa konten padat tidak terasa datar. */
+.auth-backdrop {
+  background-image:
+    radial-gradient(
+      60rem 38rem at 12% -8%,
+      color-mix(in oklab, var(--primary) 12%, transparent),
+      transparent 62%
+    ),
+    radial-gradient(
+      52rem 34rem at 104% 108%,
+      color-mix(in oklab, var(--panel) 85%, transparent),
+      transparent 62%
+    );
+}
+
 /* Scrollbar tipis -- port `custom.css` lama apa adanya. */
 ::-webkit-scrollbar {
   width: 6px;
+  /* Tanpa `height`, scrollbar horizontal (nav mobile, tabel) memakai tinggi bawaan ±15px dan
+     tampak seperti pil placeholder abu-abu. */
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
   background: var(--background);

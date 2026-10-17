@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 
 import { cn } from "@/lib/utils";
-import { taConfidenceColor } from "@/lib/exec/format";
+import { onTint, taConfidenceColor } from "@/lib/exec/format";
 import type { ExecDashboardV2 } from "@/lib/api/loose-types";
 
 function toTitleCase(s: string): string {
@@ -25,7 +25,7 @@ export function TaLeaderboard({ d }: { d: ExecDashboardV2 }) {
   const showStatus = d.prev_period_reliable;
 
   return (
-    <div className="space-y-1.5 rounded-2xl border border-border bg-surface p-5 shadow-sm">
+    <div className="space-y-1.5 rounded-2xl surface-raised p-5">
       {d.ta_leaderboard.map((ta) => {
         const isNew = !prevSet.has(ta.name.toLowerCase());
         const conf = taConf[ta.name] ?? taConf[ta.name.toLowerCase()] ?? null;
@@ -44,7 +44,7 @@ export function TaLeaderboard({ d }: { d: ExecDashboardV2 }) {
                 <span
                   className={cn(
                     "shrink-0 rounded px-1 py-0.5 text-xs",
-                    isNew ? "bg-success/20 text-success" : "bg-muted text-muted-foreground",
+                    isNew ? "bg-success/20 text-success-text" : "bg-muted text-muted-foreground",
                   )}
                 >
                   {isNew ? "NEW" : "REC"}
@@ -56,7 +56,7 @@ export function TaLeaderboard({ d }: { d: ExecDashboardV2 }) {
             </div>
             <span className="font-mono text-xs text-muted-foreground">{ta.count}</span>
             <span
-              className={cn("ml-auto shrink-0 rounded px-1 py-0.5 font-mono text-xs", confColor, confColor.replace("text-", "bg-") + "/15")}
+              className={cn("ml-auto shrink-0 rounded px-1 py-0.5 font-mono text-xs", onTint(confColor), confColor.replace("text-", "bg-") + "/15")}
               title="Signal quality: % of articles classified as incident type"
             >
               {conf === null ? "?" : `${conf}%`}

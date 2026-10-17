@@ -90,12 +90,12 @@ export function SimpleClustersPanel() {
       <div className="mb-3 flex flex-wrap items-end gap-2 border-b border-border pb-3">
         <div className="flex flex-col gap-1">
           <Label className="text-sm font-medium text-muted-foreground">Days</Label>
-          <Input type="number" min={7} max={90} value={days} onChange={(e) => setDays(Number(e.target.value) || 30)} className="w-20 font-mono text-xs" />
+          <Input type="number" aria-label="Days" min={7} max={90} value={days} onChange={(e) => setDays(Number(e.target.value) || 30)} className="w-20 font-mono text-xs" />
         </div>
         <div className="flex flex-col gap-1">
           <Label className="text-sm font-medium text-muted-foreground">Threshold</Label>
           <Input
-            type="number"
+            type="number" aria-label="Threshold"
             min={0.2}
             max={0.7}
             step={0.05}
@@ -152,14 +152,14 @@ export function SimpleClustersPanel() {
                 <span
                   className={cn(
                     "rounded-full border px-1.5 py-0.5 font-mono text-xs uppercase",
-                    c.confidence === "high" ? "border-success/40 bg-success/10 text-success" : c.confidence === "medium" ? "border-warning/40 bg-warning/10 text-warning" : "border-border text-muted-foreground",
+                    c.confidence === "high" ? "border-success/40 bg-success/10 text-success-text" : c.confidence === "medium" ? "border-warning/40 bg-warning/10 text-warning-text" : "border-border text-muted-foreground",
                   )}
                 >
                   {c.source_count} source{c.source_count !== 1 ? "s" : ""}
                 </span>
                 <span className="rounded-full border border-border bg-surface px-1.5 py-0.5 font-mono text-xs text-muted-foreground">{c.article_count} articles</span>
-                {spike && <span className="rounded-full border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 font-mono text-xs text-destructive">⚡ Active Spike</span>}
-                {c.re_emerged && <span className="rounded-full border border-primary/40 bg-primary/10 px-1.5 py-0.5 font-mono text-xs text-primary">↑ Re-emerging</span>}
+                {spike && <span className="rounded-full border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 font-mono text-xs text-destructive-text">⚡ Active Spike</span>}
+                {c.re_emerged && <span className="rounded-full border border-primary/40 bg-primary/10 px-1.5 py-0.5 font-mono text-xs text-primary-text">↑ Re-emerging</span>}
               </button>
               {isOpen && (
                 <div className="border-t border-border">

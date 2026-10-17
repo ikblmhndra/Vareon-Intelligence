@@ -27,7 +27,7 @@ export function PanelShell({
   minHeight,
 }: PanelShellProps) {
   return (
-    <div className={cn("flex flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-sm", minHeight && "min-h-[280px]")}>
+    <div className={cn("flex flex-col overflow-hidden rounded-2xl surface-raised", minHeight && "min-h-[280px]")}>
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <div className="flex items-center gap-2 text-base font-semibold">
           <span className={cn("size-2 rounded-full", dotClassName)} />

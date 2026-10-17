@@ -80,7 +80,7 @@ export function RolesSection() {
                   <TableCell className="font-mono text-xs text-primary">
                     {r.name}
                     {r.is_system && (
-                      <Badge variant="outline" className="ml-1.5 border-ring/30 bg-ring/10 text-xs text-ring">
+                      <Badge variant="outline" className="ml-1.5 border-ring/30 bg-ring/10 text-xs text-primary-text">
                         system
                       </Badge>
                     )}

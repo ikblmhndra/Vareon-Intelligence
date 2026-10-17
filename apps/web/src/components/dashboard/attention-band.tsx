@@ -47,7 +47,7 @@ export function AttentionBand() {
   return (
     <section
       aria-label="Need Attention"
-      className="grid gap-6 rounded-3xl bg-[#430a23] p-6 text-[#f6ede4] sm:p-8 md:grid-cols-[1.4fr_1fr_1fr_1fr] md:items-center"
+      className="grid gap-6 rounded-3xl bg-[#430a23] bg-[image:radial-gradient(40rem_16rem_at_100%_0%,rgb(255_77_109_/_0.22),transparent_70%)] p-6 text-[#f6ede4] shadow-md sm:p-8 md:grid-cols-[1.4fr_1fr_1fr_1fr] md:items-center"
     >
       <div>
         <div className="text-xs font-semibold tracking-widest text-[#fbbfa1] uppercase">Need Attention</div>

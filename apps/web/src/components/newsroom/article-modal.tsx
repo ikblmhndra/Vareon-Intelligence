@@ -185,7 +185,7 @@ export function ArticleModal({ article: a, onOpenChange }: { article: Article | 
                 <TableBody>
                   {a.ttps.map((t) => (
                     <TableRow key={t.id}>
-                      <TableCell className="font-mono text-xs text-primary">{t.id}</TableCell>
+                      <TableCell className="font-code text-xs text-primary">{t.id}</TableCell>
                       <TableCell className="text-xs">{t.name}</TableCell>
                       <TableCell>
                         <D3fendToggle ttpId={t.id} />
@@ -204,7 +204,7 @@ export function ArticleModal({ article: a, onOpenChange }: { article: Article | 
               <div className="flex flex-col gap-1.5">
                 {iocEntries.map(([field, vals]) => (
                   <div key={field} className="flex items-start gap-2">
-                    <Badge variant="outline" className="border-warning/30 bg-warning/10 font-mono text-xs text-warning">
+                    <Badge variant="outline" className="border-warning/30 bg-warning/10 font-mono text-xs text-warning-text">
                       {IOC_FIELD_LABEL[field] ?? field.toUpperCase()}
                     </Badge>
                     <div className="flex flex-wrap gap-1">

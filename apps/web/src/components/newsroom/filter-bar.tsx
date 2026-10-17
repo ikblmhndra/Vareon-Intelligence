@@ -51,14 +51,14 @@ export function FilterBar({ draft, onDraftChange, onApply, onReset }: FilterBarP
       />
       <span className="text-xs text-muted-foreground">From</span>
       <Input
-        type="date"
+        type="date" aria-label="From date"
         value={draft.dateStart}
         onChange={(e) => set("dateStart", e.target.value)}
         className="w-auto font-mono text-xs"
       />
       <span className="text-xs text-muted-foreground">To</span>
       <Input
-        type="date"
+        type="date" aria-label="To date"
         value={draft.dateEnd}
         onChange={(e) => set("dateEnd", e.target.value)}
         className="w-auto font-mono text-xs"

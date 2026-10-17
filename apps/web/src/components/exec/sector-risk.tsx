@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { riskTier, sectorPeerBenchmark } from "@/lib/exec/format";
+import { onTint, riskTier, sectorPeerBenchmark } from "@/lib/exec/format";
 import type { ExecDashboardV2 } from "@/lib/api/loose-types";
 
 function toTitleCase(s: string): string {
@@ -12,7 +12,7 @@ const RISK_FORMULA_TITLE =
 /** Port Sector Risk Matrix + peer benchmark (`exec.js:135-167`). */
 export function SectorRiskMatrix({ d }: { d: ExecDashboardV2 }) {
   return (
-    <div className="space-y-2 rounded-2xl border border-border bg-surface p-5 shadow-sm">
+    <div className="space-y-2 rounded-2xl surface-raised p-5">
       {d.sector_risk_scores.map((sr) => {
         const tier = riskTier(sr.risk_score);
         const bench = sectorPeerBenchmark(d.sector_trend, sr.sector);
@@ -29,7 +29,7 @@ export function SectorRiskMatrix({ d }: { d: ExecDashboardV2 }) {
             <div
               className={cn(
                 "min-w-[32px] rounded px-1.5 py-0.5 text-center font-mono text-xs",
-                tier.colorClass,
+                onTint(tier.colorClass),
                 tier.colorClass.replace("text-", "bg-") + "/15",
               )}
             >

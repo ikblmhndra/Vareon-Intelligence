@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { cn } from "@/lib/utils";
+import { TabPills } from "@/components/ui/tab-pills";
 import { CveCoreView } from "@/components/cve/cve-core-view";
 import { CveDashboardView } from "@/components/cve/cve-dashboard-view";
 import { CveTicketingView } from "@/components/cve/cve-ticketing-view";
@@ -12,20 +12,20 @@ import { MonitoredTechPanel } from "@/components/cve/monitored-tech-panel";
 import { PkgVulnView } from "@/components/cve/pkgvuln/pkgvuln-view";
 
 const VIEWS = [
-  { id: "cves", label: "CVE Tracker" },
-  { id: "pkgvuln", label: "Package Vulnerabilities" },
+  { value: "cves", label: "CVE Tracker" },
+  { value: "pkgvuln", label: "Package Vulnerabilities" },
 ] as const;
-type View = (typeof VIEWS)[number]["id"];
+type View = (typeof VIEWS)[number]["value"];
 
 const CVE_SUBVIEWS = [
-  { id: "cves", label: "CVEs" },
-  { id: "dashboard", label: "Dashboard" },
-  { id: "ticketing", label: "Ticketing" },
-  { id: "monitored", label: "Monitored Tech" },
-  { id: "alltech", label: "All Tech" },
-  { id: "cvedb", label: "CVE DB" },
+  { value: "cves", label: "CVEs" },
+  { value: "dashboard", label: "Dashboard" },
+  { value: "ticketing", label: "Ticketing" },
+  { value: "monitored", label: "Monitored Tech" },
+  { value: "alltech", label: "All Tech" },
+  { value: "cvedb", label: "CVE DB" },
 ] as const;
-type CveSubview = (typeof CVE_SUBVIEWS)[number]["id"];
+type CveSubview = (typeof CVE_SUBVIEWS)[number]["value"];
 
 /**
  * Port `tab_cvetracker.html`+`cve.js`+`techstack.js`+`pkgvuln.js`.
@@ -41,41 +41,11 @@ export default function CveTrackerPage() {
 
   return (
     <div>
-      <div className="mb-4 flex gap-1.5 border-b border-border pb-3 overflow-x-auto">
-        {VIEWS.map((v) => (
-          <button
-            key={v.id}
-            onClick={() => setView(v.id)}
-            className={cn(
-              "shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-sm font-medium transition-colors duration-200",
-              view === v.id
-                ? "border-primary/30 bg-primary/10 text-primary"
-                : "border-border bg-surface text-muted-foreground hover:bg-muted hover:text-foreground",
-            )}
-          >
-            {v.label}
-          </button>
-        ))}
-      </div>
+      <TabPills aria-label="CVE sections" className="mb-4 border-b border-border pb-3" items={VIEWS} value={view} onChange={setView} />
 
       {view === "cves" ? (
         <div>
-          <div className="mb-3 flex gap-1.5 overflow-x-auto">
-            {CVE_SUBVIEWS.map((s) => (
-              <button
-                key={s.id}
-                onClick={() => setSubview(s.id)}
-                className={cn(
-                  "shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-sm font-medium transition-colors duration-200",
-                  subview === s.id
-                    ? "border-primary/30 bg-primary/10 text-primary"
-                    : "border-border bg-surface text-muted-foreground hover:bg-muted hover:text-foreground",
-                )}
-              >
-                {s.label}
-              </button>
-            ))}
-          </div>
+          <TabPills aria-label="CVE views" className="mb-3" items={CVE_SUBVIEWS} value={subview} onChange={setSubview} />
           {subview === "cves" ? (
             <CveCoreView />
           ) : subview === "dashboard" ? (

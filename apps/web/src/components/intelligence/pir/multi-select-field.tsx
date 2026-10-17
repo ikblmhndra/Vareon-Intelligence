@@ -61,7 +61,7 @@ export function MultiSelectField({ label, options, selected, onChange }: MultiSe
       <Label className="text-sm font-medium text-muted-foreground">{label}</Label>
       <div className="flex min-h-8 flex-wrap items-center gap-1 rounded-lg border border-input bg-transparent px-2 py-1">
         {selected.map((v) => (
-          <span key={v} className="flex items-center gap-1 rounded bg-primary/15 px-1.5 py-0.5 font-mono text-xs text-primary">
+          <span key={v} className="flex items-center gap-1 rounded bg-primary/15 px-1.5 py-0.5 font-mono text-xs text-primary-text">
             {labelByValue.get(v) ?? v}
             <button type="button" className="hover:text-destructive" onClick={() => toggle(v)}>
               ×

@@ -16,7 +16,7 @@ function Chips({ items }: { items: string[] | undefined }) {
   return (
     <div className="flex flex-wrap gap-1.5">
       {items.map((v, i) => (
-        <span key={i} className="rounded-full border border-primary/25 bg-primary/8 px-1.5 py-0.5 font-mono text-xs text-primary">
+        <span key={i} className="rounded-full border border-primary/25 bg-primary/8 px-1.5 py-0.5 font-mono text-xs text-primary-text">
           {v}
         </span>
       ))}

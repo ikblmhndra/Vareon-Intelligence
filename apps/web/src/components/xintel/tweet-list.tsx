@@ -158,14 +158,14 @@ export function TweetList() {
           className="w-32 font-mono text-xs"
         />
         <Input
-          type="date"
+          type="date" aria-label="From date"
           value={draft.dateStart}
           onChange={(e) => setDraft({ ...draft, dateStart: e.target.value })}
           className="w-auto font-mono text-xs"
         />
         <span className="text-xs text-muted-foreground">→</span>
         <Input
-          type="date"
+          type="date" aria-label="To date"
           value={draft.dateEnd}
           onChange={(e) => setDraft({ ...draft, dateEnd: e.target.value })}
           className="w-auto font-mono text-xs"

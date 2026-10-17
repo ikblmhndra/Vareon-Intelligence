@@ -9,12 +9,14 @@ interface StatBoxProps {
   className?: string;
   /** Deret angka untuk sparkline kecil di kanan nilai. */
   spark?: number[];
+  /** Tanpa permukaan sendiri: dipakai di dalam panel KPI yang sudah raised (satu kotak, bukan lima). */
+  flat?: boolean;
 }
 
 /** Port `.dash-stat-box` dari `newsroom.html`/`custom.css` lama. */
-export function StatBox({ label, value, sub, className, spark }: StatBoxProps) {
+export function StatBox({ label, value, sub, className, spark, flat }: StatBoxProps) {
   return (
-    <div className={cn("rounded-2xl border border-border bg-surface px-5 py-4 shadow-sm", className)}>
+    <div className={cn("px-5 py-4", !flat && "surface-raised rounded-2xl", className)}>
       <div className="text-sm font-medium text-muted-foreground">{label}</div>
       <div className="mt-1 flex items-end justify-between gap-3">
         {/* Nilai teks panjang (mis. nama sektor "Information Technology & Software") tidak muat di text-4xl. */}
@@ -24,7 +26,7 @@ export function StatBox({ label, value, sub, className, spark }: StatBoxProps) {
             typeof value === "string" && value.length > 12 ? "min-w-0 text-xl leading-tight break-words" : "text-4xl",
           )}
         >
-          {value ?? "—"}
+          {typeof value === "number" ? value.toLocaleString() : (value ?? "—")}
         </div>
         {spark && spark.length > 1 && <Sparkline data={spark} />}
       </div>
@@ -43,13 +45,15 @@ export function Delta({ value, prev, label }: { value: number; prev: number | nu
   if (diff === 0) text = `no change vs prev ${label}`;
   else {
     const arrow = diff > 0 ? "▲" : "▼";
-    const amount = prev === 0 ? `+${diff.toLocaleString()}` : `${Math.abs(Math.round((diff / prev) * 100))}%`;
+    // Pembanding kecil (< 10) -> selisih absolut: "▲ 28400%" dari 3 artikel ke 855 menyesatkan.
+    const amount =
+      prev < 10 ? `${diff > 0 ? "+" : "-"}${Math.abs(diff).toLocaleString()}` : `${Math.abs(Math.round((diff / prev) * 100))}%`;
     text = `${arrow} ${amount} vs prev ${label}`;
   }
   return <span> · {text}</span>;
 }
 
-/** Judul section (`.dash-section-label` lama). */
+/** Judul section (`.dash-section-label` lama). `<h2>`: di bawah `<h1>` PageHeader. */
 export function DashboardSectionLabel({
   children,
   className,
@@ -58,41 +62,56 @@ export function DashboardSectionLabel({
   className?: string;
 }) {
   return (
-    <div
+    <h2
       className={cn(
-        "mt-8 mb-3 font-heading text-lg font-semibold text-foreground",
+        "mt-10 mb-4 font-heading text-xl font-bold tracking-tight text-foreground",
         className,
       )}
     >
       {children}
-    </div>
+    </h2>
   );
 }
 
-/** Kartu pembungkus satu chart (`.chart-card` lama). */
+/** Kartu pembungkus satu chart (`.chart-card` lama). `className` untuk posisi di grid (col-span). */
 export function ChartCard({
   title,
   height,
   note,
   children,
+  className,
 }: {
   title: string;
   height: number;
   note?: ReactNode;
   children: ReactNode;
+  className?: string;
 }) {
   return (
-    <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
+    <div className={cn("surface-raised rounded-2xl p-5", className)}>
       <CardHeader title={title} note={note} />
       <div style={{ height }}>{children}</div>
     </div>
   );
 }
 
-/** Kartu untuk konten berukuran bebas (peta, daftar) -- tanpa tinggi tetap. */
-export function MapCard({ title, note, children }: { title: string; note?: ReactNode; children: ReactNode }) {
+/** Kartu untuk konten berukuran bebas (peta, daftar) -- tanpa tinggi tetap. `flat` = daftar
+ * tanpa kotak (hierarki: chart/peta raised, daftar angka datar) dengan padding sama supaya judulnya sejajar. */
+export function MapCard({
+  title,
+  note,
+  children,
+  className,
+  flat,
+}: {
+  title: string;
+  note?: ReactNode;
+  children: ReactNode;
+  className?: string;
+  flat?: boolean;
+}) {
   return (
-    <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
+    <div className={cn("p-5", !flat && "surface-raised rounded-2xl", className)}>
       <CardHeader title={title} note={note} />
       {children}
     </div>
@@ -103,7 +122,7 @@ export function MapCard({ title, note, children }: { title: string; note?: React
 function CardHeader({ title, note }: { title: string; note?: ReactNode }) {
   return (
     <div className="mb-3">
-      <div className="text-base font-semibold text-foreground">{title}</div>
+      <h3 className="text-base font-semibold text-foreground">{title}</h3>
       {note && <div className="mt-0.5 text-xs text-muted-foreground">{note}</div>}
     </div>
   );

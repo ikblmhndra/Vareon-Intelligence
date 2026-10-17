@@ -40,7 +40,7 @@ export function NewsletterPreviewDialog({ state, onOpenChange, onSendDraft, send
         {hasNotices && (
           <div className="max-h-[30vh] space-y-2 overflow-y-auto border-b border-border bg-surface px-4 py-3 text-xs">
             {state.warnings.map((w) => (
-              <p key={w} role="alert" className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-warning">
+              <p key={w} role="alert" className="flex items-start gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-warning-text">
                 <TriangleAlertIcon aria-hidden className="mt-0.5 size-3.5 shrink-0" /> <span>{w}</span>
               </p>
             ))}

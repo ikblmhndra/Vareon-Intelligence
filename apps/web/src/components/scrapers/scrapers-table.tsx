@@ -226,7 +226,7 @@ export function ScrapersTable({
               const status = statusFor(s.id, s.enabled);
               return (
                 <TableRow key={s.id} className="cursor-pointer" onClick={() => onOpenDetail(s.id, status)}>
-                  <TableCell className="font-mono text-xs text-foreground">{s.id}</TableCell>
+                  <TableCell className="font-code text-xs text-foreground">{s.id}</TableCell>
                   <TableCell className="text-xs text-foreground">{s.source}</TableCell>
                   <TableCell className="font-mono text-xs text-muted-foreground">
                     {s.runtime}
@@ -235,7 +235,7 @@ export function ScrapersTable({
                   <TableCell>
                     <StatusBadge status={status} />
                   </TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground">{s.schedule}</TableCell>
+                  <TableCell className="font-code text-xs text-muted-foreground">{s.schedule}</TableCell>
                   <TableCell className="font-mono text-xs text-muted-foreground">
                     {s.last_status ? <RunStatusText status={s.last_status} /> : "—"}{" "}
                     {relativeTime(s.last_started_at)}

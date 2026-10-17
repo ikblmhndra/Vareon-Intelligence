@@ -41,7 +41,7 @@ export function ArticleCard({ article: a, onClick }: { article: Article; onClick
           <Badge
             variant="outline"
             title={`${iocCount} indicator(s) of compromise extracted`}
-            className="border-warning/30 bg-warning/10 font-mono text-xs text-warning"
+            className="border-warning/30 bg-warning/10 font-mono text-xs text-warning-text"
           >
             IOC:{iocCount}
           </Badge>

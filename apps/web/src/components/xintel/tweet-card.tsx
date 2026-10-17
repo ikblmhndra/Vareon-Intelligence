@@ -26,7 +26,7 @@ export function TweetCard({ tweet: t, onClick }: { tweet: Tweet; onClick: () => 
   return (
     <div
       onClick={onClick}
-      className="flex cursor-pointer gap-3 rounded-2xl border border-border bg-surface p-5 shadow-sm transition-colors hover:border-ring/50"
+      className="flex cursor-pointer gap-3 surface-raised rounded-2xl p-5 transition-shadow hover:ring-ring/40"
     >
       <Avatar className="size-9 shrink-0">
         <AvatarImage src={t.author_avatar || undefined} alt={t.author_username} />

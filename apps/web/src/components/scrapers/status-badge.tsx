@@ -1,10 +1,10 @@
 const STATUS_STYLE: Record<string, string> = {
-  ok: "bg-success/12 border-success/40 text-success",
+  ok: "bg-success/12 border-success/40 text-success-text",
   disabled: "bg-muted-foreground/12 border-muted-foreground/35 text-muted-foreground",
-  stale: "bg-severity-medium/12 border-severity-medium/40 text-severity-medium",
-  dead: "bg-destructive/18 border-destructive/50 text-destructive",
-  degraded: "bg-warning/15 border-warning/45 text-warning",
-  zero_yield: "bg-severity-medium/12 border-severity-medium/40 text-severity-medium",
+  stale: "bg-severity-medium/12 border-severity-medium/40 text-severity-medium-text",
+  dead: "bg-destructive/18 border-destructive/50 text-destructive-text",
+  degraded: "bg-warning/15 border-warning/45 text-warning-text",
+  zero_yield: "bg-severity-medium/12 border-severity-medium/40 text-severity-medium-text",
 };
 
 /** Pill status kesehatan scraper -- `cti_scraper.health.HealthStatus`

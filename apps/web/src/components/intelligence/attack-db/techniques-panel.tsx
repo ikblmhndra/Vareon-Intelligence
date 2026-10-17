@@ -174,7 +174,7 @@ export function TechniquesPanel({ onSelect }: { onSelect: (target: DetailTarget)
               )}
               {query.data.techniques.map((t) => (
                 <TableRow key={t.attack_id} className="cursor-pointer" onClick={() => onSelect({ kind: "technique", id: t.attack_id })}>
-                  <TableCell className="font-mono text-[13px] text-primary whitespace-nowrap">{t.attack_id}</TableCell>
+                  <TableCell className="font-code text-[13px] text-primary whitespace-nowrap">{t.attack_id}</TableCell>
                   <TableCell className="text-xs">
                     {t.is_subtechnique ? "↳ " : ""}
                     {t.name}

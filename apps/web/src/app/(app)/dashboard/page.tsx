@@ -15,6 +15,7 @@ import {
   DashboardFilterBar,
   type DashboardFilters,
 } from "@/components/dashboard/dashboard-filters";
+import { PageHeader } from "@/components/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 
 function toTitleCase(s: string): string {
@@ -58,6 +59,10 @@ function useTaStats() {
  * per-script) SENGAJA GAK diport ke sini walau `/api/scraper/health` udah
  * ada (Fase 9) -- keputusan user (2026-09-25): control plane scraper
  * dapet halaman SENDIRI (`/scrapers`), bukan digabung ke dashboard umum.
+ *
+ * Susunan visual (hierarki permukaan): band burgundy = hero; satu panel KPI raised dengan
+ * lima angka datar; chart/peta raised dalam grid 12 kolom asimetris (peta lebih lebar dari
+ * daftarnya, TTP lebih lebar dari industri karena labelnya panjang); daftar angka datar.
  */
 export default function DashboardPage() {
   const [filters, setFilters] = useState<DashboardFilters>(DEFAULT_DASHBOARD_FILTERS);
@@ -72,25 +77,24 @@ export default function DashboardPage() {
     stats && n !== undefined ? `${n.toLocaleString()} of ${stats.total_articles.toLocaleString()} articles ${what}` : undefined;
 
   return (
-    <div className="space-y-1 pb-10">
-      <header className="mb-6 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <div className="text-sm text-muted-foreground">Ringkasan intelijen</div>
-          <h1 className="font-heading text-3xl font-extrabold tracking-tight text-foreground">Dashboard</h1>
-        </div>
-        <DashboardFilterBar filters={filters} onChange={setFilters} updatedAt={stats?.generated_at} />
-      </header>
+    <div className="pb-10">
+      <PageHeader
+        title="Dashboard"
+        description="News coverage, incidents, threat actors and ATT&CK techniques for the selected period."
+        actions={<DashboardFilterBar filters={filters} onChange={setFilters} updatedAt={stats?.generated_at} />}
+      />
 
       <AttentionBand />
 
       {/* ── KPI ── */}
-      {(dashboard.isPending || ta.isPending) && <StatGridSkeleton count={5} />}
+      {(dashboard.isPending || ta.isPending) && <Skeleton className="mt-6 h-28 w-full rounded-2xl" />}
       {dashboard.isError && <ErrorNote />}
       {stats && ta.data && (
         <div
-          className={`mt-6 grid grid-cols-1 gap-4 transition-opacity sm:grid-cols-2 xl:grid-cols-5 ${dashboard.isPlaceholderData ? "opacity-60" : ""}`}
+          className={`surface-raised mt-6 grid grid-cols-1 divide-y divide-border/70 rounded-2xl p-2 transition-opacity sm:grid-cols-2 sm:divide-y-0 xl:grid-cols-[1.35fr_1fr_1fr_1fr_1fr] xl:divide-x ${dashboard.isPlaceholderData ? "opacity-60" : ""}`}
         >
           <StatBox
+            flat
             label="Total Articles"
             value={stats.total_articles}
             sub={
@@ -103,6 +107,7 @@ export default function DashboardPage() {
             spark={stats.timeline.map((x) => x.count)}
           />
           <StatBox
+            flat
             label="Confirmed Incidents"
             value={stats.confirmed_incidents}
             sub={
@@ -112,13 +117,15 @@ export default function DashboardPage() {
               </>
             }
           />
-          <StatBox label="Countries Mentioned" value={stats.total_countries} sub="Unique geographies" />
+          <StatBox flat label="Countries Mentioned" value={stats.total_countries} sub="Unique geographies" />
           <StatBox
+            flat
             label="Threat Actors in News"
             value={stats.total_threat_actors}
             sub={`${ta.data.total_groups.toLocaleString()} APT groups · ${ta.data.total_whitelisted} whitelisted`}
           />
           <StatBox
+            flat
             label="Covered in News"
             value={ta.data.in_news_count}
             sub={`${ta.data.manual_count} added manually`}
@@ -129,17 +136,21 @@ export default function DashboardPage() {
       {/* ── News Intelligence charts ── */}
       <DashboardSectionLabel>News Intelligence</DashboardSectionLabel>
       {stats && (
-        <div className={`space-y-3 transition-opacity ${dashboard.isPlaceholderData ? "opacity-60" : ""}`}>
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <MapCard title="Mentioned Countries" note={basis(stats.coverage.with_country, "name a country")}>
-              <CountryMap data={stats.country_counts} />
-            </MapCard>
-            <MapCard title="Articles by News Type">
-              <BreakdownList items={stats.by_news_type.map((x) => ({ label: toTitleCase(x.name), count: x.count }))} limit={9} />
-            </MapCard>
-          </div>
+        <div
+          className={`grid grid-cols-1 gap-4 transition-opacity lg:grid-cols-12 ${dashboard.isPlaceholderData ? "opacity-60" : ""}`}
+        >
+          <MapCard
+            className="lg:col-span-8"
+            title="Mentioned Countries"
+            note={basis(stats.coverage.with_country, "name a country")}
+          >
+            <CountryMap data={stats.country_counts} />
+          </MapCard>
+          <MapCard flat className="lg:col-span-4" title="Articles by News Type">
+            <BreakdownList items={stats.by_news_type.map((x) => ({ label: toTitleCase(x.name), count: x.count }))} limit={9} />
+          </MapCard>
 
-          <ChartCard title="Articles Over Time" height={200}>
+          <ChartCard className="lg:col-span-7" title="Articles Over Time" height={280}>
             <TimelineChart
               labels={stats.timeline.map((x) => x.date)}
               data={stats.timeline.map((x) => x.count)}
@@ -147,6 +158,7 @@ export default function DashboardPage() {
           </ChartCard>
 
           <ChartCard
+            className="lg:col-span-5"
             title="Top Threat Actors"
             height={280}
             note={basis(stats.coverage.with_actor, "name a threat actor")}
@@ -158,45 +170,45 @@ export default function DashboardPage() {
             />
           </ChartCard>
 
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            <ChartCard
-              title="Top Targeted Industries"
-              height={280}
-              note={
-                stats.industry_unspecified > 0
-                  ? `${stats.industry_unspecified.toLocaleString()} articles with no specific sector (General) not shown`
-                  : undefined
-              }
-            >
-              <HorizontalBarChart
-                labels={stats.top_industries.map((x) => toTitleCase(x.name))}
-                data={stats.top_industries.map((x) => x.count)}
-                tone="warning"
-              />
-            </ChartCard>
-            <ChartCard
-              title="Top MITRE ATT&CK TTPs"
-              height={280}
-              note={basis(stats.coverage.with_ttp, "map to a TTP")}
-            >
-              <HorizontalBarChart
-                labels={stats.top_ttps.map((x) => toTitleCase(x.name))}
-                data={stats.top_ttps.map((x) => x.count)}
-                tone="success"
-              />
-            </ChartCard>
-          </div>
+          <ChartCard
+            className="lg:col-span-5"
+            title="Top Targeted Industries"
+            height={280}
+            note={
+              stats.industry_unspecified > 0
+                ? `${stats.industry_unspecified.toLocaleString()} articles with no specific sector (General) not shown`
+                : undefined
+            }
+          >
+            <HorizontalBarChart
+              labels={stats.top_industries.map((x) => toTitleCase(x.name))}
+              data={stats.top_industries.map((x) => x.count)}
+              tone="warning"
+            />
+          </ChartCard>
+          <ChartCard
+            className="lg:col-span-7"
+            title="Top MITRE ATT&CK TTPs"
+            height={280}
+            note={basis(stats.coverage.with_ttp, "map to a TTP")}
+          >
+            <HorizontalBarChart
+              labels={stats.top_ttps.map((x) => toTitleCase(x.name))}
+              data={stats.top_ttps.map((x) => x.count)}
+              tone="success"
+            />
+          </ChartCard>
         </div>
       )}
 
       {/* ── Threat Actor Room charts ── (`/api/ta/stats` gak punya filter periode) */}
       <DashboardSectionLabel>Threat Actor Room — Charts · all time</DashboardSectionLabel>
       {ta.data && (
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-          <MapCard title="APT Groups by Source">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+          <MapCard flat className="lg:col-span-4" title="APT Groups by Source">
             <BreakdownList items={ta.data.by_source.map((x) => ({ label: toTitleCase(x.name), count: x.count }))} />
           </MapCard>
-          <ChartCard title="Tracked APT Groups — News Mentions" height={260}>
+          <ChartCard className="lg:col-span-8" title="Tracked APT Groups — News Mentions" height={260}>
             {ta.data.top_in_news.length ? (
               <HorizontalBarChart
                 labels={ta.data.top_in_news.map((x) => toTitleCase(x.name))}
@@ -212,16 +224,6 @@ export default function DashboardPage() {
         </div>
       )}
 
-    </div>
-  );
-}
-
-function StatGridSkeleton({ count }: { count: number }) {
-  return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
-      {Array.from({ length: count }, (_, i) => (
-        <Skeleton key={i} className="h-20 w-full" />
-      ))}
     </div>
   );
 }

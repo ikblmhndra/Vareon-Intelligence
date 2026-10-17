@@ -236,7 +236,7 @@ function ClientForm({
         {mode === "add" && (
           <div className="space-y-1.5">
             <Label className="text-sm font-medium text-muted-foreground">
-              Client ID <span className="normal-case opacity-70">(lowercase, a-z 0-9 _-)</span>
+              Client ID <span className="normal-case">(lowercase, a-z 0-9 _-)</span>
             </Label>
             <Input
               value={clientId}

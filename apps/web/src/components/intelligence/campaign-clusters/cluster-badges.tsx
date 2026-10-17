@@ -1,7 +1,7 @@
 const SEVERITY_STYLE: Record<string, string> = {
-  critical: "bg-destructive/18 border-destructive/50 text-destructive",
-  high: "bg-warning/15 border-warning/45 text-warning",
-  medium: "bg-severity-medium/12 border-severity-medium/40 text-severity-medium",
+  critical: "bg-destructive/18 border-destructive/50 text-destructive-text",
+  high: "bg-warning/15 border-warning/45 text-warning-text",
+  medium: "bg-severity-medium/12 border-severity-medium/40 text-severity-medium-text",
   low: "bg-muted-foreground/15 border-muted-foreground/35 text-muted-foreground",
 };
 
@@ -57,8 +57,8 @@ export function TrendArrow({ direction, growthRate }: { direction: string; growt
 }
 
 const KC_STYLE: Record<string, string> = {
-  full_chain: "bg-destructive/15 border-destructive/40 text-destructive",
-  partial_chain: "bg-warning/12 border-warning/35 text-warning",
+  full_chain: "bg-destructive/15 border-destructive/40 text-destructive-text",
+  partial_chain: "bg-warning/12 border-warning/35 text-warning-text",
   limited: "bg-muted-foreground/12 border-muted-foreground/30 text-muted-foreground",
 };
 
@@ -68,9 +68,9 @@ export function KillChainBadge({ label, score }: { label: string; score: number 
 }
 
 const LINK_TYPE_STYLE: Record<string, string> = {
-  same_actor: "bg-destructive/12 border-destructive/40 text-destructive",
-  shared_infra: "bg-warning/12 border-warning/35 text-warning",
-  similar_ttp: "bg-tag-violet/15 border-tag-violet/35 text-tag-violet",
+  same_actor: "bg-destructive/12 border-destructive/40 text-destructive-text",
+  shared_infra: "bg-warning/12 border-warning/35 text-warning-text",
+  similar_ttp: "bg-tag-violet/15 border-tag-violet/35 text-tag-violet-text",
   related: "bg-muted-foreground/12 border-muted-foreground/30 text-muted-foreground",
 };
 const LINK_TYPE_LABEL: Record<string, string> = {

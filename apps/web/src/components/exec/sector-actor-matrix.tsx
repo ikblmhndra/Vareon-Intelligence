@@ -37,8 +37,8 @@ export function SectorActorMatrix({ d }: { d: ExecDashboardV2 }) {
                     key={ai}
                     className="px-1 py-1 text-center font-mono"
                     style={{
-                      background: count > 0 ? `color-mix(in srgb, var(--severity-critical) ${Math.round(intensity * 70 + 5)}%, transparent)` : undefined,
-                      color: intensity > 0.75 ? "var(--background)" : undefined,
+                      // Alfa maks 50%: di atasnya teks gelap maupun putih jatuh di bawah AA (4.0/4.39:1).
+                      background: count > 0 ? `color-mix(in srgb, var(--severity-critical) ${Math.round(intensity * 45 + 5)}%, transparent)` : undefined,
                     }}
                     title={`${toTitleCase(sector)} × ${toTitleCase(sam.actors[ai])}: ${count}`}
                   >

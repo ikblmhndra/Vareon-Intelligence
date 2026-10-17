@@ -27,7 +27,7 @@ export function SpikeBanner({ d }: { d: ExecDashboardV2 }) {
             <span
               className={cn(
                 "rounded px-1.5 py-0.5 text-xs",
-                sp.severity === "high" ? "bg-destructive/20 text-destructive" : "bg-primary/20 text-primary",
+                sp.severity === "high" ? "bg-destructive/20 text-destructive-text" : "bg-primary/20 text-primary-text",
               )}
             >
               {sp.severity.toUpperCase()}
@@ -56,7 +56,7 @@ export function TtpList({ d }: { d: ExecDashboardV2 }) {
           beda konten. */}
       {d.top_ttps.map((t, i) => (
         <div key={`${t.id}::${t.name}::${i}`} className="flex items-center gap-2">
-          <div className="min-w-[70px] font-mono text-xs text-primary" title={t.id}>
+          <div className="min-w-[70px] font-code text-xs text-primary" title={t.id}>
             {t.id}
           </div>
           <div className="flex-1 truncate font-mono text-xs text-muted-foreground" title={t.name}>

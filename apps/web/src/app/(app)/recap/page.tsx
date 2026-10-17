@@ -194,7 +194,7 @@ export default function RecapPage() {
           {mode === "week" ? "Week of" : "Recap Date"}
         </span>
         <Input
-          type="date"
+          type="date" aria-label={mode === "week" ? "Week of" : "Recap date"}
           value={inputDate}
           onChange={(e) => setInputDate(e.target.value)}
           className="w-auto font-mono text-xs"
@@ -215,7 +215,7 @@ export default function RecapPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[240px_1fr]">
-        <div className="max-h-[calc(100vh-220px)] overflow-y-auto rounded-2xl border border-border bg-surface shadow-sm p-2.5">
+        <div className="max-h-[calc(100dvh-220px)] overflow-y-auto rounded-2xl surface-raised p-2.5">
           <div className="mb-2 border-b border-border pb-1.5 text-sm font-semibold text-muted-foreground">
             Recap History
           </div>

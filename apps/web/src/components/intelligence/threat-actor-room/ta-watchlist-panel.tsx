@@ -256,7 +256,7 @@ function WatchlistCard({
       </div>
       <div className="mb-2 flex items-center gap-2 font-mono text-xs text-muted-foreground">
         <span>Added: {item.added_date || "—"}</span>
-        <span className={`rounded-full border px-1.5 py-0.5 ${hasProfile ? "border-success/40 bg-success/10 text-success" : "border-border text-muted-foreground"}`}>
+        <span className={`rounded-full border px-1.5 py-0.5 ${hasProfile ? "border-success/40 bg-success/10 text-success-text" : "border-border text-muted-foreground"}`}>
           {hasProfile ? "PROFILE" : "NO PROFILE"}
         </span>
       </div>

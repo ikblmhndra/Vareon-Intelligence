@@ -3,6 +3,7 @@
 import { Suspense, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
+import { BrandMark } from "@/components/brand-mark";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,11 +48,14 @@ function LoginForm() {
   return (
     <form
       onSubmit={handleSubmit}
-      className="w-full max-w-sm space-y-6 rounded-3xl border border-border bg-card p-8 shadow-sm"
+      className="w-full max-w-sm space-y-6 rounded-3xl border border-border bg-card p-8 shadow-md"
     >
-      <div className="space-y-1 text-center">
-        <h1 className="font-heading text-2xl tracking-wide text-foreground">{PLATFORM_NAME}</h1>
-        <p className="text-sm text-muted-foreground">Sign in to continue</p>
+      <div className="flex flex-col items-center gap-3 text-center">
+        <BrandMark className="size-12 text-xl" />
+        <div className="space-y-1">
+          <h1 className="font-heading text-2xl font-extrabold tracking-tight text-foreground">{PLATFORM_NAME}</h1>
+          <p className="text-sm text-muted-foreground">Sign in to continue</p>
+        </div>
       </div>
 
       <div className="space-y-2">
@@ -77,7 +81,11 @@ function LoginForm() {
         />
       </div>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      )}
 
       <Button type="submit" className="w-full" disabled={pending}>
         {pending ? "Signing in..." : "Sign in"}
@@ -92,10 +100,10 @@ function LoginForm() {
 // gak muncul di `pnpm dev` (Turbopack dev gak prerender).
 export default function LoginPage() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+    <main className="auth-backdrop flex min-h-dvh items-center justify-center bg-background px-4">
       <Suspense>
         <LoginForm />
       </Suspense>
-    </div>
+    </main>
   );
 }

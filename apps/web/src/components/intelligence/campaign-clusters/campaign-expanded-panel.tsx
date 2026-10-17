@@ -131,7 +131,7 @@ export function CampaignExpandedPanel({
           <div className="overflow-hidden rounded-md border border-border">
             {c.matched_pirs.map((pir) => (
               <button key={pir.id} type="button" onClick={() => onOpenPir(pir)} className="flex w-full items-center gap-2 border-b border-border px-3 py-1.5 text-left last:border-b-0 hover:bg-accent">
-                <span className="flex-shrink-0 rounded-full border border-destructive/30 bg-destructive/10 px-1.5 py-0.5 font-mono text-xs text-destructive">PIR</span>
+                <span className="flex-shrink-0 rounded-full border border-destructive/30 bg-destructive/10 px-1.5 py-0.5 font-mono text-xs text-destructive-text">PIR</span>
                 <span className="text-xs text-foreground">{pir.title}</span>
               </button>
             ))}
@@ -159,7 +159,7 @@ export function CampaignExpandedPanel({
           <div className="mb-1.5 text-sm font-semibold text-muted-foreground">IOCs ({c.iocs.length})</div>
           <div className="flex flex-wrap gap-1">
             {c.iocs.slice(0, 20).map((ioc, i) => (
-              <span key={i} title={ioc.type} className="rounded-full border border-destructive/25 bg-destructive/8 px-1.5 py-0.5 font-mono text-xs text-destructive">
+              <span key={i} title={ioc.type} className="rounded-full border border-destructive/25 bg-destructive/8 px-1.5 py-0.5 font-code text-xs text-destructive-text">
                 {ioc.value}
               </span>
             ))}

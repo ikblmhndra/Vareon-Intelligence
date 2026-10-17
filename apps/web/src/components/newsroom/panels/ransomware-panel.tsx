@@ -34,12 +34,12 @@ function VictimRow({ v }: { v: Victim }) {
       </div>
       <div className="font-mono text-xs text-muted-foreground">
         <div title="Published">{(v.published ?? "").slice(0, 10)}</div>
-        <div className="opacity-60" title="Discovered">
+        <div className="italic" title="Discovered">
           {(v.discovered ?? "").slice(0, 10)}
         </div>
       </div>
       {v.post_url && v.post_url !== "Unknown" ? (
-        <a href={v.post_url} target="_blank" rel="noopener noreferrer" className="text-destructive no-underline">
+        <a href={v.post_url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-6 min-w-6 items-center justify-center text-destructive no-underline">
           ↗
         </a>
       ) : (

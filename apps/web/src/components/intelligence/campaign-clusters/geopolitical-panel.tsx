@@ -96,7 +96,7 @@ export function GeopoliticalPanel({ days }: { days: number }) {
                               <td className="border border-border/50 px-2 py-1 font-mono text-xs font-semibold whitespace-nowrap text-foreground">
                                 {nation}
                                 {entry.primary_motivations.slice(0, 1).map((m) => (
-                                  <span key={m} className="ml-1 rounded-full border border-tag-violet/40 bg-tag-violet/20 px-1 py-0.5 font-mono text-xs text-tag-violet">
+                                  <span key={m} className="ml-1 rounded-full border border-tag-violet/40 bg-tag-violet/20 px-1 py-0.5 font-mono text-xs text-tag-violet-text">
                                     {m}
                                   </span>
                                 ))}

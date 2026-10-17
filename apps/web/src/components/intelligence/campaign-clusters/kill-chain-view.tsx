@@ -34,7 +34,7 @@ export function KillChainView({ killChain: kc }: { killChain: KillChain }) {
       </div>
       <div className="mb-2 flex gap-0.5 px-0.5">
         {kc.chain_visualization.map((p) => (
-          <div key={p.phase} title={p.phase.replace(/_/g, " ")} className="flex-1 truncate text-center font-mono text-[7px] text-muted-foreground">
+          <div key={p.phase} title={p.phase.replace(/_/g, " ")} className="flex-1 truncate text-center font-mono text-[10px] text-muted-foreground">
             {p.phase.split("_")[0]}
           </div>
         ))}
@@ -46,7 +46,7 @@ export function KillChainView({ killChain: kc }: { killChain: KillChain }) {
               <span className="w-[100px] flex-shrink-0 pt-px font-mono text-xs text-muted-foreground">{p.phase.replace(/_/g, " ")}</span>
               <div className="flex flex-wrap gap-1">
                 {p.techniques.map((t, i) => (
-                  <span key={i} className="rounded-full border border-tag-violet/30 bg-tag-violet/15 px-1 py-0.5 font-mono text-xs text-tag-violet">
+                  <span key={i} className="rounded-full border border-tag-violet/30 bg-tag-violet/15 px-1 py-0.5 font-mono text-xs text-tag-violet-text">
                     {t}
                   </span>
                 ))}

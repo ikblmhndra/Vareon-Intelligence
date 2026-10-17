@@ -34,9 +34,9 @@ import { useAdminUsers, useClients, useRoles } from "@/components/admin/hooks";
 const USERS_KEY = ["admin", "users"] as const;
 
 function roleBadgeClass(role: string): string {
-  if (role === "superadmin") return "border-warning/40 bg-warning/10 text-warning";
-  if (role === "admin") return "border-ring/40 bg-ring/10 text-ring";
-  return "border-primary/30 bg-primary/10 text-primary";
+  if (role === "superadmin") return "border-warning/40 bg-warning/10 text-warning-text";
+  if (role === "admin") return "border-ring/40 bg-ring/10 text-primary-text";
+  return "border-primary/30 bg-primary/10 text-primary-text";
 }
 
 /** Port section "Users" + "Add User" + row action dropdown (⋮) di
@@ -199,7 +199,7 @@ function AddUserForm() {
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="add-user-password" className="text-sm font-medium text-muted-foreground">
-            Password <span className="normal-case opacity-70">({policyHint(policy)})</span>
+            Password <span className="normal-case">({policyHint(policy)})</span>
           </Label>
           <Input
             id="add-user-password"
@@ -227,12 +227,12 @@ function AddUserForm() {
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="add-user-clients" className="text-sm font-medium text-muted-foreground">
-            Client(s) <span className="normal-case opacity-70">comma-separated</span>
+            Client(s) <span className="normal-case">comma-separated</span>
           </Label>
           <Input id="add-user-clients" value={clientIds} onChange={(e) => setClientIds(e.target.value)} className="font-mono text-xs" />
         </div>
         {error && (
-          <p className="rounded-md border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
+          <p className="rounded-md border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-xs text-destructive-text">
             {error}
           </p>
         )}
@@ -291,7 +291,7 @@ function ResetPasswordDialog({
         </p>
         <div className="space-y-1.5">
           <Label htmlFor="reset-user-password" className="text-sm font-medium text-muted-foreground">
-            New Password <span className="normal-case opacity-70">({policyHint(policy)})</span>
+            New Password <span className="normal-case">({policyHint(policy)})</span>
           </Label>
           <Input id="reset-user-password" type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} className="font-mono text-xs" />
         </div>

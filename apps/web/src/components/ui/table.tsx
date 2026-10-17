@@ -7,7 +7,7 @@ function Table({ className, framed, ...props }: React.ComponentProps<"table"> & 
   return (
     <div
       data-slot="table-container"
-      className={cn("relative w-full overflow-x-auto", framed && "rounded-2xl border border-border bg-surface p-2")}
+      className={cn("relative w-full overflow-x-auto", framed && "rounded-2xl surface-raised p-2")}
     >
       <table
         data-slot="table"

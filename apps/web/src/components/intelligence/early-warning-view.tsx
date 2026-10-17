@@ -55,7 +55,7 @@ export function EarlyWarningView() {
         <div className="flex flex-col gap-1">
           <Label className="text-sm font-medium text-muted-foreground">Lookback days</Label>
           <Input
-            type="number"
+            type="number" aria-label="Lookback days"
             min={14}
             max={90}
             value={lookbackDays}
@@ -66,7 +66,7 @@ export function EarlyWarningView() {
         <div className="flex flex-col gap-1">
           <Label className="text-sm font-medium text-muted-foreground">Z-score threshold</Label>
           <Input
-            type="number"
+            type="number" aria-label="Z-score threshold"
             min={1.5}
             max={4}
             step={0.1}

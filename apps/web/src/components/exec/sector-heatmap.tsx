@@ -51,8 +51,8 @@ export function SectorHeatmap({ d }: { d: ExecDashboardV2 }) {
                       key={cell.month}
                       className="px-1 py-1 text-center font-mono"
                       style={{
-                        background: `color-mix(in srgb, var(--primary) ${Math.round(intensity * 70 + 5)}%, transparent)`,
-                        color: intensity > 0.75 ? "var(--primary-foreground)" : undefined,
+                        // Alfa maks 65% dengan teks tetap: >= 4.67:1 di terang dan 5.05:1 di gelap.
+                        background: `color-mix(in srgb, var(--primary) ${Math.round(intensity * 60 + 5)}%, transparent)`,
                         cursor: cell.count > 0 ? "pointer" : undefined,
                       }}
                       title={`${toTitleCase(row.sector)} · ${cell.month}: ${cell.count}${cell.count > 0 ? " — click to view articles" : ""}`}

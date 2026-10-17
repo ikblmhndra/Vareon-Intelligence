@@ -52,7 +52,7 @@ export function NewsletterHistoryPanel({ refreshKey, onPreview, onResend, resend
         <span className={open ? "rotate-180 transition-transform" : "transition-transform"}>▲</span>
         Saved Newsletters
         {query.data && (
-          <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-xs text-primary">{query.data.total}</span>
+          <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-xs text-primary-text">{query.data.total}</span>
         )}
         <span className="ml-auto text-xs text-muted-foreground">{open ? "▼ collapse" : "▶ expand"}</span>
       </button>

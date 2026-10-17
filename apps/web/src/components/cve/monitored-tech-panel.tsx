@@ -190,7 +190,7 @@ export function MonitoredTechPanel() {
       </div>
 
       {unmapped > 0 && (
-        <p className="mb-3 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning">
+        <p className="mb-3 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning-text">
           {unmapped} entr{unmapped === 1 ? "y is" : "ies are"} matched by name text only (“Unmapped”). Use “Map to catalog” so CVEs are
           matched by the product&apos;s identity instead — fewer misses and fewer false positives.
         </p>

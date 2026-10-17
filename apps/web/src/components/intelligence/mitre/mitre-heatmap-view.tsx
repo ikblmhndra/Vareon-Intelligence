@@ -75,7 +75,7 @@ export function MitreHeatmapView() {
             </SelectTrigger>
             <SelectContent>
               {VIEWS.map((v) => (
-                <SelectItem key={v.value} value={v.value} className="font-mono text-xs">
+                <SelectItem key={v.value} value={v.value} className="font-code text-xs">
                   {v.label}
                 </SelectItem>
               ))}
@@ -114,7 +114,7 @@ export function MitreHeatmapView() {
       )}
 
       {d && d.rows.length > 0 && d.ttps.length > 0 && (
-        <div className="overflow-x-auto rounded-2xl border border-border bg-surface p-4">
+        <div className="overflow-x-auto rounded-2xl surface-raised p-4">
           <table className="border-collapse text-xs">
             <thead>
               <tr>

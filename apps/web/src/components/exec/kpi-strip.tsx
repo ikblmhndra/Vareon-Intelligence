@@ -67,7 +67,7 @@ export function KpiStripSkeleton() {
   return (
     <div className={cn("grid grid-cols-2 gap-3 sm:grid-cols-4 2xl:grid-cols-8")}>
       {Array.from({ length: 8 }).map((_, i) => (
-        <div key={i} className="h-[68px] animate-pulse rounded-2xl border border-border bg-surface shadow-sm" />
+        <div key={i} className="h-[68px] animate-pulse rounded-2xl surface-raised" />
       ))}
     </div>
   );

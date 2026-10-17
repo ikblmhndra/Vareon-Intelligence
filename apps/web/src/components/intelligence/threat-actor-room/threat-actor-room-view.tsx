@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api/client";
-import { cn } from "@/lib/utils";
+import { TabPills } from "@/components/ui/tab-pills";
 import { TaGroupsPanel } from "@/components/intelligence/threat-actor-room/ta-groups-panel";
 import { TaWhitelistPanel } from "@/components/intelligence/threat-actor-room/ta-whitelist-panel";
 import { TaWatchlistPanel } from "@/components/intelligence/threat-actor-room/ta-watchlist-panel";
@@ -43,21 +43,7 @@ export function ThreatActorRoomView() {
         </div>
       )}
 
-      <div className="mb-4 flex gap-1.5 overflow-x-auto">
-        {TABS.map((t) => (
-          <button
-            key={t.value}
-            type="button"
-            onClick={() => setTab(t.value)}
-            className={cn(
-              "shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-sm font-medium transition-colors duration-200",
-              tab === t.value ? "border-primary/30 bg-primary/10 text-primary" : "border-border bg-surface text-muted-foreground hover:bg-muted hover:text-foreground",
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <TabPills aria-label="Threat actor views" className="mb-4" items={TABS} value={tab} onChange={setTab} />
 
       {tab === "tracked" && <TaGroupsPanel />}
       {tab === "whitelist" && <TaWhitelistPanel />}

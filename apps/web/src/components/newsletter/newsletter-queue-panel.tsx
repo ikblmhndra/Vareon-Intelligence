@@ -148,7 +148,7 @@ function PoolCard({
             {paywall && (
               <Badge
                 variant="outline"
-                className="border-warning/40 bg-warning/10 text-xs text-warning"
+                className="border-warning/40 bg-warning/10 text-xs text-warning-text"
                 title="Paywall detected — summary will use metadata"
               >
                 <TriangleAlertIcon aria-hidden /> Paywall

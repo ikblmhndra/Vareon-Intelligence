@@ -27,11 +27,11 @@ export function HealthSummaryBar({
   });
 
   if (query.isPending) {
-    return <div className="mb-4 h-16 animate-pulse rounded-2xl border border-border bg-surface shadow-sm" />;
+    return <div className="mb-4 h-16 animate-pulse rounded-2xl surface-raised" />;
   }
   if (query.isError || !query.data) {
     return (
-      <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-xs text-destructive">
+      <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-xs text-destructive-text">
         Failed to load scraper health.
       </div>
     );
@@ -41,7 +41,7 @@ export function HealthSummaryBar({
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
 
   return (
-    <div className="mb-4 rounded-2xl border border-border bg-surface shadow-sm p-4">
+    <div className="mb-4 rounded-2xl surface-raised p-4">
       <div className="mb-3 flex items-center justify-between">
         <div className="text-sm font-semibold text-muted-foreground">
           Fleet Health — {total} scraper
@@ -75,7 +75,7 @@ export function HealthSummaryBar({
                 title={p.last_status ? `last run: ${p.last_status}` : "never run"}
               >
                 <StatusBadge status={p.status} />
-                <span className="font-mono text-xs text-foreground">{p.id}</span>
+                <span className="font-code text-xs text-foreground">{p.id}</span>
               </button>
             ))}
           </div>
