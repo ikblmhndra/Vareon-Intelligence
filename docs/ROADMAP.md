@@ -42,6 +42,7 @@ Each item contains: **what** was asked, **the current state** (facts from the re
 | 19 | **Open** (operational) | **Tech catalog from the CVE mirror + Monitor** (new direction 2026-10-07, replacing the alias/phase 2-3 plan; the `aliases` column is dropped): mirror every CVE (calendar-year retention) -> a vendor+product catalog -> All Tech / Monitored Tech tabs -> the CVEs tab only for monitored techs. **Code done (slices 1-7), merged to `main` 2026-10-08 (PR #12, release 0.3.0)**; what remains is operational: finish the mapping (prod, 2026-10-15: 25 of 35 entries mapped), shadow mode (not started), cutover (the runbook and design documents were removed from the repository on 2026-10-16) | manual mapping + shadow on dev | test on the dev server first, then prod |
 | 20 | **Mostly done** | **Known follow-ups from releases 0.4.0 / 0.4.1** (found while reviewing the CVE Tracker; none is blocking) -- **the data-correctness points were fixed 2026-10-15 (#51, #52) or earlier (#21); what is left (the (D) decisions, the KEV/EPSS/Exploit-DB access point, `trending_cve` in January) is marked in the item** | product decisions on the points marked (D) | -- |
 | 23 | **Done in code, waiting for merge** (ONE pull request, release 0.7.0) | **Runtime secrets** (asked 2026-10-16): manage the third-party keys (LLM, Telegram, Graph, NVD, GitHub, twitterapi.io, X, OTX, AbuseIPDB, VirusTotal) from a superadmin-only admin page, encrypted in the database and applied without a restart or rebuild; the deployment-level secrets (database, Redis, JWT/session, OIDC) stay in `.env` -- **built 2026-10-16 as a single pull request on branch `feat/runtime-secrets-core` (the user chose not to split it), with the 0.7.0 release commit in it** | merge; then on prod: `make deploy`, a generated master key in `SECRETS_ENCRYPTION_KEYS`, and a restart of api and workers once; the re-auth decision for OIDC-only superadmins | -- (touches #11 for the OIDC question) |
+| 24 | **Open** (plan written, nothing built) | **Data platform audit follow-ups** (asked 2026-10-17): stop losing articles when the LLM fails (a structured failure kind, replay, an alert, an honest run status, a reaper and a purge) and show the pipeline's health in the UI (a **Data health** page, a reliable previous-period delta, reasons on `/scrapers`) -- **audit done on the dev instance 2026-10-17; two pull requests planned: PR-A (backend + the Newsroom tab) then PR-B (Data health, Dashboard, Scrapers)** | four decisions (see the item) and a read-only look at prod | -- (PR-B reads `failure_kind` from PR-A) |
 ---
 
 ## Priority queue (team feedback 2026-10-10)
@@ -80,6 +81,7 @@ PRs #2-#59 are all merged into `main` (release tags in `CHANGELOG.md`: 0.2.0, 0.
 | 5, 8, 9, 10, 11 | Parked | -- | set aside by the user on 2026-10-15; do not start without a trigger |
 | 6, 7, 12, 15, 16, 18 | Open | -- | see each item; #6 mostly exists (only expiry is missing), #7 waits for the #19 cutover, #15 waits for the `published_at` backfill (7 prod rows), #12 for labelled examples, #16 and #18 for SLA targets and the list of ticket values |
 | 23 | Code done (one pull request, release 0.7.0) | branch `feat/runtime-secrets-core` | merge, tag `0.7.0`, `make deploy`, set `SECRETS_ENCRYPTION_KEYS` on prod and try the page |
+| 24 | Open (plan only) | -- | PR-A, then PR-B; the item lists four decisions; nothing is built |
 
 **Merged PRs by release**
 
@@ -1435,3 +1437,202 @@ probe-before-save already covers a mistyped key), and turning off a provider who
 need (moving the chat or the sender stays a deploy decision); re-auth uses the local password, and a superadmin who signs in only
 through OIDC may have none, so check `OIDC__ENABLED` on prod and pick a fallback (for example a fresh login within a few
 minutes) before pull request 2; the section lives on the existing admin page and is easy to move to its own route.
+
+---
+
+## 24. Data platform audit follow-ups: do not lose articles, show the pipeline's health
+
+**Asked (2026-10-17)**: audit the data platform end to end, check whether the dev UI is informative, then plan the fixes. This item
+records the audit and the plan for two pull requests. **Nothing is built yet.** How the facts were gathered: the dev database over SSH
+with `default_transaction_read_only=on` (aggregates only, no row contents, no writes), the dev UI through the user's signed-in Chrome
+(GET only, no button that writes or triggers a run), and the code at `6a5734a` (0.7.1). The dev instance is three weeks old (first
+scraper run 2026-09-26), so trends over a longer time are not visible yet.
+
+**Current state** (dev instance, 2026-10-17 around 04:45 UTC):
+- **Articles are lost without a trace.** On 2026-10-16 all 101 `[enrichment_failed]` rows were written with `BadRequestError 400
+  "Unsupported model mimo-auto"`: 0 before that day and 0 since 2026-10-17 00:00 UTC (the newest article arrived at 00:50 UTC), so it
+  looks stopped but is not proven fixed. Over 7 days: 237 articles accepted, 35 classifier rejects, 101 failures (27% of what was
+  processed). By source: hackernews 31, darkreading 14, bleepcomp 13, huntress 10. The only marker is a text prefix in
+  `rejected_articles.reason` (`apps/worker/src/cti_worker/tasks/enrich.py:107`); the only signal is the 23:55 daily counters message
+  (`debug` topic); there is no alert and no replay.
+- **The only recovery path does not do what the UI says.** Newsroom > "Not Related Cyber" lists the 101 together with 259 classifier
+  rejects (360 items), shows no reason, and says "Articles LLM classified as not cyber-related. Restore to re-queue through NLP
+  pipeline." But `restore` only creates an `Article` with `news_type="Manually Restored"` and no enrichment
+  (`packages/cti-core/src/cti_core/db/repositories/article.py:671-686`), leaves the rejected row in the list, and the stub then makes
+  `_known_article` (`packages/cti-enrich/src/cti_enrich/pipeline.py:153-167`) short-circuit any later re-run of that URL.
+- **A run can be `ok` while its items fail.** 108 runs with status `ok` and `items_failed>0` in 7 days (590 items: `github_poc_monitor`
+  558 in 96 runs, `tweet_alerts_1h` 39, `tweet_alerts_30m` 6); `/scrapers` shows `github_poc_monitor` as OK although the same 4 items
+  fail every hour. `runner.py:220` starts every run at `ok` and the sink-failure path (`:475-489`) never changes it; `compute_health`
+  reads only the status of the latest 3 runs. Failed items retry forever because `release()` deletes the dedup row. The likely cause on
+  dev is the topic `github_poc` missing from `TELEGRAM__THREAD_IDS` (the Items tab shows `UnknownAlertTopic`; unverified).
+- **Orphans and growth.** 8 runs sit in `running` for more than an hour (the oldest since 2026-09-26 04:21). `scraper_runs` has 25,864
+  rows (about 1.2k a day, 8.9 MB) and no purge. `celery_task_id`, `worker`, `attempt>1` and status `timeout` are 0 of 25,864. The setup
+  code in `_run_body` (`runner.py:222-285`) runs outside the `try`, so an exception there leaves the row `running`.
+- **The Dashboard delta is misleading.** "Total Articles 855 ▲ +852 vs prev 30d" and "Confirmed Incidents 316 ▲ +316" while the
+  previous 30 days hold 3 articles. The Exec page, for the same data, says "no prior-period data" because it has
+  `prev_period_reliable` (`services/exec_dashboard.py:58,140,180`); `article_dashboard.py` has no such flag.
+- **No page except `/scrapers` shows pipeline health.** X Intel's newest tweet was fetched 2026-10-02 (`monitor_x` fails with
+  `parse_error`, `tweet_alerts_*` are disabled) and the page does not say so. On `/scrapers`: the Items tab's Accepted column is empty
+  (`apps/web/src/components/scrapers/scraper-items-panel.tsx:88` renders `""` for both branches since commit `9a0fc73`; the same bug is
+  at `intelligence/campaign-clusters/geopolitical-panel.tsx:68`), the Runs tab shows `927361ms` and no error column, DISABLED has no
+  reason (the list payload has no `paused_reason`), and the table shows every enabled scraper as "ok" while the health query is still
+  loading. IOC enrichment coverage is partial and invisible (domain 379 of 1,206, ip 177 of 716, sha256 308 of 829, md5 167 of 295,
+  url 0 of 742). Article coverage is 198 of 855 with a country and about 81 with an actor.
+- **Performance is not a problem yet** (EXPLAIN ANALYZE on dev: `DISTINCT ON` over `scraper_runs` 22 ms, `articles ORDER BY posted_on`
+  0.5 ms, `cve_records` by severity 0.7 ms). The missing indexes are real in the schema but are listed under "Not in this item".
+- **Guesses the data disproved** (do not "fix" them): the five scrapers with no run since 2026-10-01 (`google`, `blackberry`, `cisa`,
+  `nquiring_minds`, `koisec`) are deliberate `enabled=False` waivers shown correctly as DISABLED; domain IOCs stored defanged are by
+  design (`ioc_enrichment.py:189` refangs before a provider lookup); the weekly recap stopping daily rows at 2026-10-10 is by design
+  (#21).
+
+**Reproduce the numbers** (read-only, on the host: `docker exec -e PGOPTIONS="-c default_transaction_read_only=on" ... psql -U cti -d cti`):
+`select count(*), count(*) filter (where reason like '[enrichment_failed]%') from rejected_articles;` ·
+`select count(*), sum(items_failed) from scraper_runs where status='ok' and items_failed>0 and started_at > now()-interval '7 days';` ·
+`select count(*) from scraper_runs where status='running' and started_at < now()-interval '1 hour';` ·
+`select count(*) filter (where posted_on >= current_date-30), count(*) filter (where posted_on >= current_date-60 and posted_on < current_date-30) from articles;`
+
+### PR-A: do not lose articles, do not report a false OK (backend + the Newsroom tab)
+
+Commits, in order (each one keeps `main` green; one migration):
+1. **`failure_kind`.** A nullable `rejected_articles.failure_kind VARCHAR(30)` (`NULL` = the classifier rejected it; `transient`,
+   `json` or `permanent` = enrichment failed). A hand-written migration after head `a3f81c2d9b47` that backfills from the existing
+   prefix (class name after `[enrichment_failed]`: connection, 5xx, rate-limit and DB errors = `transient`; `JSONDecodeError` =
+   `json`; anything else `permanent`), and the model change in `models/article.py:203-238` (the drift test compares both).
+   `RejectedArticleRepo.upsert` gets a `failure_kind` argument that **always overwrites**, `None` included, so a replayed article
+   that the classifier then rejects clears it (`persist_rejected` passes `None`). `_record_enrichment_failure` derives the kind
+   from `einfo.type` with the same exception sets the retry policy uses. The prefix stays in `reason` for one release, and
+   `reports/daily_counters.py` counts `failure_kind IS NOT NULL OR prefix` so a rolling deploy cannot undercount. While on those
+   lines, scrub secrets before truncating the message (today it is cut to 300 characters first). Update `docs/ARCHITECTURE.md`
+   (the three places that describe `[enrichment_failed]`).
+2. **Alert.** After the upsert, in its own `try/except` so it can never mask the original failure: a Redis `SET cti:enrich:failed_alerted
+   NX EX <cooldown>` guard (the pattern in `beat_watchdog.py:74`), then one message to the existing `scraper_health` topic (no new
+   key on the prod host) with the error class, the first 200 escaped characters and the number of failures still waiting for a replay.
+   New setting `worker.enrich_failure_alert_cooldown_min` (default 60) with `.env.example`, `.env.prod.template` and the two env
+   tests updated in the same commit; the existing task-failure tests get an autouse stub for Redis and Telegram.
+3. **Replay tool.** `tools/ops/replay_failed_enrichment.py` (+ a Makefile target and `tests/unit/test_ops_makefile.py`), report-only by
+   default, `--apply` to enqueue. Filters `--kind`, `--since`, `--source`, `--limit`, `--rate` (messages per minute). It enqueues
+   `enrich.article` with the five keyword arguments the sink sends (`title`, `url`, `posted_on` ISO or `None`, `source`, `scraper_id`),
+   after `ensure_enrich_capacity`. Plan categories: `enqueue`, `skip_article_exists`, `stub_restored` (an analyst already restored it,
+   so a replay would silently do nothing; handled only with an explicit `--replace-restored-stubs`, which deletes the stub article,
+   a cascade that nulls `iocs.article_id`). It prints a reminder to prove the LLM works first. A successful replay deletes the failed
+   row by itself (`persist.py:161-165`); a replay the classifier rejects keeps a row with `failure_kind` cleared; a replay that fails
+   again keeps the old `rejected_at`.
+4. **API and the Newsroom tab.** `RejectedArticleOut.failure_kind`; `GET /api/filtered-articles?kind=unrelated|failed|all`;
+   `POST /api/filtered-articles/{id}/replay` behind `require_admin` (it spends LLM quota and sends alerts), answering 409 when the
+   article already exists, and written to the audit log; `restore` refuses a failed row with a 409 that points to Replay. Regenerate
+   `docs/openapi.json`, `apps/web/src/lib/api/schema.d.ts` and the syrupy snapshot
+   `test_filtered_articles_router_snapshot.ambr`. `apps/web/src/components/newsroom/filtered-view.tsx`: a `TabPills` switch "Not
+   cyber-related" / "Failed enrichment", show `reason`, an honest hint per tab (the current text is wrong), a Replay button with a
+   per-row `aria-label`, an `onError` toast (the server's 404/409 text is discarded today), `useDebounced` + `usePageResetOn` for
+   the search, and an `aria-label` on the search input.
+5. **An honest run status.** In `runner.py` right after the success path (`:319`): `if result.items_failed and result.status == "ok":
+   result.status = "partial"`, with the final-status decision pulled into a pure function so it can be unit-tested (dry-run returns
+   before `_handle_item`, so the current unit tests cannot reach it). `partial` is chosen on purpose: it is already terminal, a success
+   status for `cve_check` and the web freshness code, not retried, and has a warning style; a new status name would not fit
+   `String(20)`, would be rejected by `_finish_fields` and would count as failed in `new_cve` freshness. Wrap the `_run_body` setup
+   (`:222-285`) in the `try` so `finish()` always runs. `health.py::compute_health`: skip `running` rows when picking the latest run;
+   `degraded` when the latest finished run is failing (a bad status **or** `items_failed>0`); `ScraperHealthEntry` and
+   `ScraperHealthEntryOut` gain defaulted `reason`, `items_failed_last`, `consecutive_failing` and `last_success_at` (one grouped
+   query in both repo twins, not the 3-run window). The Telegram digest (`tasks/scrape.py:148-185`) is stateless today and would
+   repeat the same alert every 30 minutes; give it a Redis `SET NX EX` window per problem set (`worker.scraper_health_repeat_min`,
+   same template/test updates). Fix the sentence in `docs/SCRAPER_MAINTENANCE.md` that says `partial` "does not make the scraper
+   degraded". Tests: add the first unit tests for the `dead`, `degraded` and `zero_yield` thresholds (the existing helpers use
+   `SimpleNamespace(status, started_at)`, so read `items_failed` with `getattr`).
+6. **Reaper, purge, populated columns.** `scraper.reap_stale_runs` every 30 minutes on `maintenance`: `running` rows older than
+   `worker.scraper_run_stale_hours` (default 2, above the 3600 s visibility timeout) become `timeout` with
+   `errors=[{"stage":"reaper","type":"StaleRun"}]` and `finished_at` left NULL (stamping it would make an old row look like the
+   latest result in `/api/cve/freshness`). `scraper.purge_old_runs` at 03:05: rows older than `worker.scraper_run_retention_days`
+   (default 90, never below the 30-day item retention because `scraper_items.run_id` cascades) and never `running`. Runner
+   constructor keywords `celery_task_id`, `worker` and `attempt` (not `execute()`, whose signature the retry test fakes), passed from
+   `run_scraper`. These are the first tests of any purge.
+
+**Release**: one pull request, suggested **0.7.2** (a fix release: one migration, no new page); version, `CHANGELOG.md`, `uv.lock`,
+`docs/openapi.json` and the health snapshot ride in it per the release convention.
+
+### PR-B: show the pipeline's health (a small API + the web)
+
+Starts after PR-A is merged (it reads `failure_kind`).
+1. **Dashboard.** `DashboardStats.prev_period_reliable`, computed in `article_dashboard.py` with
+   `distinct_day_count(**prev_filters) >= days * PREV_MIN_DAY_COVERAGE` (import the constant from `exec_dashboard`, as the file already
+   does for two other names); `False` in the all-time path. `components/dashboard/stat-box.tsx::Delta` gets a `reliable` prop and renders
+   "no prior-period data" like `components/exec/kpi-strip.tsx:18`. Handle `ta.isError` in `dashboard/page.tsx` so a Threat Actor stats
+   failure no longer removes the article KPIs. Update the syrupy snapshot `test_dashboard_stats` and add the "few previous days" and
+   "enough previous days" cases to `test_article_dashboard_service.py`.
+2. **Scrapers.** `ScraperListItem` gains `disabled_by` (`code`, `admin` or `mirror`) and `paused_reason`; the table shows both under a
+   DISABLED status, no longer shows "ok" while the health query is pending or failed, and the "Needs attention" chips show
+   `problems[].reason`. A `<details>` legend of the statuses (stale = never ran, dead = last run older than 3x the interval, degraded,
+   zero_yield, partial) in the pattern of the CVE Dashboard's "How these metrics are calculated". Runs tab: an error column built from
+   `errors[].stage/type/message` (never a traceback; they can leak) and a human duration. Items tab: lucide `CheckIcon`/`XIcon` with
+   screen-reader text in place of the empty glyphs, in both panels that have the bug.
+3. **Data health API.** Extract `build_scraper_health(session, redis, now)` and `_scheduler_status` from `routers/scraper.py`, then
+   `GET /api/data-health` (`require_auth`, typed schemas, no `dict[str, object]`): `generated_at`; `enrichment` (failed in 24 h and 7 d,
+   processed in 7 d, failures still waiting for a replay, last failure time); `queues` (`LLEN enrich` through `deps.get_redis` plus
+   `scraper.enrich_queue_max_depth`); `sources` (newest `articles.first_seen_at`, newest `tweets.fetched_at`, newest `iocs.last_seen_at`);
+   `ioc_enrichment` per type (total vs enriched, using `providers[].raw.skipped IS NULL` on the `enrichment` JSONB, not the `?` operator
+   inside `text()`). A 60-second per-process cache like the other dashboards, registered in the autouse `_clear_in_process_caches`
+   fixture; `_FakeRedis` in `tests/integration/conftest.py` needs an `llen`. CVE and ATT&CK freshness are not re-composed: the page
+   calls the existing `/api/cve/freshness` and `/api/attack/status`.
+4. **`/data-health` page.** `layout.tsx` (`PageHeader`, `metadata.title`) + `page.tsx` like `/scrapers`; a `NAV_ITEMS` entry between
+   Scrapers and Admin (icon from `lucide-react`; `ShellSkeleton` goes from 10 to 11 rows); one shared hook per query (the scrapers health
+   `queryFn` is copied three times today). Four `h2` sections of `Card`/`surface-raised`: pipeline (scheduler, fleet counts, problems with
+   reasons, link to `/scrapers`), enrichment (failed 24 h / 7 d, rate, last failure, link to Newsroom > Failed enrichment), source
+   freshness (articles, X Intel with the monitor's state, IOCs, CVE, ATT&CK), and coverage (article country/actor/TTP from
+   `/api/dashboard`, IOC enrichment per type). Times use `relativeTime` and `formatWib` from `apps/web/src/lib/cve/freshness.ts`
+   behind a null/invalid guard (they throw or print "NaNd ago" otherwise). The thresholds that colour a card are written on the page
+   in a "How to read this page" `<details>`, not in `title=`. Follow `apps/web/CLAUDE.md` (Base UI `render=`, `aria-label`, `font-code`
+   for data, `text-X-text` on tints, no `backdrop-blur`, no opacity dimming).
+
+**Release**: suggested **0.8.0** (a new page).
+
+### Needs from the user (decisions before PR-A)
+
+| # | Decision | Recommendation |
+|---|---|---|
+| 1 | Should replayed articles send their normal Telegram alerts? 101 day-old articles would hit the topics at once | A backward-compatible `replay: bool = False` keyword on `enrich.article` that skips alert routing, plus `--rate` pacing |
+| 2 | `scraper_runs` retention (90 days) and the reaper threshold (2 hours) | accept both |
+| 3 | Replay entry points | the CLI **and** the admin button |
+| 4 | Is the model behind `mimo-auto` fixed on dev, and does prod run the same model? | confirm on dev before any replay; a read-only look at prod's `rejected_articles` first (the prod host may have lost articles the same way) |
+
+### Done when
+
+- On dev, replaying the 101 rows leaves them in `articles` with enrichment (countries/actors/TTPs filled where the text has them) and
+  removes their rows from `rejected_articles`; a second replay is a no-op. A forced LLM error (a wrong model name in a throwaway
+  environment) produces exactly one alert per cooldown window and a `failure_kind` on the row.
+- `github_poc_monitor` shows as degraded with a reason and `consecutive_failing`; the digest does not repeat the same list every
+  30 minutes; the 8 orphan `running` rows turn into `timeout`; `scraper_runs` older than the retention is gone and `celery_task_id` is
+  populated on new rows.
+- The Dashboard shows "no prior-period data" on a dev instance this young; `/data-health` shows the same numbers as the reproduction
+  queries above; no page shows a bare "ok" while its data is loading or failed.
+- Gates: ruff, strict mypy (`cti-core`, `cti-scraper`), `pytest tests/unit tests/contract packages`, the Docker integration suite for
+  the migration/snapshot/purge tests, the OpenAPI drift check, and for the web `pnpm lint`, `next typegen && tsc --noEmit` and
+  `pnpm build` (the worktree has no `node_modules` and no `pnpm`; use `npx pnpm@10.11.0 install --frozen-lockfile` or the main
+  checkout's `node_modules`). After the user deploys to dev, re-run this audit's read-only checks and look at `/data-health`,
+  `/scrapers` and the Newsroom tab in light and dark mode.
+
+### Not in this item (known, not scheduled)
+
+- **Indexes and retention** (not urgent at this size): `scraper_runs (scraper_id, started_at)`; `articles.posted_on`/`created_at`,
+  `rejected_articles.rejected_at`, `iocs.last_seen_at`, `tweets.posted_on`, `scraper_items.url_hash`, the child FKs of `cve_*` and
+  `ioc_sources`; `pg_trgm` for `ILIKE '%x%'`; no retention for `rejected_articles`, `audit_log`, `ioc_sources`, `tweets`,
+  `ransomware_victims`, `package_vulns`; `threat_feed_entries` has no last-seen so a removed C2 never expires.
+- **Data quality**: `ioc_sources` has 108 duplicate `(ioc_id, url)` rows and no unique constraint; IOC upserts are check-then-insert
+  (two workers can collide); IOC values are not case-normalised (10 duplicate groups); ATT&CK sync never flags techniques MITRE
+  deprecates later; `cisa_kev_checked_at` is stamped only on KEV hits, so a NULL cannot tell "not KEV" from "never checked";
+  `cve_tracker.registered_date` is NULL in every row yet sits in the digest window predicate.
+- **Multi-tenancy** (harmless with one client, a blocker before a second one): `/api/mindmap` (a PIR by id across tenants, a cache
+  without `client_id`), `GET /api/stix/pir` (`list_active_unscoped`), crossref and `ta_profile` across clients, recap and newsletter
+  reading all clients' tracker rows, an `X-Client-ID` the user does not belong to silently falling back to the first client, and
+  deleting a client cascading to its tickets (against `docs/CVE_TECH_MATCHING.md:169`).
+- **PR-C, consistency** (UI): one date format and zone everywhere (today WIB, UTC, browser-local, ISO and `m/d/yyyy` all appear);
+  a freshness stamp on Exec, Newsroom, X Intel, IOC Management and Risk Matrix; metric help that works with keyboard and touch
+  instead of `title=` (Exec 194, Risk Matrix 136, Newsroom 106); a Risk Matrix legend; `h2`/`h3` on Recap, Newsletter and Admin;
+  the empty states of Package Vulnerabilities ("nothing monitored" vs "clean") and Campaign Clusters (the default 7 days / size 3
+  shows 0 while 30 days / size 3 has 7); the Recap history labels `6a · 0t · 0c`; the Indonesian "(tanpa vendor)" in All Tech.
+- **A deep `/healthz`** (database, Redis, workers): `deploy.sh` and the Docker `HEALTHCHECK` depend on the current shallow one, so it
+  needs its own change.
+- **Docs drift**: `docs/ARCHITECTURE.md` §7 note 1 (a URL that is already an article is not re-enriched since #31);
+  `docs/SCRAPER_MAINTENANCE.md` still points to the removed `KNOWN_BROKEN.md` and §4.B ("read the error in Runs") does not match
+  the UI (PR-B adds that column).
+- **Not yet looked at**: the Monitored Accounts tab of X Intel, the body of the Admin page (it holds third-party keys), contrast
+  measured in both themes, a real 375 px viewport, keyboard use at runtime, and whether `logbook.last_report_date` (2026-09-26,
+  14-day interval) means a logbook report was missed.
