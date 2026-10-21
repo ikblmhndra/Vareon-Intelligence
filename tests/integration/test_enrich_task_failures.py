@@ -80,6 +80,13 @@ def rejected_reason() -> str | None:
         )
 
 
+def rejected_kind() -> str | None:
+    with sync_session() as s:
+        return s.scalar(
+            select(RejectedArticle.failure_kind).where(RejectedArticle.url_hash == url_hash(URL))
+        )
+
+
 def conn_error() -> openai.APIConnectionError:
     return openai.APIConnectionError(request=_REQ)
 
@@ -104,6 +111,16 @@ def test_persistent_transient_error_is_retried_6_times_then_recorded(mod, monkey
     assert result.failed() and len(calls) == 1 + 6  # percobaan awal + 6 retry
     reason = rejected_reason()
     assert reason and reason.startswith("[enrichment_failed] APIConnectionError")
+    assert rejected_kind() == "transient"
+
+
+def test_empty_llm_response_is_retried_like_a_5xx(mod, monkeypatch) -> None:
+    from cti_core.llm.client import EmptyLLMResponse
+
+    calls = stub_pipeline(monkeypatch, EmptyLLMResponse("LLM membalas tanpa choices: None"), None)
+
+    assert mod.enrich_article.apply(kwargs=KWARGS).successful()
+    assert len(calls) == 2
 
 
 @pytest.mark.parametrize(
@@ -138,6 +155,7 @@ def test_json_errors_get_only_two_retries(mod, monkeypatch) -> None:
 
     assert result.failed() and len(calls) == 1 + 2
     assert "[enrichment_failed] JSONDecodeError" in (rejected_reason() or "")
+    assert rejected_kind() == "json"
 
 
 # --- tanpa retry, langsung dicatat ----------------------------------------------
@@ -155,6 +173,7 @@ def test_auth_error_is_not_retried_and_is_recorded(mod, monkeypatch) -> None:
         result.failed() and len(calls) == 1
     )  # retry cuma buang waktu: key salah gak sembuh sendiri
     assert "AuthenticationError" in (rejected_reason() or "")
+    assert rejected_kind() == "permanent"
 
 
 def test_quota_exhausted_is_not_retried_and_is_recorded(mod, monkeypatch) -> None:

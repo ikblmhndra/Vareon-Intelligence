@@ -230,6 +230,11 @@ class RejectedArticle(Base):
     scraper_id: Mapped[str | None] = mapped_column(String(100), index=True)
     posted_on: Mapped[datetime.date | None] = mapped_column(Date)
     reason: Mapped[str | None] = mapped_column(Text)
+    failure_kind: Mapped[str | None] = mapped_column(String(30))
+    """NULL = ditolak klasifikasi LLM (`reason` = alasan LLM). Selain itu enrichment GAGAL dan
+    artikelnya belum diproses: `transient` (retry habis), `json` (JSON rusak terus), `permanent`
+    (401/kuota/400/bug). Validasi di aplikasi, tanpa CHECK (seperti `daily_recaps.kind`). Prefix
+    `[enrichment_failed]` di `reason` tetap ditulis satu rilis supaya worker lama tetap terbaca."""
     rejected_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

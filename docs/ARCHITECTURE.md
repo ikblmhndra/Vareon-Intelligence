@@ -147,9 +147,11 @@ tweet would move `since_id` past tweets the alert filters rejected.
    topic.
 
 **Failure policy** (`apps/worker/src/cti_worker/tasks/enrich.py`). Transient errors (LLM connection, 5xx,
-429 that is not quota, network, DB connection) retry up to 6 times with 30 s → 10 min backoff and jitter.
-Broken JSON retries twice. On the final failure `on_failure` writes `rejected_articles` with reason
-`[enrichment_failed] ...` (secrets scrubbed), unless the article was already persisted.
+429 that is not quota, a 200 reply without `choices`, network, DB connection) retry up to 6 times with
+30 s → 10 min backoff and jitter. Broken JSON retries twice. On the final failure `on_failure` writes
+`rejected_articles` with `failure_kind` (`transient`, `json` or `permanent`; `NULL` means the classifier
+rejected it) and reason `[enrichment_failed] ...` (secrets scrubbed), unless the article was already
+persisted. The prefix stays in `reason` for one release so an older worker is still readable.
 
 ### 3.2 Read path: UI → API → Postgres
 

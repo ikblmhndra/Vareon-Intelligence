@@ -597,10 +597,12 @@ class RejectedArticleRepo:
         scraper_id: str | None = None,
         posted_on: datetime.date | None = None,
         reason: str | None = None,
+        failure_kind: str | None = None,
         raw_enrichment: dict[str, Any] | None = None,
     ) -> RejectedArticle:
         """`raw_enrichment` (audit trail respons LLM mentah) None = jangan
-        sentuh yang sudah tersimpan."""
+        sentuh yang sudah tersimpan. `failure_kind` SELALU menimpa (None juga): artikel yang
+        dulu gagal lalu ditolak klasifikasi pada replay tidak boleh tetap bertanda gagal."""
         h = compute_url_hash(url)
         existing = self.session.execute(
             select(RejectedArticle).where(RejectedArticle.url_hash == h)
@@ -615,6 +617,7 @@ class RejectedArticleRepo:
                 scraper_id=scraper_id,
                 posted_on=posted_on,
                 reason=reason,
+                failure_kind=failure_kind,
                 raw_enrichment=raw_enrichment or {},
             )
             self.session.add(row)
@@ -626,6 +629,7 @@ class RejectedArticleRepo:
         existing.scraper_id = scraper_id
         existing.posted_on = posted_on
         existing.reason = reason
+        existing.failure_kind = failure_kind
         if raw_enrichment is not None:
             existing.raw_enrichment = raw_enrichment
         self.session.flush()

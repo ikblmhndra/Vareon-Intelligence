@@ -79,8 +79,20 @@ def _scrub_secrets(text: str) -> str:
     return text
 
 
+def _failure_kind(error_class: type[BaseException]) -> str:
+    """Jenis kegagalan FINAL untuk `rejected_articles.failure_kind`, mengikuti kebijakan retry."""
+    if issubclass(error_class, json.JSONDecodeError):
+        return "json"
+    if issubclass(error_class, _TRANSIENT_ERRORS):
+        return "transient"
+    return "permanent"
+
+
 def _record_enrichment_failure(
-    kwargs: dict[str, Any], exc: BaseException, error_type: str | None = None
+    kwargs: dict[str, Any],
+    exc: BaseException,
+    error_type: str | None = None,
+    failure_kind: str = "permanent",
 ) -> None:
     """Catat artikel yang gagal di-enrich ke `rejected_articles`. BEST-EFFORT:
     gagal nulis catatan ini gak boleh nutupi kegagalan aslinya (cuma di-log)."""
@@ -105,9 +117,12 @@ def _record_enrichment_failure(
                 source=kwargs.get("source", ""),
                 scraper_id=kwargs.get("scraper_id"),
                 posted_on=datetime.date.fromisoformat(posted) if posted else None,
-                reason=_scrub_secrets(
-                    f"[enrichment_failed] {error_type or type(exc).__name__}: {str(exc)[:300]}"
+                # Scrub SEBELUM dipotong: secret di batas 300 karakter lolos kalau tidak.
+                reason=(
+                    f"[enrichment_failed] {error_type or type(exc).__name__}: "
+                    f"{_scrub_secrets(str(exc))[:300]}"
                 ),
+                failure_kind=failure_kind,
             )
         log.error("enrich_failed_recorded", url=url, error_type=error_type or type(exc).__name__)
     except Exception as record_error:
@@ -134,8 +149,8 @@ class _EnrichTask(Task):  # type: ignore[misc]
         # `exc` dari Celery sudah "dibuat pickleable": exception dgn constructor
         # rumit (openai.*) turun ke kelas dasarnya (`AuthenticationError` ->
         # `OpenAIError`). Tipe ASLI ada di `einfo.type`.
-        original = getattr(einfo, "type", None)
-        _record_enrichment_failure(kwargs, exc, original.__name__ if original else None)
+        original = getattr(einfo, "type", None) or type(exc)
+        _record_enrichment_failure(kwargs, exc, original.__name__, _failure_kind(original))
 
 
 @app.task(bind=True, base=_EnrichTask, name="enrich.article", queue="enrich")
