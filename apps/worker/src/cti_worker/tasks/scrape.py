@@ -90,9 +90,15 @@ def run_scraper(self: Any, scraper_id: str, trigger: str = "beat") -> dict[str, 
     bucket = TokenBucket(redis_lib.Redis.from_url(settings.redis.url))
 
     with sync_session() as session:
-        result = Runner(scraper_cls, session=session, bucket=bucket, dry_run=False).execute(
-            trigger=trigger
-        )
+        result = Runner(
+            scraper_cls,
+            session=session,
+            bucket=bucket,
+            dry_run=False,
+            celery_task_id=self.request.id,
+            worker=self.request.hostname,
+            attempt=(self.request.retries or 0) + 1,
+        ).execute(trigger=trigger)
 
     if result.status in _RETRYABLE_STATUSES:
         attempt = self.request.retries or 0
@@ -142,6 +148,45 @@ def purge_expired_seen(self: Any) -> dict[str, object]:
     with sync_session() as session:
         deleted = ScraperSeenRepo(session).purge_expired()
     log.info("scraper_seen_purged", deleted=deleted)
+    return {"deleted": deleted}
+
+
+@app.task(bind=True, name="scraper.reap_stale_runs", queue="maintenance")
+def reap_stale_runs(self: Any) -> dict[str, object]:
+    """Tutup run yang yatim: worker mati atau di-redeploy saat run jalan meninggalkan baris
+    `running` selamanya (dev: 8 baris, tertua 3 minggu), padahal `/api/scraper` menampilkannya
+    sebagai status terakhir dan health menilai dari situ. Jadi `timeout` setelah
+    `scraper_run_stale_hours` (di atas visibility timeout Celery 1 jam)."""
+    import datetime
+
+    from cti_core.config import get_settings
+    from cti_core.db.engine import sync_session
+    from cti_core.db.repositories.scraper import ScraperRunRepo
+
+    stale_after = datetime.timedelta(hours=get_settings().worker.scraper_run_stale_hours)
+    with sync_session() as session:
+        reaped = ScraperRunRepo(session).reap_stale_running(stale_after)
+    if reaped:
+        log.warning("scraper_runs_reaped", reaped=reaped, stale_after=str(stale_after))
+    return {"reaped": reaped}
+
+
+@app.task(bind=True, name="scraper.purge_old_runs", queue="maintenance")
+def purge_old_runs(self: Any) -> dict[str, object]:
+    """`scraper_runs` tumbuh ~1-2 ribu baris per hari (satu per tick per scraper) dan tidak pernah
+    dibersihkan; `/api/scraper/health` dan digest memindainya. Retensi minimal sama dengan
+    `scraper_items` karena `scraper_items.run_id` cascade."""
+    import datetime
+
+    from cti_core.config import get_settings
+    from cti_core.db.engine import sync_session
+    from cti_core.db.repositories.scraper import ScraperRunRepo
+
+    worker = get_settings().worker
+    days = max(worker.scraper_run_retention_days, worker.scraper_item_retention_days)
+    with sync_session() as session:
+        deleted = ScraperRunRepo(session).purge_older_than(datetime.timedelta(days=days))
+    log.info("scraper_runs_purged", deleted=deleted, retention_days=days)
     return {"deleted": deleted}
 
 

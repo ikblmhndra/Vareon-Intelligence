@@ -236,6 +236,8 @@ Beat also schedules non-scraper tasks (`cti_worker.beat._periodic_schedule`, `_r
 | Task | Queue | Does |
 |---|---|---|
 | `scraper.purge_expired_items`, `scraper.purge_expired_seen` | maintenance | Delete expired `scraper_items` and `scraper_seen` rows. |
+| `scraper.purge_old_runs` | maintenance | 03:05 UTC. Delete `scraper_runs` older than `WORKER__SCRAPER_RUN_RETENTION_DAYS` (90, never below the item retention because `scraper_items.run_id` cascades); never a `running` row. |
+| `scraper.reap_stale_runs` | maintenance | Every 30 min. Close runs still `running` after `WORKER__SCRAPER_RUN_STALE_HOURS` (2) as `timeout` with a reaper note; `finished_at` stays NULL so the row never looks like the latest result in `/api/cve/freshness`. |
 | `scraper.health_digest` | notify | One Telegram message summarising unhealthy scrapers; silent when all are fine. |
 | `pir.check_p1_alerts`, `pir.check_all_alerts` | notify | Match new articles against PIRs and alert. |
 | `attack.sync_check`, `ioc.decay_sweep` | maintenance | Re-sync the ATT&CK catalog when older than `worker.attack_sync_interval_days`, IOC confidence decay. |

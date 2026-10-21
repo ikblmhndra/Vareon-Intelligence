@@ -31,7 +31,7 @@ import time
 import traceback
 import uuid
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import httpx
 import structlog
@@ -120,6 +120,9 @@ class Runner:
         cold_start_max_items: int | None = None,
         prime: bool = False,
         options: Mapping[str, str] | None = None,
+        celery_task_id: str | None = None,
+        worker: str | None = None,
+        attempt: int = 1,
     ) -> None:
         """`cold_start_max_items` -- `None` (default) baca `Settings.scraper.
         cold_start_max_items`; angka eksplisit buat test/tooling yang mau
@@ -135,13 +138,21 @@ class Runner:
         `options` -- override EKSPLISIT `ScraperMeta.options` (CLI `--option key=value`),
         menang atas pilihan admin di `ScraperConfig.options`. Tidak menulis apa pun ke DB:
         buat mencoba sumber data lain sekali jalan tanpa mengubah konfigurasi produksi.
-        Nilai yang salah = `OptionError` SEKARANG, bukan di tengah run."""
+        Nilai yang salah = `OptionError` SEKARANG, bukan di tengah run.
+
+        `celery_task_id`/`worker`/`attempt` -- dari task `scrape.run`, disimpan di baris run
+        (kolomnya ada sejak awal tapi tidak pernah terisi: retry semua tampil `attempt=1`)."""
         if options:
             validate_options(scraper_cls.meta, options)
         if not dry_run and session is None:
             raise RunnerConfigError(
                 "dry_run=False butuh `session` -- runner nulis heartbeat+sink lewat itu"
             )
+        self._run_origin: dict[str, Any] = {
+            "celery_task_id": celery_task_id,
+            "worker": worker,
+            "attempt": attempt,
+        }
         self.scraper_cls = scraper_cls
         self.meta = scraper_cls.meta
         self.session = session
@@ -173,7 +184,9 @@ class Runner:
                 # langsung terminal, gak nyentuh HTTP/rate-limit/dedup
                 # sama sekali (beda dari status lain yang semuanya lewat
                 # `_run_body`).
-                run = run_repo.start(run_id=run_id, scraper_id=self.meta.id, trigger=trigger)
+                run = run_repo.start(
+                    run_id=run_id, scraper_id=self.meta.id, trigger=trigger, **self._run_origin
+                )
                 run_repo.finish(run, status="disabled")
                 self.session.commit()
                 result = RunResult(run_id=run_id, scraper_id=self.meta.id, status="disabled")
@@ -185,7 +198,9 @@ class Runner:
                 self.meta = _apply_config_overrides(self.meta, config)
                 self._chosen_options = config.options
 
-            run = run_repo.start(run_id=run_id, scraper_id=self.meta.id, trigger=trigger)
+            run = run_repo.start(
+                run_id=run_id, scraper_id=self.meta.id, trigger=trigger, **self._run_origin
+            )
             self.session.commit()
 
         try:

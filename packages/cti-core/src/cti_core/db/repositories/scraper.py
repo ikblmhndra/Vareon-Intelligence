@@ -20,7 +20,7 @@ import datetime
 from collections.abc import Sequence
 from typing import Any, cast
 
-from sqlalchemy import Select, delete, func, select
+from sqlalchemy import Select, delete, func, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, aliased
@@ -184,6 +184,43 @@ class ScraperRunRepo:
     def last_success_by_scraper(self) -> dict[str, datetime.datetime]:
         """Run bersih terakhir per scraper (status ok/empty/partial dan `items_failed = 0`)."""
         return {sid: ts for sid, ts in self.session.execute(_last_success_stmt())}
+
+    def reap_stale_running(self, stale_after: datetime.timedelta) -> int:
+        """Run yang MASIH `running` lewat `stale_after` (worker mati atau di-redeploy saat jalan)
+        ditutup sebagai `timeout` dengan catatan reaper. `finished_at` sengaja dibiarkan NULL:
+        `latest_finished` mensyaratkannya terisi, jadi baris basi tidak tampil sebagai hasil terbaru
+        di `/api/cve/freshness`."""
+        cutoff = datetime.datetime.now(datetime.UTC) - stale_after
+        note = {
+            "stage": "reaper",
+            "type": "StaleRun",
+            "message": f"still running after {stale_after}: worker killed or task lost",
+        }
+        result = cast(
+            "CursorResult[Any]",
+            self.session.execute(
+                update(ScraperRun)
+                .where(ScraperRun.status == "running", ScraperRun.started_at < cutoff)
+                .values(status="timeout", errors=[note])
+            ),
+        )
+        self.session.commit()
+        return result.rowcount
+
+    def purge_older_than(self, retention: datetime.timedelta) -> int:
+        """Hapus riwayat run lebih tua dari `retention` (tidak pernah yang masih `running`, supaya
+        reaper yang menutupnya dulu). `scraper_items.run_id` cascade ikut terhapus."""
+        cutoff = datetime.datetime.now(datetime.UTC) - retention
+        result = cast(
+            "CursorResult[Any]",
+            self.session.execute(
+                delete(ScraperRun).where(
+                    ScraperRun.started_at < cutoff, ScraperRun.status != "running"
+                )
+            ),
+        )
+        self.session.commit()
+        return result.rowcount
 
 
 class AsyncScraperRunRepo:

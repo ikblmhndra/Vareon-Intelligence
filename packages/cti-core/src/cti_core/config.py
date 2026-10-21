@@ -229,6 +229,14 @@ class WorkerSettings(_StrictModel):
     """Fase 9 -- tiap berapa menit `scraper.health_digest` jalan (hitung
     ulang status SEMUA scraper, kirim SATU digest Telegram kalau ada yang
     non-`ok`). Gak ada padanan lama."""
+    scraper_run_stale_hours: int = 2
+    """Run yang masih `running` lebih lama dari ini dianggap yatim (worker mati atau di-redeploy
+    saat jalan) dan ditutup `scraper.reap_stale_runs` sebagai `timeout`. Harus di atas
+    `visibility_timeout` Celery (1 jam) dan lama run terpanjang."""
+    scraper_run_retention_days: int = 90
+    """Umur baris `scraper_runs` sebelum `scraper.purge_old_runs` menghapusnya (tidak pernah yang
+    masih `running`). Dipaksa minimal `scraper_item_retention_days`: `scraper_items.run_id`
+    cascade, jadi menghapus run lebih cepat dari itu ikut membuang itemnya."""
     scraper_health_repeat_min: int = 240
     """Daftar scraper bermasalah yang SAMA (id + status) tidak dikirim ulang oleh digest dalam
     segini menit (dedupe lewat Redis). Daftar yang berubah langsung terkirim. Sebelumnya digest
