@@ -4,9 +4,11 @@ criteria: "tiap cabang routing ada test"), plus kasus tepi yang jadi alasan
 `related_tech_cve_status` cuma valid di cabang Global)."""
 
 import dataclasses
+from html.parser import HTMLParser
 from typing import TypedDict, Unpack
 
 from cti_enrich.routing import RoutingInput, route
+from cti_enrich.stages.alert import build_message_base
 
 _BASE_MSG = (
     "\n    === <b>GBHACKER</b> ===\n"
@@ -174,3 +176,30 @@ def test_ttp_string_appended_when_present() -> None:
 def test_ttp_string_absent_when_empty() -> None:
     result = route(_inp())
     assert "Related TTP" not in result.msg_data
+
+
+def test_feed_text_cannot_inject_tags_into_the_telegram_message() -> None:
+    """Audit 2026-10-21: Telegram `parse_mode="HTML"` menolak seluruh pesan yang memuat tag tak
+    dikenal, jadi judul feed `<redacted>` membuat alert hilang diam-diam."""
+    base = build_message_base(
+        script_name="a&b",
+        title="RCE in <redacted> VPN & more",
+        posted_on="2026-01-01",
+        url='https://x.example/p?a=1&b="2',
+        industries_string="Finance & Insurance",
+        funding_keyword=None,
+    )
+    result = route(
+        _inp(msg_data_base=base, mentioned_group=["a<b"], ttp_string="Phish <x> (T1566)")
+    )
+
+    tags: list[str] = []
+
+    class _Tags(HTMLParser):
+        def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+            tags.append(tag)
+
+    _Tags().feed(result.msg_data)
+    assert set(tags) <= {"a", "b"}
+    assert "RCE in &lt;redacted&gt; VPN &amp; more" in result.msg_data
+    assert result.threat_actors == ["A<b"]  # kolom yang disimpan tetap mentah

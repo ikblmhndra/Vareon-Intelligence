@@ -96,7 +96,7 @@ def test_fetch_text_drops_a_block_page_from_either_path(monkeypatch: pytest.Monk
     # jalur render juga dapat halaman blokir (status 200 tapi challenge WAF)
     monkeypatch.setattr(ft, "_fetch_rendered_html", lambda _u: "<html>challenge</html>")
 
-    assert ft.fetch_text("https://x.test/report") == ""
+    assert ft.fetch_text("https://93.184.216.34/report") == ""  # IP publik: guard URL tanpa DNS
 
 
 def test_fetch_text_returns_real_article_text(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -104,4 +104,4 @@ def test_fetch_text_returns_real_article_text(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(ft.trafilatura, "fetch_url", lambda *_a, **_k: "<html>x</html>")
     monkeypatch.setattr(ft.trafilatura, "extract", lambda *_a, **_k: body)
 
-    assert ft.fetch_text("https://x.test/a") == body
+    assert ft.fetch_text("https://93.184.216.34/a") == body

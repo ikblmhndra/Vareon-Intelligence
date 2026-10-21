@@ -10,6 +10,8 @@ Funding `:429-432`) yang `routing.route()` butuh SEBELUM mutusin cabang --
 
 from __future__ import annotations
 
+import html
+
 from cti_alerts.telegram import send_alert
 
 from cti_enrich.routing import RoutingResult
@@ -24,12 +26,14 @@ def build_message_base(
     industries_string: str,
     funding_keyword: str | None,
 ) -> str:
+    # Telegram `parse_mode="HTML"` menolak seluruh pesan kalau judul feed memuat `<tag>` yang tak
+    # dikenal; judul/URL/industri berasal dari luar (feed, LLM), jadi di-escape seperti `cve_alert`.
     msg = f"""
-        === <b>{script_name.upper()}</b> ===
-<b>Title</b>: {title}
+        === <b>{html.escape(script_name.upper(), quote=False)}</b> ===
+<b>Title</b>: {html.escape(title, quote=False)}
 <b>Posted On</b>: {posted_on}
-<b>Link</b>: <a href="{url}">Read Now</a>
-<b>Impacted Industries</b>: {industries_string}
+<b>Link</b>: <a href="{html.escape(url)}">Read Now</a>
+<b>Impacted Industries</b>: {html.escape(industries_string, quote=False)}
 """
     if funding_keyword:
         msg += f"<b>Funding Related Article</b>: True ({funding_keyword})\n"

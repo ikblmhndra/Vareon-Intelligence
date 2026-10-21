@@ -31,6 +31,7 @@ aneh TAPI disalin apa adanya karena emang begitu di kode asli:
 
 from __future__ import annotations
 
+import html
 import re
 from collections import OrderedDict
 from dataclasses import dataclass, field
@@ -139,6 +140,13 @@ def _apac_string(countries: list[str], people: list[str]) -> str:
     return " || ".join(parts)
 
 
+def _esc(text: str) -> str:
+    """`msg_data` dikirim sebagai HTML Telegram; di teks biasa cukup `& < >` yang di-escape.
+    Hanya dipakai saat menyusun pesan: `group_string`/`apac_string` mentah tetap dipakai untuk
+    kolom `threat_actors`/`mentioned_countries` yang disimpan."""
+    return html.escape(text, quote=False)
+
+
 def _generic_topic(group_empty: bool, news_type_branch: str, msg_data: str) -> str:
     """Port `telegramAlert._send_alert`'s 3-way dispatch (global/apac/apt)."""
     if group_empty and news_type_branch == "global":
@@ -177,32 +185,32 @@ def route(inp: RoutingInput) -> RoutingResult:
         news_type_branch = "global"
         group_string = ""
         if inp.ttp_string:
-            msg_data += f"<b>Related TTP</b>: {inp.ttp_string}\n"
+            msg_data += f"<b>Related TTP</b>: {_esc(inp.ttp_string)}\n"
         out_countries = []
     elif is_ta_and_regional:
         news_type_branch = "apac"
         group_string = _group_string(mentioned_group)
         apac_string = _apac_string(mentioned_countries, mentioned_apac_people)
-        msg_data += f"<b>Related Threat Actor</b>: {group_string}\n"
-        msg_data += f"<b>Mentioned Country/People</b>: {apac_string}\n"
+        msg_data += f"<b>Related Threat Actor</b>: {_esc(group_string)}\n"
+        msg_data += f"<b>Mentioned Country/People</b>: {_esc(apac_string)}\n"
         if inp.ttp_string:
-            msg_data += f"<b>Related TTP</b>: {inp.ttp_string}\n"
+            msg_data += f"<b>Related TTP</b>: {_esc(inp.ttp_string)}\n"
         threat_actors = group_string.split(" || ") if group_string else []
         out_countries = apac_string.split(" || ") if apac_string else []
     elif is_regional_only:
         news_type_branch = "apac"
         group_string = ""
         apac_string = _apac_string(mentioned_countries, mentioned_apac_people)
-        msg_data += f"<b>Mentioned Country/People</b>: {apac_string}\n"
+        msg_data += f"<b>Mentioned Country/People</b>: {_esc(apac_string)}\n"
         if inp.ttp_string:
-            msg_data += f"<b>Related TTP</b>: {inp.ttp_string}\n"
+            msg_data += f"<b>Related TTP</b>: {_esc(inp.ttp_string)}\n"
         out_countries = apac_string.split(" || ") if apac_string else []
     else:  # "TA Group Article"
         news_type_branch = "global"
         group_string = _group_string(mentioned_group)
-        msg_data += f"<b>Related Threat Actor</b>: {group_string}\n"
+        msg_data += f"<b>Related Threat Actor</b>: {_esc(group_string)}\n"
         if inp.ttp_string:
-            msg_data += f"<b>Related TTP</b>: {inp.ttp_string}\n"
+            msg_data += f"<b>Related TTP</b>: {_esc(inp.ttp_string)}\n"
         threat_actors = group_string.split(" || ") if group_string else []
 
     # Cascade utama -- port `_sendAlert()`, urutan elif WAJIB persis ini.

@@ -1,22 +1,13 @@
-"""Port dari `ScraperNewsWeb/app/routers/ta_groups.py`. Dua asimetri
-port apa adanya dari kode lama, BUKAN keputusan baru:
+"""Port dari `ScraperNewsWeb/app/routers/ta_groups.py`. Dua asimetri kode lama dulu dipertahankan
+apa adanya (baca tanpa `require_auth`; baca watchlist memakai header `X-Client-ID` mentah).
+Dua-duanya SUDAH ditutup:
 
-1. Baca-vs-tulis: `GET /groups`, `GET /stats`, `GET /whitelist`,
-   `GET /watchlist-names`, `GET /watchlist`, `GET /profile/{name}`,
-   `GET /watchlist/navigator-layer` SEMUA gak `require_auth` -- sama pola
-   kayak `articles.py`/`pir.py` dkk.
-2. Client-scoping watchlist BACA: `GET /watchlist-names`/`GET /watchlist`/
-   `GET /watchlist/navigator-layer` pakai `x_client_id or "default"`
-   LANGSUNG (bukan `effective_client_id`) -- karena endpoint-endpoint itu
-   emang gak punya `user` (gak ada auth buat divalidasi header-nya
-   terhadap). Efeknya: header `X-Client-ID` sembarang diterima apa
-   adanya buat baca. `POST`/`DELETE /watchlist` (perlu auth) TETAP pakai
-   `effective_client_id` yang tervalidasi. Port apa adanya, sama alasan
-   kayak asimetri client-scoping di `rfi.py`/`pir.py`.
-
-QA 2026-10-05: catatan 'tanpa require_auth' di atas SUDAH TIDAK BERLAKU -- semua endpoint router ini
-sekarang wajib login (`require_auth`). Pengecualian: `GET /watchlist/navigator-layer`
-(dibuka dari ATT&CK Navigator eksternal) masih publik -- perlu keputusan terpisah.
+- QA 2026-10-05: semua endpoint router ini wajib login (`require_auth`).
+- Audit 2026-10-21: `GET /watchlist-names`, `GET /watchlist`, dan `GET /watchlist/navigator-layer`
+  memakai `effective_client_id` seperti `POST`/`DELETE /watchlist`, jadi `X-Client-ID` milik client
+  lain diabaikan. `navigator-layer` tidak lagi publik (tadinya membaca watchlist client mana pun
+  tanpa token); fetch lintas-situs dari ATT&CK Navigator eksternal tidak membawa token, jadi
+  layer ini sekarang sama dengan `/api/mitre` dan `/api/attack/navigator-layer`: wajib login.
 """
 
 from __future__ import annotations
@@ -156,9 +147,11 @@ async def restore_from_whitelist(
 
 @router.get("/watchlist-names", dependencies=[Depends(require_auth)])
 async def get_ta_watchlist_names(
-    x_client_id: str | None = Header(None), session: AsyncSession = Depends(get_db)
+    x_client_id: str | None = Header(None),
+    session: AsyncSession = Depends(get_db),
+    user: AuthedUser = Depends(require_auth),
 ) -> dict[str, list[str]]:
-    cid = x_client_id or "default"
+    cid = effective_client_id(user, x_client_id)
     names = await AsyncTARepo(session).get_watchlist_names(cid)
     return {"names": names}
 
@@ -174,8 +167,9 @@ async def get_ta_watchlist(
     sort_dir: str = Query("asc"),
     x_client_id: str | None = Header(None),
     session: AsyncSession = Depends(get_db),
+    user: AuthedUser = Depends(require_auth),
 ) -> TAWatchlistListResponse:
-    cid = x_client_id or "default"
+    cid = effective_client_id(user, x_client_id)
     repo = AsyncTARepo(session)
     items, total = await repo.list_watchlist(
         client_id=cid,
@@ -300,11 +294,13 @@ async def get_ta_profile_endpoint(
     return {"exists": True, "profile": profile}
 
 
-@router.get("/watchlist/navigator-layer")
+@router.get("/watchlist/navigator-layer", dependencies=[Depends(require_auth)])
 async def watchlist_navigator_layer(
-    x_client_id: str | None = Header(None), session: AsyncSession = Depends(get_db)
+    x_client_id: str | None = Header(None),
+    session: AsyncSession = Depends(get_db),
+    user: AuthedUser = Depends(require_auth),
 ) -> JSONResponse:
-    cid = x_client_id or "default"
+    cid = effective_client_id(user, x_client_id)
     repo = AsyncTARepo(session)
     profile_repo = AsyncTAProfileRepo(session)
     names = await repo.get_watchlist_names(cid)
