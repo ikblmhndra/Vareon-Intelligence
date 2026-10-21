@@ -56,7 +56,6 @@ export function WatchlistPanel({
   return (
     <PanelShell
       title="TA Watchlist News"
-      dotClassName="bg-primary shadow-[0_0_6px_var(--primary)]"
       count={hasNames ? query.data?.total : 0}
       onRefresh={() => query.refetch()}
       isRefreshing={query.isFetching}

@@ -53,7 +53,6 @@ export function LocalPanel({
   return (
     <PanelShell
       title={`${title} News`}
-      dotClassName="bg-secondary shadow-[0_0_6px_var(--secondary)]"
       count={query.data?.total}
       onRefresh={() => query.refetch()}
       isRefreshing={query.isFetching}

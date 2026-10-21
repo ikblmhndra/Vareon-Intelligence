@@ -11,10 +11,12 @@ interface StatBoxProps {
   spark?: number[];
   /** Tanpa permukaan sendiri: dipakai di dalam panel KPI yang sudah raised (satu kotak, bukan lima). */
   flat?: boolean;
+  /** Angka utama satu baris KPI: satu langkah lebih besar dari saudaranya supaya ada titik mulai baca. */
+  emphasis?: boolean;
 }
 
 /** Port `.dash-stat-box` dari `newsroom.html`/`custom.css` lama. */
-export function StatBox({ label, value, sub, className, spark, flat }: StatBoxProps) {
+export function StatBox({ label, value, sub, className, spark, flat, emphasis }: StatBoxProps) {
   return (
     <div className={cn("px-5 py-4", !flat && "surface-raised rounded-2xl", className)}>
       <div className="text-sm font-medium text-muted-foreground">{label}</div>
@@ -23,7 +25,11 @@ export function StatBox({ label, value, sub, className, spark, flat }: StatBoxPr
         <div
           className={cn(
             "font-heading font-bold tracking-tight text-foreground tabular-nums",
-            typeof value === "string" && value.length > 12 ? "min-w-0 text-xl leading-tight break-words" : "text-4xl",
+            typeof value === "string" && value.length > 12
+              ? "min-w-0 text-xl leading-tight break-words"
+              : emphasis
+                ? "text-5xl leading-none"
+                : "text-4xl",
           )}
         >
           {typeof value === "number" ? value.toLocaleString() : (value ?? "—")}
@@ -53,23 +59,22 @@ export function Delta({ value, prev, label }: { value: number; prev: number | nu
   return <span> · {text}</span>;
 }
 
-/** Judul section (`.dash-section-label` lama). `<h2>`: di bawah `<h1>` PageHeader. */
+/** Judul section (`.dash-section-label` lama). `<h2>`: di bawah `<h1>` PageHeader. `aside` = cakupan
+ * data section itu (mis. periode) di sebelah judul, di luar `<h2>` supaya tidak ikut terbaca sebagai judul. */
 export function DashboardSectionLabel({
   children,
+  aside,
   className,
 }: {
   children: ReactNode;
+  aside?: ReactNode;
   className?: string;
 }) {
   return (
-    <h2
-      className={cn(
-        "mt-10 mb-4 font-heading text-xl font-bold tracking-tight text-foreground",
-        className,
-      )}
-    >
-      {children}
-    </h2>
+    <div className={cn("mt-10 mb-4 flex flex-wrap items-baseline gap-x-4 gap-y-1", className)}>
+      <h2 className="font-heading text-xl font-bold tracking-tight text-foreground">{children}</h2>
+      {aside && <span className="text-sm text-muted-foreground">{aside}</span>}
+    </div>
   );
 }
 

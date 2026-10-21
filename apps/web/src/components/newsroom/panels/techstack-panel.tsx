@@ -60,7 +60,6 @@ export function TechStackPanel({
   return (
     <PanelShell
       title="Tech Stack News"
-      dotClassName="bg-warning shadow-[0_0_6px_var(--warning)]"
       count={hasNames ? query.data?.total : 0}
       onRefresh={() => query.refetch()}
       isRefreshing={query.isFetching}

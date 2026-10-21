@@ -48,7 +48,6 @@ export function FilteredView() {
     <div className="mx-auto max-w-3xl">
       <PanelShell
         title="Not Related Cyber"
-        dotClassName="bg-destructive shadow-[0_0_6px_var(--destructive)]"
         count={query.data?.total}
         onRefresh={() => query.refetch()}
         isRefreshing={query.isFetching}
