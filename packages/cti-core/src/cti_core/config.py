@@ -260,6 +260,10 @@ class WorkerSettings(_StrictModel):
     beat_stale_alert_repeat_min: int = 60
     """Alert Telegram "scheduler mati" diulang paling sering segini menit
     selama beat masih basi (dedupe lintas container worker lewat Redis)."""
+    enrich_failure_alert_cooldown_min: int = 60
+    """Alert Telegram "enrichment artikel gagal" (`enrich.article` gagal FINAL, artikelnya masuk
+    `rejected_articles` dengan `failure_kind`) paling sering segini menit. Kegagalan massal
+    (model salah, kuota habis) = ratusan task, jadi SATU pesan per jendela (dedupe lewat Redis)."""
     beat_catchup_grace_s: int = 600
     """QA BUG-D7 -- pas beat start, jadwal yang slot terakhirnya terlewat
     LEBIH LAMA dari ini TIDAK di-catch-up (dilompatin ke slot berikutnya).

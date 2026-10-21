@@ -57,6 +57,14 @@ def mod(_migrated_schema: None):
     return enrich
 
 
+@pytest.fixture(autouse=True)
+def alerts(mod, monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str, int]]:
+    """Alert enrichment gagal dicatat, bukan dikirim (Redis + Telegram nyata tidak ada di sini)."""
+    seen: list[tuple[str, str, int]] = []
+    monkeypatch.setattr(mod, "_alert_enrichment_failure", lambda *a: seen.append(a))
+    return seen
+
+
 def stub_pipeline(monkeypatch: pytest.MonkeyPatch, *outcomes: BaseException | None) -> list[int]:
     """`run_pipeline` palsu: tiap panggilan ngambil satu item dari `outcomes`
     (exception di-raise, `None` = sukses; item terakhir diulang selamanya)."""
@@ -103,7 +111,9 @@ def test_transient_llm_errors_are_retried_until_success(mod, monkeypatch) -> Non
     assert rejected_reason() is None  # sukses -> gak ada catatan gagal
 
 
-def test_persistent_transient_error_is_retried_6_times_then_recorded(mod, monkeypatch) -> None:
+def test_persistent_transient_error_is_retried_6_times_then_recorded(
+    mod, monkeypatch, alerts
+) -> None:
     calls = stub_pipeline(monkeypatch, conn_error())
 
     result = mod.enrich_article.apply(kwargs=KWARGS)
@@ -112,6 +122,8 @@ def test_persistent_transient_error_is_retried_6_times_then_recorded(mod, monkey
     reason = rejected_reason()
     assert reason and reason.startswith("[enrichment_failed] APIConnectionError")
     assert rejected_kind() == "transient"
+    [(error_type, _message, waiting)] = alerts  # SATU alert, di kegagalan final saja
+    assert error_type == "APIConnectionError" and waiting >= 1
 
 
 def test_empty_llm_response_is_retried_like_a_5xx(mod, monkeypatch) -> None:
@@ -217,7 +229,7 @@ def test_failing_to_record_never_hides_the_original_failure(mod, monkeypatch) ->
 # --- gagal SESUDAH persist: artikel harus selamat -----------------------------------
 
 
-def test_alert_failure_does_not_roll_back_the_persisted_article(mod, monkeypatch) -> None:
+def test_alert_failure_does_not_roll_back_the_persisted_article(mod, monkeypatch, alerts) -> None:
     """`persist` + `route_alerts` satu transaksi; exception dari alert bikin
     `sync_session()` ROLLBACK. Dulu artikel yang sudah ke-persist ikut batal
     cuma karena notifikasi Telegram-nya gagal."""
@@ -250,6 +262,7 @@ def test_alert_failure_does_not_roll_back_the_persisted_article(mod, monkeypatch
         saved = s.scalar(select(Article.id).where(Article.url_hash == url_hash(URL)))
     assert saved is not None  # ... tapi ARTIKELNYA SELAMAT
     assert rejected_reason() is None  # dan gak salah dicatat sbg hilang
+    assert alerts == []  # dan tidak ada alert "enrichment gagal" palsu
 
 
 def test_failure_reason_never_contains_configured_secrets(mod, monkeypatch) -> None:

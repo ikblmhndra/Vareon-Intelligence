@@ -79,6 +79,37 @@ def _scrub_secrets(text: str) -> str:
     return text
 
 
+_FAILURE_ALERT_KEY = "cti:enrich:failed_alerted"
+
+
+def _alert_enrichment_failure(error_type: str, message: str, waiting: int) -> None:
+    """Satu alert Telegram per jendela cooldown: kegagalan massal (model salah, kuota habis,
+    gateway mati) = ratusan task, dan sebelum ini tidak ada sinyal selain laporan harian 23:55.
+    Dedupe lintas proses worker-nlp lewat Redis (pola `beat_watchdog`). BEST-EFFORT: tidak
+    pernah menutupi kegagalan aslinya."""
+    try:
+        import html
+
+        import redis
+        from cti_alerts.telegram import send_alert
+        from cti_core.config import get_settings
+
+        settings = get_settings()
+        client = redis.Redis.from_url(settings.redis.url)
+        cooldown_s = settings.worker.enrich_failure_alert_cooldown_min * 60
+        if not client.set(_FAILURE_ALERT_KEY, "1", nx=True, ex=cooldown_s):
+            return
+        send_alert(
+            "scraper_health",
+            "<b>Enrichment artikel GAGAL</b> -- artikelnya belum diproses.\n"
+            f"<code>{html.escape(error_type)}</code>: {html.escape(message)}\n"
+            f"Menunggu replay: {waiting} artikel. Perbaiki penyebabnya dulu, lalu replay dari "
+            "Newsroom > Failed enrichment.",
+        )
+    except Exception as alert_error:
+        log.error("enrich_failure_alert_failed", error=str(alert_error)[:200])
+
+
 def _failure_kind(error_class: type[BaseException]) -> str:
     """Jenis kegagalan FINAL untuk `rejected_articles.failure_kind`, mengikuti kebijakan retry."""
     if issubclass(error_class, json.JSONDecodeError):
@@ -99,10 +130,10 @@ def _record_enrichment_failure(
     url = kwargs.get("url", "?")
     try:
         from cti_core.db.engine import sync_session
-        from cti_core.db.models.article import Article
+        from cti_core.db.models.article import Article, RejectedArticle
         from cti_core.db.repositories.article import RejectedArticleRepo
         from cti_core.urlkit import url_hash
-        from sqlalchemy import select
+        from sqlalchemy import func, select
 
         with sync_session() as session:
             exists = session.scalar(select(Article.id).where(Article.url_hash == url_hash(url)))
@@ -124,7 +155,14 @@ def _record_enrichment_failure(
                 ),
                 failure_kind=failure_kind,
             )
-        log.error("enrich_failed_recorded", url=url, error_type=error_type or type(exc).__name__)
+            waiting = session.scalar(
+                select(func.count())
+                .select_from(RejectedArticle)
+                .where(RejectedArticle.failure_kind.is_not(None))
+            )
+        error_name = error_type or type(exc).__name__
+        log.error("enrich_failed_recorded", url=url, error_type=error_name)
+        _alert_enrichment_failure(error_name, _scrub_secrets(str(exc))[:200], waiting or 0)
     except Exception as record_error:
         log.error(
             "enrich_failure_record_failed",
