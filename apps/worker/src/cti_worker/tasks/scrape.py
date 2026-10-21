@@ -90,9 +90,15 @@ def run_scraper(self: Any, scraper_id: str, trigger: str = "beat") -> dict[str, 
     bucket = TokenBucket(redis_lib.Redis.from_url(settings.redis.url))
 
     with sync_session() as session:
-        result = Runner(scraper_cls, session=session, bucket=bucket, dry_run=False).execute(
-            trigger=trigger
-        )
+        result = Runner(
+            scraper_cls,
+            session=session,
+            bucket=bucket,
+            dry_run=False,
+            celery_task_id=self.request.id,
+            worker=self.request.hostname,
+            attempt=(self.request.retries or 0) + 1,
+        ).execute(trigger=trigger)
 
     if result.status in _RETRYABLE_STATUSES:
         attempt = self.request.retries or 0
@@ -145,6 +151,66 @@ def purge_expired_seen(self: Any) -> dict[str, object]:
     return {"deleted": deleted}
 
 
+@app.task(bind=True, name="scraper.reap_stale_runs", queue="maintenance")
+def reap_stale_runs(self: Any) -> dict[str, object]:
+    """Tutup run yang yatim: worker mati atau di-redeploy saat run jalan meninggalkan baris
+    `running` selamanya (dev: 8 baris, tertua 3 minggu), padahal `/api/scraper` menampilkannya
+    sebagai status terakhir dan health menilai dari situ. Jadi `timeout` setelah
+    `scraper_run_stale_hours` (di atas visibility timeout Celery 1 jam)."""
+    import datetime
+
+    from cti_core.config import get_settings
+    from cti_core.db.engine import sync_session
+    from cti_core.db.repositories.scraper import ScraperRunRepo
+
+    stale_after = datetime.timedelta(hours=get_settings().worker.scraper_run_stale_hours)
+    with sync_session() as session:
+        reaped = ScraperRunRepo(session).reap_stale_running(stale_after)
+    if reaped:
+        log.warning("scraper_runs_reaped", reaped=reaped, stale_after=str(stale_after))
+    return {"reaped": reaped}
+
+
+@app.task(bind=True, name="scraper.purge_old_runs", queue="maintenance")
+def purge_old_runs(self: Any) -> dict[str, object]:
+    """`scraper_runs` tumbuh ~1-2 ribu baris per hari (satu per tick per scraper) dan tidak pernah
+    dibersihkan; `/api/scraper/health` dan digest memindainya. Retensi minimal sama dengan
+    `scraper_items` karena `scraper_items.run_id` cascade."""
+    import datetime
+
+    from cti_core.config import get_settings
+    from cti_core.db.engine import sync_session
+    from cti_core.db.repositories.scraper import ScraperRunRepo
+
+    worker = get_settings().worker
+    days = max(worker.scraper_run_retention_days, worker.scraper_item_retention_days)
+    with sync_session() as session:
+        deleted = ScraperRunRepo(session).purge_older_than(datetime.timedelta(days=days))
+    log.info("scraper_runs_purged", deleted=deleted, retention_days=days)
+    return {"deleted": deleted}
+
+
+def _digest_due(problems: list[Any], repeat_s: int, client: Any = None) -> bool:
+    """Daftar masalah yang SAMA (id + status) tidak dikirim ulang dalam `repeat_s`: sebelumnya
+    digest 30 menit mengulang pesan yang identik selama masalahnya ada. Daftar yang BERUBAH
+    (scraper baru bermasalah atau pulih) langsung terkirim. Redis mati = kirim saja (fail-open)."""
+    import hashlib
+
+    signature = hashlib.sha1(
+        "|".join(sorted(f"{e.scraper_id}:{e.status}" for e in problems)).encode()
+    ).hexdigest()[:16]
+    try:
+        if client is None:
+            import redis as redis_lib
+            from cti_core.config import get_settings
+
+            client = redis_lib.Redis.from_url(get_settings().redis.url)
+        return bool(client.set(f"cti:scraper:health_digest:{signature}", "1", nx=True, ex=repeat_s))
+    except Exception as e:
+        log.warning("scraper_health_digest_dedupe_failed", error=str(e)[:200])
+        return True
+
+
 @app.task(bind=True, name="scraper.health_digest", queue="notify")
 def scraper_health_digest(self: Any) -> dict[str, object]:
     """SATU pesan Telegram konsolidasi (topic `scraper_health`, perlu
@@ -154,7 +220,10 @@ def scraper_health_digest(self: Any) -> dict[str, object]:
     bakal jadi puluhan pesan kalau lagi ada insiden luas, di sini digabung
     jadi satu. GAK ngirim apa-apa kalau semua `ok`/`disabled` -- diam itu
     sinyal "sehat", bukan di-spam tiap tick."""
+    import html
+
     from cti_alerts.telegram import send_alert
+    from cti_core.config import get_settings
     from cti_core.db.engine import sync_session
     from cti_core.db.repositories.scraper import ScraperConfigRepo, ScraperRunRepo
     from cti_scraper.health import summarize_fleet_health
@@ -163,17 +232,27 @@ def scraper_health_digest(self: Any) -> dict[str, object]:
     registry = discover()
     with sync_session() as session:
         configs = ScraperConfigRepo(session).get_all()
-        recent_runs = ScraperRunRepo(session).list_recent_by_scraper_bulk(limit=3)
+        run_repo = ScraperRunRepo(session)
+        recent_runs = run_repo.list_recent_by_scraper_bulk(limit=3)
+        last_success = run_repo.last_success_by_scraper()
 
-    entries = summarize_fleet_health(registry, configs, recent_runs)
+    entries = summarize_fleet_health(registry, configs, recent_runs, last_success=last_success)
     problems = [e for e in entries if e.status not in ("ok", "disabled")]
     if not problems:
         log.info("scraper_health_digest_clean", total=len(entries))
         return {"problems": 0, "total": len(entries)}
 
+    settings = get_settings()
+    if not _digest_due(problems, settings.worker.scraper_health_repeat_min * 60):
+        log.info("scraper_health_digest_suppressed", problems=len(problems), total=len(entries))
+        return {"problems": len(problems), "total": len(entries), "sent": False}
+
     by_status: dict[str, list[str]] = {}
     for e in problems:
-        by_status.setdefault(e.status, []).append(f"{e.scraper_id} ({e.source})")
+        line = f"{e.scraper_id} ({e.source})"
+        if e.reason:
+            line += f": {html.escape(e.reason)}"
+        by_status.setdefault(e.status, []).append(line)
 
     lines = [f"<b>Scraper Health</b> -- {len(problems)}/{len(entries)} bermasalah"]
     for status in sorted(by_status):
@@ -182,4 +261,4 @@ def scraper_health_digest(self: Any) -> dict[str, object]:
 
     send_alert("scraper_health", "\n".join(lines))
     log.info("scraper_health_digest_sent", problems=len(problems), total=len(entries))
-    return {"problems": len(problems), "total": len(entries)}
+    return {"problems": len(problems), "total": len(entries), "sent": True}

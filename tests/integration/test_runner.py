@@ -298,6 +298,7 @@ def test_sink_failure_releases_the_lease_so_next_run_retries(
     first = Runner(scraper_cls, session=session, cold_start_max_items=0).execute()
 
     assert first.items_failed == 1
+    assert first.status == "partial"  # bukan "ok": ada item yang gagal (ROADMAP #24)
     assert first.items_new == 1
     assert key_of(1) not in seen_states(session)  # lease dilepas, BUKAN ditandai seen
     assert seen_states(session)[key_of(2)] == "done"
@@ -465,6 +466,25 @@ def test_missing_credential_is_a_clean_failed_run_not_a_stuck_one(
     persisted = session.scalar(select(ScraperRun.status).where(ScraperRun.run_id == result.run_id))
     assert persisted == "fetch_error"  # BUKAN "running"
     get_settings.cache_clear()
+
+
+def test_a_setup_failure_closes_the_run_instead_of_leaving_it_running(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Setup `_run_body` (opsi, kredensial, referensi DB) ada di luar `try` fetch: dulu exception di
+    sana meninggalkan run `running` selamanya dan mematikan task (dev: 8 run yatim)."""
+
+    def broken(*_a: object, **_k: object) -> dict[str, str]:
+        raise RuntimeError("opsi rusak")
+
+    monkeypatch.setattr("cti_scraper.runner.resolve_options", broken)
+
+    result = Runner(make_scraper(lambda: []), session=session, cold_start_max_items=0).execute()
+
+    assert result.status == "fetch_error"
+    assert result.errors[0]["stage"] == "setup" and "opsi rusak" in result.errors[0]["message"]
+    run = session.scalar(select(ScraperRun).where(ScraperRun.run_id == result.run_id))
+    assert run is not None and run.status == "fetch_error" and run.finished_at is not None
 
 
 def test_run_is_finished_even_when_the_db_session_broke_midway(

@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import structlog
-from cti_core.llm.client import get_llm_client, parse_json_response, store_param
+from cti_core.llm.client import first_choice, get_llm_client, parse_json_response, store_param
 from openai import RateLimitError
 
 from cti_enrich.stages.llm_messages import build_messages
@@ -246,7 +246,7 @@ def classify(title: str) -> ClassifyResult:
                 raise OpenAIQuotaExhausted(f"OpenAI credit exhausted: {e}") from e
             raise
 
-        choice = completion.choices[0]
+        choice = first_choice(completion)
         content = choice.message.content
         entry: dict[str, Any] = {
             "attempt": attempt,

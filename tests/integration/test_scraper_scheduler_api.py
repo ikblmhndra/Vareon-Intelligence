@@ -46,6 +46,43 @@ async def test_list_reports_fresh_and_stale_heartbeat(
     assert health["scheduler"]["age_s"] > 96 * 3600
 
 
+async def test_health_reports_failed_items_with_a_reason_and_the_last_clean_run(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header
+) -> None:
+    from cti_core.db.models.scraper import ScraperRun
+
+    body = (await api_client.get("/api/scraper", headers=auth_header())).json()
+    target = next(s for s in body["scrapers"] if s["enabled"])["id"]
+    now = datetime.datetime.now(datetime.UTC)
+    api_session.add_all(
+        [
+            ScraperRun(
+                run_id="run-clean",
+                scraper_id=target,
+                status="ok",
+                started_at=now - datetime.timedelta(hours=2),
+            ),
+            ScraperRun(
+                run_id="run-failing",
+                scraper_id=target,
+                status="partial",
+                started_at=now - datetime.timedelta(minutes=1),
+                items_failed=4,
+                errors=[{"stage": "sink", "type": "UnknownAlertTopic", "message": "topic x"}],
+            ),
+        ]
+    )
+    await api_session.flush()
+
+    health = (await api_client.get("/api/scraper/health", headers=auth_header())).json()
+
+    problem = next(p for p in health["problems"] if p["id"] == target)
+    assert problem["status"] == "degraded" and problem["items_failed_last"] == 4
+    assert "4 item(s) failed in the last run" in problem["reason"]
+    assert problem["consecutive_failing"] == 1
+    assert problem["last_success_at"] is not None  # run bersih 2 jam lalu, bukan yang gagal
+
+
 async def test_disabled_scraper_has_no_next_run(
     api_client: AsyncClient, api_session: AsyncSession, auth_header
 ) -> None:

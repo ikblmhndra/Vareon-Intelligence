@@ -71,12 +71,13 @@ def collect(session: Session, local_day: datetime.date, offset_hours: int) -> Da
     )
     counters = DailyCounters(day=local_day, related=related)
     rows = session.execute(
-        select(RejectedArticle.title, RejectedArticle.reason)
+        select(RejectedArticle.title, RejectedArticle.reason, RejectedArticle.failure_kind)
         .where(RejectedArticle.rejected_at >= start, RejectedArticle.rejected_at < end)
         .order_by(RejectedArticle.rejected_at, RejectedArticle.id)
     ).all()
-    for title, reason in rows:
-        if (reason or "").startswith(_FAILED_PREFIX):
+    for title, reason, kind in rows:
+        # Prefix ikut dibaca satu rilis: worker lama (rolling deploy) belum menulis `failure_kind`.
+        if kind is not None or (reason or "").startswith(_FAILED_PREFIX):
             counters.failed += 1
         else:
             counters.unrelated.append(title)

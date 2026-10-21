@@ -115,6 +115,24 @@ def test_empty_summary_skips_the_ttp_call_entirely(
     assert _article(session) is not None
 
 
+def test_replay_without_alert_still_saves_the_article(
+    session: Session, alerts: list[object]
+) -> None:
+    """Replay artikel yang gagal di-enrich (`alert=False`): tersimpan penuh, TANPA Telegram."""
+    outcome = pipeline.run_pipeline(
+        title="Ransomware hits hospital",
+        url=URL,
+        posted_on=None,
+        source="Test",
+        scraper_id="t",
+        session=session,
+        alert=False,
+    )
+
+    assert outcome.accepted and _article(session) is not None
+    assert alerts == []
+
+
 def test_a_failing_classify_still_raises_so_celery_can_retry(
     session: Session, alerts: list[object], monkeypatch: pytest.MonkeyPatch
 ) -> None:

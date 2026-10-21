@@ -229,6 +229,18 @@ class WorkerSettings(_StrictModel):
     """Fase 9 -- tiap berapa menit `scraper.health_digest` jalan (hitung
     ulang status SEMUA scraper, kirim SATU digest Telegram kalau ada yang
     non-`ok`). Gak ada padanan lama."""
+    scraper_run_stale_hours: int = 2
+    """Run yang masih `running` lebih lama dari ini dianggap yatim (worker mati atau di-redeploy
+    saat jalan) dan ditutup `scraper.reap_stale_runs` sebagai `timeout`. Harus di atas
+    `visibility_timeout` Celery (1 jam) dan lama run terpanjang."""
+    scraper_run_retention_days: int = 90
+    """Umur baris `scraper_runs` sebelum `scraper.purge_old_runs` menghapusnya (tidak pernah yang
+    masih `running`). Dipaksa minimal `scraper_item_retention_days`: `scraper_items.run_id`
+    cascade, jadi menghapus run lebih cepat dari itu ikut membuang itemnya."""
+    scraper_health_repeat_min: int = 240
+    """Daftar scraper bermasalah yang SAMA (id + status) tidak dikirim ulang oleh digest dalam
+    segini menit (dedupe lewat Redis). Daftar yang berubah langsung terkirim. Sebelumnya digest
+    mengulang pesan identik tiap sweep selama masalahnya ada."""
     report_utc_offset_hours: int = 7
     """Fase 10.E -- zona waktu laporan periodik (jam UTC+N; 7 = WIB). Job Rundeck
     lama jalan di jam LOKAL server ("23:55", "07:00"), sedangkan beat berjalan
@@ -260,6 +272,10 @@ class WorkerSettings(_StrictModel):
     beat_stale_alert_repeat_min: int = 60
     """Alert Telegram "scheduler mati" diulang paling sering segini menit
     selama beat masih basi (dedupe lintas container worker lewat Redis)."""
+    enrich_failure_alert_cooldown_min: int = 60
+    """Alert Telegram "enrichment artikel gagal" (`enrich.article` gagal FINAL, artikelnya masuk
+    `rejected_articles` dengan `failure_kind`) paling sering segini menit. Kegagalan massal
+    (model salah, kuota habis) = ratusan task, jadi SATU pesan per jendela (dedupe lewat Redis)."""
     beat_catchup_grace_s: int = 600
     """QA BUG-D7 -- pas beat start, jadwal yang slot terakhirnya terlewat
     LEBIH LAMA dari ini TIDAK di-catch-up (dilompatin ke slot berikutnya).

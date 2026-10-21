@@ -4065,6 +4065,17 @@
       },
       "RejectedArticleOut": {
         "properties": {
+          "failure_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Kind"
+          },
           "id": {
             "title": "Id",
             "type": "integer"
@@ -4723,9 +4734,19 @@
       },
       "ScraperHealthEntryOut": {
         "properties": {
+          "consecutive_failing": {
+            "default": 0,
+            "title": "Consecutive Failing",
+            "type": "integer"
+          },
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "items_failed_last": {
+            "default": 0,
+            "title": "Items Failed Last",
+            "type": "integer"
           },
           "last_started_at": {
             "anyOf": [
@@ -4748,6 +4769,28 @@
               }
             ],
             "title": "Last Status"
+          },
+          "last_success_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Success At"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
           },
           "source": {
             "title": "Source",
@@ -6722,7 +6765,7 @@
   },
   "info": {
     "title": "Vareon Intelligence API",
-    "version": "0.7.1"
+    "version": "0.7.2"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -13117,6 +13160,7 @@
     },
     "/api/filtered-articles": {
       "get": {
+        "description": "`kind=unrelated`: ditolak klasifikasi LLM; `kind=failed`: enrichment GAGAL (replay).",
         "operationId": "list_filtered_api_filtered_articles_get",
         "parameters": [
           {
@@ -13159,6 +13203,21 @@
             }
           },
           {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "enum": [
+                "all",
+                "unrelated",
+                "failed"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -13198,6 +13257,69 @@
           }
         },
         "summary": "List Filtered",
+        "tags": [
+          "filtered-articles"
+        ]
+      }
+    },
+    "/api/filtered-articles/{article_id}/replay": {
+      "post": {
+        "description": "Kirim ulang artikel yang GAGAL di-enrich ke pipeline (senyap, tanpa alert Telegram). Admin:\nmemakai kuota LLM. Baris gagalnya hilang sendiri begitu artikelnya berhasil diproses.",
+        "operationId": "replay_article_api_filtered_articles__article_id__replay_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "article_id",
+            "required": true,
+            "schema": {
+              "title": "Article Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Replay Article Api Filtered Articles  Article Id  Replay Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Replay Article",
         "tags": [
           "filtered-articles"
         ]

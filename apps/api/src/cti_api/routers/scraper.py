@@ -211,9 +211,13 @@ async def scraper_health(
 ) -> ScraperHealthSummary:
     registry = discover()
     configs = await AsyncScraperConfigRepo(session).get_all()
-    recent_runs = await AsyncScraperRunRepo(session).list_recent_by_scraper_bulk(limit=3)
+    run_repo = AsyncScraperRunRepo(session)
+    recent_runs = await run_repo.list_recent_by_scraper_bulk(limit=3)
+    last_success = await run_repo.last_success_by_scraper()
     now = datetime.datetime.now(datetime.UTC)
-    entries = summarize_fleet_health(registry, configs, recent_runs, now=now)
+    entries = summarize_fleet_health(
+        registry, configs, recent_runs, now=now, last_success=last_success
+    )
 
     counts: dict[str, int] = {}
     problems: list[ScraperHealthEntryOut] = []
@@ -227,6 +231,10 @@ async def scraper_health(
                     status=e.status,
                     last_status=e.last_status,
                     last_started_at=e.last_started_at.isoformat() if e.last_started_at else None,
+                    reason=e.reason,
+                    items_failed_last=e.items_failed_last,
+                    consecutive_failing=e.consecutive_failing,
+                    last_success_at=e.last_success_at.isoformat() if e.last_success_at else None,
                 )
             )
     return ScraperHealthSummary(

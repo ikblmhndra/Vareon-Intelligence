@@ -203,6 +203,16 @@ def _periodic_schedule() -> dict[str, dict[str, object]]:
             "schedule": crontab(hour=3, minute=15),
             "options": {"queue": QUEUE_MAINTENANCE},
         },
+        "scraper-purge-old-runs": {
+            "task": "scraper.purge_old_runs",
+            "schedule": crontab(hour=3, minute=5),
+            "options": {"queue": QUEUE_MAINTENANCE},
+        },
+        "scraper-reap-stale-runs": {
+            "task": "scraper.reap_stale_runs",
+            "schedule": crontab(minute="*/30"),
+            "options": {"queue": QUEUE_MAINTENANCE},
+        },
         "scraper-health-digest": {
             "task": "scraper.health_digest",
             "schedule": crontab(minute=f"*/{w.scraper_health_sweep_interval_min}"),
