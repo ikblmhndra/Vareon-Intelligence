@@ -86,6 +86,23 @@ def store_param(settings: LlmSettings | None = None) -> dict[str, Any]:
     return {}
 
 
+class EmptyLLMResponse(Exception):
+    """Gateway membalas 200 tapi `choices` kosong/None (model `openrouter/free` begitu saat
+    provider upstream gagal; prod 2026-10-20/21: `TypeError 'NoneType' object is not
+    subscriptable`, 3 artikel hilang karena tidak di-retry). Transien: `enrich.article`
+    me-retry-nya."""
+
+
+def first_choice(completion: Any) -> Any:
+    """`completion.choices[0]`, atau `EmptyLLMResponse` (bukan TypeError) kalau kosong."""
+    choices = _field(completion, "choices")
+    if not choices:
+        raise EmptyLLMResponse(
+            f"LLM membalas tanpa choices: {str(_field(completion, 'error'))[:200]}"
+        )
+    return choices[0]
+
+
 _USAGE_FIELDS = ("prompt_tokens", "completion_tokens", "total_tokens")
 
 

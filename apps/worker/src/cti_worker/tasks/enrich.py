@@ -40,6 +40,7 @@ import openai
 import sqlalchemy.exc
 import structlog
 from celery import Task
+from cti_core.llm.client import EmptyLLMResponse
 
 from cti_worker.celery_app import app
 
@@ -49,6 +50,7 @@ _TRANSIENT_ERRORS = (
     openai.APIConnectionError,  # termasuk APITimeoutError
     openai.InternalServerError,  # 5xx dari gateway/provider
     openai.RateLimitError,  # 429 -- yang KUOTA sudah jadi OpenAIQuotaExhausted di stage
+    EmptyLLMResponse,  # 200 tanpa `choices` (openrouter/free saat upstream gagal)
     httpx.TransportError,
     sqlalchemy.exc.OperationalError,  # koneksi DB putus / server restart
     sqlalchemy.exc.InterfaceError,
