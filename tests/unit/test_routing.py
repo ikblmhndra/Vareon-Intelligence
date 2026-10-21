@@ -1,6 +1,6 @@
 """cti_enrich.routing -- satu test per cabang cascade (plan Fase 5 exit
 criteria: "tiap cabang routing ada test"), plus kasus tepi yang jadi alasan
-`route()` didesain kayak gini (double alert OT, sub-routing Indonesia,
+`route()` didesain kayak gini (penanda OT tanpa alert ganda, sub-routing Indonesia,
 `related_tech_cve_status` cuma valid di cabang Global)."""
 
 import dataclasses
@@ -158,13 +158,43 @@ def test_no_signal_at_all_falls_through_to_generic_global() -> None:
     assert result.alert_topics == ["global"]
 
 
-def test_ot_industry_pre_check_fires_extra_alert_alongside_cascade() -> None:
-    """Properti "double alert" asli `_sendAlert` -- OT pre-check (industri
-    GPT) TIDAK short-circuit, cascade utama tetap jalan dan bisa pilih topic
-    lain. Dua alert_topics, tapi news_type ikut cascade (bukan OT)."""
+def test_ot_industry_pre_check_marks_the_message_but_keeps_one_topic() -> None:
+    """Dulu "double alert" warisan `_sendAlert`: pre-check OT (industri GPT) mengirim pesan yang
+    PERSIS SAMA ke `ot` DAN topik cascade (prod: 30 dari 657 artikel/14 hari). Sekarang satu
+    topik (cascade) + satu baris penanda; `news_type` tetap ikut cascade (bukan OT)."""
     result = route(_inp(industries_impacted=["Energy & Utilities"], zero_day_list=["zero-day"]))
-    assert result.alert_topics == ["ot", "zero_day"]
+    assert result.alert_topics == ["zero_day"]
     assert result.news_type == "Zero Day Article"
+    assert "<b>OT-relevant</b>: Yes (energy &amp; utilities)" in result.msg_data
+
+
+def test_ot_industry_pre_check_on_the_global_branch_still_routes_global() -> None:
+    result = route(_inp(industries_impacted=["Critical Infrastructure"]))
+    assert result.alert_topics == ["global"]
+    assert result.msg_data.endswith("<b>OT-relevant</b>: Yes (critical infrastructure)\n")
+
+
+def test_ot_status_with_an_ot_industry_sends_ot_once_without_the_marker() -> None:
+    """Dulu `["ot", "ot"]`: pesan identik dua kali di thread yang sama."""
+    result = route(_inp(industries_impacted=["Energy & Utilities"], ot_status=True))
+    assert result.alert_topics == ["ot"]
+    assert result.news_type == "OT Article"
+    assert "OT-relevant" not in result.msg_data
+
+
+def test_no_ot_industry_means_no_marker() -> None:
+    result = route(_inp(industries_impacted=["Finance & Insurance"], zero_day_list=["zero-day"]))
+    assert result.alert_topics == ["zero_day"]
+    assert "OT-relevant" not in result.msg_data
+
+
+def test_the_ot_marker_does_not_change_indonesia_sub_routing() -> None:
+    """Penanda ditempel SETELAH cascade: `_is_indonesia(msg_data)` membaca teks tanpa penanda."""
+    msg = _BASE_MSG.replace("Some Article Title", "Indonesian grid operator breached")
+    result = route(
+        _inp(msg_data_base=msg, industries_impacted=["Energy & Utilities"], databreach_list=["x"])
+    )
+    assert result.alert_topics == ["data_breach_indo"]
 
 
 def test_ttp_string_appended_when_present() -> None:

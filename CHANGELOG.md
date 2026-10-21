@@ -6,6 +6,28 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
+## [0.7.4] - 2026-10-21
+
+**Satu artikel tidak lagi muncul dua kali di Telegram, dan satu thread yang rusak tidak lagi menghentikan alert ke topik lain.** Di prod
+(14 hari sampai 2026-10-21), 30 dari 657 artikel yang lewat `route()` dikirim dengan teks yang persis sama ke dua thread: `ot` (pre-check
+industri OT) dan topik hasil cascade. **Tidak ada migrasi dan tidak ada kunci `.env` baru.**
+
+**Saat upgrade dari 0.7.3:** deploy biasa (`make deploy`) dan restart `worker-nlp` supaya kode routing yang baru terpakai. Di sisi
+konfigurasi, 40 dari 46 artikel `global` dalam 24 jam gagal dikirim dengan `Message thread not found`: entri `global` di
+`TELEGRAM__THREAD_IDS` menunjuk thread yang sudah tidak ada. Perbaiki ID-nya (halaman Third-party Keys atau `.env`). Artikel yang
+terlewat sudah tersimpan, tetapi alert-nya tidak akan dikirim ulang.
+
+### Diubah
+- **Pre-check OT tidak lagi mengirim ke topik `ot`.** Artikel yang industrinya kena OT (`critical infrastructure`, `energy & utilities`,
+  dst.) sekarang dikirim SEKALI ke topik hasil cascade, dengan satu baris penanda `OT-relevant: Yes (...)` di pesan. Cabang cascade
+  `ot_status` (artikel OT sungguhan) tetap ke `ot`, sekali, tanpa penanda. `news_type` tidak berubah. Alert tweet tidak diubah (tweet OT
+  tetap ke `ot` dan `feed_twitter`).
+
+### Diperbaiki
+- **`route_alerts` mengirim ke tiap topik sekali dan tidak berhenti di topik pertama yang gagal.** Topik kembar dibuang. Kalau satu
+  thread error, topik sisanya tetap dicoba, kegagalannya dicatat (`alert_send_failed` beserta nama topiknya), lalu error pertama
+  di-raise seperti sebelumnya, jadi penanganan di pipeline tidak berubah.
+
 ## [0.7.3] - 2026-10-21
 
 **Perbaikan keamanan hasil audit dan restyle Dashboard serta Newsroom.** Tanpa migrasi dan tanpa kunci `.env` baru. Satu perubahan

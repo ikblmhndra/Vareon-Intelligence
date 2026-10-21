@@ -11,10 +11,13 @@ Group) + `_sendAlert()` (nlp.py:27-73, cascade 7 tipe alert) + `_send_alert()`
 aneh TAPI disalin apa adanya karena emang begitu di kode asli:
 
 - OT keyword pre-check (`_OT_INDUSTRY_KEYWORDS`, dicek ke `industries_impacted`
-  hasil GPT) jalan TERPISAH dari cascade utama, gak `return`/short-circuit --
-  artinya SATU artikel bisa kirim DUA alert (OT + apa pun hasil cascade),
-  bukan cuma satu. Ini properti asli `_sendAlert`, bukan bug yang diperbaiki
-  di sini.
+  hasil GPT) jalan TERPISAH dari cascade utama. Di kode asli (`_sendAlert`) itu
+  mengirim alert KEDUA ke `ot` di samping hasil cascade, jadi satu artikel
+  muncul dua kali dengan teks yang persis sama (prod 2026-10-21: 30 dari 657
+  artikel dalam 14 hari). SEKARANG dihentikan (keputusan user): pre-check hanya
+  menambah satu baris penanda `OT-relevant` di teks, topiknya tetap SATU dari
+  cascade. Cabang cascade `ot_status` tetap ke `ot` (artikel OT sungguhan,
+  satu pesan, tanpa penanda).
 - `report_status`/`ot_status` konsumsi counter KUMULATIF title+body (lihat
   `stages/score.py`) -- routing cuma baca hasil akhirnya sebagai bool.
 - `related_tech_cve_status` di kode lama CUMA pernah dihitung di cabang
@@ -36,9 +39,10 @@ import re
 from collections import OrderedDict
 from dataclasses import dataclass, field
 
-# Industri yang, kalau GPT nandain artikel ini kena, mau di-alert ke channel
-# OT WALAUPUN cascade utama berakhir milih topic lain. `industries_impacted`
-# (GPT) yang dicek, BUKAN ot_list keyword (itu `stages/score.py`, sinyal beda).
+# Industri yang, kalau GPT nandain artikel ini kena, bikin pesan dikasih penanda
+# "OT-relevant" WALAUPUN cascade utama berakhir milih topic lain (TIDAK dikirim
+# ulang ke topic `ot`). `industries_impacted` (GPT) yang dicek, BUKAN ot_list
+# keyword (itu `stages/score.py`, sinyal beda).
 _OT_INDUSTRY_KEYWORDS = [
     "critical infrastructure",
     "energy & utilities",
@@ -164,10 +168,11 @@ def route(inp: RoutingInput) -> RoutingResult:
     alert_topics: list[str] = []
     msg_data = inp.msg_data_base
 
-    # Pre-check independen -- lihat catatan "double alert" di docstring modul.
+    # Pre-check independen, tapi TIDAK menambah topik -- lihat docstring modul. Penandanya
+    # ditempel di akhir (setelah cascade) supaya gak mengubah `_is_indonesia`/`_VULN_KEYWORD_LIST`
+    # yang membaca `msg_data`.
     industries_text = " ".join(inp.industries_impacted).lower()
-    if _keyword_hit(_OT_INDUSTRY_KEYWORDS, industries_text):
-        alert_topics.append("ot")
+    ot_industry_hit = _keyword_hit(_OT_INDUSTRY_KEYWORDS, industries_text)
 
     is_global_branch = not mentioned_group and not mentioned_apac_people and not mentioned_countries
     is_ta_and_regional = bool(mentioned_group) and (
@@ -240,6 +245,9 @@ def route(inp: RoutingInput) -> RoutingResult:
         else:
             alert_topics.append(_generic_topic(group_string == "", news_type_branch, msg_data))
             news_type = news_type_branch
+
+    if ot_industry_hit and "ot" not in alert_topics:
+        msg_data += f"<b>OT-relevant</b>: Yes ({_esc(ot_industry_hit)})\n"
 
     return RoutingResult(
         news_type=news_type,
