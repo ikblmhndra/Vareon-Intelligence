@@ -12,9 +12,12 @@ from __future__ import annotations
 
 import html
 
+import structlog
 from cti_alerts.telegram import send_alert
 
 from cti_enrich.routing import RoutingResult
+
+log = structlog.get_logger()
 
 
 def build_message_base(
@@ -41,5 +44,17 @@ def build_message_base(
 
 
 def route_alerts(routing_result: RoutingResult) -> None:
-    for topic in routing_result.alert_topics:
-        send_alert(topic, routing_result.msg_data)
+    """Kirim `msg_data` ke tiap topik SEKALI (`dict.fromkeys`: topik kembar tidak pernah dua kali).
+
+    Satu thread rusak (mis. `Message thread not found`, prod 2026-10-21: 40 dari 46 artikel
+    `global`) tidak boleh menghentikan topik sisanya: semua dicoba, yang gagal dicatat dengan
+    nama topiknya, lalu error PERTAMA di-raise supaya penanganan caller tidak berubah."""
+    first_error: Exception | None = None
+    for topic in dict.fromkeys(routing_result.alert_topics):
+        try:
+            send_alert(topic, routing_result.msg_data)
+        except Exception as e:
+            log.error("alert_send_failed", topic=topic, error=str(e)[:200])
+            first_error = first_error or e
+    if first_error is not None:
+        raise first_error
