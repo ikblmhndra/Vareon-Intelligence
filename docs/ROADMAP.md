@@ -1499,9 +1499,14 @@ scraper run 2026-09-26), so trends over a longer time are not visible yet.
   unguarded `completion.choices[0]` is in `classify.py`. Fixed as the first commit of PR-A (`first_choice()` raises
   `EmptyLLMResponse`, which the task retries like a 5xx). Prod also has 10 `ok` runs with failed items in 7 days, 6 runs stuck `running`
   and 51,319 `scraper_runs` rows (25 days, about 2k a day).
-- **Dev** has no Vareon containers at all (`docker ps -a` shows only other projects; the volumes and the checkout are still there), so
-  the dev model could not be confirmed and the 101 lost articles cannot be replayed yet. Bringing the stack back is a write on the shared
-  dev host and needs the user's explicit go-ahead.
+- **Dev** was down for a while (no Vareon containers; the user started it again the same day). Read-only checks afterwards (0.7.1,
+  head `a3f81c2d9b47`, so PR-A is not deployed there): the failures did **not** stop. `[enrichment_failed]` rows by day: 16 Oct 101,
+  17 Oct 1, 19 Oct 27, 21 Oct 9, all `BadRequestError ... Unsupported model mimo-auto`, against 35, 18, 20 and 3 accepted articles
+  (more than 70% lost on 21 Oct). The app sends `LLM__MODEL=my-combo` to the 9router gateway (`172.25.1.77:20128`), not `mimo-auto`:
+  the combo routes some requests to a member that the upstream rejects. Five probe calls from `worker-nlp` gave 4 failures and 1 success
+  (served by `minimax/minimax-m3.1-flash:free`). So the cause is the combo in 9router, outside this repository, and a replay on dev must
+  wait until that member is removed and a fresh probe passes. The earlier statement that the failures "look stopped" was wrong (it
+  rested on 4.7 hours of data of the new day).
 
 ### PR-A: do not lose articles, do not report a false OK (backend + the Newsroom tab)
 
