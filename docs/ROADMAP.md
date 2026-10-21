@@ -1506,7 +1506,9 @@ scraper run 2026-09-26), so trends over a longer time are not visible yet.
   the combo routes some requests to a member that the upstream rejects. Five probe calls from `worker-nlp` gave 4 failures and 1 success
   (served by `minimax/minimax-m3.1-flash:free`). So the cause is the combo in 9router, outside this repository, and a replay on dev must
   wait until that member is removed and a fresh probe passes. The earlier statement that the failures "look stopped" was wrong (it
-  rested on 4.7 hours of data of the new day).
+  rested on 4.7 hours of data of the new day). **The user removed `mimo-auto` from the combo the same day** (08:0x UTC): a new probe
+  gave 10 successes out of 10 (served by `@cf/deepseek-ai/deepseek-r1-distill-qwen-32b`), the last failure is at 08:01:26 UTC, and 4
+  articles were accepted afterwards without a failure. The 138 failed rows on dev are waiting for PR-A to be deployed and replayed.
 
 ### PR-A: do not lose articles, do not report a false OK (backend + the Newsroom tab)
 
