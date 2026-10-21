@@ -1,6 +1,6 @@
 [project]
 name = "cti-api"
-version = "0.7.2"
+version = "0.7.3"
 description = "FastAPI -- REST API (auth, artikel, CVE, IOC, dst), port dari ScraperNewsWeb"
 requires-python = ">=3.12"
 dependencies = [

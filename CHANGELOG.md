@@ -6,6 +6,37 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
+## [0.7.3] - 2026-10-21
+
+**Perbaikan keamanan hasil audit dan restyle Dashboard serta Newsroom.** Tanpa migrasi dan tanpa kunci `.env` baru. Satu perubahan
+perilaku API: `GET /api/ta/watchlist/navigator-layer` kini wajib login.
+
+**Saat upgrade dari 0.7.2:** deploy biasa (`make deploy`). Perbaikan `fetch_text` dan alert Telegram berjalan di worker, jadi restart
+semua worker; container `web` ikut dibangun ulang untuk restyle.
+
+### Diperbaiki
+- **Scoping tenant di watchlist Threat Actor**: `GET /api/ta/watchlist-names`, `POST /api/ta/watchlist`, dan
+  `GET /api/ta/watchlist/navigator-layer` memakai client milik akun (`effective_client_id`), sehingga header `X-Client-ID` milik
+  client lain diabaikan.
+- **`navigator-layer` tidak lagi publik**: wajib login (header `Authorization`). Tombol "Open in ATT&CK Navigator" di panel watchlist
+  memakai endpoint ini; fetch lintas-situs dari Navigator eksternal tidak membawa token.
+- **`fetch_text` hanya mengambil http(s) ke alamat publik**: URL dari feed tidak lagi bisa menjangkau host internal (loopback,
+  service compose, metadata cloud).
+- **Alert Telegram di-escape**: judul, URL, industri, TTP, aktor, dan negara di-`html.escape` sebelum dikirim dengan `parse_mode`
+  HTML. Judul feed bertag seperti `<redacted>` membuat Telegram menolak pesan dan alert hilang diam-diam.
+
+### Diubah
+- **Dashboard**: angka utama punya hierarki (`StatBox` prop `emphasis`), label section menampilkan cakupan data, bar chart satu warna
+  data, dan skeleton seukuran grid.
+- **Newsroom**: panel tanpa titik berwarna dan judulnya `<h2>`, tombol refresh berikon dengan `aria-label`, kartu artikel berupa
+  `<button>` (bisa difokus, Enter membuka), filter berlabel, dan `aria-label` pada filter ransomware.
+
+### Diketahui / belum dikerjakan
+- Guard `fetch_text` belum mengecek redirect dan DNS rebinding.
+- Halaman `/exec` memakai komponen yang sama dengan restyle ini tetapi belum dicek visual di terang dan gelap.
+- Tombol Navigator di panel watchlist kini mengarah ke endpoint wajib login, sama seperti dua tombol Navigator lain; perlu diputuskan
+  apakah itu perilaku yang diinginkan.
+
 ## [0.7.2] - 2026-10-21
 
 **Artikel yang gagal diproses tidak lagi hilang diam-diam, dan status scraper tidak lagi berbohong** (ROADMAP #24, PR-A). Di dev,
