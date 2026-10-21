@@ -419,7 +419,7 @@ sync_session`), and **async asyncpg** in FastAPI (`deps.get_db`). The schema has
 | `scraper_runs` | `run_id` | `Runner.execute` (start, finish) | API (`/scrapers`), `scraper.health_digest` |
 | `scraper_seen` | `dedup_key` = sha256(`scraper_id`, raw key) | `Runner` via `DedupStore` (reserve, commit, release) | `Runner` |
 | `articles` (+ `article_countries`, `_industries`, `_threat_actors`, `_ttps`) | `url_hash` (unique) | `enrich.article` (`ArticleRepo.upsert`) | API, reports, PIR alerts |
-| `rejected_articles` | `url_hash` | `enrich.article` (not cyber, or final failure) | API (Filtered Articles; restore) |
+| `rejected_articles` | `url_hash` | `enrich.article` (not cyber, or final failure with `failure_kind`) | API (Filtered Articles: restore for rejects, admin replay for failures) |
 | `iocs` (+ sources, tags, actors, feedback) | `(type, value)` | `enrich.article`, IOC feed sink, `ioc.enrich_pending` (the `enrichment` column) | API, `ioc.decay_sweep` |
 | `techstack_entries` | `(name, client_id)` | API (techstack, catalog) | `new_cve` (`reference_data`), promotion, API |
 | `cve_tracker` (+ `cve_references`, `cve_affected`, ...) | `(cve_id, client_id)` | `_cve_sink`, `_promote_live`, `cve.enrichment_sweep` | API (CVE tab, dashboards, export) |
@@ -491,7 +491,8 @@ Read these in order. Each starts at a real entry point.
 - **Commit before alerting.** The pipeline commits the article before calling `route_alerts`, so a Telegram
   failure cannot roll back stored intelligence.
 - **Nothing that passed dedup is lost silently.** Rejected and failed articles land in `rejected_articles`,
-  where analysts can review and restore them.
+  where analysts can review and restore them (classifier rejects) or an admin can replay them (failed
+  enrichment).
 - **Sink chosen by item type.** Scrapers only yield typed items; `@sink_for` in one file decides where each
   type is stored. `fetch()` has no DB access, so scrapers stay testable with recorded HTTP fixtures.
 - **One business-logic implementation.** Periodic tasks call the same `cti_api.services` functions as the API

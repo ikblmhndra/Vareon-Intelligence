@@ -1319,10 +1319,34 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Filtered */
+        /**
+         * List Filtered
+         * @description `kind=unrelated`: ditolak klasifikasi LLM; `kind=failed`: enrichment GAGAL (replay).
+         */
         get: operations["list_filtered_api_filtered_articles_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/filtered-articles/{article_id}/replay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replay Article
+         * @description Kirim ulang artikel yang GAGAL di-enrich ke pipeline (senyap, tanpa alert Telegram). Admin:
+         *     memakai kuota LLM. Baris gagalnya hilang sendiri begitu artikelnya berhasil diproses.
+         */
+        post: operations["replay_article_api_filtered_articles__article_id__replay_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5171,6 +5195,8 @@ export interface components {
         };
         /** RejectedArticleOut */
         RejectedArticleOut: {
+            /** Failure Kind */
+            failure_kind?: string | null;
             /** Id */
             id: number;
             /** Posted On */
@@ -9003,6 +9029,7 @@ export interface operations {
                 page?: number;
                 page_size?: number;
                 search?: string | null;
+                kind?: "all" | "unrelated" | "failed";
             };
             header?: {
                 authorization?: string | null;
@@ -9019,6 +9046,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RejectedArticleListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replay_article_api_filtered_articles__article_id__replay_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                article_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
                 };
             };
             /** @description Validation Error */

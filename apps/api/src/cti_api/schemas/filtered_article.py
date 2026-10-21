@@ -14,6 +14,8 @@ class RejectedArticleOut(BaseModel):
     source: str
     posted_on: str | None = None
     reason: str | None = None
+    failure_kind: str | None = None
+    """None = ditolak klasifikasi; `transient`/`json`/`permanent` = enrichment GAGAL (replay)."""
     rejected_at: str
 
 

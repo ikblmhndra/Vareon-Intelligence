@@ -645,9 +645,19 @@ class AsyncRejectedArticleRepo:
         self.session = session
 
     async def list_filtered(
-        self, *, page: int = 1, page_size: int = 20, search: str | None = None
+        self,
+        *,
+        page: int = 1,
+        page_size: int = 20,
+        search: str | None = None,
+        kind: str = "all",
     ) -> tuple[list[RejectedArticle], int]:
+        """`kind`: `unrelated` (ditolak klasifikasi), `failed` (enrichment gagal) atau `all`."""
         stmt = select(RejectedArticle)
+        if kind == "failed":
+            stmt = stmt.where(RejectedArticle.failure_kind.is_not(None))
+        elif kind == "unrelated":
+            stmt = stmt.where(RejectedArticle.failure_kind.is_(None))
         if search:
             stmt = stmt.where(
                 or_(
