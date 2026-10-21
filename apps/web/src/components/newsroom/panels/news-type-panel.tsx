@@ -20,13 +20,11 @@ const PAGE_SIZE = 15;
  */
 export function NewsTypePanel({
   title,
-  dotClassName,
   newsType,
   filters,
   onSelect,
 }: {
   title: string;
-  dotClassName: string;
   newsType: string[];
   filters: NewsroomFilters;
   onSelect: (a: Article) => void;
@@ -53,7 +51,6 @@ export function NewsTypePanel({
   return (
     <PanelShell
       title={title}
-      dotClassName={dotClassName}
       count={query.data?.total}
       onRefresh={() => query.refetch()}
       isRefreshing={query.isFetching}

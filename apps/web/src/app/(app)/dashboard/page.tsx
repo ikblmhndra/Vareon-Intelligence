@@ -95,6 +95,7 @@ export default function DashboardPage() {
         >
           <StatBox
             flat
+            emphasis
             label="Total Articles"
             value={stats.total_articles}
             sub={
@@ -134,7 +135,8 @@ export default function DashboardPage() {
       )}
 
       {/* ── News Intelligence charts ── */}
-      <DashboardSectionLabel>News Intelligence</DashboardSectionLabel>
+      <DashboardSectionLabel aside={periodLabel}>News Intelligence</DashboardSectionLabel>
+      {dashboard.isPending && <ChartGridSkeleton />}
       {stats && (
         <div
           className={`grid grid-cols-1 gap-4 transition-opacity lg:grid-cols-12 ${dashboard.isPlaceholderData ? "opacity-60" : ""}`}
@@ -166,7 +168,7 @@ export default function DashboardPage() {
             <HorizontalBarChart
               labels={stats.top_threat_actors.map((x) => toTitleCase(x.name))}
               data={stats.top_threat_actors.map((x) => x.count)}
-              tone="critical"
+              tone="info"
             />
           </ChartCard>
 
@@ -183,7 +185,7 @@ export default function DashboardPage() {
             <HorizontalBarChart
               labels={stats.top_industries.map((x) => toTitleCase(x.name))}
               data={stats.top_industries.map((x) => x.count)}
-              tone="warning"
+              tone="info"
             />
           </ChartCard>
           <ChartCard
@@ -195,25 +197,27 @@ export default function DashboardPage() {
             <HorizontalBarChart
               labels={stats.top_ttps.map((x) => toTitleCase(x.name))}
               data={stats.top_ttps.map((x) => x.count)}
-              tone="success"
+              tone="info"
             />
           </ChartCard>
         </div>
       )}
 
       {/* ── Threat Actor Room charts ── (`/api/ta/stats` gak punya filter periode) */}
-      <DashboardSectionLabel>Threat Actor Room — Charts · all time</DashboardSectionLabel>
+      <DashboardSectionLabel aside="All time. The period filter does not apply here.">
+        Threat Actor Room
+      </DashboardSectionLabel>
       {ta.data && (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
           <MapCard flat className="lg:col-span-4" title="APT Groups by Source">
             <BreakdownList items={ta.data.by_source.map((x) => ({ label: toTitleCase(x.name), count: x.count }))} />
           </MapCard>
-          <ChartCard className="lg:col-span-8" title="Tracked APT Groups — News Mentions" height={260}>
+          <ChartCard className="lg:col-span-8" title="Tracked APT Groups in the News" height={260}>
             {ta.data.top_in_news.length ? (
               <HorizontalBarChart
                 labels={ta.data.top_in_news.map((x) => toTitleCase(x.name))}
                 data={ta.data.top_in_news.map((x) => x.count)}
-                tone="success"
+                tone="info"
               />
             ) : (
               <p className="flex h-full items-center justify-center text-xs text-muted-foreground">
@@ -224,6 +228,18 @@ export default function DashboardPage() {
         </div>
       )}
 
+    </div>
+  );
+}
+
+/** Placeholder seukuran grid chart di bawahnya, supaya halaman tidak melompat saat data datang. */
+function ChartGridSkeleton() {
+  return (
+    <div aria-hidden className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+      <Skeleton className="h-96 rounded-2xl lg:col-span-8" />
+      <Skeleton className="h-96 rounded-2xl lg:col-span-4" />
+      <Skeleton className="h-80 rounded-2xl lg:col-span-7" />
+      <Skeleton className="h-80 rounded-2xl lg:col-span-5" />
     </div>
   );
 }

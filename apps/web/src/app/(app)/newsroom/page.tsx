@@ -85,14 +85,12 @@ export default function NewsroomPage() {
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
               <NewsTypePanel
                 title="APAC News"
-                dotClassName="bg-primary shadow-[0_0_6px_var(--primary)]"
                 newsType={["apac"]}
                 filters={filters}
                 onSelect={setSelected}
               />
               <NewsTypePanel
                 title="Global News"
-                dotClassName="bg-ring shadow-[0_0_6px_var(--ring)]"
                 newsType={GLOBAL_NEWS_TYPES}
                 filters={filters}
                 onSelect={setSelected}

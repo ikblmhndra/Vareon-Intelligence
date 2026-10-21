@@ -13335,6 +13335,7 @@ export interface operations {
             query?: never;
             header?: {
                 "x-client-id"?: string | null;
+                authorization?: string | null;
             };
             path?: never;
             cookie?: never;

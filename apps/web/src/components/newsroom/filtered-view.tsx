@@ -88,7 +88,6 @@ export function FilteredView() {
       <TabPills aria-label="Filtered article kinds" className="mb-3" items={KIND_TABS} value={kind} onChange={setKind} />
       <PanelShell
         title={kind === "failed" ? "Failed enrichment" : "Not Related Cyber"}
-        dotClassName="bg-destructive shadow-[0_0_6px_var(--destructive)]"
         count={query.data?.total}
         onRefresh={() => query.refetch()}
         isRefreshing={query.isFetching}

@@ -39,7 +39,13 @@ function VictimRow({ v }: { v: Victim }) {
         </div>
       </div>
       {v.post_url && v.post_url !== "Unknown" ? (
-        <a href={v.post_url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-6 min-w-6 items-center justify-center text-destructive no-underline">
+        <a
+          href={v.post_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`Open leak post for ${v.victim}`}
+          className="inline-flex min-h-6 min-w-6 items-center justify-center text-destructive no-underline"
+        >
           ↗
         </a>
       ) : (
@@ -109,7 +115,6 @@ export function RansomwarePanel({ onSelect }: { onSelect: (a: Article) => void }
   return (
     <PanelShell
       title="Ransomware Activity"
-      dotClassName="bg-destructive shadow-[0_0_6px_var(--destructive)]"
       count={articles.data?.total}
       onRefresh={() => {
         void victims.refetch();
@@ -119,22 +124,25 @@ export function RansomwarePanel({ onSelect }: { onSelect: (a: Article) => void }
     >
       <div className="mb-3">
         <div className="mb-1.5 border-b border-border pb-1 text-sm font-semibold text-muted-foreground">
-          Live Victims — ransomware.live
+          Live victims from ransomware.live
         </div>
         <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
           <Input
+            aria-label="Filter victims by group"
             placeholder="Group…"
             value={group}
             onChange={(e) => setGroup(e.target.value)}
             className="w-24 font-mono text-[13px]"
           />
           <Input
+            aria-label="Filter victims by country"
             placeholder="Country…"
             value={country}
             onChange={(e) => setCountry(e.target.value)}
             className="w-24 font-mono text-[13px]"
           />
           <Input
+            aria-label="Filter victims by industry"
             placeholder="Industry…"
             value={industry}
             onChange={(e) => setIndustry(e.target.value)}

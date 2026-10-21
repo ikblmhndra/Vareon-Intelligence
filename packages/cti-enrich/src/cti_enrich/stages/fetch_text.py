@@ -17,10 +17,16 @@ result` di caller, karena `result` (ringkasan) sekarang stage lain
 
 from __future__ import annotations
 
+import ipaddress
+import socket
 from configparser import ConfigParser
+from urllib.parse import urlsplit
 
+import structlog
 import trafilatura
 from playwright.sync_api import sync_playwright
+
+log = structlog.get_logger()
 
 _USER_AGENT = "Mozilla/5.0"
 _HTTP_TIMEOUT_S = 30
@@ -87,10 +93,33 @@ def looks_blocked(text: str) -> bool:
     return any(marker in lowered for marker in _BLOCK_MARKERS)
 
 
+def _is_public_http_url(url: str) -> bool:
+    """URL artikel datang dari feed pihak ketiga. Tanpa cek ini feed yang membawa
+    `http://redis:6379/`, `http://169.254.169.254/` atau `file:///proc/self/environ` membuat worker
+    (dan Chromium fallback-nya) membaca host internal, lalu isinya masuk ringkasan LLM dan tabel
+    `articles`. Yang diizinkan: http(s) ke alamat publik saja. Hostname di-resolve di sini karena
+    nama seperti `localhost`, `api` atau `2130706433` tidak kelihatan privat dari tulisannya.
+
+    shortcut: hanya URL awal yang dicek, redirect dan DNS rebinding tidak, upgrade kalau feed
+    harus dianggap tak tepercaya sama sekali (butuh fetch sendiri dengan IP yang dikunci)."""
+    parts = urlsplit(url)
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        return False
+    try:
+        infos = socket.getaddrinfo(parts.hostname, parts.port or 443, type=socket.SOCK_STREAM)
+    except (socket.gaierror, ValueError):  # ValueError: port di luar rentang
+        return False
+    return all(ipaddress.ip_address(info[4][0]).is_global for info in infos)
+
+
 def fetch_text(url: str) -> str:
     """Best-effort teks artikel penuh. String kosong kalau dua-duanya gagal
+    atau URL-nya bukan http(s) publik (`_is_public_http_url`)
     -- caller (`pipeline.py`) yang mutusin gimana nanganin artikel tanpa
     teks (skip extract_ttps/score, persis kode lama waktu `result` kosong)."""
+    if not _is_public_http_url(url):
+        log.warning("fetch_text_blocked_url", url=url)
+        return ""
     downloaded = trafilatura.fetch_url(url, config=_trafilatura_config())
     if downloaded:
         text = trafilatura.extract(downloaded) or ""

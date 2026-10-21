@@ -63,10 +63,14 @@ export function AttentionBand() {
   );
 }
 
+/** Angka pertama (`accent`) satu langkah lebih besar; dua lainnya diberi garis pemisah tipis di layar lebar,
+ * supaya band terbaca sebagai satu pesan utama plus dua pendukung, bukan tiga angka sama besar. */
 function Metric({ value, label, suffix, accent }: { value: number | undefined; label: string; suffix?: string; accent?: boolean }) {
   return (
-    <div>
-      <div className={`text-4xl leading-none font-extrabold tracking-tight tabular-nums ${accent ? "text-[#ff8a7e]" : ""}`}>
+    <div className="md:border-l md:border-[#f6ede4]/15 md:pl-6">
+      <div
+        className={`leading-none font-extrabold tracking-tight tabular-nums ${accent ? "text-5xl text-[#ff8a7e]" : "text-4xl"}`}
+      >
         {value === undefined ? "—" : value.toLocaleString()}
         {value !== undefined && suffix && <span className="text-xl font-semibold text-[#e6cfd6]">{suffix}</span>}
       </div>
