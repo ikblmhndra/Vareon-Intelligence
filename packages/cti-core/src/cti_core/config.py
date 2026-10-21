@@ -229,6 +229,10 @@ class WorkerSettings(_StrictModel):
     """Fase 9 -- tiap berapa menit `scraper.health_digest` jalan (hitung
     ulang status SEMUA scraper, kirim SATU digest Telegram kalau ada yang
     non-`ok`). Gak ada padanan lama."""
+    scraper_health_repeat_min: int = 240
+    """Daftar scraper bermasalah yang SAMA (id + status) tidak dikirim ulang oleh digest dalam
+    segini menit (dedupe lewat Redis). Daftar yang berubah langsung terkirim. Sebelumnya digest
+    mengulang pesan identik tiap sweep selama masalahnya ada."""
     report_utc_offset_hours: int = 7
     """Fase 10.E -- zona waktu laporan periodik (jam UTC+N; 7 = WIB). Job Rundeck
     lama jalan di jam LOKAL server ("23:55", "07:00"), sedangkan beat berjalan

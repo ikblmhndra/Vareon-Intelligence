@@ -4734,9 +4734,19 @@
       },
       "ScraperHealthEntryOut": {
         "properties": {
+          "consecutive_failing": {
+            "default": 0,
+            "title": "Consecutive Failing",
+            "type": "integer"
+          },
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "items_failed_last": {
+            "default": 0,
+            "title": "Items Failed Last",
+            "type": "integer"
           },
           "last_started_at": {
             "anyOf": [
@@ -4759,6 +4769,28 @@
               }
             ],
             "title": "Last Status"
+          },
+          "last_success_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Success At"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
           },
           "source": {
             "title": "Source",

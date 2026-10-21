@@ -20,7 +20,7 @@ import datetime
 from collections.abc import Sequence
 from typing import Any, cast
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import Select, delete, func, select
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, aliased
@@ -54,6 +54,19 @@ _TERMINAL_STATUSES = frozenset(
         "disabled",
     }
 )
+
+
+_CLEAN_SUCCESS_STATUSES = ("ok", "empty", "partial")
+"""Run yang dihitung berhasil BERSIH untuk `last_success_by_scraper` (dengan `items_failed = 0`):
+`partial` ikut karena run terpotong `max_items` (item gagal = 0) bukan kegagalan."""
+
+
+def _last_success_stmt() -> Select[tuple[str, datetime.datetime]]:
+    return (
+        select(ScraperRun.scraper_id, func.max(ScraperRun.started_at))
+        .where(ScraperRun.status.in_(_CLEAN_SUCCESS_STATUSES), ScraperRun.items_failed == 0)
+        .group_by(ScraperRun.scraper_id)
+    )
 
 
 def _finish_fields(
@@ -167,6 +180,10 @@ class ScraperRunRepo:
         for run in result.scalars().all():
             out.setdefault(run.scraper_id, []).append(run)
         return out
+
+    def last_success_by_scraper(self) -> dict[str, datetime.datetime]:
+        """Run bersih terakhir per scraper (status ok/empty/partial dan `items_failed = 0`)."""
+        return {sid: ts for sid, ts in self.session.execute(_last_success_stmt())}
 
 
 class AsyncScraperRunRepo:
@@ -310,6 +327,10 @@ class AsyncScraperRunRepo:
         for run in result.scalars().all():
             out.setdefault(run.scraper_id, []).append(run)
         return out
+
+    async def last_success_by_scraper(self) -> dict[str, datetime.datetime]:
+        """Async padanan `ScraperRunRepo.last_success_by_scraper()`."""
+        return {sid: ts for sid, ts in await self.session.execute(_last_success_stmt())}
 
 
 # ── ScraperItem -- log accept/reject per artikel dalam satu run ─────────────

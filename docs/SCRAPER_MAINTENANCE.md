@@ -40,13 +40,16 @@ Computed by `cti_scraper.health.compute_health` from the latest runs (newest fir
 | `disabled` | switched off on purpose (config or `meta.enabled=False`) | | no action needed |
 | `stale` | has never run at all | a new scraper not yet scheduled | check that `beat` was restarted (section 5) |
 | `dead` | the last run is older than **3x its schedule interval** | `beat`/`worker` down, queue stuck | section 4.A |
-| `degraded` | the last run failed (`fetch_error`, `parse_error`, `rate_limited`, `timeout`, `backpressure`) | the site changed or is blocking | sections 4.B-D |
+| `degraded` | the last run failed (`fetch_error`, `parse_error`, `rate_limited`, `timeout`, `backpressure`) **or** finished with failed items (`items_failed > 0`) | the site changed or is blocking; or the sink cannot hand an item over (e.g. a Telegram topic missing from `TELEGRAM__THREAD_IDS`) | sections 4.B-D; the Items tab shows the reason per item |
 | `zero_yield` | the **last 3 runs in a row** were `empty` | broken selector **or** the source is genuinely quiet | section 4.C |
 
-Status per **run** (Runs column): `ok`, `empty` (ran, zero items), `partial` (finished but cut short, e.g.
-`new_cve` hit `max_items` with candidates left; the reason is in the run's errors and the worker log, and it does
-**not** make the scraper `degraded`), `parse_error`, `fetch_error`, `rate_limited`, `backpressure`, `disabled`
-(skipped because the config is off).
+Status per **run** (Runs column): `ok`, `empty` (ran, zero items), `partial` (finished but incomplete: either cut
+short, e.g. `new_cve` hit `max_items` with candidates left, which does **not** make the scraper `degraded`; or some
+items **failed in the sink** (`items_failed > 0`), which does; the reason is in the run's errors and the worker log),
+`parse_error`, `fetch_error`, `rate_limited`, `backpressure`, `timeout` (a run still `running` after
+`WORKER__SCRAPER_RUN_STALE_HOURS`, closed by the reaper), `disabled` (skipped because the config is off). The Telegram
+digest repeats an identical problem list at most every `WORKER__SCRAPER_HEALTH_REPEAT_MIN` minutes; a changed list is
+sent at once.
 
 ---
 

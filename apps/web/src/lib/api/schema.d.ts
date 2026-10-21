@@ -5422,12 +5422,26 @@ export interface components {
         };
         /** ScraperHealthEntryOut */
         ScraperHealthEntryOut: {
+            /**
+             * Consecutive Failing
+             * @default 0
+             */
+            consecutive_failing: number;
             /** Id */
             id: string;
+            /**
+             * Items Failed Last
+             * @default 0
+             */
+            items_failed_last: number;
             /** Last Started At */
             last_started_at: string | null;
             /** Last Status */
             last_status: string | null;
+            /** Last Success At */
+            last_success_at?: string | null;
+            /** Reason */
+            reason?: string | null;
             /** Source */
             source: string;
             /** Status */

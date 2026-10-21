@@ -199,6 +199,13 @@ class ScraperHealthEntryOut(BaseModel):
     `cti_scraper.health.HealthStatus`."""
     last_status: str | None
     last_started_at: str | None
+    reason: str | None = None
+    """Satu kalimat kenapa statusnya bermasalah (tanpa traceback); `None` untuk ok/disabled."""
+    items_failed_last: int = 0
+    consecutive_failing: int = 0
+    """Run terbaru berturut-turut yang gagal, dalam jendela 3 run (maks 3)."""
+    last_success_at: str | None = None
+    """Run bersih terakhir (status ok/empty/partial tanpa item gagal)."""
 
 
 class ScraperHealthSummary(BaseModel):
