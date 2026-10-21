@@ -200,7 +200,10 @@ def enrich_article(
     posted_on: str | None,
     source: str,
     scraper_id: str | None,
+    replay: bool = False,
 ) -> dict[str, object]:
+    """`replay=True` (artikel yang gagal di-enrich dikirim ulang, `send_enrich_task`): disimpan
+    tanpa alert Telegram. Hanya dikirim bila True, jadi pesan lama di antrian tetap valid."""
     from cti_core.db.engine import sync_session
     from cti_enrich.pipeline import run_pipeline
 
@@ -217,6 +220,7 @@ def enrich_article(
                 source=source,
                 scraper_id=scraper_id,
                 session=session,
+                alert=not replay,
             )
     except json.JSONDecodeError as e:
         raise self.retry(

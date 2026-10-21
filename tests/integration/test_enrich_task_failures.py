@@ -126,6 +126,21 @@ def test_persistent_transient_error_is_retried_6_times_then_recorded(
     assert error_type == "APIConnectionError" and waiting >= 1
 
 
+def test_replay_flag_silences_the_alerts_and_plain_messages_do_not(mod, monkeypatch) -> None:
+    seen: dict[str, object] = {}
+
+    def fake(**kw: object) -> SimpleNamespace:
+        seen.update(kw)
+        return SimpleNamespace(accepted=True, news_type="global", article_id=1)
+
+    monkeypatch.setattr("cti_enrich.pipeline.run_pipeline", fake)
+
+    assert mod.enrich_article.apply(kwargs={**KWARGS, "replay": True}).successful()
+    assert seen["alert"] is False
+    assert mod.enrich_article.apply(kwargs=KWARGS).successful()  # pesan lama tanpa `replay`
+    assert seen["alert"] is True
+
+
 def test_empty_llm_response_is_retried_like_a_5xx(mod, monkeypatch) -> None:
     from cti_core.llm.client import EmptyLLMResponse
 

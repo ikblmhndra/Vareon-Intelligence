@@ -153,6 +153,14 @@ tweet would move `since_id` past tweets the alert filters rejected.
 rejected it) and reason `[enrichment_failed] ...` (secrets scrubbed), unless the article was already
 persisted. The prefix stays in `reason` for one release so an older worker is still readable.
 
+**Replay.** A failed article is re-sent with `make replay-failed-enrichment` (`tools/ops/replay_failed_enrichment.py`:
+report-only without `--apply`, paced by `--rate`, queue depth checked each send). It enqueues `enrich.article` with the
+same five arguments the scraper sink sends plus `replay=True`, which stores the article without Telegram alerts (the news
+is days old). Success deletes the failed row; a classifier reject turns it into an ordinary rejection; a repeat failure
+keeps it. The Newsroom "Restore" button does **not** do this: it only creates a "Manually Restored" article without
+enrichment, and that stub makes the pipeline skip the URL (`_known_article`), so the tool skips such rows unless
+`--replace-restored-stubs` removes the stub first.
+
 ### 3.2 Read path: UI → API → Postgres
 
 ```mermaid

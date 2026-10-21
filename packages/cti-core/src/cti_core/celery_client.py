@@ -10,6 +10,7 @@ boleh depends ke `apps/worker` (apps depends ke packages, bukan sebaliknya)
 
 from __future__ import annotations
 
+import datetime
 from functools import lru_cache
 
 from celery import Celery
@@ -28,3 +29,28 @@ def get_celery_client() -> Celery:
     app = Celery("cti_producer", broker=settings.redis.url)
     app.conf.task_ignore_result = True
     return app
+
+
+def send_enrich_task(
+    *,
+    title: str,
+    url: str,
+    posted_on: datetime.date | None,
+    source: str,
+    scraper_id: str | None,
+    replay: bool = False,
+) -> None:
+    """Kirim ulang satu artikel ke `enrich.article` (replay artikel yang gagal di-enrich: tool
+    `replay_failed_enrichment` dan endpoint replay di API). Argumennya sama dengan yang dikirim
+    `cti_scraper.sinks._article_sink`; `replay=True` membuat pipeline TIDAK mengirim alert Telegram
+    (beritanya sudah basi). `replay` hanya ikut dikirim bila True: pesan biasa tidak berubah."""
+    kwargs: dict[str, object] = {
+        "title": title,
+        "url": url,
+        "posted_on": posted_on.isoformat() if posted_on else None,
+        "source": source,
+        "scraper_id": scraper_id,
+    }
+    if replay:
+        kwargs["replay"] = True
+    get_celery_client().send_task("enrich.article", kwargs=kwargs, queue="enrich")

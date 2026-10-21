@@ -1,6 +1,7 @@
 # Jalan pintas operasional. Detail: README.md dan docs/CUTOVER_RUNBOOK.md.
 .PHONY: help fresh-deploy fresh-status deploy backfill-published-at backfill-cve-mirror
 .PHONY: promote-cve-mirror compare-promotion-shadow catalog-mapping check-orphaned-tickets
+.PHONY: replay-failed-enrichment
 
 help:
 	@echo "make fresh-deploy [ARGS='--skip-build --skip-nginx']  deploy dari nol di host ini (idempoten)"
@@ -13,6 +14,7 @@ help:
 	@echo "make catalog-mapping CMD=export|import|suggest [ARGS='--file /work/mapping.json --apply']  pemetaan techstack->katalog sebagai berkas (import = laporan saja tanpa --apply)"
 	@echo "make backfill-published-at [ARGS='--apply --client acme']  isi jam publish MITRE CVE lama (laporan saja tanpa --apply)"
 	@echo "make check-orphaned-tickets [ARGS='--client acme']  daftar tiket CVE tanpa baris tracker (hanya baca)"
+	@echo "make replay-failed-enrichment [ARGS='--since 2026-10-16 --apply']  kirim ulang artikel yang gagal di-enrich (laporan saja tanpa --apply)"
 
 fresh-deploy:
 	bash tools/ops/fresh_deploy.sh $(ARGS)
@@ -37,6 +39,14 @@ check-orphaned-tickets:
 	docker compose --env-file docker/stack.env --profile app run --rm --no-deps -T \
 	  -v "$(CURDIR)/tools:/tools:ro" --entrypoint python worker \
 	  /tools/ops/check_orphaned_tickets.py $(ARGS)
+
+# Kirim ulang artikel yang GAGAL di-enrich (`rejected_articles.failure_kind`, ROADMAP #24). Tanpa ARGS =
+# laporan saja; `ARGS=--apply` baru mengirim ke antrian (senyap, tanpa alert Telegram; --rate menjaga
+# worker-nlp). Pastikan LLM sehat dulu. Detail dan pengaman: docstring tools/ops/replay_failed_enrichment.py.
+replay-failed-enrichment:
+	docker compose --env-file docker/stack.env --profile app run --rm --no-deps -T \
+	  -v "$(CURDIR)/tools:/tools:ro" --entrypoint python worker \
+	  /tools/ops/replay_failed_enrichment.py $(ARGS)
 
 # Isi awal mirror CVE + katalog tech (ROADMAP #19). SOURCE = clone cvelistV5 atau zip rilisnya di host;
 # di-mount read-only ke /data. Tanpa ARGS = laporan saja (di-rollback); `ARGS=--apply` baru menulis.

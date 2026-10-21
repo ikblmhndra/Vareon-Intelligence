@@ -56,6 +56,17 @@ def test_help_lists_the_target() -> None:
     assert "make backfill-published-at" in out
 
 
+def test_replay_failed_enrichment_runs_in_the_worker_and_only_reports_without_args() -> None:
+    cmd = make_n("replay-failed-enrichment")
+
+    assert "--entrypoint python worker" in cmd and ":/tools:ro" in cmd
+    assert cmd.endswith("/tools/ops/replay_failed_enrichment.py")  # tanpa ARGS = laporan saja
+    assert (ROOT / "tools/ops/replay_failed_enrichment.py").is_file()
+    assert make_n("replay-failed-enrichment", "ARGS=--since 2026-10-16 --apply").endswith(
+        "replay_failed_enrichment.py --since 2026-10-16 --apply"
+    )
+
+
 def test_check_orphaned_tickets_runs_the_read_only_tool_in_the_worker_service() -> None:
     cmd = make_n("check-orphaned-tickets", "ARGS=--client acme")
 
