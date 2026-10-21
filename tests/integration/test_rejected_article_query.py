@@ -38,6 +38,23 @@ class TestRejectedArticleRepoSync:
         assert second.title.endswith("(updated)")
         assert second.reason == "reason baru"
 
+    def test_failure_kind_is_overwritten_even_by_none(self, db_session: Session) -> None:
+        """Replay yang kemudian DITOLAK klasifikasi tidak boleh tetap bertanda gagal."""
+        repo = RejectedArticleRepo(db_session)
+        failed = repo.upsert(
+            url="https://example.com/replay",
+            title="T",
+            source="test",
+            reason="[enrichment_failed] X: boom",
+            failure_kind="permanent",
+        )
+        assert failed.failure_kind == "permanent"
+
+        rejected = repo.upsert(
+            url="https://example.com/replay", title="T", source="test", reason="not cyber"
+        )
+        assert rejected.id == failed.id and rejected.failure_kind is None
+
     def test_upsert_sets_url_hash(self, db_session: Session) -> None:
         from cti_core.urlkit import url_hash as compute_url_hash
 

@@ -149,7 +149,10 @@ def run_pipeline(
     source: str,
     scraper_id: str | None,
     session: Session,
+    alert: bool = True,
 ) -> PipelineOutcome:
+    """`alert=False` (replay artikel yang gagal di-enrich) menyimpan artikel tanpa mengirim
+    Telegram: beritanya sudah berhari-hari, ratusan pesan sekaligus hanya menjadi noise."""
     known = _known_article(session, url)
     if known is not None:
         # Hanya `articles` yang menghentikan pipeline. URL yang pernah DITOLAK tetap
@@ -215,7 +218,8 @@ def run_pipeline(
             c2_indicator=c2_indicator,
         )
         session.commit()  # lihat catatan di situs kedua: alert gagal != artikel batal
-        route_alerts(result)
+        if alert:
+            route_alerts(result)
         return PipelineOutcome(
             accepted=True,
             article_id=article.id,
@@ -280,7 +284,8 @@ def run_pipeline(
     # yang sudah ke-persist -- artikel hilang cuma karena notifikasinya gagal.
     session.commit()
     _track_cve_mentions(session, article, score_result)
-    route_alerts(result)
+    if alert:
+        route_alerts(result)
 
     return PipelineOutcome(
         accepted=True,

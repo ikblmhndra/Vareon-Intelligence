@@ -597,10 +597,12 @@ class RejectedArticleRepo:
         scraper_id: str | None = None,
         posted_on: datetime.date | None = None,
         reason: str | None = None,
+        failure_kind: str | None = None,
         raw_enrichment: dict[str, Any] | None = None,
     ) -> RejectedArticle:
         """`raw_enrichment` (audit trail respons LLM mentah) None = jangan
-        sentuh yang sudah tersimpan."""
+        sentuh yang sudah tersimpan. `failure_kind` SELALU menimpa (None juga): artikel yang
+        dulu gagal lalu ditolak klasifikasi pada replay tidak boleh tetap bertanda gagal."""
         h = compute_url_hash(url)
         existing = self.session.execute(
             select(RejectedArticle).where(RejectedArticle.url_hash == h)
@@ -615,6 +617,7 @@ class RejectedArticleRepo:
                 scraper_id=scraper_id,
                 posted_on=posted_on,
                 reason=reason,
+                failure_kind=failure_kind,
                 raw_enrichment=raw_enrichment or {},
             )
             self.session.add(row)
@@ -626,6 +629,7 @@ class RejectedArticleRepo:
         existing.scraper_id = scraper_id
         existing.posted_on = posted_on
         existing.reason = reason
+        existing.failure_kind = failure_kind
         if raw_enrichment is not None:
             existing.raw_enrichment = raw_enrichment
         self.session.flush()
@@ -641,9 +645,19 @@ class AsyncRejectedArticleRepo:
         self.session = session
 
     async def list_filtered(
-        self, *, page: int = 1, page_size: int = 20, search: str | None = None
+        self,
+        *,
+        page: int = 1,
+        page_size: int = 20,
+        search: str | None = None,
+        kind: str = "all",
     ) -> tuple[list[RejectedArticle], int]:
+        """`kind`: `unrelated` (ditolak klasifikasi), `failed` (enrichment gagal) atau `all`."""
         stmt = select(RejectedArticle)
+        if kind == "failed":
+            stmt = stmt.where(RejectedArticle.failure_kind.is_not(None))
+        elif kind == "unrelated":
+            stmt = stmt.where(RejectedArticle.failure_kind.is_(None))
         if search:
             stmt = stmt.where(
                 or_(

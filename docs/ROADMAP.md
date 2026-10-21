@@ -42,7 +42,7 @@ Each item contains: **what** was asked, **the current state** (facts from the re
 | 19 | **Open** (operational) | **Tech catalog from the CVE mirror + Monitor** (new direction 2026-10-07, replacing the alias/phase 2-3 plan; the `aliases` column is dropped): mirror every CVE (calendar-year retention) -> a vendor+product catalog -> All Tech / Monitored Tech tabs -> the CVEs tab only for monitored techs. **Code done (slices 1-7), merged to `main` 2026-10-08 (PR #12, release 0.3.0)**; what remains is operational: finish the mapping (prod, 2026-10-15: 25 of 35 entries mapped), shadow mode (not started), cutover (the runbook and design documents were removed from the repository on 2026-10-16) | manual mapping + shadow on dev | test on the dev server first, then prod |
 | 20 | **Mostly done** | **Known follow-ups from releases 0.4.0 / 0.4.1** (found while reviewing the CVE Tracker; none is blocking) -- **the data-correctness points were fixed 2026-10-15 (#51, #52) or earlier (#21); what is left (the (D) decisions, the KEV/EPSS/Exploit-DB access point, `trending_cve` in January) is marked in the item** | product decisions on the points marked (D) | -- |
 | 23 | **Done in code, waiting for merge** (ONE pull request, release 0.7.0) | **Runtime secrets** (asked 2026-10-16): manage the third-party keys (LLM, Telegram, Graph, NVD, GitHub, twitterapi.io, X, OTX, AbuseIPDB, VirusTotal) from a superadmin-only admin page, encrypted in the database and applied without a restart or rebuild; the deployment-level secrets (database, Redis, JWT/session, OIDC) stay in `.env` -- **built 2026-10-16 as a single pull request on branch `feat/runtime-secrets-core` (the user chose not to split it), with the 0.7.0 release commit in it** | merge; then on prod: `make deploy`, a generated master key in `SECRETS_ENCRYPTION_KEYS`, and a restart of api and workers once; the re-auth decision for OIDC-only superadmins | -- (touches #11 for the OIDC question) |
-| 24 | **Open** (plan written, nothing built) | **Data platform audit follow-ups** (asked 2026-10-17): stop losing articles when the LLM fails (a structured failure kind, replay, an alert, an honest run status, a reaper and a purge) and show the pipeline's health in the UI (a **Data health** page, a reliable previous-period delta, reasons on `/scrapers`) -- **audit done on the dev instance 2026-10-17; two pull requests planned: PR-A (backend + the Newsroom tab) then PR-B (Data health, Dashboard, Scrapers)** | four decisions (see the item) and a read-only look at prod | -- (PR-B reads `failure_kind` from PR-A) |
+| 24 | **Open** (PR-A built as release 0.7.2, waiting for review; PR-B planned) | **Data platform audit follow-ups** (asked 2026-10-17): stop losing articles when the LLM fails (a structured failure kind, replay, an alert, an honest run status, a reaper and a purge) and show the pipeline's health in the UI (a **Data health** page, a reliable previous-period delta, reasons on `/scrapers`) -- **audit done on the dev instance 2026-10-17; two pull requests planned: PR-A (backend + the Newsroom tab) then PR-B (Data health, Dashboard, Scrapers)** | four decisions (see the item) and a read-only look at prod | -- (PR-B reads `failure_kind` from PR-A) |
 ---
 
 ## Priority queue (team feedback 2026-10-10)
@@ -81,7 +81,7 @@ PRs #2-#59 are all merged into `main` (release tags in `CHANGELOG.md`: 0.2.0, 0.
 | 5, 8, 9, 10, 11 | Parked | -- | set aside by the user on 2026-10-15; do not start without a trigger |
 | 6, 7, 12, 15, 16, 18 | Open | -- | see each item; #6 mostly exists (only expiry is missing), #7 waits for the #19 cutover, #15 waits for the `published_at` backfill (7 prod rows), #12 for labelled examples, #16 and #18 for SLA targets and the list of ticket values |
 | 23 | Code done (one pull request, release 0.7.0) | branch `feat/runtime-secrets-core` | merge, tag `0.7.0`, `make deploy`, set `SECRETS_ENCRYPTION_KEYS` on prod and try the page |
-| 24 | Open (plan only) | -- | PR-A, then PR-B; the item lists four decisions; nothing is built |
+| 24 | Open (PR-A built) | PR-A as 0.7.2 on a branch, not merged | review and merge PR-A, deploy, replay the lost articles on dev and prod; then PR-B |
 
 **Merged PRs by release**
 
@@ -1443,7 +1443,8 @@ minutes) before pull request 2; the section lives on the existing admin page and
 ## 24. Data platform audit follow-ups: do not lose articles, show the pipeline's health
 
 **Asked (2026-10-17)**: audit the data platform end to end, check whether the dev UI is informative, then plan the fixes. This item
-records the audit and the plan for two pull requests. **Nothing is built yet.** How the facts were gathered: the dev database over SSH
+records the audit and the plan for two pull requests. **PR-A was built on 2026-10-21 as release 0.7.2 (one branch, not merged
+yet, see `CHANGELOG.md`); PR-B is not started.** How the facts were gathered: the dev database over SSH
 with `default_transaction_read_only=on` (aggregates only, no row contents, no writes), the dev UI through the user's signed-in Chrome
 (GET only, no button that writes or triggers a run), and the code at `6a5734a` (0.7.1). The dev instance is three weeks old (first
 scraper run 2026-09-26), so trends over a longer time are not visible yet.
@@ -1490,6 +1491,24 @@ scraper run 2026-09-26), so trends over a longer time are not visible yet.
 `select count(*), sum(items_failed) from scraper_runs where status='ok' and items_failed>0 and started_at > now()-interval '7 days';` ·
 `select count(*) from scraper_runs where status='running' and started_at < now()-interval '1 hour';` ·
 `select count(*) filter (where posted_on >= current_date-30), count(*) filter (where posted_on >= current_date-60 and posted_on < current_date-30) from articles;`
+
+**Update 2026-10-21 (before building PR-A).** The user took all four recommendations below. Read-only checks first:
+- **Prod** (0.7.0, head `a3f81c2d9b47`, effective LLM `openrouter/free` set from the admin page): no mass failure like dev's, but
+  3 `[enrichment_failed]` rows on 2026-10-20/21 (cybersecnews, qualys, wiz), all `TypeError: 'NoneType' object is not subscriptable`
+  at `extract_ttps.py:95`: the gateway answered 200 without `choices`, `TypeError` is not retried, so the articles were lost. The same
+  unguarded `completion.choices[0]` is in `classify.py`. Fixed as the first commit of PR-A (`first_choice()` raises
+  `EmptyLLMResponse`, which the task retries like a 5xx). Prod also has 10 `ok` runs with failed items in 7 days, 6 runs stuck `running`
+  and 51,319 `scraper_runs` rows (25 days, about 2k a day).
+- **Dev** was down for a while (no Vareon containers; the user started it again the same day). Read-only checks afterwards (0.7.1,
+  head `a3f81c2d9b47`, so PR-A is not deployed there): the failures did **not** stop. `[enrichment_failed]` rows by day: 16 Oct 101,
+  17 Oct 1, 19 Oct 27, 21 Oct 9, all `BadRequestError ... Unsupported model mimo-auto`, against 35, 18, 20 and 3 accepted articles
+  (more than 70% lost on 21 Oct). The app sends `LLM__MODEL=my-combo` to the 9router gateway (`172.25.1.77:20128`), not `mimo-auto`:
+  the combo routes some requests to a member that the upstream rejects. Five probe calls from `worker-nlp` gave 4 failures and 1 success
+  (served by `minimax/minimax-m3.1-flash:free`). So the cause is the combo in 9router, outside this repository, and a replay on dev must
+  wait until that member is removed and a fresh probe passes. The earlier statement that the failures "look stopped" was wrong (it
+  rested on 4.7 hours of data of the new day). **The user removed `mimo-auto` from the combo the same day** (08:0x UTC): a new probe
+  gave 10 successes out of 10 (served by `@cf/deepseek-ai/deepseek-r1-distill-qwen-32b`), the last failure is at 08:01:26 UTC, and 4
+  articles were accepted afterwards without a failure. The 138 failed rows on dev are waiting for PR-A to be deployed and replayed.
 
 ### PR-A: do not lose articles, do not report a false OK (backend + the Newsroom tab)
 

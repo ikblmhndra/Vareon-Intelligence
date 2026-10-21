@@ -20,7 +20,7 @@ import datetime
 from collections.abc import Sequence
 from typing import Any, cast
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import Select, delete, func, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, aliased
@@ -54,6 +54,19 @@ _TERMINAL_STATUSES = frozenset(
         "disabled",
     }
 )
+
+
+_CLEAN_SUCCESS_STATUSES = ("ok", "empty", "partial")
+"""Run yang dihitung berhasil BERSIH untuk `last_success_by_scraper` (dengan `items_failed = 0`):
+`partial` ikut karena run terpotong `max_items` (item gagal = 0) bukan kegagalan."""
+
+
+def _last_success_stmt() -> Select[tuple[str, datetime.datetime]]:
+    return (
+        select(ScraperRun.scraper_id, func.max(ScraperRun.started_at))
+        .where(ScraperRun.status.in_(_CLEAN_SUCCESS_STATUSES), ScraperRun.items_failed == 0)
+        .group_by(ScraperRun.scraper_id)
+    )
 
 
 def _finish_fields(
@@ -167,6 +180,47 @@ class ScraperRunRepo:
         for run in result.scalars().all():
             out.setdefault(run.scraper_id, []).append(run)
         return out
+
+    def last_success_by_scraper(self) -> dict[str, datetime.datetime]:
+        """Run bersih terakhir per scraper (status ok/empty/partial dan `items_failed = 0`)."""
+        return {sid: ts for sid, ts in self.session.execute(_last_success_stmt())}
+
+    def reap_stale_running(self, stale_after: datetime.timedelta) -> int:
+        """Run yang MASIH `running` lewat `stale_after` (worker mati atau di-redeploy saat jalan)
+        ditutup sebagai `timeout` dengan catatan reaper. `finished_at` sengaja dibiarkan NULL:
+        `latest_finished` mensyaratkannya terisi, jadi baris basi tidak tampil sebagai hasil terbaru
+        di `/api/cve/freshness`."""
+        cutoff = datetime.datetime.now(datetime.UTC) - stale_after
+        note = {
+            "stage": "reaper",
+            "type": "StaleRun",
+            "message": f"still running after {stale_after}: worker killed or task lost",
+        }
+        result = cast(
+            "CursorResult[Any]",
+            self.session.execute(
+                update(ScraperRun)
+                .where(ScraperRun.status == "running", ScraperRun.started_at < cutoff)
+                .values(status="timeout", errors=[note])
+            ),
+        )
+        self.session.commit()
+        return result.rowcount
+
+    def purge_older_than(self, retention: datetime.timedelta) -> int:
+        """Hapus riwayat run lebih tua dari `retention` (tidak pernah yang masih `running`, supaya
+        reaper yang menutupnya dulu). `scraper_items.run_id` cascade ikut terhapus."""
+        cutoff = datetime.datetime.now(datetime.UTC) - retention
+        result = cast(
+            "CursorResult[Any]",
+            self.session.execute(
+                delete(ScraperRun).where(
+                    ScraperRun.started_at < cutoff, ScraperRun.status != "running"
+                )
+            ),
+        )
+        self.session.commit()
+        return result.rowcount
 
 
 class AsyncScraperRunRepo:
@@ -310,6 +364,10 @@ class AsyncScraperRunRepo:
         for run in result.scalars().all():
             out.setdefault(run.scraper_id, []).append(run)
         return out
+
+    async def last_success_by_scraper(self) -> dict[str, datetime.datetime]:
+        """Async padanan `ScraperRunRepo.last_success_by_scraper()`."""
+        return {sid: ts for sid, ts in await self.session.execute(_last_success_stmt())}
 
 
 # ── ScraperItem -- log accept/reject per artikel dalam satu run ─────────────

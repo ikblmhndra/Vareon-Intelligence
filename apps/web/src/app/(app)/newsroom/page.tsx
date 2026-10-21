@@ -54,10 +54,10 @@ export default function NewsroomPage() {
   const [draft, setDraft] = useState<NewsroomFilters>(defaultNewsroomFilters);
   const [filters, setFilters] = useState<NewsroomFilters>(defaultNewsroomFilters);
   const [selected, setSelected] = useState<Article | null>(null);
-  // Tab "Not Related Cyber" hanya untuk admin (sama dengan sebelumnya: tombolnya tidak dirender).
+  // Tab "Filtered Articles" (ditolak klasifikasi + gagal di-enrich) hanya untuk admin.
   const viewTabs: TabPillItem<"cyber" | "filtered">[] = [
     { value: "cyber", label: "Cyber News" },
-    ...(isAdmin ? [{ value: "filtered" as const, label: "Not Related Cyber", tone: "destructive" as const }] : []),
+    ...(isAdmin ? [{ value: "filtered" as const, label: "Filtered Articles", tone: "destructive" as const }] : []),
   ];
 
   return (

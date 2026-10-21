@@ -6,6 +6,50 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
+## [0.7.2] - 2026-10-21
+
+**Artikel yang gagal diproses tidak lagi hilang diam-diam, dan status scraper tidak lagi berbohong** (ROADMAP #24, PR-A). Di dev,
+101 artikel hilang dalam sehari karena model LLM salah (`Unsupported model`) tanpa alert maupun jalan pulang, dan `github_poc_monitor`
+gagal 4 item tiap jam (558 item dalam 7 hari) sementara `/scrapers` menampilkannya OK. **Ada satu migrasi baru (kolom nullable),
+tiga kunci `.env` baru yang opsional, dan satu tool ops baru.**
+
+**Saat upgrade dari 0.7.1:** deploy biasa (`make deploy`): migrasi `b7e4c1a9d256` menambah `rejected_articles.failure_kind` dan mengisinya
+dari baris lama lewat service `migrate`. Restart `beat` dan semua worker (jadwal beat dibangun saat import dan ada dua task
+pemeliharaan baru; kunci `.env` baru punya default, jadi tidak ada yang wajib diisi sebelum deploy). Sesudah memastikan LLM-nya sehat,
+artikel yang sudah gagal dikirim ulang dengan `make replay-failed-enrichment` (laporan saja), lalu `ARGS='--apply'`.
+
+### Ditambah
+- **`rejected_articles.failure_kind`** (`transient`, `json`, `permanent`; kosong = ditolak klasifikasi) menggantikan penanda teks
+  `[enrichment_failed]` yang tidak bisa difilter. Awalan itu tetap ditulis satu rilis agar worker lama tetap terbaca.
+- **Alert Telegram saat enrichment gagal final** ke topik `scraper_health` yang sudah ada: satu pesan per jendela
+  `WORKER__ENRICH_FAILURE_ALERT_COOLDOWN_MIN` (60), berisi kelas error dan jumlah artikel yang menunggu replay.
+- **Replay**: `make replay-failed-enrichment` (`tools/ops/replay_failed_enrichment.py`, laporan saja tanpa `--apply`, `--rate`,
+  cek kedalaman antrian tiap kiriman, melewati URL yang sudah jadi artikel dan stub "Manually Restored") dan tombol **Replay** admin
+  di Newsroom. Replay senyap: artikel disimpan tanpa alert Telegram (`--alerts` untuk menyalakannya).
+- **Tab Newsroom "Filtered Articles"** dengan dua sub-tab, "Not cyber-related" dan "Failed enrichment", menampilkan alasan dan jenis
+  kegagalan. API: `GET /api/filtered-articles?kind=unrelated|failed|all`, `POST /api/filtered-articles/{id}/replay` (admin, masuk
+  audit log).
+- **Reaper dan purge `scraper_runs`**: `scraper.reap_stale_runs` (tiap 30 menit) menutup run `running` yang yatim lebih dari
+  `WORKER__SCRAPER_RUN_STALE_HOURS` (2) sebagai `timeout`; `scraper.purge_old_runs` (03:05 UTC) menghapus riwayat lebih tua dari
+  `WORKER__SCRAPER_RUN_RETENTION_DAYS` (90, tidak pernah di bawah retensi `scraper_items`).
+- `GET /api/scraper/health` membawa `reason`, `items_failed_last`, `consecutive_failing`, dan `last_success_at` per scraper.
+
+### Diperbaiki
+- **Respons LLM 200 tanpa `choices`** (model `openrouter/free`) di-retry seperti 5xx. Sebelumnya `TypeError` tidak di-retry dan 3 artikel
+  hilang di prod (20-21 Okt: cybersecnews, qualys, wiz).
+- **Run scraper dengan item gagal tidak lagi `ok`**: statusnya `partial` dan scraper `degraded` dengan alasan; baris `running`
+  dilewati saat menilai kesehatan. Setup run yang gagal menutup run sebagai `fetch_error` (dulu run nyangkut `running` selamanya).
+- **Digest Telegram `scraper_health`** menyertakan alasan dan tidak mengulang daftar masalah yang sama dalam
+  `WORKER__SCRAPER_HEALTH_REPEAT_MIN` (240); daftar yang berubah langsung terkirim.
+- **Tombol Restore** menolak baris yang gagal di-enrich (409): ia hanya membuat artikel tanpa enrichment dan stub itu memblokir replay.
+  Teks lama di Newsroom yang menjanjikan "re-queue through NLP pipeline" dihapus.
+- `celery_task_id`, `worker`, dan `attempt` pada `scraper_runs` kini terisi (dulu kosong di semua baris, retry tampil `attempt=1`).
+- Pesan error enrichment di-scrub dari secret SEBELUM dipotong 300 karakter, bukan sesudahnya.
+
+### Diketahui / belum dikerjakan
+- Halaman **Data health**, delta Dashboard yang tidak menyesatkan, dan alasan DISABLED di `/scrapers` menyusul di PR-B (ROADMAP #24).
+- Indeks `scraper_runs (scraper_id, started_at)` dan retensi tabel lain belum dikerjakan: di skala sekarang query terlama 22 ms.
+
 ## [0.7.1] - 2026-10-17
 
 **Redesain tampilan web dan perbaikan aksesibilitas hasil audit visual.** Hanya frontend (`apps/web`): tanpa migrasi, tanpa kunci

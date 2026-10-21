@@ -45,13 +45,15 @@ def add_article(n: int, first_seen: datetime.datetime, news_type: str = "global"
         )  # fmt: skip
 
 
-def add_rejected(n: int, at: datetime.datetime, reason: str = "not cyber") -> None:
+def add_rejected(
+    n: int, at: datetime.datetime, reason: str = "not cyber", failure_kind: str | None = None
+) -> None:
     url = f"{PREFIX}r{n}"
     with sync_session() as s:
         s.add(
             RejectedArticle(
                 url=url, url_hash=url_hash(url), title=f"Ditolak {n}", source="T",
-                reason=reason, rejected_at=at,
+                reason=reason, failure_kind=failure_kind, rejected_at=at,
             )
         )  # fmt: skip
 
@@ -110,16 +112,17 @@ def test_daily_counters_split_related_unrelated_and_failed_for_the_local_day(tg:
     add_article(1, utc(25, 18))  # 01:00 WIB tgl 26
     add_article(2, utc(26, 10), title="Judul dua")
     add_rejected(1, utc(26, 3))
-    add_rejected(2, utc(26, 4), reason="[enrichment_failed] APIConnectionError: x")
+    add_rejected(2, utc(26, 4), reason="[enrichment_failed] APIConnectionError: x")  # worker lama
+    add_rejected(3, utc(26, 5), reason="tanpa prefix", failure_kind="permanent")  # worker baru
 
     result = run(report_daily_counters, day=DAY)
 
-    assert result["scraped"] == 4
+    assert result["scraped"] == 5
     [(topic, message)] = tg.alerts
     assert topic == "debug"
-    assert "Total news scraped on 26 09 2026: 4" in message
+    assert "Total news scraped on 26 09 2026: 5" in message
     assert "Total unrelated cti news: 1" in message and "Total related cti news: 2" in message
-    assert "Total gagal diproses (cek Filtered Articles): 1" in message
+    assert "Total gagal diproses (cek Filtered Articles): 2" in message
     names = {name: (t, c) for t, name, c, _ in tg.docs}
     assert set(names) == {"RELATED_26_09_2026.txt", "UNRELATED_26_09_2026.txt"}
     assert names["RELATED_26_09_2026.txt"][1] == "Judul 1\nJudul dua\n"

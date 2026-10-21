@@ -147,9 +147,19 @@ tweet would move `since_id` past tweets the alert filters rejected.
    topic.
 
 **Failure policy** (`apps/worker/src/cti_worker/tasks/enrich.py`). Transient errors (LLM connection, 5xx,
-429 that is not quota, network, DB connection) retry up to 6 times with 30 s → 10 min backoff and jitter.
-Broken JSON retries twice. On the final failure `on_failure` writes `rejected_articles` with reason
-`[enrichment_failed] ...` (secrets scrubbed), unless the article was already persisted.
+429 that is not quota, a 200 reply without `choices`, network, DB connection) retry up to 6 times with
+30 s → 10 min backoff and jitter. Broken JSON retries twice. On the final failure `on_failure` writes
+`rejected_articles` with `failure_kind` (`transient`, `json` or `permanent`; `NULL` means the classifier
+rejected it) and reason `[enrichment_failed] ...` (secrets scrubbed), unless the article was already
+persisted. The prefix stays in `reason` for one release so an older worker is still readable.
+
+**Replay.** A failed article is re-sent with `make replay-failed-enrichment` (`tools/ops/replay_failed_enrichment.py`:
+report-only without `--apply`, paced by `--rate`, queue depth checked each send). It enqueues `enrich.article` with the
+same five arguments the scraper sink sends plus `replay=True`, which stores the article without Telegram alerts (the news
+is days old). Success deletes the failed row; a classifier reject turns it into an ordinary rejection; a repeat failure
+keeps it. The Newsroom "Restore" button does **not** do this: it only creates a "Manually Restored" article without
+enrichment, and that stub makes the pipeline skip the URL (`_known_article`), so the tool skips such rows unless
+`--replace-restored-stubs` removes the stub first.
 
 ### 3.2 Read path: UI → API → Postgres
 
@@ -226,6 +236,8 @@ Beat also schedules non-scraper tasks (`cti_worker.beat._periodic_schedule`, `_r
 | Task | Queue | Does |
 |---|---|---|
 | `scraper.purge_expired_items`, `scraper.purge_expired_seen` | maintenance | Delete expired `scraper_items` and `scraper_seen` rows. |
+| `scraper.purge_old_runs` | maintenance | 03:05 UTC. Delete `scraper_runs` older than `WORKER__SCRAPER_RUN_RETENTION_DAYS` (90, never below the item retention because `scraper_items.run_id` cascades); never a `running` row. |
+| `scraper.reap_stale_runs` | maintenance | Every 30 min. Close runs still `running` after `WORKER__SCRAPER_RUN_STALE_HOURS` (2) as `timeout` with a reaper note; `finished_at` stays NULL so the row never looks like the latest result in `/api/cve/freshness`. |
 | `scraper.health_digest` | notify | One Telegram message summarising unhealthy scrapers; silent when all are fine. |
 | `pir.check_p1_alerts`, `pir.check_all_alerts` | notify | Match new articles against PIRs and alert. |
 | `attack.sync_check`, `ioc.decay_sweep` | maintenance | Re-sync the ATT&CK catalog when older than `worker.attack_sync_interval_days`, IOC confidence decay. |
@@ -409,7 +421,7 @@ sync_session`), and **async asyncpg** in FastAPI (`deps.get_db`). The schema has
 | `scraper_runs` | `run_id` | `Runner.execute` (start, finish) | API (`/scrapers`), `scraper.health_digest` |
 | `scraper_seen` | `dedup_key` = sha256(`scraper_id`, raw key) | `Runner` via `DedupStore` (reserve, commit, release) | `Runner` |
 | `articles` (+ `article_countries`, `_industries`, `_threat_actors`, `_ttps`) | `url_hash` (unique) | `enrich.article` (`ArticleRepo.upsert`) | API, reports, PIR alerts |
-| `rejected_articles` | `url_hash` | `enrich.article` (not cyber, or final failure) | API (Filtered Articles; restore) |
+| `rejected_articles` | `url_hash` | `enrich.article` (not cyber, or final failure with `failure_kind`) | API (Filtered Articles: restore for rejects, admin replay for failures) |
 | `iocs` (+ sources, tags, actors, feedback) | `(type, value)` | `enrich.article`, IOC feed sink, `ioc.enrich_pending` (the `enrichment` column) | API, `ioc.decay_sweep` |
 | `techstack_entries` | `(name, client_id)` | API (techstack, catalog) | `new_cve` (`reference_data`), promotion, API |
 | `cve_tracker` (+ `cve_references`, `cve_affected`, ...) | `(cve_id, client_id)` | `_cve_sink`, `_promote_live`, `cve.enrichment_sweep` | API (CVE tab, dashboards, export) |
@@ -481,7 +493,8 @@ Read these in order. Each starts at a real entry point.
 - **Commit before alerting.** The pipeline commits the article before calling `route_alerts`, so a Telegram
   failure cannot roll back stored intelligence.
 - **Nothing that passed dedup is lost silently.** Rejected and failed articles land in `rejected_articles`,
-  where analysts can review and restore them.
+  where analysts can review and restore them (classifier rejects) or an admin can replay them (failed
+  enrichment).
 - **Sink chosen by item type.** Scrapers only yield typed items; `@sink_for` in one file decides where each
   type is stored. `fetch()` has no DB access, so scrapers stay testable with recorded HTTP fixtures.
 - **One business-logic implementation.** Periodic tasks call the same `cti_api.services` functions as the API

@@ -31,7 +31,7 @@ import time
 import traceback
 import uuid
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import httpx
 import structlog
@@ -68,7 +68,8 @@ class RunResult:
     scraper_id: str
     status: str
     """ok | empty | partial | parse_error | fetch_error | rate_limited | backpressure |
-    disabled. `partial` = run selesai tapi terpotong (`ScrapeContext.mark_partial`)."""
+    disabled. `partial` = run selesai tapi terpotong (`ScrapeContext.mark_partial`) ATAU ada item
+    yang gagal di sink (`final_status`)."""
     items_found: int = 0
     items_new: int = 0
     items_dropped: int = 0
@@ -78,6 +79,15 @@ class RunResult:
     retry_after: float | None = None
     """Detik minimal sebelum layak dicoba ulang (dari `RateLimited.retry_after`),
     `None` = gak ada petunjuk. Dibaca task `scrape.run` buat jeda retry."""
+
+
+def final_status(status: str, items_failed: int) -> str:
+    """Run yang lolos tanpa error fetch tapi dengan item yang GAGAL di sink bukan `ok`: `partial`
+    (dev 2026-10-17: `github_poc_monitor` 4 item gagal tiap jam, 558 item dalam 7 hari, run-nya
+    tetap `ok`). `partial` dipilih karena sudah berstatus terminal, dihitung sukses oleh
+    `cve_check` dan web, tidak di-retry, dan punya gaya peringatan. Status lain (empty, error)
+    tidak diubah."""
+    return "partial" if status == "ok" and items_failed else status
 
 
 def _apply_config_overrides(meta: ScraperMeta, config: ScraperConfig) -> ScraperMeta:
@@ -110,6 +120,9 @@ class Runner:
         cold_start_max_items: int | None = None,
         prime: bool = False,
         options: Mapping[str, str] | None = None,
+        celery_task_id: str | None = None,
+        worker: str | None = None,
+        attempt: int = 1,
     ) -> None:
         """`cold_start_max_items` -- `None` (default) baca `Settings.scraper.
         cold_start_max_items`; angka eksplisit buat test/tooling yang mau
@@ -125,13 +138,21 @@ class Runner:
         `options` -- override EKSPLISIT `ScraperMeta.options` (CLI `--option key=value`),
         menang atas pilihan admin di `ScraperConfig.options`. Tidak menulis apa pun ke DB:
         buat mencoba sumber data lain sekali jalan tanpa mengubah konfigurasi produksi.
-        Nilai yang salah = `OptionError` SEKARANG, bukan di tengah run."""
+        Nilai yang salah = `OptionError` SEKARANG, bukan di tengah run.
+
+        `celery_task_id`/`worker`/`attempt` -- dari task `scrape.run`, disimpan di baris run
+        (kolomnya ada sejak awal tapi tidak pernah terisi: retry semua tampil `attempt=1`)."""
         if options:
             validate_options(scraper_cls.meta, options)
         if not dry_run and session is None:
             raise RunnerConfigError(
                 "dry_run=False butuh `session` -- runner nulis heartbeat+sink lewat itu"
             )
+        self._run_origin: dict[str, Any] = {
+            "celery_task_id": celery_task_id,
+            "worker": worker,
+            "attempt": attempt,
+        }
         self.scraper_cls = scraper_cls
         self.meta = scraper_cls.meta
         self.session = session
@@ -163,7 +184,9 @@ class Runner:
                 # langsung terminal, gak nyentuh HTTP/rate-limit/dedup
                 # sama sekali (beda dari status lain yang semuanya lewat
                 # `_run_body`).
-                run = run_repo.start(run_id=run_id, scraper_id=self.meta.id, trigger=trigger)
+                run = run_repo.start(
+                    run_id=run_id, scraper_id=self.meta.id, trigger=trigger, **self._run_origin
+                )
                 run_repo.finish(run, status="disabled")
                 self.session.commit()
                 result = RunResult(run_id=run_id, scraper_id=self.meta.id, status="disabled")
@@ -175,10 +198,22 @@ class Runner:
                 self.meta = _apply_config_overrides(self.meta, config)
                 self._chosen_options = config.options
 
-            run = run_repo.start(run_id=run_id, scraper_id=self.meta.id, trigger=trigger)
+            run = run_repo.start(
+                run_id=run_id, scraper_id=self.meta.id, trigger=trigger, **self._run_origin
+            )
             self.session.commit()
 
-        result = self._run_body(run_id, log)
+        try:
+            result = self._run_body(run_id, log)
+        except Exception as e:
+            if self.dry_run:  # tidak ada baris run yang perlu ditutup; error-nya untuk operator
+                raise
+            # Setup `_run_body` (opsi, kredensial, referensi DB) ada di luar `try` fetch-nya: tanpa
+            # ini exception di sana meninggalkan run `running` selamanya (dev: 8 run yatim) dan
+            # mematikan task. Sekarang run ditutup sebagai `fetch_error` dengan sebabnya.
+            log.error("run_setup_failed", error=str(e), error_type=type(e).__name__)
+            result = RunResult(run_id=run_id, scraper_id=self.meta.id, status="fetch_error")
+            result.errors.append({"stage": "setup", "type": type(e).__name__, "message": str(e)})
 
         if not self.dry_run:
             assert self.session is not None
@@ -317,6 +352,7 @@ class Runner:
                     {"stage": "fetch", "type": "Partial", "message": ctx.partial_reason}
                 )
                 log.warning("run_partial", reason=ctx.partial_reason)
+            result.status = final_status(result.status, result.items_failed)
 
         except ParseError as e:
             result.status = "parse_error"

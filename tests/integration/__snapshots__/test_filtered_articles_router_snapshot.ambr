@@ -3,6 +3,7 @@
   dict({
     'items': list([
       dict({
+        'failure_kind': None,
         'id': int,
         'posted_on': '2026-09-01',
         'reason': 'Vendor marketing, not threat intelligence',

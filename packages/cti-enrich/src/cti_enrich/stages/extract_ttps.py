@@ -11,7 +11,7 @@ import json
 from dataclasses import dataclass, field
 
 from cti_core.attack_ttp import NormalizedTTP, TechniqueCatalog, normalize_ttps
-from cti_core.llm.client import get_llm_client, parse_json_response, store_param
+from cti_core.llm.client import first_choice, get_llm_client, parse_json_response, store_param
 from openai import RateLimitError
 
 from cti_enrich.stages.classify import OpenAIQuotaExhausted
@@ -92,7 +92,7 @@ def extract_ttps(summary: str) -> TtpResult:
             raise
 
         try:
-            data = parse_json_response(completion.choices[0].message.content)
+            data = parse_json_response(first_choice(completion).message.content)
             break
         except json.JSONDecodeError as e:
             last_error = e
