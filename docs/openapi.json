@@ -6765,7 +6765,7 @@
   },
   "info": {
     "title": "Vareon Intelligence API",
-    "version": "0.7.3"
+    "version": "0.7.4"
   },
   "openapi": "3.1.0",
   "paths": {
