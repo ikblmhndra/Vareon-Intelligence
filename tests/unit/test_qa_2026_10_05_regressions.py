@@ -99,6 +99,7 @@ def test_endpoint_baca_wajib_auth(monkeypatch):
         "/api/sr/entries",
         "/api/ta/groups",
         "/api/ta/profile/x",
+        "/api/ta/watchlist/navigator-layer",
         "/api/stix/iocs",
         "/api/exec/dashboard",
         "/api/newsletter/source-hints",
