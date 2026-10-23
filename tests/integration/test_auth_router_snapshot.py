@@ -10,12 +10,14 @@ di sini karena lifespan `create_app()` sengaja gak jalan lewat
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
+from typing import Any
 
 import pytest
 from cti_api.security import hash_password
 from cti_api.services.roles import ensure_system_roles
-from cti_core.db.repositories.auth import AsyncUserRepo
+from cti_core.db.repositories.auth import AsyncClientRepo, AsyncUserRepo
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 from syrupy.assertion import SnapshotAssertion
@@ -148,6 +150,46 @@ async def test_me(
     resp = await api_client.get("/api/auth/me", headers=auth_header())
     assert resp.status_code == 200
     assert resp.json() == snapshot
+
+
+async def test_me_multiple_clients(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regresi 2026-10-24: `/me` dulu `asyncio.gather` beberapa `client_repo.get()` di SATU
+    `AsyncSession` -- user dengan >1 client kadang dapat 500 (`InvalidRequestError: ...
+    concurrent operations are not permitted`) dan AuthProvider web nge-logout dia. Sekarang
+    dimuat berurutan; urutan + isi `clients_map` dan `client_countries` (client pertama) harus
+    tetap sama.
+
+    Race aslinya gak bisa direproduksi di sini (`api_session` udah pegang koneksi, jadi gak ada
+    fase "provisioning a new connection"), makanya `execute` dibungkus penghitung query yang
+    lagi jalan barengan: lebih dari 1 = masih ada operasi konkuren di satu session."""
+    await AsyncClientRepo(api_session).create(client_id="acme", name="Acme", countries=["SG"])
+
+    in_flight = max_in_flight = 0
+    original_execute = api_session.execute
+
+    async def _counting_execute(*args: Any, **kwargs: Any) -> Any:
+        nonlocal in_flight, max_in_flight
+        in_flight += 1
+        max_in_flight = max(max_in_flight, in_flight)
+        try:
+            await asyncio.sleep(0)  # kasih kesempatan coroutine lain nyalip kalau di-gather
+            return await original_execute(*args, **kwargs)
+        finally:
+            in_flight -= 1
+
+    monkeypatch.setattr(api_session, "execute", _counting_execute)
+    resp = await api_client.get("/api/auth/me", headers=auth_header(client_ids=["acme", "default"]))
+    assert resp.status_code == 200
+    assert max_in_flight == 1
+    body = resp.json()
+    assert set(body["clients_map"]) == {"acme", "default"}
+    assert body["clients_map"]["acme"] == ["SG"]
+    assert body["client_countries"] == ["SG"]
 
 
 async def test_get_users(
