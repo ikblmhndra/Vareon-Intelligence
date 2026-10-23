@@ -12,7 +12,7 @@ countries.registerLocale(en);
 
 const ALIAS: Record<string, string> = { UK: "GB", EL: "GR" };
 const STEP = 9; // jarak antar titik, dalam px CSS
-const DOT_RADIUS = 0.7; // titik 1.4 px
+const DOT_RADIUS = 0.8; // titik 1.6 px
 const GLOW_FACTOR = 2.2;
 
 export interface WorldDotPoint {
@@ -139,7 +139,7 @@ export function WorldDots({
     const data = octx.getImageData(0, 0, w, h).data;
 
     const colors = readColors();
-    ctx.globalAlpha = 0.16;
+    ctx.globalAlpha = 0.32;
     ctx.fillStyle = colors.fg;
     ctx.beginPath();
     for (let y = STEP / 2; y < h; y += STEP) {
