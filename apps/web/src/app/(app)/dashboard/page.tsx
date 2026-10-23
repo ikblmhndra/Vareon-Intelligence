@@ -1,7 +1,7 @@
 "use client";
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 
 import { api } from "@/lib/api/client";
 import type { TaStats } from "@/lib/api/loose-types";
@@ -30,6 +30,11 @@ import {
 } from "@/components/dashboard/dashboard-filters";
 import { PageHeader } from "@/components/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
+
+const noopSubscribe = () => () => {};
+// String primitif: snapshot stabil antar panggilan, jadi tidak memicu render ulang.
+const todaySnapshot = () =>
+  new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" });
 
 function toTitleCase(s: string): string {
   return s.replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1));
@@ -85,20 +90,14 @@ export default function DashboardPage() {
   const cve = useCveExposure(filters.days);
   const trending = useDashboardTrending(filters.days);
   const { user } = useAuth();
-  const clientName = getActiveClientId() ?? user?.client_ids[0] ?? "—";
-  // Hari ini sekali per mount (bukan tiap render): judul halaman tidak berubah saat refetch.
-  const [now] = useState(() => new Date());
-  const todayLabel = now.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" });
+  // Cookie client dan tanggal hanya ada di browser: snapshot server = placeholder, supaya markup
+  // server dan hidrasi sama (tanpa ini React 19 melaporkan hydration mismatch).
+  const cookieClient = useSyncExternalStore(noopSubscribe, getActiveClientId, () => null);
+  const clientName = cookieClient ?? user?.client_ids[0] ?? "—";
+  const todayLabel = useSyncExternalStore(noopSubscribe, todaySnapshot, () => "Dashboard");
 
   const stats = dashboard.data;
-  const updatedLabel = stats
-    ? new Date(stats.generated_at).toLocaleTimeString("id-ID", {
-        hour: "2-digit",
-        minute: "2-digit",
-        hourCycle: "h23",
-        timeZone: "Asia/Jakarta",
-      })
-    : "—";
+  const kpiStale = dashboard.isPlaceholderData || ransomware.isPlaceholderData || cve.isPlaceholderData;
   const newActors = (trending.data?.items ?? []).filter((x) => x.kind === "actor" && x.is_new).length;
   const periodLabel = filters.days ? `Last ${filters.days} days` : "All time";
   const prevLabel = filters.days ? `${filters.days}d` : "";
@@ -110,7 +109,7 @@ export default function DashboardPage() {
     <div className="pb-10">
       <PageHeader
         title={todayLabel}
-        description={`Klien: ${clientName} · diperbarui ${updatedLabel} WIB`}
+        description={`Klien: ${clientName}`}
         actions={<DashboardFilterBar filters={filters} onChange={setFilters} updatedAt={stats?.generated_at} />}
       />
 
@@ -122,7 +121,7 @@ export default function DashboardPage() {
       {/* Tiap angka dari endpoint lain tampil "—" bila endpoint-nya belum datang/gagal; KPI artikel tetap utuh. */}
       {stats && (
         <div
-          className={`surface-raised mt-6 grid grid-cols-1 divide-y divide-border/70 rounded-2xl p-2 transition-opacity sm:grid-cols-2 sm:divide-y-0 xl:grid-cols-5 xl:divide-x ${dashboard.isPlaceholderData ? "opacity-60" : ""}`}
+          className={`surface-raised mt-6 grid grid-cols-1 divide-y divide-border/70 rounded-2xl p-2 transition-opacity sm:grid-cols-2 sm:divide-y-0 xl:grid-cols-5 xl:divide-x ${kpiStale ? "opacity-60" : ""}`}
         >
           <StatBox
             flat
@@ -194,7 +193,12 @@ export default function DashboardPage() {
             <Skeleton aria-hidden className="h-80 rounded-2xl lg:col-span-4" />
           </>
         )}
-        {dashboard.isError && <p className="text-sm text-destructive lg:col-span-12">Gagal memuat statistik berita.</p>}
+        {dashboard.isError && (
+          <>
+            <ErrorCard className="lg:col-span-8" title="Artikel dari waktu ke waktu" noun="grafik artikel dari waktu ke waktu" />
+            <ErrorCard className="lg:col-span-4" title="Industri disasar" noun="data industri disasar" />
+          </>
+        )}
         {stats && (
           <>
             <ChartCard
@@ -213,7 +217,7 @@ export default function DashboardPage() {
             <MapCard
               flat
               className={`lg:col-span-4 transition-opacity ${dashboard.isPlaceholderData ? "opacity-60" : ""}`}
-              title="Industri paling disasar"
+              title="Industri disasar"
               note={
                 stats.industry_unspecified > 0
                   ? `${stats.industry_unspecified.toLocaleString()} artikel tanpa sektor spesifik (General) tidak ditampilkan`
@@ -232,6 +236,8 @@ export default function DashboardPage() {
       </div>
 
       {/* ── TTP ── */}
+      {dashboard.isPending && <Skeleton aria-hidden className="mt-4 h-80 rounded-2xl" />}
+      {dashboard.isError && <ErrorCard className="mt-4" title="Top MITRE ATT&CK TTPs" noun="grafik TTP" />}
       {stats && (
         <div
           className={`mt-4 grid grid-cols-1 gap-4 transition-opacity lg:grid-cols-12 ${dashboard.isPlaceholderData ? "opacity-60" : ""}`}
@@ -255,7 +261,13 @@ export default function DashboardPage() {
       <DashboardSectionLabel aside="All time. The period filter does not apply here.">
         Threat Actor Room
       </DashboardSectionLabel>
-      {ta.isError && <p className="text-sm text-destructive">Failed to load threat actor stats.</p>}
+      {ta.isPending && (
+        <div aria-hidden className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+          <Skeleton className="h-72 rounded-2xl lg:col-span-4" />
+          <Skeleton className="h-72 rounded-2xl lg:col-span-8" />
+        </div>
+      )}
+      {ta.isError && <p className="text-sm text-destructive">Gagal memuat statistik Threat Actor Room.</p>}
       {ta.data && (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
           <MapCard flat className="lg:col-span-4" title="APT Groups by Source">
@@ -281,8 +293,16 @@ export default function DashboardPage() {
   );
 }
 
+function ErrorCard({ title, noun, className }: { title: string; noun: string; className?: string }) {
+  return (
+    <MapCard title={title} className={className}>
+      <p className="text-sm text-destructive">Gagal memuat {noun}.</p>
+    </MapCard>
+  );
+}
+
 function ErrorNote() {
-  return <p className="text-sm text-destructive">Failed to load dashboard data.</p>;
+  return <p className="text-sm text-destructive">Gagal memuat angka KPI dashboard.</p>;
 }
 
 /** Sub KPI saat endpoint asalnya (ransomware/CVE/trending) belum datang atau gagal. */

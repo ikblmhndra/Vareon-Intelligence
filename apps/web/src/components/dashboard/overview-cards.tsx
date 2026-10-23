@@ -26,6 +26,7 @@ import {
 
 function CardBody({
   title,
+  noun,
   note,
   className,
   pending,
@@ -35,6 +36,8 @@ function CardBody({
   children,
 }: {
   title: string;
+  /** Nama bagian untuk baris galat: "Gagal memuat {noun}." */
+  noun: string;
   note?: ReactNode;
   className?: string;
   pending: boolean;
@@ -48,7 +51,7 @@ function CardBody({
       {pending ? (
         <Skeleton aria-hidden className={cn("w-full rounded-xl", skeletonHeight)} />
       ) : error ? (
-        <p className="text-sm text-destructive">Gagal memuat {title.toLowerCase()}.</p>
+        <p className="text-sm text-destructive">Gagal memuat {noun}.</p>
       ) : (
         <div className={cn("transition-opacity", stale && "opacity-60")}>{children}</div>
       )}
@@ -80,7 +83,8 @@ export function MustReadCard({ days, className }: { days: number | null; classNa
   const articles = q.data?.articles ?? [];
   return (
     <CardBody
-      title="Wajib dibaca"
+      title="Perlu dibaca"
+      noun="berita yang perlu dibaca"
       className={className}
       pending={q.isPending}
       error={q.isError}
@@ -121,7 +125,8 @@ export function TrendingCard({ days, className }: { days: number | null; classNa
   const items = (q.data?.items ?? []).slice(0, 4);
   return (
     <CardBody
-      title="Sedang naik"
+      title="Naik tajam"
+      noun="tren aktor dan TTP"
       note={q.data?.window_label}
       className={className}
       pending={q.isPending}
@@ -164,6 +169,7 @@ export function RansomwareCard({ days, className }: { days: number | null; class
   return (
     <CardBody
       title="Ransomware"
+      noun="data ransomware"
       note={q.data ? `${q.data.total.toLocaleString()} korban · ${q.data.apac.toLocaleString()} di APAC` : undefined}
       className={className}
       pending={q.isPending}
@@ -202,7 +208,8 @@ export function CveExposureCard({ days, className }: { days: number | null; clas
   const items = (q.data?.items ?? []).slice(0, 3);
   return (
     <CardBody
-      title="Eksposur CVE"
+      title="CVE exposure"
+      noun="data eksposur CVE"
       className={className}
       pending={q.isPending}
       error={q.isError}
@@ -261,6 +268,7 @@ export function ClientContextCard({ days, className }: { days: number | null; cl
   return (
     <CardBody
       title="Konteks klien"
+      noun="konteks klien"
       className={className}
       pending={attention.isPending}
       error={attention.isError}
