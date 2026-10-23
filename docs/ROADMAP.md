@@ -25,9 +25,9 @@ Each item contains: **what** was asked, **the current state** (facts from the re
 |---|---|---|---|---|
 | 21 | **Done** | **PRIORITY (team feedback 2026-10-10)** -- **Improve the Recap feature**: weekly instead of daily (a manual daily trigger stays), fewer/cheaper LLM calls, week-over-week comparison, grounding check, forecast scorecard -- **code merged 2026-10-11/12 (PR 1-4: #34, #36, #40, #42), released as 0.5.0 (2026-10-14), deployed to prod (by the user; running 0.5.0 by 2026-10-15); the weekly recaps of 28 Sep and 5 Oct exist on prod and the Monday schedule is registered in `beat` (read-only check 2026-10-16)** | nothing | -- |
 | 22 | **Live** | **PRIORITY (team feedback 2026-10-10)** -- **Newsletter**: monthly (first working day of the month), Indonesian article summaries under English headings, redesigned template with the company logo (mockup drawn, `docs/mockups/newsletter-redesign.html`), recommended articles in the composer, denser layout (full cards plus a compact list), executive summary paragraph from the weekly recaps, per-article summary cache and one history row per send -- **code merged 2026-10-11/14 (PR 5-9: #35, #39, #38, #43, #44), released as 0.5.0 and deployed to prod (by the user; running 0.5.0 by 2026-10-15); the APAC set and the real-mailbox checks (new Outlook light and dark mode, Outlook web and desktop, Gmail) were confirmed by the user on 2026-10-15; file-name titles no longer take a Highlight (#53); no edition has been prepared yet (`newsletter_suggestions` is still empty on prod on 2026-10-23; the October edition is due Mon 2 Nov)** | the first real edition on Mon 2 Nov | #21 (the executive summary reads the weekly recaps; shared LLM usage logging) |
-| 1 | **Done** | Rebranding the platform name + UI (colour palette, typography, animation) -- **DONE 2026-10-02; the SVG logo is parked by the user (2026-10-15)** | brand assets | -- |
-| 2 | **Mostly done** | Rebranding the `newsletter_email` and `cve_notification_email` templates -- **code 2026-10-02; the newsletter email is verified in real clients (new Outlook light and dark mode seen 2026-10-14; Outlook web, Outlook desktop and Gmail confirmed fine by the user on 2026-10-15); the `cve_notification_email` was not mentioned in those checks and has not been looked at in real clients** | (the same assets as #1) | #1 |
-| 3 | **Superseded** | (probably superseded by #19) A "Populate now" button in the CVE Tracker (all / only newly added) | a small decision (see the item) | -- |
+| 1 | **Done** | Rebranding the platform name + UI (colour palette, typography, animation) -- **DONE 2026-10-02; the SVG logo is parked by the user (2026-10-15); confirmed done by the user on 2026-10-23** | nothing | -- |
+| 2 | **Done** | Rebranding the `newsletter_email` and `cve_notification_email` templates -- **code 2026-10-02; the newsletter email is verified in real clients (new Outlook light and dark mode seen 2026-10-14; Outlook web, Outlook desktop and Gmail confirmed fine by the user on 2026-10-15); confirmed done by the user on 2026-10-23, `cve_notification_email` included** | nothing | #1 |
+| 3 | **Done** | A "Populate now" button in the CVE Tracker (all / only newly added) -- **covered by #19 (the Monitor flow fills a tech's history from the mirror); confirmed done by the user on 2026-10-23** | nothing | -- |
 | 4 | **Live** | IOC enrichment + reputation (VirusTotal, AbuseIPDB, urlscan, Shodan/GreyNoise) -- **code merged 2026-10-15 (#55, #58), released as 0.6.0 and deployed to prod; all three keys (AbuseIPDB, VirusTotal, OTX) are set there and 956 of 7,375 IOCs already carry cards (2026-10-16); OTX was stalled in most runs by HTTP 400 on some IOCs (fixed in 0.6.1, see the item; prod runs 0.7.4 since 2026-10-21, so the fix is live); urlscan, GreyNoise and Shodan are not built** | a look at which IOCs OTX rejects; whether the VirusTotal plan behind the key allows commercial use is the owner's call | -- |
 | 5 | **Parked** | Outbound IOC/CVE feeds (TAXII 2.1 and/or CSV/JSON) + integration API keys | target tooling (Wazuh/Splunk/Fortinet?) | #4 |
 | 6 | **Open** | IOC lifecycle: first/last seen, sightings, expiry/decay -- **first/last seen, sighting count and confidence decay already exist; only expiry in the outbound feed is missing** | an IOC age decision | #4, #5 |
@@ -73,9 +73,9 @@ PRs #2-#68 are all merged into `main` (release tags in `CHANGELOG.md`: 0.2.0, 0.
 
 | # | Status | Delivered by | What is left |
 |---|---|---|---|
-| 1 | Done | PRs #3, #4 (+ the rename to Vareon Intelligence, 2026-10-05) | the SVG logo (parked by the user) |
-| 2 | Mostly done | PR #3; newsletter email verified 2026-10-14/15 | a look at `cve_notification_email` in real clients |
-| 3 | Superseded by #19 | PR #12 | nothing, do not work on it |
+| 1 | Done | PRs #3, #4 (+ the rename to Vareon Intelligence, 2026-10-05) | nothing (confirmed by the user 2026-10-23; the SVG logo stays parked) |
+| 2 | Done | PR #3; newsletter email verified 2026-10-14/15 | nothing (confirmed by the user 2026-10-23) |
+| 3 | Done (through #19) | PR #12 | nothing (confirmed by the user 2026-10-23) |
 | 4 | Live | PRs #55, #58 (0.6.0), the OTX 400 fix (0.6.1); on prod since 2026-10-15/16 | which IOCs OTX rejects (after 0.6.1); OTX threshold review; urlscan/GreyNoise/Shodan; scoring integration |
 | 13 | Dropped | PR #11 (CI green on `main`) | nothing: the Deploy workflow is disabled on purpose |
 | 14 | Done | PR #9 (pillow), CI image build green in PR #12 | nothing |
@@ -177,6 +177,8 @@ contrast meets WCAG AA in the themes used; a screenshot of each tab is attached;
 
 ## 2. Rebranding the email templates
 
+> **Status 2026-10-23 -- done** (confirmed by the user, both templates).
+>
 > **Status 2026-10-02 -- code done, verification not yet**: `templates/_base_email.html` (Jinja `extends`) is used by
 > both emails; brand palette, hex only, a fallback font stack, `platform_name` from the setting. **Not yet**: sent through
 > Graph to a test account and checked in Outlook desktop/web, Gmail, mobile (the "Done when" criteria below). Note:
@@ -216,6 +218,8 @@ web, Gmail, and mobile; the render tests pass.
 
 ## 3. A "Populate now" button in the CVE Tracker
 
+> **Status 2026-10-23 -- done** (confirmed by the user; delivered through #19).
+>
 > **Superseded by #19 (code done 2026-10-08, on `main` since PR #12 / release 0.3.0).** A Monitored tech (the Monitor button,
 > "Map to catalog", Resume, or a new target) immediately has its history filled from the mirror through the
 > `cve.promote_entry` task (only when `CVE_MIRROR__ENABLED` and `CVE_MIRROR__PROMOTE` are on), so this button,
