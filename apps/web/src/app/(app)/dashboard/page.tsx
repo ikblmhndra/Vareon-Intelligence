@@ -6,9 +6,8 @@ import { useState } from "react";
 import { api } from "@/lib/api/client";
 import type { TaStats } from "@/lib/api/loose-types";
 import { ChartCard, DashboardSectionLabel, Delta, MapCard, StatBox } from "@/components/dashboard/stat-box";
-import { AttentionBand } from "@/components/dashboard/attention-band";
+import { SignalHero } from "@/components/dashboard/signal-hero";
 import { BreakdownList } from "@/components/dashboard/breakdown-list";
-import { CountryMap } from "@/components/dashboard/country-map";
 import { HorizontalBarChart, TimelineChart } from "@/components/dashboard/charts";
 import {
   DEFAULT_DASHBOARD_FILTERS,
@@ -84,7 +83,7 @@ export default function DashboardPage() {
         actions={<DashboardFilterBar filters={filters} onChange={setFilters} updatedAt={stats?.generated_at} />}
       />
 
-      <AttentionBand />
+      <SignalHero days={filters.days} />
 
       {/* ── KPI ── */}
       {dashboard.isPending && <Skeleton className="mt-6 h-28 w-full rounded-2xl" />}
@@ -156,13 +155,6 @@ export default function DashboardPage() {
         <div
           className={`grid grid-cols-1 gap-4 transition-opacity lg:grid-cols-12 ${dashboard.isPlaceholderData ? "opacity-60" : ""}`}
         >
-          <MapCard
-            className="lg:col-span-8"
-            title="Mentioned Countries"
-            note={basis(stats.coverage.with_country, "name a country")}
-          >
-            <CountryMap data={stats.country_counts} />
-          </MapCard>
           <MapCard flat className="lg:col-span-4" title="Articles by News Type">
             <BreakdownList items={stats.by_news_type.map((x) => ({ label: toTitleCase(x.name), count: x.count }))} limit={9} />
           </MapCard>

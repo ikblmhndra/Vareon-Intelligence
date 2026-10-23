@@ -96,6 +96,7 @@
   --color-hero-eyebrow: var(--hero-eyebrow);
   --color-hero-accent: var(--hero-accent);
   --color-hero-glow: var(--hero-glow);
+  --color-hero-panel: var(--hero-panel);
   /* Scrim di belakang dialog (dulu `bg-black/40`). */
   --color-overlay: var(--overlay);
   /* Cincin fokus keyboard: `ring-ring/50` hanya 2.3-2.6:1 terhadap halaman/surface (WCAG 2.2 butuh
@@ -192,6 +193,7 @@
   --hero-eyebrow: #fbbfa1; /* 10.0:1 */
   --hero-accent: #ff8a7e; /* 7.0:1 */
   --hero-glow: rgb(255 77 109 / 0.22);
+  --hero-panel: rgb(0 0 0 / 0.18); /* panel di atas hero, sama di kedua tema */
   --overlay: rgb(15 7 11 / 0.4);
   --focus: color-mix(in oklab, var(--ring) 70%, transparent);
 }
