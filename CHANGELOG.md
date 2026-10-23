@@ -6,7 +6,7 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
-## [0.8.1] - 2026-10-24
+## [0.8.2] - 2026-10-24
 
 **Redesain Login, Dashboard, dan Newsroom.** Login punya panel brand, Dashboard jadi peta sinyal dunia dengan brief dan daftar
 prioritas, Newsroom jadi halaman depan berita utama dengan topik aktif dan rubrik. **Tanpa migrasi, tanpa kunci `.env` baru, dan
