@@ -293,7 +293,7 @@ function ProviderRow({
 }
 
 const SELECT_CLASS =
-  "h-8 w-full rounded-lg border border-input bg-transparent px-2.5 font-mono text-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
+  "h-8 w-full rounded-lg border border-input bg-transparent px-2.5 font-mono text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-focus";
 
 function SecretEditDialog({
   provider,
@@ -449,7 +449,7 @@ function SecretEditDialog({
           </p>
         )}
         {notice && (
-          <p role="status" className="text-xs text-amber-600 dark:text-amber-400">
+          <p role="status" className="text-xs text-warning">
             {notice}
           </p>
         )}

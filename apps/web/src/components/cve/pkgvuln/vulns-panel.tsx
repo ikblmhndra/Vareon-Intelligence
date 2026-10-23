@@ -212,7 +212,7 @@ export function VulnsPanel({ active }: { active: boolean }) {
               )}
               {listQuery.data.items.map((v) => (
                 <TableRow key={v.id} className="cursor-pointer" onClick={() => setSelected(v)}>
-                  <TableCell className="font-mono text-[13px]">
+                  <TableCell className="font-mono text-xs">
                     {v.advisory_id}
                     {v.aliases.length > 0 && <div className="text-xs text-muted-foreground">{v.aliases.join(", ")}</div>}
                   </TableCell>
@@ -221,7 +221,7 @@ export function VulnsPanel({ active }: { active: boolean }) {
                     {v.pinned_version && <span className="text-muted-foreground">@{v.pinned_version}</span>}
                   </TableCell>
                   <TableCell className="max-w-[240px] truncate text-xs">{v.summary || "—"}</TableCell>
-                  <TableCell className={cn("text-[13px] font-semibold", severityColorClass(v.adjusted_severity || v.severity))}>
+                  <TableCell className={cn("text-xs font-semibold", severityColorClass(v.adjusted_severity || v.severity))}>
                     {v.adjusted_severity || v.severity}
                   </TableCell>
                   <TableCell className="font-mono text-xs" onClick={(e) => e.stopPropagation()}>
@@ -232,11 +232,11 @@ export function VulnsPanel({ active }: { active: boolean }) {
                       </Badge>
                     )}
                   </TableCell>
-                  <TableCell className={cn("font-mono text-[13px]", v.epss_score != null ? epssColorClass(v.epss_score) : "text-muted-foreground")}>
+                  <TableCell className={cn("font-mono text-xs", v.epss_score != null ? epssColorClass(v.epss_score) : "text-muted-foreground")}>
                     {v.epss_score != null ? `${(v.epss_score * 100).toFixed(2)}%` : "—"}
                   </TableCell>
-                  <TableCell className="font-mono text-[13px] text-muted-foreground">{v.published?.slice(0, 10) || "—"}</TableCell>
-                  <TableCell className="font-mono text-[13px] text-primary">{v.fixed_version || "—"}</TableCell>
+                  <TableCell className="font-mono text-xs text-muted-foreground">{v.published?.slice(0, 10) || "—"}</TableCell>
+                  <TableCell className="font-mono text-xs text-primary">{v.fixed_version || "—"}</TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
                     <Checkbox checked={v.acknowledged} onCheckedChange={() => void toggleAck(v.id)} />
                   </TableCell>

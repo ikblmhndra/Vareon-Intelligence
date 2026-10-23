@@ -22,7 +22,7 @@ tetap mati.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from cti_core.config import get_settings
 
@@ -47,3 +47,19 @@ def effective_enabled(meta: ScraperMeta, config: ScraperConfig | None) -> bool:
     `ScraperMeta.enabled` bila tak ada baris config) DAN tidak sedang digantikan mirror."""
     enabled = config.enabled if config is not None else meta.enabled
     return enabled and not superseded_by_mirror(meta.id)
+
+
+DisabledBy = Literal["code", "admin", "mirror"]
+
+
+def disabled_by(meta: ScraperMeta, config: ScraperConfig | None) -> DisabledBy | None:
+    """SIAPA yang mematikan scraper ini (`None` = jalan), urutannya sama dengan `effective_enabled`:
+    control plane (`admin`) atau default kode (`code`) dulu, baru mirror. Dipakai `/scrapers`
+    supaya status DISABLED punya alasan (ROADMAP #24 PR-B)."""
+    if config is not None and not config.enabled:
+        return "admin"
+    if config is None and not meta.enabled:
+        return "code"
+    if superseded_by_mirror(meta.id):
+        return "mirror"
+    return None

@@ -43,9 +43,21 @@ export function StatBox({ label, value, sub, className, spark, flat, emphasis }:
 
 /** Selisih vs periode sebelumnya buat `StatBox.sub`. `prev` null/undefined (all-time:
  * gak ada periode sebelumnya) -> gak render apa-apa. Netral (bukan merah/hijau):
- * naik/turun jumlah artikel gak otomatis baik atau buruk. */
-export function Delta({ value, prev, label }: { value: number; prev: number | null | undefined; label: string }) {
+ * naik/turun jumlah artikel gak otomatis baik atau buruk. `reliable` false = periode sebelumnya
+ * kosong/jarang (`prev_period_reliable` dari API, aturan yang sama dengan Exec `KpiStrip`). */
+export function Delta({
+  value,
+  prev,
+  label,
+  reliable = true,
+}: {
+  value: number;
+  prev: number | null | undefined;
+  label: string;
+  reliable?: boolean;
+}) {
   if (prev == null) return null;
+  if (!reliable) return <span> · no prior-period data</span>;
   const diff = value - prev;
   let text: string;
   if (diff === 0) text = `no change vs prev ${label}`;

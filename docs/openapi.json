@@ -1621,6 +1621,10 @@
             ],
             "title": "Prev Confirmed Incidents"
           },
+          "prev_period_reliable": {
+            "title": "Prev Period Reliable",
+            "type": "boolean"
+          },
           "prev_total_articles": {
             "anyOf": [
               {
@@ -1699,6 +1703,7 @@
           "confirmed_incidents",
           "prev_total_articles",
           "prev_confirmed_incidents",
+          "prev_period_reliable",
           "industry_unspecified",
           "coverage",
           "generated_at",
@@ -1787,6 +1792,43 @@
         "title": "DashboardSummary",
         "type": "object"
       },
+      "DataHealthOut": {
+        "properties": {
+          "enrichment": {
+            "$ref": "#/components/schemas/EnrichmentHealthOut"
+          },
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "ioc_enrichment": {
+            "items": {
+              "$ref": "#/components/schemas/IocEnrichmentTypeOut"
+            },
+            "title": "Ioc Enrichment",
+            "type": "array"
+          },
+          "queues": {
+            "$ref": "#/components/schemas/QueueHealthOut"
+          },
+          "scrapers": {
+            "$ref": "#/components/schemas/ScraperHealthSummary"
+          },
+          "sources": {
+            "$ref": "#/components/schemas/SourceFreshnessOut"
+          }
+        },
+        "required": [
+          "generated_at",
+          "scrapers",
+          "enrichment",
+          "queues",
+          "sources",
+          "ioc_enrichment"
+        ],
+        "title": "DataHealthOut",
+        "type": "object"
+      },
       "DraftEmailBody": {
         "properties": {
           "cve_ids": {
@@ -1806,6 +1848,46 @@
           "cve_ids"
         ],
         "title": "DraftEmailBody",
+        "type": "object"
+      },
+      "EnrichmentHealthOut": {
+        "properties": {
+          "failed_24h": {
+            "title": "Failed 24H",
+            "type": "integer"
+          },
+          "failed_7d": {
+            "title": "Failed 7D",
+            "type": "integer"
+          },
+          "last_failure_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Failure At"
+          },
+          "pending_replay": {
+            "title": "Pending Replay",
+            "type": "integer"
+          },
+          "processed_7d": {
+            "title": "Processed 7D",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "failed_24h",
+          "failed_7d",
+          "processed_7d",
+          "pending_replay",
+          "last_failure_at"
+        ],
+        "title": "EnrichmentHealthOut",
         "type": "object"
       },
       "ExploitRiskCve": {
@@ -1953,6 +2035,29 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "IocEnrichmentTypeOut": {
+        "properties": {
+          "enriched": {
+            "title": "Enriched",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "total",
+          "enriched"
+        ],
+        "title": "IocEnrichmentTypeOut",
         "type": "object"
       },
       "LockfileImportResult": {
@@ -3812,6 +3917,31 @@
         "title": "PurgeOrphanedBody",
         "type": "object"
       },
+      "QueueHealthOut": {
+        "properties": {
+          "enrich_depth": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enrich Depth"
+          },
+          "enrich_max_depth": {
+            "title": "Enrich Max Depth",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "enrich_depth",
+          "enrich_max_depth"
+        ],
+        "title": "QueueHealthOut",
+        "type": "object"
+      },
       "RFICreate": {
         "properties": {
           "due_date": {
@@ -4927,6 +5057,22 @@
       },
       "ScraperListItem": {
         "properties": {
+          "disabled_by": {
+            "anyOf": [
+              {
+                "enum": [
+                  "code",
+                  "admin",
+                  "mirror"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disabled By"
+          },
           "enabled": {
             "title": "Enabled",
             "type": "boolean"
@@ -5026,6 +5172,17 @@
               }
             ],
             "title": "Next Run At"
+          },
+          "paused_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paused Reason"
           },
           "queue": {
             "title": "Queue",
@@ -5687,6 +5844,50 @@
           "status"
         ],
         "title": "SlowestCve",
+        "type": "object"
+      },
+      "SourceFreshnessOut": {
+        "properties": {
+          "articles_newest_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Articles Newest At"
+          },
+          "iocs_newest_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iocs Newest At"
+          },
+          "tweets_newest_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tweets Newest At"
+          }
+        },
+        "required": [
+          "articles_newest_at",
+          "tweets_newest_at",
+          "iocs_newest_at"
+        ],
+        "title": "SourceFreshnessOut",
         "type": "object"
       },
       "StatusBreakdown": {
@@ -6765,7 +6966,7 @@
   },
   "info": {
     "title": "Vareon Intelligence API",
-    "version": "0.7.4"
+    "version": "0.8.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -12884,6 +13085,55 @@
         "summary": "Dashboard Stats",
         "tags": [
           "articles"
+        ]
+      }
+    },
+    "/api/data-health": {
+      "get": {
+        "operationId": "data_health_api_data_health_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataHealthOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Data Health",
+        "tags": [
+          "data-health"
         ]
       }
     },

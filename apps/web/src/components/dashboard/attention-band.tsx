@@ -47,14 +47,14 @@ export function AttentionBand() {
   return (
     <section
       aria-label="Need Attention"
-      className="grid gap-6 rounded-3xl bg-[#430a23] bg-[image:radial-gradient(40rem_16rem_at_100%_0%,rgb(255_77_109_/_0.22),transparent_70%)] p-6 text-[#f6ede4] shadow-md sm:p-8 md:grid-cols-[1.4fr_1fr_1fr_1fr] md:items-center"
+      className="grid gap-6 rounded-3xl bg-hero bg-[image:radial-gradient(40rem_16rem_at_100%_0%,var(--hero-glow),transparent_70%)] p-6 text-hero-foreground shadow-md sm:p-8 md:grid-cols-[1.4fr_1fr_1fr_1fr] md:items-center"
     >
       <div>
-        <div className="text-xs font-semibold tracking-widest text-[#fbbfa1] uppercase">Need Attention</div>
+        <div className="text-xs font-semibold tracking-widest text-hero-eyebrow uppercase">Need Attention</div>
         <div className="mt-2 text-2xl leading-tight font-bold">
           {top ? `Sector ${top.sector} leads in risk` : "Current Risk Summary"}
         </div>
-        <div className="mt-1 text-sm text-[#e6cfd6]">Period {DAYS} days</div>
+        <div className="mt-1 text-sm text-hero-muted">Period {DAYS} days</div>
       </div>
       <Metric value={cve.data?.critical} label="Critical CVEs (CVSS ≥ 9)" accent />
       <Metric value={topIncidents} label={top ? `Incidents in ${top.sector}` : "Incidents in top sector"} />
@@ -67,14 +67,14 @@ export function AttentionBand() {
  * supaya band terbaca sebagai satu pesan utama plus dua pendukung, bukan tiga angka sama besar. */
 function Metric({ value, label, suffix, accent }: { value: number | undefined; label: string; suffix?: string; accent?: boolean }) {
   return (
-    <div className="md:border-l md:border-[#f6ede4]/15 md:pl-6">
+    <div className="md:border-l md:border-hero-foreground/15 md:pl-6">
       <div
-        className={`leading-none font-extrabold tracking-tight tabular-nums ${accent ? "text-5xl text-[#ff8a7e]" : "text-4xl"}`}
+        className={`leading-none font-extrabold tracking-tight tabular-nums ${accent ? "text-5xl text-hero-accent" : "text-4xl"}`}
       >
         {value === undefined ? "—" : value.toLocaleString()}
-        {value !== undefined && suffix && <span className="text-xl font-semibold text-[#e6cfd6]">{suffix}</span>}
+        {value !== undefined && suffix && <span className="text-xl font-semibold text-hero-muted">{suffix}</span>}
       </div>
-      <div className="mt-2 text-sm text-[#e6cfd6]">{label}</div>
+      <div className="mt-2 text-sm text-hero-muted">{label}</div>
     </div>
   );
 }

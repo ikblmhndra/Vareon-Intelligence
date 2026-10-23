@@ -102,3 +102,20 @@ def test_beat_does_not_schedule_a_superseded_new_cve(monkeypatch: pytest.MonkeyP
         assert "scrape-new_cve" in beat.build_beat_schedule()
     finally:
         get_settings.cache_clear()
+
+
+def test_disabled_by_names_who_turned_the_scraper_off(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`/scrapers` menampilkan SIAPA yang mematikan: control plane menang atas mirror, sama seperti
+    `effective_enabled`; scraper yang jalan tidak punya `disabled_by`."""
+    off = SimpleNamespace(enabled=False)
+    on = SimpleNamespace(enabled=True)
+    code_off = ScraperMeta(id="legacy", source="Z", schedule="0 * * * *", enabled=False)
+    use(monkeypatch)
+    assert supersede.disabled_by(META, None) is None
+    assert supersede.disabled_by(META, off) == "admin"  # type: ignore[arg-type]
+    assert supersede.disabled_by(code_off, None) == "code"
+    assert supersede.disabled_by(code_off, on) is None  # type: ignore[arg-type]
+    use(monkeypatch, enabled=True, promote="live")
+    assert supersede.disabled_by(META, None) == "mirror"
+    assert supersede.disabled_by(META, on) == "mirror"  # type: ignore[arg-type]
+    assert supersede.disabled_by(META, off) == "admin"  # type: ignore[arg-type]

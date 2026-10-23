@@ -25,9 +25,7 @@ import asyncio
 import datetime
 from typing import TYPE_CHECKING
 
-from cti_core import beat_heartbeat
 from cti_core.celery_client import get_celery_client
-from cti_core.config import get_settings
 from cti_core.db.repositories.auth import AsyncAuditLogRepo
 from cti_core.db.repositories.scraper import (
     AsyncScraperConfigRepo,
@@ -35,12 +33,12 @@ from cti_core.db.repositories.scraper import (
     AsyncScraperRunRepo,
 )
 from cti_core.db.repositories.scraper_seen import AsyncScraperSeenRepo
-from cti_scraper.health import next_run, summarize_fleet_health
+from cti_scraper.health import next_run
 from cti_scraper.options import OptionError, resolve_options, validate_options
 from cti_scraper.queues import queue_for
 from cti_scraper.registry import discover
 from cti_scraper.registry import get as get_scraper_cls
-from cti_scraper.supersede import effective_enabled
+from cti_scraper.supersede import disabled_by, effective_enabled
 from fastapi import APIRouter, Depends, HTTPException, Request
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -51,13 +49,11 @@ if TYPE_CHECKING:
 
 from cti_api.deps import AuthedUser, get_db, get_redis, request_ip, require_admin, require_auth
 from cti_api.schemas.scraper import (
-    SchedulerStatusOut,
     ScraperConfigOut,
     ScraperConfigUpdateBody,
     ScraperDetail,
     ScraperDisableBody,
     ScraperDryRunResult,
-    ScraperHealthEntryOut,
     ScraperHealthSummary,
     ScraperItemListResponse,
     ScraperItemOut,
@@ -70,28 +66,9 @@ from cti_api.schemas.scraper import (
     ScraperRunOut,
     ScraperTriggerResult,
 )
+from cti_api.services.scraper_health import build_scraper_health, scheduler_status
 
 router = APIRouter(prefix="/api/scraper", tags=["scraper"], dependencies=[Depends(require_auth)])
-
-
-async def _scheduler_status(redis: Redis, now: datetime.datetime) -> SchedulerStatusOut:
-    """Heartbeat beat (QA BUG-D2/D8). Redis gak bisa dibaca = `unknown`, BUKAN
-    500 -- list scraper tetap harus kebuka walau Redis lagi gangguan."""
-    stale_after_s = get_settings().worker.beat_heartbeat_stale_s
-    try:
-        raw = await redis.get(beat_heartbeat.HEARTBEAT_KEY)
-    except Exception:
-        raw = None
-    status = beat_heartbeat.classify(
-        beat_heartbeat.parse(raw), now=now, stale_after_s=stale_after_s
-    )
-    return SchedulerStatusOut(
-        state=status.state,
-        last_tick_at=status.last_tick.isoformat() if status.last_tick else None,
-        started_at=status.started_at.isoformat() if status.started_at else None,
-        age_s=round(status.age_s, 1) if status.age_s is not None else None,
-        stale_after_s=status.stale_after_s,
-    )
 
 
 def _config_out(config: ScraperConfig | None, default_enabled: bool) -> ScraperConfigOut:
@@ -190,6 +167,8 @@ async def list_scrapers(
                 enabled=enabled,
                 schedule=schedule,
                 has_override=config is not None,
+                disabled_by=disabled_by(meta, config),
+                paused_reason=config.paused_reason if config is not None else None,
                 last_run_id=run.run_id if run else None,
                 last_status=run.status if run else None,
                 last_trigger=run.trigger if run else None,
@@ -201,7 +180,7 @@ async def list_scrapers(
             )
         )
     return ScraperListResponse(
-        scrapers=items, total=len(items), scheduler=await _scheduler_status(redis, now)
+        scrapers=items, total=len(items), scheduler=await scheduler_status(redis, now)
     )
 
 
@@ -209,40 +188,7 @@ async def list_scrapers(
 async def scraper_health(
     session: AsyncSession = Depends(get_db), redis: Redis = Depends(get_redis)
 ) -> ScraperHealthSummary:
-    registry = discover()
-    configs = await AsyncScraperConfigRepo(session).get_all()
-    run_repo = AsyncScraperRunRepo(session)
-    recent_runs = await run_repo.list_recent_by_scraper_bulk(limit=3)
-    last_success = await run_repo.last_success_by_scraper()
-    now = datetime.datetime.now(datetime.UTC)
-    entries = summarize_fleet_health(
-        registry, configs, recent_runs, now=now, last_success=last_success
-    )
-
-    counts: dict[str, int] = {}
-    problems: list[ScraperHealthEntryOut] = []
-    for e in entries:
-        counts[e.status] = counts.get(e.status, 0) + 1
-        if e.status not in ("ok", "disabled"):
-            problems.append(
-                ScraperHealthEntryOut(
-                    id=e.scraper_id,
-                    source=e.source,
-                    status=e.status,
-                    last_status=e.last_status,
-                    last_started_at=e.last_started_at.isoformat() if e.last_started_at else None,
-                    reason=e.reason,
-                    items_failed_last=e.items_failed_last,
-                    consecutive_failing=e.consecutive_failing,
-                    last_success_at=e.last_success_at.isoformat() if e.last_success_at else None,
-                )
-            )
-    return ScraperHealthSummary(
-        generated_at=now.isoformat(),
-        counts=counts,
-        scheduler=await _scheduler_status(redis, now),
-        problems=problems,
-    )
+    return await build_scraper_health(session, redis, datetime.datetime.now(datetime.UTC))
 
 
 @router.get("/{scraper_id}", response_model=ScraperDetail)

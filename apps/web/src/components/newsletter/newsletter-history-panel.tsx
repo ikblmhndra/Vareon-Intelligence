@@ -75,7 +75,7 @@ export function NewsletterHistoryPanel({ refreshKey, onPreview, onResend, resend
               const highlightTitle = sections?.highlight?.title;
               return (
                 <div key={n.id} className="rounded-xl border border-border bg-background p-3">
-                  <div className="font-mono text-[13px] text-primary">{n.label}</div>
+                  <div className="font-mono text-xs text-primary">{n.label}</div>
                   {n.period_start && n.period_end && (
                     <div className="font-mono text-xs text-muted-foreground">{formatPeriodRange(n.period_start, n.period_end)}</div>
                   )}
@@ -83,7 +83,7 @@ export function NewsletterHistoryPanel({ refreshKey, onPreview, onResend, resend
                     {n.generated_at} · by {n.created_by}
                   </div>
                   {highlightTitle && (
-                    <div className="mt-1.5 truncate text-[13px] text-foreground" title={highlightTitle}>
+                    <div className="mt-1.5 truncate text-xs text-foreground" title={highlightTitle}>
                       <SectionIcon section="highlights" className="mr-1 inline" /> {highlightTitle}
                     </div>
                   )}

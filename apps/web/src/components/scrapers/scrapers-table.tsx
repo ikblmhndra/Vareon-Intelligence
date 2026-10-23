@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { api } from "@/lib/api/client";
+import { useScraperHealth } from "@/lib/scrapers/health";
 import { useAuth } from "@/components/providers/auth-provider";
 import { Button } from "@/components/ui/button";
 import {
@@ -86,15 +87,7 @@ export function ScrapersTable({
     refetchInterval: 60_000,
   });
 
-  const health = useQuery({
-    queryKey: ["scrapers", "health"],
-    queryFn: async () => {
-      const { data, error } = await api.GET("/api/scraper/health");
-      if (error) throw error;
-      return data;
-    },
-    refetchInterval: 60_000,
-  });
+  const health = useScraperHealth();
 
   const statusById = useMemo(() => {
     const m = new Map<string, string>();
@@ -102,8 +95,12 @@ export function ScrapersTable({
     return m;
   }, [health.data]);
 
+  // Health belum datang atau gagal: jangan tulis "ok" untuk scraper yang belum dinilai (ROADMAP #24).
+  const healthKnown = health.isSuccess;
   function statusFor(id: string, enabled: boolean): string {
-    return statusById.get(id) ?? (enabled ? "ok" : "disabled");
+    if (!enabled) return "disabled";
+    if (!healthKnown) return health.isError ? "unknown" : "loading";
+    return statusById.get(id) ?? "ok";
   }
 
   const triggerMutation = useMutation({
@@ -205,6 +202,11 @@ export function ScrapersTable({
         </span>
       </div>
 
+      {health.isError && (
+        <p className="mb-2 text-xs text-destructive-text">
+          Scraper health could not be loaded, so enabled scrapers show UNKNOWN instead of a status.
+        </p>
+      )}
       {list.isPending && <Skeleton className="h-96 w-full" />}
       {list.isError && <p className="text-xs text-destructive">Failed to load scrapers.</p>}
       {list.data && (
@@ -233,7 +235,12 @@ export function ScrapersTable({
                     {s.has_override && <span className="ml-1 text-primary" title="config override active">●</span>}
                   </TableCell>
                   <TableCell>
-                    <StatusBadge status={status} />
+                    {status === "loading" ? (
+                      <Skeleton className="h-5 w-14 rounded-full" aria-label="Loading status" />
+                    ) : (
+                      <StatusBadge status={status} />
+                    )}
+                    {!s.enabled && <DisabledReason by={s.disabled_by} reason={s.paused_reason} />}
                   </TableCell>
                   <TableCell className="font-code text-xs text-muted-foreground">{s.schedule}</TableCell>
                   <TableCell className="font-mono text-xs text-muted-foreground">
@@ -282,7 +289,64 @@ export function ScrapersTable({
         </Table>
       )}
 
+      <StatusLegend />
       <DisableScraperDialog scraperId={disableTarget} onOpenChange={(open) => !open && setDisableTarget(null)} />
     </div>
+  );
+}
+
+const DISABLED_BY_LABEL: Record<string, string> = {
+  admin: "Turned off by an admin",
+  code: "Off by default in code",
+  mirror: "Replaced by the CVE mirror",
+};
+
+/** Kenapa scraper DISABLED (`disabled_by` + `paused_reason` dari `GET /api/scraper`). */
+function DisabledReason({ by, reason }: { by: string | null | undefined; reason: string | null | undefined }) {
+  if (!by && !reason) return null;
+  return (
+    <div className="mt-1 max-w-56 text-xs text-muted-foreground">
+      {by ? (DISABLED_BY_LABEL[by] ?? by) : null}
+      {reason ? <>{by ? ": " : ""}{reason}</> : null}
+    </div>
+  );
+}
+
+/** Legenda status, pola "How these metrics are calculated" di CVE Dashboard. Aturannya dari
+ * `cti_scraper.health` (fungsi murni yang sama dengan digest Telegram). */
+function StatusLegend() {
+  return (
+    <details className="mt-4 rounded-2xl surface-raised p-4 text-sm">
+      <summary className="cursor-pointer font-medium">What the statuses mean</summary>
+      <ul className="mt-3 list-disc space-y-1.5 pl-5 text-muted-foreground">
+        <li>
+          <strong className="text-foreground">OK</strong>: the latest run finished without errors or failed items.
+        </li>
+        <li>
+          <strong className="text-foreground">Disabled</strong>: not scheduled. The line under the badge says who turned it off: an
+          admin (with the reason they gave), the default in code, or the CVE mirror that replaces it.
+        </li>
+        <li>
+          <strong className="text-foreground">Stale</strong>: the scraper has never run.
+        </li>
+        <li>
+          <strong className="text-foreground">Dead</strong>: the latest run started more than three schedule intervals ago.
+        </li>
+        <li>
+          <strong className="text-foreground">Degraded</strong>: the latest run failed (fetch, parse, rate limit, timeout or
+          backpressure) or finished with items that failed to save.
+        </li>
+        <li>
+          <strong className="text-foreground">Zero yield</strong>: the last three runs all finished with zero items.
+        </li>
+        <li>
+          <strong className="text-foreground">Partial</strong> (a run status in Last Run and the Runs tab): the run finished but
+          some of its items failed; the scraper then shows as Degraded.
+        </li>
+        <li>
+          <strong className="text-foreground">Unknown</strong>: the health check could not be loaded, so the status is not known.
+        </li>
+      </ul>
+    </details>
   );
 }

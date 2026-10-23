@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { CheckIcon, XIcon } from "lucide-react";
 
 import { api } from "@/lib/api/client";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -84,9 +85,12 @@ export function ScraperItemsPanel({ scraperId }: { scraperId: string }) {
                   </a>
                 </TableCell>
                 <TableCell>
-                  <span className={`font-mono text-xs ${it.accepted ? "text-primary" : "text-muted-foreground"}`}>
-                    {it.accepted ? "" : ""}
-                  </span>
+                  {it.accepted ? (
+                    <CheckIcon className="size-4 text-success" aria-hidden />
+                  ) : (
+                    <XIcon className="size-4 text-muted-foreground" aria-hidden />
+                  )}
+                  <span className="sr-only">{it.accepted ? "Accepted" : "Rejected"}</span>
                 </TableCell>
                 <TableCell className="font-mono text-xs text-muted-foreground">{it.reason ?? "—"}</TableCell>
                 <TableCell className="font-mono text-xs text-muted-foreground">

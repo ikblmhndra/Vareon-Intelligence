@@ -140,7 +140,7 @@ export function IocDetailDialog({ target, onClose, onDeleted }: IocDetailDialogP
             <div className="font-mono text-xs">
               <div className="mb-3 flex flex-wrap items-center gap-2.5">
                 <IocTypeBadge type={ioc.type} />
-                <span className="font-code text-[13px] break-all text-foreground">{ioc.value}</span>
+                <span className="font-code text-xs break-all text-foreground">{ioc.value}</span>
                 <IocConfidenceChip score={ioc.confidence_score} />
                 <IocActionabilityChip label={ioc.actionability_label} />
                 <Button
@@ -166,11 +166,11 @@ export function IocDetailDialog({ target, onClose, onDeleted }: IocDetailDialogP
                 </div>
                 <div className="rounded-xl border border-border bg-background p-2.5">
                   <div className="mb-1 text-sm font-semibold text-muted-foreground">First Seen</div>
-                  <div className="text-[13px] text-foreground">{ioc.first_seen || "—"}</div>
+                  <div className="text-xs text-foreground">{ioc.first_seen || "—"}</div>
                 </div>
                 <div className="rounded-xl border border-border bg-background p-2.5">
                   <div className="mb-1 text-sm font-semibold text-muted-foreground">Last Seen</div>
-                  <div className="text-[13px] text-foreground">{ioc.last_seen || "—"}</div>
+                  <div className="text-xs text-foreground">{ioc.last_seen || "—"}</div>
                 </div>
               </div>
 
@@ -214,7 +214,7 @@ export function IocDetailDialog({ target, onClose, onDeleted }: IocDetailDialogP
                           {rawKeys.map((k) => (
                             <div key={k}>
                               <div className="mb-0.5 text-xs text-muted-foreground">{k.replace(/_/g, " ").toUpperCase()}</div>
-                              <div className="text-[13px] text-foreground">{String(raw[k])}</div>
+                              <div className="text-xs text-foreground">{String(raw[k])}</div>
                             </div>
                           ))}
                         </div>
@@ -253,7 +253,7 @@ export function IocDetailDialog({ target, onClose, onDeleted }: IocDetailDialogP
               <div className="mb-2 text-sm font-semibold text-muted-foreground">Linked Articles ({ioc.sources.length})</div>
               <div className="overflow-hidden rounded-md border border-border">
                 {ioc.sources.length === 0 ? (
-                  <div className="p-3 text-[13px] text-muted-foreground">No source articles recorded.</div>
+                  <div className="p-3 text-xs text-muted-foreground">No source articles recorded.</div>
                 ) : (
                   ioc.sources.map((s, i) => (
                     <div key={i} className="flex flex-col gap-1 border-b border-border p-2.5 last:border-b-0">
@@ -305,14 +305,14 @@ function IocTaLinksSection({
       <div className="mb-2 text-sm font-semibold text-muted-foreground">Linked Threat Actors ({links.length})</div>
       <div className="overflow-hidden rounded-md border border-border">
         {links.length === 0 ? (
-          <div className="p-3 text-[13px] text-muted-foreground">No threat actors linked.</div>
+          <div className="p-3 text-xs text-muted-foreground">No threat actors linked.</div>
         ) : (
           links.map((ta) => {
             const isManual = ta.source === "manual" || ta.source === "both";
             return (
               <div key={ta.name} className="flex flex-col gap-0.5 border-b border-border p-2.5 last:border-b-0">
                 <div className="flex flex-wrap items-center">
-                  <span className="text-[12px] text-foreground">{ta.name}</span>
+                  <span className="text-xs text-foreground">{ta.name}</span>
                   {ta.is_watched && (
                     <span className="ml-1.5 rounded-full border border-warning/40 bg-warning/10 px-1.5 py-0.5 text-xs text-warning-text">WATCHED</span>
                   )}
@@ -326,7 +326,7 @@ function IocTaLinksSection({
                     <span className="ml-1.5 rounded-full border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-xs text-primary-text">MANUAL+ART</span>
                   )}
                   {isManual && (
-                    <button type="button" aria-label={`Remove ${ta.name}`} onClick={() => onRemove(ta.name)} className="ml-2 inline-flex min-h-6 min-w-6 items-center justify-center text-[13px] text-muted-foreground hover:text-destructive">
+                    <button type="button" aria-label={`Remove ${ta.name}`} onClick={() => onRemove(ta.name)} className="ml-2 inline-flex min-h-6 min-w-6 items-center justify-center text-xs text-muted-foreground hover:text-destructive">
                       <XIcon aria-hidden />
                     </button>
                   )}

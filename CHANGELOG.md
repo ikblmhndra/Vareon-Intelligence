@@ -6,6 +6,49 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
+## [0.8.0] - 2026-10-23
+
+**Halaman baru Data health, dan Dashboard serta `/scrapers` tidak lagi menampilkan angka atau status yang menyesatkan** (ROADMAP #24,
+PR-B), plus **retheme web ke token tema** (fokus keyboard yang terlihat, tanpa warna literal). **Tanpa migrasi, tanpa kunci `.env`
+baru, dan tanpa entri beat baru.**
+
+**Saat upgrade dari 0.7.4:** deploy biasa (`make deploy`); image `api` dan `web` berubah. `beat` dan worker tidak perlu restart.
+
+### Ditambah
+- **Halaman Data health** (`/data-health`, menu baru di antara Scrapers dan Admin): empat bagian dalam satu layar. *Pipeline*
+  (heartbeat scheduler, jumlah scraper per status, scraper yang perlu perhatian beserta alasannya); *Enrichment* (gagal 24 jam dan
+  7 hari beserta rasionya, artikel yang menunggu replay, kegagalan terakhir, kedalaman antrian `enrich` vs batas backpressure);
+  *Source freshness* (artikel, tweet X Intel beserta status `monitor_x`, IOC, cek CVE, sync ATT&CK); *Coverage* (artikel yang punya
+  negara/aktor/teknik, dan IOC per tipe yang sudah dicek provider reputasi). Ambang warnanya ditulis di "How to read this page".
+- **`GET /api/data-health`** (semua user login, cache 60 detik per proses). Kesegaran CVE dan ATT&CK tetap dari
+  `/api/cve/freshness` dan `/api/attack/status`.
+- `/scrapers`: legenda status ("What the statuses mean"), kolom **Error** di tab Runs (stage, tipe, dan pesan singkat; traceback
+  tidak pernah ditampilkan) dan durasi yang terbaca ("12.4 s"), serta ikon centang/silang dengan teks pembaca layar di tab Items
+  (dulu sel kosong).
+
+### Diubah
+- **Delta Dashboard mengikuti aturan Exec**: bila kurang dari separuh hari periode sebelumnya punya artikel, kartu menulis "no
+  prior-period data" alih-alih "+316" (`DashboardStats.prev_period_reliable`).
+- **Scraper DISABLED punya alasan**: siapa yang mematikan (admin, default kode, atau digantikan mirror CVE) dan alasan admin
+  (`ScraperListItem.disabled_by`, `paused_reason`). Chip "Needs attention" menampilkan alasannya, bukan hanya di tooltip.
+- **Retheme ke token**: band "Need Attention", scrim dialog, dan warna amber/emerald lama memakai token tema (`bg-hero`,
+  `bg-overlay`, ...); cincin fokus keyboard `ring-focus` (3.0-3.9:1, dulu 2.2-2.6:1); ukuran huruf literal (`text-[13px]`, 68 tempat)
+  jadi skala `text-xs`/`text-2xs`. Kartu tweet bisa dibuka dengan keyboard (Enter/Spasi).
+- `build_scraper_health` dan status scheduler pindah ke `cti_api.services.scraper_health` (dipakai `/api/scraper/health` dan
+  `/api/data-health`); perilaku `/api/scraper/health` tidak berubah.
+
+### Diperbaiki
+- **`/scrapers` tidak lagi menulis "ok" saat data kesehatan belum datang atau gagal**: statusnya skeleton saat memuat dan UNKNOWN
+  bila gagal.
+- **Dashboard**: statistik Threat Actor yang gagal dimuat tidak lagi menghilangkan semua kartu KPI artikel.
+- Teks peringatan amber 1.9:1 di atas beige dan track skor yang tak terlihat di mode terang (retheme).
+- Alert geopolitik di Campaign Clusters punya ikon (dulu glyph kosong) dengan teks pembaca layar.
+
+### Diketahui / belum dikerjakan
+- Halaman Data health dan perubahan `/scrapers` belum dicek visual di dev atau prod; baru di stack lokal.
+- Tautan dari Data health ke Newsroom membuka Newsroom biasa; Newsroom belum membaca parameter URL, jadi tab "Filtered Articles >
+  Failed enrichment" dibuka manual.
+
 ## [0.7.4] - 2026-10-21
 
 **Satu artikel tidak lagi muncul dua kali di Telegram, dan satu thread yang rusak tidak lagi menghentikan alert ke topik lain.** Di prod

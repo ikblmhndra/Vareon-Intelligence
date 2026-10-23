@@ -202,21 +202,21 @@ export function PackagesPanel({ active }: { active: boolean }) {
                       {p.ecosystem}
                     </Badge>
                   </TableCell>
-                  <TableCell className="font-mono text-[13px] text-muted-foreground">
+                  <TableCell className="font-mono text-xs text-muted-foreground">
                     {p.version || "any"}
                     {p.latest_version && p.latest_version !== p.version && (
                       <span className="ml-1 text-xs text-primary">→ {p.latest_version}</span>
                     )}
                   </TableCell>
-                  <TableCell className="font-mono text-[13px]">
+                  <TableCell className="font-mono text-xs">
                     {p.critical_count > 0 && <span className="text-destructive">C{p.critical_count} </span>}
                     {p.high_count > 0 && <span className="text-warning">H{p.high_count} </span>}
                     {p.medium_count > 0 && <span className="text-primary">M{p.medium_count} </span>}
                     {p.low_count > 0 && <span className="text-muted-foreground">L{p.low_count}</span>}
                     {p.vuln_count === 0 && <span className="text-muted-foreground">—</span>}
                   </TableCell>
-                  <TableCell className="text-[13px]">{p.highest_severity}</TableCell>
-                  <TableCell className="text-[13px]">
+                  <TableCell className="text-xs">{p.highest_severity}</TableCell>
+                  <TableCell className="text-xs">
                     {p.dep_resolved_at ? (
                       <button className="text-primary underline-offset-2 hover:underline" onClick={() => setDepsTarget(p.id)}>
                         {p.dep_direct_count}+{p.dep_indirect_count}
@@ -231,7 +231,7 @@ export function PackagesPanel({ active }: { active: boolean }) {
                       {p.source}
                     </Badge>
                   </TableCell>
-                  <TableCell className="font-mono text-[13px] text-muted-foreground">{p.last_scan?.slice(0, 10) || "—"}</TableCell>
+                  <TableCell className="font-mono text-xs text-muted-foreground">{p.last_scan?.slice(0, 10) || "—"}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">
                       <Button size="sm" variant="outline" className="h-6 px-1.5 text-xs" onClick={() => setEditTarget(p)}>

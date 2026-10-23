@@ -6,7 +6,7 @@ parse ulang, cukup tampilin apa adanya."""
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
@@ -43,6 +43,11 @@ class ScraperListItem(BaseModel):
     `ScraperMeta.schedule` kode. INGAT: override baru kepake abis beat
     restart, lihat docstring `cti_worker.beat`."""
     has_override: bool
+    disabled_by: Literal["code", "admin", "mirror"] | None = None
+    """Kenapa `enabled` false: `code` (default `ScraperMeta`), `admin` (control plane),
+    `mirror` (digantikan mirror CVE, `cti_scraper.supersede`). `None` kalau jalan."""
+    paused_reason: str | None = None
+    """Alasan yang diisi admin saat menonaktifkan (`ScraperConfig.paused_reason`)."""
     last_run_id: str | None
     last_status: str | None
     last_trigger: str | None

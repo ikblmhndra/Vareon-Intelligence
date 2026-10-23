@@ -10,6 +10,28 @@ import { RunStatusText } from "@/components/scrapers/status-badge";
 
 const PAGE_SIZE = 10;
 
+/** "850 ms" / "12.4 s" / "3 m 05 s" -- `duration_ms` mentah susah dibaca untuk run browser yang lama. */
+function humanDuration(ms: number | null): string {
+  if (ms == null) return "—";
+  if (ms < 1000) return `${ms} ms`;
+  const s = ms / 1000;
+  if (s < 60) return `${s.toFixed(1)} s`;
+  const m = Math.floor(s / 60);
+  return `${m} m ${String(Math.round(s % 60)).padStart(2, "0")} s`;
+}
+
+/** Ringkasan error run: hanya `stage`, `type`, dan `message` (dipotong). `traceback` SENGAJA tidak
+ * ditampilkan: isinya bisa membocorkan path, header, atau potongan respons vendor. */
+function errorSummary(errors: { [key: string]: unknown }[]): string | null {
+  const first = errors[0];
+  if (!first) return null;
+  const parts = [first.stage, first.type].filter((x): x is string => typeof x === "string" && x !== "");
+  const message = typeof first.message === "string" ? first.message.slice(0, 160) : "";
+  const head = parts.join(" · ");
+  const more = errors.length > 1 ? ` (+${errors.length - 1} more)` : "";
+  return `${head}${head && message ? ": " : ""}${message}${more}` || null;
+}
+
 export function ScraperRunsPanel({ scraperId }: { scraperId: string }) {
   const [page, setPage] = useState(1);
 
@@ -45,6 +67,7 @@ export function ScraperRunsPanel({ scraperId }: { scraperId: string }) {
               <TableHead>Dropped</TableHead>
               <TableHead>Failed</TableHead>
               <TableHead>Duration</TableHead>
+              <TableHead>Error</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -61,8 +84,11 @@ export function ScraperRunsPanel({ scraperId }: { scraperId: string }) {
                 <TableCell className="font-mono text-xs text-foreground">{r.items_new}</TableCell>
                 <TableCell className="font-mono text-xs text-muted-foreground">{r.items_dropped}</TableCell>
                 <TableCell className="font-mono text-xs text-destructive">{r.items_failed || ""}</TableCell>
-                <TableCell className="font-mono text-xs text-muted-foreground">
-                  {r.duration_ms != null ? `${r.duration_ms}ms` : "—"}
+                <TableCell className="font-mono text-xs whitespace-nowrap text-muted-foreground">
+                  {humanDuration(r.duration_ms)}
+                </TableCell>
+                <TableCell className="min-w-48 max-w-72 text-xs break-words whitespace-normal text-muted-foreground">
+                  {errorSummary(r.errors) ?? "—"}
                 </TableCell>
               </TableRow>
             ))}

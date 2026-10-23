@@ -58,6 +58,9 @@ extraction via `FormData` must check whether the key EXISTS
   alpha instead of flipping the text color. Never dim text with `opacity-*` (use a lighter token).
 - **Fonts**: `font-mono` is NOT monospace here (`--font-mono` = Google Sans Flex). Use `font-code` (IBM Plex Mono) for
   data values: IOC, hash, IP, CVE/TTP ID, cron schedules.
+- **Tokens, not literals**: keyboard focus is `focus-visible:ring-3 focus-visible:ring-focus` (`ring-ring/50` is below
+  3:1); the burgundy band uses `bg-hero`/`text-hero-*`; dialog scrim is `bg-overlay`; micro labels use `text-2xs`
+  (11px floor), data text `text-xs` (never `text-[13px]`). No hex, `rgb()` or raw palette classes (`amber-500`) in components.
 - **No `backdrop-blur`/`backdrop-filter`** (commit 8f0655e removed it: heavy render, screenshot timeouts).
 - **Markdown** (`.prose`): colors come from `--tw-prose-*` mapped to theme tokens in `globals.css`; never add `prose-invert`.
 - **Accessibility**: every input needs an `aria-label` or an associated `<label htmlFor>` (a `<Label>` next to it is not

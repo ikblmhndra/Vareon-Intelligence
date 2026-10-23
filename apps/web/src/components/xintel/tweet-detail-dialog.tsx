@@ -111,7 +111,7 @@ export function TweetDetailDialog({
           <div className="flex-1">
             {/* nama/followers kosong untuk tweet dari jalur alert (X resmi): sembunyikan */}
             {t.author_name && (
-              <div className="text-[15px] font-bold text-foreground">{t.author_name}</div>
+              <div className="text-base font-bold text-foreground">{t.author_name}</div>
             )}
             <div className="font-mono text-xs text-muted-foreground">@{t.author_username}</div>
             {t.author_followers > 0 && (

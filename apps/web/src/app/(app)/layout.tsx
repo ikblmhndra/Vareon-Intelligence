@@ -19,7 +19,7 @@ function ShellSkeleton() {
           <Skeleton className="h-9 w-24" />
         </div>
         <div className="flex flex-col gap-1">
-          {Array.from({ length: 10 }, (_, i) => (
+          {Array.from({ length: 11 }, (_, i) => (
             <Skeleton key={i} className="h-11 rounded-full" />
           ))}
         </div>

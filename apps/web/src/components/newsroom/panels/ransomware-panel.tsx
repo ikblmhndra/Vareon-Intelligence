@@ -132,21 +132,21 @@ export function RansomwarePanel({ onSelect }: { onSelect: (a: Article) => void }
             placeholder="Group…"
             value={group}
             onChange={(e) => setGroup(e.target.value)}
-            className="w-24 font-mono text-[13px]"
+            className="w-24 font-mono text-xs"
           />
           <Input
             aria-label="Filter victims by country"
             placeholder="Country…"
             value={country}
             onChange={(e) => setCountry(e.target.value)}
-            className="w-24 font-mono text-[13px]"
+            className="w-24 font-mono text-xs"
           />
           <Input
             aria-label="Filter victims by industry"
             placeholder="Industry…"
             value={industry}
             onChange={(e) => setIndustry(e.target.value)}
-            className="w-28 font-mono text-[13px]"
+            className="w-28 font-mono text-xs"
           />
           <Button size="sm" onClick={applyVictimFilter}>
             Filter
