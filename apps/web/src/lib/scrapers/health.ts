@@ -16,3 +16,13 @@ export function useScraperHealth() {
     refetchInterval: 60_000,
   });
 }
+
+/** Urutan tampil masalah scraper: yang rusak dulu, `stale` (belum pernah jalan) terakhir. Kalau abjad,
+ * puluhan scraper yang belum pernah jalan menutupi yang benar-benar gagal. */
+const PROBLEM_ORDER: Record<string, number> = { dead: 0, degraded: 1, zero_yield: 2, stale: 3 };
+
+export function byProblemSeverity<T extends { id: string; status: string }>(problems: readonly T[]): T[] {
+  return [...problems].sort(
+    (a, b) => (PROBLEM_ORDER[a.status] ?? 9) - (PROBLEM_ORDER[b.status] ?? 9) || a.id.localeCompare(b.id),
+  );
+}

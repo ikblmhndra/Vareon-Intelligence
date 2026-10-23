@@ -87,7 +87,7 @@ export function ScraperRunsPanel({ scraperId }: { scraperId: string }) {
                 <TableCell className="font-mono text-xs whitespace-nowrap text-muted-foreground">
                   {humanDuration(r.duration_ms)}
                 </TableCell>
-                <TableCell className="max-w-72 text-xs break-words text-muted-foreground">
+                <TableCell className="min-w-48 max-w-72 text-xs break-words whitespace-normal text-muted-foreground">
                   {errorSummary(r.errors) ?? "—"}
                 </TableCell>
               </TableRow>

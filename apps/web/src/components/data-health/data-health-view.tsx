@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import type { AttackDomainStatus } from "@/lib/api/loose-types";
 import { formatWib, relativeTime } from "@/lib/cve/freshness";
-import { useScraperHealth } from "@/lib/scrapers/health";
+import { byProblemSeverity, useScraperHealth } from "@/lib/scrapers/health";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/scrapers/status-badge";
 import { cn } from "@/lib/utils";
@@ -103,7 +103,7 @@ export function DataHealthView() {
 
   const d = health.data;
   const sched = d.scrapers.scheduler;
-  const problems = d.scrapers.problems;
+  const problems = byProblemSeverity(d.scrapers.problems);
   const fleetTotal = Object.values(d.scrapers.counts).reduce((a, b) => a + b, 0);
   const pipelineTone: Tone = sched.state !== "ok" ? "bad" : problems.length ? "warn" : "ok";
 
@@ -270,7 +270,7 @@ function MoreLink({ href, children }: { href: string; children: ReactNode }) {
   return (
     <Link
       href={href}
-      className="mt-3 inline-block text-sm font-medium text-primary-text underline-offset-4 hover:underline focus-visible:underline"
+      className="mt-3 inline-block text-sm font-medium text-primary-text rounded-sm underline-offset-4 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-focus"
     >
       {children}
     </Link>

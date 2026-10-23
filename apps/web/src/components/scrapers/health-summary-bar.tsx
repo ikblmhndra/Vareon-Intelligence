@@ -1,6 +1,6 @@
 "use client";
 
-import { useScraperHealth } from "@/lib/scrapers/health";
+import { byProblemSeverity, useScraperHealth } from "@/lib/scrapers/health";
 import { StatusBadge } from "@/components/scrapers/status-badge";
 
 const STATUS_ORDER = ["dead", "degraded", "zero_yield", "stale", "disabled", "ok"];
@@ -56,12 +56,12 @@ export function HealthSummaryBar({
             Needs attention ({problems.length})
           </div>
           <div className="flex flex-wrap gap-1.5">
-            {problems.map((p) => (
+            {byProblemSeverity(problems).map((p) => (
               <button
                 key={p.id}
                 type="button"
                 onClick={() => onSelectProblem(p.id, p.status)}
-                className="flex max-w-full items-center gap-1.5 rounded-2xl border border-border bg-background px-2 py-1 text-left transition-colors hover:border-primary/40"
+                className="flex max-w-full items-center gap-1.5 rounded-2xl border border-border bg-background px-2 py-1 text-left transition-colors outline-none hover:border-primary/40 focus-visible:ring-3 focus-visible:ring-focus"
               >
                 <StatusBadge status={p.status} />
                 <span className="font-code text-xs text-foreground">{p.id}</span>
