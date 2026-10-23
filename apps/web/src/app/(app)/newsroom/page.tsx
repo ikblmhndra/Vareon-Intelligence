@@ -6,6 +6,7 @@ import { useAuth } from "@/components/providers/auth-provider";
 import { TabPills, type TabPillItem } from "@/components/ui/tab-pills";
 import { defaultNewsroomFilters, type NewsroomFilters } from "@/lib/newsroom/filters";
 import type { components } from "@/lib/api/schema";
+import { GLOBAL_NEWS_TYPES } from "@/lib/newsroom/news-types";
 import { FilterBar } from "@/components/newsroom/filter-bar";
 import { ArticleModal } from "@/components/newsroom/article-modal";
 import { FilteredView } from "@/components/newsroom/filtered-view";
@@ -16,15 +17,6 @@ import { WatchlistPanel } from "@/components/newsroom/panels/watchlist-panel";
 import { TechStackPanel } from "@/components/newsroom/panels/techstack-panel";
 
 type Article = components["schemas"]["ArticleOut"];
-
-const GLOBAL_NEWS_TYPES = [
-  "global",
-  "Security Technology & Best Practices",
-  "Vendor Report Article",
-  "Data Breach Article",
-  "Tech Stack Article",
-  "OT Article",
-];
 
 /**
  * Port `tab_newsroom.html` + `{core,api,tabs,render,modal,ttp}.js` --

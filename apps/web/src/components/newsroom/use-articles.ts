@@ -11,7 +11,9 @@ type ArticlesQuery = paths["/api/articles"]["get"]["parameters"]["query"];
  * (APAC/Global/Local/Watchlist/Techstack), tiap panel susun `params`-nya
  * sendiri (filter mana yang kepake beda-beda per panel, port apa adanya
  * dari `loadPanel()`/`loadLocalPanel()`/`loadWatchlistPanel()`/
- * `loadTechStackPanel()` lama -- lihat catatan di tiap panel file). */
+ * `loadTechStackPanel()` lama -- lihat catatan di tiap panel file).
+ * `sort` ("recent"|"priority"), `ttp` dan `confirmed_only` ikut diteruskan
+ * apa adanya (tipe dari `schema.d.ts`). */
 export function useArticlesQuery(key: readonly unknown[], params: ArticlesQuery, enabled = true) {
   return useQuery({
     queryKey: ["newsroom", "articles", ...key, params],
