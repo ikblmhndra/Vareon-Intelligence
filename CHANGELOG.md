@@ -20,7 +20,9 @@ tanpa entri beat baru.**
   CVE exposure, dan konteks klien.
 - **Newsroom baru**: berita utama, topik aktif, rubrik, dan panel samping.
 - Endpoint `GET /api/dashboard/{map,attention,trending,ransomware,cve-exposure}` dan `GET /api/newsroom/topics`.
-- `GET /api/articles` menerima parameter `sort` dan `ttp`.
+- `GET /api/articles` menerima parameter `sort`, `ttp`, dan `confirmed_only`; `GET /api/newsroom/topics` juga menerima
+  `confirmed_only`.
+- Artikel di respons API membawa field baru `confirmed_incident`.
 
 ### Diubah
 - Timeline `GET /api/dashboard` sekarang membawa `incidents`.
