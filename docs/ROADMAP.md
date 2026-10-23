@@ -1,8 +1,12 @@
 # Post-cutover roadmap
 
 A record of requests, written on 2026-09-26 (user requests, order = the order of work) and updated as they are
-delivered; **status as of 2026-10-16: the "Status" column of the index below, and "Delivered so far" right after it**. Not a
+delivered; **status as of 2026-10-23: the "Status" column of the index below, and "Delivered so far" right after it**. Not a
 schedule commitment: each open item only needs the input/decision written under it.
+
+> **2026-10-22: this repository is frozen for new work.** The user decided to plan a v2 as a new application in a separate
+> repository and to leave this one untouched for now (no further hotfix or 0.7.x release is planned). The open items below stay
+> as a record and as input for the v2 plan; production keeps running 0.7.4.
 
 **Status legend**: **Done** = nothing left; **Live** = merged and running in production, with follow-ups listed in the item;
 **Mostly done** = the work is done, only decisions or small leftovers remain; **Open** = not done, the item says what it needs;
@@ -20,11 +24,11 @@ Each item contains: **what** was asked, **the current state** (facts from the re
 | # | Status | Item | Needs from the user | Depends on |
 |---|---|---|---|---|
 | 21 | **Done** | **PRIORITY (team feedback 2026-10-10)** -- **Improve the Recap feature**: weekly instead of daily (a manual daily trigger stays), fewer/cheaper LLM calls, week-over-week comparison, grounding check, forecast scorecard -- **code merged 2026-10-11/12 (PR 1-4: #34, #36, #40, #42), released as 0.5.0 (2026-10-14), deployed to prod (by the user; running 0.5.0 by 2026-10-15); the weekly recaps of 28 Sep and 5 Oct exist on prod and the Monday schedule is registered in `beat` (read-only check 2026-10-16)** | nothing | -- |
-| 22 | **Live** | **PRIORITY (team feedback 2026-10-10)** -- **Newsletter**: monthly (first working day of the month), Indonesian article summaries under English headings, redesigned template with the company logo (mockup drawn, `docs/mockups/newsletter-redesign.html`), recommended articles in the composer, denser layout (full cards plus a compact list), executive summary paragraph from the weekly recaps, per-article summary cache and one history row per send -- **code merged 2026-10-11/14 (PR 5-9: #35, #39, #38, #43, #44), released as 0.5.0 and deployed to prod (by the user; running 0.5.0 by 2026-10-15); the APAC set and the real-mailbox checks (new Outlook light and dark mode, Outlook web and desktop, Gmail) were confirmed by the user on 2026-10-15; file-name titles no longer take a Highlight (#53); no edition has been prepared yet (`newsletter_suggestions` is empty on prod; the October edition is due Mon 2 Nov)** | the first real edition on Mon 2 Nov | #21 (the executive summary reads the weekly recaps; shared LLM usage logging) |
+| 22 | **Live** | **PRIORITY (team feedback 2026-10-10)** -- **Newsletter**: monthly (first working day of the month), Indonesian article summaries under English headings, redesigned template with the company logo (mockup drawn, `docs/mockups/newsletter-redesign.html`), recommended articles in the composer, denser layout (full cards plus a compact list), executive summary paragraph from the weekly recaps, per-article summary cache and one history row per send -- **code merged 2026-10-11/14 (PR 5-9: #35, #39, #38, #43, #44), released as 0.5.0 and deployed to prod (by the user; running 0.5.0 by 2026-10-15); the APAC set and the real-mailbox checks (new Outlook light and dark mode, Outlook web and desktop, Gmail) were confirmed by the user on 2026-10-15; file-name titles no longer take a Highlight (#53); no edition has been prepared yet (`newsletter_suggestions` is still empty on prod on 2026-10-23; the October edition is due Mon 2 Nov)** | the first real edition on Mon 2 Nov | #21 (the executive summary reads the weekly recaps; shared LLM usage logging) |
 | 1 | **Done** | Rebranding the platform name + UI (colour palette, typography, animation) -- **DONE 2026-10-02; the SVG logo is parked by the user (2026-10-15)** | brand assets | -- |
 | 2 | **Mostly done** | Rebranding the `newsletter_email` and `cve_notification_email` templates -- **code 2026-10-02; the newsletter email is verified in real clients (new Outlook light and dark mode seen 2026-10-14; Outlook web, Outlook desktop and Gmail confirmed fine by the user on 2026-10-15); the `cve_notification_email` was not mentioned in those checks and has not been looked at in real clients** | (the same assets as #1) | #1 |
 | 3 | **Superseded** | (probably superseded by #19) A "Populate now" button in the CVE Tracker (all / only newly added) | a small decision (see the item) | -- |
-| 4 | **Live** | IOC enrichment + reputation (VirusTotal, AbuseIPDB, urlscan, Shodan/GreyNoise) -- **code merged 2026-10-15 (#55, #58), released as 0.6.0 and deployed to prod; all three keys (AbuseIPDB, VirusTotal, OTX) are set there and 956 of 7,375 IOCs already carry cards (2026-10-16); OTX was stalled in most runs by HTTP 400 on some IOCs (fixed in 0.6.1, see the item); urlscan, GreyNoise and Shodan are not built** | after deploying 0.6.1, a look at which IOCs OTX rejects; whether the VirusTotal plan behind the key allows commercial use is the owner's call | -- |
+| 4 | **Live** | IOC enrichment + reputation (VirusTotal, AbuseIPDB, urlscan, Shodan/GreyNoise) -- **code merged 2026-10-15 (#55, #58), released as 0.6.0 and deployed to prod; all three keys (AbuseIPDB, VirusTotal, OTX) are set there and 956 of 7,375 IOCs already carry cards (2026-10-16); OTX was stalled in most runs by HTTP 400 on some IOCs (fixed in 0.6.1, see the item; prod runs 0.7.4 since 2026-10-21, so the fix is live); urlscan, GreyNoise and Shodan are not built** | a look at which IOCs OTX rejects; whether the VirusTotal plan behind the key allows commercial use is the owner's call | -- |
 | 5 | **Parked** | Outbound IOC/CVE feeds (TAXII 2.1 and/or CSV/JSON) + integration API keys | target tooling (Wazuh/Splunk/Fortinet?) | #4 |
 | 6 | **Open** | IOC lifecycle: first/last seen, sightings, expiry/decay -- **first/last seen, sighting count and confidence decay already exist; only expiry in the outbound feed is missing** | an IOC age decision | #4, #5 |
 | 7 | **Open** | Relevance to our own assets: threats x techstack, alerts for actors targeting our stack | tidy asset data | -- |
@@ -35,14 +39,14 @@ Each item contains: **what** was asked, **the current state** (facts from the re
 | 12 | **Open** | Improving the article classification prompt based on the audit trail (false accept / false reject) | examples of misclassified articles | the `raw_enrichment` audit trail (running since 2026-10-05) |
 | 13 | **Dropped** | **CI on `main` is red** (3 jobs), so the Deploy job has never run (5 runs, all `skipped`) -- **dropped 2026-10-15: CI on `main` is green; the Deploy workflow is disabled on purpose (user) and production is updated with `make deploy`** | -- | -- |
 | 14 | **Done** | Logo missing from the CVE Tracker Excel export (Pillow is not yet a dependency) -- **done 2026-10-07 (PR #9); the API image build with pillow is green in CI (PR #12)** | -- | -- |
-| 15 | **Open** | Use `published_at` in the UI/API/dashboard + align the export date formats -- **prod has 7 `cve_tracker` rows without `published_at` (2026-10-15)** | a decision on the format of the Acknowledged column | the `published_at` backfill in production |
+| 15 | **Open** | Use `published_at` in the UI/API/dashboard + align the export date formats -- **prod has 7 `cve_tracker` rows without `published_at` (2026-10-15, unchanged on 2026-10-23)** | a decision on the format of the Acknowledged column | the `published_at` backfill in production |
 | 16 | **Open** | CVE dashboard: SLA per severity (replacing fixed-threshold ratings) | ack/remediation SLA targets per severity | -- |
 | 17 | **Done** | CVE dashboard: backlog/aging panels, KEV/EPSS, most frequently affected products -- **DONE (#54), released as 0.6.0 and deployed; the panels have not been looked at in a browser** | -- | -- |
 | 18 | **Open** | CVE ticket field validation + a ticket model decision (1 ticket per CVE vs one ticket for many CVEs) | a list of standard values, the model decision | -- |
-| 19 | **Open** (operational) | **Tech catalog from the CVE mirror + Monitor** (new direction 2026-10-07, replacing the alias/phase 2-3 plan; the `aliases` column is dropped): mirror every CVE (calendar-year retention) -> a vendor+product catalog -> All Tech / Monitored Tech tabs -> the CVEs tab only for monitored techs. **Code done (slices 1-7), merged to `main` 2026-10-08 (PR #12, release 0.3.0)**; what remains is operational: finish the mapping (prod, 2026-10-15: 25 of 35 entries mapped), shadow mode (not started), cutover (the runbook and design documents were removed from the repository on 2026-10-16) | manual mapping + shadow on dev | test on the dev server first, then prod |
+| 19 | **Open** (operational) | **Tech catalog from the CVE mirror + Monitor** (new direction 2026-10-07, replacing the alias/phase 2-3 plan; the `aliases` column is dropped): mirror every CVE (calendar-year retention) -> a vendor+product catalog -> All Tech / Monitored Tech tabs -> the CVEs tab only for monitored techs. **Code done (slices 1-7), merged to `main` 2026-10-08 (PR #12, release 0.3.0)**; what remains is operational: finish the mapping (prod, 2026-10-23: 27 of 37 entries mapped), shadow mode (not started: `CVE_MIRROR__PROMOTE` unset, `cve_promotion_shadow` empty on 2026-10-23), cutover (the runbook and design documents were removed from the repository on 2026-10-16) | manual mapping + shadow on dev | test on the dev server first, then prod |
 | 20 | **Mostly done** | **Known follow-ups from releases 0.4.0 / 0.4.1** (found while reviewing the CVE Tracker; none is blocking) -- **the data-correctness points were fixed 2026-10-15 (#51, #52) or earlier (#21); what is left (the (D) decisions, the KEV/EPSS/Exploit-DB access point, `trending_cve` in January) is marked in the item** | product decisions on the points marked (D) | -- |
-| 23 | **Done in code, waiting for merge** (ONE pull request, release 0.7.0) | **Runtime secrets** (asked 2026-10-16): manage the third-party keys (LLM, Telegram, Graph, NVD, GitHub, twitterapi.io, X, OTX, AbuseIPDB, VirusTotal) from a superadmin-only admin page, encrypted in the database and applied without a restart or rebuild; the deployment-level secrets (database, Redis, JWT/session, OIDC) stay in `.env` -- **built 2026-10-16 as a single pull request on branch `feat/runtime-secrets-core` (the user chose not to split it), with the 0.7.0 release commit in it** | merge; then on prod: `make deploy`, a generated master key in `SECRETS_ENCRYPTION_KEYS`, and a restart of api and workers once; the re-auth decision for OIDC-only superadmins | -- (touches #11 for the OIDC question) |
-| 24 | **Open** (PR-A built as release 0.7.2, waiting for review; PR-B planned) | **Data platform audit follow-ups** (asked 2026-10-17): stop losing articles when the LLM fails (a structured failure kind, replay, an alert, an honest run status, a reaper and a purge) and show the pipeline's health in the UI (a **Data health** page, a reliable previous-period delta, reasons on `/scrapers`) -- **audit done on the dev instance 2026-10-17; two pull requests planned: PR-A (backend + the Newsroom tab) then PR-B (Data health, Dashboard, Scrapers)** | four decisions (see the item) and a read-only look at prod | -- (PR-B reads `failure_kind` from PR-A) |
+| 23 | **Live** | **Runtime secrets** (asked 2026-10-16): manage the third-party keys (LLM, Telegram, Graph, NVD, GitHub, twitterapi.io, X, OTX, AbuseIPDB, VirusTotal) from a superadmin-only admin page, encrypted in the database and applied without a restart or rebuild; the deployment-level secrets (database, Redis, JWT/session, OIDC) stay in `.env` -- **merged 2026-10-16 as one pull request (#63), released as 0.7.0 and deployed to prod (running 0.7.4 since 2026-10-21); the master key is set there and the page is in use (one override, `llm`, on 2026-10-23)** | one check that the OTX probe (`GET /api/v1/users/me`) answers 200 for a real key; the re-auth decision for OIDC-only superadmins | -- (touches #11 for the OIDC question) |
+| 24 | **Open** (PR-A live; PR-B not started) | **Data platform audit follow-ups** (asked 2026-10-17): stop losing articles when the LLM fails (a structured failure kind, replay, an alert, an honest run status, a reaper and a purge) and show the pipeline's health in the UI (a **Data health** page, a reliable previous-period delta, reasons on `/scrapers`) -- **PR-A merged 2026-10-21 (#65, release 0.7.2) and deployed to prod (0.7.4, Alembic head `b7e4c1a9d256`); the replay has not been run on prod (38 rows wait: 34 `transient`, 4 `permanent`, 2026-10-23); on dev the user replayed a first batch of 10 of 147 on 2026-10-21; PR-B (Data health, Dashboard, Scrapers) is not started** | run `make replay-failed-enrichment` on prod (report first, then `--apply`) and finish it on dev; a go-ahead for PR-B (the repository is frozen, see the note at the top) | -- (PR-B reads `failure_kind` from PR-A) |
 ---
 
 ## Priority queue (team feedback 2026-10-10)
@@ -59,9 +63,11 @@ these pull requests.
 
 ---
 
-## Delivered so far (as of 2026-10-16)
+## Delivered so far (as of 2026-10-23)
 
-PRs #2-#59 are all merged into `main` (release tags in `CHANGELOG.md`: 0.2.0, 0.2.1, 0.3.0, 0.4.0, 0.4.1, 0.5.0, 0.6.0).
+PRs #2-#68 are all merged into `main` (release tags in `CHANGELOG.md`: 0.2.0, 0.2.1, 0.3.0, 0.4.0, 0.4.1, 0.5.0, 0.6.0, 0.6.1,
+0.6.2, 0.7.0, 0.7.1, 0.7.2, 0.7.3, 0.7.4; 0.6.1 has a `CHANGELOG.md` entry but no git tag or GitHub Release). Production runs
+**0.7.4** (deployed by the user 2026-10-21; `/healthz` and Alembic head `b7e4c1a9d256` checked read-only on 2026-10-23).
 
 **Roadmap items by status**
 
@@ -74,14 +80,14 @@ PRs #2-#59 are all merged into `main` (release tags in `CHANGELOG.md`: 0.2.0, 0.
 | 13 | Dropped | PR #11 (CI green on `main`) | nothing: the Deploy workflow is disabled on purpose |
 | 14 | Done | PR #9 (pillow), CI image build green in PR #12 | nothing |
 | 17 | Done | PR #54 (0.6.0) | look at the panels in a browser |
-| 19 | Code done, merged | PR #12 (release 0.3.0), PR #27 (cutover runbook fix) | operational only: finish the mapping (prod: 25 of 35), shadow mode, cutover dev then prod |
+| 19 | Code done, merged | PR #12 (release 0.3.0), PR #27 (cutover runbook fix) | operational only: finish the mapping (prod: 27 of 37 on 2026-10-23), shadow mode, cutover dev then prod |
 | 20 | Mostly done | PRs #21, #51, #52, #53 (0.4.x-0.6.0) | the (D) decisions, the KEV/EPSS/Exploit-DB access point, `trending_cve` in January |
 | 21 | Done | PRs #34, #36, #40, #42 (0.5.0), on prod by 2026-10-15 | nothing |
 | 22 | Live | PRs #35, #39, #38, #43, #44 (0.5.0), #53 (0.6.0), on prod by 2026-10-15 | the first real edition, Mon 2 Nov |
 | 5, 8, 9, 10, 11 | Parked | -- | set aside by the user on 2026-10-15; do not start without a trigger |
 | 6, 7, 12, 15, 16, 18 | Open | -- | see each item; #6 mostly exists (only expiry is missing), #7 waits for the #19 cutover, #15 waits for the `published_at` backfill (7 prod rows), #12 for labelled examples, #16 and #18 for SLA targets and the list of ticket values |
-| 23 | Code done (one pull request, release 0.7.0) | branch `feat/runtime-secrets-core` | merge, tag `0.7.0`, `make deploy`, set `SECRETS_ENCRYPTION_KEYS` on prod and try the page |
-| 24 | Open (PR-A built) | PR-A as 0.7.2 on a branch, not merged | review and merge PR-A, deploy, replay the lost articles on dev and prod; then PR-B |
+| 23 | Live | PR #63 (0.7.0), on prod with the master key set | the OTX probe against a real key; the OIDC re-auth decision; a re-encrypt helper for master key rotation |
+| 24 | Open (PR-A live) | PR #65 (0.7.2), on prod since 0.7.4 | replay the failed articles (prod: 38 waiting; dev: 10 of 147 done); PR-B |
 
 **Merged PRs by release**
 
@@ -100,7 +106,13 @@ PRs #2-#59 are all merged into `main` (release tags in `CHANGELOG.md`: 0.2.0, 0.
 | after 0.4.1 (2026-10-11 to 2026-10-14) | #35, #37, #38, #39, #43, #44 | **#22 newsletter**: summary cache, side-effect-free preview and one row per send (PR 5); alembic head fix (#37); ranking and `newsletter_suggestions` (PR 7); new template, inline logo, Indonesian summaries (PR 6); monthly schedule and Executive Summary (PR 8); composer filled with the suggestion (PR 9) |
 | after 0.4.1 | #41, #45 | scraper additions (`aws_security`, news scraper); not part of #21/#22 |
 | 0.6.0 (2026-10-16) | #50-#56, #58, #59 | `new_cve` no longer drops CVEs silently at `max_items` (#50); dashboard UNRATED bucket and one crossref row per CVE (#51); KEV flag reset and the read-only `check-orphaned-tickets` tool (#52); file-name titles never take a newsletter Highlight (#53); dashboard backlog, exploit-risk and top-tech panels, **#17** (#54); IOC enrichment writer with AbuseIPDB, **#4** (#55) and VirusTotal + OTX (#56 was merged into the #55 branch because that branch had not been deleted yet, so it reached `main` through #58); the release PR #59 also synced this file and `docs/ARCHITECTURE.md` |
-| 0.6.1 (2026-10-16) | the 0.6.1 release PR | fix release: enrichment no longer stalls on IOCs a provider rejects with HTTP 400 (OTX stalled in 45 of 60 runs on prod); roadmap status column and prod facts |
+| 0.6.1 (2026-10-16) | #60 | fix release: enrichment no longer stalls on IOCs a provider rejects with HTTP 400 (OTX stalled in 45 of 60 runs on prod); roadmap status column and prod facts |
+| 0.6.2 (2026-10-16) | #61, #62 | the alert path also fills X Intel and `monitor_x` gets a provider option (#61, inside the 0.6.2 tag but not in its `CHANGELOG.md` entry); main Dashboard and Exec no longer mislead: period selector, "General" is not a sector, honest previous-period deltas (#62) |
+| 0.7.0 (2026-10-16) | #63 | **#23 runtime secrets**: the Third-party Keys admin page, `runtime_secrets` table, probes, rate-limited password change |
+| 0.7.1 (2026-10-17) | #64 | web redesign and accessibility fixes from a visual audit (frontend only) |
+| 0.7.2 (2026-10-21) | #65 | **#24 PR-A**: `failure_kind`, enrichment-failure alert, replay (CLI + Newsroom button), "Filtered Articles" tab, honest `partial` run status, run reaper and purge |
+| 0.7.3 (2026-10-21) | #66, #67 | security fixes from an audit (Threat Actor watchlist tenant scoping, `navigator-layer` needs a login, `fetch_text` only reaches public addresses, escaped Telegram alerts); Dashboard and Newsroom restyle |
+| 0.7.4 (2026-10-21) | #68 | one article goes to one Telegram topic (no OT duplicate), and one broken thread no longer stops alerts to the other topics |
 
 Release 0.5.0 (tag `0.5.0`, GitHub Release `v0.5.0`, 2026-10-14) carries everything after 0.4.1 and sits on `f55132d`, the
 merge of #48, so the dark-mode fix is inside (the `CHANGELOG.md` line about it was added after the tag). The plan expected 0.5.0 after #21 and 0.6.0 after #22, but both were on `main` before either was cut, so
@@ -295,6 +307,8 @@ existed: nothing wrote them.
 so quotas do not run out.
 **Done when**: the IOC detail shows the verdict + a source link, results are cached, rate limits are respected,
 and one service failing does not fail the others.
+
+**Status 2026-10-23**: deployed; prod runs 0.7.4 (it carries the 0.6.1 OTX 400 fix). The block below is the state at merge time.
 
 **Status 2026-10-15 -- code merged (#55 AbuseIPDB, #58 VirusTotal + OTX), not deployed, never run against a real service**
 - **Only the writer was missing**, so the work was backend-only: the periodic task `ioc.enrich_pending` (maintenance queue,
@@ -752,6 +766,8 @@ hides 1-CVE families (search still shows everything).
 Everything is tested on the **dev server first**, then production.
 
 ### Open (needs user confirmation)
+- **Status 2026-10-23 (prod, read-only check)**: `CVE_MIRROR__ENABLED=true`, `CVE_MIRROR__PROMOTE` still not set,
+  `cve_promotion_shadow` still empty; **27 of 37 techstack entries are mapped** to the catalog (2026-10-15: 25 of 35). Nothing else moved: mapping, shadow and cutover are still the remaining steps.
 - **Status 2026-10-15 (prod, read-only check)**: `CVE_MIRROR__ENABLED=true`, `CVE_MIRROR__PROMOTE` not set (= `off`), `cve_promotion_shadow`
   empty (shadow not started); the mirror holds 122,910 CVEs (newest published 2026-10-15), the catalog 15,303 vendors and 40,954
   families; `cve_mirror_synced` is `failed=0`, `gap_unrecoverable=False`; **25 of 35 techstack entries are mapped** to the catalog.
@@ -1303,7 +1319,14 @@ product is becoming multi-workspace (SaaS), so the keys that change often must b
 rebuild**; the deployment-level secrets (database, Redis, JWT/session, OIDC) are initial-deployment config that rarely
 changes and stay in `.env`. Not the same as #5 (that is about keys **we issue** to other tools); this item is about the keys
 we **use**. It also makes the keys needed by #4 (AbuseIPDB, VirusTotal, OTX) changeable without touching the prod host.
-**Current state** (facts from the repo, nothing built yet):
+
+**Status 2026-10-23 -- live.** PR #63 merged 2026-10-16 (`242bdb7`), tag `0.7.0` and GitHub Release `v0.7.0`; prod runs 0.7.4
+with `SECRETS_ENCRYPTION_KEYS` set and one admin override in `runtime_secrets` (`llm`). Left: confirm once with a real OTX key that
+the `users/me` probe answers 200 (only the rejection of a fake key is proven); the re-auth decision for OIDC-only superadmins; the
+two open points at the end of "Delivered as ONE pull request" (re-encrypt on master key rotation, an old token replayed from a
+backup). The rest of this section describes the plan as written before the build.
+
+**Current state** (facts from the repo before the build):
 - Every third-party key lives only in `.env` and is read through `get_settings()` (`lru_cache`, per process,
   `packages/cti-core/src/cti_core/config.py`). Changing one means editing the file on the host and restarting `api`,
   `worker`, `worker-browser`, `worker-nlp` and `beat`.
@@ -1443,8 +1466,10 @@ minutes) before pull request 2; the section lives on the existing admin page and
 ## 24. Data platform audit follow-ups: do not lose articles, show the pipeline's health
 
 **Asked (2026-10-17)**: audit the data platform end to end, check whether the dev UI is informative, then plan the fixes. This item
-records the audit and the plan for two pull requests. **PR-A was built on 2026-10-21 as release 0.7.2 (one branch, not merged
-yet, see `CHANGELOG.md`); PR-B is not started.** How the facts were gathered: the dev database over SSH
+records the audit and the plan for two pull requests. **Status 2026-10-23: PR-A merged 2026-10-21 (#65, `d2332ab`, tag `0.7.2`)
+and deployed to dev (2026-10-21) and prod (0.7.4, head `b7e4c1a9d256`). Decisions 1-3 below were taken as recommended (silent
+replay with `--rate`, 90 days / 2 hours, CLI and admin button). Replay: on dev the user ran a first batch (10 of 147
+`permanent` rows) on 2026-10-21; on prod it has not been run (38 rows wait: 34 `transient`, 4 `permanent`). PR-B is not started.** How the facts were gathered: the dev database over SSH
 with `default_transaction_read_only=on` (aggregates only, no row contents, no writes), the dev UI through the user's signed-in Chrome
 (GET only, no button that writes or triggers a run), and the code at `6a5734a` (0.7.1). The dev instance is three weeks old (first
 scraper run 2026-09-26), so trends over a longer time are not visible yet.
