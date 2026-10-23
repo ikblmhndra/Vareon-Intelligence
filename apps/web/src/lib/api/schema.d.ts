@@ -2099,6 +2099,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/newsroom/topics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Newsroom Topics
+         * @description Topik naik untuk newsroom. Tren selalu "N hari berakhir hari ini vs N hari sebelumnya"
+         *     (`get_trending`), jadi tanggal filter diubah jadi jendela `days` yang berjangkar ke hari
+         *     ini: `days = (hari ini - posted_on_start).days + 1`. `posted_on_end` diterima tapi
+         *     diabaikan. Tanpa `posted_on_start` dipakai aturan "semua waktu" `get_trending`
+         *     (`days=None` -> 7 hari vs 7 hari).
+         */
+        get: operations["newsroom_topics_api_newsroom_topics_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/pir": {
         parameters: {
             query?: never;
@@ -6334,6 +6358,51 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** TopicArticle */
+        TopicArticle: {
+            /** Id */
+            id: number;
+            /** Posted On */
+            posted_on?: string | null;
+            /** Title */
+            title: string;
+        };
+        /** TopicOut */
+        TopicOut: {
+            /** Change Pct */
+            change_pct?: number | null;
+            /** Count */
+            count: number;
+            /** Daily */
+            daily: number[];
+            /** Is New */
+            is_new: boolean;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "actor" | "ttp";
+            latest_article?: components["schemas"]["TopicArticle"] | null;
+            /** Name */
+            name: string;
+            /** Prev Count */
+            prev_count: number;
+            /** Top Countries */
+            top_countries: string[];
+            /** Ttp Id */
+            ttp_id?: string | null;
+        };
+        /** TopicsResponse */
+        TopicsResponse: {
+            /** Generated At */
+            generated_at: string;
+            /** Items */
+            items: components["schemas"]["TopicOut"][];
+            /** Window Days */
+            window_days: number;
+            /** Window Label */
+            window_label: string;
+        };
         /** TrendItemOut */
         TrendItemOut: {
             /** Change Pct */
@@ -6574,6 +6643,9 @@ export interface operations {
                 victim_country?: string[] | null;
                 actor_country?: string[] | null;
                 title_keyword?: string[] | null;
+                ttp?: string[] | null;
+                sort?: "recent" | "priority";
+                confirmed_only?: boolean;
                 dedup?: boolean;
                 dedup_threshold?: number;
             };
@@ -10999,6 +11071,45 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    newsroom_topics_api_newsroom_topics_get: {
+        parameters: {
+            query?: {
+                posted_on_start?: string | null;
+                posted_on_end?: string | null;
+                country?: string[] | null;
+                news_type?: string[] | null;
+                search?: string | null;
+                confirmed_only?: boolean;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopicsResponse"];
                 };
             };
             /** @description Validation Error */

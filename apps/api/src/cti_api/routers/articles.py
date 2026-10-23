@@ -21,6 +21,7 @@ sekarang wajib login (`require_auth`).
 from __future__ import annotations
 
 import datetime
+from typing import Literal
 
 from cti_core.db.models.article import Article
 from cti_core.db.repositories.article import AsyncArticleRepo
@@ -111,6 +112,9 @@ async def list_articles(
     victim_country: list[str] | None = Query(None),
     actor_country: list[str] | None = Query(None),
     title_keyword: list[str] | None = Query(None),
+    ttp: list[str] | None = Query(None),
+    sort: Literal["recent", "priority"] = Query("recent"),
+    confirmed_only: bool = Query(False),
     dedup: bool = Query(False),
     dedup_threshold: float = Query(0.75, ge=0.5, le=0.99),
     session: AsyncSession = Depends(get_db),
@@ -130,6 +134,9 @@ async def list_articles(
         threat_actors=threat_actor,
         search=search,
         title_keywords=title_keyword,
+        ttps=ttp,
+        sort=sort,
+        confirmed_only=confirmed_only,
     )
     if dedup and articles:
         # `find_dedup_groups` operasi di dict, bukan ORM -- stash objek

@@ -73,7 +73,9 @@ export function MustReadCard({ days, className }: { days: number | null; classNa
     queryKey: ["dashboard", "must-read", days],
     queryFn: async () => {
       const { data, error } = await api.GET("/api/articles", {
-        params: { query: { page: 1, page_size: 4, posted_on_start: periodStart(days) } },
+        params: {
+          query: { page: 1, page_size: 4, posted_on_start: periodStart(days), sort: "priority" },
+        },
       });
       if (error) throw error;
       return data;

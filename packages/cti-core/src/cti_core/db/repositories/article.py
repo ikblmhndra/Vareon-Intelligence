@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import datetime
 from collections.abc import Callable, Iterable, Sequence
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -50,6 +50,7 @@ def _apply_list_filters(
     title_keywords: Sequence[str] | None,
     ttps: Sequence[str] | None = None,
     created_at_start: datetime.datetime | None = None,
+    confirmed_only: bool = False,
 ) -> Select[tuple[Article]]:
     """Filter bersama buat query list DAN count -- port dari `article_service.
     get_articles()` (Mongo query dict) ke SQL. Tiga field negara Mongo lama
@@ -73,6 +74,8 @@ def _apply_list_filters(
         # BENERAN baru sejak tick terakhir", bukan "artikel yang tayang
         # hari ini" -- dua hal beda yang `posted_on` gak bisa jawab.
         stmt = stmt.where(Article.created_at >= created_at_start)
+    if confirmed_only:
+        stmt = stmt.where(Article.confirmed_incident.is_(True))
     if industries:
         stmt = stmt.join(Article.industries).where(ArticleIndustry.industry.in_(industries))
     if countries:
@@ -464,6 +467,8 @@ class AsyncArticleRepo:
         title_keywords: Sequence[str] | None = None,
         ttps: Sequence[str] | None = None,
         created_at_start: datetime.datetime | None = None,
+        sort: Literal["recent", "priority"] = "recent",
+        confirmed_only: bool = False,
     ) -> tuple[list[Article], int]:
         """Port `article_service.get_articles()`. Filter di-`join()` ke
         tabel anak -- `.distinct()` WAJIB begitu ada join one-to-many
@@ -477,7 +482,12 @@ class AsyncArticleRepo:
         _build_article_query` adalah dua salinan yang sama persis).
 
         `created_at_start` (Fase 7.8, `pir_alert`) -- lihat docstring
-        `_apply_list_filters`."""
+        `_apply_list_filters`.
+
+        `sort="priority"` (newsroom/dashboard "Perlu dibaca"): insiden terkonfirmasi dulu,
+        lalu `confidence_score` (NULL terakhir), `seen_count` (makin sering terlihat makin
+        penting), baru terbaru. Default "recent" = urutan lama. `confirmed_only` membatasi ke
+        insiden terkonfirmasi."""
         base = _apply_list_filters(
             select(Article),
             posted_on_start=posted_on_start,
@@ -493,6 +503,7 @@ class AsyncArticleRepo:
             title_keywords=title_keywords,
             ttps=ttps,
             created_at_start=created_at_start,
+            confirmed_only=confirmed_only,
         )
         has_join = bool(
             industries or countries or victim_countries or actor_countries or threat_actors or ttps
@@ -501,7 +512,18 @@ class AsyncArticleRepo:
         count_stmt = select(func.count()).select_from(base.distinct().subquery())
         total = (await self.session.execute(count_stmt)).scalar_one()
 
-        list_stmt = base.order_by(Article.posted_on.desc().nulls_last(), Article.id.desc())
+        order: tuple[Any, ...]
+        if sort == "priority":
+            order = (
+                Article.confirmed_incident.desc(),
+                Article.confidence_score.desc().nulls_last(),
+                Article.seen_count.desc(),
+                Article.posted_on.desc().nulls_last(),
+                Article.id.desc(),
+            )
+        else:
+            order = (Article.posted_on.desc().nulls_last(), Article.id.desc())
+        list_stmt = base.order_by(*order)
         if has_join:
             list_stmt = list_stmt.distinct()
         list_stmt = list_stmt.offset((page - 1) * page_size).limit(page_size)

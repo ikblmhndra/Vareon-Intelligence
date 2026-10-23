@@ -6937,6 +6937,152 @@
         "title": "TopItem",
         "type": "object"
       },
+      "TopicArticle": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "posted_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Posted On"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "TopicArticle",
+        "type": "object"
+      },
+      "TopicOut": {
+        "properties": {
+          "change_pct": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Pct"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "daily": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Daily",
+            "type": "array"
+          },
+          "is_new": {
+            "title": "Is New",
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "actor",
+              "ttp"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "latest_article": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TopicArticle"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "prev_count": {
+            "title": "Prev Count",
+            "type": "integer"
+          },
+          "top_countries": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Top Countries",
+            "type": "array"
+          },
+          "ttp_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ttp Id"
+          }
+        },
+        "required": [
+          "kind",
+          "name",
+          "count",
+          "prev_count",
+          "is_new",
+          "daily",
+          "top_countries"
+        ],
+        "title": "TopicOut",
+        "type": "object"
+      },
+      "TopicsResponse": {
+        "properties": {
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TopicOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "window_days": {
+            "title": "Window Days",
+            "type": "integer"
+          },
+          "window_label": {
+            "title": "Window Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "window_days",
+          "window_label",
+          "generated_at"
+        ],
+        "title": "TopicsResponse",
+        "type": "object"
+      },
       "TrendItemOut": {
         "properties": {
           "change_pct": {
@@ -7629,6 +7775,49 @@
                 }
               ],
               "title": "Title Keyword"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ttp",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ttp"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "recent",
+              "enum": [
+                "recent",
+                "priority"
+              ],
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "confirmed_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Confirmed Only",
+              "type": "boolean"
             }
           },
           {
@@ -17083,6 +17272,166 @@
         "summary": "Resend Newsletter",
         "tags": [
           "newsletter"
+        ]
+      }
+    },
+    "/api/newsroom/topics": {
+      "get": {
+        "description": "Topik naik untuk newsroom. Tren selalu \"N hari berakhir hari ini vs N hari sebelumnya\"\n(`get_trending`), jadi tanggal filter diubah jadi jendela `days` yang berjangkar ke hari\nini: `days = (hari ini - posted_on_start).days + 1`. `posted_on_end` diterima tapi\ndiabaikan. Tanpa `posted_on_start` dipakai aturan \"semua waktu\" `get_trending`\n(`days=None` -> 7 hari vs 7 hari).",
+        "operationId": "newsroom_topics_api_newsroom_topics_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "posted_on_start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Posted On Start"
+            }
+          },
+          {
+            "in": "query",
+            "name": "posted_on_end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Posted On End"
+            }
+          },
+          {
+            "in": "query",
+            "name": "country",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Country"
+            }
+          },
+          {
+            "in": "query",
+            "name": "news_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "News Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "confirmed_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Confirmed Only",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 4,
+              "maximum": 10,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TopicsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Newsroom Topics",
+        "tags": [
+          "newsroom"
         ]
       }
     },

@@ -83,11 +83,12 @@ async def get_trending(
     countries: Sequence[str] | None = None,
     news_types: Sequence[str] | None = None,
     search: str | None = None,
+    confirmed_only: bool = False,
     limit: int = 10,
 ) -> dict[str, Any]:
     cache_key = (
-        f"{days}|{sorted(countries or [])}|{sorted(news_types or [])}|{search}|{limit}"
-        f"|{datetime.date.today().isoformat()}"
+        f"{days}|{sorted(countries or [])}|{sorted(news_types or [])}|{search}"
+        f"|{confirmed_only}|{limit}|{datetime.date.today().isoformat()}"
     )
     now = time.monotonic()
     cached = _CACHE.get(cache_key)
@@ -101,7 +102,12 @@ async def get_trending(
     # (inklusif), previous = `window` hari persis sebelumnya.
     cur_start = today - datetime.timedelta(days=window - 1)
     prev_start = cur_start - datetime.timedelta(days=window)
-    filters: dict[str, Any] = {"countries": countries, "news_types": news_types, "search": search}
+    filters: dict[str, Any] = {
+        "countries": countries,
+        "news_types": news_types,
+        "search": search,
+        "confirmed_only": confirmed_only,
+    }
 
     repo = AsyncDashboardRepo(session)
     current: dict[TrendKey, list[int]] = {}
