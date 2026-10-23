@@ -45,7 +45,7 @@ Each item contains: **what** was asked, **the current state** (facts from the re
 | 19 | **Open** (operational) | **Tech catalog from the CVE mirror + Monitor** (new direction 2026-10-07, replacing the alias/phase 2-3 plan; the `aliases` column is dropped): mirror every CVE (calendar-year retention) -> a vendor+product catalog -> All Tech / Monitored Tech tabs -> the CVEs tab only for monitored techs. **Code done (slices 1-7), merged to `main` 2026-10-08 (PR #12, release 0.3.0)**; what remains is operational: finish the mapping (prod, 2026-10-23: 27 of 37 entries mapped), shadow mode (not started: `CVE_MIRROR__PROMOTE` unset, `cve_promotion_shadow` empty on 2026-10-23), cutover (the runbook and design documents were removed from the repository on 2026-10-16) | manual mapping + shadow on dev | test on the dev server first, then prod |
 | 20 | **Mostly done** | **Known follow-ups from releases 0.4.0 / 0.4.1** (found while reviewing the CVE Tracker; none is blocking) -- **the data-correctness points were fixed 2026-10-15 (#51, #52) or earlier (#21); what is left (the (D) decisions, the KEV/EPSS/Exploit-DB access point, `trending_cve` in January) is marked in the item** | product decisions on the points marked (D) | -- |
 | 23 | **Live** | **Runtime secrets** (asked 2026-10-16): manage the third-party keys (LLM, Telegram, Graph, NVD, GitHub, twitterapi.io, X, OTX, AbuseIPDB, VirusTotal) from a superadmin-only admin page, encrypted in the database and applied without a restart or rebuild; the deployment-level secrets (database, Redis, JWT/session, OIDC) stay in `.env` -- **merged 2026-10-16 as one pull request (#63), released as 0.7.0 and deployed to prod (running 0.7.4 since 2026-10-21); the master key is set there and the page is in use (one override, `llm`, on 2026-10-23)** | one check that the OTX probe (`GET /api/v1/users/me`) answers 200 for a real key; the re-auth decision for OIDC-only superadmins | -- (touches #11 for the OIDC question) |
-| 24 | **Open** (PR-A live; PR-B built as release 0.8.0, waiting for review) | **Data platform audit follow-ups** (asked 2026-10-17): stop losing articles when the LLM fails (a structured failure kind, replay, an alert, an honest run status, a reaper and a purge) and show the pipeline's health in the UI (a **Data health** page, a reliable previous-period delta, reasons on `/scrapers`) -- **PR-A merged 2026-10-21 (#65, release 0.7.2) and deployed to prod (0.7.4, Alembic head `b7e4c1a9d256`); the replay has not been run on prod (38 rows wait: 34 `transient`, 4 `permanent`, 2026-10-23); on dev the user replayed a first batch of 10 of 147 on 2026-10-21; PR-B (Data health, Dashboard, Scrapers) built 2026-10-23 as release 0.8.0 on branch `feat/data-health-pr-b`, together with the web retheme onto theme tokens** | run `make replay-failed-enrichment` on prod (report first, then `--apply`) and finish it on dev; review and merge PR-B, then deploy | -- (PR-B reads `failure_kind` from PR-A) |
+| 24 | **Open** (PR-A live; PR-B merged as release 0.8.0, not deployed) | **Data platform audit follow-ups** (asked 2026-10-17): stop losing articles when the LLM fails (a structured failure kind, replay, an alert, an honest run status, a reaper and a purge) and show the pipeline's health in the UI (a **Data health** page, a reliable previous-period delta, reasons on `/scrapers`) -- **PR-A merged 2026-10-21 (#65, release 0.7.2) and deployed to prod (0.7.4, Alembic head `b7e4c1a9d256`); the replay has not been run on prod (38 rows wait: 34 `transient`, 4 `permanent`, 2026-10-23); on dev the user replayed a first batch of 10 of 147 on 2026-10-21; PR-B (Data health, Dashboard, Scrapers) merged 2026-10-23 (#69, release 0.8.0, together with the web retheme onto theme tokens); prod still runs 0.7.4** | run `make replay-failed-enrichment` on prod (report first, then `--apply`) and finish it on dev; deploy 0.8.0 (`make deploy`) and look at `/data-health` on dev and prod | -- (PR-B reads `failure_kind` from PR-A) |
 ---
 
 ## Priority queue (team feedback 2026-10-10)
@@ -64,8 +64,8 @@ these pull requests.
 
 ## Delivered so far (as of 2026-10-23)
 
-PRs #2-#68 are all merged into `main` (release tags in `CHANGELOG.md`: 0.2.0, 0.2.1, 0.3.0, 0.4.0, 0.4.1, 0.5.0, 0.6.0, 0.6.1,
-0.6.2, 0.7.0, 0.7.1, 0.7.2, 0.7.3, 0.7.4; 0.6.1 has a `CHANGELOG.md` entry but no git tag or GitHub Release). Production runs
+PRs #2-#69 are all merged into `main` (release tags in `CHANGELOG.md`: 0.2.0, 0.2.1, 0.3.0, 0.4.0, 0.4.1, 0.5.0, 0.6.0, 0.6.1,
+0.6.2, 0.7.0, 0.7.1, 0.7.2, 0.7.3, 0.7.4, 0.8.0; 0.6.1 has a `CHANGELOG.md` entry but no git tag or GitHub Release). Production runs
 **0.7.4** (deployed by the user 2026-10-21; `/healthz` and Alembic head `b7e4c1a9d256` checked read-only on 2026-10-23).
 
 **Roadmap items by status**
@@ -86,7 +86,7 @@ PRs #2-#68 are all merged into `main` (release tags in `CHANGELOG.md`: 0.2.0, 0.
 | 5, 8, 9, 10, 11 | Parked | -- | set aside by the user on 2026-10-15; do not start without a trigger |
 | 6, 7, 12, 15, 16, 18 | Open | -- | see each item; #6 mostly exists (only expiry is missing), #7 waits for the #19 cutover, #15 waits for the `published_at` backfill (7 prod rows), #12 for labelled examples, #16 and #18 for SLA targets and the list of ticket values |
 | 23 | Live | PR #63 (0.7.0), on prod with the master key set | the OTX probe against a real key; the OIDC re-auth decision; a re-encrypt helper for master key rotation |
-| 24 | Open (PR-A live, PR-B built) | PR #65 (0.7.2), on prod since 0.7.4; PR-B as 0.8.0 on a branch | replay the failed articles (prod: 38 waiting; dev: 10 of 147 done); merge and deploy PR-B |
+| 24 | Open (PR-A live, PR-B merged) | PR #65 (0.7.2), on prod since 0.7.4; PR #69 (0.8.0), not deployed | replay the failed articles (prod: 38 waiting; dev: 10 of 147 done); deploy 0.8.0 |
 
 **Merged PRs by release**
 
@@ -112,6 +112,7 @@ PRs #2-#68 are all merged into `main` (release tags in `CHANGELOG.md`: 0.2.0, 0.
 | 0.7.2 (2026-10-21) | #65 | **#24 PR-A**: `failure_kind`, enrichment-failure alert, replay (CLI + Newsroom button), "Filtered Articles" tab, honest `partial` run status, run reaper and purge |
 | 0.7.3 (2026-10-21) | #66, #67 | security fixes from an audit (Threat Actor watchlist tenant scoping, `navigator-layer` needs a login, `fetch_text` only reaches public addresses, escaped Telegram alerts); Dashboard and Newsroom restyle |
 | 0.7.4 (2026-10-21) | #68 | one article goes to one Telegram topic (no OT duplicate), and one broken thread no longer stops alerts to the other topics |
+| 0.8.0 (2026-10-23) | #69 | **#24 PR-B**: the Data health page and `GET /api/data-health`, a reliable Dashboard delta, reasons for DISABLED and failing scrapers on `/scrapers`; the web retheme onto theme tokens (focus ring contrast, no literal colours or sizes) |
 
 Release 0.5.0 (tag `0.5.0`, GitHub Release `v0.5.0`, 2026-10-14) carries everything after 0.4.1 and sits on `f55132d`, the
 merge of #48, so the dark-mode fix is inside (the `CHANGELOG.md` line about it was added after the tag). The plan expected 0.5.0 after #21 and 0.6.0 after #22, but both were on `main` before either was cut, so
@@ -1473,7 +1474,7 @@ records the audit and the plan for two pull requests. **Status 2026-10-23: PR-A 
 and deployed to dev (2026-10-21) and prod (0.7.4, head `b7e4c1a9d256`). Decisions 1-3 below were taken as recommended (silent
 replay with `--rate`, 90 days / 2 hours, CLI and admin button). Replay: on dev the user ran a first batch (10 of 147
 `permanent` rows) on 2026-10-21; on prod it has not been run (38 rows wait: 34 `transient`, 4 `permanent`). PR-B was built on
-2026-10-23 as release 0.8.0 (branch `feat/data-health-pr-b`, not merged yet, see `CHANGELOG.md`).** How the facts were gathered: the dev database over SSH
+2026-10-23 and merged the same day as release 0.8.0 (#69, merge `d2084ec`, see `CHANGELOG.md`); not deployed yet.** How the facts were gathered: the dev database over SSH
 with `default_transaction_read_only=on` (aggregates only, no row contents, no writes), the dev UI through the user's signed-in Chrome
 (GET only, no button that writes or triggers a run), and the code at `6a5734a` (0.7.1). The dev instance is three weeks old (first
 scraper run 2026-09-26), so trends over a longer time are not visible yet.
