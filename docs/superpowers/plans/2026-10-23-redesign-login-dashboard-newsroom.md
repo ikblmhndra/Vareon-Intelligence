@@ -169,16 +169,21 @@
       items = rank_trends({("actor", "X", None): [2, 2]}, {("actor", "X", None): 2})
       assert items[0].change_pct is None and items[0].is_new is False
 
+
   def test_new_entity_flagged():
       items = rank_trends({("ttp", "Spearphishing Link", "T1566.002"): [1, 1, 3]}, {})
-      assert items[0].is_new is True and items[0].change_pct is None and items[0].ttp_id == "T1566.002"
+      assert (
+          items[0].is_new is True and items[0].change_pct is None and items[0].ttp_id == "T1566.002"
+      )
+
 
   def test_below_min_count_dropped_and_ranked_by_absolute_rise():
       items = rank_trends(
           {("actor", "A", None): [1, 1], ("actor", "B", None): [10], ("actor", "C", None): [6]},
           {("actor", "B", None): 9, ("actor", "C", None): 0},
       )
-      assert [i.name for i in items] == ["C", "B"]   # C rose 6, B rose 1, A (2) under min_count
+      assert [i.name for i in items] == ["C", "B"]  # C rose 6, B rose 1, A (2) under min_count
+
 
   def test_falling_entities_excluded():
       assert rank_trends({("actor", "D", None): [4]}, {("actor", "D", None): 9}) == []
@@ -298,19 +303,45 @@
 
   ```python
   def test_brief_with_trend_and_kev():
-      t = TrendItem(kind="actor", name="Qilin", ttp_id=None, count=23, prev_count=5,
-                    change_pct=360, is_new=False, daily=[])
-      b = build_brief(top_trend=t, kev_in_stack=3, incidents=214, prev_incidents=155,
-                      drivers=["Ransomware", "Data breach"])
+      t = TrendItem(
+          kind="actor",
+          name="Qilin",
+          ttp_id=None,
+          count=23,
+          prev_count=5,
+          change_pct=360,
+          is_new=False,
+          daily=[],
+      )
+      b = build_brief(
+          top_trend=t,
+          kev_in_stack=3,
+          incidents=214,
+          prev_incidents=155,
+          drivers=["Ransomware", "Data breach"],
+      )
       assert b["headline"] == "Qilin naik 360% dan 3 CVE KEV cocok dengan tech stack klien."
-      assert b["detail"] == "Insiden naik 38% dibanding periode sebelumnya, didorong Ransomware dan Data breach."
+      assert (
+          b["detail"]
+          == "Insiden naik 38% dibanding periode sebelumnya, didorong Ransomware dan Data breach."
+      )
+
 
   def test_brief_new_trend_no_kev():
-      t = TrendItem(kind="ttp", name="Spearphishing Link", ttp_id="T1566.002", count=5,
-                    prev_count=0, change_pct=None, is_new=True, daily=[])
+      t = TrendItem(
+          kind="ttp",
+          name="Spearphishing Link",
+          ttp_id="T1566.002",
+          count=5,
+          prev_count=0,
+          change_pct=None,
+          is_new=True,
+          daily=[],
+      )
       b = build_brief(top_trend=t, kev_in_stack=0, incidents=10, prev_incidents=None, drivers=[])
       assert b["headline"] == "T1566.002 Spearphishing Link baru muncul pada periode ini."
       assert b["detail"] == "10 insiden terkonfirmasi pada periode ini."
+
 
   def test_brief_nothing_notable():
       b = build_brief(top_trend=None, kev_in_stack=0, incidents=0, prev_incidents=0, drivers=[])
