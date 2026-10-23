@@ -4,8 +4,6 @@ storage-nya yang pindah dari koleksi Mongo ke repo Postgres (Fase 2/7)."""
 
 from __future__ import annotations
 
-import asyncio
-
 from cti_core.config import get_settings
 from cti_core.db.models.auth import User
 from cti_core.db.repositories.auth import (
@@ -228,7 +226,9 @@ async def me(
 ) -> dict[str, object]:
     client_ids = user["client_ids"]
     client_repo = AsyncClientRepo(session)
-    client_docs = await asyncio.gather(*[client_repo.get(cid) for cid in client_ids])
+    # Sekuensial, bukan asyncio.gather -- satu AsyncSession gak boleh dipakai konkuren; user
+    # dengan >1 client dulu kadang kena 500 (InvalidRequestError) lalu di-logout web.
+    client_docs = [await client_repo.get(cid) for cid in client_ids]
     clients_map = {
         cid: [c.country_code for c in doc.countries] if doc else []
         for cid, doc in zip(client_ids, client_docs, strict=True)

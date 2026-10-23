@@ -27,6 +27,19 @@ tanpa entri beat baru.**
 ### Diubah
 - Timeline `GET /api/dashboard` sekarang membawa `incidents`.
 
+## [0.8.1] - 2026-10-24
+
+**Perbaikan: user dengan lebih dari satu client tidak lagi ter-logout sendiri.** **Tanpa migrasi, tanpa kunci `.env` baru, dan
+tanpa entri beat baru.**
+
+**Saat upgrade dari 0.8.0:** deploy biasa (`make deploy`); hanya image `api` yang berubah.
+
+### Diperbaiki
+- **`GET /api/auth/me` kadang 500 untuk user dengan >1 client**: data client dimuat dengan `asyncio.gather` di satu sesi
+  database, padahal SQLAlchemy melarang operasi konkuren di satu sesi (`InvalidRequestError: ... concurrent operations are not
+  permitted`). Web menganggap 500 itu sebagai sesi habis lalu me-logout user. Sekarang client dimuat berurutan; bentuk respons
+  (`client_countries`, `clients_map`) tidak berubah. Ada test regresi baru (`test_me_multiple_clients`).
+
 ## [0.8.0] - 2026-10-23
 
 **Halaman baru Data health, dan Dashboard serta `/scrapers` tidak lagi menampilkan angka atau status yang menyesatkan** (ROADMAP #24,
