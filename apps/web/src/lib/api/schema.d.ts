@@ -3575,6 +3575,11 @@ export interface components {
             actor_countries: string[];
             /** Confidence Score */
             confidence_score?: number | null;
+            /**
+             * Confirmed Incident
+             * @default false
+             */
+            confirmed_incident: boolean;
             /** Id */
             id: number;
             /**

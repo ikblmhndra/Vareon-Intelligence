@@ -32,6 +32,7 @@ class ArticleOut(BaseModel):
     news_type: str = ""
     confidence_score: int | None = None
     iocs: dict[str, object] = {}
+    confirmed_incident: bool = False
 
 
 class FilterOptions(BaseModel):

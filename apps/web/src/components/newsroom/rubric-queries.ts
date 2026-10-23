@@ -5,6 +5,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import type { RansomwareVictim } from "@/lib/api/loose-types";
+import { formatPostedOn } from "@/lib/newsroom/dates";
 import type { NewsroomFilters } from "@/lib/newsroom/filters";
 import { GLOBAL_NEWS_TYPES } from "@/lib/newsroom/news-types";
 import { useAuth } from "@/components/providers/auth-provider";
@@ -27,7 +28,7 @@ function articleItem(a: Article): RubricItem {
   return {
     id: String(a.id),
     title: a.title,
-    meta: `${a.source} · ${a.posted_on.slice(0, 10)}`,
+    meta: `${a.source} · ${formatPostedOn(a.posted_on)}`,
     article: a,
   };
 }
@@ -99,7 +100,7 @@ function useVictims(
  * `keepPrevious` menahan data halaman lama selama halaman baru dimuat (pager sheet).
  */
 export function useRubric(
-  key: RubricKey,
+  key: RubricKey | null,
   filters: NewsroomFilters,
   page: number,
   pageSize: number,
@@ -135,7 +136,7 @@ export function useRubric(
   const byType = useArticlesQuery(
     ["news-type", newsType],
     { ...common, news_type: newsType, country: countryParam },
-    key === "apac" || key === "global",
+    (key === "apac" || key === "global"),
     keepPrevious,
   );
   const local = useArticlesQuery(
@@ -196,6 +197,7 @@ export function useRubric(
       refetch,
     };
   }
+  if (key === null) return { ...empty, refetch: () => {} };
   const q = key === "local" ? local : byType;
   return {
     items: q.data?.articles.map(articleItem) ?? [],

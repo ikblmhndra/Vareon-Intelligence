@@ -4,6 +4,7 @@ import type { components } from "@/lib/api/schema";
 import type { NewsroomFilters } from "@/lib/newsroom/filters";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatPostedOn } from "@/lib/newsroom/dates";
 import { useArticlesQuery } from "@/components/newsroom/use-articles";
 
 type Article = components["schemas"]["ArticleOut"];
@@ -11,33 +12,23 @@ type Article = components["schemas"]["ArticleOut"];
 /** Empat artikel prioritas teratas; dipakai `FrontSection` dan total di masthead
  * (react-query menyatukan dua pemanggilan dengan key yang sama menjadi satu request). */
 export function useFrontQuery(filters: NewsroomFilters) {
-  return useArticlesQuery(["front"], {
-    page: 1,
-    page_size: 4,
-    sort: "priority",
-    posted_on_start: filters.dateStart || undefined,
-    posted_on_end: filters.dateEnd || undefined,
-    country: filters.country ? [filters.country] : undefined,
-    industry: filters.industry ? [filters.industry] : undefined,
-    threat_actor: filters.actor ? [filters.actor] : undefined,
-    search: filters.search || undefined,
-    confirmed_only: filters.incidentOnly || undefined,
-  });
-}
-
-function ago(iso: string): string {
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return iso.slice(0, 10);
-  const min = Math.floor((Date.now() - t) / 60_000);
-  if (min < 1) return "baru saja";
-  if (min < 60) return `${min} menit lalu`;
-  if (min < 48 * 60) return `${Math.floor(min / 60)} jam lalu`;
-  return `${Math.floor(min / 60 / 24)} hari lalu`;
-}
-
-/** Field ini belum ada di `ArticleOut` (skema API); badge muncul begitu API mengirimnya. */
-function isIncident(a: Article): boolean {
-  return (a as Article & { confirmed_incident?: boolean }).confirmed_incident === true;
+  return useArticlesQuery(
+    ["front"],
+    {
+      page: 1,
+      page_size: 4,
+      sort: "priority",
+      posted_on_start: filters.dateStart || undefined,
+      posted_on_end: filters.dateEnd || undefined,
+      country: filters.country ? [filters.country] : undefined,
+      industry: filters.industry ? [filters.industry] : undefined,
+      threat_actor: filters.actor ? [filters.actor] : undefined,
+      search: filters.search || undefined,
+      confirmed_only: filters.incidentOnly || undefined,
+    },
+    true,
+    true,
+  );
 }
 
 function Chips({ a }: { a: Article }) {
@@ -63,10 +54,10 @@ function Chips({ a }: { a: Article }) {
 function Kicker({ a }: { a: Article }) {
   return (
     <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px] text-muted-foreground">
-      {isIncident(a) && <Badge variant="destructive">Insiden</Badge>}
+      {a.confirmed_incident && <Badge variant="destructive">Insiden</Badge>}
       {a.confidence_score != null && <span>Confidence {a.confidence_score}</span>}
       {a.news_type && <span>{a.news_type}</span>}
-      <span>{ago(a.posted_on)}</span>
+      <span>{formatPostedOn(a.posted_on)}</span>
     </p>
   );
 }

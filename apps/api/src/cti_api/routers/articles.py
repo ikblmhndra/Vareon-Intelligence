@@ -82,6 +82,7 @@ def _serialize(article: Article, machine_fields: dict[str, object]) -> ArticleOu
         news_type=str(machine_fields.get("news_type") or ""),
         confidence_score=machine_fields.get("confidence_score"),  # type: ignore[arg-type]
         iocs={},
+        confirmed_incident=bool(article.confirmed_incident),
     )
 
 

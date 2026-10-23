@@ -99,6 +99,11 @@
             ],
             "title": "Confidence Score"
           },
+          "confirmed_incident": {
+            "default": false,
+            "title": "Confirmed Incident",
+            "type": "boolean"
+          },
           "id": {
             "title": "Id",
             "type": "integer"

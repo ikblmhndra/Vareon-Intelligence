@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import type { components } from "@/lib/api/schema";
+import { formatPostedOn } from "@/lib/newsroom/dates";
 import type { NewsroomFilters } from "@/lib/newsroom/filters";
 import { Sheet } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -44,7 +45,7 @@ function Row({ item, onSelect }: { item: RubricItem; onSelect: (a: Article) => v
 
 /** Hook dipanggil tanpa syarat; hanya satu sumber yang aktif (`enabled`). */
 function useSheetList(source: Source, filters: NewsroomFilters, page: number, open: boolean) {
-  const rubricKey = "rubric" in source ? source.rubric : "apac";
+  const rubricKey = "rubric" in source ? source.rubric : null;
   const rubric = useRubric(rubricKey, filters, page, PAGE_SIZE, true);
   const actor = "actor" in source ? source.actor : "";
   const ttp = "ttp" in source ? source.ttp : "";
@@ -77,7 +78,7 @@ function useSheetList(source: Source, filters: NewsroomFilters, page: number, op
   const items: RubricItem[] = (q.data?.articles ?? []).map((a) => ({
     id: String(a.id),
     title: a.title,
-    meta: `${a.source} · ${a.posted_on.slice(0, 10)}`,
+    meta: `${a.source} · ${formatPostedOn(a.posted_on)}`,
     article: a,
   }));
   return {

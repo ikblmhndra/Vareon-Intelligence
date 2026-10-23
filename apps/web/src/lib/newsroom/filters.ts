@@ -16,16 +16,20 @@ export interface NewsroomFilters {
   incidentOnly: boolean;
 }
 
+/** Tanggal LOKAL (Y-M-D); `toISOString` menggeser ke UTC dan bisa mundur sehari. */
 function isoDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
 }
 
-/** `dateStart` = hari ini dikurangi `days` (jangkar ke hari ini, bukan ke rentang
- * tetap); `0`/kosong = tanpa batas awal ("Semua"). `dateEnd` sengaja selalu kosong. */
+/** Chip N = N hari kalender terakhir TERMASUK hari ini (tanggal lokal): `dateStart` =
+ * hari ini - (N-1). API menghitung jendela `(hari ini - start) + 1` = N. `0` = "Semua".
+ * `dateEnd` sengaja selalu kosong. */
 export function periodStart(days: number): string {
   if (!days) return "";
   const d = new Date();
-  d.setDate(d.getDate() - days);
+  d.setDate(d.getDate() - (days - 1));
   return isoDate(d);
 }
 

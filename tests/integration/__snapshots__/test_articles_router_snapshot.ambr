@@ -82,6 +82,7 @@
     'actor_countries': list([
     ]),
     'confidence_score': None,
+    'confirmed_incident': False,
     'id': int,
     'impacted_industries': list([
     ]),
@@ -112,6 +113,7 @@
         'actor_countries': list([
         ]),
         'confidence_score': None,
+        'confirmed_incident': False,
         'id': int,
         'impacted_industries': list([
         ]),
@@ -147,6 +149,7 @@
         'actor_countries': list([
         ]),
         'confidence_score': None,
+        'confirmed_incident': False,
         'id': int,
         'impacted_industries': list([
         ]),
