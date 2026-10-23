@@ -341,6 +341,7 @@ def _clear_in_process_caches() -> None:
         article_dashboard,
         cluster,
         d3fend,
+        dashboard_overview,
         data_health,
         fp_analytics,
         risk_matrix,
@@ -354,6 +355,7 @@ def _clear_in_process_caches() -> None:
     fp_analytics._fp_analytics_cache = None
     spike._CACHE.clear()
     trending._CACHE.clear()
+    dashboard_overview._CACHE.clear()
     d3fend._cache.clear()
     data_health._cache = None
 
