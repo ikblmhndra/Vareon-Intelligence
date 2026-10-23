@@ -439,13 +439,23 @@ class AsyncDashboardRepo:
         posted_on_start: datetime.date,
         exclude_news_types: Sequence[str] | None = None,
         confirmed_only: bool = False,
+        posted_on_end: datetime.date | None = None,
+        countries: Sequence[str] | None = None,
+        news_types: Sequence[str] | None = None,
+        search: str | None = None,
     ) -> list[tuple[datetime.date, str, int]]:
-        """`dimension`: "threat_actor" | "country" | "industry". Port
+        """`dimension`: "threat_actor" | "country" | "industry" | "ttp". Port
         `by_actor`/`by_country`/`by_industry` facet `spike_service.py`.
         `exclude_news_types`/`confirmed_only` cuma kepake pas dipanggil
         dari `exec_dashboard_v2` (`industry_spikes`, ikut filter
         `incident_only`/`confirmed_only` dashboard) -- `/api/spikes`
-        polos manggil tanpa ini, sama kayak lama."""
+        polos manggil tanpa ini, sama kayak lama.
+
+        "ttp" mengembalikan entity `"<ttp_id>|<ttp_name>"` (digabung di SQL,
+        dipecah lagi oleh `cti_api.services.trending`). `posted_on_end`
+        EKSKLUSIF (sama kayak `_apply_article_filters`). `countries`,
+        `news_types` dan `search` (ILIKE judul) baru dipasang kalau diisi,
+        jadi caller lama (`/api/spikes`, `exec_dashboard`) tidak berubah."""
         # Negara: role apa pun (lihat `_country_role`) -- `count(DISTINCT
         # article.id)` biar negara yang sama di dua role gak kehitung dobel.
         # Buat TA/industri efeknya nol (unik per artikel di level constraint).
@@ -453,6 +463,7 @@ class AsyncDashboardRepo:
             "threat_actor": (ArticleThreatActor, ArticleThreatActor.threat_actor),
             "country": (ArticleCountry, ArticleCountry.country_code),
             "industry": (ArticleIndustry, ArticleIndustry.industry),
+            "ttp": (ArticleTTP, func.concat(ArticleTTP.ttp_id, "|", ArticleTTP.ttp_name)),
         }[dimension]
         stmt = _apply_article_filters(
             select(Article.posted_on, col, func.count(func.distinct(Article.id)))
@@ -460,10 +471,24 @@ class AsyncDashboardRepo:
             .join(model)
             .where(col.is_not(None), col != ""),
             posted_on_start=posted_on_start,
-            posted_on_end=None,
+            posted_on_end=posted_on_end,
             exclude_news_types=exclude_news_types,
             confirmed_only=confirmed_only,
         )
+        if countries:
+            # Negara role apa pun; subquery (bukan join) biar hitungan
+            # `count(DISTINCT article.id)` tidak ikut berlipat.
+            stmt = stmt.where(
+                Article.id.in_(
+                    select(ArticleCountry.article_id).where(
+                        ArticleCountry.country_code.in_(countries)
+                    )
+                )
+            )
+        if news_types:
+            stmt = stmt.where(Article.news_type.in_(news_types))
+        if search:
+            stmt = stmt.where(Article.title.ilike(f"%{search}%"))
         stmt = stmt.group_by(Article.posted_on, col)
         rows = (await self.session.execute(stmt)).all()
         return [(d, entity, cnt) for d, entity, cnt in rows]

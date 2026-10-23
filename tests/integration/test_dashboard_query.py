@@ -183,6 +183,26 @@ async def test_daily_entity_counts_and_totals(async_db_session: AsyncSession) ->
     assert totals == [(_TODAY, 2)]
 
 
+async def test_daily_entity_counts_ttp_dimension(async_db_session: AsyncSession) -> None:
+    await _ensure_clients(async_db_session)
+    await _seed_articles(async_db_session)
+    repo = AsyncDashboardRepo(async_db_session)
+
+    by_ttp = await repo.daily_entity_counts(dimension="ttp", posted_on_start=_TODAY)
+    assert by_ttp == [(_TODAY, "T1059|Command Scripting", 1)]
+
+
+async def test_get_trending_all_time_uses_7_day_window(async_db_session: AsyncSession) -> None:
+    from cti_api.services.trending import get_trending
+
+    await _ensure_clients(async_db_session)
+    await _seed_articles(async_db_session)
+
+    result = await get_trending(async_db_session, days=None)
+    assert result["window_days"] == 7
+    assert result["window_label"] == "7 hari terakhir vs 7 hari sebelumnya"
+
+
 async def test_risk_matrix_rows(async_db_session: AsyncSession) -> None:
     await _ensure_clients(async_db_session)
     await _seed_articles(async_db_session)
