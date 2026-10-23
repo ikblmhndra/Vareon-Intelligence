@@ -175,3 +175,19 @@ async def test_ransomware_summary_and_weekly(async_db_session: AsyncSession) -> 
     weekly = await repo.weekly_counts(weeks=8)
     assert len(weekly) == 8
     assert weekly[-1][1] == 2
+
+
+async def test_incident_country_profile_counts_any_role_once(
+    async_db_session: AsyncSession,
+) -> None:
+    repo = AsyncArticleRepo(async_db_session)
+    a = await repo.upsert(
+        url="https://example.com/r1",
+        title="Multi role",
+        source="S",
+        posted_on=_TODAY,
+        confirmed_incident=True,
+    )
+    await repo.set_enrichment(a, countries=[("ID", "victim"), ("ID", "mentioned"), ("SG", "actor")])
+    rows = await AsyncDashboardRepo(async_db_session).incident_country_profile(posted_on_start=None)
+    assert {(c, n) for c, n, _, _ in rows} == {("ID", 1), ("SG", 1)}

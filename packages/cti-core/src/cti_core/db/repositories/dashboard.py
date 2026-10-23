@@ -631,15 +631,14 @@ class AsyncDashboardRepo:
     ) -> list[tuple[str, int, str | None, str | None]]:
         """Profil per negara untuk peta dashboard: `(country_code, jumlah artikel insiden
         terkonfirmasi, aktor teratas atau None, industri teratas non-"General" atau None)`.
-        Negara = role `victim` (lokasi insiden, bukan sekadar disebut); jumlah memakai
-        `count(DISTINCT article.id)`. Seri aktor/industri dipilih terbanyak, seri sama
+        Negara = role APA PUN di `article_countries` (spec 4.4); jumlah memakai
+        `count(DISTINCT article.id)` supaya artikel dengan dua role untuk negara yang sama
+        dihitung sekali. Aktor/industri teratas memakai himpunan artikel yang sama. Seri aktor/industri dipilih terbanyak, seri sama
         diurutkan nama biar deterministik. Urutan hasil: jumlah desc, lalu kode negara."""
-        victim = ArticleCountry.role == "victim"
         counts = _apply_article_filters(
             select(ArticleCountry.country_code, func.count(func.distinct(Article.id)))
             .select_from(Article)
-            .join(ArticleCountry)
-            .where(victim),
+            .join(ArticleCountry),
             posted_on_start=posted_on_start,
             posted_on_end=None,
             confirmed_only=True,
@@ -655,7 +654,7 @@ class AsyncDashboardRepo:
                 .select_from(Article)
                 .join(ArticleCountry)
                 .join(join_model, join_model.article_id == Article.id)
-                .where(victim, *extra),
+                .where(*extra),
                 posted_on_start=posted_on_start,
                 posted_on_end=None,
                 confirmed_only=True,
