@@ -37,6 +37,7 @@ from cti_api.routers import clients as clients_router
 from cti_api.routers import crossref as crossref_router
 from cti_api.routers import cve as cve_router
 from cti_api.routers import cve_db as cve_db_router
+from cti_api.routers import data_health as data_health_router
 from cti_api.routers import exec_dashboard as exec_dashboard_router
 from cti_api.routers import filtered_articles as filtered_articles_router
 from cti_api.routers import health as health_router
@@ -156,6 +157,7 @@ def create_app() -> FastAPI:
     app.include_router(recap_router.router)
     app.include_router(exec_dashboard_router.router)
     app.include_router(scraper_router.router)
+    app.include_router(data_health_router.router)
     return app
 
 

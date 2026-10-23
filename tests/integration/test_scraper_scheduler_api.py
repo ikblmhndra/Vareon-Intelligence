@@ -88,10 +88,13 @@ async def test_disabled_scraper_has_no_next_run(
 ) -> None:
     body = (await api_client.get("/api/scraper", headers=auth_header())).json()
     target = next(s for s in body["scrapers"] if s["enabled"])["id"]
-    api_session.add(ScraperConfig(scraper_id=target, enabled=False))
+    assert next(s for s in body["scrapers"] if s["id"] == target)["disabled_by"] is None
+    api_session.add(ScraperConfig(scraper_id=target, enabled=False, paused_reason="site down"))
     await api_session.flush()
 
     body = (await api_client.get("/api/scraper", headers=auth_header())).json()
     row = next(s for s in body["scrapers"] if s["id"] == target)
     assert row["enabled"] is False
     assert row["next_run_at"] is None
+    assert row["disabled_by"] == "admin"
+    assert row["paused_reason"] == "site down"

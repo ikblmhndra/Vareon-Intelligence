@@ -1261,6 +1261,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/data-health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Data Health */
+        get: operations["data_health_api_data_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/exec/brief": {
         parameters: {
             query?: never;
@@ -4144,6 +4161,8 @@ export interface components {
             industry_unspecified: number;
             /** Prev Confirmed Incidents */
             prev_confirmed_incidents: number | null;
+            /** Prev Period Reliable */
+            prev_period_reliable: boolean;
             /** Prev Total Articles */
             prev_total_articles: number | null;
             /** Timeline */
@@ -4219,6 +4238,17 @@ export interface components {
              */
             unrated: number;
         };
+        /** DataHealthOut */
+        DataHealthOut: {
+            enrichment: components["schemas"]["EnrichmentHealthOut"];
+            /** Generated At */
+            generated_at: string;
+            /** Ioc Enrichment */
+            ioc_enrichment: components["schemas"]["IocEnrichmentTypeOut"][];
+            queues: components["schemas"]["QueueHealthOut"];
+            scrapers: components["schemas"]["ScraperHealthSummary"];
+            sources: components["schemas"]["SourceFreshnessOut"];
+        };
         /** DraftEmailBody */
         DraftEmailBody: {
             /** Cve Ids */
@@ -4228,6 +4258,19 @@ export interface components {
              * @default
              */
             ticket_id: string;
+        };
+        /** EnrichmentHealthOut */
+        EnrichmentHealthOut: {
+            /** Failed 24H */
+            failed_24h: number;
+            /** Failed 7D */
+            failed_7d: number;
+            /** Last Failure At */
+            last_failure_at: string | null;
+            /** Pending Replay */
+            pending_replay: number;
+            /** Processed 7D */
+            processed_7d: number;
         };
         /**
          * ExploitRiskCve
@@ -4292,6 +4335,15 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** IocEnrichmentTypeOut */
+        IocEnrichmentTypeOut: {
+            /** Enriched */
+            enriched: number;
+            /** Total */
+            total: number;
+            /** Type */
+            type: string;
         };
         /** LockfileImportResult */
         LockfileImportResult: {
@@ -5114,6 +5166,13 @@ export interface components {
              */
             dry_run: boolean;
         };
+        /** QueueHealthOut */
+        QueueHealthOut: {
+            /** Enrich Depth */
+            enrich_depth: number | null;
+            /** Enrich Max Depth */
+            enrich_max_depth: number;
+        };
         /** RFICreate */
         RFICreate: {
             /** Due Date */
@@ -5489,6 +5548,8 @@ export interface components {
         };
         /** ScraperListItem */
         ScraperListItem: {
+            /** Disabled By */
+            disabled_by?: ("code" | "admin" | "mirror") | null;
             /** Enabled */
             enabled: boolean;
             /** Has Override */
@@ -5511,6 +5572,8 @@ export interface components {
             last_trigger: string | null;
             /** Next Run At */
             next_run_at?: string | null;
+            /** Paused Reason */
+            paused_reason?: string | null;
             /** Queue */
             queue: string;
             /** Runtime */
@@ -5728,6 +5791,15 @@ export interface components {
              * @default
              */
             tech: string;
+        };
+        /** SourceFreshnessOut */
+        SourceFreshnessOut: {
+            /** Articles Newest At */
+            articles_newest_at: string | null;
+            /** Iocs Newest At */
+            iocs_newest_at: string | null;
+            /** Tweets Newest At */
+            tweets_newest_at: string | null;
         };
         /**
          * StatusBreakdown
@@ -8911,6 +8983,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DashboardStats"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    data_health_api_data_health_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataHealthOut"];
                 };
             };
             /** @description Validation Error */

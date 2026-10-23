@@ -200,9 +200,15 @@ class _FakeRedis:
         self.values: dict[str, str] = {}
         """`get` -- heartbeat beat (`GET /api/scraper`); test isi langsung lewat
         `fake_redis.values[...]`."""
+        self.lists: dict[str, int] = {}
+        """`llen` -- panjang list per kunci, diisi langsung oleh test."""
 
     async def get(self, key: str) -> str | None:
         return self.values.get(key)
+
+    async def llen(self, key: str) -> int:
+        """Panjang list (antrian Celery `enrich` di `/api/data-health`); test isi lewat `lists`."""
+        return self.lists.get(key, 0)
 
     async def incr(self, key: str) -> int:
         self._counts[key] = self._counts.get(key, 0) + 1
@@ -335,6 +341,7 @@ def _clear_in_process_caches() -> None:
         article_dashboard,
         cluster,
         d3fend,
+        data_health,
         fp_analytics,
         risk_matrix,
         spike,
@@ -346,6 +353,7 @@ def _clear_in_process_caches() -> None:
     fp_analytics._fp_analytics_cache = None
     spike._CACHE.clear()
     d3fend._cache.clear()
+    data_health._cache = None
 
 
 @pytest.fixture(autouse=True)

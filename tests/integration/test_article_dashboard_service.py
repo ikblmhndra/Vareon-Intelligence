@@ -187,6 +187,41 @@ async def test_get_dashboard_stats_days_compares_previous_period(
     assert all_time["prev_total_articles"] is None
     assert all_time["prev_confirmed_incidents"] is None
     assert all_time["confirmed_incidents"] == 2
+    assert all_time["prev_period_reliable"] is False
+
+
+async def test_get_dashboard_stats_prev_period_unreliable_with_few_days(
+    async_db_session: AsyncSession,
+) -> None:
+    """Periode sebelumnya 7 hari cuma punya 1 hari berartikel (p4): delta jangan dibandingkan."""
+    await _seed_periods(async_db_session)
+    svc._dashboard_cache.clear()
+
+    result = await svc.get_dashboard_stats(async_db_session, days=7)
+    assert result["prev_total_articles"] == 1
+    assert result["prev_period_reliable"] is False
+
+
+async def test_get_dashboard_stats_prev_period_reliable_with_enough_days(
+    async_db_session: AsyncSession,
+) -> None:
+    """4 dari 7 hari periode sebelumnya punya artikel (>= separuh): delta boleh dibandingkan."""
+    await _seed_periods(async_db_session)
+    repo = AsyncArticleRepo(async_db_session)
+    for offset in (8, 9, 11):  # + p4 di hari ke-10 = 4 hari berbeda di [today-14, today-7)
+        await repo.upsert(
+            url=f"https://example.com/prev{offset}",
+            title=f"Prev {offset}",
+            source="S6",
+            posted_on=_TODAY - datetime.timedelta(days=offset),
+            news_type="global",
+        )
+    await async_db_session.flush()
+    svc._dashboard_cache.clear()
+
+    result = await svc.get_dashboard_stats(async_db_session, days=7)
+    assert result["prev_total_articles"] == 4
+    assert result["prev_period_reliable"] is True
 
 
 async def test_get_dashboard_stats_incident_only_drops_non_incident_types(

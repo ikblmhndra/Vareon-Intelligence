@@ -78,6 +78,9 @@ class DashboardStats(BaseModel):
     # `None` kalau tanpa `days` (all-time): gak ada periode sebelumnya buat dibandingkan.
     prev_total_articles: int | None
     prev_confirmed_incidents: int | None
+    # False = periode sebelumnya kosong/jarang (< separuh harinya berartikel) atau all-time:
+    # UI menulis "no prior-period data" alih-alih delta (aturan yang sama dengan Exec).
+    prev_period_reliable: bool
     # Artikel berlabel industri "General" (gak punya sektor spesifik); sengaja
     # TIDAK ada di `top_industries` supaya bar teratas gak selalu "General".
     industry_unspecified: int

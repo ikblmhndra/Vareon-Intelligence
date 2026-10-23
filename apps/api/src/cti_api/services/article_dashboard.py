@@ -22,7 +22,11 @@ from typing import Any
 from cti_core.db.repositories.dashboard import AsyncDashboardRepo
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_api.services.exec_dashboard import NON_INCIDENT_TYPES, UNSPECIFIED_INDUSTRY
+from cti_api.services.exec_dashboard import (
+    NON_INCIDENT_TYPES,
+    PREV_MIN_DAY_COVERAGE,
+    UNSPECIFIED_INDUSTRY,
+)
 
 _dashboard_cache: dict[str, tuple[dict[str, Any], float]] = {}
 _CACHE_TTL = 900.0
@@ -100,6 +104,10 @@ async def _fetch_dashboard_stats(
 
     prev_total: int | None = None
     prev_confirmed: int | None = None
+    # Aturan yang sama dengan Exec (`exec_dashboard.PREV_MIN_DAY_COVERAGE`): periode sebelumnya
+    # baru layak dibandingkan kalau minimal separuh harinya punya artikel. Instance yang baru
+    # jalan beberapa minggu kalau tidak menampilkan "+28400%" dari 3 artikel nyasar (ROADMAP #24).
+    prev_reliable = False
     if days is not None:
         # Rentang [today-2d, today-d) -- ujung akhir eksklusif di repo, jadi gak tumpang
         # tindih dengan jendela sekarang yang mulai di `today-d` (inklusif).
@@ -110,12 +118,16 @@ async def _fetch_dashboard_stats(
         }
         prev_total = await repo.count_articles(**prev_filters)
         prev_confirmed = await repo.count_articles(confirmed_only=True, **prev_filters)
+        prev_reliable = (
+            await repo.distinct_day_count(**prev_filters) >= days * PREV_MIN_DAY_COVERAGE
+        )
 
     return {
         "total_articles": total,
         "confirmed_incidents": confirmed,
         "prev_total_articles": prev_total,
         "prev_confirmed_incidents": prev_confirmed,
+        "prev_period_reliable": prev_reliable,
         "total_sources": total_sources,
         "total_countries": total_countries,
         "total_threat_actors": total_threat_actors,
