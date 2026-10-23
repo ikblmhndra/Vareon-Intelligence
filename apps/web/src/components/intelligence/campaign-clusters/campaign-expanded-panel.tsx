@@ -112,7 +112,7 @@ export function CampaignExpandedPanel({
               <span className="w-[130px] flex-shrink-0 text-muted-foreground">
                 {name} ({weight})
               </span>
-              <div className="h-1 flex-1 rounded-full bg-white/8">
+              <div className="h-1 flex-1 rounded-full bg-foreground/10">
                 <div className="h-full rounded-full bg-primary" style={{ width: `${Math.round(raw)}%` }} />
               </div>
               <span className="w-8 text-right text-foreground">{raw}</span>

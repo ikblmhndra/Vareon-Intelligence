@@ -103,7 +103,7 @@ export function GroupsPanel({ onSelect }: { onSelect: (target: DetailTarget) => 
               )}
               {query.data.groups.map((g) => (
                 <TableRow key={g.group_id} className="cursor-pointer" onClick={() => onSelect({ kind: "group", id: g.group_id })}>
-                  <TableCell className="font-mono text-[13px] text-primary whitespace-nowrap">{g.group_id}</TableCell>
+                  <TableCell className="font-mono text-xs text-primary whitespace-nowrap">{g.group_id}</TableCell>
                   <TableCell className="text-xs">{g.name}</TableCell>
                   <TableCell className="font-mono text-xs text-muted-foreground">{g.aliases.slice(0, 3).join(", ")}</TableCell>
                   <TableCell>

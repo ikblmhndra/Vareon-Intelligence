@@ -110,7 +110,7 @@ export function CampaignsPanel() {
           <Label className="text-sm font-medium text-muted-foreground">Min Size</Label>
           <Input type="number" aria-label="Min size" min={2} max={50} value={minSize} onChange={(e) => setMinSize(Number(e.target.value) || 3)} className="w-20 font-mono text-xs" />
         </div>
-        <span className="ml-auto font-mono text-[13px] text-muted-foreground">
+        <span className="ml-auto font-mono text-xs text-muted-foreground">
           {campaigns.length} campaign cluster{campaigns.length !== 1 ? "s" : ""} found
         </span>
       </div>
@@ -137,7 +137,7 @@ export function CampaignsPanel() {
             ))}
           </div>
 
-          <table className="w-full border-collapse text-[13px]">
+          <table className="w-full border-collapse text-xs">
             <thead>
               <tr className="border-b border-border text-left text-muted-foreground">
                 <th className="px-2 py-1.5">Summary Title</th>

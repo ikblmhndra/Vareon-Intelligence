@@ -309,7 +309,7 @@ function ArticleCard({ article, note, bodySource, regenerate, onNoteChange, onTo
         placeholder="Analyst notes (optional)…"
         value={note}
         onChange={(e) => onNoteChange(article.id, e.target.value)}
-        className="mt-2 h-14 resize-y bg-black/20 font-mono text-xs"
+        className="mt-2 h-14 resize-y bg-panel font-mono text-xs"
       />
     </div>
   );

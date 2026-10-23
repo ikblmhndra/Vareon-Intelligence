@@ -34,7 +34,7 @@ export function NewsletterPreviewDialog({ state, onOpenChange, onSendDraft, send
     <Dialog open={state.open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
         <DialogHeader className="border-b border-border px-4 py-3">
-          <DialogTitle className="font-mono text-xs tracking-[0.1em] text-primary">{title}</DialogTitle>
+          <DialogTitle className="font-mono text-xs tracking-widest text-primary">{title}</DialogTitle>
         </DialogHeader>
 
         {hasNotices && (

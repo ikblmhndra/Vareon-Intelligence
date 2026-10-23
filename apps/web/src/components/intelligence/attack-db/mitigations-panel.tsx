@@ -103,7 +103,7 @@ export function MitigationsPanel() {
               )}
               {query.data.mitigations.map((m) => (
                 <TableRow key={m.mitigation_id}>
-                  <TableCell className="font-mono text-[13px] text-primary whitespace-nowrap">{m.mitigation_id}</TableCell>
+                  <TableCell className="font-mono text-xs text-primary whitespace-nowrap">{m.mitigation_id}</TableCell>
                   <TableCell className="text-xs" title={m.description}>
                     {m.name}
                   </TableCell>

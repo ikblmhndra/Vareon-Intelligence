@@ -106,7 +106,7 @@ function TechniqueDetail({ t, onNavigate }: { t: AttackTechniqueDetail; onNaviga
     <div className="font-mono text-xs">
       <div className="mb-3 flex flex-wrap items-start gap-3">
         <div>
-          <div className="text-[13px] text-primary">{t.attack_id}</div>
+          <div className="text-xs text-primary">{t.attack_id}</div>
           <div className="mt-0.5 text-base font-bold text-foreground">{t.name}</div>
           <div className="mt-1 text-xs text-muted-foreground">
             {t.tactics.join(" · ")} <DomainBadges domains={t.domains} />
@@ -116,7 +116,7 @@ function TechniqueDetail({ t, onNavigate }: { t: AttackTechniqueDetail; onNaviga
           MITRE ↗
         </a>
       </div>
-      <div className="mb-3.5 max-h-44 overflow-y-auto text-[13px] leading-relaxed text-foreground">{t.description}</div>
+      <div className="mb-3.5 max-h-44 overflow-y-auto text-xs leading-relaxed text-foreground">{t.description}</div>
       {t.platforms.length > 0 && <div className="mb-2.5 text-xs text-muted-foreground">Platforms: {t.platforms.join(", ")}</div>}
       {t.sub_techniques.length > 0 && (
         <div className="mb-3">
@@ -174,7 +174,7 @@ function GroupDetail({ g, onNavigate }: { g: AttackGroupDetail; onNavigate: (tar
     <div className="font-mono text-xs">
       <div className="mb-3 flex flex-wrap items-start gap-3">
         <div>
-          <div className="text-[13px] text-primary">{g.group_id}</div>
+          <div className="text-xs text-primary">{g.group_id}</div>
           <div className="mt-0.5 text-base font-bold text-foreground">{g.name}</div>
           {g.aliases.length > 0 && <div className="mt-0.5 text-xs text-muted-foreground">aka {g.aliases.slice(0, 5).join(", ")}</div>}
           <div className="mt-1">
@@ -190,7 +190,7 @@ function GroupDetail({ g, onNavigate }: { g: AttackGroupDetail; onNavigate: (tar
           </a>
         </div>
       </div>
-      <div className="mb-3.5 max-h-40 overflow-y-auto text-[13px] leading-relaxed text-foreground">{g.description}</div>
+      <div className="mb-3.5 max-h-40 overflow-y-auto text-xs leading-relaxed text-foreground">{g.description}</div>
       <div className="mb-3">
         <SectionLabel>Techniques used ({g.techniques.length})</SectionLabel>
         <div className="max-h-36 overflow-y-auto">
@@ -226,7 +226,7 @@ function SoftwareDetail({ s, onNavigate }: { s: AttackSoftwareDetail; onNavigate
     <div className="font-mono text-xs">
       <div className="mb-3 flex flex-wrap items-start gap-3">
         <div>
-          <div className="text-[13px] text-primary">{s.software_id}</div>
+          <div className="text-xs text-primary">{s.software_id}</div>
           <div className="mt-0.5 text-base font-bold text-foreground">{s.name}</div>
           <div className="mt-1 text-xs">
             <span
@@ -241,7 +241,7 @@ function SoftwareDetail({ s, onNavigate }: { s: AttackSoftwareDetail; onNavigate
           MITRE ↗
         </a>
       </div>
-      <div className="mb-3.5 max-h-40 overflow-y-auto text-[13px] leading-relaxed text-foreground">{s.description}</div>
+      <div className="mb-3.5 max-h-40 overflow-y-auto text-xs leading-relaxed text-foreground">{s.description}</div>
       <div className="mb-3">
         <SectionLabel>Used by groups ({s.groups.length})</SectionLabel>
         {s.groups.length === 0 ? (

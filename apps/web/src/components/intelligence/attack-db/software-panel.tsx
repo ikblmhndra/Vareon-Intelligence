@@ -133,7 +133,7 @@ export function SoftwarePanel({ onSelect }: { onSelect: (target: DetailTarget) =
               )}
               {query.data.software.map((s) => (
                 <TableRow key={s.software_id} className="cursor-pointer" onClick={() => onSelect({ kind: "software", id: s.software_id })}>
-                  <TableCell className="font-mono text-[13px] text-primary whitespace-nowrap">{s.software_id}</TableCell>
+                  <TableCell className="font-mono text-xs text-primary whitespace-nowrap">{s.software_id}</TableCell>
                   <TableCell className="text-xs">{s.name}</TableCell>
                   <TableCell>
                     <Badge variant="outline" className={cn("text-xs", s.software_type === "malware" ? "text-destructive border-destructive/40" : "text-primary border-primary/40")}>

@@ -26,7 +26,7 @@ export function RecapHistory({ items, selected, onSelect }: RecapHistoryProps) {
             key={`${it.kind}:${it.date}`}
             onClick={() => onSelect(it)}
             className={cn(
-              "rounded-md border px-2 py-1.5 text-left font-mono text-[13px] transition-colors",
+              "rounded-md border px-2 py-1.5 text-left font-mono text-xs transition-colors",
               active
                 ? "border-primary/50 bg-primary/10"
                 : "border-border hover:bg-accent",
@@ -36,7 +36,7 @@ export function RecapHistory({ items, selected, onSelect }: RecapHistoryProps) {
               <span className={active ? "text-primary-text" : "text-foreground"}>
                 {weekly ? formatRange(it.period_start, it.period_end) : it.date}
               </span>
-              <span className="text-[11px] tracking-wide text-muted-foreground uppercase">
+              <span className="text-2xs tracking-wide text-muted-foreground uppercase">
                 {weekly ? "week" : "day"}
               </span>
             </div>

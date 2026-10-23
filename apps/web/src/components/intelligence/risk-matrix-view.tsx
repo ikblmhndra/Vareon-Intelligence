@@ -133,7 +133,7 @@ export function RiskMatrixView() {
                         return (
                           <td
                             key={cty}
-                            className={cn("min-w-[48px] border border-border px-1.5 py-1 text-center font-mono text-[13px] font-bold", tier.bg, tier.text)}
+                            className={cn("min-w-[48px] border border-border px-1.5 py-1 text-center font-mono text-xs font-bold", tier.bg, tier.text)}
                             title={`${ind} × ${cty}\nRisk: ${cell.risk_score} ${cell.trend}\nNow: ${cell.current_count} articles | Prev: ${cell.previous_count}\nTop actors: ${actors}`}
                           >
                             {cell.risk_score}

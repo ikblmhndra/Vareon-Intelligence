@@ -24,9 +24,20 @@ export function TweetCard({ tweet: t, onClick }: { tweet: Tweet; onClick: () => 
   const industries = (t.industries_impacted ?? []).slice(0, 2);
 
   return (
+    // Bukan `<button>`: kartu berisi tautan "Open" (interaktif bersarang tidak sah di dalam button).
+    // `role`/`tabIndex`/Enter-Spasi supaya modal tweet tetap bisa dibuka dari keyboard.
     <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
-      className="flex cursor-pointer gap-3 surface-raised rounded-2xl p-5 transition-shadow hover:ring-ring/40"
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+      className="flex cursor-pointer gap-3 surface-raised rounded-2xl p-5 transition-shadow outline-none hover:ring-ring/40 focus-visible:ring-3 focus-visible:ring-focus"
     >
       <Avatar className="size-9 shrink-0">
         <AvatarImage src={t.author_avatar || undefined} alt={t.author_username} />
@@ -71,7 +82,7 @@ export function TweetCard({ tweet: t, onClick }: { tweet: Tweet; onClick: () => 
             onClick={(e) => e.stopPropagation()}
             className={
               (industries.length > 0 ? "" : "ml-auto ") +
-              "rounded border border-primary/30 px-2 py-0.5 font-mono text-xs text-primary no-underline"
+              "rounded border border-primary/30 px-2 py-0.5 font-mono text-xs text-primary no-underline outline-none focus-visible:ring-3 focus-visible:ring-focus"
             }
           >
             ↗ Open

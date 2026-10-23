@@ -49,7 +49,7 @@ export function GeopoliticalPanel({ days }: { days: number }) {
 
   return (
     <div className="mb-4 rounded-md border border-border">
-      <button type="button" onClick={() => setOpen((o) => !o)} className="w-full px-3 py-2 text-left font-mono text-xs tracking-[0.06em] text-muted-foreground uppercase">
+      <button type="button" onClick={() => setOpen((o) => !o)} className="w-full px-3 py-2 text-left font-mono text-xs tracking-wider text-muted-foreground uppercase">
         {open ? "▾" : "▸"} Geopolitical Overview
       </button>
       {open && (
@@ -60,16 +60,16 @@ export function GeopoliticalPanel({ days }: { days: number }) {
             <>
               {d.geopolitical_alerts.length > 0 && (
                 <div className="mb-3.5">
-                  <div className="mb-1.5 text-xs font-bold tracking-[0.06em] text-muted-foreground">ALERTS</div>
+                  <div className="mb-1.5 text-xs font-bold tracking-wider text-muted-foreground">ALERTS</div>
                   <div className="flex flex-col gap-1">
                     {d.geopolitical_alerts.map((a, i) => {
                       const isInc = a.includes("increased") || a.includes("converging") || a.includes("New threat");
                       return (
-                        <div key={i} className={`rounded-md border px-2.5 py-1.5 font-mono text-[13px] text-foreground ${isInc ? "border-destructive/40 bg-destructive/12" : "border-warning/35 bg-warning/10"}`}>
+                        <div key={i} className={`rounded-md border px-2.5 py-1.5 font-mono text-xs text-foreground ${isInc ? "border-destructive/40 bg-destructive/12" : "border-warning/35 bg-warning/10"}`}>
                           {isInc ? (
-                            <TrendingUpIcon className="mr-1 inline size-3.5 align-[-2px] text-destructive" aria-hidden />
+                            <TrendingUpIcon className="mr-1 inline size-3.5 align-[-2px] text-destructive-text" aria-hidden />
                           ) : (
-                            <TriangleAlertIcon className="mr-1 inline size-3.5 align-[-2px] text-warning" aria-hidden />
+                            <TriangleAlertIcon className="mr-1 inline size-3.5 align-[-2px] text-warning-text" aria-hidden />
                           )}
                           <span className="sr-only">{isInc ? "Increase: " : "Notice: "}</span>
                           {a}
@@ -82,7 +82,7 @@ export function GeopoliticalPanel({ days }: { days: number }) {
 
               {nations.length > 0 && sectors.length > 0 && (
                 <div className="mb-3.5">
-                  <div className="mb-1.5 text-xs font-bold tracking-[0.06em] text-muted-foreground">NATION → SECTOR HEATMAP</div>
+                  <div className="mb-1.5 text-xs font-bold tracking-wider text-muted-foreground">NATION → SECTOR HEATMAP</div>
                   <div className="overflow-x-auto">
                     <table className="border-collapse text-xs">
                       <thead>
@@ -129,7 +129,7 @@ export function GeopoliticalPanel({ days }: { days: number }) {
 
               {motEntries.length > 0 && (
                 <div className="mb-1">
-                  <div className="mb-1.5 text-xs font-bold tracking-[0.06em] text-muted-foreground">MOTIVATION BREAKDOWN</div>
+                  <div className="mb-1.5 text-xs font-bold tracking-wider text-muted-foreground">MOTIVATION BREAKDOWN</div>
                   {motEntries.map(([mot, cnt]) => {
                     const pct = Math.round((cnt / motTotal) * 100);
                     const color = MOTIVATION_COLOR[mot] ?? "var(--muted-foreground)";

@@ -190,7 +190,7 @@ function MindmapEditorForm({
             value={syntax}
             onChange={(e) => setSyntax(e.target.value)}
             spellCheck={false}
-            className="flex-1 resize-none rounded-2xl border border-border bg-surface shadow-sm p-2.5 font-mono text-[13px] leading-relaxed text-foreground outline-none"
+            className="flex-1 resize-none rounded-2xl border border-border bg-surface shadow-sm p-2.5 font-mono text-xs leading-relaxed text-foreground outline-none"
           />
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-1">

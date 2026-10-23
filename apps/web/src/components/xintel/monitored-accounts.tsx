@@ -155,7 +155,7 @@ export function MonitoredAccounts() {
                   <TableCell className="font-mono text-xs text-primary">@{a.username}</TableCell>
                   <TableCell className="text-xs">{a.display_name || "—"}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{a.notes || "—"}</TableCell>
-                  <TableCell className="font-mono text-[13px] text-muted-foreground">
+                  <TableCell className="font-mono text-xs text-muted-foreground">
                     {a.added_at ? a.added_at.slice(0, 10) : "—"}
                   </TableCell>
                   <TableCell>

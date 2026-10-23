@@ -155,7 +155,7 @@ export function TaGroupsPanel() {
             </Button>
           </div>
         </div>
-        <span className="ml-auto font-mono text-[13px] text-muted-foreground">
+        <span className="ml-auto font-mono text-xs text-muted-foreground">
           {total} group{total !== 1 ? "s" : ""} tracked
         </span>
       </div>
