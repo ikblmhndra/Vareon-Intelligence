@@ -4,7 +4,7 @@
 
 **Goal:** Rebuild the Login, Dashboard and Newsroom pages of `apps/web` to the approved mockups, and add the API endpoints that feed the new dashboard and newsroom sections.
 
-**Architecture:** Five PRs in order: Login (web), Dashboard API, Dashboard web, Newsroom API, Newsroom web. New API logic lives in two services (`trending.py`, shared by dashboard and newsroom; `dashboard_overview.py`) on top of new query methods in the existing `cti_core` repositories. The web keeps the current pattern of one `useQuery` per section, so each section loads and fails on its own.
+**Architecture:** One PR, one commit per task, in five parts: Login (web), Dashboard API, Dashboard web, Newsroom API, Newsroom web. New API logic lives in two services (`trending.py`, shared by dashboard and newsroom; `dashboard_overview.py`) on top of new query methods in the existing `cti_core` repositories. The web keeps the current pattern of one `useQuery` per section, so each section loads and fails on its own.
 
 **Tech Stack:** FastAPI + SQLAlchemy async (Python 3.12, uv), pytest + testcontainers; Next.js 16 App Router, TanStack Query, Tailwind, Base UI (shadcn), d3-geo + world-atlas + topojson-client (already installed).
 
@@ -22,7 +22,7 @@
 - After any endpoint or schema change: `uv run python tools/export_openapi.py` then `cd apps/web && pnpm run gen:api`, both outputs committed.
 - Every endpoint that returns per-client data resolves the client with `effective_client_id(user, x_client_id)` (`cti_api.deps`).
 - Periods: `days` query param, `ge=1, le=3650`, empty = all time; the window is `today - days` to today, the previous window is the same length right before it (as `article_dashboard._fetch_dashboard_stats`).
-- Each PR ends with the release step: bump the version in the root and every package `pyproject.toml`, each `__version__`, `apps/web/package.json`, `uv.lock`, `docs/openapi.json` and the health snapshot, and add a `CHANGELOG.md` entry (Indonesian) with header `## [x.y.z] - YYYY-MM-DD`. Versions: PR 1 `0.8.1`, PR 2 `0.8.2`, PR 3 `0.9.0`, PR 4 `0.9.1`, PR 5 `0.10.0`.
+- One PR for the whole redesign, one commit per task. The release is a single commit at the end (Task 12): version `0.8.1` in the root and every package `pyproject.toml`, each `__version__`, `apps/web/package.json`, `uv.lock`, `docs/openapi.json` and the health snapshot, plus one `CHANGELOG.md` entry (Indonesian) with header `## [0.8.1] - YYYY-MM-DD`. No task before Task 12 bumps the version.
 - Local tooling: node is under fnm and not on PATH by default; macOS has no `timeout`.
 
 ## Decisions made while planning (deviations from the spec text)
@@ -43,7 +43,7 @@
 
 ---
 
-## PR 1: Login
+## Part 1: Login
 
 ### Task 1: World dot map component
 
@@ -112,17 +112,15 @@
   Expected: build passes, `/login` still prerendered as static.
   Then `pnpm dev`, open `http://localhost:3000/login` in the browser pane, read the network list: no request to `/api/proxy/*` before submitting. Check light and dark, 1440 px and 375 px.
 
-- [ ] **Step 3: Release 0.8.1 and commit**
+- [ ] **Step 3: Commit**
 
-  Apply the release step from Global Constraints (`0.8.1`, CHANGELOG: "Halaman login baru: panel brand burgundy dengan peta titik dekoratif, tanpa data sebelum login.").
   ```bash
-  git add -A && git commit -m "feat(web): redesigned login page"
-  git commit -am "chore(release): 0.8.1 - Login redesign"
+  git add -A apps/web && git commit -m "feat(web): redesigned login page"
   ```
 
 ---
 
-## PR 2: Dashboard API
+## Part 2: Dashboard API
 
 ### Task 3: Trending service
 
@@ -398,17 +396,16 @@
   Run: `uv run ruff check . && uv run ruff format --check . && uv run pytest tests/unit tests/contract packages -q` (deselect the two known local-only failures from memory if they appear).
   Expected: PASS.
 
-- [ ] **Step 8: Commit, then release 0.8.2**
+- [ ] **Step 8: Commit**
 
   ```bash
   git add apps/api tests docs/openapi.json apps/web/src/lib/api/schema.d.ts
   git commit -m "feat(api): dashboard map, attention, trending, ransomware and CVE exposure endpoints"
   ```
-  Release step `0.8.2` (CHANGELOG: "Endpoint baru untuk dashboard: peta sinyal, brief + aksi, trending aktor/TTP, ringkasan ransomware, CVE exposure."), commit `chore(release): 0.8.2 - Dashboard overview API`.
 
 ---
 
-## PR 3: Dashboard web
+## Part 3: Dashboard web
 
 ### Task 7: Signal hero (map + brief + actions)
 
@@ -458,7 +455,7 @@
 - Modify: `apps/web/src/components/dashboard/stat-box.tsx` only if a card needs a variant (no restyle of unrelated props)
 
 **Interfaces:**
-- Consumes: Task 7 hooks and `SignalHero`; existing `useDashboardStats`, `useTaStats`, `TimelineChart`, `HorizontalBarChart`, `BreakdownList`; `/api/articles` with `sort=priority` arrives in Task 10, so `MustReadCard` uses `/api/articles?page_size=4` with `posted_on_start` for now and switches to `sort: "priority"` in Task 10 (one-line change listed there).
+- Consumes: Task 7 hooks and `SignalHero`; existing `useDashboardStats`, `useTaStats`, `TimelineChart`, `HorizontalBarChart`, `BreakdownList`; `/api/articles` with `sort=priority` arrives in Task 9, so `MustReadCard` uses `/api/articles?page_size=4` with `posted_on_start` for now and switches to `sort: "priority"` in Task 9 (one-line change listed there).
 
 - [ ] **Step 1: Rebuild the page in this order** (spec 4.1)
 
@@ -470,17 +467,16 @@
   Run: `cd apps/web && pnpm exec tsc --noEmit && pnpm lint && pnpm build` → pass.
   Run the API (`uvicorn cti_api.main:app`) against local Postgres and `pnpm dev`; open `/dashboard` in the browser pane: light and dark, 1440 px and 375 px, Tab through the map points (tooltip follows focus, Enter navigates), switch period (old numbers dim, then update), switch client (numbers change). Map codes `UK`/`EL` place on GB/GR.
 
-- [ ] **Step 3: Commit, release 0.9.0**
+- [ ] **Step 3: Commit**
 
   ```bash
   git add -A apps/web
   git commit -m "feat(web): redesigned dashboard with KPI strip and overview cards"
   ```
-  Release step `0.9.0` (CHANGELOG: "Dashboard baru: peta sinyal dunia, brief + tiga aksi, perlu dibaca, naik tajam, ransomware, CVE exposure, konteks klien."), commit `chore(release): 0.9.0 - Dashboard redesign`.
 
 ---
 
-## PR 4: Newsroom API
+## Part 4: Newsroom API
 
 ### Task 9: `sort` and `ttp` on `/api/articles`, topics endpoint
 
@@ -523,17 +519,16 @@
 
   In `overview-cards.tsx` `MustReadCard`, add `sort: "priority"` to the `/api/articles` query. Run `pnpm exec tsc --noEmit`.
 
-- [ ] **Step 6: Commit, release 0.9.1**
+- [ ] **Step 6: Commit**
 
   ```bash
   git add -A
   git commit -m "feat(api): priority sort and TTP filter on articles, newsroom topics endpoint"
   ```
-  Release step `0.9.1` (CHANGELOG: "Artikel bisa diurutkan berdasarkan prioritas dan difilter per TTP; endpoint topik aktif untuk Newsroom."), commit `chore(release): 0.9.1 - Newsroom API`.
 
 ---
 
-## PR 5: Newsroom web
+## Part 5: Newsroom web
 
 ### Task 10: Sheet, rubric and article list building blocks
 
@@ -607,17 +602,23 @@
   Run: `cd apps/web && pnpm exec tsc --noEmit && pnpm lint && pnpm build` → pass.
   With API + `pnpm dev`, check `/newsroom` in the browser pane: light/dark, 1440/375 px; type a search with no results (every block shows its empty state, topics strip hidden); open a topic card and a "Lihat semua" (sheet traps focus, Escape closes, paging works); open an article (modal works); admin sees "Filtered Articles"; `/newsroom?country=SG` and `/newsroom?rubric=ransomware` from the dashboard links work.
 
-- [ ] **Step 3: Commit, release 0.10.0**
+- [ ] **Step 3: Commit**
 
   ```bash
   git add -A apps/web
   git commit -m "feat(web): redesigned newsroom with front page, active topics and rubrics"
   ```
-  Release step `0.10.0` (CHANGELOG: "Newsroom baru: berita utama, topik aktif dengan grafik mini, rubrik APAC/Global/Local/Ransomware, Watchlist dan Tech stack saat ada hit, daftar lengkap di panel samping."), commit `chore(release): 0.10.0 - Newsroom redesign`.
 
-### Task 12: Whole-branch check
+### Task 12: Whole-branch check and release 0.8.1
 
 - [ ] **Step 1: Full CI-equivalent run**
 
   Run: `uv run ruff check . && uv run ruff format --check . && uv run mypy packages/cti-core/src packages/cti-scraper/src && uv run pytest tests/unit tests/contract packages -q && uv run pytest tests/integration -q` (background; ~7 min) and `cd apps/web && pnpm lint && pnpm exec next typegen && pnpm exec tsc --noEmit && pnpm build`.
   Expected: all pass; `git status` shows no drift in `docs/openapi.json` or `schema.d.ts` after re-running the two generators.
+
+- [ ] **Step 2: Release 0.8.1**
+
+  Apply the release from Global Constraints. CHANGELOG entry (`### Ditambahkan` / `### Diubah` as the existing entries use): login baru dengan panel brand dan peta titik dekoratif tanpa data sebelum login; dashboard baru (peta sinyal dunia, brief + tiga aksi, perlu dibaca, naik tajam, ransomware, CVE exposure, konteks klien); newsroom baru (berita utama, topik aktif, rubrik, panel samping); endpoint `/api/dashboard/{map,attention,trending,ransomware,cve-exposure}`, `/api/newsroom/topics`, `sort`/`ttp` di `/api/articles`, `incidents` di timeline `/api/dashboard`. Re-run `tools/export_openapi.py` so the version in `docs/openapi.json` matches.
+  ```bash
+  git add -A && git commit -m "chore(release): 0.8.1 - Login, dashboard and newsroom redesign"
+  ```

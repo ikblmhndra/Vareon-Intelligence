@@ -261,18 +261,18 @@ severity is invented. Watchlist and tech stack matches show as their own chips.
   dev instance (read-only) at 1440 px and 375 px, light and dark, keyboard through the map, sheet and
   modal.
 
-## 8. Delivery plan (PRs)
+## 8. Delivery plan
 
-Each PR is mergeable on its own, ships behind no flag, and carries its version bump and
-`CHANGELOG.md` entry per the release convention.
+One PR for the whole redesign, one commit per task, in this order. The version goes to `0.8.1`
+once, in a release commit at the end, with one `CHANGELOG.md` entry covering all of it.
 
 1. **Login** (web only, small). Includes `world-dots.tsx` without points.
 2. **Dashboard API**: service, repositories, endpoints, schemas, tests, regenerated contract.
-3. **Dashboard web**: new page layout using the PR 2 endpoints, map points, cards.
+3. **Dashboard web**: new page layout using the part 2 endpoints, map points, cards.
 4. **Newsroom API**: `/api/newsroom/topics`, `sort` and `ttp` on `/api/articles`, tests, contract.
 5. **Newsroom web**: new page layout, sheet, rubrics.
 
-PR 2 and PR 4 share the trending function; PR 2 introduces it and PR 4 reuses it.
+Parts 2 and 4 share the trending function; part 2 introduces it and part 4 reuses it.
 
 ## 9. Risks and open points
 
