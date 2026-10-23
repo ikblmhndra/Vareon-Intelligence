@@ -6,6 +6,7 @@ import { useSyncExternalStore } from "react";
 import {
   BotIcon,
   ClipboardListIcon,
+  HeartPulseIcon,
   GaugeIcon,
   LayoutDashboardIcon,
   MailIcon,
@@ -51,6 +52,7 @@ const NAV_ITEMS: readonly { href: string; label: string; icon: LucideIcon }[] = 
   { href: "/recap", label: "Recap", icon: ClipboardListIcon },
   { href: "/newsletter", label: "Newsletter", icon: MailIcon },
   { href: "/scrapers", label: "Scrapers", icon: BotIcon },
+  { href: "/data-health", label: "Data health", icon: HeartPulseIcon },
   { href: "/admin/users", label: "Admin", icon: SettingsIcon },
 ];
 

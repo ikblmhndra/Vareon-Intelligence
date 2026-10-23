@@ -1,8 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-
-import { api } from "@/lib/api/client";
+import { useScraperHealth } from "@/lib/scrapers/health";
 
 function formatAge(ageS: number | null): string {
   if (ageS === null) return "never";
@@ -21,15 +19,7 @@ function formatAge(ageS: number | null): string {
  * baris kecil "last tick". Query-nya SAMA dengan `HealthSummaryBar`
  * (queryKey sama -> TanStack dedupe, bukan fetch dobel). */
 export function SchedulerStatus() {
-  const query = useQuery({
-    queryKey: ["scrapers", "health"],
-    queryFn: async () => {
-      const { data, error } = await api.GET("/api/scraper/health");
-      if (error) throw error;
-      return data;
-    },
-    refetchInterval: 60_000,
-  });
+  const query = useScraperHealth();
 
   const scheduler = query.data?.scheduler;
   if (!scheduler) return null;

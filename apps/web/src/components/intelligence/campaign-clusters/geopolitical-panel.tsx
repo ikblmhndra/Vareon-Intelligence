@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { TrendingUpIcon, TriangleAlertIcon } from "lucide-react";
 
 import { api } from "@/lib/api/client";
 import type { GeopoliticalSummary } from "@/lib/api/loose-types";
@@ -65,7 +66,13 @@ export function GeopoliticalPanel({ days }: { days: number }) {
                       const isInc = a.includes("increased") || a.includes("converging") || a.includes("New threat");
                       return (
                         <div key={i} className={`rounded-md border px-2.5 py-1.5 font-mono text-[13px] text-foreground ${isInc ? "border-destructive/40 bg-destructive/12" : "border-warning/35 bg-warning/10"}`}>
-                          {isInc ? "" : ""} {a}
+                          {isInc ? (
+                            <TrendingUpIcon className="mr-1 inline size-3.5 align-[-2px] text-destructive" aria-hidden />
+                          ) : (
+                            <TriangleAlertIcon className="mr-1 inline size-3.5 align-[-2px] text-warning" aria-hidden />
+                          )}
+                          <span className="sr-only">{isInc ? "Increase: " : "Notice: "}</span>
+                          {a}
                         </div>
                       );
                     })}

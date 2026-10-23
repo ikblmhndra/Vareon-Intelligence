@@ -1,8 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-
-import { api } from "@/lib/api/client";
+import { useScraperHealth } from "@/lib/scrapers/health";
 import { StatusBadge } from "@/components/scrapers/status-badge";
 
 const STATUS_ORDER = ["dead", "degraded", "zero_yield", "stale", "disabled", "ok"];
@@ -16,15 +14,7 @@ export function HealthSummaryBar({
 }: {
   onSelectProblem: (scraperId: string, status: string) => void;
 }) {
-  const query = useQuery({
-    queryKey: ["scrapers", "health"],
-    queryFn: async () => {
-      const { data, error } = await api.GET("/api/scraper/health");
-      if (error) throw error;
-      return data;
-    },
-    refetchInterval: 60_000,
-  });
+  const query = useScraperHealth();
 
   if (query.isPending) {
     return <div className="mb-4 h-16 animate-pulse rounded-2xl surface-raised" />;
@@ -71,11 +61,11 @@ export function HealthSummaryBar({
                 key={p.id}
                 type="button"
                 onClick={() => onSelectProblem(p.id, p.status)}
-                className="flex items-center gap-1.5 rounded-full border border-border bg-background px-2 py-1 text-left transition-colors hover:border-primary/40"
-                title={p.last_status ? `last run: ${p.last_status}` : "never run"}
+                className="flex max-w-full items-center gap-1.5 rounded-2xl border border-border bg-background px-2 py-1 text-left transition-colors hover:border-primary/40"
               >
                 <StatusBadge status={p.status} />
                 <span className="font-code text-xs text-foreground">{p.id}</span>
+                {p.reason && <span className="min-w-0 text-xs text-muted-foreground">{p.reason}</span>}
               </button>
             ))}
           </div>

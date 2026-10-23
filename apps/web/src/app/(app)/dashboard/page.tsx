@@ -87,9 +87,10 @@ export default function DashboardPage() {
       <AttentionBand />
 
       {/* ── KPI ── */}
-      {(dashboard.isPending || ta.isPending) && <Skeleton className="mt-6 h-28 w-full rounded-2xl" />}
+      {dashboard.isPending && <Skeleton className="mt-6 h-28 w-full rounded-2xl" />}
       {dashboard.isError && <ErrorNote />}
-      {stats && ta.data && (
+      {/* Statistik Threat Actor gagal tidak boleh menghapus KPI artikel: dua kartu TA menulis "—". */}
+      {stats && (
         <div
           className={`surface-raised mt-6 grid grid-cols-1 divide-y divide-border/70 rounded-2xl p-2 transition-opacity sm:grid-cols-2 sm:divide-y-0 xl:grid-cols-[1.35fr_1fr_1fr_1fr_1fr] xl:divide-x ${dashboard.isPlaceholderData ? "opacity-60" : ""}`}
         >
@@ -102,7 +103,12 @@ export default function DashboardPage() {
               <>
                 {periodLabel}
                 {filters.incidentOnly ? " · incidents only" : ""}
-                <Delta value={stats.total_articles} prev={stats.prev_total_articles} label={prevLabel} />
+                <Delta
+                  value={stats.total_articles}
+                  prev={stats.prev_total_articles}
+                  label={prevLabel}
+                  reliable={stats.prev_period_reliable}
+                />
               </>
             }
             spark={stats.timeline.map((x) => x.count)}
@@ -114,7 +120,12 @@ export default function DashboardPage() {
             sub={
               <>
                 of {stats.total_articles.toLocaleString()} articles
-                <Delta value={stats.confirmed_incidents} prev={stats.prev_confirmed_incidents} label={prevLabel} />
+                <Delta
+                  value={stats.confirmed_incidents}
+                  prev={stats.prev_confirmed_incidents}
+                  label={prevLabel}
+                  reliable={stats.prev_period_reliable}
+                />
               </>
             }
           />
@@ -123,13 +134,17 @@ export default function DashboardPage() {
             flat
             label="Threat Actors in News"
             value={stats.total_threat_actors}
-            sub={`${ta.data.total_groups.toLocaleString()} APT groups · ${ta.data.total_whitelisted} whitelisted`}
+            sub={
+              ta.data
+                ? `${ta.data.total_groups.toLocaleString()} APT groups · ${ta.data.total_whitelisted} whitelisted`
+                : taSub(ta.isError)
+            }
           />
           <StatBox
             flat
             label="Covered in News"
-            value={ta.data.in_news_count}
-            sub={`${ta.data.manual_count} added manually`}
+            value={ta.data?.in_news_count}
+            sub={ta.data ? `${ta.data.manual_count} added manually` : taSub(ta.isError)}
           />
         </div>
       )}
@@ -207,6 +222,7 @@ export default function DashboardPage() {
       <DashboardSectionLabel aside="All time. The period filter does not apply here.">
         Threat Actor Room
       </DashboardSectionLabel>
+      {ta.isError && <p className="text-sm text-destructive">Failed to load threat actor stats.</p>}
       {ta.data && (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
           <MapCard flat className="lg:col-span-4" title="APT Groups by Source">
@@ -246,4 +262,9 @@ function ChartGridSkeleton() {
 
 function ErrorNote() {
   return <p className="text-sm text-destructive">Failed to load dashboard data.</p>;
+}
+
+/** Sub kartu Threat Actor saat `/api/ta/stats` belum datang atau gagal. */
+function taSub(isError: boolean): string {
+  return isError ? "Threat actor stats unavailable" : "Loading…";
 }

@@ -5,6 +5,7 @@ const STATUS_STYLE: Record<string, string> = {
   dead: "bg-destructive/18 border-destructive/50 text-destructive-text",
   degraded: "bg-warning/15 border-warning/45 text-warning-text",
   zero_yield: "bg-severity-medium/12 border-severity-medium/40 text-severity-medium-text",
+  unknown: "bg-muted-foreground/12 border-muted-foreground/35 text-muted-foreground",
 };
 
 /** Pill status kesehatan scraper -- `cti_scraper.health.HealthStatus`
