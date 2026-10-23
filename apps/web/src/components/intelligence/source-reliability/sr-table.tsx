@@ -191,20 +191,20 @@ export function SrTable() {
                   <TableCell className="text-xs">{e.source_name}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{e.analyst_name}</TableCell>
                   <TableCell>
-                    <Badge variant="outline" className={cn("font-mono text-[13px]", GRADE_BADGE_CLASS[e.reliability_grade])} title={e.admiralty_code}>
+                    <Badge variant="outline" className={cn("font-mono text-xs", GRADE_BADGE_CLASS[e.reliability_grade])} title={e.admiralty_code}>
                       {e.admiralty_code}
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <Badge variant="outline" className={cn("text-[13px]", GRADE_BADGE_CLASS[e.reliability_grade])}>
+                    <Badge variant="outline" className={cn("text-xs", GRADE_BADGE_CLASS[e.reliability_grade])}>
                       {e.reliability_grade}
                     </Badge>
                   </TableCell>
                   <TableCell className="font-mono text-xs text-muted-foreground">{e.credibility_code}</TableCell>
-                  <TableCell className="max-w-[200px] truncate text-[13px] text-muted-foreground" title={e.notes}>
+                  <TableCell className="max-w-[200px] truncate text-xs text-muted-foreground" title={e.notes}>
                     {e.notes || "—"}
                   </TableCell>
-                  <TableCell className="font-mono text-[13px] text-muted-foreground">
+                  <TableCell className="font-mono text-xs text-muted-foreground">
                     {e.last_updated || e.added_date}
                   </TableCell>
                   <TableCell>

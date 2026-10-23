@@ -58,7 +58,7 @@ function Brand() {
   return (
     <Link
       href="/dashboard"
-      className="flex items-center gap-3 rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      className="flex items-center gap-3 rounded-full outline-none focus-visible:ring-3 focus-visible:ring-focus"
     >
       <BrandMark />
       <span className="font-heading text-lg leading-tight font-extrabold tracking-tight text-foreground">
@@ -132,7 +132,7 @@ function NavLinks({
       {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
         const active = pathname.startsWith(href);
         const className = cn(
-          "flex shrink-0 items-center rounded-full text-sm outline-none transition-colors duration-200 focus-visible:ring-3 focus-visible:ring-ring/50",
+          "flex shrink-0 items-center rounded-full text-sm outline-none transition-colors duration-200 focus-visible:ring-3 focus-visible:ring-focus",
           rail ? "size-11 justify-center" : "h-11 gap-3 px-4",
           active
             ? "bg-primary font-semibold text-primary-foreground shadow-sm"
@@ -169,7 +169,7 @@ function NavLinks({
 function SidebarToggle({ collapsed }: { collapsed: boolean }) {
   const label = collapsed ? "Expand sidebar" : "Collapse sidebar";
   const className = cn(
-    "flex items-center rounded-full text-sm font-medium text-muted-foreground outline-none transition-colors duration-200 hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50",
+    "flex items-center rounded-full text-sm font-medium text-muted-foreground outline-none transition-colors duration-200 hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-focus",
     collapsed ? "size-11 justify-center" : "h-11 w-full gap-3 px-4",
   );
   const Icon = collapsed ? PanelLeftOpenIcon : PanelLeftCloseIcon;
@@ -209,7 +209,7 @@ export function AppSidebar() {
         <Link
           href="/dashboard"
           aria-label={PLATFORM_NAME}
-          className="rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+          className="rounded-full outline-none focus-visible:ring-3 focus-visible:ring-focus"
         >
           <BrandMark />
         </Link>

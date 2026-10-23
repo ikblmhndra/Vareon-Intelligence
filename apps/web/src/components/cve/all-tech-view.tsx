@@ -49,8 +49,8 @@ function FamilyRow({
         <span className="font-medium">{family.display_name}</span>
         {showVendor && <span className="ml-2 text-muted-foreground">{family.vendor_name}</span>}
       </TableCell>
-      <TableCell className="font-mono text-[13px] text-muted-foreground">{cveCount(family.cve_seen_total)}</TableCell>
-      <TableCell className="font-mono text-[13px] text-muted-foreground">{family.last_cve_at ?? "—"}</TableCell>
+      <TableCell className="font-mono text-xs text-muted-foreground">{cveCount(family.cve_seen_total)}</TableCell>
+      <TableCell className="font-mono text-xs text-muted-foreground">{family.last_cve_at ?? "—"}</TableCell>
       <TableCell>
         <MonitorStatus monitored={family.monitored} viaVendor={family.covered_by_vendor} />
       </TableCell>
@@ -199,8 +199,8 @@ function VendorsTable({ q, showAll }: { q: string; showAll: boolean }) {
                       </span>
                     </button>
                   </TableCell>
-                  <TableCell className="font-mono text-[13px] text-muted-foreground">{cveCount(v.cve_seen_total)}</TableCell>
-                  <TableCell className="font-mono text-[13px] text-muted-foreground">{v.last_cve_at ?? "—"}</TableCell>
+                  <TableCell className="font-mono text-xs text-muted-foreground">{cveCount(v.cve_seen_total)}</TableCell>
+                  <TableCell className="font-mono text-xs text-muted-foreground">{v.last_cve_at ?? "—"}</TableCell>
                   <TableCell>
                     <MonitorStatus monitored={v.monitored} />
                   </TableCell>

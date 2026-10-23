@@ -415,7 +415,7 @@ function OptionField({
       </Select>
       <p className="text-xs leading-snug text-muted-foreground">{option.description}</p>
       {unsaved && (
-        <p className="font-mono text-xs text-amber-500">
+        <p className="font-mono text-xs text-warning">
           Belum disimpan — klik Save Config; berlaku di run berikutnya.
         </p>
       )}

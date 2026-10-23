@@ -174,7 +174,7 @@ export function TaWatchlistPanel() {
         <Button size="sm" variant="outline" className="ml-auto" onClick={openNavigator}>
           ⧉ Open in Navigator
         </Button>
-        <span className="font-mono text-[13px] text-muted-foreground">{total} watched</span>
+        <span className="font-mono text-xs text-muted-foreground">{total} watched</span>
       </div>
 
       {query.isPending && <p className="py-8 text-center text-xs text-muted-foreground">Loading…</p>}

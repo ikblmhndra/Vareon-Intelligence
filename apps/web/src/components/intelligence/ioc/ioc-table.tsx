@@ -227,7 +227,7 @@ export function IocTable({ onSelect }: { onSelect: (target: IocTarget) => void }
             </SelectContent>
           </Select>
         </div>
-        <span className="ml-auto font-mono text-[13px] text-muted-foreground">{total} IOCs</span>
+        <span className="ml-auto font-mono text-xs text-muted-foreground">{total} IOCs</span>
       </div>
 
       {listQuery.isPending && <p className="py-8 text-center text-xs text-muted-foreground">Loading…</p>}
@@ -261,7 +261,7 @@ export function IocTable({ onSelect }: { onSelect: (target: IocTarget) => void }
                   <TableCell>
                     <IocTypeBadge type={ioc.type} />
                   </TableCell>
-                  <TableCell className="max-w-[320px] truncate font-code text-[13px] text-foreground" title={ioc.value}>
+                  <TableCell className="max-w-[320px] truncate font-code text-xs text-foreground" title={ioc.value}>
                     {ioc.value}
                   </TableCell>
                   <TableCell className="text-center">
@@ -270,7 +270,7 @@ export function IocTable({ onSelect }: { onSelect: (target: IocTarget) => void }
                   <TableCell className="text-center">
                     <IocActionabilityChip label={ioc.actionability_label} />
                   </TableCell>
-                  <TableCell className="text-center font-mono text-[13px] text-muted-foreground">{ioc.seen_count || 1}</TableCell>
+                  <TableCell className="text-center font-mono text-xs text-muted-foreground">{ioc.seen_count || 1}</TableCell>
                   <TableCell className="font-mono text-xs text-muted-foreground">{ioc.first_seen || "—"}</TableCell>
                   <TableCell className="font-mono text-xs text-muted-foreground">{ioc.last_seen || "—"}</TableCell>
                   <TableCell className="text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
@@ -279,7 +279,7 @@ export function IocTable({ onSelect }: { onSelect: (target: IocTarget) => void }
                       disabled={feedbackPending === ioc.id}
                       onClick={() => void submitFeedback(ioc.id, "tp")}
                       title="True Positive"
-                      className={cn("rounded-full border border-success/35 bg-success/10 px-1.5 py-0.5 text-[13px] text-success-text", feedbackPending === ioc.id && "opacity-50")}
+                      className={cn("rounded-full border border-success/35 bg-success/10 px-1.5 py-0.5 text-xs text-success-text", feedbackPending === ioc.id && "opacity-50")}
                     >
                       <ThumbsUpIcon aria-hidden />
                     </button>
@@ -288,7 +288,7 @@ export function IocTable({ onSelect }: { onSelect: (target: IocTarget) => void }
                       disabled={feedbackPending === ioc.id}
                       onClick={() => void submitFeedback(ioc.id, "fp")}
                       title="False Positive"
-                      className={cn("ml-1 rounded-full border border-destructive/35 bg-destructive/10 px-1.5 py-0.5 text-[13px] text-destructive-text", feedbackPending === ioc.id && "opacity-50")}
+                      className={cn("ml-1 rounded-full border border-destructive/35 bg-destructive/10 px-1.5 py-0.5 text-xs text-destructive-text", feedbackPending === ioc.id && "opacity-50")}
                     >
                       <ThumbsDownIcon aria-hidden />
                     </button>

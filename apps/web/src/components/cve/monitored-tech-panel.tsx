@@ -238,7 +238,7 @@ export function MonitoredTechPanel() {
                       )}
                     </div>
                   </TableCell>
-                  <TableCell className="font-mono text-[13px] text-muted-foreground">{t.added_date?.slice(0, 10) || "—"}</TableCell>
+                  <TableCell className="font-mono text-xs text-muted-foreground">{t.added_date?.slice(0, 10) || "—"}</TableCell>
                   <TableCell>
                     <select
                       value={t.exposure}

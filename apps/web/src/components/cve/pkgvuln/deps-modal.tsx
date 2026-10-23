@@ -119,7 +119,7 @@ export function DepsModal({ pkgId, onClose, onResolved }: DepsModalProps) {
                   <p className="text-xs text-muted-foreground">No OSSF Scorecard data available for this package.</p>
                 ) : (
                   <>
-                    <p className="font-mono text-[13px] text-muted-foreground">
+                    <p className="font-mono text-xs text-muted-foreground">
                       {d.scorecard_project} · {d.scorecard_date}
                     </p>
                     {checks.map((c, i) => (

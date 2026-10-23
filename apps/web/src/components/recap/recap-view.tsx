@@ -158,7 +158,7 @@ export function RecapView({ doc, hitRate }: { doc: RecapDoc; hitRate?: RecapHitR
       )}
 
       <div className="mt-6 rounded-md border border-warning/40 bg-warning/[0.04] px-4 py-3">
-        <div className="mb-2 font-mono text-sm tracking-[0.12em] text-warning uppercase">
+        <div className="mb-2 font-mono text-sm tracking-widest text-warning uppercase">
           ▲ Forecast · Next {weekly ? "1-2 Weeks" : "1-3 Days"}
         </div>
         <p className="mb-2 text-sm leading-relaxed">{fcast.summary || "(no forecast)"}</p>
