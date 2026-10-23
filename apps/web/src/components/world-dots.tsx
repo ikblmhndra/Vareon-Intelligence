@@ -1,0 +1,202 @@
+"use client";
+
+import { geoCentroid, geoEquirectangular, geoPath } from "d3-geo";
+import countries from "i18n-iso-countries";
+import en from "i18n-iso-countries/langs/en.json";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { feature } from "topojson-client";
+import type { GeometryCollection, Topology } from "topojson-specification";
+import world from "world-atlas/countries-110m.json";
+
+countries.registerLocale(en);
+
+const ALIAS: Record<string, string> = { UK: "GB", EL: "GR" };
+const STEP = 9; // jarak antar titik, dalam px CSS
+const DOT_RADIUS = 0.7; // titik 1.4 px
+const GLOW_FACTOR = 2.2;
+
+export interface WorldDotPoint {
+  code: string; // ISO alpha-2 dari API, dinormalkan di sini (UK→GB, EL→GR)
+  weight: number; // >= 0, menentukan radius glow
+  tone: "incident" | "ransomware";
+  ring?: boolean; // negara klien
+  label: string; // nama aksesibel
+}
+
+interface Size {
+  w: number;
+  h: number;
+}
+
+const normalize = (code: string) => ALIAS[code.toUpperCase()] ?? code.toUpperCase();
+
+/** Warna dari token tema; dibaca ulang tiap gambar supaya ikut ganti terang/gelap. */
+function readColors() {
+  const s = getComputedStyle(document.documentElement);
+  const get = (name: string) => s.getPropertyValue(name).trim();
+  return {
+    fg: get("--hero-foreground"),
+    accent: get("--hero-accent"),
+    eyebrow: get("--hero-eyebrow"),
+  };
+}
+
+/**
+ * Peta dunia dari titik-titik (canvas) mengisi parent-nya (`absolute inset-0`). Tanpa `points`
+ * jadi latar dekoratif (login); dengan `points` jadi peta sinyal (dashboard). Tiap titik juga
+ * punya `<button>` transparan supaya bisa difokus keyboard dan dibaca screen reader.
+ */
+export function WorldDots({
+  points,
+  className,
+  onPointFocus,
+  onPointSelect,
+}: {
+  points?: WorldDotPoint[];
+  className?: string;
+  onPointFocus?: (p: WorldDotPoint | null) => void;
+  onPointSelect?: (p: WorldDotPoint) => void;
+}) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [size, setSize] = useState<Size>({ w: 0, h: 0 });
+  const [themeTick, setThemeTick] = useState(0);
+
+  // Geometri dunia dibangun sekali per mount.
+  const land = useMemo(() => {
+    const topo = world as unknown as Topology;
+    return feature(topo, topo.objects.countries as GeometryCollection);
+  }, []);
+
+  const centroids = useMemo(() => {
+    const m = new Map<string, [number, number]>();
+    for (const f of land.features) {
+      if (f.id === undefined) continue;
+      const a2 = countries.numericToAlpha2(String(f.id));
+      if (a2) m.set(a2, geoCentroid(f) as [number, number]);
+    }
+    return m;
+  }, [land]);
+
+  const projection = useMemo(
+    () =>
+      size.w > 0 && size.h > 0
+        ? geoEquirectangular().fitSize([size.w, size.h], { type: "Sphere" })
+        : null,
+    [size],
+  );
+
+  // Titik yang kodenya tidak punya centroid dilewati.
+  const placed = useMemo(() => {
+    if (!projection || !points) return [];
+    const out: { p: WorldDotPoint; x: number; y: number }[] = [];
+    for (const p of points) {
+      const c = centroids.get(normalize(p.code));
+      const xy = c ? projection(c) : null;
+      if (xy) out.push({ p, x: xy[0], y: xy[1] });
+    }
+    return out;
+  }, [projection, points, centroids]);
+
+  // Ukuran mengikuti parent; tema berganti lewat class di <html>.
+  useEffect(() => {
+    const box = boxRef.current;
+    if (!box) return;
+    const ro = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      setSize({ w: Math.round(width), h: Math.round(height) });
+    });
+    ro.observe(box);
+    const mo = new MutationObserver(() => setThemeTick((t) => t + 1));
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => {
+      ro.disconnect();
+      mo.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !projection) return;
+    const { w, h } = size;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    // Daratan digambar ke canvas luar layar (resolusi 1x), lalu disampel per STEP px.
+    const off = document.createElement("canvas");
+    off.width = w;
+    off.height = h;
+    const octx = off.getContext("2d", { willReadFrequently: true });
+    if (!octx) return;
+    octx.beginPath();
+    geoPath(projection, octx)(land);
+    octx.fill();
+    const data = octx.getImageData(0, 0, w, h).data;
+
+    const colors = readColors();
+    ctx.globalAlpha = 0.16;
+    ctx.fillStyle = colors.fg;
+    ctx.beginPath();
+    for (let y = STEP / 2; y < h; y += STEP) {
+      for (let x = STEP / 2; x < w; x += STEP) {
+        if (data[(Math.floor(y) * w + Math.floor(x)) * 4 + 3] > 127) {
+          ctx.moveTo(x + DOT_RADIUS, y);
+          ctx.arc(x, y, DOT_RADIUS, 0, Math.PI * 2);
+        }
+      }
+    }
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    const maxWeight = Math.max(1, ...placed.map(({ p }) => p.weight));
+    for (const { p, x, y } of placed) {
+      const r = 4 + (14 * p.weight) / maxWeight;
+      const color = p.tone === "incident" ? colors.accent : colors.eyebrow;
+      const glow = ctx.createRadialGradient(x, y, 0, x, y, r * GLOW_FACTOR);
+      glow.addColorStop(0, color);
+      glow.addColorStop(1, "transparent");
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(x, y, r * GLOW_FACTOR, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(x, y, Math.max(2, r / 3), 0, Math.PI * 2);
+      ctx.fill();
+      if (p.ring) {
+        ctx.strokeStyle = colors.fg;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+  }, [projection, size, land, placed, themeTick]);
+
+  return (
+    <div ref={boxRef} className={`absolute inset-0 ${className ?? ""}`}>
+      <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" aria-hidden />
+      {placed.map(({ p, x, y }) => (
+        <button
+          key={`${p.code}-${p.tone}`}
+          type="button"
+          aria-label={p.label}
+          className="absolute size-6 -translate-x-1/2 -translate-y-1/2 rounded-full bg-transparent focus-visible:ring-3 focus-visible:ring-focus focus-visible:outline-none"
+          style={{ left: x, top: y }}
+          onMouseEnter={() => onPointFocus?.(p)}
+          onMouseLeave={() => onPointFocus?.(null)}
+          onFocus={() => onPointFocus?.(p)}
+          onBlur={() => onPointFocus?.(null)}
+          onClick={() => onPointSelect?.(p)}
+        />
+      ))}
+    </div>
+  );
+}
