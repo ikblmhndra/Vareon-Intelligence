@@ -6,6 +6,25 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
+## [0.8.1] - 2026-10-24
+
+**Redesain Login, Dashboard, dan Newsroom.** Login punya panel brand, Dashboard jadi peta sinyal dunia dengan brief dan daftar
+prioritas, Newsroom jadi halaman depan berita utama dengan topik aktif dan rubrik. **Tanpa migrasi, tanpa kunci `.env` baru, dan
+tanpa entri beat baru.**
+
+**Saat upgrade dari 0.8.0:** deploy biasa (`make deploy`); image `api` dan `web` berubah. `beat` dan worker tidak perlu restart.
+
+### Ditambah
+- **Login baru**: panel brand dengan peta titik dekoratif. Peta ini murni hiasan dan tidak memuat data apa pun sebelum login.
+- **Dashboard baru**: peta sinyal dunia, brief dengan tiga aksi, daftar *perlu dibaca*, topik yang *naik tajam*, ransomware,
+  CVE exposure, dan konteks klien.
+- **Newsroom baru**: berita utama, topik aktif, rubrik, dan panel samping.
+- Endpoint `GET /api/dashboard/{map,attention,trending,ransomware,cve-exposure}` dan `GET /api/newsroom/topics`.
+- `GET /api/articles` menerima parameter `sort` dan `ttp`.
+
+### Diubah
+- Timeline `GET /api/dashboard` sekarang membawa `incidents`.
+
 ## [0.8.0] - 2026-10-23
 
 **Halaman baru Data health, dan Dashboard serta `/scrapers` tidak lagi menampilkan angka atau status yang menyesatkan** (ROADMAP #24,
