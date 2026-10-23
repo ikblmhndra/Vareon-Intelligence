@@ -1,6 +1,6 @@
 "use client";
 
-import { geoCentroid, geoEquirectangular, geoPath } from "d3-geo";
+import { geoBounds, geoCentroid, geoEquirectangular, geoPath } from "d3-geo";
 import countries from "i18n-iso-countries";
 import en from "i18n-iso-countries/langs/en.json";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -14,6 +14,8 @@ const ALIAS: Record<string, string> = { UK: "GB", EL: "GR" };
 const STEP = 9; // jarak antar titik, dalam px CSS
 const DOT_RADIUS = 0.8; // titik 1.6 px
 const GLOW_FACTOR = 2.2;
+const ANTARCTICA_ID = "010"; // id numerik world-atlas; tidak digambar (memenuhi baris bawah peta)
+const COVER_CENTER_LON = 105; // mode "cover": bujur ini di tengah horizontal (APAC)
 
 export interface WorldDotPoint {
   code: string; // ISO alpha-2 dari API, dinormalkan di sini (UK→GB, EL→GR)
@@ -49,11 +51,14 @@ function readColors() {
 export function WorldDots({
   points,
   className,
+  fit = "contain",
   onPointFocus,
   onPointSelect,
 }: {
   points?: WorldDotPoint[];
   className?: string;
+  /** "contain": seluruh bola dunia muat. "cover": daratan mengisi dua dimensi, sisanya terpotong. */
+  fit?: "contain" | "cover";
   onPointFocus?: (p: WorldDotPoint | null) => void;
   onPointSelect?: (p: WorldDotPoint) => void;
 }) {
@@ -65,7 +70,11 @@ export function WorldDots({
   // Geometri dunia dibangun sekali per mount.
   const land = useMemo(() => {
     const topo = world as unknown as Topology;
-    return feature(topo, topo.objects.countries as GeometryCollection);
+    const all = feature(topo, topo.objects.countries as GeometryCollection);
+    return {
+      ...all,
+      features: all.features.filter((f) => String(f.id) !== ANTARCTICA_ID),
+    };
   }, []);
 
   const centroids = useMemo(() => {
@@ -78,13 +87,21 @@ export function WorldDots({
     return m;
   }, [land]);
 
-  const projection = useMemo(
-    () =>
-      size.w > 0 && size.h > 0
-        ? geoEquirectangular().fitSize([size.w, size.h], { type: "Sphere" })
-        : null,
-    [size],
-  );
+  const projection = useMemo(() => {
+    if (size.w <= 0 || size.h <= 0) return null;
+    if (fit === "contain") {
+      return geoEquirectangular().fitSize([size.w, size.h], { type: "Sphere" });
+    }
+    // Cover: skala terbesar dari lebar (360 derajat) dan tinggi (lintang daratan tanpa Antartika),
+    // dipusatkan di tengah lintang daratan dan di bujur COVER_CENTER_LON; kelebihannya terpotong.
+    const [[, latMin], [, latMax]] = geoBounds(land);
+    const k = Math.max(size.w / (2 * Math.PI), size.h / (((latMax - latMin) * Math.PI) / 180));
+    return geoEquirectangular()
+      .scale(k)
+      .rotate([-COVER_CENTER_LON, 0])
+      .center([0, (latMin + latMax) / 2])
+      .translate([size.w / 2, size.h / 2]);
+  }, [size, fit, land]);
 
   // Titik yang kodenya tidak punya centroid dilewati.
   const placed = useMemo(() => {

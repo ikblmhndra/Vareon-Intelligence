@@ -111,7 +111,7 @@ export default function LoginPage() {
     <main className="grid min-h-dvh bg-background md:grid-cols-[1.1fr_1fr]">
       <section className="relative overflow-hidden bg-hero text-hero-foreground">
         <div className="pointer-events-none absolute inset-0" aria-hidden="true">
-          <WorldDots className="opacity-100" />
+          <WorldDots className="opacity-100" fit="cover" />
         </div>
         <div className="relative flex h-full flex-col justify-between gap-10 px-6 py-8 md:p-12">
           <div className="flex items-center gap-3">
