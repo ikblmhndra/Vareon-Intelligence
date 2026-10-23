@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api/client";
@@ -43,7 +44,7 @@ function victimItem(v: RansomwareVictim): RubricItem {
   };
 }
 
-function useWatchlistNames(enabled: boolean) {
+export function useWatchlistNames(enabled: boolean) {
   return useQuery({
     queryKey: ["ta", "watchlist-names"],
     queryFn: async () => {
@@ -55,7 +56,7 @@ function useWatchlistNames(enabled: boolean) {
   });
 }
 
-function useTechStackNames(enabled: boolean) {
+export function useTechStackNames(enabled: boolean) {
   return useQuery({
     queryKey: ["techstack", "names"],
     queryFn: async () => {
@@ -67,18 +68,65 @@ function useTechStackNames(enabled: boolean) {
   });
 }
 
+/** "Why it matters": artikel cocok watchlist (salah satu `threat_actors` ada di nama watchlist
+ * klien) dan/atau tech stack (judul memuat nama tech stack), keduanya case-insensitive. Aturan
+ * yang sama dengan rubrik Watchlist (`threat_actor`) dan Tech stack (`title_keyword`). Query nama
+ * dipakai bersama rubrik (key react-query sama). */
+export function useArticleMatchers(): (a: Article) => { watchlist: boolean; techstack: boolean } {
+  const watch = useWatchlistNames(true);
+  const tech = useTechStackNames(true);
+  return useMemo(() => {
+    const watchSet = new Set((watch.data ?? []).map((n) => n.toLowerCase()));
+    const techNames = (tech.data ?? []).map((n) => n.toLowerCase()).filter(Boolean);
+    return (a: Article) => {
+      const title = a.title.toLowerCase();
+      return {
+        watchlist: a.threat_actors.some((t) => watchSet.has(t.toLowerCase())),
+        techstack: techNames.some((n) => title.includes(n)),
+      };
+    };
+  }, [watch.data, tech.data]);
+}
+
+/** Filter khusus daftar korban (sheet Ransomware): nilai dari `/api/ransomware/victims/filters`. */
+export interface VictimFilter {
+  group: string;
+  industry: string;
+}
+
 function useVictims(
   page: number,
   pageSize: number,
   country: string | null,
+  dateStart: string,
+  victimFilter: VictimFilter,
   enabled: boolean,
   keepPrevious: boolean,
 ) {
   return useQuery({
-    queryKey: ["ransomware", "victims", page, pageSize, country ?? "", "", ""],
+    queryKey: [
+      "ransomware",
+      "victims",
+      page,
+      pageSize,
+      country ?? "",
+      dateStart,
+      victimFilter.group,
+      victimFilter.industry,
+    ],
     queryFn: async () => {
       const { data, error } = await api.GET("/api/ransomware/victims", {
-        params: { query: { page, page_size: pageSize, country: country || undefined } },
+        params: {
+          query: {
+            page,
+            page_size: pageSize,
+            country: country || undefined,
+            // Periode newsroom; API memfilter `published >= date_start`.
+            date_start: dateStart || undefined,
+            group: victimFilter.group || undefined,
+            industry: victimFilter.industry || undefined,
+          },
+        },
       });
       if (error) throw error;
       return data as unknown as { victims: RansomwareVictim[]; total: number };
@@ -94,17 +142,21 @@ function useVictims(
  * Semua hook dipanggil tanpa syarat (aturan hooks); `enabled` yang memilih
  * satu rubrik yang benar-benar menembak jaringan.
  *
- * Filter `incidentOnly` (`confirmed_only`) dan `country` berlaku di semua rubrik,
- * kecuali: Local tetap memakai `client_countries` (bukan filter country) dan
- * Ransomware hanya menerima `country` (endpoint-nya tidak punya filter insiden).
+ * Filter periode, `incidentOnly` (`confirmed_only`) dan `country` berlaku di semua
+ * rubrik, kecuali: Local tetap memakai `client_countries` (bukan filter country) dan
+ * Ransomware hanya menerima `country` + periode (`date_start`; endpoint-nya tidak punya
+ * filter insiden), ditambah `victimFilter` (group/industri) dari sheet.
  * `keepPrevious` menahan data halaman lama selama halaman baru dimuat (pager sheet).
  */
+const NO_VICTIM_FILTER: VictimFilter = { group: "", industry: "" };
+
 export function useRubric(
   key: RubricKey | null,
   filters: NewsroomFilters,
   page: number,
   pageSize: number,
   keepPrevious = false,
+  victimFilter: VictimFilter = NO_VICTIM_FILTER,
 ): {
   items: RubricItem[];
   total: number | undefined;
@@ -125,8 +177,6 @@ export function useRubric(
     page_size: pageSize,
     posted_on_start: filters.dateStart || undefined,
     posted_on_end: filters.dateEnd || undefined,
-    industry: filters.industry ? [filters.industry] : undefined,
-    threat_actor: filters.actor ? [filters.actor] : undefined,
     search: filters.search || undefined,
     confirmed_only: filters.incidentOnly || undefined,
   };
@@ -147,14 +197,7 @@ export function useRubric(
   );
   const watch = useArticlesQuery(
     ["watchlist", watchNames.data],
-    {
-      page,
-      page_size: pageSize,
-      threat_actor: watchNames.data,
-      search: filters.search || undefined,
-      confirmed_only: filters.incidentOnly || undefined,
-      country: countryParam,
-    },
+    { ...common, threat_actor: watchNames.data, country: countryParam },
     key === "watchlist" && hasWatch,
     keepPrevious,
   );
@@ -164,7 +207,15 @@ export function useRubric(
     key === "techstack" && hasTech,
     keepPrevious,
   );
-  const victims = useVictims(page, pageSize, filters.country, key === "ransomware", keepPrevious);
+  const victims = useVictims(
+    page,
+    pageSize,
+    filters.country,
+    filters.dateStart,
+    victimFilter,
+    key === "ransomware",
+    keepPrevious,
+  );
 
   const empty = { items: [], total: 0, isPending: false, isError: false };
 

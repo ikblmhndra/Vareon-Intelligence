@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api/client";
 import type { CampaignsResponse } from "@/lib/api/loose-types";
 import { cn } from "@/lib/utils";
+import { useArticleMatchers } from "@/components/newsroom/rubric-queries";
 import { MapCard } from "./stat-box";
 import { TimelineChart } from "./charts";
 import {
@@ -83,6 +84,7 @@ export function MustReadCard({ days, className }: { days: number | null; classNa
     placeholderData: keepPreviousData,
   });
   const articles = q.data?.articles ?? [];
+  const match = useArticleMatchers();
   return (
     <CardBody
       title="Perlu dibaca"
@@ -97,25 +99,37 @@ export function MustReadCard({ days, className }: { days: number | null; classNa
         <p className="text-sm text-muted-foreground">Belum ada berita pada periode ini.</p>
       ) : (
         <ol className="flex flex-col divide-y divide-border/70">
-          {articles.map((a) => (
-            <li key={a.id} className="py-3 first:pt-0 last:pb-0">
-              <a
-                href={a.url}
-                target="_blank"
-                rel="noreferrer noopener"
-                className="line-clamp-2 text-sm font-medium text-foreground hover:underline"
-              >
-                {a.title}
-              </a>
-              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                <span>{a.source}</span>
-                <span aria-hidden>·</span>
-                <span>{dateFmt.format(new Date(a.posted_on))}</span>
-                <Badge variant="secondary">{a.news_type}</Badge>
-                {a.threat_actors[0] && <Badge variant="outline">{a.threat_actors[0]}</Badge>}
-              </div>
-            </li>
-          ))}
+          {articles.map((a) => {
+            const m = match(a);
+            return (
+              <li key={a.id} className="py-3 first:pt-0 last:pb-0">
+                <a
+                  href={a.url}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="line-clamp-2 text-sm font-medium text-foreground hover:underline"
+                >
+                  {a.title}
+                </a>
+                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                  <span>{a.source}</span>
+                  <span aria-hidden>·</span>
+                  <span>{dateFmt.format(new Date(a.posted_on))}</span>
+                  <Badge variant="secondary">{a.news_type}</Badge>
+                  {a.threat_actors[0] && <Badge variant="outline">{a.threat_actors[0]}</Badge>}
+                </div>
+                {/* "Why it matters" (spec 4.1): insiden, confidence, cocok watchlist/tech stack. */}
+                {(a.confirmed_incident || a.confidence_score != null || m.watchlist || m.techstack) && (
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                    {a.confirmed_incident && <Badge variant="destructive">Insiden</Badge>}
+                    {m.watchlist && <Badge variant="outline">Watchlist</Badge>}
+                    {m.techstack && <Badge variant="outline">Tech stack</Badge>}
+                    {a.confidence_score != null && <span>Confidence {a.confidence_score}</span>}
+                  </div>
+                )}
+              </li>
+            );
+          })}
         </ol>
       )}
     </CardBody>
@@ -144,7 +158,15 @@ export function TrendingCard({ days, className }: { days: number | null; classNa
               <span className="w-12 shrink-0 text-xs text-muted-foreground">
                 {it.kind === "actor" ? "Aktor" : "TTP"}
               </span>
-              <span className="min-w-0 flex-1 truncate text-foreground">{it.name}</span>
+              <span className="min-w-0 flex-1 truncate text-foreground">
+                {it.ttp_id ? (
+                  <>
+                    <span className="font-code">{it.ttp_id}</span> {it.name}
+                  </>
+                ) : (
+                  it.name
+                )}
+              </span>
               <span className="font-code text-muted-foreground tabular-nums">{it.count}</span>
               {it.is_new ? (
                 <Badge variant="secondary">baru</Badge>

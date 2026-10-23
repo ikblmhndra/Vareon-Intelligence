@@ -85,6 +85,8 @@ export function FilteredView() {
 
   return (
     <div className="mx-auto max-w-3xl">
+      {/* Masthead (h1 "Newsroom") tidak tampil di tab ini; halaman tetap butuh satu h1. */}
+      <h1 className="sr-only">Filtered Articles</h1>
       <TabPills aria-label="Filtered article kinds" className="mb-3" items={KIND_TABS} value={kind} onChange={setKind} />
       <PanelShell
         title={kind === "failed" ? "Failed enrichment" : "Not Related Cyber"}

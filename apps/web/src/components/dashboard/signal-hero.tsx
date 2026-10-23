@@ -102,6 +102,13 @@ export function SignalHero({ days }: { days: number | null }) {
   const shown = focus && focus.data === map.data ? focus : null;
   const att = attention.data;
   const empty = map.data && map.data.points.length === 0;
+  // Tautan aksi membawa periode dashboard (`period`, newsroom hanya menerima 1|7|30) dan, untuk
+  // ransomware, negara klien bila tepat satu: API korban hanya punya satu param `country`, jadi
+  // klien multi-negara membuka daftar tanpa filter negara (angka bisa beda dari hero).
+  const period = days ? `&period=${days}` : "";
+  const clientCountries = map.data?.client_countries ?? [];
+  const ransomCountry =
+    clientCountries.length === 1 ? `&country=${encodeURIComponent(clientCountries[0])}` : "";
 
   return (
     <section
@@ -191,15 +198,15 @@ export function SignalHero({ days }: { days: number | null }) {
                 sub={`${att.kev_without_ticket} tanpa tiket`}
               />
               <ActionRow
-                href="/newsroom?rubric=ransomware"
+                href={`/newsroom?rubric=ransomware${ransomCountry}${period}`}
                 value={att.ransomware_in_client_scope}
                 label="Korban ransomware di negara klien"
               />
               <ActionRow
-                href="/newsroom?rubric=watchlist"
-                value={att.watchlist_hits + att.pir_hits}
-                label="Hit watchlist / PIR"
-                sub={`${att.pir_hits} PIR`}
+                href={`/newsroom?rubric=watchlist${period}`}
+                value={att.watchlist_hits}
+                label="Artikel cocok watchlist"
+                sub={`${att.pir_hits} PIR aktif dengan artikel baru`}
               />
             </div>
           </>

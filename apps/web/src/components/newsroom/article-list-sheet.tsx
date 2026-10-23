@@ -1,19 +1,29 @@
 "use client";
 
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 
+import { api } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { formatPostedOn } from "@/lib/newsroom/dates";
 import type { NewsroomFilters } from "@/lib/newsroom/filters";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SimplePager } from "@/components/pager";
 import { useArticlesQuery } from "@/components/newsroom/use-articles";
-import { useRubric, type RubricItem, type RubricKey } from "@/components/newsroom/rubric-queries";
+import {
+  useRubric,
+  type RubricItem,
+  type RubricKey,
+  type VictimFilter,
+} from "@/components/newsroom/rubric-queries";
 
 type Article = components["schemas"]["ArticleOut"];
 
 const PAGE_SIZE = 20;
+const RELATED_PAGE_SIZE = 8;
+const ALL = "__all__";
 
 type Source = { rubric: RubricKey } | { actor: string } | { ttp: string };
 
@@ -44,9 +54,15 @@ function Row({ item, onSelect }: { item: RubricItem; onSelect: (a: Article) => v
 }
 
 /** Hook dipanggil tanpa syarat; hanya satu sumber yang aktif (`enabled`). */
-function useSheetList(source: Source, filters: NewsroomFilters, page: number, open: boolean) {
+function useSheetList(
+  source: Source,
+  filters: NewsroomFilters,
+  page: number,
+  open: boolean,
+  victimFilter: VictimFilter,
+) {
   const rubricKey = "rubric" in source ? source.rubric : null;
-  const rubric = useRubric(rubricKey, filters, page, PAGE_SIZE, true);
+  const rubric = useRubric(rubricKey, filters, page, PAGE_SIZE, true, victimFilter);
   const actor = "actor" in source ? source.actor : "";
   const ttp = "ttp" in source ? source.ttp : "";
   // Filter yang sama dengan hitungan kartu topik (periode, negara, pencarian, insiden)
@@ -75,12 +91,7 @@ function useSheetList(source: Source, filters: NewsroomFilters, page: number, op
 
   if ("rubric" in source) return rubric;
   const q = "actor" in source ? byActor : byTtp;
-  const items: RubricItem[] = (q.data?.articles ?? []).map((a) => ({
-    id: String(a.id),
-    title: a.title,
-    meta: `${a.source} · ${formatPostedOn(a.posted_on)}`,
-    article: a,
-  }));
+  const items: RubricItem[] = (q.data?.articles ?? []).map(articleRow);
   return {
     items,
     total: q.data?.total,
@@ -88,6 +99,122 @@ function useSheetList(source: Source, filters: NewsroomFilters, page: number, op
     isError: q.isError,
     refetch: () => void q.refetch(),
   };
+}
+
+function articleRow(a: Article): RubricItem {
+  return { id: String(a.id), title: a.title, meta: `${a.source} · ${formatPostedOn(a.posted_on)}`, article: a };
+}
+
+function ListState({
+  isPending,
+  isError,
+  empty,
+  emptyText,
+  errorText = "Gagal memuat daftar artikel.",
+}: {
+  isPending: boolean;
+  isError: boolean;
+  empty: boolean;
+  emptyText: string;
+  errorText?: string;
+}) {
+  if (isPending) {
+    return (
+      <div className="flex flex-col gap-3" aria-busy="true">
+        {[0, 1, 2, 3, 4].map((i) => (
+          <Skeleton key={i} className="h-10 w-full" />
+        ))}
+      </div>
+    );
+  }
+  if (isError) return <p className="text-xs text-muted-foreground">{errorText}</p>;
+  if (empty) return <p className="text-xs text-muted-foreground">{emptyText}</p>;
+  return null;
+}
+
+/** Pilihan group/industri korban dari `/api/ransomware/victims/filters` (port mini-filter panel
+ * Ransomware lama; dulu input teks bebas, sekarang daftar nilai yang memang ada). */
+function VictimFilterBar({ value, onChange }: { value: VictimFilter; onChange: (v: VictimFilter) => void }) {
+  const options = useQuery({
+    queryKey: ["ransomware", "victim-filters"],
+    queryFn: async () => {
+      const { data, error } = await api.GET("/api/ransomware/victims/filters");
+      if (error) throw error;
+      return data as unknown as { groups: string[]; industries: string[] };
+    },
+    staleTime: 5 * 60_000,
+  });
+  const fields = [
+    { key: "group" as const, label: "Group", all: "Semua group", values: options.data?.groups ?? [] },
+    { key: "industry" as const, label: "Industri", all: "Semua industri", values: options.data?.industries ?? [] },
+  ];
+  return (
+    <div className="flex flex-wrap gap-2">
+      {fields.map((f) => (
+        <Select
+          key={f.key}
+          items={{ [ALL]: f.all, ...Object.fromEntries(f.values.map((v) => [v, v])) }}
+          value={value[f.key] || ALL}
+          onValueChange={(v) => onChange({ ...value, [f.key]: !v || v === ALL ? "" : v })}
+        >
+          <SelectTrigger aria-label={`Filter korban per ${f.label.toLowerCase()}`} className="w-44 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL} className="text-xs">
+              {f.all}
+            </SelectItem>
+            {f.values.map((v) => (
+              <SelectItem key={v} value={v} className="text-xs">
+                {v}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ))}
+    </div>
+  );
+}
+
+/** "Related Articles" panel Ransomware lama: `/api/ransomware/related-articles` tanpa filter apa
+ * pun (port apa adanya, sama seperti panel lama), dengan pager sendiri. */
+function RelatedArticles({ onSelect }: { onSelect: (a: Article) => void }) {
+  const [page, setPage] = useState(1);
+  const q = useQuery({
+    queryKey: ["ransomware", "articles", page],
+    queryFn: async () => {
+      const { data, error } = await api.GET("/api/ransomware/related-articles", {
+        params: { query: { page, page_size: RELATED_PAGE_SIZE } },
+      });
+      if (error) throw error;
+      return data as unknown as { articles: Article[]; total: number };
+    },
+  });
+  const items = (q.data?.articles ?? []).map(articleRow);
+  const totalPages = q.data ? Math.ceil(q.data.total / RELATED_PAGE_SIZE) : 0;
+  return (
+    <section aria-labelledby="rw-related" className="flex flex-col gap-3 border-t border-border pt-4">
+      <h3 id="rw-related" className="text-sm font-semibold">
+        Artikel terkait
+      </h3>
+      <ListState
+        isPending={q.isPending}
+        isError={q.isError}
+        empty={items.length === 0}
+        emptyText="Belum ada artikel ransomware terkait."
+      />
+      {items.length > 0 && (
+        <ul className="flex flex-col">
+          {items.map((item) => (
+            <li key={item.id}>
+              <Row item={item} onSelect={onSelect} />
+            </li>
+          ))}
+        </ul>
+      )}
+      <SimplePager page={page} totalPages={totalPages} onPageChange={setPage} />
+    </section>
+  );
 }
 
 function SheetBody({
@@ -102,22 +229,29 @@ function SheetBody({
   onSelect: (a: Article) => void;
 }) {
   const [page, setPage] = useState(1);
-  const { items, total, isPending, isError } = useSheetList(source, filters, page, open);
+  const [victimFilter, setVictimFilter] = useState<VictimFilter>({ group: "", industry: "" });
+  const { items, total, isPending, isError } = useSheetList(source, filters, page, open, victimFilter);
   const totalPages = total ? Math.ceil(total / PAGE_SIZE) : 0;
+  const isRansomware = "rubric" in source && source.rubric === "ransomware";
 
   return (
     <div className="flex flex-col gap-3">
-      {isPending && (
-        <div className="flex flex-col gap-3" aria-busy="true">
-          {[0, 1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} className="h-10 w-full" />
-          ))}
-        </div>
+      {isRansomware && (
+        <VictimFilterBar
+          value={victimFilter}
+          onChange={(v) => {
+            setVictimFilter(v);
+            setPage(1);
+          }}
+        />
       )}
-      {isError && <p className="text-xs text-muted-foreground">Gagal memuat daftar artikel.</p>}
-      {!isPending && !isError && items.length === 0 && (
-        <p className="text-xs text-muted-foreground">Belum ada artikel.</p>
-      )}
+      <ListState
+        isPending={isPending}
+        isError={isError}
+        empty={items.length === 0}
+        emptyText={isRansomware ? "Belum ada korban." : "Belum ada artikel."}
+        errorText={isRansomware ? "Gagal memuat daftar korban." : undefined}
+      />
       {items.length > 0 && (
         <ul className="flex flex-col">
           {items.map((item) => (
@@ -128,6 +262,7 @@ function SheetBody({
         </ul>
       )}
       <SimplePager page={page} totalPages={totalPages} onPageChange={setPage} />
+      {isRansomware && <RelatedArticles onSelect={onSelect} />}
     </div>
   );
 }

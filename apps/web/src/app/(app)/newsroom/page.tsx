@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 
 import { useAuth } from "@/components/providers/auth-provider";
 import { TabPills, type TabPillItem } from "@/components/ui/tab-pills";
-import { defaultNewsroomFilters, type NewsroomFilters } from "@/lib/newsroom/filters";
+import { defaultNewsroomFilters, periodStart, type NewsroomFilters } from "@/lib/newsroom/filters";
 import type { components } from "@/lib/api/schema";
 import { ArticleModal } from "@/components/newsroom/article-modal";
 import { ArticleListSheet } from "@/components/newsroom/article-list-sheet";
@@ -28,15 +28,24 @@ const RUBRIC_TITLES: Record<RubricKey, string> = {
   techstack: "Tech stack",
 };
 
+/** Judul sheet; Ransomware berisi daftar korban (bukan artikel), jadi judulnya menyebut itu. */
+function sheetTitle(r: RubricKey): string {
+  return r === "ransomware" ? "Korban ransomware" : RUBRIC_TITLES[r];
+}
+
 function isRubricKey(v: string | null): v is RubricKey {
   return v !== null && v in RUBRIC_TITLES;
 }
 
+/** `?period=` dari dashboard: hanya 1|7|30 (chip yang ada); nilai lain diabaikan (default 7). */
+const URL_PERIODS = new Set(["1", "7", "30"]);
+
 /**
  * Newsroom: masthead + filter, halaman depan (4 artikel prioritas), topik aktif,
  * lalu rubrik. Filter berlaku langsung (tanpa Apply). Dashboard menaut ke sini
- * lewat `?country=XX` dan `?rubric=ransomware|watchlist`, dibaca sekali saat
- * dimuat; `rubric` langsung membuka daftar lengkapnya.
+ * lewat `?country=XX`, `?rubric=ransomware|watchlist` dan `?period=1|7|30`, dibaca
+ * sekali saat dimuat; `rubric` langsung membuka daftar lengkapnya dan `period`
+ * memilih chip periode.
  *
  * Auto-refresh countdown legacy (`autorefresh.js`) sengaja tidak diport; tiap
  * query di-refetch lewat react-query.
@@ -47,15 +56,20 @@ function NewsroomContent() {
   const searchParams = useSearchParams();
 
   const [view, setView] = useState<"cyber" | "filtered">("cyber");
-  const [filters, setFilters] = useState<NewsroomFilters>(() => ({
-    ...defaultNewsroomFilters(),
-    country: searchParams.get("country")?.toUpperCase() || null,
-  }));
+  const [filters, setFilters] = useState<NewsroomFilters>(() => {
+    const period = searchParams.get("period");
+    const base = defaultNewsroomFilters();
+    return {
+      ...base,
+      dateStart: period && URL_PERIODS.has(period) ? periodStart(Number(period)) : base.dateStart,
+      country: searchParams.get("country")?.toUpperCase() || null,
+    };
+  });
   const [selected, setSelected] = useState<Article | null>(null);
   const [sheet, setSheet] = useState<{ open: boolean; title: string; source: SheetSource }>(() => {
     const r = searchParams.get("rubric");
     return isRubricKey(r)
-      ? { open: true, title: RUBRIC_TITLES[r], source: { rubric: r } }
+      ? { open: true, title: sheetTitle(r), source: { rubric: r } }
       : { open: false, title: "", source: { rubric: "apac" } };
   });
   const front = useFrontQuery(filters);
@@ -67,7 +81,7 @@ function NewsroomContent() {
   ];
 
   function openRubric(rubric: RubricKey) {
-    setSheet({ open: true, title: RUBRIC_TITLES[rubric], source: { rubric } });
+    setSheet({ open: true, title: sheetTitle(rubric), source: { rubric } });
   }
 
   function rubric(key: RubricKey, hideWhenEmpty?: boolean) {

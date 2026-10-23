@@ -10,8 +10,6 @@ export interface NewsroomFilters {
   dateEnd: string;
   /** Kode ISO alpha-2, `null` = semua negara. */
   country: string | null;
-  industry: string;
-  actor: string;
   /** "Insiden saja": teruskan `confirmed_only` ke endpoint yang mendukungnya. */
   incidentOnly: boolean;
 }
@@ -40,8 +38,6 @@ export function defaultNewsroomFilters(): NewsroomFilters {
     dateStart: periodStart(7),
     dateEnd: "",
     country: null,
-    industry: "",
-    actor: "",
     incidentOnly: false,
   };
 }
