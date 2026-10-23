@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api/client";
 import type { paths } from "@/lib/api/schema";
@@ -14,7 +14,7 @@ type ArticlesQuery = paths["/api/articles"]["get"]["parameters"]["query"];
  * `loadTechStackPanel()` lama -- lihat catatan di tiap panel file).
  * `sort` ("recent"|"priority"), `ttp` dan `confirmed_only` ikut diteruskan
  * apa adanya (tipe dari `schema.d.ts`). */
-export function useArticlesQuery(key: readonly unknown[], params: ArticlesQuery, enabled = true) {
+export function useArticlesQuery(key: readonly unknown[], params: ArticlesQuery, enabled = true, keepPrevious = false) {
   return useQuery({
     queryKey: ["newsroom", "articles", ...key, params],
     queryFn: async () => {
@@ -23,5 +23,6 @@ export function useArticlesQuery(key: readonly unknown[], params: ArticlesQuery,
       return data;
     },
     enabled,
+    placeholderData: keepPrevious ? keepPreviousData : undefined,
   });
 }

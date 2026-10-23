@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
@@ -66,17 +66,24 @@ function useTechStackNames(enabled: boolean) {
   });
 }
 
-function useVictims(page: number, pageSize: number, enabled: boolean) {
+function useVictims(
+  page: number,
+  pageSize: number,
+  country: string | null,
+  enabled: boolean,
+  keepPrevious: boolean,
+) {
   return useQuery({
-    queryKey: ["ransomware", "victims", page, pageSize, "", "", ""],
+    queryKey: ["ransomware", "victims", page, pageSize, country ?? "", "", ""],
     queryFn: async () => {
       const { data, error } = await api.GET("/api/ransomware/victims", {
-        params: { query: { page, page_size: pageSize } },
+        params: { query: { page, page_size: pageSize, country: country || undefined } },
       });
       if (error) throw error;
       return data as unknown as { victims: RansomwareVictim[]; total: number };
     },
     enabled,
+    placeholderData: keepPrevious ? keepPreviousData : undefined,
   });
 }
 
@@ -86,15 +93,17 @@ function useVictims(page: number, pageSize: number, enabled: boolean) {
  * Semua hook dipanggil tanpa syarat (aturan hooks); `enabled` yang memilih
  * satu rubrik yang benar-benar menembak jaringan.
  *
- * Asimetri filter ikut port lama: Local memakai `client_countries` (bukan
- * filter country), Watchlist hanya `search`, Techstack tanpa country,
- * Ransomware tanpa filter bar sama sekali.
+ * Filter `incidentOnly` (`confirmed_only`) dan `country` berlaku di semua rubrik,
+ * kecuali: Local tetap memakai `client_countries` (bukan filter country) dan
+ * Ransomware hanya menerima `country` (endpoint-nya tidak punya filter insiden).
+ * `keepPrevious` menahan data halaman lama selama halaman baru dimuat (pager sheet).
  */
 export function useRubric(
   key: RubricKey,
   filters: NewsroomFilters,
   page: number,
   pageSize: number,
+  keepPrevious = false,
 ): {
   items: RubricItem[];
   total: number | undefined;
@@ -118,30 +127,43 @@ export function useRubric(
     industry: filters.industry ? [filters.industry] : undefined,
     threat_actor: filters.actor ? [filters.actor] : undefined,
     search: filters.search || undefined,
+    confirmed_only: filters.incidentOnly || undefined,
   };
+  const countryParam = filters.country ? [filters.country] : undefined;
 
   const newsType = key === "apac" ? ["apac"] : GLOBAL_NEWS_TYPES;
   const byType = useArticlesQuery(
     ["news-type", newsType],
-    { ...common, news_type: newsType, country: filters.country ? [filters.country] : undefined },
+    { ...common, news_type: newsType, country: countryParam },
     key === "apac" || key === "global",
+    keepPrevious,
   );
   const local = useArticlesQuery(
     ["local", countries],
     { ...common, country: countries.length ? countries : undefined },
     key === "local",
+    keepPrevious,
   );
   const watch = useArticlesQuery(
     ["watchlist", watchNames.data],
-    { page, page_size: pageSize, threat_actor: watchNames.data, search: filters.search || undefined },
+    {
+      page,
+      page_size: pageSize,
+      threat_actor: watchNames.data,
+      search: filters.search || undefined,
+      confirmed_only: filters.incidentOnly || undefined,
+      country: countryParam,
+    },
     key === "watchlist" && hasWatch,
+    keepPrevious,
   );
   const tech = useArticlesQuery(
     ["techstack", techNames.data],
-    { ...common, title_keyword: techNames.data },
+    { ...common, title_keyword: techNames.data, country: countryParam },
     key === "techstack" && hasTech,
+    keepPrevious,
   );
-  const victims = useVictims(page, pageSize, key === "ransomware");
+  const victims = useVictims(page, pageSize, filters.country, key === "ransomware", keepPrevious);
 
   const empty = { items: [], total: 0, isPending: false, isError: false };
 

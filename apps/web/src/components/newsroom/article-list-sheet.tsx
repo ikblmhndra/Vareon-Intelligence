@@ -45,18 +45,31 @@ function Row({ item, onSelect }: { item: RubricItem; onSelect: (a: Article) => v
 /** Hook dipanggil tanpa syarat; hanya satu sumber yang aktif (`enabled`). */
 function useSheetList(source: Source, filters: NewsroomFilters, page: number, open: boolean) {
   const rubricKey = "rubric" in source ? source.rubric : "apac";
-  const rubric = useRubric(rubricKey, filters, page, PAGE_SIZE);
+  const rubric = useRubric(rubricKey, filters, page, PAGE_SIZE, true);
   const actor = "actor" in source ? source.actor : "";
   const ttp = "ttp" in source ? source.ttp : "";
+  // Filter yang sama dengan hitungan kartu topik (periode, negara, pencarian, insiden)
+  // supaya "N artikel" di kartu cocok dengan isi daftar.
+  const scope = {
+    page,
+    page_size: PAGE_SIZE,
+    sort: "recent" as const,
+    posted_on_start: filters.dateStart || undefined,
+    country: filters.country ? [filters.country] : undefined,
+    search: filters.search || undefined,
+    confirmed_only: filters.incidentOnly || undefined,
+  };
   const byActor = useArticlesQuery(
     ["sheet-actor", actor],
-    { page, page_size: PAGE_SIZE, threat_actor: [actor], sort: "recent" },
+    { ...scope, threat_actor: [actor] },
     open && "actor" in source,
+    true,
   );
   const byTtp = useArticlesQuery(
     ["sheet-ttp", ttp],
-    { page, page_size: PAGE_SIZE, ttp: [ttp], sort: "recent" },
+    { ...scope, ttp: [ttp] },
     open && "ttp" in source,
+    true,
   );
 
   if ("rubric" in source) return rubric;

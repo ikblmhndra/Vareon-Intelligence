@@ -8,29 +8,37 @@ export interface NewsroomFilters {
   search: string;
   dateStart: string;
   dateEnd: string;
-  country: string;
+  /** Kode ISO alpha-2, `null` = semua negara. */
+  country: string | null;
   industry: string;
   actor: string;
+  /** "Insiden saja": teruskan `confirmed_only` ke endpoint yang mendukungnya. */
+  incidentOnly: boolean;
 }
 
 function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** Default range "7 hari terakhir" -- port default `autorefresh.js` init
- * (`_d7`/`_todayD`), BUKAN unfiltered/all-time. Newsroom lama emang selalu
- * mulai ke-scope 7 hari, bukan preferensi UI baru. */
+/** `dateStart` = hari ini dikurangi `days` (jangkar ke hari ini, bukan ke rentang
+ * tetap); `0`/kosong = tanpa batas awal ("Semua"). `dateEnd` sengaja selalu kosong. */
+export function periodStart(days: number): string {
+  if (!days) return "";
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return isoDate(d);
+}
+
+/** Default "7 hari terakhir" -- newsroom lama memang selalu mulai ke-scope 7 hari. */
 export function defaultNewsroomFilters(): NewsroomFilters {
-  const today = new Date();
-  const weekAgo = new Date(today);
-  weekAgo.setDate(today.getDate() - 7);
   return {
     search: "",
-    dateStart: isoDate(weekAgo),
-    dateEnd: isoDate(today),
-    country: "",
+    dateStart: periodStart(7),
+    dateEnd: "",
+    country: null,
     industry: "",
     actor: "",
+    incidentOnly: false,
   };
 }
 
