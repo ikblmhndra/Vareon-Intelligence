@@ -25,6 +25,18 @@ export interface WorldDotPoint {
   label: string; // nama aksesibel
 }
 
+/** Negara yang tidak punya poligon di world-atlas 110m (terlalu kecil): [bujur, lintang] ibu kota/pusat. */
+const SMALL_STATES: Record<string, [number, number]> = {
+  SG: [103.82, 1.35], HK: [114.17, 22.32], MO: [113.54, 22.2], BH: [50.55, 26.07],
+  MV: [73.51, 4.18], MT: [14.51, 35.9], AD: [1.52, 42.55], MC: [7.42, 43.74],
+  LI: [9.55, 47.17], SM: [12.46, 43.94], VA: [12.45, 41.9], SC: [55.49, -4.68],
+  MU: [57.55, -20.35], BB: [-59.54, 13.19], AG: [-61.8, 17.06], DM: [-61.37, 15.41],
+  GD: [-61.68, 12.12], KN: [-62.78, 17.36], LC: [-60.98, 13.91], VC: [-61.2, 13.25],
+  TO: [-175.2, -21.18], WS: [-172.1, -13.76], KI: [173.0, 1.87], FM: [158.2, 6.92],
+  MH: [171.2, 7.1], NR: [166.93, -0.52], PW: [134.58, 7.5], TV: [179.2, -8.52],
+  CV: [-23.6, 15.1], KM: [43.87, -11.7], ST: [6.6, 0.34],
+};
+
 interface Size {
   w: number;
   h: number;
@@ -108,7 +120,8 @@ export function WorldDots({
     if (!projection || !points) return [];
     const out: { p: WorldDotPoint; x: number; y: number }[] = [];
     for (const p of points) {
-      const c = centroids.get(normalize(p.code));
+      const code = normalize(p.code);
+      const c = centroids.get(code) ?? SMALL_STATES[code];
       const xy = c ? projection(c) : null;
       if (xy) out.push({ p, x: xy[0], y: xy[1] });
     }

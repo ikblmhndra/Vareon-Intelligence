@@ -28,6 +28,8 @@ interface Focus {
   detail: Detail;
   x: number;
   y: number;
+  data: unknown; // data peta saat fokus; tooltip dibuang bila data berganti (ganti periode)
+  below: boolean; // titik dekat tepi atas: tooltip di bawah titik supaya tidak terpotong
 }
 
 /**
@@ -82,13 +84,22 @@ export function SignalHero({ days }: { days: number | null }) {
     if (!btn) return setFocus(null);
     const b = btn.getBoundingClientRect();
     const r = box.getBoundingClientRect();
-    setFocus({ detail, x: b.left - r.left + b.width / 2, y: b.top - r.top });
+    const cx = b.left - r.left + b.width / 2;
+    const half = 100; // setengah lebar tooltip, perkiraan
+    setFocus({
+      detail,
+      data: map.data,
+      x: Math.min(Math.max(cx, half), Math.max(half, r.width - half)),
+      y: b.top - r.top + (b.top - r.top < 90 ? b.height : 0),
+      below: b.top - r.top < 90,
+    });
   }
 
   if (map.isPending && attention.isPending) {
     return <Skeleton className="min-h-[420px] w-full rounded-3xl" />;
   }
 
+  const shown = focus && focus.data === map.data ? focus : null;
   const att = attention.data;
   const empty = map.data && map.data.points.length === 0;
 
@@ -104,19 +115,19 @@ export function SignalHero({ days }: { days: number | null }) {
             onPointFocus={onPointFocus}
             onPointSelect={(p) => router.push(`/newsroom?country=${encodeURIComponent(p.code)}`)}
           />
-          {focus && (
+          {shown && (
             <div
               role="status"
-              className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full rounded-xl bg-card px-3 py-2 text-sm text-card-foreground shadow-lg"
-              style={{ left: focus.x, top: focus.y - 8 }}
+              className={`pointer-events-none absolute z-10 -translate-x-1/2 rounded-xl bg-card px-3 py-2 text-sm text-card-foreground shadow-lg ${shown.below ? "" : "-translate-y-full"}`}
+              style={{ left: shown.x, top: shown.below ? shown.y + 8 : shown.y - 8 }}
             >
-              <div className="font-semibold">{countryName(focus.detail.point.code)}</div>
+              <div className="font-semibold">{countryName(shown.detail.point.code)}</div>
               <div className="text-xs whitespace-nowrap tabular-nums">
-                {focus.detail.incidents} insiden · {focus.detail.victims} korban ransomware
+                {shown.detail.incidents} insiden · {shown.detail.victims} korban ransomware
               </div>
-              {(focus.detail.topActor || focus.detail.topIndustry) && (
+              {(shown.detail.topActor || shown.detail.topIndustry) && (
                 <div className="text-xs whitespace-nowrap text-muted-foreground">
-                  Teratas: {[focus.detail.topActor, focus.detail.topIndustry].filter(Boolean).join(", ")}
+                  Teratas: {[shown.detail.topActor, shown.detail.topIndustry].filter(Boolean).join(", ")}
                 </div>
               )}
             </div>
