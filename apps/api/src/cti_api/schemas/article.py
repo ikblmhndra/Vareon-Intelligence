@@ -58,6 +58,7 @@ class TopItem(BaseModel):
 class TimelinePoint(BaseModel):
     date: str
     count: int
+    incidents: int = 0
 
 
 class DashboardCoverage(BaseModel):

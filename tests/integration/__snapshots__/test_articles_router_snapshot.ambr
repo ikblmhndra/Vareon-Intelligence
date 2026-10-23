@@ -54,6 +54,7 @@
       dict({
         'count': 1,
         'date': '2026-09-01',
+        'incidents': 0,
       }),
     ]),
     'top_countries': list([

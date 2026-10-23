@@ -268,3 +268,12 @@ async def test_source_counts(async_db_session: AsyncSession) -> None:
 
     rows = await repo.source_counts()
     assert dict(rows) == {"BleepingComputer": 1, "Wired": 1}
+
+
+async def test_article_timeline_counts_incidents(async_db_session: AsyncSession) -> None:
+    await _ensure_clients(async_db_session)
+    await _seed_articles(async_db_session)
+    timeline = await AsyncDashboardRepo(async_db_session).article_timeline(
+        posted_on_start=None, posted_on_end=None
+    )
+    assert timeline == [(_TODAY, 2, 1)]

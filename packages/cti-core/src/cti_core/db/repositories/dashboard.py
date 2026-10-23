@@ -259,10 +259,16 @@ class AsyncDashboardRepo:
         rows = (await self.session.execute(stmt)).all()
         return [(i, cnt) for i, cnt in rows]
 
-    async def article_timeline(self, **filters: Any) -> list[tuple[datetime.date, int]]:
+    async def article_timeline(self, **filters: Any) -> list[tuple[datetime.date, int, int]]:
+        """(hari, jumlah artikel, jumlah insiden terkonfirmasi) per hari; kartu "Artikel dari
+        waktu ke waktu" menggambar dua seri."""
         stmt = (
             _apply_article_filters(
-                select(Article.posted_on, func.count()).where(Article.posted_on.is_not(None)),
+                select(
+                    Article.posted_on,
+                    func.count(),
+                    func.count().filter(Article.confirmed_incident.is_(True)),
+                ).where(Article.posted_on.is_not(None)),
                 **filters,
             )
             .group_by(Article.posted_on)
@@ -270,7 +276,7 @@ class AsyncDashboardRepo:
             .limit(365)
         )
         rows = (await self.session.execute(stmt)).all()
-        return [(d, cnt) for d, cnt in rows]
+        return [(d, cnt, inc) for d, cnt, inc in rows]
 
     async def coverage_counts(self, **filters: Any) -> dict[str, int]:
         """Jumlah ARTIKEL (bukan baris) yang punya minimal satu negara / threat

@@ -139,7 +139,9 @@ async def _fetch_dashboard_stats(
         "industry_unspecified": industry_unspecified,
         "top_ttps": [{"name": f"{tid} — {tname}", "count": cnt} for tid, tname, cnt in top_ttps],
         "by_news_type": [{"name": nt, "count": cnt} for nt, cnt in by_type if nt],
-        "timeline": [{"date": d.isoformat(), "count": cnt} for d, cnt in timeline],
+        "timeline": [
+            {"date": d.isoformat(), "count": cnt, "incidents": inc} for d, cnt, inc in timeline
+        ],
         "coverage": coverage,
         "generated_at": datetime.datetime.now(datetime.UTC).isoformat(),
     }

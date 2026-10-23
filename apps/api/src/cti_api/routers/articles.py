@@ -25,10 +25,10 @@ import datetime
 from cti_core.db.models.article import Article
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.auth import AsyncAuditLogRepo
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_api.deps import AuthedUser, get_db, request_ip, require_auth
+from cti_api.deps import AuthedUser, effective_client_id, get_db, request_ip, require_auth
 from cti_api.schemas.article import (
     TTP,
     ArticleListResponse,
@@ -36,7 +36,14 @@ from cti_api.schemas.article import (
     DashboardStats,
     FilterOptions,
 )
-from cti_api.services import article_dashboard, confidence
+from cti_api.schemas.dashboard_overview import (
+    CveExposure,
+    DashboardAttention,
+    DashboardMap,
+    RansomwareOverview,
+    TrendingResponse,
+)
+from cti_api.services import article_dashboard, confidence, dashboard_overview, trending
 from cti_api.services import dedup as dedup_service
 
 router = APIRouter(prefix="/api", tags=["articles"], dependencies=[Depends(require_auth)])
@@ -168,6 +175,60 @@ async def dashboard_stats(
         incident_only=incident_only,
     )
     return DashboardStats(**result)
+
+
+_DaysQuery = Query(None, ge=1, le=3650, description="`days` hari terakhir; kosong = semua waktu.")
+
+
+@router.get("/dashboard/map", response_model=DashboardMap)
+async def dashboard_map(
+    days: int | None = _DaysQuery,
+    user: AuthedUser = Depends(require_auth),
+    x_client_id: str | None = Header(None),
+    session: AsyncSession = Depends(get_db),
+) -> DashboardMap:
+    cid = effective_client_id(user, x_client_id)
+    return DashboardMap(**await dashboard_overview.get_map(session, client_id=cid, days=days))
+
+
+@router.get("/dashboard/attention", response_model=DashboardAttention)
+async def dashboard_attention(
+    days: int | None = _DaysQuery,
+    user: AuthedUser = Depends(require_auth),
+    x_client_id: str | None = Header(None),
+    session: AsyncSession = Depends(get_db),
+) -> DashboardAttention:
+    cid = effective_client_id(user, x_client_id)
+    return DashboardAttention(
+        **await dashboard_overview.get_attention(session, client_id=cid, days=days)
+    )
+
+
+@router.get("/dashboard/trending", response_model=TrendingResponse)
+async def dashboard_trending(
+    days: int | None = _DaysQuery, session: AsyncSession = Depends(get_db)
+) -> TrendingResponse:
+    return TrendingResponse(**await trending.get_trending(session, days=days))
+
+
+@router.get("/dashboard/ransomware", response_model=RansomwareOverview)
+async def dashboard_ransomware(
+    days: int | None = _DaysQuery, session: AsyncSession = Depends(get_db)
+) -> RansomwareOverview:
+    return RansomwareOverview(**await dashboard_overview.get_ransomware(session, days=days))
+
+
+@router.get("/dashboard/cve-exposure", response_model=CveExposure)
+async def dashboard_cve_exposure(
+    days: int | None = _DaysQuery,
+    user: AuthedUser = Depends(require_auth),
+    x_client_id: str | None = Header(None),
+    session: AsyncSession = Depends(get_db),
+) -> CveExposure:
+    cid = effective_client_id(user, x_client_id)
+    return CveExposure(
+        **await dashboard_overview.get_cve_exposure(session, client_id=cid, days=days)
+    )
 
 
 @router.post(

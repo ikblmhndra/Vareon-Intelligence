@@ -281,6 +281,24 @@
         "title": "Body_import_lockfile_endpoint_api_pkgvuln_import_lockfile_post",
         "type": "object"
       },
+      "Brief": {
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "headline": {
+            "title": "Headline",
+            "type": "string"
+          }
+        },
+        "required": [
+          "headline",
+          "detail"
+        ],
+        "title": "Brief",
+        "type": "object"
+      },
       "BulkAcknowledgeBody": {
         "description": "Tanpa nama analis: `acknowledged_by` selalu username yang login (lihat `acknowledge`).",
         "properties": {
@@ -1137,6 +1155,120 @@
         "title": "CveDbProductOut",
         "type": "object"
       },
+      "CveExposure": {
+        "properties": {
+          "closed_in_period": {
+            "title": "Closed In Period",
+            "type": "integer"
+          },
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CveExposureItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "mean_days_to_close": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean Days To Close"
+          },
+          "open_critical": {
+            "title": "Open Critical",
+            "type": "integer"
+          },
+          "open_kev": {
+            "title": "Open Kev",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "open_critical",
+          "open_kev",
+          "closed_in_period",
+          "generated_at"
+        ],
+        "title": "CveExposure",
+        "type": "object"
+      },
+      "CveExposureItem": {
+        "properties": {
+          "cisa_kev": {
+            "title": "Cisa Kev",
+            "type": "boolean"
+          },
+          "cve_id": {
+            "title": "Cve Id",
+            "type": "string"
+          },
+          "cvss": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cvss"
+          },
+          "public_poc": {
+            "title": "Public Poc",
+            "type": "boolean"
+          },
+          "tech": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tech"
+          },
+          "ticket_age_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticket Age Days"
+          },
+          "ticket_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticket Id"
+          }
+        },
+        "required": [
+          "cve_id",
+          "cisa_kev",
+          "public_poc"
+        ],
+        "title": "CveExposureItem",
+        "type": "object"
+      },
       "CveFreshness": {
         "properties": {
           "last_checked_at": {
@@ -1555,6 +1687,48 @@
         "title": "CveTicketBody",
         "type": "object"
       },
+      "DashboardAttention": {
+        "properties": {
+          "brief": {
+            "$ref": "#/components/schemas/Brief"
+          },
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "kev_in_stack": {
+            "title": "Kev In Stack",
+            "type": "integer"
+          },
+          "kev_without_ticket": {
+            "title": "Kev Without Ticket",
+            "type": "integer"
+          },
+          "pir_hits": {
+            "title": "Pir Hits",
+            "type": "integer"
+          },
+          "ransomware_in_client_scope": {
+            "title": "Ransomware In Client Scope",
+            "type": "integer"
+          },
+          "watchlist_hits": {
+            "title": "Watchlist Hits",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kev_in_stack",
+          "kev_without_ticket",
+          "ransomware_in_client_scope",
+          "watchlist_hits",
+          "pir_hits",
+          "brief",
+          "generated_at"
+        ],
+        "title": "DashboardAttention",
+        "type": "object"
+      },
       "DashboardCoverage": {
         "description": "Jumlah ARTIKEL yang punya minimal satu negara / threat actor / TTP --\npenyebut buat chart dashboard (bandingkan dengan `total_articles`).",
         "properties": {
@@ -1577,6 +1751,35 @@
           "with_ttp"
         ],
         "title": "DashboardCoverage",
+        "type": "object"
+      },
+      "DashboardMap": {
+        "properties": {
+          "client_countries": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Client Countries",
+            "type": "array"
+          },
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/MapPoint"
+            },
+            "title": "Points",
+            "type": "array"
+          }
+        },
+        "required": [
+          "points",
+          "client_countries",
+          "generated_at"
+        ],
+        "title": "DashboardMap",
         "type": "object"
       },
       "DashboardStats": {
@@ -2118,6 +2321,51 @@
         "title": "LoginRequest",
         "type": "object"
       },
+      "MapPoint": {
+        "properties": {
+          "country_code": {
+            "title": "Country Code",
+            "type": "string"
+          },
+          "incidents": {
+            "title": "Incidents",
+            "type": "integer"
+          },
+          "ransomware_victims": {
+            "title": "Ransomware Victims",
+            "type": "integer"
+          },
+          "top_actor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Top Actor"
+          },
+          "top_industry": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Top Industry"
+          }
+        },
+        "required": [
+          "country_code",
+          "incidents",
+          "ransomware_victims"
+        ],
+        "title": "MapPoint",
+        "type": "object"
+      },
       "MetricStat": {
         "properties": {
           "max": {
@@ -2538,6 +2786,24 @@
           "month"
         ],
         "title": "MonthMetrics",
+        "type": "object"
+      },
+      "NameCount": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "count"
+        ],
+        "title": "NameCount",
         "type": "object"
       },
       "NewsletterListItem": {
@@ -4160,6 +4426,50 @@
           }
         },
         "title": "RFIUpdate",
+        "type": "object"
+      },
+      "RansomwareOverview": {
+        "properties": {
+          "apac": {
+            "title": "Apac",
+            "type": "integer"
+          },
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "top_groups": {
+            "items": {
+              "$ref": "#/components/schemas/NameCount"
+            },
+            "title": "Top Groups",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "undated": {
+            "title": "Undated",
+            "type": "integer"
+          },
+          "weekly": {
+            "items": {
+              "$ref": "#/components/schemas/WeekCount"
+            },
+            "title": "Weekly",
+            "type": "array"
+          }
+        },
+        "required": [
+          "weekly",
+          "top_groups",
+          "total",
+          "apac",
+          "undated",
+          "generated_at"
+        ],
+        "title": "RansomwareOverview",
         "type": "object"
       },
       "RejectedArticleListResponse": {
@@ -6531,6 +6841,11 @@
           "date": {
             "title": "Date",
             "type": "string"
+          },
+          "incidents": {
+            "default": 0,
+            "title": "Incidents",
+            "type": "integer"
           }
         },
         "required": [
@@ -6620,6 +6935,104 @@
           "count"
         ],
         "title": "TopItem",
+        "type": "object"
+      },
+      "TrendItemOut": {
+        "properties": {
+          "change_pct": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Pct"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "daily": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Daily",
+            "type": "array"
+          },
+          "is_new": {
+            "title": "Is New",
+            "type": "boolean"
+          },
+          "kind": {
+            "enum": [
+              "actor",
+              "ttp"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "prev_count": {
+            "title": "Prev Count",
+            "type": "integer"
+          },
+          "ttp_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ttp Id"
+          }
+        },
+        "required": [
+          "kind",
+          "name",
+          "count",
+          "prev_count",
+          "is_new",
+          "daily"
+        ],
+        "title": "TrendItemOut",
+        "type": "object"
+      },
+      "TrendingResponse": {
+        "properties": {
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TrendItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "window_days": {
+            "title": "Window Days",
+            "type": "integer"
+          },
+          "window_label": {
+            "title": "Window Label",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "window_days",
+          "window_label",
+          "generated_at"
+        ],
+        "title": "TrendingResponse",
         "type": "object"
       },
       "TweetListResponse": {
@@ -6960,6 +7373,25 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "WeekCount": {
+        "properties": {
+          "victims": {
+            "title": "Victims",
+            "type": "integer"
+          },
+          "week_start": {
+            "format": "date",
+            "title": "Week Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "week_start",
+          "victims"
+        ],
+        "title": "WeekCount",
         "type": "object"
       }
     }
@@ -13083,6 +13515,399 @@
           }
         },
         "summary": "Dashboard Stats",
+        "tags": [
+          "articles"
+        ]
+      }
+    },
+    "/api/dashboard/attention": {
+      "get": {
+        "operationId": "dashboard_attention_api_dashboard_attention_get",
+        "parameters": [
+          {
+            "description": "`days` hari terakhir; kosong = semua waktu.",
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 3650,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`days` hari terakhir; kosong = semua waktu.",
+              "title": "Days"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-client-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Client-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardAttention"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Dashboard Attention",
+        "tags": [
+          "articles"
+        ]
+      }
+    },
+    "/api/dashboard/cve-exposure": {
+      "get": {
+        "operationId": "dashboard_cve_exposure_api_dashboard_cve_exposure_get",
+        "parameters": [
+          {
+            "description": "`days` hari terakhir; kosong = semua waktu.",
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 3650,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`days` hari terakhir; kosong = semua waktu.",
+              "title": "Days"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-client-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Client-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CveExposure"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Dashboard Cve Exposure",
+        "tags": [
+          "articles"
+        ]
+      }
+    },
+    "/api/dashboard/map": {
+      "get": {
+        "operationId": "dashboard_map_api_dashboard_map_get",
+        "parameters": [
+          {
+            "description": "`days` hari terakhir; kosong = semua waktu.",
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 3650,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`days` hari terakhir; kosong = semua waktu.",
+              "title": "Days"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-client-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Client-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardMap"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Dashboard Map",
+        "tags": [
+          "articles"
+        ]
+      }
+    },
+    "/api/dashboard/ransomware": {
+      "get": {
+        "operationId": "dashboard_ransomware_api_dashboard_ransomware_get",
+        "parameters": [
+          {
+            "description": "`days` hari terakhir; kosong = semua waktu.",
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 3650,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`days` hari terakhir; kosong = semua waktu.",
+              "title": "Days"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RansomwareOverview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Dashboard Ransomware",
+        "tags": [
+          "articles"
+        ]
+      }
+    },
+    "/api/dashboard/trending": {
+      "get": {
+        "operationId": "dashboard_trending_api_dashboard_trending_get",
+        "parameters": [
+          {
+            "description": "`days` hari terakhir; kosong = semua waktu.",
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 3650,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "`days` hari terakhir; kosong = semua waktu.",
+              "title": "Days"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrendingResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Dashboard Trending",
         "tags": [
           "articles"
         ]
