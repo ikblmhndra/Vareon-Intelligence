@@ -106,3 +106,19 @@ async def test_articles_confirmed_only_and_priority(
     assert [a["title"] for a in r.json()["articles"]] == ["incident"]
     r = await api_client.get("/api/articles", params={"sort": "priority"}, headers=h)
     assert [a["title"] for a in r.json()["articles"]] == ["incident", "plain"]
+
+
+async def test_topics_window_is_clamped(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header
+) -> None:
+    await AsyncClientRepo(api_session).ensure_default()
+    h = auth_header()
+    r = await api_client.get(
+        "/api/newsroom/topics", params={"posted_on_start": "0001-01-01"}, headers=h
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["window_days"] == 3650
+    future = (_TODAY + datetime.timedelta(days=30)).isoformat()
+    r = await api_client.get("/api/newsroom/topics", params={"posted_on_start": future}, headers=h)
+    assert r.status_code == 200, r.text
+    assert r.json()["window_days"] == 1

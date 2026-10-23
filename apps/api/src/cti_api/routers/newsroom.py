@@ -22,6 +22,7 @@ from cti_api.services import trending
 router = APIRouter(prefix="/api/newsroom", tags=["newsroom"], dependencies=[Depends(require_auth)])
 
 _TOP_COUNTRIES = 3
+_MAX_WINDOW_DAYS = 3650
 
 
 async def _topic_details(
@@ -93,11 +94,18 @@ async def newsroom_topics(
 ) -> TopicsResponse:
     """Topik naik untuk newsroom. Tren selalu "N hari berakhir hari ini vs N hari sebelumnya"
     (`get_trending`), jadi tanggal filter diubah jadi jendela `days` yang berjangkar ke hari
-    ini: `days = (hari ini - posted_on_start).days + 1`. `posted_on_end` diterima tapi
-    diabaikan. Tanpa `posted_on_start` dipakai aturan "semua waktu" `get_trending`
+    ini: `days = (hari ini - posted_on_start).days + 1`, di-clamp ke [1, 3650] (batas yang
+    sama dengan `days` di `/api/dashboard/*`): tanpa clamp, `posted_on_start=0001-01-01`
+    meledak jadi 500 (tanggal sebelum tahun 1) dan tahun 1900 mengalokasikan ratusan ribu
+    bucket harian. Tanggal di masa depan -> 1. `posted_on_end` diterima tapi diabaikan.
+    Tanpa `posted_on_start` dipakai aturan "semua waktu" `get_trending`
     (`days=None` -> 7 hari vs 7 hari)."""
     today = datetime.date.today()
-    days = max((today - posted_on_start).days + 1, 1) if posted_on_start else None
+    days = (
+        min(max((today - posted_on_start).days + 1, 1), _MAX_WINDOW_DAYS)
+        if posted_on_start
+        else None
+    )
     data = await trending.get_trending(
         session,
         days=days,

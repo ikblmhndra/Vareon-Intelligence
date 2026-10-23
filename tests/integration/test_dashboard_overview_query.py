@@ -127,6 +127,44 @@ async def test_cve_exposure_orders_kev_first_and_skips_closed(
     assert counts == {"open_critical": 2, "open_kev": 1, "kev_without_ticket": 1}
 
 
+async def test_cve_exposure_critical_uses_score_like_cve_stats(
+    async_db_session: AsyncSession,
+) -> None:
+    """`open_critical` harus sama dengan bucket critical `/api/cve/stats` (cve_score >= 9.0),
+    bukan label `cve_severity`."""
+    await _ensure_clients(async_db_session)
+    async_db_session.add_all(
+        [
+            CveTracker(
+                cve_id="CVE-2026-0101",
+                client_id="default",
+                tech="nginx",
+                cve_score=9.5,
+                cve_severity="HIGH",
+            ),
+            CveTracker(
+                cve_id="CVE-2026-0103",
+                client_id="default",
+                tech="nginx",
+                cve_score=9.0,
+                cve_severity=None,
+            ),
+            CveTracker(
+                cve_id="CVE-2026-0102",
+                client_id="default",
+                tech="nginx",
+                cve_score=8.0,
+                cve_severity="CRITICAL",
+            ),
+        ]
+    )
+    await async_db_session.flush()
+    counts = await AsyncDashboardRepo(async_db_session).cve_exposure_counts(
+        client_id="default", tech=None, exclude_cve_ids=None
+    )
+    assert counts["open_critical"] == 2
+
+
 async def test_cve_exposure_tech_none_vs_empty(async_db_session: AsyncSession) -> None:
     await _seed_cves(async_db_session)
     repo = AsyncDashboardRepo(async_db_session)

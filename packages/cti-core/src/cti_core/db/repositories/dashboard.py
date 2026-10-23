@@ -458,25 +458,38 @@ class AsyncDashboardRepo:
         `incident_only`/`confirmed_only` dashboard) -- `/api/spikes`
         polos manggil tanpa ini, sama kayak lama.
 
-        "ttp" mengembalikan entity `"<ttp_id>|<ttp_name>"` (digabung di SQL,
-        dipecah lagi oleh `cti_api.services.trending`). `posted_on_end`
+        "ttp" mengembalikan entity `"<ttp_id>|<nama kanonik>"` (digabung di SQL,
+        dipecah lagi oleh `cti_api.services.trending`). Group by `ttp_id` SAJA
+        dengan nama dari `canonical_ttp_name()` -- group by `ttp_name` juga
+        memecah satu technique jadi beberapa baris kalau ejaan LLM beda
+        (QA BUG-04). `posted_on_end`
         EKSKLUSIF (sama kayak `_apply_article_filters`). `countries`,
         `news_types` dan `search` (ILIKE judul) baru dipasang kalau diisi,
         jadi caller lama (`/api/spikes`, `exec_dashboard`) tidak berubah."""
         # Negara: role apa pun (lihat `_country_role`) -- `count(DISTINCT
         # article.id)` biar negara yang sama di dua role gak kehitung dobel.
         # Buat TA/industri efeknya nol (unik per artikel di level constraint).
-        model, col = {
-            "threat_actor": (ArticleThreatActor, ArticleThreatActor.threat_actor),
-            "country": (ArticleCountry, ArticleCountry.country_code),
-            "industry": (ArticleIndustry, ArticleIndustry.industry),
-            "ttp": (ArticleTTP, func.concat(ArticleTTP.ttp_id, "|", ArticleTTP.ttp_name)),
+        # `key` = kolom GROUP BY/filter kosong, `col` = nilai yang dikembalikan
+        # (beda cuma buat "ttp": nama kanonik itu agregat, jadi tidak boleh di WHERE).
+        model, key, col = {
+            "threat_actor": (
+                ArticleThreatActor,
+                ArticleThreatActor.threat_actor,
+                ArticleThreatActor.threat_actor,
+            ),
+            "country": (ArticleCountry, ArticleCountry.country_code, ArticleCountry.country_code),
+            "industry": (ArticleIndustry, ArticleIndustry.industry, ArticleIndustry.industry),
+            "ttp": (
+                ArticleTTP,
+                ArticleTTP.ttp_id,
+                func.concat(ArticleTTP.ttp_id, "|", canonical_ttp_name()),
+            ),
         }[dimension]
         stmt = _apply_article_filters(
             select(Article.posted_on, col, func.count(func.distinct(Article.id)))
             .select_from(Article)
             .join(model)
-            .where(col.is_not(None), col != ""),
+            .where(key.is_not(None), key != ""),
             posted_on_start=posted_on_start,
             posted_on_end=posted_on_end,
             exclude_news_types=exclude_news_types,
@@ -496,7 +509,7 @@ class AsyncDashboardRepo:
             stmt = stmt.where(Article.news_type.in_(news_types))
         if search:
             stmt = stmt.where(Article.title.ilike(f"%{search}%"))
-        stmt = stmt.group_by(Article.posted_on, col)
+        stmt = stmt.group_by(Article.posted_on, key)
         rows = (await self.session.execute(stmt)).all()
         return [(d, entity, cnt) for d, entity, cnt in rows]
 
@@ -761,9 +774,10 @@ class AsyncDashboardRepo:
         tech: Sequence[str] | None,
         exclude_cve_ids: Sequence[str] | None,
     ) -> dict[str, int]:
-        """Hitungan CVE terbuka: `open_critical` (severity upper-case == CRITICAL),
+        """Hitungan CVE terbuka: `open_critical` (`cve_score >= 9.0`, bucket yang sama dengan
+        `AsyncCveTrackerRepo.get_stats` supaya angka dashboard = angka halaman CVE),
         `open_kev` (cisa_kev) dan `kev_without_ticket` (KEV yang belum punya ticket sama sekali)."""
-        crit = func.sum(cast(func.upper(CveTracker.cve_severity) == "CRITICAL", Integer))
+        crit = func.sum(cast(CveTracker.cve_score >= 9.0, Integer))
         kev = func.sum(cast(CveTracker.cisa_kev, Integer))
         kev_no_ticket = func.sum(cast(and_(CveTracker.cisa_kev, CveTicket.id.is_(None)), Integer))
         stmt = self._open_cve_stmt(

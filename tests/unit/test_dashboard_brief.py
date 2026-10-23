@@ -1,4 +1,4 @@
-from cti_api.services.dashboard_overview import APAC_COUNTRY_CODES, build_brief
+from cti_api.services.dashboard_overview import APAC_COUNTRY_CODES, build_brief, driver_label
 from cti_api.services.trending import TrendItem
 
 
@@ -71,3 +71,9 @@ def test_brief_kev_only_and_trend_without_pct():
 def test_apac_codes():
     assert len(APAC_COUNTRY_CODES) == 29
     assert {"ID", "SG", "AU"} <= APAC_COUNTRY_CODES
+
+
+def test_driver_label_maps_news_type_keys():
+    assert driver_label("apac") == "APAC"
+    assert driver_label("global") == "Global"
+    assert driver_label("Data Breach Article") == "Data Breach Article"

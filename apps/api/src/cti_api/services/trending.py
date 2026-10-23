@@ -23,6 +23,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 _CACHE: dict[str, tuple[dict[str, Any], float]] = {}
 _CACHE_TTL = 900
 _MIN_BASELINE_FOR_PCT = 3
+# Sparkline cukup 31 titik terakhir: window panjang (mis. 3650 hari dari newsroom
+# "semua waktu" yang di-clamp) tetap dihitung penuh, tapi `daily` tidak dikirim ribuan elemen.
+_MAX_DAILY_BUCKETS = 31
 
 TrendKey = tuple[str, str, str | None]
 
@@ -120,21 +123,37 @@ async def get_trending(
             posted_on_end=today + datetime.timedelta(days=1),
             **filters,
         )
-        for day, entity, cnt in cur_rows:
-            name, ttp_id = (entity, None) if kind == "actor" else _split_ttp(entity)[::-1]
-            buckets = current.setdefault((kind, name, ttp_id), [0] * window)
-            buckets[(day - cur_start).days] += cnt
         prev_rows = await repo.daily_entity_counts(
             dimension=dimension, posted_on_start=prev_start, posted_on_end=cur_start, **filters
         )
+        # Repo sudah group per `ttp_id`, tapi nama fallback (`min(ttp_name)` kalau ID tidak
+        # ada di katalog ATT&CK) dihitung per hari, jadi bisa beda antar-hari. Satu nama per
+        # ID (yang terkecil) supaya satu technique tetap satu item (QA BUG-04).
+        ttp_names: dict[str, str] = {}
+        if kind == "ttp":
+            for _day, entity, _cnt in (*cur_rows, *prev_rows):
+                tid, tname = _split_ttp(entity)
+                ttp_names[tid] = min(ttp_names.get(tid, tname), tname)
+
+        def _key(entity: str, kind: str = kind, names: dict[str, str] = ttp_names) -> TrendKey:
+            if kind == "actor":
+                return (kind, entity, None)
+            tid, _ = _split_ttp(entity)
+            return (kind, names[tid], tid)
+
+        for day, entity, cnt in cur_rows:
+            buckets = current.setdefault(_key(entity), [0] * window)
+            buckets[(day - cur_start).days] += cnt
         for _day, entity, cnt in prev_rows:
-            name, ttp_id = (entity, None) if kind == "actor" else _split_ttp(entity)[::-1]
-            key = (kind, name, ttp_id)
+            key = _key(entity)
             previous[key] = previous.get(key, 0) + cnt
 
     label = f"{window} hari terakhir vs {window} hari sebelumnya"
     result = {
-        "items": [asdict(i) for i in rank_trends(current, previous, limit=limit)],
+        "items": [
+            {**asdict(i), "daily": i.daily[-_MAX_DAILY_BUCKETS:]}
+            for i in rank_trends(current, previous, limit=limit)
+        ],
         "window_days": window,
         "window_label": label,
         "generated_at": datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),

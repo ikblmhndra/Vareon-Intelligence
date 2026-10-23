@@ -74,6 +74,16 @@ def _period_start(days: int | None) -> datetime.date | None:
     return None if days is None else datetime.date.today() - datetime.timedelta(days=days)
 
 
+_DRIVER_LABELS = {"apac": "APAC", "global": "Global"}
+
+
+def driver_label(news_type: str) -> str:
+    """Label `news_type` untuk kalimat brief: kunci mentah rubrik ("apac", "global") dibaca
+    "APAC"/"Global"; tipe lain sudah berupa label ("Data Breach Article") dan dipakai apa
+    adanya."""
+    return _DRIVER_LABELS.get(news_type, news_type)
+
+
 def build_brief(
     *,
     top_trend: TrendItem | None,
@@ -223,7 +233,7 @@ async def get_attention(
     by_type = await repo.news_type_breakdown(
         confirmed_only=True, posted_on_start=since, posted_on_end=None
     )
-    drivers = [nt for nt, _ in by_type if nt][:2]
+    drivers = [driver_label(nt) for nt, _ in by_type if nt][:2]
     trending = await get_trending(session, days=days)
     top = trending["items"][0] if trending["items"] else None
 

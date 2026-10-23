@@ -192,6 +192,39 @@ async def test_daily_entity_counts_ttp_dimension(async_db_session: AsyncSession)
     assert by_ttp == [(_TODAY, "T1059|Command Scripting", 1)]
 
 
+async def test_ttp_trend_groups_by_id_across_name_spellings(
+    async_db_session: AsyncSession,
+) -> None:
+    """Satu technique, dua ejaan nama dari LLM -> satu baris/satu item tren (QA BUG-04)."""
+    from cti_api.services.trending import get_trending
+
+    await _ensure_clients(async_db_session)
+    repo = AsyncArticleRepo(async_db_session)
+    for i, name in enumerate(["Spearphishing Link", "Phishing: Spearphishing Link"]):
+        a = await repo.upsert(
+            url=f"https://example.com/sp-{i}", title=f"sp {i}", source="S", posted_on=_TODAY
+        )
+        await repo.set_enrichment(a, ttps=[("T1566.002", name)])
+
+    dash = AsyncDashboardRepo(async_db_session)
+    rows = await dash.daily_entity_counts(dimension="ttp", posted_on_start=_TODAY)
+    assert len(rows) == 1
+    assert rows[0][0] == _TODAY and rows[0][1].startswith("T1566.002|") and rows[0][2] == 2
+
+    # Hari berbeda dengan ejaan berbeda juga tetap satu item tren.
+    a = await repo.upsert(
+        url="https://example.com/sp-2",
+        title="sp 2",
+        source="S",
+        posted_on=_TODAY - datetime.timedelta(days=1),
+    )
+    await repo.set_enrichment(a, ttps=[("T1566.002", "spearphishing link")])
+    result = await get_trending(async_db_session, days=7)
+    ttp_items = [i for i in result["items"] if i["kind"] == "ttp"]
+    assert len(ttp_items) == 1
+    assert ttp_items[0]["ttp_id"] == "T1566.002" and ttp_items[0]["count"] == 3
+
+
 async def test_get_trending_all_time_uses_7_day_window(async_db_session: AsyncSession) -> None:
     from cti_api.services.trending import get_trending
 

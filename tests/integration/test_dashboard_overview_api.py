@@ -166,5 +166,20 @@ async def test_trending_all_time_label(api_client: AsyncClient, auth_header) -> 
     assert r.json()["window_label"] == "7 hari terakhir vs 7 hari sebelumnya"
 
 
+async def test_trending_daily_capped_to_31_buckets(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header
+) -> None:
+    await AsyncClientRepo(api_session).ensure_default()
+    await _seed_actor_articles(api_session, 3)
+    r = await api_client.get(
+        "/api/dashboard/trending", params={"days": 3650}, headers=auth_header()
+    )
+    assert r.status_code == 200, r.text
+    items = r.json()["items"]
+    assert items and items[0]["count"] == 3
+    assert all(len(i["daily"]) <= 31 for i in items)
+    assert sum(items[0]["daily"]) == 3
+
+
 async def test_dashboard_requires_auth(api_client: AsyncClient) -> None:
     assert (await api_client.get("/api/dashboard/map")).status_code == 401

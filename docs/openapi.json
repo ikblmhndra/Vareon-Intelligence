@@ -17282,7 +17282,7 @@
     },
     "/api/newsroom/topics": {
       "get": {
-        "description": "Topik naik untuk newsroom. Tren selalu \"N hari berakhir hari ini vs N hari sebelumnya\"\n(`get_trending`), jadi tanggal filter diubah jadi jendela `days` yang berjangkar ke hari\nini: `days = (hari ini - posted_on_start).days + 1`. `posted_on_end` diterima tapi\ndiabaikan. Tanpa `posted_on_start` dipakai aturan \"semua waktu\" `get_trending`\n(`days=None` -> 7 hari vs 7 hari).",
+        "description": "Topik naik untuk newsroom. Tren selalu \"N hari berakhir hari ini vs N hari sebelumnya\"\n(`get_trending`), jadi tanggal filter diubah jadi jendela `days` yang berjangkar ke hari\nini: `days = (hari ini - posted_on_start).days + 1`, di-clamp ke [1, 3650] (batas yang\nsama dengan `days` di `/api/dashboard/*`): tanpa clamp, `posted_on_start=0001-01-01`\nmeledak jadi 500 (tanggal sebelum tahun 1) dan tahun 1900 mengalokasikan ratusan ribu\nbucket harian. Tanggal di masa depan -> 1. `posted_on_end` diterima tapi diabaikan.\nTanpa `posted_on_start` dipakai aturan \"semua waktu\" `get_trending`\n(`days=None` -> 7 hari vs 7 hari).",
         "operationId": "newsroom_topics_api_newsroom_topics_get",
         "parameters": [
           {
