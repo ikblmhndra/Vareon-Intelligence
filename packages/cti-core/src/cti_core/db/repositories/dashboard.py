@@ -25,7 +25,7 @@ import datetime
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import Date, Integer, Select, cast, func, or_, select
+from sqlalchemy import Date, Integer, Select, and_, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_core.db.models.article import (
@@ -35,8 +35,9 @@ from cti_core.db.models.article import (
     ArticleThreatActor,
     ArticleTTP,
 )
-from cti_core.db.models.cve import CveTracker
+from cti_core.db.models.cve import CveTicket, CveTracker
 from cti_core.db.models.ioc import IOC
+from cti_core.db.models.ta import TAWatchlistEntry
 from cti_core.db.repositories.cve import is_false_positive_row
 from cti_core.db.repositories.ttp_catalog import canonical_ttp_name
 
@@ -622,6 +623,172 @@ class AsyncDashboardRepo:
             .limit(limit)
         )
         return list((await self.session.execute(stmt)).scalars().all())
+
+    # ── Overview dashboard (peta, perhatian, eksposur CVE) ─────────────────
+
+    async def incident_country_profile(
+        self, *, posted_on_start: datetime.date | None
+    ) -> list[tuple[str, int, str | None, str | None]]:
+        """Profil per negara untuk peta dashboard: `(country_code, jumlah artikel insiden
+        terkonfirmasi, aktor teratas atau None, industri teratas non-"General" atau None)`.
+        Negara = role `victim` (lokasi insiden, bukan sekadar disebut); jumlah memakai
+        `count(DISTINCT article.id)`. Seri aktor/industri dipilih terbanyak, seri sama
+        diurutkan nama biar deterministik. Urutan hasil: jumlah desc, lalu kode negara."""
+        victim = ArticleCountry.role == "victim"
+        counts = _apply_article_filters(
+            select(ArticleCountry.country_code, func.count(func.distinct(Article.id)))
+            .select_from(Article)
+            .join(ArticleCountry)
+            .where(victim),
+            posted_on_start=posted_on_start,
+            posted_on_end=None,
+            confirmed_only=True,
+        ).group_by(ArticleCountry.country_code)
+        count_rows = (await self.session.execute(counts)).all()
+        if not count_rows:
+            return []
+
+        async def _top_by_country(label: Any, join_model: Any, *extra: Any) -> dict[str, str]:
+            n = func.count(func.distinct(Article.id))
+            stmt = _apply_article_filters(
+                select(ArticleCountry.country_code, label, n)
+                .select_from(Article)
+                .join(ArticleCountry)
+                .join(join_model, join_model.article_id == Article.id)
+                .where(victim, *extra),
+                posted_on_start=posted_on_start,
+                posted_on_end=None,
+                confirmed_only=True,
+            ).group_by(ArticleCountry.country_code, label)
+            best: dict[str, tuple[int, str]] = {}
+            for code, name, cnt in (await self.session.execute(stmt)).all():
+                cur = best.get(code)
+                if cur is None or cnt > cur[0] or (cnt == cur[0] and name < cur[1]):
+                    best[code] = (cnt, name)
+            return {code: name for code, (_, name) in best.items()}
+
+        actors = await _top_by_country(ArticleThreatActor.threat_actor, ArticleThreatActor)
+        industries = await _top_by_country(
+            ArticleIndustry.industry,
+            ArticleIndustry,
+            func.lower(ArticleIndustry.industry) != "general",
+        )
+        rows = [
+            (code, int(cnt), actors.get(code), industries.get(code)) for code, cnt in count_rows
+        ]
+        rows.sort(key=lambda r: (-r[1], r[0]))
+        return rows
+
+    async def watchlist_hit_count(
+        self, *, client_id: str, posted_on_start: datetime.date | None
+    ) -> int:
+        """Jumlah artikel DISTINCT yang menyebut nama dari `ta_watchlist` milik `client_id`
+        (cocok case-insensitive ke `article_threat_actors`). Watchlist client lain tidak ikut."""
+        stmt = _apply_article_filters(
+            select(func.count(func.distinct(Article.id)))
+            .select_from(Article)
+            .join(ArticleThreatActor, ArticleThreatActor.article_id == Article.id)
+            .join(
+                TAWatchlistEntry,
+                and_(
+                    func.lower(TAWatchlistEntry.name)
+                    == func.lower(ArticleThreatActor.threat_actor),
+                    TAWatchlistEntry.client_id == client_id,
+                ),
+            ),
+            posted_on_start=posted_on_start,
+            posted_on_end=None,
+        )
+        return int((await self.session.execute(stmt)).scalar_one())
+
+    @staticmethod
+    def _open_cve_stmt(
+        stmt: Select[tuple[Any, ...]],
+        *,
+        client_id: str,
+        tech: Sequence[str] | None,
+        exclude_cve_ids: Sequence[str] | None,
+    ) -> Select[tuple[Any, ...]]:
+        """CVE client yang masih terbuka: belum punya ticket, atau ticket-nya tanpa
+        `closure_date`. `tech=None` = tanpa filter tech, `tech=[]` = tidak ada yang cocok
+        (kontrak sama dengan `_active_tech_names` / `AsyncCveTrackerRepo.get_stats`)."""
+        stmt = stmt.where(CveTracker.client_id == client_id).where(
+            or_(CveTicket.id.is_(None), CveTicket.closure_date.is_(None))
+        )
+        if tech is not None:
+            stmt = stmt.where(CveTracker.tech.in_(tech))
+        if exclude_cve_ids:
+            stmt = stmt.where(CveTracker.cve_id.notin_(exclude_cve_ids))
+        return stmt
+
+    @staticmethod
+    def _tracker_ticket_join() -> Any:
+        return and_(
+            CveTicket.cve_id == CveTracker.cve_id, CveTicket.client_id == CveTracker.client_id
+        )
+
+    async def cve_exposure(
+        self,
+        *,
+        client_id: str,
+        tech: Sequence[str] | None,
+        exclude_cve_ids: Sequence[str] | None,
+        limit: int = 3,
+    ) -> list[tuple[CveTracker, CveTicket | None]]:
+        """CVE terbuka teratas beserta ticket-nya (bila ada): KEV dulu, lalu skor CVSS
+        tertinggi (NULL terakhir), `cve_id` sebagai pemutus seri."""
+        stmt = self._open_cve_stmt(
+            select(CveTracker, CveTicket).outerjoin(CveTicket, self._tracker_ticket_join()),
+            client_id=client_id,
+            tech=tech,
+            exclude_cve_ids=exclude_cve_ids,
+        )
+        stmt = stmt.order_by(
+            CveTracker.cisa_kev.desc(), CveTracker.cve_score.desc().nulls_last(), CveTracker.cve_id
+        ).limit(limit)
+        return [(c, t) for c, t in (await self.session.execute(stmt)).all()]
+
+    async def cve_exposure_counts(
+        self,
+        *,
+        client_id: str,
+        tech: Sequence[str] | None,
+        exclude_cve_ids: Sequence[str] | None,
+    ) -> dict[str, int]:
+        """Hitungan CVE terbuka: `open_critical` (severity upper-case == CRITICAL),
+        `open_kev` (cisa_kev) dan `kev_without_ticket` (KEV yang belum punya ticket sama sekali)."""
+        crit = func.sum(cast(func.upper(CveTracker.cve_severity) == "CRITICAL", Integer))
+        kev = func.sum(cast(CveTracker.cisa_kev, Integer))
+        kev_no_ticket = func.sum(cast(and_(CveTracker.cisa_kev, CveTicket.id.is_(None)), Integer))
+        stmt = self._open_cve_stmt(
+            select(crit, kev, kev_no_ticket)
+            .select_from(CveTracker)
+            .outerjoin(CveTicket, self._tracker_ticket_join()),
+            client_id=client_id,
+            tech=tech,
+            exclude_cve_ids=exclude_cve_ids,
+        )
+        c, k, n = (await self.session.execute(stmt)).one()
+        return {
+            "open_critical": int(c or 0),
+            "open_kev": int(k or 0),
+            "kev_without_ticket": int(n or 0),
+        }
+
+    async def tickets_closed(
+        self, *, client_id: str, since: datetime.date | None
+    ) -> tuple[int, float | None]:
+        """`(jumlah ticket dengan closure_date >= since, rata-rata hari closure_date -
+        created_at::date dibulatkan 1 desimal)`. `since=None` = semua ticket tertutup.
+        Rata-rata None bila tidak ada ticket."""
+        days = CveTicket.closure_date - cast(CveTicket.created_at, Date)
+        stmt = select(func.count(CveTicket.id), func.avg(days)).where(
+            CveTicket.client_id == client_id, CveTicket.closure_date.is_not(None)
+        )
+        if since is not None:
+            stmt = stmt.where(CveTicket.closure_date >= since)
+        n, avg = (await self.session.execute(stmt)).one()
+        return int(n), (round(float(avg), 1) if avg is not None else None)
 
     # ── IOC (global, gak ada client_id -- lihat docstring modul) ────────────
 
