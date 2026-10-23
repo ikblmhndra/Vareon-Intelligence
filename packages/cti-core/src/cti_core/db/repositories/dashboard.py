@@ -633,8 +633,9 @@ class AsyncDashboardRepo:
         terkonfirmasi, aktor teratas atau None, industri teratas non-"General" atau None)`.
         Negara = role APA PUN di `article_countries` (spec 4.4); jumlah memakai
         `count(DISTINCT article.id)` supaya artikel dengan dua role untuk negara yang sama
-        dihitung sekali. Aktor/industri teratas memakai himpunan artikel yang sama. Seri aktor/industri dipilih terbanyak, seri sama
-        diurutkan nama biar deterministik. Urutan hasil: jumlah desc, lalu kode negara."""
+        dihitung sekali. Aktor/industri teratas memakai himpunan artikel yang sama.
+        Aktor/industri dipilih terbanyak, seri sama diurutkan nama biar deterministik.
+        Urutan hasil: jumlah desc, lalu kode negara."""
         counts = _apply_article_filters(
             select(ArticleCountry.country_code, func.count(func.distinct(Article.id)))
             .select_from(Article)
