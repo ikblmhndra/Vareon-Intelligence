@@ -77,6 +77,19 @@ def _country_role(stmt: Select[tuple[Any, ...]], role: str | None) -> Select[tup
     return stmt
 
 
+_NOT_AFFECTED_RISK = "No Risk (Not Affected)"
+_RESOLVED_STATUSES = (
+    "risk accepted",
+    "resolved",
+    "closed",
+    "completed",
+    "not affected",
+    "not applicable",
+)
+"""Status ticket yang bukan beban kerja lagi; cermin `_STATUS_ALIASES` di
+`cti_api.services.cve_dashboard` (bucket `risk_accepted`, `completed`, `not_affected`)."""
+
+
 class AsyncDashboardRepo:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -728,11 +741,23 @@ class AsyncDashboardRepo:
         tech: Sequence[str] | None,
         exclude_cve_ids: Sequence[str] | None,
     ) -> Select[tuple[Any, ...]]:
-        """CVE client yang masih terbuka: belum punya ticket, atau ticket-nya tanpa
-        `closure_date`. `tech=None` = tanpa filter tech, `tech=[]` = tidak ada yang cocok
-        (kontrak sama dengan `_active_tech_names` / `AsyncCveTrackerRepo.get_stats`)."""
+        """CVE client yang masih terbuka = definisi backlog halaman CVE Dashboard
+        (`cti_api.services.cve_dashboard.BACKLOG_BUCKETS`): belum punya ticket, atau ticket-nya
+        tanpa `closure_date` DAN bukan Not Affected / Risk Accepted / Completed. Dulu ticket
+        "No Risk (Not Affected)" yang belum ditutup ikut terhitung, jadi Dashboard bilang 32
+        critical terbuka sementara CVE Dashboard bilang 30 (audit UI U6/U20). `tech=None` = tanpa
+        filter tech, `tech=[]` = tidak ada yang cocok (kontrak sama dengan `_active_tech_names` /
+        `AsyncCveTrackerRepo.get_stats`)."""
+        status = func.lower(func.trim(func.coalesce(CveTicket.remediation_status, "")))
         stmt = stmt.where(CveTracker.client_id == client_id).where(
-            or_(CveTicket.id.is_(None), CveTicket.closure_date.is_(None))
+            or_(
+                CveTicket.id.is_(None),
+                and_(
+                    CveTicket.closure_date.is_(None),
+                    func.coalesce(CveTicket.risk_acceptance, "") != _NOT_AFFECTED_RISK,
+                    status.notin_(_RESOLVED_STATUSES),
+                ),
+            )
         )
         if tech is not None:
             stmt = stmt.where(CveTracker.tech.in_(tech))

@@ -20,4 +20,3 @@ class K7security(RSSScraper):
         legacy_script="k7securityThreat",
     )
     feeds = ("https://blog.k7computing.com/feed/",)
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli

@@ -25,6 +25,7 @@ from cti_core.db.repositories.ransomware import AsyncRansomwareVictimRepo
 from cti_core.db.repositories.techstack import AsyncTechStackRepo
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cti_api.services.exec_dashboard import NON_INCIDENT_TYPES, PREV_MIN_DAY_COVERAGE
 from cti_api.services.trending import TrendItem, get_trending
 
 _CACHE: dict[str, tuple[dict[str, Any], float]] = {}
@@ -87,6 +88,7 @@ def driver_label(news_type: str) -> str:
 def build_brief(
     *,
     top_trend: TrendItem | None,
+    trend_reliable: bool = True,
     kev_in_stack: int,
     incidents: int,
     prev_incidents: int | None,
@@ -98,7 +100,10 @@ def build_brief(
     parts: list[str] = []
     if top_trend is not None:
         name = f"{top_trend.ttp_id} {top_trend.name}" if top_trend.ttp_id else top_trend.name
-        if top_trend.is_new:
+        if not trend_reliable:
+            # Periode pembanding nyaris kosong: jangan klaim "naik" (audit UI U4).
+            parts.append(f"{name} paling sering muncul")
+        elif top_trend.is_new:
             parts.append(f"{name} baru muncul")
         elif top_trend.change_pct is not None:
             parts.append(f"{name} naik {top_trend.change_pct}%")
@@ -199,10 +204,13 @@ async def _pir_hits(session: AsyncSession, client_id: str, since: datetime.date 
 
 
 async def get_attention(
-    session: AsyncSession, *, client_id: str, days: int | None
+    session: AsyncSession, *, client_id: str, days: int | None, incident_only: bool = False
 ) -> dict[str, Any]:
+    """`incident_only` sama artinya dengan `/api/dashboard`: buang `NON_INCIDENT_TYPES`.
+    Tanpa itu kalimat brief ("376 insiden") tidak cocok dengan kartu KPI di bawahnya ("363")
+    yang memakai toggle yang sama (audit UI U2)."""
     today = datetime.date.today()
-    cache_key = f"{client_id}|{days}|{today.isoformat()}"
+    cache_key = f"{client_id}|{days}|{incident_only}|{today.isoformat()}"
     now = time.monotonic()
     cached = _CACHE.get(cache_key)
     if cached is not None and now - cached[1] < _CACHE_TTL:
@@ -220,18 +228,25 @@ async def get_attention(
     watchlist = await repo.watchlist_hit_count(client_id=client_id, posted_on_start=since)
     pir_hits = await _pir_hits(session, client_id, since)
 
+    exclude = sorted(NON_INCIDENT_TYPES) if incident_only else None
     incidents = await repo.count_articles(
-        confirmed_only=True, posted_on_start=since, posted_on_end=None
+        confirmed_only=True, posted_on_start=since, posted_on_end=None, exclude_news_types=exclude
     )
     prev_incidents: int | None = None
     if days is not None and since is not None:
-        prev_incidents = await repo.count_articles(
-            confirmed_only=True,
-            posted_on_start=today - datetime.timedelta(days=days * 2),
-            posted_on_end=since,
-        )
+        prev_window: dict[str, Any] = {
+            "posted_on_start": today - datetime.timedelta(days=days * 2),
+            "posted_on_end": since,
+        }
+        # Aturan pembanding yang sama dengan kartu KPI (`article_dashboard`): periode lalu yang
+        # harinya kebanyakan kosong tidak dibandingkan. Tanpa ini 1 insiden nyasar di periode lalu
+        # menjadi "Insiden naik 37400%" (ditemukan di dev setelah tanggal feed dipakai, 0.8.3).
+        if await repo.distinct_day_count(**prev_window) >= days * PREV_MIN_DAY_COVERAGE:
+            prev_incidents = await repo.count_articles(
+                confirmed_only=True, exclude_news_types=exclude, **prev_window
+            )
     by_type = await repo.news_type_breakdown(
-        confirmed_only=True, posted_on_start=since, posted_on_end=None
+        confirmed_only=True, posted_on_start=since, posted_on_end=None, exclude_news_types=exclude
     )
     drivers = [driver_label(nt) for nt, _ in by_type if nt][:2]
     trending = await get_trending(session, days=days)
@@ -245,6 +260,7 @@ async def get_attention(
         "pir_hits": pir_hits,
         "brief": build_brief(
             top_trend=TrendItem(**top) if top else None,
+            trend_reliable=trending["baseline_reliable"],
             kev_in_stack=cve["open_kev"],
             incidents=incidents,
             prev_incidents=prev_incidents,

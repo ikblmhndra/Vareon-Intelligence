@@ -28,14 +28,19 @@ const DASHBOARD_PATHS = {
   "cve-exposure": "/api/dashboard/cve-exposure",
 } as const;
 
-function useDashboardEndpoint<T>(name: keyof typeof DASHBOARD_PATHS, days: number | null) {
+function useDashboardEndpoint<T>(
+  name: keyof typeof DASHBOARD_PATHS,
+  days: number | null,
+  incidentOnly?: boolean,
+) {
   const clientId = useClientKey();
   return useQuery({
-    queryKey: ["dashboard", name, days, clientId],
+    queryKey: ["dashboard", name, days, incidentOnly ?? null, clientId],
     queryFn: async () => {
-      // Kelima rute punya bentuk query sama (`days`); tipe respons dipasang lewat generik hook.
+      // Kelima rute punya bentuk query sama (`days`); `incident_only` hanya dikirim untuk
+      // attention (brief ikut toggle KPI). Tipe respons dipasang lewat generik hook.
       const { data, error } = await api.GET(DASHBOARD_PATHS[name], {
-        params: { query: { days: days ?? undefined } },
+        params: { query: { days: days ?? undefined, ...(incidentOnly !== undefined && { incident_only: incidentOnly }) } },
       });
       if (error) throw error;
       return data as unknown as T;
@@ -46,8 +51,8 @@ function useDashboardEndpoint<T>(name: keyof typeof DASHBOARD_PATHS, days: numbe
 }
 
 export const useDashboardMap = (days: number | null) => useDashboardEndpoint<DashboardMap>("map", days);
-export const useDashboardAttention = (days: number | null) =>
-  useDashboardEndpoint<DashboardAttention>("attention", days);
+export const useDashboardAttention = (days: number | null, incidentOnly: boolean) =>
+  useDashboardEndpoint<DashboardAttention>("attention", days, incidentOnly);
 export const useDashboardTrending = (days: number | null) =>
   useDashboardEndpoint<TrendingResponse>("trending", days);
 export const useDashboardRansomware = (days: number | null) =>

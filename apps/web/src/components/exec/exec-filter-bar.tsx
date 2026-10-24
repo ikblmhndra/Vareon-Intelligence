@@ -73,7 +73,7 @@ export function ExecFilterBar({
       </div>
       <label className="mb-1.5 flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
         <Checkbox checked={filters.incidentOnly} onCheckedChange={(c) => set("incidentOnly", c === true)} />
-        Incidents only
+        Threat news only
       </label>
       <label className="mb-1.5 flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
         <Checkbox checked={filters.confirmedOnly} onCheckedChange={(c) => set("confirmedOnly", c === true)} />

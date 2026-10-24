@@ -21,4 +21,3 @@ class Ecrime(RSSScraper):
         legacy_script="ecrimeThreat",
     )
     feeds = ("https://ecrime.ch/app/intel-news.php?rss",)
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli

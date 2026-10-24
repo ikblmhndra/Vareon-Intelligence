@@ -32,13 +32,26 @@ export function fmtPercent(rate: number | null | undefined): string {
 
 export type Rating = { label: string; dotClass: string };
 
+/** Di bawah porsi ini (CVE yang sudah di-acknowledge / semua CVE di baris) rata-rata MTTA tidak
+ * mewakili baris: MTTA "3 hari" dari 4 dari 32 CVE critical bukan kinerja "Good" (audit UI U19). */
+export const MIN_ACK_SHARE_FOR_RATING = 0.5;
+
 /**
  * Rating dari rata-rata MTTA (hari) -- ambang sama dengan sheet Excel lama
  * (<=1 Excellent, <=7 Good, <=14 Fair, selebihnya Needs Improvement).
  * BUKAN SLA per severity: belum ada target SLA yang ditetapkan, jadi CRITICAL
- * dan LOW dinilai dengan penggaris yang sama.
+ * dan LOW dinilai dengan penggaris yang sama. `acknowledged`/`total` opsional: bila kurang dari
+ * `MIN_ACK_SHARE_FOR_RATING` yang sudah di-acknowledge, baris dinilai dari backlog-nya, bukan
+ * dari segelintir CVE yang cepat ditangani.
  */
-export function ratingForMtta(meanDays: number | null | undefined): Rating | null {
+export function ratingForMtta(
+  meanDays: number | null | undefined,
+  acknowledged?: number,
+  total?: number,
+): Rating | null {
+  if (total && acknowledged !== undefined && acknowledged / total < MIN_ACK_SHARE_FOR_RATING) {
+    return { label: "Backlog", dotClass: "bg-destructive" };
+  }
   if (meanDays === null || meanDays === undefined) return null;
   if (meanDays <= 1) return { label: "Excellent", dotClass: "bg-success" };
   if (meanDays <= 7) return { label: "Good", dotClass: "bg-info" };

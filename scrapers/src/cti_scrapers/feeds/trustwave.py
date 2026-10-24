@@ -27,4 +27,3 @@ class Trustwave(RSSScraper):
         legacy_script="trustwaveThreat",
     )
     feeds = ("https://www.levelblue.com/blogs/spiderlabs-blog/rss.xml",)
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli

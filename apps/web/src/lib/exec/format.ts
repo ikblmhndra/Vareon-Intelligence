@@ -62,7 +62,7 @@ function csvRow(cells: (string | number | null | undefined)[]): string {
 }
 
 /** Port `exportExecCsv()` (`exec.js:687-728`). */
-export function buildExecCsv(d: import("@/lib/api/loose-types").ExecDashboardV2): string {
+export function buildExecCsv(d: import("@/lib/api/loose-types").ExecDashboardV2, countLabel: string): string {
   const prevSet = new Set(d.prev_ta_names.map((n) => n.toLowerCase()));
   const rows: string[] = [
     csvRow(["=== SECTOR RISK MATRIX ==="]),
@@ -83,7 +83,7 @@ export function buildExecCsv(d: import("@/lib/api/loose-types").ExecDashboardV2)
     "",
     csvRow(["=== KPI SUMMARY ==="]),
     csvRow(["Metric", "Value"]),
-    csvRow(["Total Incidents", d.total_incidents]),
+    csvRow([countLabel, d.total_incidents]),
     csvRow(["Active Sectors", d.active_sectors ?? d.top_sectors.length]),
     csvRow(["Unique Threat Actors", d.unique_ta_count ?? d.ta_leaderboard.length]),
     csvRow(["Critical CVEs", d.cve_kpis.critical]),
@@ -95,8 +95,8 @@ export function buildExecCsv(d: import("@/lib/api/loose-types").ExecDashboardV2)
   return rows.join("\n");
 }
 
-export function downloadExecCsv(d: import("@/lib/api/loose-types").ExecDashboardV2): void {
-  const csv = buildExecCsv(d);
+export function downloadExecCsv(d: import("@/lib/api/loose-types").ExecDashboardV2, countLabel: string): void {
+  const csv = buildExecCsv(d, countLabel);
   const blob = new Blob([csv], { type: "text/csv" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");

@@ -11,6 +11,14 @@ export function defaultExecFilters(): ExecFilters {
   return { days: 90, incidentOnly: true, confirmedOnly: false, rolePreview: "" };
 }
 
+/** Nama angka utama Exec mengikuti filter yang aktif: `total_incidents` dari API baru berarti
+ * insiden kalau "Confirmed only" aktif; dengan "Threat news only" saja isinya berita ancaman
+ * (audit UI U7: dulu selalu tertulis "Total Incidents"). */
+export function execCountLabel(f: Pick<ExecFilters, "incidentOnly" | "confirmedOnly">): string {
+  if (f.confirmedOnly) return "Confirmed Incidents";
+  return f.incidentOnly ? "Threat News" : "Articles";
+}
+
 export const EXEC_DAY_OPTIONS = [7, 30, 90, 180, 365];
 export const EXEC_ROLE_PREVIEW_OPTIONS = ["analyst", "soc", "exec", "admin"];
 

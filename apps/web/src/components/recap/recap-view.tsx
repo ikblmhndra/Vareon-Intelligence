@@ -75,7 +75,16 @@ export function RecapView({ doc, hitRate }: { doc: RecapDoc; hitRate?: RecapHitR
         </div>
       </div>
 
-      {quality.grounding && <GroundingBlock grounding={quality.grounding} />}
+      {/* Recap tanpa headline dan ringkasan = generate gagal; "nothing was dropped" di atas isi kosong
+          menyesatkan (audit UI U13), jadi blok grounding diganti peringatan. */}
+      {!doc.headline && !recap.summary ? (
+        <p className="mt-3 rounded-md border border-destructive/40 px-3 py-2 text-xs text-destructive-text">
+          This recap is empty: the model reply {doc.raw_llm ? "could not be read (raw text below)" : "had no content"}.
+          Generate it again with Force Regen.
+        </p>
+      ) : (
+        quality.grounding && <GroundingBlock grounding={quality.grounding} />
+      )}
 
       {quality.comparison && <ComparisonBlock comparison={quality.comparison} />}
 

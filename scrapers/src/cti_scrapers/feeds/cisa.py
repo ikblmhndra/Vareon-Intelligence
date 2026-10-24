@@ -44,7 +44,6 @@ class Cisa(RSSScraper):
         legacy_script="cisaThreat",
     )
     feeds = ("https://www.cisa.gov/cybersecurity-advisories/all.xml",)
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli
 
     def _parse_feed(self, ctx: ScrapeContext, feed_url: str) -> Iterator[ArticleItem]:
         resp = ctx.http.get(feed_url)

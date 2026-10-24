@@ -21,4 +21,3 @@ class AsecAhn(RSSScraper):
         legacy_script="asecAhnThreat",
     )
     feeds = ("https://asec.ahnlab.com/en/feed/",)
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli

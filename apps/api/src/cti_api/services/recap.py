@@ -411,6 +411,7 @@ async def generate_daily_recap(
     user_msg = _build_user_message(date_iso, articles, tweets, iocs, cves, campaigns, new_tas)
     raw, model_name, llm_usage = await asyncio.to_thread(_call_llm, user_msg)
     parsed = _extract_json(raw)
+    _ensure_not_empty(parsed, kind="daily", period=date_iso, model=model_name)
 
     row = await repo.upsert(
         date_iso,
@@ -506,6 +507,22 @@ _WEEKLY_RULES = f"""Rules:
 - If the week had no notable activity, say so plainly — do not fabricate.
 """
 WEEKLY_SYSTEM_PROMPT = _WEEKLY_SCHEMA + _WEEKLY_RULES
+
+
+class RecapEmptyError(RuntimeError):
+    """LLM menjawab tanpa headline maupun isi recap. Tidak disimpan: baris kosong dulu tampil
+    sebagai recap pekan 12-18 Okt dengan "Grounding check: nothing was dropped" (audit UI U13),
+    dan menimpa baris lama yang mungkin masih bagus. Router menjawabnya HTTP 502; task beat gagal
+    sehingga terlihat di log worker."""
+
+
+def _ensure_not_empty(output: dict[str, Any], *, kind: str, period: str, model: str) -> None:
+    """Hanya untuk balasan yang TERBACA sebagai JSON. Balasan yang tidak bisa di-parse tetap
+    disimpan dengan `raw_llm` (kontrak lama: analis membaca teks mentahnya di halaman Recap)."""
+    if "_raw" in output or (output.get("headline") or "").strip() or output.get("recap"):
+        return
+    log.warning("recap_empty_output", kind=kind, period=period, model=model)
+    raise RecapEmptyError(f"The model returned an empty {kind} recap for {period}; nothing saved")
 
 
 class RecapWindowError(ValueError):
@@ -920,6 +937,12 @@ async def generate_weekly_recap(
         )
         parsed = _extract_json(raw)
         output, quality["grounding"] = _ground_weekly(parsed, prompt.known)
+        _ensure_not_empty(
+            {**output, **({"_raw": raw} if "_raw" in parsed else {})},
+            kind="weekly",
+            period=week_iso,
+            model=model_name,
+        )
         if previous is not None and review_events:
             quality["scorecard"] = recap_quality.build_scorecard(
                 recap_quality.week_ref(previous),

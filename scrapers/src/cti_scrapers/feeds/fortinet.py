@@ -24,4 +24,3 @@ class Fortinet(RSSScraper):
         "https://feeds.fortinet.com/fortinet/blog/psirt",
         "https://feeds.fortinet.com/fortinet/blogs",
     )
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli

@@ -21,4 +21,3 @@ class Qualys(RSSScraper):
         legacy_script="qualysThreat",
     )
     feeds = ("https://blog.qualys.com/vulnerabilities-threat-research/feed",)
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli

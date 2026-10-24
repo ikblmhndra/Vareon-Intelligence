@@ -161,7 +161,15 @@ async def test_map_combines_incidents_and_ransomware(
     assert points[0]["top_actor"] == "Qilin"
 
 
-async def test_trending_all_time_label(api_client: AsyncClient, auth_header) -> None:
+async def test_trending_all_time_label(
+    api_client: AsyncClient, auth_header, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Test ini menguji label/penanda tren dengan baseline yang dianggap layak; aturan baseline
+    # kosong (audit UI U4) diuji di `test_trending_without_a_usable_baseline_claims_no_rise`.
+    from cti_api.services import trending as _trending
+
+    monkeypatch.setattr(_trending, "PREV_MIN_DAY_COVERAGE", 0)
+    _trending._CACHE.clear()
     r = await api_client.get("/api/dashboard/trending", headers=auth_header())
     assert r.json()["window_label"] == "7 hari terakhir vs 7 hari sebelumnya"
 

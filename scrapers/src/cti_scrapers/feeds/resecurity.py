@@ -21,4 +21,3 @@ class Resecurity(RSSScraper):
         legacy_script="resecurityThreat",
     )
     feeds = ("https://www.resecurity.com/feed",)
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli

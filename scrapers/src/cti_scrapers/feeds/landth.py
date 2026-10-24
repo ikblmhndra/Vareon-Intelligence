@@ -21,4 +21,3 @@ class Landth(RSSScraper):
         legacy_script="landthThreat",
     )
     feeds = ("https://depi.security/rss.xml",)
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli

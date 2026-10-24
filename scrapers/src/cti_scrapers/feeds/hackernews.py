@@ -21,4 +21,3 @@ class Hackernews(RSSScraper):
         legacy_script="hackernewsThreat",
     )
     feeds = ("https://feeds.feedburner.com/TheHackersNews",)
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli

@@ -24,7 +24,6 @@ class Akamai(RSSScraper):
         legacy_script="akamaiThreat",
     )
     feeds = ("https://feeds.feedburner.com/akamai/blog",)
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli
 
     def _include_item(self, node: Element) -> bool:
         link_el = node.find("link")

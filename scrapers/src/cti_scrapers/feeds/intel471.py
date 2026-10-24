@@ -27,4 +27,3 @@ class Intel471(RSSScraper):
         legacy_script="intel471Threat",
     )
     feeds = ("https://www.intel471.com/blog/feed",)
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli

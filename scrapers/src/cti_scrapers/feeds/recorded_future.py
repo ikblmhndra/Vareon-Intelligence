@@ -21,4 +21,3 @@ class RecordedFuture(RSSScraper):
         legacy_script="recordedFutureThreat",
     )
     feeds = ("https://www.recordedfuture.com/feed/research",)
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli
