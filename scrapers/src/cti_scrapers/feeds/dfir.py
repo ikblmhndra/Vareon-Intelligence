@@ -21,4 +21,3 @@ class Dfir(RSSScraper):
         legacy_script="dfirThreat",
     )
     feeds = ("https://thedfirreport.com/feed/",)
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli

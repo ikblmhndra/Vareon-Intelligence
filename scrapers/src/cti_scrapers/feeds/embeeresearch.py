@@ -21,7 +21,6 @@ class Embeeresearch(RSSScraper):
         legacy_script="embeeresearchThreat",
     )
     feeds = ("https://www.embeeresearch.io/rss/",)
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli
     xml_fixups = (
         ("&ndash;", ""),
         ("&", "&amp;"),

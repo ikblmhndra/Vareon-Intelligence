@@ -26,7 +26,6 @@ class F5(RSSScraper):
         legacy_script="f5Threat",
     )
     feeds = ("https://www.f5.com/labs/rss-feeds/all.xml",)
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli
 
     def _include_item(self, node: Element) -> bool:
         pub_date = node.find("pubDate")

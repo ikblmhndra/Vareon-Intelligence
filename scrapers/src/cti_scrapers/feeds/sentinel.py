@@ -48,7 +48,6 @@ class Sentinel(RSSScraper):
         legacy_script="sentinelThreat",
     )
     feeds = ("https://www.sentinelone.com/labs/feed/",)
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli
 
     def _include_item(self, node: Element) -> bool:
         categories = node.findall("category")

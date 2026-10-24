@@ -21,4 +21,3 @@ class Rhinosec(RSSScraper):
         legacy_script="rhinosecThreat",
     )
     feeds = ("https://rhinosecuritylabs.com/feed/",)
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli

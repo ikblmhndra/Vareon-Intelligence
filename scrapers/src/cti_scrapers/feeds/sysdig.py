@@ -26,4 +26,3 @@ class Sysdig(RSSScraper):
     )
     feeds = ("https://www.sysdig.com/blog/rss.xml",)
     xml_fixups = (("https://webflow.sysdig.com/", "https://www.sysdig.com/"),)
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli

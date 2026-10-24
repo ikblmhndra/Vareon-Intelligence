@@ -25,4 +25,3 @@ class Sophos(RSSScraper):
         legacy_script="sophosThreat",
     )
     feeds = ("https://www.sophos.com/en-us/blog/feed?id=blt6f15f4f7deaf4242",)
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli

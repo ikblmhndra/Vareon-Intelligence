@@ -40,7 +40,6 @@ class Cybersecnews(RSSScraper):
         legacy_script="cybersecnewsThreat",
     )
     feeds = ("https://cybersecuritynews.com/feed/",)
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli
 
     def _parse_feed(self, ctx: ScrapeContext, feed_url: str) -> Iterator[ArticleItem]:
         resp = ctx.http.get(feed_url)

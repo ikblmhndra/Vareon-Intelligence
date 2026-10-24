@@ -24,4 +24,3 @@ class Artic(RSSScraper):
         "https://arcticwolf.com/resources/category/report/feed/",
         "https://arcticwolf.com/resources/tag/cyberattacks-breaches/feed/",
     )
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli

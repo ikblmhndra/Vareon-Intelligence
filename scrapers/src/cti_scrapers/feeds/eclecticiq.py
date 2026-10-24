@@ -21,7 +21,6 @@ class Eclecticiq(RSSScraper):
         legacy_script="eclecticiqThreat",
     )
     feeds = ("https://blog.eclecticiq.com/rss.xml",)
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli
     xml_fixups = (
         ("&ndash;", ""),
         ("&", "&amp;"),

@@ -28,7 +28,6 @@ class Doyensec(RSSScraper):
         legacy_script="doyensecThreat",
     )
     feeds = ("https://blog.doyensec.com/atom.xml",)
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli
     item_path = f".//{_ATOM_NS}entry"
     title_path = f"{_ATOM_NS}title"
     link_path = f"{_ATOM_NS}link"

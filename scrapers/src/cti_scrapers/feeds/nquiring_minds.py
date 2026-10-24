@@ -25,4 +25,3 @@ class NquiringMinds(RSSScraper):
         legacy_script="nquiringMindsThreat",
     )
     feeds = ("https://nquiringminds.com/feed/",)
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli

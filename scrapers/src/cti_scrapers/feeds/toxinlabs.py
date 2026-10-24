@@ -34,7 +34,6 @@ class ToxinLabs(RSSScraper):
         legacy_script="0xToxinThreat",
     )
     feeds = ("https://0xtoxin.github.io/feed.xml",)
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli
     item_path = f".//{_ATOM_NS}entry"
     title_path = f"{_ATOM_NS}title"
     link_path = f"{_ATOM_NS}link"

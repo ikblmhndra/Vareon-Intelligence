@@ -21,4 +21,3 @@ class Munit(RSSScraper):
         legacy_script="munitThreat",
     )
     feeds = ("https://munit.io/feed/",)
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli
