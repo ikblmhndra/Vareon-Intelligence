@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from cti_core.db.models.ioc import IOC, IOCFeedback, IOCSource, IOCTag, IOCThreatActor
 
 _VALID_VERDICTS = frozenset({"tp", "fp"})
-_VALID_TYPES = frozenset({"ip", "url", "domain", "email", "sha256", "sha1", "md5", "cve"})
+_VALID_TYPES = frozenset({"ip", "url", "domain", "email", "sha256", "sha1", "md5"})
 
 
 class IOCRepo:
@@ -304,38 +304,16 @@ class AsyncIOCRepo:
         return list(result.scalars().all())
 
     async def list_by_article_ids(self, article_ids: Sequence[int]) -> list[IOC]:
-        """IOC (semua tipe, TERMASUK `type="cve"`) yang nyantol ke salah
-        satu `article_ids` lewat `IOCSource` -- port `cluster_service.py`'s
-        `ioc_map` building (Fase 7.4 Grup A, `get_recent_campaigns()`).
-        Gantiin DUA sumber legacy sekaligus: koleksi `iocs` (IOC jaringan/
-        hash) DAN `article.cves` (array terpisah, `iocExtractor.py`'s
-        regex CVE match yang sama persis) -- di skema baru CVE mention
-        cuma IOC biasa dengan `type="cve"`, gak ada array duplikat lagi."""
+        """IOC yang nyantol ke salah satu `article_ids` lewat `IOCSource` -- port
+        `cluster_service.py`'s `ioc_map` building (Fase 7.4 Grup A,
+        `get_recent_campaigns()`). CVE tidak termasuk: relasinya ada di `article_cves`
+        (`AsyncArticleCveRepo.cve_ids_by_article`)."""
         if not article_ids:
             return []
         result = await self.session.execute(
             select(IOC).join(IOC.sources).where(IOCSource.article_id.in_(article_ids)).distinct()
         )
         return list(result.scalars().unique().all())
-
-    async def cve_ids_by_article(self, article_ids: Sequence[int]) -> dict[int, set[str]]:
-        """Id CVE (IOC `type="cve"`, huruf besar) per artikel lewat `IOCSource` -- satu query
-        ramping: tanpa memuat objek IOC beserta sumber, tag, dan feedback-nya seperti
-        `list_by_article_ids`. Inilah satu-satunya hubungan artikel -> CVE yang tersimpan (tidak
-        ada tabel khusus; `persist` menulis IOC dari isi artikel), jadi mencakup CVE yang hanya
-        disebut di body. Artikel tanpa CVE tidak ada di hasil."""
-        if not article_ids:
-            return {}
-        result = await self.session.execute(
-            select(IOCSource.article_id, IOC.value)
-            .join(IOC, IOC.id == IOCSource.ioc_id)
-            .where(IOC.type == "cve", IOCSource.article_id.in_(article_ids))
-            .distinct()
-        )
-        found: dict[int, set[str]] = {}
-        for article_id, value in result.all():
-            found.setdefault(article_id, set()).add(value.upper())
-        return found
 
     async def get_stats(self) -> dict[str, object]:
         total = (await self.session.execute(select(func.count()).select_from(IOC))).scalar_one()

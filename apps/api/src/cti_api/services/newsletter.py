@@ -42,6 +42,7 @@ from cti_core.config import get_settings, platform_name
 from cti_core.db.models.article import Article
 from cti_core.db.models.newsletter import NewsletterArticleSummary
 from cti_core.db.repositories.article import AsyncArticleRepo
+from cti_core.db.repositories.article_cve import AsyncArticleCveRepo
 from cti_core.db.repositories.cve import AsyncCveTrackerRepo
 from cti_core.db.repositories.ioc import AsyncIOCRepo
 from cti_core.db.repositories.ioc_reference import AsyncIocAllowlistRepo
@@ -452,7 +453,6 @@ _IOC_TYPE_MAP = {
     "sha256": "sha256",
     "sha1": "sha1",
     "md5": "md5",
-    "cves": "cve",
 }
 
 
@@ -464,6 +464,7 @@ async def write_article_findings(session: AsyncSession, context: dict[str, Any])
     IOC, dan "ikut kalau kebetulan sudah di-cache" membuat hasilnya bergantung riwayat cache."""
     cve_repo = AsyncCveTrackerRepo(session)
     ioc_repo = AsyncIOCRepo(session)
+    article_cve_repo = AsyncArticleCveRepo(session)
     allowlist = await _get_allowlist_sets(session)
     seen: set[Any] = set()
     for article in (
@@ -484,7 +485,14 @@ async def write_article_findings(session: AsyncSession, context: dict[str, Any])
                 source=article.get("source", ""),
                 mention_date=article.get("posted_on", ""),
             )
-        for field_key, values in article.get("iocs", {}).items():
+        iocs = article.get("iocs", {})
+        if article_id is not None:
+            await article_cve_repo.add_many(
+                article_id, iocs.get("cves", []), article.get("title", "")
+            )
+        for field_key, values in iocs.items():
+            if field_key == "cves":
+                continue
             for value in values:
                 ioc_type = _IOC_TYPE_MAP.get(field_key, field_key)
                 canon = canonical(ioc_type, value)

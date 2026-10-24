@@ -34,6 +34,7 @@ from typing import TYPE_CHECKING
 
 from cti_core.db.models.article import RejectedArticle
 from cti_core.db.repositories.article import ArticleRepo, RejectedArticleRepo
+from cti_core.db.repositories.article_cve import ArticleCveRepo
 from cti_core.db.repositories.ioc import IOCRepo
 from cti_core.ioc.allowlist import allowlist_match
 from cti_core.ioc.canonical import canonical
@@ -62,7 +63,6 @@ _IOC_TYPE_MAP = {
     "sha256": "sha256",
     "sha1": "sha1",
     "md5": "md5",
-    "cves": "cve",
 }
 
 
@@ -163,6 +163,9 @@ def persist(
                 article_id=article.id,
                 suppression_reason=allowlist_match(ioc_type, canon, allowlist),
             )
+
+    # CVE bukan IOC: relasi artikel -> CVE ada di `article_cves` (insert-ignore, idempotent).
+    ArticleCveRepo(session).add_many(article.id, ioc_data.get("cves", []), title)
 
     # Artikel ini sekarang DITERIMA -- buang catatan "ditolak"/"gagal di-enrich"
     # (`rejected_articles`) untuk URL yang sama kalau ada. Tanpa ini artikel yang

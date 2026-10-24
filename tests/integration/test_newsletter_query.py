@@ -15,9 +15,9 @@ from cti_core.db.models.article import Article
 from cti_core.db.models.cve import CveTracker
 from cti_core.db.models.newsletter import NewsletterArticleSummary, NewsletterSuggestion
 from cti_core.db.repositories.article import AsyncArticleRepo
+from cti_core.db.repositories.article_cve import AsyncArticleCveRepo
 from cti_core.db.repositories.auth import AsyncClientRepo
 from cti_core.db.repositories.cve import AsyncCveFalsePositiveRepo
-from cti_core.db.repositories.ioc import AsyncIOCRepo
 from cti_core.db.repositories.newsletter import AsyncNewsletterRepo
 from cti_core.db.repositories.techstack import AsyncTechStackRepo
 from sqlalchemy import delete, func, select, text
@@ -465,12 +465,8 @@ async def test_cves_come_from_titles_and_ioc_links_and_carry_kev_and_poc(
     await async_db_session.flush()
     await AsyncCveFalsePositiveRepo(async_db_session).mark("CVE-2026-1004", "default")
     # CVE yang hanya ada di BODY lolos lewat IOC yang tersambung ke artikelnya.
-    await AsyncIOCRepo(async_db_session).upsert(
-        type="cve",
-        value="CVE-2026-1002",
-        source_url=in_body.url,
-        source_name="CISA",
-        article_id=in_body.id,
+    await AsyncArticleCveRepo(async_db_session).add_many(
+        in_body.id, ["CVE-2026-1002"], in_body.title
     )
 
     with no_campaigns():

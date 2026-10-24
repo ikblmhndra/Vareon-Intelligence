@@ -125,7 +125,6 @@ _IOC_HALF_LIFE: dict[str, float] = {
     "sha256": 90.0,
     "sha1": 90.0,
     "md5": 90.0,
-    "cve": 90.0,
 }
 """Legacy juga punya entry `url_with_path` -- tipe itu gak ada di
 `IOC._VALID_TYPES` skema baru (cuma `url`), jadi entry dead-nya di-drop,

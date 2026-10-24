@@ -37,9 +37,9 @@ from cti_core.config import get_settings
 from cti_core.db.models.article import Article
 from cti_core.db.models.newsletter import NewsletterSuggestion
 from cti_core.db.repositories.article import AsyncArticleRepo
+from cti_core.db.repositories.article_cve import AsyncArticleCveRepo
 from cti_core.db.repositories.auth import AsyncClientRepo
 from cti_core.db.repositories.cve import AsyncCveTrackerRepo
-from cti_core.db.repositories.ioc import AsyncIOCRepo
 from cti_core.db.repositories.newsletter import AsyncNewsletterRepo
 from cti_core.db.repositories.techstack import AsyncTechStackRepo
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -133,7 +133,7 @@ async def load_candidates(
         return []
     article_ids = [a.id for a in articles]
 
-    iocs = await AsyncIOCRepo(session).cve_ids_by_article(article_ids)
+    iocs = await AsyncArticleCveRepo(session).cve_ids_by_article(article_ids)
     cves_by_article = {
         a.id: iocs.get(a.id, set()) | set(newsletter_service._extract_cve_ids(a.title, None))
         for a in articles
