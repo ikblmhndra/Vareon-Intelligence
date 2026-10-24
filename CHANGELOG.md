@@ -19,10 +19,12 @@ IOC kanonik **tidak bisa dibatalkan**, jadi backup itu satu-satunya jalan mundur
 - Semua skor artikel dihitung ulang sekali setelah start pertama (task `confidence.recompute_all`). Bila broker mati saat start,
   jalankan `POST /api/articles/confidence/recompute` manual.
 - Sebelum deploy ke prod, cek `SELECT count(*) FROM articles WHERE overrides ? 'confidence_score'`: baris di situ mempertahankan
-  skor lamanya sebagai override analis. Semua `overrides.confidence_score` yang ada ditulis mesin oleh recompute lama (tidak ada UI
-  analis yang menulisnya), jadi bila ada barisnya: `UPDATE articles SET overrides = overrides - 'confidence_score' WHERE overrides ?
-  'confidence_score'`, lalu `POST /api/articles/confidence/recompute`.
+  skor lamanya sebagai override analis. Catat hasilnya saja; perbaikannya dijalankan sesudah deploy (lihat di bawah).
 - Sesudah deploy, cek:
+  - bila hitungan di atas > 0: semua `overrides.confidence_score` yang ada ditulis mesin oleh recompute lama (tidak ada UI analis
+    yang menulisnya), jadi jalankan `UPDATE articles SET overrides = overrides - 'confidence_score' WHERE overrides ?
+    'confidence_score'`, lalu `POST /api/articles/confidence/recompute`. **Hanya sesudah 0.8.6 live**: di 0.8.5 POST itu menulis
+    `overrides.confidence_score` untuk SETIAP artikel, jadi menjalankannya sebelum deploy justru mengunci semua skor;
   - baris log `confidence_recompute_all` muncul; bila tidak, jalankan `POST /api/articles/confidence/recompute` manual (worker lama
     bisa membuang task itu selama `up -d`);
   - `SELECT count(*) FROM iocs WHERE type='cve'` = 0; bila tidak, jalankan ulang `DELETE FROM iocs WHERE type = 'cve'`.

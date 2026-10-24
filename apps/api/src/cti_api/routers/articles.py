@@ -299,7 +299,8 @@ async def recompute_confidence_all(
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),
 ) -> dict[str, int]:
-    result = await confidence.recompute_all_confidence(session)
+    # commit per batch: recompute penuh di prod tidak memegang lock baris seluruh tabel
+    result = await confidence.recompute_all_confidence(session, commit_each_batch=True)
     await AsyncAuditLogRepo(session).write(
         username=user["username"],
         action="recompute_confidence_all",
