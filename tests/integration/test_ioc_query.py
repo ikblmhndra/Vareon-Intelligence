@@ -9,6 +9,7 @@ from typing import cast
 import pytest
 from cti_core.db.repositories.ioc import AsyncIOCRepo
 from cti_core.db.repositories.ioc_reference import AsyncIocAllowlistRepo
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 pytestmark = pytest.mark.asyncio
@@ -167,6 +168,11 @@ async def test_bulk_delete_returns_count_of_actually_deleted(
 
 
 class TestAsyncIocAllowlistRepo:
+    @pytest.fixture(autouse=True)
+    async def _without_seed(self, async_db_session: AsyncSession) -> None:
+        # Skema test sudah di head: seed migrasi 0.8.6 ada di tabel; test ini menghitung baris.
+        await async_db_session.execute(text("DELETE FROM ioc_allowlist_entries"))
+
     async def test_create_and_list(self, async_db_session: AsyncSession) -> None:
         repo = AsyncIocAllowlistRepo(async_db_session)
         entry = await repo.create(entry_type="ip", value="1.2.3.4", added_by="admin1")

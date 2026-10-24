@@ -4,7 +4,6 @@ Postgres REAL (testcontainers)."""
 from __future__ import annotations
 
 import pytest
-from cti_core.db.models.ioc_reference import IocAllowlistEntry
 from cti_core.db.repositories.ioc import IOCRepo
 from cti_enrich.routing import RoutingResult
 from cti_enrich.stages import extract_iocs as extract_iocs_stage
@@ -17,8 +16,7 @@ def test_allowlisted_ioc_is_stored_flagged(
     db_session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(extract_iocs_stage, "_allowlist_cache", None)
-    db_session.add(IocAllowlistEntry(type="url_domain", value="gofile.io"))
-    db_session.flush()
+    # `gofile.io` sudah ada di `ioc_allowlist_entries`: seed migrasi 0.8.6 (e7b2d4a9c6f1).
 
     persist(
         session=db_session,
