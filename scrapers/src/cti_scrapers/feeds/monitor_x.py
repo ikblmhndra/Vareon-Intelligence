@@ -267,7 +267,7 @@ class MonitorX(BaseScraper):
                     continue  # noise pendanaan, bukan sinyal TI -- port funding_status lama
 
                 try:
-                    llm = classify(text)
+                    llm = classify(text, task="classify_tweet")
                 except OpenAIQuotaExhausted:
                     raise
                 except Exception:

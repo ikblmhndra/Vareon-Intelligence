@@ -308,7 +308,7 @@ _WITH_TIMES = path_type(
 )
 
 
-def _llm_reply(user_msg: str, system_prompt: str) -> tuple[str, str, dict[str, int]]:
+def _llm_reply(user_msg: str, system_prompt: str, *, task: str) -> tuple[str, str, dict[str, int]]:
     """Balasan yang disusun dari prompt yang diterima: story mengutip id artikel dari `[#id]`."""
     article_id = int(re.search(r"\[#(\d+)\] \[CISA\]", user_msg).group(1))  # type: ignore[union-attr]
     payload = {

@@ -17,6 +17,7 @@ from cti_core.db.models.article import Article, ArticleThreatActor
 from cti_core.db.repositories.cve import AsyncCveTrackerRepo
 from cti_core.db.repositories.ta import AsyncTAProfileRepo, build_ta_name_pattern
 from cti_core.llm.client import get_llm_client, parse_json_response
+from cti_core.llm.usage import prompt_version
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -179,8 +180,11 @@ def _build_user_message(actor_name: str, news: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+_PROMPT_VERSION = prompt_version(_SYSTEM_PROMPT)
+
+
 def _call_llm(actor_name: str, news: list[dict[str, Any]]) -> dict[str, Any]:
-    client, model_name = get_llm_client()
+    client, model_name = get_llm_client(task="ta_profile")
     user_msg = _build_user_message(actor_name, news)
     completion = client.chat.completions.create(
         model=model_name,
@@ -189,6 +193,7 @@ def _call_llm(actor_name: str, news: list[dict[str, Any]]) -> dict[str, Any]:
             {"role": "user", "content": user_msg},
         ],
         response_format={"type": "json_object"},
+        prompt_version=_PROMPT_VERSION,
     )
     raw = completion.choices[0].message.content
     result = parse_json_response(raw or "{}")

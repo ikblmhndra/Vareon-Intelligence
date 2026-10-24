@@ -48,6 +48,7 @@ from cti_core.db.repositories.ioc_reference import AsyncIocAllowlistRepo
 from cti_core.db.repositories.newsletter import AsyncNewsletterRepo
 from cti_core.ioc.extractor import extract_iocs
 from cti_core.llm.client import get_llm_client, parse_json_response, usage_from
+from cti_core.llm.usage import prompt_version
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_api.schemas.newsletter import DEFAULT_SUMMARY_LANGUAGE, SummaryLanguage
@@ -209,15 +210,17 @@ def _llm_summarize_with_body(
     title: str, body: str, *, language: SummaryLanguage
 ) -> tuple[dict[str, Any], str, dict[str, int]]:
     """Return (hasil parse, nama model, token usage); dua terakhir ikut disimpan di cache."""
-    client, model_name = get_llm_client()
+    system = _prompt(_PROMPT_WITH_BODY, language)
+    client, model_name = get_llm_client(task="newsletter_article")
     completion = client.chat.completions.create(
         model=model_name,
         messages=[
-            {"role": "system", "content": _prompt(_PROMPT_WITH_BODY, language)},
+            {"role": "system", "content": system},
             {"role": "user", "content": f"Title: {title}\n\nArticle body:\n{body[:4000]}"},
         ],
         temperature=0,
         n=1,
+        prompt_version=prompt_version(system),
     )
     content = completion.choices[0].message.content
     result = parse_json_response(content or "{}")
@@ -237,15 +240,17 @@ def _llm_summarize_from_metadata(
         "threat_actors": article.get("threat_actors", []),
         "ttps": [t.get("name", "") for t in article.get("ttps", [])],
     }
-    client, model_name = get_llm_client()
+    system = _prompt(_PROMPT_FROM_METADATA, language)
+    client, model_name = get_llm_client(task="newsletter_metadata")
     completion = client.chat.completions.create(
         model=model_name,
         messages=[
-            {"role": "system", "content": _prompt(_PROMPT_FROM_METADATA, language)},
+            {"role": "system", "content": system},
             {"role": "user", "content": json.dumps(meta)},
         ],
         temperature=0,
         n=1,
+        prompt_version=prompt_version(system),
     )
     content = completion.choices[0].message.content
     result = parse_json_response(content or "{}")

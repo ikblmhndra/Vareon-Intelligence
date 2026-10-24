@@ -47,7 +47,7 @@ class FakeClient:
 def use_client(monkeypatch: pytest.MonkeyPatch):
     def _use(module: Any, replies: list[str]) -> FakeClient:
         client = FakeClient(replies)
-        monkeypatch.setattr(module, "get_llm_client", lambda: (client, "test-model"))
+        monkeypatch.setattr(module, "get_llm_client", lambda **_: (client, "test-model"))
         monkeypatch.setattr(module, "store_param", lambda: {})
         return client
 

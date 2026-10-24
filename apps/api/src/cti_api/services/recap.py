@@ -99,6 +99,7 @@ from cti_core.db.repositories.recap import AsyncRecapRepo
 from cti_core.db.repositories.ta import AsyncTARepo
 from cti_core.db.repositories.tweet import AsyncTweetRepo
 from cti_core.llm.client import get_llm_client, parse_json_response, usage_from
+from cti_core.llm.usage import prompt_version
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -363,12 +364,15 @@ def _extract_json(raw: str) -> dict[str, Any]:
         return {"_raw": raw}
 
 
-def _call_llm(user_msg: str, system_prompt: str = SYSTEM_PROMPT) -> tuple[str, str, dict[str, int]]:
+def _call_llm(
+    user_msg: str, system_prompt: str = SYSTEM_PROMPT, *, task: str
+) -> tuple[str, str, dict[str, int]]:
     """`(isi balasan, nama model, pemakaian)`. Pemakaian = `usage_from` (kosong kalau gateway tidak
     mengirim `usage`) + `wall_ms`: waktu panggilan API termasuk retry klien. Diukur DI SINI, di
     dalam fungsi yang jalan di thread (`asyncio.to_thread`), supaya antre event loop tidak ikut.
-    `system_prompt` bawaannya prompt HARIAN; recap mingguan memberi `WEEKLY_SYSTEM_PROMPT`."""
-    client, model_name = get_llm_client()
+    `system_prompt` bawaannya prompt HARIAN; recap mingguan memberi `WEEKLY_SYSTEM_PROMPT`.
+    `task` (`recap_daily`/`recap_weekly`) menamai panggilan di log `llm_calls`."""
+    client, model_name = get_llm_client(task=task)
     started = time.monotonic()
     completion = client.chat.completions.create(
         model=model_name,
@@ -378,6 +382,7 @@ def _call_llm(user_msg: str, system_prompt: str = SYSTEM_PROMPT) -> tuple[str, s
         ],
         temperature=0,
         n=1,
+        prompt_version=prompt_version(system_prompt),
     )
     wall_ms = int((time.monotonic() - started) * 1000)
     return (
@@ -409,7 +414,7 @@ async def generate_daily_recap(
     new_tas = await _collect_new_threat_actors(session, day)
 
     user_msg = _build_user_message(date_iso, articles, tweets, iocs, cves, campaigns, new_tas)
-    raw, model_name, llm_usage = await asyncio.to_thread(_call_llm, user_msg)
+    raw, model_name, llm_usage = await asyncio.to_thread(_call_llm, user_msg, task="recap_daily")
     parsed = _extract_json(raw)
     _ensure_not_empty(parsed, kind="daily", period=date_iso, model=model_name)
 
@@ -933,7 +938,7 @@ async def generate_weekly_recap(
         )
         prompt = _build_weekly_prompt(inputs, review_events)
         raw, model_name, llm_usage = await asyncio.to_thread(
-            _call_llm, prompt.user_message, WEEKLY_SYSTEM_PROMPT
+            _call_llm, prompt.user_message, WEEKLY_SYSTEM_PROMPT, task="recap_weekly"
         )
         parsed = _extract_json(raw)
         output, quality["grounding"] = _ground_weekly(parsed, prompt.known)

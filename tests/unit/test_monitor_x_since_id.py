@@ -43,7 +43,7 @@ def test_last_seen_ids_are_keyed_by_lowercase_username_and_keep_the_numeric_max(
 def test_since_id_is_used_for_an_account_whose_stored_tweets_have_mixed_case(
     monkeypatch: Any,
 ) -> None:
-    monkeypatch.setattr(monitor_x, "classify", lambda text: ClassifyResult(related_cyber=True))
+    monkeypatch.setattr(monitor_x, "classify", lambda text, **_: ClassifyResult(related_cyber=True))
     queries: list[str] = []
 
     def api(request: httpx.Request) -> httpx.Response:

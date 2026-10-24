@@ -52,7 +52,7 @@ def _llm_and_mitre(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         tweet_alerts,
         "classify",
-        lambda text: ClassifyResult(related_cyber="NOT-CYBER" not in text),
+        lambda text, **_: ClassifyResult(related_cyber="NOT-CYBER" not in text),
     )
     monkeypatch.setattr("cti_enrich.stages.score._check_cve_vendor", lambda cve, stack: False)
 
@@ -157,7 +157,7 @@ def test_per_account_filters_match_the_old_script() -> None:
 def test_classification_is_skipped_for_tweets_the_cheap_filters_already_drop() -> None:
     calls: list[str] = []
 
-    def spy(text: str) -> ClassifyResult:
+    def spy(text: str, **_: object) -> ClassifyResult:
         calls.append(text)
         return ClassifyResult(related_cyber=True)
 
@@ -353,7 +353,7 @@ def test_the_archive_carries_profile_media_and_llm_fields_of_the_source(
     monkeypatch.setattr(
         tweet_alerts,
         "classify",
-        lambda text: ClassifyResult(
+        lambda text, **_: ClassifyResult(
             related_cyber=True,
             confidence=0.8,
             confirmed_incident=True,
@@ -413,7 +413,7 @@ def test_a_tweet_without_author_is_still_alerted_but_not_archived() -> None:
 def test_a_tweet_whose_classification_failed_is_not_archived_either(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def broken(text: str) -> ClassifyResult:
+    def broken(text: str, **_: object) -> ClassifyResult:
         raise ConnectionError("gateway down")
 
     monkeypatch.setattr(tweet_alerts, "classify", broken)
@@ -436,7 +436,7 @@ def test_the_per_run_cap_counts_notices_only_not_the_archive() -> None:
 def test_a_failing_llm_skips_only_that_tweet_so_it_is_retried_next_run(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def flaky(text: str) -> ClassifyResult:
+    def flaky(text: str, **_: object) -> ClassifyResult:
         if "boom" in text:
             raise ConnectionError("gateway down")
         return ClassifyResult(related_cyber=True)
@@ -449,7 +449,7 @@ def test_a_failing_llm_skips_only_that_tweet_so_it_is_retried_next_run(
 
 
 def test_exhausted_llm_quota_stops_the_run(monkeypatch: pytest.MonkeyPatch) -> None:
-    def broke(text: str) -> ClassifyResult:
+    def broke(text: str, **_: object) -> ClassifyResult:
         raise OpenAIQuotaExhausted("habis")
 
     monkeypatch.setattr(tweet_alerts, "classify", broke)

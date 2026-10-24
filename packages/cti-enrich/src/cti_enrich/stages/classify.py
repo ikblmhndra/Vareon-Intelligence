@@ -217,8 +217,9 @@ ke nol -- itu batas realistis gateway LLM dev yang gak 100% reliable,
 dilaporkan apa adanya di hasil korpus test, bukan disembunyiin."""
 
 
-def classify(title: str) -> ClassifyResult:
-    client, model_name = get_llm_client()
+def classify(title: str, *, task: str = "classify") -> ClassifyResult:
+    """`task` menamai panggilan di log `llm_calls`; tweet memakai `classify_tweet`."""
+    client, model_name = get_llm_client(task=task)
     last_error: json.JSONDecodeError | None = None
     attempts: list[dict[str, Any]] = []
     for attempt in range(_MAX_ATTEMPTS):
@@ -232,6 +233,7 @@ def classify(title: str) -> ClassifyResult:
                 temperature=0,
                 n=1,
                 max_tokens=_MAX_TOKENS,
+                prompt_version=PROMPT_VERSION,
                 **store_param(),
             )
         except RateLimitError as e:

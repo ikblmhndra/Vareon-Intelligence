@@ -296,7 +296,9 @@ REFERENCE = {"techstack": ["acme"], "threat_actor_groups": ["apt41"], "monitored
 
 @pytest.fixture(autouse=True)
 def _llm_and_mitre(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(tweet_alerts, "classify", lambda text: ClassifyResult(related_cyber=True))
+    monkeypatch.setattr(
+        tweet_alerts, "classify", lambda text, **_: ClassifyResult(related_cyber=True)
+    )
     monkeypatch.setattr("cti_enrich.stages.score._check_cve_vendor", lambda cve, stack: False)
 
 

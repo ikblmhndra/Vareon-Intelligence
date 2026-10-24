@@ -78,7 +78,7 @@ def cache(monkeypatch: pytest.MonkeyPatch) -> Rows:
 @pytest.fixture
 def llm(monkeypatch: pytest.MonkeyPatch) -> FakeLlm:
     fake = FakeLlm()
-    monkeypatch.setattr(newsletter_service, "get_llm_client", lambda: (fake, "stub-model"))
+    monkeypatch.setattr(newsletter_service, "get_llm_client", lambda **_: (fake, "stub-model"))
     return fake
 
 

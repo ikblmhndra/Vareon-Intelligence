@@ -57,7 +57,7 @@ def test_the_llm_client_is_built_from_the_overridden_key_model_and_url(
     )
     install_overlay(monkeypatch, make_settings(keys=KEYS), [row])
 
-    client, model = get_llm_client()
+    client, model = get_llm_client(task="test")
 
     assert client.api_key == DB_LLM
     assert model == "model-db-bbbbbb"
@@ -69,7 +69,7 @@ def test_the_llm_client_keeps_using_the_env_values_when_nothing_is_overridden(
 ) -> None:
     install_overlay(monkeypatch, make_settings(keys=KEYS), [])
 
-    client, model = get_llm_client()
+    client, model = get_llm_client(task="test")
 
     assert client.api_key == ENV_VALUES[("llm", "api_key")]
     assert model == NON_SECRET_VALUES["llm_model"]
@@ -85,7 +85,7 @@ def test_an_empty_overridden_url_goes_back_to_the_vendor_default(
     )
     install_overlay(monkeypatch, base, [make_row("llm", {"url": ""})])
 
-    client, _ = get_llm_client()
+    client, _ = get_llm_client(task="test")
 
     assert str(client.base_url) == "https://api.openai.com/v1/"
     assert store_param() == {"store": True}

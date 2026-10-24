@@ -51,21 +51,21 @@ def test_parse_json_response_unparseable_raises() -> None:
 
 def test_get_llm_client_default_openai() -> None:
     settings = LlmSettings(provider="openai", api_key="sk-test")
-    client, model = llm_client.get_llm_client(settings=settings)
+    client, model = llm_client.get_llm_client(task="test", settings=settings)
     assert model == "gpt-4o"
     assert client.api_key == "sk-test"
 
 
 def test_get_llm_client_custom_base_url() -> None:
     settings = LlmSettings(provider="openai", api_key="sk-test", url="https://gateway.local/v1")
-    client, _ = llm_client.get_llm_client(settings=settings)
+    client, _ = llm_client.get_llm_client(task="test", settings=settings)
     assert str(client.base_url) == "https://gateway.local/v1/"
 
 
 def test_get_llm_client_unknown_provider_raises() -> None:
     settings = LlmSettings.model_construct(provider="bogus", api_key="x", url="", model="")
     with pytest.raises(ValueError, match="Unknown LLM provider"):
-        llm_client.get_llm_client(settings=settings)
+        llm_client.get_llm_client(task="test", settings=settings)
 
 
 def test_store_param_true_for_plain_openai() -> None:

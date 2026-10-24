@@ -19,6 +19,7 @@ import asyncio
 from typing import Any
 
 from cti_core.llm.client import get_llm_client
+from cti_core.llm.usage import prompt_version
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_api.services.exec_dashboard import get_exec_dashboard_v2
@@ -130,14 +131,18 @@ TOP ATTACK TECHNIQUES (MITRE ATT&CK)
 Now produce the 1-page executive briefing in Markdown as instructed."""
 
 
+_PROMPT_VERSION = prompt_version(SYSTEM_PROMPT)
+
+
 def _call_llm(user_msg: str) -> str:
-    client, model_name = get_llm_client()
+    client, model_name = get_llm_client(task="exec_brief")
     completion = client.chat.completions.create(
         model=model_name,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_msg},
         ],
+        prompt_version=_PROMPT_VERSION,
     )
     return completion.choices[0].message.content or ""
 

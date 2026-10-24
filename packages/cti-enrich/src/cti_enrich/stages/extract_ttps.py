@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 
 from cti_core.attack_ttp import NormalizedTTP, TechniqueCatalog, normalize_ttps
 from cti_core.llm.client import first_choice, get_llm_client, parse_json_response, store_param
+from cti_core.llm.usage import prompt_version
 from openai import RateLimitError
 
 from cti_enrich.stages.classify import OpenAIQuotaExhausted
@@ -55,6 +56,8 @@ bug yang sama (truncated mid-`<think>`) berisiko kejadian di sini juga
 walau belum ketauan nyata di korpus test. Dinaikin preventif, bukan reaktif."""
 
 
+_PROMPT_VERSION = prompt_version(_TTP_SYSTEM_PROMPT)
+
 _MAX_ATTEMPTS = 3
 """2 retry -- sama alasan `classify.py::_MAX_ATTEMPTS`, respons kosong/
 rusak dari gateway reasoning-model itu transien."""
@@ -64,7 +67,7 @@ def extract_ttps(summary: str) -> TtpResult:
     """Terima ringkasan (LSA, `stages/summarize.py`) yang udah dipotong
     caller -- `nlp.py` manggil ini dengan `result[:2000]`, potongan itu
     tanggung jawab caller (`pipeline.py`), bukan di sini."""
-    client, model_name = get_llm_client()
+    client, model_name = get_llm_client(task="ttp")
     last_error: json.JSONDecodeError | None = None
     for attempt in range(_MAX_ATTEMPTS):
         try:
@@ -77,6 +80,7 @@ def extract_ttps(summary: str) -> TtpResult:
                 max_tokens=_MAX_TOKENS,
                 n=1,
                 temperature=0,
+                prompt_version=_PROMPT_VERSION,
                 **store_param(),
             )
         except RateLimitError as e:

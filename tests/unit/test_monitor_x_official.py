@@ -69,7 +69,7 @@ def _llm_and_sleep(monkeypatch: pytest.MonkeyPatch) -> list[float]:
     monkeypatch.setattr(
         monitor_x,
         "classify",
-        lambda text: ClassifyResult(related_cyber="NOT-CYBER" not in text),
+        lambda text, **_: ClassifyResult(related_cyber="NOT-CYBER" not in text),
     )
     slept: list[float] = []
     monkeypatch.setattr(_twitterapi.time, "sleep", slept.append)
@@ -112,7 +112,7 @@ def test_tweets_already_stored_are_skipped_before_scan_and_llm(
 ) -> None:
     classified: list[str] = []
 
-    def spy(text: str) -> ClassifyResult:
+    def spy(text: str, **_: object) -> ClassifyResult:
         classified.append(text)
         return ClassifyResult(related_cyber=True)
 

@@ -43,6 +43,7 @@ from cti_alerts.mailer import create_graph_draft
 from cti_core.config import platform_name
 from cti_core.db.repositories.cve import AsyncCveTrackerRepo
 from cti_core.llm.client import get_llm_client, parse_json_response
+from cti_core.llm.usage import prompt_version
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_api.services.email_env import make_env
@@ -84,7 +85,7 @@ Analyze the CVE data and return ONLY a valid JSON object with these fields. No m
 
 CRITICAL: Return ONLY the JSON object. Start with { and end with }."""
 
-    client, model_name = get_llm_client()
+    client, model_name = get_llm_client(task="cve_email_validate")
     completion = client.chat.completions.create(
         model=model_name,
         messages=[
@@ -93,6 +94,7 @@ CRITICAL: Return ONLY the JSON object. Start with { and end with }."""
         ],
         temperature=0,
         n=1,
+        prompt_version=prompt_version(prompt),
     )
     content = completion.choices[0].message.content
     result = parse_json_response(content or "{}")
@@ -113,7 +115,7 @@ Return ONLY a valid JSON object:
 
 CRITICAL: Return ONLY the JSON object. Start with { and end with }."""
 
-    client, model_name = get_llm_client()
+    client, model_name = get_llm_client(task="cve_email_mitigation")
     completion = client.chat.completions.create(
         model=model_name,
         messages=[
@@ -122,6 +124,7 @@ CRITICAL: Return ONLY the JSON object. Start with { and end with }."""
         ],
         temperature=0,
         n=1,
+        prompt_version=prompt_version(prompt),
     )
     content = completion.choices[0].message.content
     result = parse_json_response(content or "{}")
@@ -139,7 +142,7 @@ Generate a concise HTML impact statement (max 100 words) covering:
 
 Wrap important phrases in <strong> tags. Return only the HTML fragment, no surrounding tags."""
 
-    client, model_name = get_llm_client()
+    client, model_name = get_llm_client(task="cve_email_risk")
     completion = client.chat.completions.create(
         model=model_name,
         messages=[
@@ -148,6 +151,7 @@ Wrap important phrases in <strong> tags. Return only the HTML fragment, no surro
         ],
         temperature=0,
         n=1,
+        prompt_version=prompt_version(prompt),
     )
     return completion.choices[0].message.content or ""
 
