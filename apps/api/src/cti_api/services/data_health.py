@@ -86,7 +86,7 @@ async def _llm_health(
     status: Literal["ok", "failing", "unknown"] = "unknown"
     if latest is not None:
         status = "ok" if latest.status == "ok" else "failing"
-    error = await calls.latest_error()
+    error = await calls.latest_failure(_STATUS_TASKS)
     parked = await repo.parked_counts(now)
     return LlmHealthOut(
         status=status,
@@ -96,7 +96,8 @@ async def _llm_health(
             LlmErrorOut(
                 at=error.at.isoformat(),
                 task=error.task,
-                error_type=error.error_type,
+                error_type=error.error_type
+                or ("empty response" if error.status == "empty" else None),
                 http_status=error.http_status,
             )
             if error is not None

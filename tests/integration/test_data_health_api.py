@@ -213,3 +213,23 @@ async def test_data_health_llm_status_unknown_without_calls(
     assert llm["last_ok_at"] is None
     assert llm["last_error"] is None
     assert llm["usage_24h"] == []
+
+
+async def test_data_health_last_error_describes_latest_empty_status_row(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header, fake_redis
+) -> None:
+    await api_session.execute(delete(LlmCall))
+    h = datetime.timedelta(hours=1)
+    api_session.add_all(
+        [
+            _call("exec_brief", "error", 5 * h, http_status=500, error_type="InternalServerError"),
+            _call("classify", "empty", h, tokens=None),
+        ]
+    )
+    await api_session.flush()
+    llm = (await api_client.get("/api/data-health", headers=auth_header())).json()["llm"]
+    assert llm["status"] == "failing"
+    err = llm["last_error"]
+    assert err["task"] == "classify"
+    assert err["error_type"] == "empty response"
+    assert err["http_status"] is None

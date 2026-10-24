@@ -104,7 +104,7 @@ async def test_async_latest_helpers(async_db_session: AsyncSession) -> None:
     await s.flush()
     repo = AsyncLlmCallRepo(s)
     assert await repo.latest_ok_at(["classify", "ttp"]) == t0
-    err = await repo.latest_error()
+    err = await repo.latest_failure(["classify", "ttp"])
     assert err is not None and err.task == "ttp"
     latest = await repo.latest_for_tasks(["classify", "ttp"])
     assert latest is not None and latest.task == "ttp"

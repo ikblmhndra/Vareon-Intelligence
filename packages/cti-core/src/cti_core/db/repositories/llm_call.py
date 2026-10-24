@@ -105,11 +105,12 @@ class AsyncLlmCallRepo:
             )
         ).scalar_one_or_none()
 
-    async def latest_error(self) -> LlmCall | None:
+    async def latest_failure(self, tasks: Sequence[str]) -> LlmCall | None:
+        """Baris gagal (`error` atau `empty`) terbaru dari `tasks`."""
         return (
             await self.session.execute(
                 select(LlmCall)
-                .where(LlmCall.status == "error")
+                .where(LlmCall.task.in_(tasks), LlmCall.status.in_(("error", "empty")))
                 .order_by(LlmCall.at.desc(), LlmCall.id.desc())
                 .limit(1)
             )

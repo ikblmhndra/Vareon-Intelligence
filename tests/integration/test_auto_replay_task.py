@@ -23,8 +23,10 @@ TODAY = datetime.datetime.now(datetime.UTC).date()
 def _clean(_migrated_schema: None) -> Iterator[None]:
     def wipe() -> None:
         with sync_session() as s:
-            s.execute(delete(RejectedArticle).where(RejectedArticle.url.like(f"{PREFIX}%")))
-            s.execute(delete(LlmCall).where(LlmCall.model == MODEL))
+            # Semua baris, bukan cuma PREFIX: task membaca tabel global, jadi baris committed
+            # milik test lain bisa merusak assert jumlah/canary.
+            s.execute(delete(RejectedArticle))
+            s.execute(delete(LlmCall))
 
     wipe()
     yield
@@ -44,7 +46,7 @@ def _llm_call(at: datetime.datetime, status: str = "ok") -> None:
         s.add(LlmCall(at=at, task="classify", model=MODEL, status=status, latency_ms=10))
 
 
-def _park(name: str, kind: str, posted_on: datetime.date | None) -> None:
+def _park(name: str, kind: str | None, posted_on: datetime.date | None) -> None:
     url = f"{PREFIX}{name}"
     with sync_session() as s:
         s.add(
@@ -123,6 +125,36 @@ def test_send_failure_after_commit_is_counted_not_retried(
 
     assert mod.auto_replay() == {"sent": 0, "failed": 1}
     assert _rows()["x"].auto_replay_count == 1
+
+
+def test_candidates_termination_cap_backoff_expiry_and_kinds() -> None:
+    from cti_core.db.repositories.article import RejectedArticleRepo
+
+    now = datetime.datetime.now(datetime.UTC)
+    m = datetime.timedelta(minutes=1)
+    for name, kind in [
+        ("capped", "transient"),
+        ("in_backoff", "transient"),
+        ("expired", "transient"),
+        ("no_kind", None),
+        ("permanent", "permanent"),
+    ]:
+        _park(name, kind, TODAY)
+    with sync_session() as s:
+        for r in s.execute(select(RejectedArticle)).scalars():
+            if r.title == "capped":
+                r.auto_replay_count = 3
+                r.last_auto_replay_at = now - 24 * 60 * m
+            elif r.title == "in_backoff":  # count=1 -> backoff 60 menit
+                r.auto_replay_count = 1
+                r.last_auto_replay_at = now - 59 * m
+            elif r.title == "expired":
+                r.auto_replay_count = 1
+                r.last_auto_replay_at = now - 61 * m
+
+    with sync_session() as s:
+        got = RejectedArticleRepo(s).auto_replay_candidates(now, 20)
+    assert [c.title for c in got] == ["expired"]
 
 
 def test_purge_calls_task(mod) -> None:

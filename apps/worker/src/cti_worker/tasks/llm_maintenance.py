@@ -39,6 +39,7 @@ def auto_replay() -> dict[str, int]:
         if not candidates:
             return {"sent": 0, "failed": 0}
         latest = LlmCallRepo(session).latest_for_tasks(_LLM_TASKS)
+        healthy = latest is not None and latest.status == "ok"
         chosen = plan_auto_replay(
             candidates,
             last_status=latest.status if latest else None,
@@ -65,7 +66,7 @@ def auto_replay() -> dict[str, int]:
         except Exception:
             failed += 1
             log.warning("auto_replay_send_failed", url=c.url, exc_info=True)
-    log.info("auto_replayed", sent=sent, failed=failed, canary=len(chosen) == 1)
+    log.info("auto_replayed", sent=sent, failed=failed, healthy=healthy)
     return {"sent": sent, "failed": failed}
 
 

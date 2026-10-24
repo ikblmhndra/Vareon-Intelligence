@@ -155,8 +155,10 @@ export function DataHealthView() {
   const llmTone: Tone = llm.status === "ok" ? "ok" : llm.status === "failing" ? "bad" : "unknown";
   const le = llm.last_error;
   const llmStatusValue =
-    llm.status === "failing" && le
-      ? `${[le.http_status, le.error_type].filter((x) => x !== null).join(" ") || "error"} · ${le.task} · ${when(le.at)}`
+    llm.status === "failing"
+      ? le
+        ? `${[le.http_status, le.error_type].filter((x) => x !== null).join(" ") || "error"} · ${le.task} · ${when(le.at)}`
+        : "latest call returned no choices"
       : llm.status === "ok"
         ? `last successful call ${when(llm.last_ok_at)}`
         : "no calls recorded yet";

@@ -1,9 +1,10 @@
 """Stage 1: klasifikasi judul artikel lewat LLM -- port `articleValidator.
 articleValidator()` (`ScraperNews/modules/articleValidator.py:17-151`).
 
-Prompt disalin VERBATIM (itu business logic asli, bukan boilerplate yang
-boleh diubah); revisi Okt 2026: indentasi dibuang, field `title` (echo yang tak
-dipakai kode) dihapus, enam contoh batas ditambah -- semua aturan tetap. Yang DIPERBAIKI cuma cara parse hasilnya -- kode lama:
+Prompt aslinya disalin dari port itu (business logic, bukan boilerplate);
+revisi Okt 2026 (0.8.5): indentasi dibuang, field `title` (echo yang tak dipakai
+kode) dihapus, enam contoh batas ditambah -- aturan klasifikasi tetap. Cara parse
+hasilnya juga diperbaiki -- kode lama:
 
     llm_response = completion.choices[0].message.json()
     json_string = llm_response.replace("\\n", "").replace("```", "").replace("json", "")
