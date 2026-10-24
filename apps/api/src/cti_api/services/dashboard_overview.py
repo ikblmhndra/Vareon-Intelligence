@@ -25,7 +25,7 @@ from cti_core.db.repositories.ransomware import AsyncRansomwareVictimRepo
 from cti_core.db.repositories.techstack import AsyncTechStackRepo
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_api.services.exec_dashboard import NON_INCIDENT_TYPES
+from cti_api.services.exec_dashboard import NON_INCIDENT_TYPES, PREV_MIN_DAY_COVERAGE
 from cti_api.services.trending import TrendItem, get_trending
 
 _CACHE: dict[str, tuple[dict[str, Any], float]] = {}
@@ -234,12 +234,17 @@ async def get_attention(
     )
     prev_incidents: int | None = None
     if days is not None and since is not None:
-        prev_incidents = await repo.count_articles(
-            confirmed_only=True,
-            posted_on_start=today - datetime.timedelta(days=days * 2),
-            posted_on_end=since,
-            exclude_news_types=exclude,
-        )
+        prev_window: dict[str, Any] = {
+            "posted_on_start": today - datetime.timedelta(days=days * 2),
+            "posted_on_end": since,
+        }
+        # Aturan pembanding yang sama dengan kartu KPI (`article_dashboard`): periode lalu yang
+        # harinya kebanyakan kosong tidak dibandingkan. Tanpa ini 1 insiden nyasar di periode lalu
+        # menjadi "Insiden naik 37400%" (ditemukan di dev setelah tanggal feed dipakai, 0.8.3).
+        if await repo.distinct_day_count(**prev_window) >= days * PREV_MIN_DAY_COVERAGE:
+            prev_incidents = await repo.count_articles(
+                confirmed_only=True, exclude_news_types=exclude, **prev_window
+            )
     by_type = await repo.news_type_breakdown(
         confirmed_only=True, posted_on_start=since, posted_on_end=None, exclude_news_types=exclude
     )
