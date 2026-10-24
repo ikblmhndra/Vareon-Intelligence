@@ -24,4 +24,5 @@ class TopicsResponse(BaseModel):
     items: list[TopicOut]
     window_days: int
     window_label: str
+    baseline_reliable: bool = True
     generated_at: str

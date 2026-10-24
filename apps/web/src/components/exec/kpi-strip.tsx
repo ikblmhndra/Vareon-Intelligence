@@ -22,7 +22,7 @@ function TrendSub({
 }
 
 /** Port strip KPI (`exec.js:88-113`). */
-export function KpiStrip({ d }: { d: ExecDashboardV2 }) {
+export function KpiStrip({ d, countLabel }: { d: ExecDashboardV2; countLabel: string }) {
   const activeSectors = d.active_sectors ?? d.top_sectors.length;
   const uniqueTas = d.unique_ta_count ?? d.ta_leaderboard.length;
   const topRisk = d.sector_risk_scores[0];
@@ -32,7 +32,7 @@ export function KpiStrip({ d }: { d: ExecDashboardV2 }) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 2xl:grid-cols-8">
       <StatBox
-        label="Total Incidents"
+        label={countLabel}
         value={d.total_incidents.toLocaleString()}
         sub={<TrendSub current={d.total_incidents} prev={d.prev_total} reliable={d.prev_period_reliable} fallback="—" />}
       />

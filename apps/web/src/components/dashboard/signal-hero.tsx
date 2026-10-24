@@ -37,10 +37,10 @@ interface Focus {
  * aksi paling mendesak di kanan. Peta dan brief dari dua endpoint terpisah; salah satunya gagal
  * tidak menyembunyikan yang lain.
  */
-export function SignalHero({ days }: { days: number | null }) {
+export function SignalHero({ days, incidentOnly }: { days: number | null; incidentOnly: boolean }) {
   const router = useRouter();
   const map = useDashboardMap(days);
-  const attention = useDashboardAttention(days);
+  const attention = useDashboardAttention(days, incidentOnly);
   const mapBoxRef = useRef<HTMLDivElement>(null);
   const [focus, setFocus] = useState<Focus | null>(null);
   const periodLabel = days ? `${days} hari terakhir` : "Semua waktu";
@@ -51,7 +51,8 @@ export function SignalHero({ days }: { days: number | null }) {
     const details = new Map<WorldDotPoint, Detail>();
     const points: WorldDotPoint[] = [];
     for (const m of map.data?.points ?? []) {
-      const name = countryName(m.country_code);
+      // Korban ransomware tanpa negara datang dengan kode kosong: beri nama, jangan baris tanpa label (audit UI U3).
+      const name = m.country_code ? countryName(m.country_code) : "Negara tidak diketahui";
       const point: WorldDotPoint = {
         code: m.country_code,
         weight: m.incidents + m.ransomware_victims,

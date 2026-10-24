@@ -202,13 +202,16 @@ async def dashboard_map(
 @router.get("/dashboard/attention", response_model=DashboardAttention)
 async def dashboard_attention(
     days: int | None = _DaysQuery,
+    incident_only: bool = False,
     user: AuthedUser = Depends(require_auth),
     x_client_id: str | None = Header(None),
     session: AsyncSession = Depends(get_db),
 ) -> DashboardAttention:
     cid = effective_client_id(user, x_client_id)
     return DashboardAttention(
-        **await dashboard_overview.get_attention(session, client_id=cid, days=days)
+        **await dashboard_overview.get_attention(
+            session, client_id=cid, days=days, incident_only=incident_only
+        )
     )
 
 

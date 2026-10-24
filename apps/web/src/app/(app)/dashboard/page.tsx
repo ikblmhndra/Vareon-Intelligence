@@ -113,7 +113,7 @@ export default function DashboardPage() {
         actions={<DashboardFilterBar filters={filters} onChange={setFilters} updatedAt={stats?.generated_at} />}
       />
 
-      <SignalHero days={filters.days} />
+      <SignalHero days={filters.days} incidentOnly={filters.incidentOnly} />
 
       {/* ── KPI ── */}
       {dashboard.isPending && <Skeleton className="mt-6 h-28 w-full rounded-2xl" />}
@@ -131,7 +131,7 @@ export default function DashboardPage() {
             sub={
               <>
                 {periodLabel}
-                {filters.incidentOnly ? " · hanya insiden" : ""}
+                {filters.incidentOnly ? " · hanya berita ancaman" : ""}
                 <Delta
                   value={stats.total_articles}
                   prev={stats.prev_total_articles}
@@ -168,7 +168,7 @@ export default function DashboardPage() {
             flat
             label="CVE kritis terbuka"
             value={cve.data?.open_critical}
-            sub={cve.data ? `${cve.data.open_kev.toLocaleString()} KEV` : kpiSub(cve.isError)}
+            sub={cve.data ? `${cve.data.open_kev.toLocaleString()} KEV terbuka (semua severity)` : kpiSub(cve.isError)}
           />
           <StatBox
             flat
@@ -185,7 +185,7 @@ export default function DashboardPage() {
         <TrendingCard days={filters.days} className="lg:col-span-5" />
         <RansomwareCard days={filters.days} className="lg:col-span-4" />
         <CveExposureCard days={filters.days} className="lg:col-span-4" />
-        <ClientContextCard days={filters.days} className="lg:col-span-4" />
+        <ClientContextCard days={filters.days} incidentOnly={filters.incidentOnly} className="lg:col-span-4" />
 
         {dashboard.isPending && (
           <>

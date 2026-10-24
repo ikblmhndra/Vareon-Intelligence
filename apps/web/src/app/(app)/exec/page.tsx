@@ -20,6 +20,7 @@ import { ClusterList, CriticalCveFeed, FpQueue } from "@/components/exec/role-ga
 import { ExecBriefModal } from "@/components/exec/brief-modal";
 import {
   defaultExecFilters,
+  execCountLabel,
   getStoredRolePreview,
   restoreExecWatchlist,
   saveExecWatchlist,
@@ -112,7 +113,7 @@ export default function ExecDashboardPage() {
         }}
         onGenerateBrief={() => briefMutation.mutate()}
         briefPending={briefMutation.isPending}
-        onExportCsv={() => d && downloadExecCsv(d)}
+        onExportCsv={() => d && downloadExecCsv(d, execCountLabel(filters))}
         exportDisabled={!d}
       />
 
@@ -121,7 +122,7 @@ export default function ExecDashboardPage() {
 
       {d && (
         <>
-          <KpiStrip d={d} />
+          <KpiStrip d={d} countLabel={execCountLabel(filters)} />
           <SpikeBanner d={d} />
 
           <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">

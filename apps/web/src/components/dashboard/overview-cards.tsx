@@ -278,8 +278,17 @@ export function CveExposureCard({ days, className }: { days: number | null; clas
   );
 }
 
-export function ClientContextCard({ days, className }: { days: number | null; className?: string }) {
-  const attention = useDashboardAttention(days);
+export function ClientContextCard({
+  days,
+  incidentOnly,
+  className,
+}: {
+  days: number | null;
+  incidentOnly: boolean;
+  className?: string;
+}) {
+  // Kirim toggle yang sama dengan SignalHero supaya keduanya berbagi satu cache query.
+  const attention = useDashboardAttention(days, incidentOnly);
   const cluster = useQuery({
     queryKey: ["dashboard", "newest-cluster"],
     queryFn: async () => {

@@ -7059,6 +7059,11 @@
       },
       "TopicsResponse": {
         "properties": {
+          "baseline_reliable": {
+            "default": true,
+            "title": "Baseline Reliable",
+            "type": "boolean"
+          },
           "generated_at": {
             "title": "Generated At",
             "type": "string"
@@ -7157,6 +7162,11 @@
       },
       "TrendingResponse": {
         "properties": {
+          "baseline_reliable": {
+            "default": true,
+            "title": "Baseline Reliable",
+            "type": "boolean"
+          },
           "generated_at": {
             "title": "Generated At",
             "type": "string"
@@ -13736,6 +13746,16 @@
               ],
               "description": "`days` hari terakhir; kosong = semua waktu.",
               "title": "Days"
+            }
+          },
+          {
+            "in": "query",
+            "name": "incident_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Incident Only",
+              "type": "boolean"
             }
           },
           {
