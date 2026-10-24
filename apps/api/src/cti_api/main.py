@@ -14,7 +14,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from cti_core.celery_client import send_recompute_source
+from cti_core.celery_client import send_recompute_all
 from cti_core.config import get_settings
 from cti_core.db.engine import async_session
 from cti_core.db.repositories.auth import AsyncClientRepo
@@ -74,9 +74,15 @@ bebas, yang penting konstan dan gak dipakai lock lain di codebase ini."""
 
 
 def _scraper_source_kinds() -> dict[str, str]:
-    from cti_scraper import registry
+    """`{meta.source: content_kind}` dari registry. Dipanggil SEBELUM advisory lock; scraper rusak
+    tidak boleh menahan startup API, jadi galat discovery dicatat dan grade bawaan dilewati."""
+    try:
+        from cti_scraper import registry
 
-    return {cls.meta.source: cls.meta.content_kind for cls in registry.all_scrapers().values()}
+        return {cls.meta.source: cls.meta.content_kind for cls in registry.all_scrapers().values()}
+    except Exception:
+        log.error("scraper_discovery_failed_default_grades_skipped", exc_info=True)
+        return {}
 
 
 async def bootstrap_reference_rows(session: AsyncSession) -> list[str]:
@@ -98,9 +104,10 @@ async def bootstrap_reference_rows(session: AsyncSession) -> list[str]:
     dapat baris `origin='default'` dari `content_kind`-nya. Balikin nama yang baru ditambah;
     pemanggil mengantre recompute SETELAH commit (commit ada di `ensure_system_roles`).
     """
+    source_kinds = _scraper_source_kinds()  # sebelum lock: discovery bisa lambat
     await session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": _BOOTSTRAP_LOCK_KEY})
     await AsyncClientRepo(session).ensure_default()
-    inserted = await AsyncSourceReliabilityRepo(session).ensure_defaults(_scraper_source_kinds())
+    inserted = await AsyncSourceReliabilityRepo(session).ensure_defaults(source_kinds)
     await ensure_system_roles(session)  # commit di akhir -> lock dilepas
     return inserted
 
@@ -111,11 +118,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     configure_logging(level=settings.log_level, json=settings.environment != "dev")
     async with async_session() as session:
         new_sources = await bootstrap_reference_rows(session)
-    for name in new_sources:
+    if new_sources:
+        # SATU task untuk semua artikel (bukan satu per sumber): skala skor lama (self-rating LLM)
+        # dan baru tidak boleh bercampur, dan satu panggilan broker tidak menahan startup.
         try:
-            send_recompute_source(name)
+            send_recompute_all()
         except Exception:
-            log.warning("recompute_source_enqueue_failed", source=name, exc_info=True)
+            log.error(
+                "recompute_all_enqueue_failed",
+                new_default_sources=len(new_sources),
+                remedy="POST /api/articles/confidence/recompute (atau kirim task "
+                "confidence.recompute_all) secara manual",
+                exc_info=True,
+            )
     log.info("api_startup_done", version=__version__)
     yield
 

@@ -66,3 +66,9 @@ def send_recompute_source(source_name: str) -> None:
     get_celery_client().send_task(
         "confidence.recompute_source", kwargs={"source_name": source_name}, queue="maintenance"
     )
+
+
+def send_recompute_all() -> None:
+    """Minta worker menghitung ulang `confidence_score` SEMUA artikel (pertama kali grade bawaan
+    dibuat saat API start, rilis 0.8.6). Satu pesan, antrian `maintenance`."""
+    get_celery_client().send_task("confidence.recompute_all", queue="maintenance")

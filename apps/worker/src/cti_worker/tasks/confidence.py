@@ -28,3 +28,20 @@ def recompute_source(source_name: str) -> dict[str, int]:
     result = _run_async(_run())
     log.info("confidence_recompute_source", source=source_name, **result)
     return result
+
+
+@app.task(name="confidence.recompute_all", queue=QUEUE_MAINTENANCE)
+def recompute_all() -> dict[str, int]:
+    """Semua artikel (bootstrap grade bawaan). Idempoten; override analis dilewati."""
+    from cti_api.services.confidence import recompute_all_confidence
+    from cti_core.db.engine import async_session
+
+    async def _run() -> dict[str, int]:
+        async with async_session() as session:
+            result = await recompute_all_confidence(session)
+            await session.commit()
+            return result
+
+    result = _run_async(_run())
+    log.info("confidence_recompute_all", **result)
+    return result
