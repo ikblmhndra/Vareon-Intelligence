@@ -7,12 +7,14 @@ from fastapi import APIRouter, Depends
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_api.deps import get_db, get_redis, require_auth
+from cti_api.deps import get_db, get_redis, require_auth, require_permission
 from cti_api.schemas.data_health import DataHealthOut
 from cti_api.services.data_health import get_data_health
 
 router = APIRouter(
-    prefix="/api/data-health", tags=["data-health"], dependencies=[Depends(require_auth)]
+    prefix="/api/data-health",
+    tags=["data-health"],
+    dependencies=[Depends(require_permission("view_ops")), Depends(require_auth)],
 )
 
 

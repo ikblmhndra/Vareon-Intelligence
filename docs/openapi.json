@@ -7559,7 +7559,7 @@
   },
   "info": {
     "title": "Vareon Intelligence API",
-    "version": "0.8.3"
+    "version": "0.8.4"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -11038,6 +11038,22 @@
           },
           {
             "in": "header",
+            "name": "x-client-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Client-Id"
+            }
+          },
+          {
+            "in": "header",
             "name": "authorization",
             "required": false,
             "schema": {
@@ -11098,6 +11114,22 @@
           },
           {
             "in": "header",
+            "name": "x-client-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Client-Id"
+            }
+          },
+          {
+            "in": "header",
             "name": "authorization",
             "required": false,
             "schema": {
@@ -11154,6 +11186,22 @@
             "schema": {
               "title": "Actor Name",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-client-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Client-Id"
             }
           },
           {
@@ -15938,6 +15986,22 @@
           },
           {
             "in": "header",
+            "name": "x-client-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Client-Id"
+            }
+          },
+          {
+            "in": "header",
             "name": "authorization",
             "required": false,
             "schema": {
@@ -16001,6 +16065,22 @@
             "schema": {
               "title": "Doc Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-client-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Client-Id"
             }
           },
           {
@@ -16080,6 +16160,22 @@
             "schema": {
               "title": "Doc Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-client-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Client-Id"
             }
           },
           {
@@ -22233,9 +22329,25 @@
     },
     "/api/stix/pirs": {
       "get": {
-        "description": "Ambil semua Priority Intelligence Requirement aktif dari database\ndan wakilkan tiap satu sebagai objek course-of-action STIX 2.1 di\ndalam satu bundle.",
+        "description": "PIR aktif client aktif (`X-Client-ID`) sebagai objek course-of-action STIX 2.1 di dalam\nsatu bundle.",
         "operationId": "export_pir_stix_api_stix_pirs_get",
         "parameters": [
+          {
+            "in": "header",
+            "name": "x-client-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Client-Id"
+            }
+          },
           {
             "in": "header",
             "name": "authorization",

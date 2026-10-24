@@ -870,7 +870,7 @@ wheels = [
 
 [[package]]
 name = "cti-alerts"
-version = "0.8.3"
+version = "0.8.4"
 source = { editable = "packages/cti-alerts" }
 dependencies = [
     { name = "cti-core" },
@@ -891,7 +891,7 @@ requires-dist = [
 
 [[package]]
 name = "cti-api"
-version = "0.8.3"
+version = "0.8.4"
 source = { editable = "apps/api" }
 dependencies = [
     { name = "bcrypt" },
@@ -938,7 +938,7 @@ requires-dist = [
 
 [[package]]
 name = "cti-core"
-version = "0.8.3"
+version = "0.8.4"
 source = { editable = "packages/cti-core" }
 dependencies = [
     { name = "alembic" },
@@ -969,7 +969,7 @@ requires-dist = [
 
 [[package]]
 name = "cti-enrich"
-version = "0.8.3"
+version = "0.8.4"
 source = { editable = "packages/cti-enrich" }
 dependencies = [
     { name = "cti-core" },
@@ -1005,7 +1005,7 @@ provides-extras = ["nlp"]
 
 [[package]]
 name = "cti-platform"
-version = "0.8.3"
+version = "0.8.4"
 source = { virtual = "." }
 dependencies = [
     { name = "cti-alerts" },
@@ -1051,7 +1051,7 @@ provides-extras = ["dev"]
 
 [[package]]
 name = "cti-scraper"
-version = "0.8.3"
+version = "0.8.4"
 source = { editable = "packages/cti-scraper" }
 dependencies = [
     { name = "croniter" },
@@ -1089,7 +1089,7 @@ provides-extras = ["browser"]
 
 [[package]]
 name = "cti-scrapers"
-version = "0.8.3"
+version = "0.8.4"
 source = { editable = "scrapers" }
 dependencies = [
     { name = "cti-alerts" },
@@ -1108,7 +1108,7 @@ requires-dist = [
 
 [[package]]
 name = "cti-worker"
-version = "0.8.3"
+version = "0.8.4"
 source = { editable = "apps/worker" }
 dependencies = [
     { name = "celery", extra = ["redis"] },

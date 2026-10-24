@@ -349,7 +349,7 @@ class AsyncCveTrackerRepo:
         return result.scalar_one()
 
     async def get_by_cve_id_any_client(
-        self, cve_id: str, *, exclude_false_positives: bool = False
+        self, cve_id: str, *, exclude_false_positives: bool = False, client_id: str | None = None
     ) -> CveTracker | None:
         """Case-insensitive, lintas client, ambil SATU baris pertama yang
         cocok -- port apa adanya dari `cross_reference_service.get_cve_crossrefs()`
@@ -358,8 +358,11 @@ class AsyncCveTrackerRepo:
         urutan default DB) -- sama ambiguitas kayak kode lama.
 
         `exclude_false_positives`: hanya baris yang TIDAK ditandai FP oleh clientnya sendiri,
-        jadi baris yang kepilih tak pernah baris yang sudah dianggap salah oleh pemiliknya."""
+        jadi baris yang kepilih tak pernah baris yang sudah dianggap salah oleh pemiliknya.
+        `client_id`: batasi ke tracker satu client (dipakai `crossref`, yang dipanggil user)."""
         stmt = select(CveTracker).where(func.lower(CveTracker.cve_id) == cve_id.lower())
+        if client_id is not None:
+            stmt = stmt.where(CveTracker.client_id == client_id)
         if exclude_false_positives:
             stmt = stmt.where(~is_false_positive_row())
         result = await self.session.execute(stmt)
@@ -562,7 +565,9 @@ class AsyncCveTrackerRepo:
                         )  # port apa adanya: exploit-db bisa balikin URL kembar
         await self.session.flush()
 
-    async def get_by_threat_actor_exact(self, actor_name: str) -> list[CveTracker]:
+    async def get_by_threat_actor_exact(
+        self, actor_name: str, *, client_id: str | None = None
+    ) -> list[CveTracker]:
         """Exact-match (case-insensitive) `threat_actors`, urut `cve_score`
         desc, limit 30 -- port `cross_reference_service.get_ta_crossrefs()`.
         Baris yang ditandai FP oleh clientnya sendiri tidak ikut (`is_false_positive_row`).
@@ -574,6 +579,7 @@ class AsyncCveTrackerRepo:
                 )
             ),
             ~is_false_positive_row(),
+            *([CveTracker.client_id == client_id] if client_id is not None else []),
             limit=30,
         )
 
@@ -583,6 +589,7 @@ class AsyncCveTrackerRepo:
         threat_actors: Sequence[str],
         ttp_ids: Sequence[str],
         tech_list: Sequence[str],
+        client_id: str | None = None,
     ) -> list[CveTracker]:
         """CVE yang overlap TA/TTP/industri PIR -- port
         `cross_reference_service.get_pir_crossrefs()`. Kosongin ketiga
@@ -609,6 +616,8 @@ class AsyncCveTrackerRepo:
             conditions.append(CveTracker.tech.in_(tech_list))
 
         where = [~is_false_positive_row()]
+        if client_id is not None:
+            where.append(CveTracker.client_id == client_id)
         if conditions:
             where.append(or_(*conditions))
         return await self._strongest_per_cve(*where, limit=50)

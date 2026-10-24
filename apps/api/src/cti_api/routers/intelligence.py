@@ -17,7 +17,14 @@ from cti_core.db.repositories.auth import AsyncAuditLogRepo
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_api.deps import AuthedUser, effective_client_id, get_db, request_ip, require_auth
+from cti_api.deps import (
+    AuthedUser,
+    effective_client_id,
+    get_db,
+    request_ip,
+    require_auth,
+    require_permission,
+)
 from cti_api.services import campaign as campaign_service
 from cti_api.services import campaign_trend as campaign_trend_service
 from cti_api.services import cluster as cluster_service
@@ -26,7 +33,11 @@ from cti_api.services import risk_matrix as risk_matrix_service
 from cti_api.services import source_score as source_score_service
 from cti_api.services import spike as spike_service
 
-router = APIRouter(prefix="/api", tags=["intelligence"], dependencies=[Depends(require_auth)])
+router = APIRouter(
+    prefix="/api",
+    tags=["intelligence"],
+    dependencies=[Depends(require_permission("view_intel")), Depends(require_auth)],
+)
 
 
 @router.get("/spikes")

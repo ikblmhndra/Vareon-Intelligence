@@ -13,7 +13,7 @@ from cti_core.db.repositories.catalog_read import AsyncCatalogRepo, CveDbRow
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_api.deps import AuthedUser, effective_client_id, get_db, require_auth
+from cti_api.deps import AuthedUser, effective_client_id, get_db, require_auth, require_permission
 from cti_api.schemas.catalog import (
     CveDbDetail,
     CveDbListResponse,
@@ -21,7 +21,9 @@ from cti_api.schemas.catalog import (
     CveDbProductOut,
 )
 
-router = APIRouter(prefix="/api/cve-db", tags=["cve-db"])
+router = APIRouter(
+    prefix="/api/cve-db", tags=["cve-db"], dependencies=[Depends(require_permission("view_cve"))]
+)
 
 _SUMMARY_LIMIT = 400
 

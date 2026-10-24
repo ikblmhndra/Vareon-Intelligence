@@ -46,8 +46,8 @@ from cti_api.deps import (
     get_db,
     get_redis,
     request_ip,
-    require_admin,
     require_auth,
+    require_permission,
 )
 from cti_api.schemas.cve import (
     BulkAcknowledgeBody,
@@ -72,7 +72,9 @@ from cti_api.services import cve_export as cve_export_service
 from cti_api.services import cve_lookup as cve_lookup_service
 from cti_api.services import cve_priority as cve_priority_service
 
-router = APIRouter(prefix="/api/cve", tags=["cve"])
+router = APIRouter(
+    prefix="/api/cve", tags=["cve"], dependencies=[Depends(require_permission("view_cve"))]
+)
 
 _ACK_FILTER_PATTERN = "^(acked|unacked)$"
 _DATE_BASIS_PATTERN = "^(published|detected)$"
@@ -313,7 +315,7 @@ async def check_new_cves(
     request: Request,
     session: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis),
-    user: AuthedUser = Depends(require_admin),
+    user: AuthedUser = Depends(require_permission("manage_scraper")),
 ) -> CveCheckTriggered:
     """Cek CVE terbaru SEKARANG untuk tech yang dimonitor: mengirim tugas cek rutin (scraper
     `new_cve`, atau `cve.mirror_sync` bila mirror `live`) ke worker; hasilnya tampil lewat
@@ -391,7 +393,7 @@ async def _require_tracked(
         )
 
 
-@router.post("/{cve_id}/false-positive")
+@router.post("/{cve_id}/false-positive", dependencies=[Depends(require_permission("manage_cve"))])
 async def set_false_positive(
     cve_id: CveId,
     request: Request,
@@ -413,7 +415,7 @@ async def set_false_positive(
     return {"ok": True}
 
 
-@router.delete("/{cve_id}/false-positive")
+@router.delete("/{cve_id}/false-positive", dependencies=[Depends(require_permission("manage_cve"))])
 async def remove_false_positive(
     cve_id: CveId,
     request: Request,
@@ -433,7 +435,7 @@ async def remove_false_positive(
     return {"ok": True}
 
 
-@router.post("/bulk-false-positive")
+@router.post("/bulk-false-positive", dependencies=[Depends(require_permission("manage_cve"))])
 async def set_bulk_false_positive(
     body: BulkFalsePositiveBody,
     request: Request,
@@ -467,7 +469,7 @@ async def purge_orphaned(
     body: PurgeOrphanedBody,
     request: Request,
     session: AsyncSession = Depends(get_db),
-    user: AuthedUser = Depends(require_admin),
+    user: AuthedUser = Depends(require_permission("manage_scraper")),
     x_client_id: str | None = Header(None),
 ) -> dict[str, object]:
     """Hapus CVE yang tech-nya UDAH GAK ADA di techstack aktif client ini.
@@ -502,7 +504,7 @@ async def purge_orphaned(
     return result
 
 
-@router.post("/cisa-lookup")
+@router.post("/cisa-lookup", dependencies=[Depends(require_permission("manage_cve"))])
 async def cisa_kev_lookup(
     request: Request,
     session: AsyncSession = Depends(get_db),
@@ -524,7 +526,7 @@ async def cisa_kev_lookup(
     return summary
 
 
-@router.post("/epss-lookup")
+@router.post("/epss-lookup", dependencies=[Depends(require_permission("manage_cve"))])
 async def epss_lookup(
     request: Request,
     session: AsyncSession = Depends(get_db),
@@ -546,7 +548,7 @@ async def epss_lookup(
     return summary
 
 
-@router.post("/exploit-lookup")
+@router.post("/exploit-lookup", dependencies=[Depends(require_permission("manage_cve"))])
 async def bulk_exploit_lookup(
     request: Request,
     session: AsyncSession = Depends(get_db),
@@ -567,7 +569,7 @@ async def bulk_exploit_lookup(
     return summary
 
 
-@router.post("/{cve_id}/exploit-lookup")
+@router.post("/{cve_id}/exploit-lookup", dependencies=[Depends(require_permission("manage_cve"))])
 async def single_exploit_lookup(
     cve_id: CveId,
     request: Request,
@@ -588,7 +590,7 @@ async def single_exploit_lookup(
     return result
 
 
-@router.get("/export")
+@router.get("/export", dependencies=[Depends(require_permission("export_data"))])
 async def export_cves(
     request: Request,
     date_start: datetime.date | None = Query(None),
@@ -668,7 +670,7 @@ async def ack_statuses(
     return await AsyncCveTicketRepo(session).get_ack_statuses(cid)
 
 
-@router.post("/draft-email")
+@router.post("/draft-email", dependencies=[Depends(require_permission("send_cve_email"))])
 async def create_draft_email(
     body: DraftEmailBody,
     request: Request,
@@ -747,7 +749,7 @@ async def get_cve_ticket(
     return _serialize_ticket(ticket)
 
 
-@router.put("/{cve_id}/ticket")
+@router.put("/{cve_id}/ticket", dependencies=[Depends(require_permission("manage_cve"))])
 async def update_cve_ticket(
     cve_id: CveId,
     body: CveTicketBody,
@@ -788,7 +790,7 @@ async def update_cve_ticket(
     return {"ok": True}
 
 
-@router.post("/bulk-acknowledge")
+@router.post("/bulk-acknowledge", dependencies=[Depends(require_permission("manage_cve"))])
 async def bulk_acknowledge(
     body: BulkAcknowledgeBody,
     request: Request,
@@ -817,7 +819,7 @@ async def bulk_acknowledge(
     return {"ok": True, "acknowledged": acknowledged}
 
 
-@router.post("/{cve_id}/acknowledge")
+@router.post("/{cve_id}/acknowledge", dependencies=[Depends(require_permission("manage_cve"))])
 async def acknowledge(
     cve_id: CveId,
     request: Request,

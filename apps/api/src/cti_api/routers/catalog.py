@@ -16,7 +16,7 @@ from cti_core.db.repositories.catalog_read import (
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_api.deps import AuthedUser, effective_client_id, get_db, require_auth
+from cti_api.deps import AuthedUser, effective_client_id, get_db, require_auth, require_permission
 from cti_api.schemas.catalog import (
     CatalogFamilyListResponse,
     CatalogFamilyOut,
@@ -24,7 +24,9 @@ from cti_api.schemas.catalog import (
     CatalogVendorOut,
 )
 
-router = APIRouter(prefix="/api/catalog", tags=["catalog"])
+router = APIRouter(
+    prefix="/api/catalog", tags=["catalog"], dependencies=[Depends(require_permission("view_cve"))]
+)
 
 
 def _vendor_out(row: VendorRow) -> CatalogVendorOut:

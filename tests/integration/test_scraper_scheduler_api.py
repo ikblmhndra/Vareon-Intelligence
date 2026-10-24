@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 async def test_list_reports_unknown_scheduler_without_heartbeat(
     api_client: AsyncClient, auth_header
 ) -> None:
-    resp = await api_client.get("/api/scraper", headers=auth_header(role="viewer"))
+    resp = await api_client.get("/api/scraper", headers=auth_header(role="analyst"))
     assert resp.status_code == 200
     body = resp.json()
 

@@ -15,11 +15,15 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_api.deps import get_db, require_auth
+from cti_api.deps import get_db, require_auth, require_permission
 from cti_api.schemas.newsroom import TopicArticle, TopicOut, TopicsResponse
 from cti_api.services import trending
 
-router = APIRouter(prefix="/api/newsroom", tags=["newsroom"], dependencies=[Depends(require_auth)])
+router = APIRouter(
+    prefix="/api/newsroom",
+    tags=["newsroom"],
+    dependencies=[Depends(require_permission("view_news")), Depends(require_auth)],
+)
 
 _TOP_COUNTRIES = 3
 _MAX_WINDOW_DAYS = 3650

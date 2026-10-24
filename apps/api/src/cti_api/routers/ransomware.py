@@ -11,13 +11,15 @@ from cti_core.db.repositories.ransomware import AsyncRansomwareVictimRepo
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_api.deps import get_db, require_auth
+from cti_api.deps import get_db, require_auth, require_permission
 from cti_api.routers.articles import _serialize as _serialize_article
 from cti_api.schemas.article import ArticleOut
 from cti_api.schemas.ransomware import RansomwareVictimOut
 
 router = APIRouter(
-    prefix="/api/ransomware", tags=["ransomware"], dependencies=[Depends(require_auth)]
+    prefix="/api/ransomware",
+    tags=["ransomware"],
+    dependencies=[Depends(require_permission("view_intel")), Depends(require_auth)],
 )
 
 

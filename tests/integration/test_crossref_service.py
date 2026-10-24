@@ -75,7 +75,9 @@ async def _seed(session: AsyncSession) -> dict[str, object]:
 
 async def test_get_cve_crossrefs_matches_pir_and_ta_profile(async_db_session: AsyncSession) -> None:
     seeded = await _seed(async_db_session)
-    result = await crossref_service.get_cve_crossrefs(async_db_session, str(seeded["cve_id"]))
+    result = await crossref_service.get_cve_crossrefs(
+        async_db_session, str(seeded["cve_id"]), "default"
+    )
 
     assert result["cve_severity"] == "CRITICAL"
     assert result["cisa_kev"] is True
@@ -91,18 +93,20 @@ async def test_get_cve_crossrefs_matches_pir_and_ta_profile(async_db_session: As
 
 async def test_get_cve_crossrefs_false_positive_rejected(async_db_session: AsyncSession) -> None:
     await _seed(async_db_session)
-    result = await crossref_service.get_cve_crossrefs(async_db_session, "CVE-2020-0001")
+    result = await crossref_service.get_cve_crossrefs(async_db_session, "CVE-2020-0001", "default")
     assert result == {"error": "CVE is a false positive"}
 
 
 async def test_get_cve_crossrefs_not_found(async_db_session: AsyncSession) -> None:
-    result = await crossref_service.get_cve_crossrefs(async_db_session, "CVE-9999-9999")
+    result = await crossref_service.get_cve_crossrefs(async_db_session, "CVE-9999-9999", "default")
     assert result == {"error": "CVE not found"}
 
 
 async def test_get_pir_crossrefs_matches_cve(async_db_session: AsyncSession) -> None:
     seeded = await _seed(async_db_session)
-    result = await crossref_service.get_pir_crossrefs(async_db_session, int(seeded["pir_id"]))  # type: ignore[arg-type]
+    result = await crossref_service.get_pir_crossrefs(
+        async_db_session, int(seeded["pir_id"]), "default"
+    )  # type: ignore[arg-type]
 
     assert result["pir_title"] == "Track APT41"
     assert len(result["matched_cves"]) == 1
@@ -113,13 +117,13 @@ async def test_get_pir_crossrefs_matches_cve(async_db_session: AsyncSession) -> 
 
 
 async def test_get_pir_crossrefs_not_found(async_db_session: AsyncSession) -> None:
-    result = await crossref_service.get_pir_crossrefs(async_db_session, 999999)
+    result = await crossref_service.get_pir_crossrefs(async_db_session, 999999, "default")
     assert result == {"error": "PIR not found"}
 
 
 async def test_get_ta_crossrefs(async_db_session: AsyncSession) -> None:
     await _seed(async_db_session)
-    result = await crossref_service.get_ta_crossrefs(async_db_session, "Apt41")
+    result = await crossref_service.get_ta_crossrefs(async_db_session, "Apt41", "default")
 
     assert result["has_profile"] is True
     assert result["profile_summary"]["identity"]["primary_name"] == "APT41"
@@ -132,7 +136,7 @@ async def test_get_ta_crossrefs(async_db_session: AsyncSession) -> None:
 
 async def test_get_ta_crossrefs_no_profile(async_db_session: AsyncSession) -> None:
     await _seed(async_db_session)
-    result = await crossref_service.get_ta_crossrefs(async_db_session, "NeverSeenActor")
+    result = await crossref_service.get_ta_crossrefs(async_db_session, "NeverSeenActor", "default")
     assert result["has_profile"] is False
     assert result["profile_summary"] is None
     assert result["matched_cves"] == []
@@ -142,8 +146,9 @@ async def test_pir_and_actor_crossrefs_list_a_cve_tracked_by_two_clients_once(
     async_db_session: AsyncSession,
 ) -> None:
     """Tracker menyimpan satu baris PER CLIENT: CVE yang valid di dua client dulu muncul dua kali
-    (dan memakai dua slot dari batas 50/30). Sekarang satu per `cve_id`, baris terkuat (skor CVSS
-    tertinggi) yang mewakili."""
+    (dan memakai dua slot dari batas 50/30). Sekarang satu per `cve_id`; sejak crossref di-scope
+    per client (2026-10-24) yang mewakili adalah baris client pemanggil, bukan baris client lain
+    yang skornya lebih tinggi."""
     clients = AsyncClientRepo(async_db_session)
     await clients.ensure_default()
     await clients.create(client_id="acme", name="Acme", countries=[])
@@ -159,9 +164,9 @@ async def test_pir_and_actor_crossrefs_list_a_cve_tracked_by_two_clients_once(
         {"title": "Watch nginx", "criteria": {"industries": ["nginx"]}}, client_id="default"
     )
 
-    by_pir = await crossref_service.get_pir_crossrefs(async_db_session, pir.id)
-    by_actor = await crossref_service.get_ta_crossrefs(async_db_session, "Apt41")
+    by_pir = await crossref_service.get_pir_crossrefs(async_db_session, pir.id, "default")
+    by_actor = await crossref_service.get_ta_crossrefs(async_db_session, "Apt41", "default")
 
     assert [c["cve_id"] for c in by_pir["matched_cves"]] == ["CVE-2026-7777", "CVE-2026-7778"]
-    assert by_pir["matched_cves"][0]["score"] == 9.8
+    assert by_pir["matched_cves"][0]["score"] == 7.0
     assert [c["cve_id"] for c in by_actor["matched_cves"]] == ["CVE-2026-7777"]

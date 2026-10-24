@@ -12,10 +12,14 @@ from cti_core.db.repositories.tweet import AsyncTweetRepo
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_api.deps import get_db, require_auth
+from cti_api.deps import get_db, require_auth, require_permission
 from cti_api.schemas.tweet import TweetListResponse, TweetOut
 
-router = APIRouter(prefix="/api/tweets", tags=["tweets"], dependencies=[Depends(require_auth)])
+router = APIRouter(
+    prefix="/api/tweets",
+    tags=["tweets"],
+    dependencies=[Depends(require_permission("view_tweets")), Depends(require_auth)],
+)
 
 _DATE_ONLY_LEN = len("YYYY-MM-DD")
 _START_DESC = (

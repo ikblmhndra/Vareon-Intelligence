@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { allowedClientHeader } from "@/lib/auth/client-header";
 import { clientIpHeaders } from "@/lib/auth/client-ip";
 import { getSessionToken } from "@/lib/auth/session";
 
@@ -11,9 +12,9 @@ const API_BASE_URL = process.env.API_BASE_URL ?? "http://localhost:8000";
  * localStorage). Cookie session cuma bisa dibaca DI SINI (server-side),
  * jadi tiap request ber-auth dari browser numpang route ini buat
  * dipasangin `Authorization: Bearer` sebelum diteruskan ke `cti-api`
- * beneran. `X-Client-ID` (multi-tenant, BUKAN rahasia) diteruskan apa
- * adanya dari request masuk -- client yang nentuin nilainya (lihat
- * `useActiveClient`), proxy ini gak nyimpen/decide apa-apa soal itu.
+ * beneran. `X-Client-ID` (multi-tenant, BUKAN rahasia) diteruskan hanya
+ * bila client itu milik user di token (`allowedClientHeader`); nilainya
+ * tetap ditentukan browser (cookie `cti_client_id`).
  *
  * Response DIBACA MENTAH (`arrayBuffer`, bukan `.json()`) -- beberapa
  * endpoint balikin binary (export Excel/DOCX, lihat `pir`/`cve` router)
@@ -29,7 +30,8 @@ async function proxy(request: NextRequest, path: string[]): Promise<NextResponse
   const contentType = request.headers.get("content-type");
   if (contentType) headers.set("content-type", contentType);
   if (token) headers.set("authorization", `Bearer ${token}`);
-  const clientId = request.headers.get("x-client-id");
+  // Header client yang bukan milik token dibuang (API akan 403), API jatuh ke client pertama user.
+  const clientId = allowedClientHeader(token, request.headers.get("x-client-id"));
   if (clientId) headers.set("x-client-id", clientId);
   // IP klien asli (lihat client-ip.ts) -- tanpa ini API cuma lihat IP `web`.
   for (const [name, value] of Object.entries(clientIpHeaders(request))) headers.set(name, value);

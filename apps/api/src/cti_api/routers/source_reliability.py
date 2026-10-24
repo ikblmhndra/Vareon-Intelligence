@@ -22,7 +22,7 @@ from cti_core.db.repositories.source_reliability import (
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_api.deps import AuthedUser, get_db, request_ip, require_auth
+from cti_api.deps import AuthedUser, get_db, request_ip, require_auth, require_permission
 from cti_api.schemas.source_reliability import (
     SREntryAdd,
     SREntryListResponse,
@@ -31,7 +31,9 @@ from cti_api.schemas.source_reliability import (
 )
 
 router = APIRouter(
-    prefix="/api/sr", tags=["source-reliability"], dependencies=[Depends(require_auth)]
+    prefix="/api/sr",
+    tags=["source-reliability"],
+    dependencies=[Depends(require_permission("view_intel")), Depends(require_auth)],
 )
 
 
@@ -88,7 +90,7 @@ async def ungraded_sources(session: AsyncSession = Depends(get_db)) -> dict[str,
     return {"sources": sources}
 
 
-@router.post("/entries")
+@router.post("/entries", dependencies=[Depends(require_permission("manage_sources"))])
 async def add_sr_entry(
     body: SREntryAdd,
     request: Request,
@@ -116,7 +118,7 @@ async def add_sr_entry(
     return {"success": True, "entry": _serialize(entry).model_dump()}
 
 
-@router.put("/entries/{entry_id}")
+@router.put("/entries/{entry_id}", dependencies=[Depends(require_permission("manage_sources"))])
 async def update_sr_entry(
     entry_id: int,
     body: SREntryUpdate,
@@ -144,7 +146,7 @@ async def update_sr_entry(
     return {"success": ok}
 
 
-@router.delete("/entries/{entry_id}")
+@router.delete("/entries/{entry_id}", dependencies=[Depends(require_permission("manage_sources"))])
 async def delete_sr_entry(
     entry_id: int,
     request: Request,

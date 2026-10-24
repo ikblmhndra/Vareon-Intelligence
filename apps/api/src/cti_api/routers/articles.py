@@ -29,7 +29,14 @@ from cti_core.db.repositories.auth import AsyncAuditLogRepo
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_api.deps import AuthedUser, effective_client_id, get_db, request_ip, require_auth
+from cti_api.deps import (
+    AuthedUser,
+    effective_client_id,
+    get_db,
+    request_ip,
+    require_auth,
+    require_permission,
+)
 from cti_api.schemas.article import (
     TTP,
     ArticleListResponse,
@@ -47,7 +54,11 @@ from cti_api.schemas.dashboard_overview import (
 from cti_api.services import article_dashboard, confidence, dashboard_overview, trending
 from cti_api.services import dedup as dedup_service
 
-router = APIRouter(prefix="/api", tags=["articles"], dependencies=[Depends(require_auth)])
+router = APIRouter(
+    prefix="/api",
+    tags=["articles"],
+    dependencies=[Depends(require_permission("view_news")), Depends(require_auth)],
+)
 """`list_articles`/`list_filters`/`dashboard_stats`/`article_dedup_groups`
 SENGAJA gak pakai `require_auth` -- port apa adanya dari legacy
 (`routers/articles.py` asli juga gak ngasih dependency itu ke keempatnya,
@@ -244,7 +255,7 @@ async def dashboard_cve_exposure(
 
 @router.post(
     "/articles/{article_id}/confidence",
-    dependencies=[Depends(require_auth)],
+    dependencies=[Depends(require_permission("manage_intel")), Depends(require_auth)],
 )
 async def compute_article_confidence(
     article_id: int,
@@ -268,7 +279,7 @@ async def compute_article_confidence(
 
 @router.post(
     "/articles/confidence/recompute",
-    dependencies=[Depends(require_auth)],
+    dependencies=[Depends(require_permission("manage_intel")), Depends(require_auth)],
 )
 async def recompute_confidence_all(
     request: Request,

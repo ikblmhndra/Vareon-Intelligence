@@ -17,10 +17,13 @@ from cti_api.deps import (
     get_db,
     request_ip,
     require_auth,
+    require_permission,
 )
 from cti_api.schemas.rfi import RFICreate, RFIListResponse, RFIOut, RFIUpdate
 
-router = APIRouter(prefix="/api/rfi", tags=["rfi"])
+router = APIRouter(
+    prefix="/api/rfi", tags=["rfi"], dependencies=[Depends(require_permission("view_intel"))]
+)
 
 
 def _serialize(rfi: RFIRequest) -> RFIOut:
@@ -69,7 +72,7 @@ async def get_rfi_by_id(
     return _serialize(rfi)
 
 
-@router.post("", response_model=RFIOut)
+@router.post("", dependencies=[Depends(require_permission("manage_rfi"))], response_model=RFIOut)
 async def post_rfi(
     body: RFICreate,
     request: Request,
@@ -96,7 +99,9 @@ async def _ensure_rfi_access(repo: AsyncRFIRepo, rfi_id: int, user: AuthedUser) 
     ensure_client_access(user, rfi.client_id)
 
 
-@router.put("/{rfi_id}", response_model=RFIOut)
+@router.put(
+    "/{rfi_id}", dependencies=[Depends(require_permission("manage_rfi"))], response_model=RFIOut
+)
 async def put_rfi(
     rfi_id: int,
     body: RFIUpdate,
@@ -123,7 +128,7 @@ async def put_rfi(
     return _serialize(rfi)
 
 
-@router.delete("/{rfi_id}")
+@router.delete("/{rfi_id}", dependencies=[Depends(require_permission("manage_rfi"))])
 async def remove_rfi(
     rfi_id: int,
     request: Request,

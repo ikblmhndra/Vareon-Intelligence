@@ -61,7 +61,7 @@ async def test_data_health_reports_failures_queue_freshness_and_ioc_coverage(
     await api_session.flush()
     fake_redis.lists["enrich"] = 7
 
-    resp = await api_client.get("/api/data-health", headers=auth_header(role="viewer"))
+    resp = await api_client.get("/api/data-health", headers=auth_header(role="analyst"))
     assert resp.status_code == 200
     body = resp.json()
 
