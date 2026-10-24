@@ -1,7 +1,7 @@
 # LLM as an assistant: enrichment redesign and CTI gaps
 
-Status: **in progress** (updated 2026-10-24). A few building blocks shipped in 0.8.3 and 0.8.4
-(see Progress below); phases P0-P7 have not started.
+Status: **in progress** (updated 2026-10-24). Building blocks shipped in 0.8.3 and 0.8.4, and
+P0 and P1 shipped in 0.8.5 (see Progress below); P2-P7 have not started.
 
 Goal: turn Vareon from "every article goes through an LLM" into a CTI platform where
 deterministic code, curated reference data and analyst feedback do the bulk of the work, and
@@ -31,7 +31,24 @@ endpoint requires a permission, so the LLM-spending and outbound actions (recap,
 TA profile generation, newsletter send, CVE email) now need `manage_intel`, `manage_newsletter`
 or `send_cve_email` instead of any signed-in user.
 
-Not started: P0 (`llm_calls`, model health probe), P1 (self-healing enrichment), P2 to P7.
+Shipped in **0.8.5** (P0 and P1, plus prompt correctness fixes):
+
+- **P0 Measure.** `llm_calls` logs every LLM call (task, model, prompt version, tokens, latency,
+  status `ok`/`empty`/`error`; 90-day retention via `llm.purge_calls`). Every call site names its
+  task. Data health has an LLM section (status, parked articles, tokens per task over 24 h and 7 d).
+- **P1 Self-healing enrichment.** Gateway config errors (400/401/403/404) are parked at once as
+  `config`. `enrich.auto_replay` runs every 10 minutes: one canary article when the model status is
+  unknown, a batch of up to 20 when healthy, at most 3 attempts with backoff, Telegram alert only for
+  articles posted within 24 h. Existing `permanent` rows from those errors become `config`.
+- **Prompt fixes.** Classify prompt shortened with boundary examples; TTPs kept only when the
+  evidence is found in the full article text; newsletter metadata no longer invents content; TA
+  profile built from ATT&CK data; exec brief separates threat news from confirmed incidents; CVE
+  email uses computed fields; JSON mode on the six calls whose reply is parsed as JSON. The TTP
+  evidence check is also the core of P2's "TTP evidence substring check".
+
+Not started: P2 to P7 (the rest of P2, persist-first enrichment, story dedup, extractors, local
+relevance model, confidence, CTI model). Cost measurement over a week of real data is now possible
+on dev.
 
 Correction (2026-10-24, rereading against the code): E4 first said these articles were
 "lost"; they are parked and replayable by hand, so P1 is now about recovering them
@@ -189,8 +206,8 @@ testing first. Phases 1-3 can start without schema redesign.
 
 | Phase | Scope | Done when |
 |-------|-------|-----------|
-| P0 Measure | `llm_calls` table + token logging on classify/TTP/tweets; model health probe on `/data-health` (empty-output guard for recap shipped in 0.8.3) | One week of real cost per call site visible on dev; misconfigured model shows red |
-| P1 Self-healing enrichment | Articles parked as `[enrichment_failed]` are replayed automatically once the model probe is healthy again; a gateway 400/404 is treated as "wait for health", not permanent; the 218 parked rows on dev are recovered | After a gateway outage on dev, parked articles reach the news feed without anyone pressing Replay |
+| P0 Measure (**done in 0.8.5**) | `llm_calls` table + token logging on classify/TTP/tweets; model health probe on `/data-health` (empty-output guard for recap shipped in 0.8.3) | One week of real cost per call site visible on dev; misconfigured model shows red |
+| P1 Self-healing enrichment (**done in 0.8.5**) | Articles parked as `[enrichment_failed]` are replayed automatically once the model probe is healthy again; a gateway 400/404 is treated as "wait for health", not permanent; the 218 parked rows on dev are recovered | After a gateway outage on dev, parked articles reach the news feed without anyone pressing Replay |
 | P2 Cheap wins | `content_kind`/`default_relevance` on scrapers; refang + CVE-out-of-IOC + allowlist seed; TTP evidence substring check; drop LLM `confidence` from UI in favour of `services/confidence.py` | Structured sources make 0 LLM calls; duplicate defanged IOCs = 0; no TTP without verifiable evidence |
 | P3 Story dedup at ingest | Clustering in `cti_core`, `story_sources`, skip Tier 3 for known stories | "PHP2Shell"-type waves enriched once per story |
 | P4 Deterministic extractors | Actor/malware dictionary matcher, explicit + inferred ATT&CK, industry taxonomy, incident rule | Coverage (E9) measured before/after on the same article set; equal or better than LLM for actor and TTP precision on a 100-article hand-labelled sample |

@@ -1,6 +1,6 @@
 [project]
 name = "cti-platform"
-version = "0.8.4"
+version = "0.8.5"
 description = "CTI platform monorepo — scrapers, enrichment, API and web"
 requires-python = ">=3.12"
 dependencies = [
