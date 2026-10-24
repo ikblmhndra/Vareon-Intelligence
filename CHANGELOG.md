@@ -26,6 +26,8 @@ penggunanya masih harus bisa ack/ticket CVE dan membuka Scrapers/Data health.
   membuang header itu di proxy dan mengembalikan client aktif ke client milik user setelah login.
 
 ### Diperbaiki
+- Halaman Exec tidak lagi kosong (403 "Role preview is admin-only") untuk non-admin yang memakai browser bekas admin: pilihan
+  "Role preview" yang tersimpan di browser hanya dikirim oleh admin.
 - `GET /api/crossref/{cve,pir,ta}`, `GET /api/stix/pirs`, dan mindmap PIR tidak lagi menampilkan PIR dan CVE yang di-track client
   lain. PIR milik client lain dijawab `404`.
 
