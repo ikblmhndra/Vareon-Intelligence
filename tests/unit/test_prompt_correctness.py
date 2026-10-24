@@ -199,6 +199,39 @@ def test_ta_overrides_create_missing_dicts_and_null_id() -> None:
     assert out["identity"]["tracking_ids"]["mitre_group_id"] is None
 
 
+def test_ta_techniques_keep_only_ids_from_context() -> None:
+    context = "- Techniques:\n  - T1059.001 PowerShell (execution)\n  - T1486 Data Encrypted"
+    profile: dict[str, Any] = {
+        "capability_assessment": {
+            "attack_techniques": {
+                "execution": ["T1059.001 PowerShell (execution)", "T1059.004 Unix Shell"],
+                "impact": ["T1486 Data Encrypted for Impact", "T1485 Data Destruction"],
+                "discovery": ["Network scanning"],
+            }
+        }
+    }
+    out = ta_profile.filter_techniques_to_context(profile, context)
+    assert out["capability_assessment"]["attack_techniques"] == {
+        "execution": ["T1059.001 PowerShell (execution)"],
+        "impact": ["T1486 Data Encrypted for Impact"],
+        "discovery": [],
+    }
+
+
+def test_ta_techniques_parent_id_does_not_admit_subtechnique() -> None:
+    profile: dict[str, Any] = {
+        "capability_assessment": {"attack_techniques": {"execution": ["T1059.001 PowerShell"]}}
+    }
+    out = ta_profile.filter_techniques_to_context(profile, "- T1059 Command and Scripting")
+    assert out["capability_assessment"]["attack_techniques"]["execution"] == []
+
+
+def test_ta_techniques_filter_tolerates_missing_or_odd_shapes() -> None:
+    assert ta_profile.filter_techniques_to_context({}, "T1059") == {}
+    odd: dict[str, Any] = {"capability_assessment": {"attack_techniques": ["T1059"]}}
+    assert ta_profile.filter_techniques_to_context(odd, "T1059") == odd
+
+
 def test_ta_user_message_without_attack_match() -> None:
     msg = ta_profile._build_user_message("Foo Group", [], None)
     assert "Foo Group" in msg
