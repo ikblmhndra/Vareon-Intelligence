@@ -6,6 +6,29 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
+## [0.8.4] - 2026-10-24
+
+**Permission role sekarang benar-benar ditegakkan per endpoint, dan data antar-client tidak lagi bocor.** Sebelumnya 26 permission
+disimpan di role tetapi tidak ada endpoint yang mengeceknya. **Tanpa migrasi, tanpa kunci `.env` baru, dan tanpa entri beat baru.**
+
+**Saat upgrade dari 0.8.3:** deploy biasa (`make deploy`); image `api` dan `web` berubah. Role sistem (`superadmin`, `admin`,
+`analyst`) diperbarui otomatis saat `api` start. **Custom role** perlu ditambah `manage_cve` dan `view_ops` lewat Admin kalau
+penggunanya masih harus bisa ack/ticket CVE dan membuka Scrapers/Data health.
+
+### Diubah
+- Setiap endpoint `/api` sekarang mensyaratkan permission. Endpoint yang dulu terbuka untuk semua user login sekarang ditolak
+  `403 Missing permission: ...` bila role-nya tidak punya izin itu. Untuk role **analyst** artinya: tidak bisa lagi mengirim/
+  resend newsletter, mengirim email CVE, generate recap/exec brief/profil TA (LLM), mengubah grup/whitelist TA, sync ATT&CK, atau
+  mengubah source reliability. Analyst tetap bisa membaca semua halaman, triase CVE, PIR/RFI, watchlist TA, feedback IOC, mindmap,
+  dan override verdict scorecard recap.
+- Permission baru: `manage_cve` (ack, ticket, FP CVE, tech yang dimonitor, paket) dan `view_ops` (Scrapers, Data health).
+- `X-Client-ID` untuk client yang bukan milik user sekarang ditolak `403`, bukan diam-diam diganti ke client pertama user. Web
+  membuang header itu di proxy dan mengembalikan client aktif ke client milik user setelah login.
+
+### Diperbaiki
+- `GET /api/crossref/{cve,pir,ta}`, `GET /api/stix/pirs`, dan mindmap PIR tidak lagi menampilkan PIR dan CVE yang di-track client
+  lain. PIR milik client lain dijawab `404`.
+
 ## [0.8.3] - 2026-10-24
 
 **Angka di Dashboard, Exec, CVE, Recap, dan Newsroom sekarang sesuai datanya** (hasil audit UI vs data, `docs/UI_DATA_AUDIT.md`).
