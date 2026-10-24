@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import type { components } from "@/lib/api/schema";
 import type { PkgVulnAckResult } from "@/lib/api/loose-types";
 import { VulnDetailModal } from "@/components/cve/pkgvuln/vuln-detail-modal";
+import { useCan } from "@/lib/auth/permissions";
 
 const PAGE_SIZE = 20;
 const ALL = "__all__";
@@ -28,6 +29,7 @@ const SEVERITIES = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN"];
  * `ecosystem` query param ada di backend tapi gak pernah dipakai UI
  * lama -- ditambahin di sini (free win, disebut di gap notes). */
 export function VulnsPanel({ active }: { active: boolean }) {
+  const can = useCan();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [severity, setSeverity] = useState("");
@@ -238,7 +240,12 @@ export function VulnsPanel({ active }: { active: boolean }) {
                   <TableCell className="font-mono text-xs text-muted-foreground">{v.published?.slice(0, 10) || "—"}</TableCell>
                   <TableCell className="font-mono text-xs text-primary">{v.fixed_version || "—"}</TableCell>
                   <TableCell onClick={(e) => e.stopPropagation()}>
-                    <Checkbox checked={v.acknowledged} onCheckedChange={() => void toggleAck(v.id)} />
+                    <Checkbox
+                      aria-label={`Acknowledge ${v.id}`}
+                      disabled={!can("manage_cve")}
+                      checked={v.acknowledged}
+                      onCheckedChange={() => void toggleAck(v.id)}
+                    />
                   </TableCell>
                 </TableRow>
               ))}

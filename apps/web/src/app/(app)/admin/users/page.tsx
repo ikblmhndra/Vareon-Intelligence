@@ -1,6 +1,7 @@
 "use client";
 
 import { useAuth } from "@/components/providers/auth-provider";
+import { useCan } from "@/lib/auth/permissions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { UsersSection } from "@/components/admin/users-section";
 import { RolesSection } from "@/components/admin/roles-section";
@@ -17,9 +18,10 @@ import { SecretsSection } from "@/components/admin/secrets-section";
  */
 export default function AdminUsersPage() {
   const { user } = useAuth();
-  const isAdmin = user?.role === "admin" || user?.role === "superadmin";
+  const can = useCan();
+  const adminPermissions = ["manage_users", "manage_roles", "manage_policy", "view_audit_log", "manage_clients"];
 
-  if (!isAdmin) {
+  if (!adminPermissions.some(can)) {
     return (
       <Card className="max-w-md">
         <CardHeader>
@@ -34,11 +36,12 @@ export default function AdminUsersPage() {
 
   return (
     <div className="space-y-4 pb-10">
-      <UsersSection />
+      {can("manage_users") && <UsersSection />}
       <RolesSection />
-      <PasswordPolicySection />
-      <AuditLogSection />
-      {user?.role === "superadmin" && <ClientsSection />}
+      {can("manage_policy") && <PasswordPolicySection />}
+      {can("view_audit_log") && <AuditLogSection />}
+      {can("manage_clients") && <ClientsSection />}
+      {/* Secrets tidak punya permission sendiri: API-nya `require_superadmin`. */}
       {user?.role === "superadmin" && <SecretsSection />}
     </div>
   );

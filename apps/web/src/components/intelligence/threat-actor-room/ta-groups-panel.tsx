@@ -14,6 +14,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { cn } from "@/lib/utils";
 import type { TaGroupActionResult } from "@/lib/api/loose-types";
 import type { components } from "@/lib/api/schema";
+import { useCan } from "@/lib/auth/permissions";
 
 type TAGroupOut = components["schemas"]["TAGroupOut"];
 
@@ -24,6 +25,7 @@ type SortField = "name" | "added_date" | "source";
  * watch inline, sort klik-header (bukan `<Select>`, port apa adanya
  * karena ini tabel beneran, beda dari Watchlist yang card grid). */
 export function TaGroupsPanel() {
+  const can = useCan();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<SortField>("name");
@@ -140,6 +142,7 @@ export function TaGroupsPanel() {
             className="w-48 font-mono text-xs"
           />
         </div>
+        {can("manage_intel") && (
         <div className="flex flex-col gap-1">
           <label className="text-sm font-medium text-muted-foreground">Add Group</label>
           <div className="flex gap-1.5">
@@ -155,6 +158,7 @@ export function TaGroupsPanel() {
             </Button>
           </div>
         </div>
+        )}
         <span className="ml-auto font-mono text-xs text-muted-foreground">
           {total} group{total !== 1 ? "s" : ""} tracked
         </span>
@@ -194,6 +198,7 @@ export function TaGroupsPanel() {
                       <span className="rounded-full border border-border bg-background px-1.5 py-0.5 font-mono text-xs text-muted-foreground">{g.source}</span>
                     </TableCell>
                     <TableCell className="text-right whitespace-nowrap">
+                      {can("manage_pir") && (
                       <button
                         type="button"
                         onClick={() => void toggleWatch(g.name, isWatched)}
@@ -204,6 +209,8 @@ export function TaGroupsPanel() {
                       >
                         {isWatched ? "◎ UNWATCH" : "⊕ WATCH"}
                       </button>
+                      )}
+                      {can("manage_intel") && (
                       <button
                         type="button"
                         onClick={() => setRemoveTarget(g)}
@@ -211,6 +218,7 @@ export function TaGroupsPanel() {
                       >
                         <XIcon aria-hidden /> REMOVE
                       </button>
+                      )}
                     </TableCell>
                   </TableRow>
                 );

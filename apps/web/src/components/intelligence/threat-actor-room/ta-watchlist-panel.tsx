@@ -17,6 +17,7 @@ import { TaArticlesDialog } from "@/components/intelligence/threat-actor-room/ta
 import { TaProfileDialog } from "@/components/intelligence/threat-actor-room/ta-profile-dialog";
 import type { TaProfileResponse } from "@/lib/api/loose-types";
 import type { components } from "@/lib/api/schema";
+import { useCan } from "@/lib/auth/permissions";
 
 type TAWatchlistOut = components["schemas"]["TAWatchlistOut"];
 type TAWatchlistListResponse = components["schemas"]["TAWatchlistListResponse"];
@@ -246,6 +247,7 @@ function WatchlistCard({
   onOpenArticles: () => void;
   onUnwatch: () => void;
 }) {
+  const can = useCan();
   return (
     <div className="rounded-xl border border-border bg-background p-3">
       <div className="mb-1.5 flex flex-wrap items-center gap-2">
@@ -261,17 +263,27 @@ function WatchlistCard({
         </span>
       </div>
       <div className="mb-2 flex flex-wrap gap-1.5">
-        <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={generating} onClick={onGenerate}>
-          {generating ? "Generating…" : "AI Generate"}
-        </Button>
+        {can("manage_intel") && (
+          <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={generating} onClick={onGenerate}>
+            {generating ? "Generating…" : "AI Generate"}
+          </Button>
+        )}
         {hasProfile && (
           <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={onViewProfile}>
             <EyeIcon aria-hidden /> View Profile
           </Button>
         )}
-        <Button size="sm" variant="outline" className="ml-auto h-6 px-2 text-xs text-destructive" onClick={onUnwatch}>
-          <XIcon aria-hidden />
-        </Button>
+        {can("manage_pir") && (
+          <Button
+            size="sm"
+            variant="outline"
+            aria-label="Remove from watchlist"
+            className="ml-auto h-6 px-2 text-xs text-destructive"
+            onClick={onUnwatch}
+          >
+            <XIcon aria-hidden />
+          </Button>
+        )}
       </div>
       <button
         type="button"

@@ -6902,6 +6902,14 @@
             "title": "Force Pw Change",
             "type": "boolean"
           },
+          "permissions": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Permissions",
+            "type": "array"
+          },
           "role": {
             "title": "Role",
             "type": "string"

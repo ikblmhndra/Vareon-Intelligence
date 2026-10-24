@@ -5,6 +5,7 @@ import { InfoIcon, TriangleAlertIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { PreviewDialogState } from "@/components/newsletter/types";
+import { useCan } from "@/lib/auth/permissions";
 
 interface Props {
   state: PreviewDialogState;
@@ -27,6 +28,7 @@ interface Props {
  * draft mati sampai pratinjau berhasil dimuat, supaya tidak ada draft yang dibuat dari preview yang
  * gagal atau belum terlihat. */
 export function NewsletterPreviewDialog({ state, onOpenChange, onSendDraft, sending, onResendSaved, resending }: Props) {
+  const can = useCan();
   const title = `${state.mode === "saved" ? "SAVED NEWSLETTER" : "NEWSLETTER PREVIEW"}${state.label ? ` — ${state.label}` : ""}`;
   const compose = state.mode === "compose";
   const hasNotices = compose && (state.warnings.length > 0 || state.metadataTitles.length > 0);
@@ -72,7 +74,7 @@ export function NewsletterPreviewDialog({ state, onOpenChange, onSendDraft, send
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
             Close
           </Button>
-          {compose ? (
+          {!can("manage_newsletter") ? null : compose ? (
             <Button size="sm" onClick={onSendDraft} disabled={sending || !state.body || state.html === null}>
               {sending ? "Creating draft…" : state.warnings.length > 0 ? "Create draft anyway" : "Create Outlook draft"}
             </Button>

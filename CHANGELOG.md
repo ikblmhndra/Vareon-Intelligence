@@ -15,6 +15,12 @@ disimpan di role tetapi tidak ada endpoint yang mengeceknya. **Tanpa migrasi, ta
 `analyst`) diperbarui otomatis saat `api` start. **Custom role** perlu ditambah `manage_cve` dan `view_ops` lewat Admin kalau
 penggunanya masih harus bisa ack/ticket CVE dan membuka Scrapers/Data health.
 
+### Ditambah
+- `GET /api/auth/me` dan respons login membawa `permissions` (permission efektif role user). Web memakainya untuk menyembunyikan
+  tombol yang tidak boleh dipakai role tersebut: generate recap/brief/profil TA, kirim newsletter dan email CVE, sync ATT&CK,
+  edit grup/whitelist TA, source reliability, IOC (hapus, allowlist, tautan aktor), akun X, aksi Scrapers, Restore/Replay
+  artikel, aksi CVE/tech/paket, PIR/RFI, export, dan bagian Admin.
+
 ### Diubah
 - Setiap endpoint `/api` sekarang mensyaratkan permission. Endpoint yang dulu terbuka untuk semua user login sekarang ditolak
   `403 Missing permission: ...` bila role-nya tidak punya izin itu. Untuk role **analyst** artinya: tidak bisa lagi mengirim/

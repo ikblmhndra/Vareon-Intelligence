@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { TAActivityTimelineChart } from "@/components/dashboard/charts";
 import { MindmapWidget } from "@/components/mindmap/mindmap-widget";
 import type { TaExploitedVuln, TaKnownMalware, TaProfile, TaProfileResponse, TaTimeline } from "@/lib/api/loose-types";
+import { useCan } from "@/lib/auth/permissions";
 
 const DORMANCY_STYLE: Record<string, { icon: string; color: string }> = {
   ACTIVE: { icon: "●", color: "text-success" },
@@ -61,6 +62,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
  * dibiarin ada juga biar satu komponen konsisten, bukan hand-roll
  * toggle terpisah lagi). */
 export function TaProfileDialog({ actorName, onClose }: { actorName: string | null; onClose: () => void }) {
+  const can = useCan();
   const queryClient = useQueryClient();
   const [regenerating, setRegenerating] = useState(false);
 
@@ -112,9 +114,11 @@ export function TaProfileDialog({ actorName, onClose }: { actorName: string | nu
         <DialogHeader>
           <div className="flex flex-wrap items-center gap-2">
             <DialogTitle className="font-mono text-sm">{actorName}</DialogTitle>
-            <Button size="sm" variant="outline" className="ml-auto h-6 px-2 text-xs" disabled={regenerating} onClick={() => void regenerate()}>
-              {regenerating ? "Regenerating…" : "Regenerate"}
-            </Button>
+            {can("manage_intel") && (
+              <Button size="sm" variant="outline" className="ml-auto h-6 px-2 text-xs" disabled={regenerating} onClick={() => void regenerate()}>
+                {regenerating ? "Regenerating…" : "Regenerate"}
+              </Button>
+            )}
           </div>
           {profile && <MetaChips profile={profile} />}
         </DialogHeader>

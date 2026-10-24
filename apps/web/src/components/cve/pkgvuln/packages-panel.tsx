@@ -20,6 +20,7 @@ import type { PkgAddResult, PkgDeleteResult, PkgTaskStartedResult } from "@/lib/
 import { EditPackageDialog } from "@/components/cve/pkgvuln/edit-package-dialog";
 import { DepsModal } from "@/components/cve/pkgvuln/deps-modal";
 import { LockfileImportDialog } from "@/components/cve/pkgvuln/lockfile-import-dialog";
+import { useCan } from "@/lib/auth/permissions";
 
 const PAGE_SIZE = 20;
 const ECOSYSTEMS = ["npm", "PyPI", "Go", "Maven", "crates.io", "NuGet", "RubyGems", "Packagist", "Hex"];
@@ -30,6 +31,7 @@ const ECOSYSTEMS = ["npm", "PyPI", "Go", "Maven", "crates.io", "NuGet", "RubyGem
  * invalidate query abis delay tetap, bukan nunggu sinyal "selesai" yang
  * emang gak ada. */
 export function PackagesPanel({ active }: { active: boolean }) {
+  const can = useCan();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [name, setName] = useState("");
@@ -133,6 +135,7 @@ export function PackagesPanel({ active }: { active: boolean }) {
 
   return (
     <div>
+      {can("manage_cve") && (
       <div className="mb-3 flex flex-wrap items-end gap-2 border-b border-border pb-3">
         <div className="flex flex-col gap-1">
           <Label className="text-sm font-medium text-muted-foreground">Name</Label>
@@ -167,6 +170,7 @@ export function PackagesPanel({ active }: { active: boolean }) {
           {scanning === "all" ? "Scanning…" : "Scan All"}
         </Button>
       </div>
+      )}
 
       {listQuery.isPending && <PanelLoading />}
       {listQuery.isError && <PanelError />}
@@ -233,6 +237,7 @@ export function PackagesPanel({ active }: { active: boolean }) {
                   </TableCell>
                   <TableCell className="font-mono text-xs text-muted-foreground">{p.last_scan?.slice(0, 10) || "—"}</TableCell>
                   <TableCell>
+                    {can("manage_cve") && (
                     <div className="flex items-center gap-1">
                       <Button size="sm" variant="outline" className="h-6 px-1.5 text-xs" onClick={() => setEditTarget(p)}>
                         <PencilIcon aria-hidden />
@@ -264,6 +269,7 @@ export function PackagesPanel({ active }: { active: boolean }) {
                         <XIcon aria-hidden />
                       </Button>
                     </div>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

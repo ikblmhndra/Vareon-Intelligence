@@ -27,6 +27,7 @@ __all__ = [
     "get_db",
     "get_redis",
     "invalidate_role_permissions",
+    "permissions_for",
     "request_ip",
     "require_admin",
     "require_auth",
@@ -135,6 +136,18 @@ async def _role_permissions(session: AsyncSession, role: str) -> frozenset[str]:
         perms = frozenset(spec if isinstance(spec, list) else [])
     _role_permissions_cache[role] = (perms, now)
     return perms
+
+
+async def permissions_for(session: AsyncSession, role: str) -> list[str]:
+    """Permission efektif sebuah role, urut katalog. Dikirim `/api/auth/me` dan login supaya web
+    bisa menyembunyikan tombol yang akan dibalas 403 (aturan yang sama dengan `require_permission`:
+    superadmin = semua)."""
+    from cti_api.services.roles import ALL_PERMISSIONS
+
+    if role == "superadmin":
+        return list(ALL_PERMISSIONS)
+    granted = await _role_permissions(session, role)
+    return [p for p in ALL_PERMISSIONS if p in granted]
 
 
 def require_permission(permission: str) -> Callable[..., Awaitable[AuthedUser]]:

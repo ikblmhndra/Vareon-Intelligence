@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/lib/api/client";
-import { useAuth } from "@/components/providers/auth-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,6 +21,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { usePermissions, useRoles } from "@/components/admin/hooks";
+import { useCan } from "@/lib/auth/permissions";
 
 const ROLES_KEY = ["admin", "roles"] as const;
 
@@ -29,8 +29,8 @@ const ROLES_KEY = ["admin", "roles"] as const;
  * `umOpenAddRoleModal()`/`umSaveRole()`/`umDeleteRole()`. Add/Delete Role
  * superadmin-only (`require_superadmin` di `routers/roles.py`). */
 export function RolesSection() {
-  const { user } = useAuth();
-  const isSuperadmin = user?.role === "superadmin";
+  const can = useCan();
+  const isSuperadmin = can("manage_roles");
   const queryClient = useQueryClient();
   const roles = useRoles();
   const [addOpen, setAddOpen] = useState(false);
