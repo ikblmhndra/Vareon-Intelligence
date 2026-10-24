@@ -652,6 +652,7 @@ class RejectedArticleRepo:
         existing.posted_on = posted_on
         existing.reason = reason
         existing.failure_kind = failure_kind
+        # `auto_replay_count` / `last_auto_replay_at` sengaja tidak disentuh (milik task replay).
         if raw_enrichment is not None:
             existing.raw_enrichment = raw_enrichment
         self.session.flush()
