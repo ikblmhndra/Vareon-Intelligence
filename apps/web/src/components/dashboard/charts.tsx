@@ -299,36 +299,72 @@ export function GradedDoughnutChart({ counts }: GradedDoughnutChartProps) {
 interface TimelineChartProps {
   labels: string[];
   data: number[];
+  /** Nama deret utama (tooltip/legenda); tanpa ini tooltip tetap "N articles" seperti sebelumnya. */
+  label?: string;
+  tone?: "primary" | "info" | "critical";
+  /** Deret kedua (mis. insiden terkonfirmasi di atas semua berita); legenda tampil bila ada. */
+  secondary?: { label: string; data: number[]; tone?: "primary" | "info" | "critical" };
+  /** Titik terakhir digambar lebih besar (mis. minggu berjalan di kartu ransomware). */
+  emphasizeLast?: boolean;
 }
 
-export function TimelineChart({ labels, data }: TimelineChartProps) {
+export function TimelineChart({
+  labels,
+  data,
+  label,
+  tone = "primary",
+  secondary,
+  emphasizeLast,
+}: TimelineChartProps) {
   const t = useChartTheme();
+  const color = t[tone];
+  const radius = (n: number) => labels.map((_, i) => (emphasizeLast && i === labels.length - 1 ? 5 : n));
   return (
     <Line
       data={{
         labels,
         datasets: [
           {
+            label,
             data,
-            borderColor: t.primary,
-            backgroundColor: withAlpha(t.primary, 0.06),
+            borderColor: color,
+            backgroundColor: withAlpha(color, 0.06),
             borderWidth: 1.5,
-            pointRadius: 0,
+            pointRadius: radius(0),
             pointHoverRadius: 5,
-            pointBackgroundColor: t.primary,
+            pointBackgroundColor: color,
             fill: true,
             tension: 0.4,
           },
+          ...(secondary
+            ? [
+                {
+                  label: secondary.label,
+                  data: secondary.data,
+                  borderColor: t[secondary.tone ?? "primary"],
+                  backgroundColor: withAlpha(t[secondary.tone ?? "primary"], 0.06),
+                  borderWidth: 1.5,
+                  pointRadius: radius(0),
+                  pointHoverRadius: 5,
+                  pointBackgroundColor: t[secondary.tone ?? "primary"],
+                  fill: true,
+                  tension: 0.4,
+                },
+              ]
+            : []),
         ],
       }}
       options={{
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: { display: false },
+          legend: secondary
+            ? { position: "bottom", labels: { color: t.textDim, boxWidth: 10, font: { size: 12 } } }
+            : { display: false },
           tooltip: {
             callbacks: {
-              label: (ctx: TooltipItem<"line">) => ` ${ctx.parsed.y} articles`,
+              label: (ctx: TooltipItem<"line">) =>
+                secondary || label ? ` ${ctx.dataset.label}: ${ctx.parsed.y}` : ` ${ctx.parsed.y} articles`,
             },
           },
         },

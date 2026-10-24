@@ -331,3 +331,37 @@ async def test_get_by_ids_returns_dict_keyed_by_id(async_db_session: AsyncSessio
 async def test_get_by_ids_empty_list_returns_empty_dict(async_db_session: AsyncSession) -> None:
     repo = AsyncArticleRepo(async_db_session)
     assert await repo.get_by_ids([]) == {}
+
+
+async def test_list_filtered_priority_sort(async_db_session: AsyncSession) -> None:
+    """Urutan prioritas: terkonfirmasi, confidence (NULL terakhir), seen_count, terbaru."""
+    repo = AsyncArticleRepo(async_db_session)
+    day = datetime.date(2026, 9, 20)
+    specs = {
+        "a": dict(confirmed_incident=False, confidence_score=90, seen=1),
+        "b": dict(confirmed_incident=True, confidence_score=50, seen=1),
+        "c": dict(confirmed_incident=True, confidence_score=50, seen=4),
+        "d": dict(confirmed_incident=True, confidence_score=None, seen=1),
+    }
+    ids: dict[str, int] = {}
+    for i, (key, s) in enumerate(specs.items()):
+        art = await repo.upsert(
+            url=f"https://example.com/prio-{key}",
+            title=f"prio {key}",
+            source="S",
+            posted_on=day - datetime.timedelta(days=i),
+            confirmed_incident=s["confirmed_incident"],
+            confidence_score=s["confidence_score"],
+        )
+        art.seen_count = s["seen"]
+        ids[key] = art.id
+    await async_db_session.flush()
+
+    prio, _ = await repo.list_filtered(sort="priority")
+    assert [a.id for a in prio] == [ids["c"], ids["b"], ids["d"], ids["a"]]
+    recent, _ = await repo.list_filtered()
+    assert [a.id for a in recent] == [ids["a"], ids["b"], ids["c"], ids["d"]]
+
+    confirmed, total = await repo.list_filtered(confirmed_only=True)
+    assert total == 3
+    assert ids["a"] not in [a.id for a in confirmed]

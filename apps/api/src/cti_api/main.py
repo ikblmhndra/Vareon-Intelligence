@@ -47,6 +47,7 @@ from cti_api.routers import mindmap as mindmap_router
 from cti_api.routers import mitre as mitre_router
 from cti_api.routers import monitored_accounts as monitored_accounts_router
 from cti_api.routers import newsletter as newsletter_router
+from cti_api.routers import newsroom as newsroom_router
 from cti_api.routers import pir as pir_router
 from cti_api.routers import pkg_vuln as pkg_vuln_router
 from cti_api.routers import ransomware as ransomware_router
@@ -132,6 +133,7 @@ def create_app() -> FastAPI:
     app.include_router(roles_router.router)
     app.include_router(secrets_router.router)
     app.include_router(articles_router.router)
+    app.include_router(newsroom_router.router)
     app.include_router(iocs_router.router)
     app.include_router(techstack_router.router)
     app.include_router(cve_router.router)

@@ -54,6 +54,7 @@
       dict({
         'count': 1,
         'date': '2026-09-01',
+        'incidents': 0,
       }),
     ]),
     'top_countries': list([
@@ -81,6 +82,7 @@
     'actor_countries': list([
     ]),
     'confidence_score': None,
+    'confirmed_incident': False,
     'id': int,
     'impacted_industries': list([
     ]),
@@ -111,6 +113,7 @@
         'actor_countries': list([
         ]),
         'confidence_score': None,
+        'confirmed_incident': False,
         'id': int,
         'impacted_industries': list([
         ]),
@@ -146,6 +149,7 @@
         'actor_countries': list([
         ]),
         'confidence_score': None,
+        'confirmed_incident': False,
         'id': int,
         'impacted_industries': list([
         ]),

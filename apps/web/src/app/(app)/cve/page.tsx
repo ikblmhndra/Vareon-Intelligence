@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 
 import { TabPills } from "@/components/ui/tab-pills";
 import { CveCoreView } from "@/components/cve/cve-core-view";
@@ -47,7 +47,10 @@ export default function CveTrackerPage() {
         <div>
           <TabPills aria-label="CVE views" className="mb-3" items={CVE_SUBVIEWS} value={subview} onChange={setSubview} />
           {subview === "cves" ? (
-            <CveCoreView />
+            // `useSearchParams` di CveCoreView butuh Suspense supaya halaman tetap bisa di-prerender.
+            <Suspense>
+              <CveCoreView />
+            </Suspense>
           ) : subview === "dashboard" ? (
             <CveDashboardView />
           ) : subview === "ticketing" ? (

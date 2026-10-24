@@ -9,9 +9,10 @@ model). Gak ada jalur tulis async di sini SENGAJA."""
 from __future__ import annotations
 
 import datetime
+from collections.abc import Collection
 from typing import Any
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import Date, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -54,6 +55,92 @@ class RansomwareVictimRepo:
 class AsyncRansomwareVictimRepo:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
+
+    async def weekly_counts(self, *, weeks: int = 8) -> list[tuple[datetime.date, int]]:
+        """Korban per minggu (awal minggu = Senin), `weeks` minggu terakhir termasuk minggu
+        berjalan, terlama dulu, minggu kosong diisi 0. Tanggal korban =
+        `coalesce(discovered, published)`; baris tanpa tanggal tidak dihitung."""
+        today = datetime.date.today()
+        this_monday = today - datetime.timedelta(days=today.weekday())
+        first = this_monday - datetime.timedelta(weeks=weeks - 1)
+        when = func.coalesce(RansomwareVictim.discovered, RansomwareVictim.published)
+        week = func.date_trunc("week", when)
+        stmt = select(cast(week, Date), func.count()).where(when >= first).group_by(week)
+        found = {d: int(n) for d, n in (await self.session.execute(stmt)).all()}
+        return [
+            (d, found.get(d, 0))
+            for d in (first + datetime.timedelta(weeks=i) for i in range(weeks))
+        ]
+
+    async def summary(
+        self,
+        *,
+        since: datetime.date | None,
+        apac_codes: Collection[str],
+        client_codes: Collection[str],
+    ) -> dict[str, Any]:
+        """Ringkasan korban sejak `since` (tanggal = `coalesce(discovered, published)`):
+        `total`, `apac`/`client_scope` (kode negara di himpunan masing-masing), `undated`
+        (kedua tanggal NULL; TIDAK pernah difilter `since`), `top_groups` (3 teratas,
+        seri diurutkan nama) dan `by_country` ({kode: jumlah}, hanya baris berkode)."""
+        when = func.coalesce(RansomwareVictim.discovered, RansomwareVictim.published)
+
+        def _scoped(stmt: Any) -> Any:
+            return stmt.where(when >= since) if since is not None else stmt.where(when.is_not(None))
+
+        total = (
+            await self.session.execute(_scoped(select(func.count(RansomwareVictim.id))))
+        ).scalar_one()
+        in_apac = (
+            await self.session.execute(
+                _scoped(
+                    select(func.count(RansomwareVictim.id)).where(
+                        RansomwareVictim.country_code.in_(list(apac_codes))
+                    )
+                )
+            )
+        ).scalar_one()
+        in_client = (
+            await self.session.execute(
+                _scoped(
+                    select(func.count(RansomwareVictim.id)).where(
+                        RansomwareVictim.country_code.in_(list(client_codes))
+                    )
+                )
+            )
+        ).scalar_one()
+        undated = (
+            await self.session.execute(
+                select(func.count(RansomwareVictim.id)).where(
+                    RansomwareVictim.discovered.is_(None), RansomwareVictim.published.is_(None)
+                )
+            )
+        ).scalar_one()
+        groups = (
+            await self.session.execute(
+                _scoped(select(RansomwareVictim.group_name, func.count()))
+                .group_by(RansomwareVictim.group_name)
+                .order_by(func.count().desc(), RansomwareVictim.group_name)
+                .limit(3)
+            )
+        ).all()
+        countries = (
+            await self.session.execute(
+                _scoped(
+                    select(RansomwareVictim.country_code, func.count()).where(
+                        RansomwareVictim.country_code.is_not(None)
+                    )
+                ).group_by(RansomwareVictim.country_code)
+            )
+        ).all()
+        return {
+            "total": int(total),
+            "apac": int(in_apac),
+            "client_scope": int(in_client),
+            "undated": int(undated),
+            "top_groups": [(g, int(n)) for g, n in groups],
+            "by_country": {c: int(n) for c, n in countries},
+        }
 
     async def list_by_group_exact(
         self, group_name: str, *, limit: int = 100

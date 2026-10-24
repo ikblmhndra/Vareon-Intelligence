@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useState, type FormEvent } from "react";
+import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { BrandMark } from "@/components/brand-mark";
@@ -9,6 +10,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/components/providers/auth-provider";
 import { PLATFORM_NAME } from "@/lib/brand";
+
+// Peta titik memuat world-atlas; ssr:false menjaga data geografi di luar first paint /login.
+const WorldDots = dynamic(() => import("@/components/world-dots").then((m) => m.WorldDots), {
+  ssr: false,
+});
+
+const HERO_POINTS = [
+  "Berita ancaman dari banyak sumber, dirangkum dan diberi skor.",
+  "CVE dicocokkan dengan tech stack organisasi Anda.",
+  "Aktor, TTP dan IOC dipetakan ke MITRE ATT&CK.",
+];
 
 /** Hanya path internal ("/x"); tolak "//host", "/\\host", dan URL absolut (open redirect). */
 function safeRedirect(target: string | null): string {
@@ -46,16 +58,10 @@ function LoginForm() {
   }
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="w-full max-w-sm space-y-6 rounded-3xl border border-border bg-card p-8 shadow-md"
-    >
-      <div className="flex flex-col items-center gap-3 text-center">
-        <BrandMark className="size-12 text-xl" />
-        <div className="space-y-1">
-          <h1 className="font-heading text-2xl font-extrabold tracking-tight text-foreground">{PLATFORM_NAME}</h1>
-          <p className="text-sm text-muted-foreground">Sign in to continue</p>
-        </div>
+    <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-6">
+      <div className="space-y-1">
+        <h2 className="font-heading text-2xl font-extrabold tracking-tight text-foreground">Masuk</h2>
+        <p className="text-sm text-muted-foreground">Gunakan akun Vareon Anda.</p>
       </div>
 
       <div className="space-y-2">
@@ -90,6 +96,8 @@ function LoginForm() {
       <Button type="submit" className="w-full" disabled={pending}>
         {pending ? "Signing in..." : "Sign in"}
       </Button>
+
+      <p className="text-xs text-muted-foreground">Lupa password? Hubungi admin platform.</p>
     </form>
   );
 }
@@ -100,10 +108,45 @@ function LoginForm() {
 // gak muncul di `pnpm dev` (Turbopack dev gak prerender).
 export default function LoginPage() {
   return (
-    <main className="auth-backdrop flex min-h-dvh items-center justify-center bg-background px-4">
-      <Suspense>
-        <LoginForm />
-      </Suspense>
+    <main className="grid min-h-dvh bg-background md:grid-cols-[1.1fr_1fr]">
+      <section className="relative overflow-hidden bg-hero text-hero-foreground">
+        <div className="pointer-events-none absolute inset-0" aria-hidden="true">
+          <WorldDots className="opacity-100" fit="cover" />
+        </div>
+        <div className="relative flex h-full flex-col justify-between gap-10 px-6 py-8 md:p-12">
+          <div className="flex items-center gap-3">
+            <BrandMark className="size-9 text-base" />
+            <span className="font-heading text-lg font-extrabold tracking-tight">{PLATFORM_NAME}</span>
+          </div>
+
+          <div className="space-y-6">
+            <p className="text-2xs font-semibold uppercase tracking-widest text-hero-eyebrow">
+              Cyber threat intelligence
+            </p>
+            <h1 className="max-w-[16ch] font-heading text-[32px] font-[750] leading-tight text-balance">
+              Tahu lebih dulu. Bertindak lebih cepat.
+            </h1>
+            <ul className="hidden space-y-3 text-hero-muted md:block">
+              {HERO_POINTS.map((line) => (
+                <li key={line} className="flex items-start gap-3 text-sm">
+                  <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-hero-accent" aria-hidden="true" />
+                  {line}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <p className="hidden text-[11.5px] text-hero-muted md:block">
+            Akses terbatas untuk pengguna terdaftar
+          </p>
+        </div>
+      </section>
+
+      <section className="flex items-center justify-center px-6 py-10 md:px-12">
+        <Suspense>
+          <LoginForm />
+        </Suspense>
+      </section>
     </main>
   );
 }

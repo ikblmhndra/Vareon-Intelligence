@@ -1,14 +1,27 @@
 "use client";
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 
 import { api } from "@/lib/api/client";
 import type { TaStats } from "@/lib/api/loose-types";
 import { ChartCard, DashboardSectionLabel, Delta, MapCard, StatBox } from "@/components/dashboard/stat-box";
-import { AttentionBand } from "@/components/dashboard/attention-band";
+import {
+  ClientContextCard,
+  CveExposureCard,
+  MustReadCard,
+  RansomwareCard,
+  TrendingCard,
+} from "@/components/dashboard/overview-cards";
+import {
+  useCveExposure,
+  useDashboardRansomware,
+  useDashboardTrending,
+} from "@/components/dashboard/use-dashboard-overview";
+import { useAuth } from "@/components/providers/auth-provider";
+import { getActiveClientId } from "@/lib/auth/client-id";
+import { SignalHero } from "@/components/dashboard/signal-hero";
 import { BreakdownList } from "@/components/dashboard/breakdown-list";
-import { CountryMap } from "@/components/dashboard/country-map";
 import { HorizontalBarChart, TimelineChart } from "@/components/dashboard/charts";
 import {
   DEFAULT_DASHBOARD_FILTERS,
@@ -17,6 +30,11 @@ import {
 } from "@/components/dashboard/dashboard-filters";
 import { PageHeader } from "@/components/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
+
+const noopSubscribe = () => () => {};
+// String primitif: snapshot stabil antar panggilan, jadi tidak memicu render ulang.
+const todaySnapshot = () =>
+  new Date().toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long" });
 
 function toTitleCase(s: string): string {
   return s.replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1));
@@ -68,8 +86,19 @@ export default function DashboardPage() {
   const [filters, setFilters] = useState<DashboardFilters>(DEFAULT_DASHBOARD_FILTERS);
   const dashboard = useDashboardStats(filters);
   const ta = useTaStats();
+  const ransomware = useDashboardRansomware(filters.days);
+  const cve = useCveExposure(filters.days);
+  const trending = useDashboardTrending(filters.days);
+  const { user } = useAuth();
+  // Cookie client dan tanggal hanya ada di browser: snapshot server = placeholder, supaya markup
+  // server dan hidrasi sama (tanpa ini React 19 melaporkan hydration mismatch).
+  const cookieClient = useSyncExternalStore(noopSubscribe, getActiveClientId, () => null);
+  const clientName = cookieClient ?? user?.client_ids[0] ?? "—";
+  const todayLabel = useSyncExternalStore(noopSubscribe, todaySnapshot, () => "Dashboard");
 
   const stats = dashboard.data;
+  const kpiStale = dashboard.isPlaceholderData || ransomware.isPlaceholderData || cve.isPlaceholderData;
+  const newActors = (trending.data?.items ?? []).filter((x) => x.kind === "actor" && x.is_new).length;
   const periodLabel = filters.days ? `Last ${filters.days} days` : "All time";
   const prevLabel = filters.days ? `${filters.days}d` : "";
   // Penyebut chart: cuma sebagian artikel yang punya negara/aktor/TTP, jadi sebut basisnya.
@@ -79,30 +108,30 @@ export default function DashboardPage() {
   return (
     <div className="pb-10">
       <PageHeader
-        title="Dashboard"
-        description="News coverage, incidents, threat actors and ATT&CK techniques for the selected period."
+        title={todayLabel}
+        description={`Klien: ${clientName}`}
         actions={<DashboardFilterBar filters={filters} onChange={setFilters} updatedAt={stats?.generated_at} />}
       />
 
-      <AttentionBand />
+      <SignalHero days={filters.days} />
 
       {/* ── KPI ── */}
       {dashboard.isPending && <Skeleton className="mt-6 h-28 w-full rounded-2xl" />}
       {dashboard.isError && <ErrorNote />}
-      {/* Statistik Threat Actor gagal tidak boleh menghapus KPI artikel: dua kartu TA menulis "—". */}
+      {/* Tiap angka dari endpoint lain tampil "—" bila endpoint-nya belum datang/gagal; KPI artikel tetap utuh. */}
       {stats && (
         <div
-          className={`surface-raised mt-6 grid grid-cols-1 divide-y divide-border/70 rounded-2xl p-2 transition-opacity sm:grid-cols-2 sm:divide-y-0 xl:grid-cols-[1.35fr_1fr_1fr_1fr_1fr] xl:divide-x ${dashboard.isPlaceholderData ? "opacity-60" : ""}`}
+          className={`surface-raised mt-6 grid grid-cols-1 divide-y divide-border/70 rounded-2xl p-2 transition-opacity sm:grid-cols-2 sm:divide-y-0 xl:grid-cols-5 xl:divide-x ${kpiStale ? "opacity-60" : ""}`}
         >
           <StatBox
             flat
             emphasis
-            label="Total Articles"
+            label="Artikel"
             value={stats.total_articles}
             sub={
               <>
                 {periodLabel}
-                {filters.incidentOnly ? " · incidents only" : ""}
+                {filters.incidentOnly ? " · hanya insiden" : ""}
                 <Delta
                   value={stats.total_articles}
                   prev={stats.prev_total_articles}
@@ -115,11 +144,11 @@ export default function DashboardPage() {
           />
           <StatBox
             flat
-            label="Confirmed Incidents"
+            label="Insiden terkonfirmasi"
             value={stats.confirmed_incidents}
             sub={
               <>
-                of {stats.total_articles.toLocaleString()} articles
+                dari {stats.total_articles.toLocaleString()} artikel
                 <Delta
                   value={stats.confirmed_incidents}
                   prev={stats.prev_confirmed_incidents}
@@ -129,82 +158,92 @@ export default function DashboardPage() {
               </>
             }
           />
-          <StatBox flat label="Countries Mentioned" value={stats.total_countries} sub="Unique geographies" />
           <StatBox
             flat
-            label="Threat Actors in News"
-            value={stats.total_threat_actors}
-            sub={
-              ta.data
-                ? `${ta.data.total_groups.toLocaleString()} APT groups · ${ta.data.total_whitelisted} whitelisted`
-                : taSub(ta.isError)
-            }
+            label="Korban ransomware"
+            value={ransomware.data?.total}
+            sub={ransomware.data ? `${ransomware.data.apac.toLocaleString()} di APAC` : kpiSub(ransomware.isError)}
           />
           <StatBox
             flat
-            label="Covered in News"
-            value={ta.data?.in_news_count}
-            sub={ta.data ? `${ta.data.manual_count} added manually` : taSub(ta.isError)}
+            label="CVE kritis terbuka"
+            value={cve.data?.open_critical}
+            sub={cve.data ? `${cve.data.open_kev.toLocaleString()} KEV` : kpiSub(cve.isError)}
+          />
+          <StatBox
+            flat
+            label="Aktor di berita"
+            value={stats.total_threat_actors}
+            sub={trending.data ? `${newActors} baru periode ini` : kpiSub(trending.isError)}
           />
         </div>
       )}
 
-      {/* ── News Intelligence charts ── */}
-      <DashboardSectionLabel aside={periodLabel}>News Intelligence</DashboardSectionLabel>
-      {dashboard.isPending && <ChartGridSkeleton />}
+      {/* ── Ringkasan ── (tiap kartu fetch dan gagal sendiri) */}
+      <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-12">
+        <MustReadCard days={filters.days} className="lg:col-span-7" />
+        <TrendingCard days={filters.days} className="lg:col-span-5" />
+        <RansomwareCard days={filters.days} className="lg:col-span-4" />
+        <CveExposureCard days={filters.days} className="lg:col-span-4" />
+        <ClientContextCard days={filters.days} className="lg:col-span-4" />
+
+        {dashboard.isPending && (
+          <>
+            <Skeleton aria-hidden className="h-80 rounded-2xl lg:col-span-8" />
+            <Skeleton aria-hidden className="h-80 rounded-2xl lg:col-span-4" />
+          </>
+        )}
+        {dashboard.isError && (
+          <>
+            <ErrorCard className="lg:col-span-8" title="Artikel dari waktu ke waktu" noun="grafik artikel dari waktu ke waktu" />
+            <ErrorCard className="lg:col-span-4" title="Industri disasar" noun="data industri disasar" />
+          </>
+        )}
+        {stats && (
+          <>
+            <ChartCard
+              className={`lg:col-span-8 transition-opacity ${dashboard.isPlaceholderData ? "opacity-60" : ""}`}
+              title="Artikel dari waktu ke waktu"
+              height={280}
+            >
+              <TimelineChart
+                labels={stats.timeline.map((x) => x.date)}
+                data={stats.timeline.map((x) => x.count)}
+                label="Semua berita"
+                tone="info"
+                secondary={{ label: "Insiden", data: stats.timeline.map((x) => x.incidents), tone: "primary" }}
+              />
+            </ChartCard>
+            <MapCard
+              flat
+              className={`lg:col-span-4 transition-opacity ${dashboard.isPlaceholderData ? "opacity-60" : ""}`}
+              title="Industri disasar"
+              note={
+                stats.industry_unspecified > 0
+                  ? `${stats.industry_unspecified.toLocaleString()} artikel tanpa sektor spesifik (General) tidak ditampilkan`
+                  : undefined
+              }
+            >
+              <BreakdownList
+                items={stats.top_industries
+                  .filter((x) => x.name.toLowerCase() !== "general")
+                  .map((x) => ({ label: toTitleCase(x.name), count: x.count }))}
+                limit={8}
+              />
+            </MapCard>
+          </>
+        )}
+      </div>
+
+      {/* ── TTP ── */}
+      {dashboard.isPending && <Skeleton aria-hidden className="mt-4 h-80 rounded-2xl" />}
+      {dashboard.isError && <ErrorCard className="mt-4" title="Top MITRE ATT&CK TTPs" noun="grafik TTP" />}
       {stats && (
         <div
-          className={`grid grid-cols-1 gap-4 transition-opacity lg:grid-cols-12 ${dashboard.isPlaceholderData ? "opacity-60" : ""}`}
+          className={`mt-4 grid grid-cols-1 gap-4 transition-opacity lg:grid-cols-12 ${dashboard.isPlaceholderData ? "opacity-60" : ""}`}
         >
-          <MapCard
-            className="lg:col-span-8"
-            title="Mentioned Countries"
-            note={basis(stats.coverage.with_country, "name a country")}
-          >
-            <CountryMap data={stats.country_counts} />
-          </MapCard>
-          <MapCard flat className="lg:col-span-4" title="Articles by News Type">
-            <BreakdownList items={stats.by_news_type.map((x) => ({ label: toTitleCase(x.name), count: x.count }))} limit={9} />
-          </MapCard>
-
-          <ChartCard className="lg:col-span-7" title="Articles Over Time" height={280}>
-            <TimelineChart
-              labels={stats.timeline.map((x) => x.date)}
-              data={stats.timeline.map((x) => x.count)}
-            />
-          </ChartCard>
-
           <ChartCard
-            className="lg:col-span-5"
-            title="Top Threat Actors"
-            height={280}
-            note={basis(stats.coverage.with_actor, "name a threat actor")}
-          >
-            <HorizontalBarChart
-              labels={stats.top_threat_actors.map((x) => toTitleCase(x.name))}
-              data={stats.top_threat_actors.map((x) => x.count)}
-              tone="info"
-            />
-          </ChartCard>
-
-          <ChartCard
-            className="lg:col-span-5"
-            title="Top Targeted Industries"
-            height={280}
-            note={
-              stats.industry_unspecified > 0
-                ? `${stats.industry_unspecified.toLocaleString()} articles with no specific sector (General) not shown`
-                : undefined
-            }
-          >
-            <HorizontalBarChart
-              labels={stats.top_industries.map((x) => toTitleCase(x.name))}
-              data={stats.top_industries.map((x) => x.count)}
-              tone="info"
-            />
-          </ChartCard>
-          <ChartCard
-            className="lg:col-span-7"
+            className="lg:col-span-12"
             title="Top MITRE ATT&CK TTPs"
             height={280}
             note={basis(stats.coverage.with_ttp, "map to a TTP")}
@@ -222,7 +261,13 @@ export default function DashboardPage() {
       <DashboardSectionLabel aside="All time. The period filter does not apply here.">
         Threat Actor Room
       </DashboardSectionLabel>
-      {ta.isError && <p className="text-sm text-destructive">Failed to load threat actor stats.</p>}
+      {ta.isPending && (
+        <div aria-hidden className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+          <Skeleton className="h-72 rounded-2xl lg:col-span-4" />
+          <Skeleton className="h-72 rounded-2xl lg:col-span-8" />
+        </div>
+      )}
+      {ta.isError && <p className="text-sm text-destructive">Gagal memuat statistik Threat Actor Room.</p>}
       {ta.data && (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
           <MapCard flat className="lg:col-span-4" title="APT Groups by Source">
@@ -248,23 +293,19 @@ export default function DashboardPage() {
   );
 }
 
-/** Placeholder seukuran grid chart di bawahnya, supaya halaman tidak melompat saat data datang. */
-function ChartGridSkeleton() {
+function ErrorCard({ title, noun, className }: { title: string; noun: string; className?: string }) {
   return (
-    <div aria-hidden className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-      <Skeleton className="h-96 rounded-2xl lg:col-span-8" />
-      <Skeleton className="h-96 rounded-2xl lg:col-span-4" />
-      <Skeleton className="h-80 rounded-2xl lg:col-span-7" />
-      <Skeleton className="h-80 rounded-2xl lg:col-span-5" />
-    </div>
+    <MapCard title={title} className={className}>
+      <p className="text-sm text-destructive">Gagal memuat {noun}.</p>
+    </MapCard>
   );
 }
 
 function ErrorNote() {
-  return <p className="text-sm text-destructive">Failed to load dashboard data.</p>;
+  return <p className="text-sm text-destructive">Gagal memuat angka KPI dashboard.</p>;
 }
 
-/** Sub kartu Threat Actor saat `/api/ta/stats` belum datang atau gagal. */
-function taSub(isError: boolean): string {
-  return isError ? "Threat actor stats unavailable" : "Loading…";
+/** Sub KPI saat endpoint asalnya (ransomware/CVE/trending) belum datang atau gagal. */
+function kpiSub(isError: boolean): string {
+  return isError ? "Gagal memuat" : "Memuat…";
 }

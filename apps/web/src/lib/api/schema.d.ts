@@ -1261,6 +1261,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/dashboard/attention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Dashboard Attention */
+        get: operations["dashboard_attention_api_dashboard_attention_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dashboard/cve-exposure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Dashboard Cve Exposure */
+        get: operations["dashboard_cve_exposure_api_dashboard_cve_exposure_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dashboard/map": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Dashboard Map */
+        get: operations["dashboard_map_api_dashboard_map_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dashboard/ransomware": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Dashboard Ransomware */
+        get: operations["dashboard_ransomware_api_dashboard_ransomware_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/dashboard/trending": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Dashboard Trending */
+        get: operations["dashboard_trending_api_dashboard_trending_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/data-health": {
         parameters: {
             query?: never;
@@ -2008,6 +2093,33 @@ export interface paths {
         put?: never;
         /** Resend Newsletter */
         post: operations["resend_newsletter_api_newsletter__newsletter_id__resend_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/newsroom/topics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Newsroom Topics
+         * @description Topik naik untuk newsroom. Tren selalu "N hari berakhir hari ini vs N hari sebelumnya"
+         *     (`get_trending`), jadi tanggal filter diubah jadi jendela `days` yang berjangkar ke hari
+         *     ini: `days = (hari ini - posted_on_start).days + 1`, di-clamp ke [1, 3650] (batas yang
+         *     sama dengan `days` di `/api/dashboard/*`): tanpa clamp, `posted_on_start=0001-01-01`
+         *     meledak jadi 500 (tanggal sebelum tahun 1) dan tahun 1900 mengalokasikan ratusan ribu
+         *     bucket harian. Tanggal di masa depan -> 1. `posted_on_end` diterima tapi diabaikan.
+         *     Tanpa `posted_on_start` dipakai aturan "semua waktu" `get_trending`
+         *     (`days=None` -> 7 hari vs 7 hari).
+         */
+        get: operations["newsroom_topics_api_newsroom_topics_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3466,6 +3578,11 @@ export interface components {
             actor_countries: string[];
             /** Confidence Score */
             confidence_score?: number | null;
+            /**
+             * Confirmed Incident
+             * @default false
+             */
+            confirmed_incident: boolean;
             /** Id */
             id: number;
             /**
@@ -3582,6 +3699,13 @@ export interface components {
         Body_import_lockfile_endpoint_api_pkgvuln_import_lockfile_post: {
             /** File */
             file: string;
+        };
+        /** Brief */
+        Brief: {
+            /** Detail */
+            detail: string;
+            /** Headline */
+            headline: string;
         };
         /**
          * BulkAcknowledgeBody
@@ -3876,6 +4000,38 @@ export interface components {
             /** Vendor Id */
             vendor_id: number;
         };
+        /** CveExposure */
+        CveExposure: {
+            /** Closed In Period */
+            closed_in_period: number;
+            /** Generated At */
+            generated_at: string;
+            /** Items */
+            items: components["schemas"]["CveExposureItem"][];
+            /** Mean Days To Close */
+            mean_days_to_close?: number | null;
+            /** Open Critical */
+            open_critical: number;
+            /** Open Kev */
+            open_kev: number;
+        };
+        /** CveExposureItem */
+        CveExposureItem: {
+            /** Cisa Kev */
+            cisa_kev: boolean;
+            /** Cve Id */
+            cve_id: string;
+            /** Cvss */
+            cvss?: number | null;
+            /** Public Poc */
+            public_poc: boolean;
+            /** Tech */
+            tech?: string | null;
+            /** Ticket Age Days */
+            ticket_age_days?: number | null;
+            /** Ticket Id */
+            ticket_id?: string | null;
+        };
         /** CveFreshness */
         CveFreshness: {
             /** Last Checked At */
@@ -4133,6 +4289,22 @@ export interface components {
              */
             risk_acceptance: string;
         };
+        /** DashboardAttention */
+        DashboardAttention: {
+            brief: components["schemas"]["Brief"];
+            /** Generated At */
+            generated_at: string;
+            /** Kev In Stack */
+            kev_in_stack: number;
+            /** Kev Without Ticket */
+            kev_without_ticket: number;
+            /** Pir Hits */
+            pir_hits: number;
+            /** Ransomware In Client Scope */
+            ransomware_in_client_scope: number;
+            /** Watchlist Hits */
+            watchlist_hits: number;
+        };
         /**
          * DashboardCoverage
          * @description Jumlah ARTIKEL yang punya minimal satu negara / threat actor / TTP --
@@ -4145,6 +4317,15 @@ export interface components {
             with_country: number;
             /** With Ttp */
             with_ttp: number;
+        };
+        /** DashboardMap */
+        DashboardMap: {
+            /** Client Countries */
+            client_countries: string[];
+            /** Generated At */
+            generated_at: string;
+            /** Points */
+            points: components["schemas"]["MapPoint"][];
         };
         /** DashboardStats */
         DashboardStats: {
@@ -4373,6 +4554,19 @@ export interface components {
             /** Username */
             username: string;
         };
+        /** MapPoint */
+        MapPoint: {
+            /** Country Code */
+            country_code: string;
+            /** Incidents */
+            incidents: number;
+            /** Ransomware Victims */
+            ransomware_victims: number;
+            /** Top Actor */
+            top_actor?: string | null;
+            /** Top Industry */
+            top_industry?: string | null;
+        };
         /** MetricStat */
         MetricStat: {
             /** Max */
@@ -4547,6 +4741,13 @@ export interface components {
              * @default 0
              */
             unrated: number;
+        };
+        /** NameCount */
+        NameCount: {
+            /** Count */
+            count: number;
+            /** Name */
+            name: string;
         };
         /** NewsletterListItem */
         NewsletterListItem: {
@@ -5240,6 +5441,21 @@ export interface components {
             response?: string | null;
             /** Status */
             status?: string | null;
+        };
+        /** RansomwareOverview */
+        RansomwareOverview: {
+            /** Apac */
+            apac: number;
+            /** Generated At */
+            generated_at: string;
+            /** Top Groups */
+            top_groups: components["schemas"]["NameCount"][];
+            /** Total */
+            total: number;
+            /** Undated */
+            undated: number;
+            /** Weekly */
+            weekly: components["schemas"]["WeekCount"][];
         };
         /** RejectedArticleListResponse */
         RejectedArticleListResponse: {
@@ -6101,6 +6317,11 @@ export interface components {
             count: number;
             /** Date */
             date: string;
+            /**
+             * Incidents
+             * @default 0
+             */
+            incidents: number;
         };
         /** ToggleRequest */
         ToggleRequest: {
@@ -6144,6 +6365,84 @@ export interface components {
             count: number;
             /** Name */
             name: string;
+        };
+        /** TopicArticle */
+        TopicArticle: {
+            /** Id */
+            id: number;
+            /** Posted On */
+            posted_on?: string | null;
+            /** Title */
+            title: string;
+        };
+        /** TopicOut */
+        TopicOut: {
+            /** Change Pct */
+            change_pct?: number | null;
+            /** Count */
+            count: number;
+            /** Daily */
+            daily: number[];
+            /** Is New */
+            is_new: boolean;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "actor" | "ttp";
+            latest_article?: components["schemas"]["TopicArticle"] | null;
+            /** Name */
+            name: string;
+            /** Prev Count */
+            prev_count: number;
+            /** Top Countries */
+            top_countries: string[];
+            /** Ttp Id */
+            ttp_id?: string | null;
+        };
+        /** TopicsResponse */
+        TopicsResponse: {
+            /** Generated At */
+            generated_at: string;
+            /** Items */
+            items: components["schemas"]["TopicOut"][];
+            /** Window Days */
+            window_days: number;
+            /** Window Label */
+            window_label: string;
+        };
+        /** TrendItemOut */
+        TrendItemOut: {
+            /** Change Pct */
+            change_pct?: number | null;
+            /** Count */
+            count: number;
+            /** Daily */
+            daily: number[];
+            /** Is New */
+            is_new: boolean;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "actor" | "ttp";
+            /** Name */
+            name: string;
+            /** Prev Count */
+            prev_count: number;
+            /** Ttp Id */
+            ttp_id?: string | null;
+        };
+        /** TrendingResponse */
+        TrendingResponse: {
+            /** Generated At */
+            generated_at: string;
+            /** Items */
+            items: components["schemas"]["TrendItemOut"][];
+            /** Window Days */
+            window_days: number;
+            /** Window Label */
+            window_label: string;
         };
         /** TweetListResponse */
         TweetListResponse: {
@@ -6317,6 +6616,16 @@ export interface components {
             /** Error Type */
             type: string;
         };
+        /** WeekCount */
+        WeekCount: {
+            /** Victims */
+            victims: number;
+            /**
+             * Week Start
+             * Format: date
+             */
+            week_start: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -6342,6 +6651,9 @@ export interface operations {
                 victim_country?: string[] | null;
                 actor_country?: string[] | null;
                 title_keyword?: string[] | null;
+                ttp?: string[] | null;
+                sort?: "recent" | "priority";
+                confirmed_only?: boolean;
                 dedup?: boolean;
                 dedup_threshold?: number;
             };
@@ -8996,6 +9308,179 @@ export interface operations {
             };
         };
     };
+    dashboard_attention_api_dashboard_attention_get: {
+        parameters: {
+            query?: {
+                /** @description `days` hari terakhir; kosong = semua waktu. */
+                days?: number | null;
+            };
+            header?: {
+                "x-client-id"?: string | null;
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardAttention"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dashboard_cve_exposure_api_dashboard_cve_exposure_get: {
+        parameters: {
+            query?: {
+                /** @description `days` hari terakhir; kosong = semua waktu. */
+                days?: number | null;
+            };
+            header?: {
+                "x-client-id"?: string | null;
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CveExposure"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dashboard_map_api_dashboard_map_get: {
+        parameters: {
+            query?: {
+                /** @description `days` hari terakhir; kosong = semua waktu. */
+                days?: number | null;
+            };
+            header?: {
+                "x-client-id"?: string | null;
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardMap"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dashboard_ransomware_api_dashboard_ransomware_get: {
+        parameters: {
+            query?: {
+                /** @description `days` hari terakhir; kosong = semua waktu. */
+                days?: number | null;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RansomwareOverview"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dashboard_trending_api_dashboard_trending_get: {
+        parameters: {
+            query?: {
+                /** @description `days` hari terakhir; kosong = semua waktu. */
+                days?: number | null;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrendingResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     data_health_api_data_health_get: {
         parameters: {
             query?: never;
@@ -10594,6 +11079,45 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    newsroom_topics_api_newsroom_topics_get: {
+        parameters: {
+            query?: {
+                posted_on_start?: string | null;
+                posted_on_end?: string | null;
+                country?: string[] | null;
+                news_type?: string[] | null;
+                search?: string | null;
+                confirmed_only?: boolean;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TopicsResponse"];
                 };
             };
             /** @description Validation Error */
