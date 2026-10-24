@@ -3575,6 +3575,8 @@ export interface components {
              * @default []
              */
             actor_countries: string[];
+            /** Admiralty Code */
+            admiralty_code?: string | null;
             /** Confidence Score */
             confidence_score?: number | null;
             /**
@@ -3582,6 +3584,8 @@ export interface components {
              * @default false
              */
             confirmed_incident: boolean;
+            /** Grade Origin */
+            grade_origin?: ("default" | "analyst") | null;
             /** Id */
             id: number;
             /**

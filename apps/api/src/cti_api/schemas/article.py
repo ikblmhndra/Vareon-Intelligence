@@ -6,6 +6,8 @@ bentuknya sekarang."""
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -31,6 +33,10 @@ class ArticleOut(BaseModel):
     ttps: list[TTP] = []
     news_type: str = ""
     confidence_score: int | None = None
+    # Grade source (Task 9): kode Admiralty (mis. "B2") + asal baris rating; `None` = source
+    # belum punya baris rating.
+    admiralty_code: str | None = None
+    grade_origin: Literal["default", "analyst"] | None = None
     iocs: dict[str, object] = {}
     confirmed_incident: bool = False
 

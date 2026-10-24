@@ -88,6 +88,17 @@
             "title": "Actor Countries",
             "type": "array"
           },
+          "admiralty_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admiralty Code"
+          },
           "confidence_score": {
             "anyOf": [
               {
@@ -103,6 +114,21 @@
             "default": false,
             "title": "Confirmed Incident",
             "type": "boolean"
+          },
+          "grade_origin": {
+            "anyOf": [
+              {
+                "enum": [
+                  "default",
+                  "analyst"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grade Origin"
           },
           "id": {
             "title": "Id",

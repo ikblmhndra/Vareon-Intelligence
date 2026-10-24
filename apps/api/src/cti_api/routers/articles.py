@@ -21,11 +21,14 @@ sekarang wajib login (`require_auth`).
 from __future__ import annotations
 
 import datetime
+from collections.abc import Mapping
 from typing import Literal
 
 from cti_core.db.models.article import Article
+from cti_core.db.models.source_reliability import SourceReliabilityEntry
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.auth import AsyncAuditLogRepo
+from cti_core.db.repositories.source_reliability import AsyncSourceReliabilityRepo
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -66,7 +69,11 @@ cuma endpoint detail `{article_id}` dan tulis-confidence yang di-gate).
 Asimetri ini ada di kode lama, bukan keputusan baru di sini."""
 
 
-def _serialize(article: Article, machine_fields: dict[str, object]) -> ArticleOut:
+def _serialize(
+    article: Article,
+    machine_fields: dict[str, object],
+    ratings: Mapping[str, SourceReliabilityEntry] | None = None,
+) -> ArticleOut:
     posted_on = machine_fields.get("posted_on")
     year, month, week = 0, "", ""
     if isinstance(posted_on, datetime.date):
@@ -75,6 +82,8 @@ def _serialize(article: Article, machine_fields: dict[str, object]) -> ArticleOu
         month = f"{posted_on.year:04d}-{posted_on.month:02d}"
         week = f"{iso_year:04d}-W{iso_week:02d}"
 
+    source = str(machine_fields.get("source", ""))
+    rating = ratings.get(source.lower()) if ratings else None
     return ArticleOut(
         id=article.id,
         year=year,
@@ -83,7 +92,7 @@ def _serialize(article: Article, machine_fields: dict[str, object]) -> ArticleOu
         title=str(machine_fields.get("title", "")),
         url=str(machine_fields.get("url", "")),
         posted_on=posted_on.isoformat() if isinstance(posted_on, datetime.date) else "",
-        source=str(machine_fields.get("source", "")),
+        source=source,
         impacted_industries=[i.industry for i in article.industries],
         mentioned_countries=[c.country_code for c in article.countries if c.role == "mentioned"],
         victim_countries=[c.country_code for c in article.countries if c.role == "victim"],
@@ -92,6 +101,8 @@ def _serialize(article: Article, machine_fields: dict[str, object]) -> ArticleOu
         ttps=[TTP(id=t.ttp_id, name=t.ttp_name) for t in article.ttps],
         news_type=str(machine_fields.get("news_type") or ""),
         confidence_score=machine_fields.get("confidence_score"),  # type: ignore[arg-type]
+        admiralty_code=rating.admiralty_code if rating else None,
+        grade_origin=rating.origin if rating else None,  # type: ignore[arg-type]
         iocs={},
         confirmed_incident=bool(article.confirmed_incident),
     )
@@ -150,6 +161,8 @@ async def list_articles(
         sort=sort,
         confirmed_only=confirmed_only,
     )
+    # Satu query rating per request (bukan per artikel) buat kode Admiralty + asal grade.
+    ratings = await AsyncSourceReliabilityRepo(session).get_all_ratings()
     if dedup and articles:
         # `find_dedup_groups` operasi di dict, bukan ORM -- stash objek
         # `Article` aslinya balik ke tiap dict biar `_serialize()` bisa
@@ -160,10 +173,10 @@ async def list_articles(
             d["_article"] = a
             machine_dicts.append(d)
         deduped = dedup_service.find_dedup_groups(machine_dicts, dedup_threshold)
-        parsed = [_serialize(d["_article"], d) for d in deduped]
+        parsed = [_serialize(d["_article"], d, ratings) for d in deduped]
         return ArticleListResponse(articles=parsed, total=total, page=page, page_size=page_size)
 
-    parsed = [_serialize(a, repo.to_dict(a)) for a in articles]
+    parsed = [_serialize(a, repo.to_dict(a), ratings) for a in articles]
     return ArticleListResponse(articles=parsed, total=total, page=page, page_size=page_size)
 
 
