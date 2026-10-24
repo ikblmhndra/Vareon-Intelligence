@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import pytest
+from cti_api.services.roles import SYSTEM_ROLES
 from cti_core.db.engine import async_session
+from cti_core.db.models.auth import Client, Role
 from cti_core.db.models.source_reliability import SourceReliabilityEntry
 from sqlalchemy import delete
 
@@ -14,6 +16,9 @@ pytestmark = pytest.mark.asyncio
 async def _no_default_rows(_migrated_schema: None):
     async def wipe() -> None:
         async with async_session() as s:
+            # lifespan juga membuat client default + role sistem; jangan bocor ke test lain
+            await s.execute(delete(Client).where(Client.client_id == "default"))
+            await s.execute(delete(Role).where(Role.name.in_(list(SYSTEM_ROLES))))
             await s.execute(
                 delete(SourceReliabilityEntry).where(SourceReliabilityEntry.origin == "default")
             )

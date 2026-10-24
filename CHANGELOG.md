@@ -6,6 +6,36 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
+## [0.8.6] - 2026-10-25
+
+**Sumber terstruktur tidak lagi melewati LLM, IOC disimpan dalam bentuk kanonik, allowlist menandai (bukan membuang) IOC infrastruktur,
+dan skor artikel kini berasal dari grade sumber.** Tiga migrasi, **tanpa kunci `.env` baru.**
+
+**Saat upgrade dari 0.8.5:** `make deploy` (migrasi jalan otomatis; deploy mengambil backup Postgres lebih dulu, dan penggabungan
+IOC kanonik **tidak bisa dibatalkan**, jadi backup itu satu-satunya jalan mundur).
+- IOC bertipe CVE dipindahkan dari tabel `iocs` ke tabel baru `article_cves`.
+- Allowlist sekarang menandai IOC (`auto_suppressed`, alasan `allowlist:<tipe>:<entri> (infrastructure-abuse)`), tidak membuangnya.
+- Grade bawaan sumber muncul di halaman Source reliability.
+- Semua skor artikel dihitung ulang sekali setelah start pertama (task `confidence.recompute_all`). Bila broker mati saat start,
+  jalankan `POST /api/articles/confidence/recompute` manual.
+- Sebelum deploy ke prod, cek `SELECT count(*) FROM articles WHERE overrides ? 'confidence_score'`: baris di situ mempertahankan
+  skor lamanya sebagai override analis.
+
+### Ditambah
+- `ScraperMeta.content_kind` dan `default_relevance`: sumber terstruktur (`cisa_kev`, `exploitdb`, `cis`) melewati classify LLM dan
+  ekstraksi TTP.
+- Tabel `article_cves` (artikel ke CVE), menggantikan IOC bertipe CVE.
+- Seed allowlist 127 domain infrastruktur yang sering disalahgunakan (tanpa layanan subdomain-per-tenant; URL dengan path tidak
+  pernah ditandai).
+- Grade Admiralty bawaan per `content_kind` (`origin` = `default` atau `analyst`); chip skor di UI, misalnya "B2 · 72".
+- Parameter `GET /api/iocs?include_suppressed=` dan filter "suppressed" di tabel IOC.
+
+### Diubah
+- Nilai IOC disimpan kanonik (refang, huruf kecil; path dan query URL dipertahankan); web menampilkannya dalam bentuk defanged.
+- IOC yang ditandai allowlist keluar dari ekspor STIX, statistik, kampanye, hitungan recap, dan antrean false positive.
+- Skor confidence artikel = grade sumber + bonus TTP/actor, bukan lagi self-rating LLM.
+- `threat_feed_entries` ikut dikanonikalkan.
+
 ## [0.8.5] - 2026-10-24
 
 **Setiap panggilan LLM sekarang tercatat, artikel yang parkir karena gangguan LLM diputar ulang otomatis, dan beberapa prompt yang

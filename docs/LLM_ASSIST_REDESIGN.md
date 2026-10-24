@@ -1,7 +1,7 @@
 # LLM as an assistant: enrichment redesign and CTI gaps
 
 Status: **in progress** (updated 2026-10-24). Building blocks shipped in 0.8.3 and 0.8.4, and
-P0 and P1 shipped in 0.8.5 (see Progress below); P2-P7 have not started.
+P0 and P1 shipped in 0.8.5 and P2 in 0.8.6 (see Progress below); P3-P7 have not started.
 
 Goal: turn Vareon from "every article goes through an LLM" into a CTI platform where
 deterministic code, curated reference data and analyst feedback do the bulk of the work, and
@@ -46,8 +46,25 @@ Shipped in **0.8.5** (P0 and P1, plus prompt correctness fixes):
   email uses computed fields; JSON mode on the six calls whose reply is parsed as JSON. The TTP
   evidence check is also the core of P2's "TTP evidence substring check".
 
-Not started: P2 to P7 (the rest of P2, persist-first enrichment, story dedup, extractors, local
-relevance model, confidence, CTI model). Cost measurement over a week of real data is now possible
+Shipped in **0.8.6** (P2 cheap wins):
+
+- **Tier 0.** `ScraperMeta.content_kind` / `default_relevance`: the structured sources `cisa_kev`,
+  `exploitdb` and `cis` skip LLM classify and TTP extraction.
+- **IOC hygiene.** IOC values are stored canonical (refang, lowercase; URL path and query kept) and
+  the web shows them defanged. CVEs moved out of IOCs into `article_cves`. The allowlist now flags
+  (`auto_suppressed`, reason `allowlist:<type>:<entry> (infrastructure-abuse)`) instead of dropping,
+  with a curated seed of 127 domains (no tenant-subdomain services; a URL with a path is never
+  flagged). Suppressed IOCs leave STIX export, stats, campaigns, recap counts and the FP queue;
+  `GET /api/iocs?include_suppressed=`.
+- **Confidence.** Default Admiralty grades per `content_kind` (`origin` default|analyst); article
+  confidence = source grade + TTP/actor bonus instead of the LLM self-rating; chip "B2 · 72";
+  one recompute-all task after the first start.
+- Moved out of scope (spec section 6): CVEs in the article modal and `ArticleOut`; story dedup (P3),
+  deterministic actor/malware/ATT&CK extractors (P4), local relevance model (P5), credibility from
+  corroboration (P6); persist-first enrichment, token ceilings and caching.
+
+Not started: P3 to P7 (persist-first enrichment, story dedup, extractors, local
+relevance model, CTI model). Cost measurement over a week of real data is now possible
 on dev.
 
 Correction (2026-10-24, rereading against the code): E4 first said these articles were
@@ -208,7 +225,7 @@ testing first. Phases 1-3 can start without schema redesign.
 |-------|-------|-----------|
 | P0 Measure (**done in 0.8.5**) | `llm_calls` table + token logging on classify/TTP/tweets; model health probe on `/data-health` (empty-output guard for recap shipped in 0.8.3) | One week of real cost per call site visible on dev; misconfigured model shows red |
 | P1 Self-healing enrichment (**done in 0.8.5**) | Articles parked as `[enrichment_failed]` are replayed automatically once the model probe is healthy again; a gateway 400/404 is treated as "wait for health", not permanent; the 218 parked rows on dev are recovered | After a gateway outage on dev, parked articles reach the news feed without anyone pressing Replay |
-| P2 Cheap wins | `content_kind`/`default_relevance` on scrapers; refang + CVE-out-of-IOC + allowlist seed; TTP evidence substring check; drop LLM `confidence` from UI in favour of `services/confidence.py` | Structured sources make 0 LLM calls; duplicate defanged IOCs = 0; no TTP without verifiable evidence |
+| P2 Cheap wins (**done in 0.8.6**) | `content_kind`/`default_relevance` on scrapers; refang + CVE-out-of-IOC + allowlist seed; TTP evidence substring check; drop LLM `confidence` from UI in favour of `services/confidence.py` | Structured sources make 0 LLM calls; duplicate defanged IOCs = 0; no TTP without verifiable evidence |
 | P3 Story dedup at ingest | Clustering in `cti_core`, `story_sources`, skip Tier 3 for known stories | "PHP2Shell"-type waves enriched once per story |
 | P4 Deterministic extractors | Actor/malware dictionary matcher, explicit + inferred ATT&CK, industry taxonomy, incident rule | Coverage (E9) measured before/after on the same article set; equal or better than LLM for actor and TTP precision on a 100-article hand-labelled sample |
 | P5 Local relevance model | Train on audit trail, shadow mode, then gate | Agreement with LLM >= 95% on the confident bands; LLM classify calls down by the measured share |
