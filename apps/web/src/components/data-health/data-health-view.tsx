@@ -190,7 +190,7 @@ export function DataHealthView() {
             value={`${when(d.sources.tweets_newest_at)}${monitorX ? ` · monitor_x ${monitorX.status.replace("_", " ")}${monitorX.reason ? `: ${monitorX.reason}` : ""}` : ""}`}
             tone={byAge(d.sources.tweets_newest_at, 24, 72)}
           />
-          <Row label="Newest IOC sighting" value={when(d.sources.iocs_newest_at)} tone={byAge(d.sources.iocs_newest_at, 24, 72)} />
+          <Row label="Newest IOC extracted" value={when(d.sources.iocs_newest_at)} tone={byAge(d.sources.iocs_newest_at, 24, 72)} />
           <Row
             label="CVE check"
             value={cve.isError ? "unknown (failed to load)" : cve.data ? `last successful check ${when(cve.data.last_checked_at)}` : "loading…"}
@@ -297,7 +297,7 @@ function HowToRead() {
         </li>
         <li>
           <strong className="text-foreground">Freshness</strong>: articles Check after 6 hours and Problem after 24; tweets and
-          IOC sightings Check after 24 hours and Problem after 72; the CVE check Check after 6 hours and Problem after 24;
+          new IOCs Check after 24 hours and Problem after 72; the CVE check Check after 6 hours and Problem after 24;
           ATT&amp;CK Problem when a domain failed to sync and Check when a domain is more than 30 days old.
         </li>
         <li>

@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { TabPills } from "@/components/ui/tab-pills";
+import { FeedStatusBanner } from "@/components/xintel/feed-status-banner";
 import { TweetList } from "@/components/xintel/tweet-list";
 import { MonitoredAccounts } from "@/components/xintel/monitored-accounts";
 
@@ -24,6 +25,7 @@ export default function XIntelPage() {
 
   return (
     <div>
+      <FeedStatusBanner />
       <TabPills aria-label="X Intel views" className="mb-4 border-b border-border pb-3" items={SUB_TABS} value={tab} onChange={setTab} />
 
       {tab === "tweets" ? <TweetList /> : <MonitoredAccounts />}
