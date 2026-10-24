@@ -20,4 +20,3 @@ class Cymru(RSSScraper):
         legacy_script="cymruThreat",
     )
     feeds = ("https://www.team-cymru.com/post/rss.xml",)
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli

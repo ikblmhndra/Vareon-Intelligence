@@ -21,4 +21,3 @@ class Groupib(RSSScraper):
         legacy_script="groupibThreat",
     )
     feeds = ("https://www.group-ib.com/feed/blogfeed/",)
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli

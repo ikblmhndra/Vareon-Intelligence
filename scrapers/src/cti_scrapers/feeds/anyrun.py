@@ -21,7 +21,6 @@ class Anyrun(RSSScraper):
         legacy_script="anyrunThreat",
     )
     feeds = ("https://any.run/cybersecurity-blog/feed/",)
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli
     xml_fixups = (
         ("&ndash;", ""),
         ("&", "&amp;"),

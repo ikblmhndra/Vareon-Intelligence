@@ -21,4 +21,3 @@ class Infostealer(RSSScraper):
         legacy_script="infostealerThreat",
     )
     feeds = ("https://www.infostealers.com/learn-info-stealers/feed/",)
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli

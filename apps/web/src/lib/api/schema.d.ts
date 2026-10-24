@@ -6402,6 +6402,11 @@ export interface components {
         };
         /** TopicsResponse */
         TopicsResponse: {
+            /**
+             * Baseline Reliable
+             * @default true
+             */
+            baseline_reliable: boolean;
             /** Generated At */
             generated_at: string;
             /** Items */
@@ -6435,6 +6440,11 @@ export interface components {
         };
         /** TrendingResponse */
         TrendingResponse: {
+            /**
+             * Baseline Reliable
+             * @default true
+             */
+            baseline_reliable: boolean;
             /** Generated At */
             generated_at: string;
             /** Items */
@@ -9313,6 +9323,7 @@ export interface operations {
             query?: {
                 /** @description `days` hari terakhir; kosong = semua waktu. */
                 days?: number | null;
+                incident_only?: boolean;
             };
             header?: {
                 "x-client-id"?: string | null;

@@ -53,6 +53,7 @@ class TrendingResponse(BaseModel):
     items: list[TrendItemOut]
     window_days: int
     window_label: str
+    baseline_reliable: bool = True
     generated_at: str
 
 

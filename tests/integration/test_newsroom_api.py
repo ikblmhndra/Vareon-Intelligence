@@ -26,8 +26,14 @@ async def _seed(session: AsyncSession, title: str, day: datetime.date, **enrich:
 
 
 async def test_topics_returns_latest_article_and_countries(
-    api_client: AsyncClient, api_session: AsyncSession, auth_header
+    api_client: AsyncClient, api_session: AsyncSession, auth_header, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # Test ini menguji label/penanda tren dengan baseline yang dianggap layak; aturan baseline
+    # kosong (audit UI U4) diuji di `test_trending_without_a_usable_baseline_claims_no_rise`.
+    from cti_api.services import trending as _trending
+
+    monkeypatch.setattr(_trending, "PREV_MIN_DAY_COVERAGE", 0)
+    _trending._CACHE.clear()
     await AsyncClientRepo(api_session).ensure_default()
     await _seed(
         api_session,

@@ -22,4 +22,3 @@ class Cloudflare(RSSScraper):
         legacy_script="cloudflareThreat",
     )
     feeds = ("https://blog.cloudflare.com/tag/security/rss/",)
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli

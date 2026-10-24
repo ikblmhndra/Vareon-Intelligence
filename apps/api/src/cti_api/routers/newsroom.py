@@ -132,5 +132,6 @@ async def newsroom_topics(
         items=items,
         window_days=data["window_days"],
         window_label=data["window_label"],
+        baseline_reliable=data["baseline_reliable"],
         generated_at=data["generated_at"],
     )

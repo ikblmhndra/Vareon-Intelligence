@@ -21,7 +21,6 @@ class Darkreading(RSSScraper):
         legacy_script="darkreadingThreat",
     )
     feeds = ("https://www.darkreading.com/rss.xml",)
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli
     xml_fixups = (
         ("&ndash;", ""),
         ("&", "&amp;"),

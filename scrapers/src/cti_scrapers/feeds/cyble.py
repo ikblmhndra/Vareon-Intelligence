@@ -21,5 +21,4 @@ class Cyble(RSSScraper):
         legacy_script="cybleThreat",
     )
     feeds = ("https://cyble.com/feed/",)
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli
     xml_fixups = (("&", "&amp;"),)

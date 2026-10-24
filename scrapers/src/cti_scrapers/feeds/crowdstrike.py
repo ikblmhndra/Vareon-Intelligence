@@ -31,7 +31,6 @@ class Crowdstrike(RSSScraper):
         legacy_script="crowdstrikeThreat",
     )
     feeds = ("https://www.crowdstrike.com/en-us/blog/feed",)
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli
     xml_fixups = (("&ndash;", ""), ("&", "&amp;"))
     html_unescape = True  # feed lama pakai html.unescape() sebelum parse XML
 

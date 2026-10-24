@@ -225,7 +225,15 @@ async def test_ttp_trend_groups_by_id_across_name_spellings(
     assert ttp_items[0]["ttp_id"] == "T1566.002" and ttp_items[0]["count"] == 3
 
 
-async def test_get_trending_all_time_uses_7_day_window(async_db_session: AsyncSession) -> None:
+async def test_get_trending_all_time_uses_7_day_window(
+    async_db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Test ini menguji label/penanda tren dengan baseline yang dianggap layak; aturan baseline
+    # kosong (audit UI U4) diuji di `test_trending_without_a_usable_baseline_claims_no_rise`.
+    from cti_api.services import trending as _trending
+
+    monkeypatch.setattr(_trending, "PREV_MIN_DAY_COVERAGE", 0)
+    _trending._CACHE.clear()
     from cti_api.services.trending import get_trending
 
     await _ensure_clients(async_db_session)

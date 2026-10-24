@@ -20,7 +20,7 @@ const PERIODS: { value: string; label: string }[] = [
 ];
 const PERIOD_ITEMS = Object.fromEntries(PERIODS.map((p) => [p.value, p.label]));
 
-/** Kontrol periode + "Incidents only" di header Dashboard -- pola sama dengan
+/** Kontrol periode + "Threat news only" di header Dashboard -- pola sama dengan
  * `ExecFilterBar` (apply langsung, tanpa tombol Apply). `updatedAt` = `generated_at`
  * dari API: cache server 15 menit, jadi angka bisa lebih tua dari "sekarang". */
 export function DashboardFilterBar({
@@ -59,7 +59,7 @@ export function DashboardFilterBar({
           checked={filters.incidentOnly}
           onCheckedChange={(c) => onChange({ ...filters, incidentOnly: c === true })}
         />
-        Incidents only
+        Threat news only
       </label>
       {updated && !Number.isNaN(updated.getTime()) && (
         <span className="mb-1.5 text-xs text-muted-foreground">

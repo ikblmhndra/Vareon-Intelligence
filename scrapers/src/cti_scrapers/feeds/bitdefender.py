@@ -27,4 +27,3 @@ class Bitdefender(RSSScraper):
     # cocok sama fixture Fase 0; date_path=None artinya RSSScraper juga
     # pakai waktu-scrape, bukan tanggal artikel asli. Migrasi berikutnya yang
     # gak butuh cocok fixture lama boleh pakai default (date_path="pubDate").
-    date_path = None

@@ -103,6 +103,8 @@ async def recap_generate(
             doc = await recap_service.generate_weekly_recap(session, week_start=start, force=force)
         except recap_service.RecapWindowError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
+        except recap_service.RecapEmptyError as e:
+            raise HTTPException(status_code=502, detail=str(e)) from e
         action = "generate_weekly_recap"
         detail: dict[str, object] = {
             "week_start": doc.get("period_start"),
@@ -116,7 +118,10 @@ async def recap_generate(
             )
         if date:
             _parse_date(date)
-        doc = await recap_service.generate_daily_recap(session, date=date, force=force)
+        try:
+            doc = await recap_service.generate_daily_recap(session, date=date, force=force)
+        except recap_service.RecapEmptyError as e:
+            raise HTTPException(status_code=502, detail=str(e)) from e
         action = "generate_daily_recap"
         detail = {"date": doc.get("date"), "force": force}
     await AsyncAuditLogRepo(session).write(

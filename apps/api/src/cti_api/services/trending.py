@@ -6,19 +6,24 @@ makanya logika ranking dipisah murni (`rank_trends`) dari query.
 Beda dari `spike` (z-score vs baseline panjang): di sini yang dicari
 kenaikan absolut yang gampang dibaca analis. `change_pct` sengaja `None`
 kalau baseline < 3 -- "+400%" dari 1 ke 5 menyesatkan; entitas baru
-(baseline 0) ditandai `is_new`. Cache in-memory 900 detik, pola yang sama
-dengan `article_dashboard`/`spike`."""
+(baseline 0) ditandai `is_new`. Window sebelumnya yang hari berisinya kurang dari
+`PREV_MIN_DAY_COVERAGE` (aturan yang sama dengan KPI dashboard/Exec) membuat
+`baseline_reliable=False`: item tetap diurutkan, tapi `is_new`/`change_pct` dikosongkan,
+karena "T1190 129 vs 1" di instance yang baru jalan bukan kenaikan (audit UI U4). Cache
+in-memory 900 detik, pola yang sama dengan `article_dashboard`/`spike`."""
 
 from __future__ import annotations
 
 import datetime
 import time
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Any, Literal
 
 from cti_core.db.repositories.dashboard import AsyncDashboardRepo
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from cti_api.services.exec_dashboard import PREV_MIN_DAY_COVERAGE
 
 _CACHE: dict[str, tuple[dict[str, Any], float]] = {}
 _CACHE_TTL = 900
@@ -148,14 +153,21 @@ async def get_trending(
             key = _key(entity)
             previous[key] = previous.get(key, 0) + cnt
 
-    label = f"{window} hari terakhir vs {window} hari sebelumnya"
+    baseline_reliable = (
+        await repo.distinct_day_count(posted_on_start=prev_start, posted_on_end=cur_start)
+        >= window * PREV_MIN_DAY_COVERAGE
+    )
+    ranked = rank_trends(current, previous, limit=limit)
+    if not baseline_reliable:
+        ranked = [replace(i, is_new=False, change_pct=None) for i in ranked]
+        label = f"{window} hari terakhir (pembanding belum cukup data)"
+    else:
+        label = f"{window} hari terakhir vs {window} hari sebelumnya"
     result = {
-        "items": [
-            {**asdict(i), "daily": i.daily[-_MAX_DAILY_BUCKETS:]}
-            for i in rank_trends(current, previous, limit=limit)
-        ],
+        "items": [{**asdict(i), "daily": i.daily[-_MAX_DAILY_BUCKETS:]} for i in ranked],
         "window_days": window,
         "window_label": label,
+        "baseline_reliable": baseline_reliable,
         "generated_at": datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
     _CACHE[cache_key] = (result, now)

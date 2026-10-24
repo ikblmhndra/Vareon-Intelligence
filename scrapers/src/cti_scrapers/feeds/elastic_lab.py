@@ -21,5 +21,4 @@ class ElasticLab(RSSScraper):
         legacy_script="elasticLabThreat",
     )
     feeds = ("https://www.elastic.co/security-labs/rss/feed.xml",)
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli
     html_unescape = True  # feed lama pakai html.unescape() sebelum parse XML

@@ -58,6 +58,7 @@ import pycountry
 from cti_core.db.models.techstack import TechStackEntry
 from cti_core.db.repositories.threat_reference import (
     list_monitored_people,
+    list_non_actor_software_names,
     list_threat_actor_groups,
 )
 from cti_core.tech_match import mentions_any
@@ -346,10 +347,25 @@ def compile_name_patterns(names: Iterable[str]) -> NamePatterns:
     ]
 
 
-def match_names(patterns: NamePatterns, text: str) -> list[str]:
-    """Nama yang disebut di `text` (case-insensitive), urut sesuai daftar."""
+def _blank(pattern: re.Pattern[str], text: str) -> str:
+    return pattern.sub(lambda m: " " * len(m.group()), text)
+
+
+def match_names(patterns: NamePatterns, text: str, *, mask: NamePatterns = ()) -> list[str]:
+    """Nama yang disebut di `text` (case-insensitive), urut sesuai daftar.
+
+    Nama terpanjang dicocokkan dulu dan kemunculannya dikosongkan sebelum nama yang lebih pendek
+    dicoba, dan nama di `mask` (software ATT&CK) dikosongkan sebelum semuanya: tanpa itu "Cobalt
+    Strike" di teks tercatat sebagai aktor "Cobalt" sekaligus "Cobalt strike" (audit UI U8)."""
     lowered = text.lower()
-    return [name for name, pattern in patterns if pattern.search(lowered)]
+    for _, pattern in mask:
+        lowered = _blank(pattern, lowered)
+    found: set[str] = set()
+    for name, pattern in sorted(patterns, key=lambda np: -len(np[0])):
+        if pattern.search(lowered):
+            found.add(name)
+            lowered = _blank(pattern, lowered)
+    return [name for name, _ in patterns if name in found]
 
 
 def _hit(keywords: list[str], text: str) -> bool:
@@ -435,7 +451,12 @@ def score(title: str, body: str, session: Session) -> ScoreResult:
     group_list = list_threat_actor_groups(session)
     apac_people_list = list_monitored_people(session)
     return score_with_lists(
-        title, body, techstack=techstack, group_list=group_list, apac_people_list=apac_people_list
+        title,
+        body,
+        techstack=techstack,
+        group_list=group_list,
+        apac_people_list=apac_people_list,
+        non_actor_names=list_non_actor_software_names(session),
     )
 
 
@@ -446,6 +467,7 @@ def score_with_lists(
     techstack: list[str],
     group_list: list[str],
     apac_people_list: list[str],
+    non_actor_names: list[str] | None = None,
 ) -> ScoreResult:
     """Inti scoring, PURE -- gak ada I/O Postgres (MITRE tetap HTTP, lihat
     `_check_cve_vendor`). `country_list` gak perlu di-passing -- dari
@@ -460,9 +482,10 @@ def score_with_lists(
 
     group_patterns = compile_name_patterns(group_list)
     people_patterns = compile_name_patterns(apac_people_list)
+    software_mask = compile_name_patterns(non_actor_names or [])
 
     # --- Title ---
-    for group in match_names(group_patterns, title):
+    for group in match_names(group_patterns, title, mask=software_mask):
         mentioned_group.append(group.replace("\\-", "-"))
 
     for country in country_list:
@@ -498,7 +521,7 @@ def score_with_lists(
 
     # --- Body (regex + NER) ---
     if body:
-        for group in match_names(group_patterns, body):
+        for group in match_names(group_patterns, body, mask=software_mask):
             mentioned_group.append(group.replace("\\-", "-"))
 
         for country in country_list:
@@ -526,7 +549,7 @@ def score_with_lists(
         doc = _get_nlp()(body[:1_000_000])
         for ent in doc.ents:
             if ent.label_ in ("ORG", "PERSON", "GPE"):
-                mentioned_group.extend(match_names(group_patterns, str(ent)))
+                mentioned_group.extend(match_names(group_patterns, str(ent), mask=software_mask))
             if ent.label_ in ("NORP", "GPE"):
                 for country in country_list:
                     if re.search(rf"\b{country.lower()}\b", str(ent).lower()):

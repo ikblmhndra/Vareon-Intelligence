@@ -58,6 +58,7 @@ from cti_enrich.stages.fetch_text import fetch_text
 from cti_enrich.stages.persist import persist, persist_rejected
 from cti_enrich.stages.score import ScoreResult
 from cti_enrich.stages.summarize import summarize
+from cti_enrich.stages.title import normalize_title
 
 log = structlog.get_logger()
 
@@ -153,6 +154,7 @@ def run_pipeline(
 ) -> PipelineOutcome:
     """`alert=False` (replay artikel yang gagal di-enrich) menyimpan artikel tanpa mengirim
     Telegram: beritanya sudah berhari-hari, ratusan pesan sekaligus hanya menjadi noise."""
+    title = normalize_title(title)
     known = _known_article(session, url)
     if known is not None:
         # Hanya `articles` yang menghentikan pipeline. URL yang pernah DITOLAK tetap

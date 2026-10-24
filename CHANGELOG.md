@@ -6,6 +6,35 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
+## [0.8.3] - 2026-10-24
+
+**Angka di Dashboard, Exec, CVE, Recap, dan Newsroom sekarang sesuai datanya** (hasil audit UI vs data, `docs/UI_DATA_AUDIT.md`).
+**Tanpa migrasi, tanpa kunci `.env` baru, dan tanpa entri beat baru.**
+
+**Saat upgrade dari 0.8.2:** deploy biasa (`make deploy`); image `api`, `web`, dan worker berubah (scraper RSS dan enrichment).
+Data lama tidak dikoreksi otomatis: artikel yang sudah tersimpan tetap memakai tanggal scrape, aktor "Cobalt strike", dan judul lamanya.
+
+### Diubah
+- Toggle "Incidents only" di Dashboard dan Exec berganti nama jadi **"Threat news only"** (isinya memang berita ancaman, bukan
+  insiden terkonfirmasi). Kartu utama Exec dinamai sesuai filter aktif, dan brief Dashboard ikut toggle yang sama
+  (`GET /api/dashboard/attention` menerima `incident_only`).
+- "CVE kritis terbuka" dan KEV terbuka memakai definisi backlog CVE Dashboard: ticket Not Affected, Risk Accepted, dan yang sudah
+  selesai tidak lagi dihitung. Sub-label KEV menyebut "semua severity".
+- Rating MTTA di CVE Dashboard jadi **Backlog** bila kurang dari separuh CVE di baris itu sudah di-acknowledge.
+- Tren "naik tajam" dan topik aktif tidak lagi menandai "baru"/persen bila periode pembanding hampir kosong; respons trending dan
+  topik membawa `baseline_reliable`.
+- Scraper RSS memakai tanggal dari feed (`pubDate`, Atom `published`/`updated`, `dc:date`), bukan waktu scrape. Sebelumnya 61 scraper
+  memakai waktu scrape, sehingga postingan lama tampil sebagai berita baru.
+- Nama yang menurut ATT&CK adalah software (mis. Cobalt Strike) tidak lagi dicatat sebagai threat actor, dan nama terpanjang
+  dicocokkan lebih dulu.
+- Judul artikel dibersihkan saat ingest: entity HTML di-decode, judul berupa nama berkas dari repo GitHub jadi kalimat.
+
+### Diperbaiki
+- Recap yang dibalas kosong oleh model tidak lagi disimpan (HTTP 502, recap lama tetap), dan recap kosong tidak lagi ditandai
+  "Grounding check: nothing was dropped".
+- Korban ransomware tanpa negara di peta Dashboard diberi nama "Negara tidak diketahui".
+- X Intel memberi peringatan bila kolektor tweet diam lebih dari 72 jam. Data health menulis "Newest IOC extracted", bukan "sighting".
+
 ## [0.8.2] - 2026-10-24
 
 **Redesain Login, Dashboard, dan Newsroom.** Login punya panel brand, Dashboard jadi peta sinyal dunia dengan brief dan daftar

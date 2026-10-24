@@ -24,4 +24,3 @@ class Wiz(RSSScraper):
         legacy_script="wizThreat",
     )
     feeds = ("https://www.wiz.io/feed/rss.xml",)
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli

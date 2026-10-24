@@ -13,7 +13,7 @@ from __future__ import annotations
 import html
 import re
 from collections.abc import Iterator
-from datetime import date
+from datetime import date, datetime
 from email.utils import parsedate_to_datetime
 from typing import ClassVar
 from urllib.parse import urljoin
@@ -74,6 +74,10 @@ class RSSScraper(BaseScraper):
     title_path: ClassVar[str] = "title"
     link_path: ClassVar[str] = "link"
     date_path: ClassVar[str | None] = "pubDate"
+    """Elemen tanggal utama; kalau tidak ada/tidak terbaca dicoba `_DATE_FALLBACK_PATHS` (Atom,
+    Dublin Core), baru waktu scrape. `None` = sengaja pakai waktu scrape (feed yang tanggalnya
+    salah). Dulu 61 scraper hasil migrasi memasang `None` demi paritas kode lama, sehingga
+    postingan lama yang masih ada di feed tampil sebagai berita hari ini (audit UI U10)."""
     link_attr: ClassVar[str | None] = None
     """None: ambil `.text` node link (RSS). Diisi "href": ambil attribute
     itu (Atom, `<link href="..."/>`)."""
@@ -157,17 +161,35 @@ class RSSScraper(BaseScraper):
 
         posted_on = ctx.now.date()
         if self.date_path is not None:
-            date_el = node.find(self.date_path)
-            if date_el is not None and date_el.text:
-                parsed = _parse_rfc822_date(date_el.text)
+            for path in (self.date_path, *_DATE_FALLBACK_PATHS):
+                date_el = node.find(path)
+                parsed = _parse_feed_date(date_el.text) if date_el is not None else None
                 if parsed is not None:
-                    posted_on = parsed
+                    # Tanggal masa depan (zona waktu/feed ngawur) tidak boleh mendahului hari ini.
+                    posted_on = min(parsed, posted_on)
+                    break
 
         return ArticleItem(title=title, url=url, posted_on=posted_on)
 
 
-def _parse_rfc822_date(text: str) -> date | None:
+_DATE_FALLBACK_PATHS = (
+    "pubDate",
+    "{http://www.w3.org/2005/Atom}published",
+    "{http://www.w3.org/2005/Atom}updated",
+    "{http://purl.org/dc/elements/1.1/}date",
+)
+
+
+def _parse_feed_date(text: str | None) -> date | None:
+    """RFC 822 (RSS `pubDate`) atau ISO 8601 (Atom, Dublin Core)."""
+    if not text or not text.strip():
+        return None
+    text = text.strip()
     try:
         return parsedate_to_datetime(text).date()
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, IndexError):
+        pass
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).date()
+    except ValueError:
         return None

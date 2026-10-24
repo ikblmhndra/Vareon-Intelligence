@@ -23,4 +23,3 @@ class Huntress(RSSScraper):
         legacy_script="huntressThreat",
     )
     feeds = ("https://www.huntress.com/blog/rss.xml",)
-    date_path = None  # scraper lama pakai waktu-scrape, bukan tanggal artikel asli
