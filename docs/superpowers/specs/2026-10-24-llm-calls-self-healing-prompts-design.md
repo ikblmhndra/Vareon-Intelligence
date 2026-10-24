@@ -165,9 +165,9 @@ After 3 automatic attempts an article stays parked for the manual Replay, which 
   `last_error` (`at`, `task`, `error_type`, `http_status`) or null.
 - `parked`: `total` (`failure_kind` not null), `auto_eligible` (candidates of 4.2 step 1 without
   the time condition), `auto_replays_24h` (rows with `last_auto_replay_at` in the last 24 hours).
-- `usage`: one entry per task with `calls`, `errors` (`error` + `empty`), `prompt_tokens`,
-  `completion_tokens` for the last 24 hours and the last 7 days, `median_latency_ms` over 7 days,
-  and the latest `prompt_version`.
+- `usage_24h` and `usage_7d`: one entry per task with `calls`, `errors` (`error` + `empty`),
+  `prompt_tokens`, `completion_tokens` (null when no row of that task reported tokens),
+  `median_latency_ms` and the latest `prompt_version`.
 
 Typed response models; `docs/openapi.json` and `apps/web/src/lib/api/schema.d.ts` regenerated.
 
