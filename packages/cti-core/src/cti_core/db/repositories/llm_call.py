@@ -94,6 +94,10 @@ class AsyncLlmCallRepo:
             )
         ).scalar_one_or_none()
 
+    async def latest_call_at(self) -> datetime.datetime | None:
+        """Cap waktu baris terbaru dari task APA PUN."""
+        return (await self.session.execute(select(func.max(LlmCall.at)))).scalar_one_or_none()
+
     async def latest_ok_at(self, tasks: Sequence[str]) -> datetime.datetime | None:
         return (
             await self.session.execute(

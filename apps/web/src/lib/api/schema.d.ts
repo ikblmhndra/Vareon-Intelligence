@@ -4425,6 +4425,7 @@ export interface components {
             generated_at: string;
             /** Ioc Enrichment */
             ioc_enrichment: components["schemas"]["IocEnrichmentTypeOut"][];
+            llm: components["schemas"]["LlmHealthOut"];
             queues: components["schemas"]["QueueHealthOut"];
             scrapers: components["schemas"]["ScraperHealthSummary"];
             sources: components["schemas"]["SourceFreshnessOut"];
@@ -4524,6 +4525,61 @@ export interface components {
             total: number;
             /** Type */
             type: string;
+        };
+        /** LlmErrorOut */
+        LlmErrorOut: {
+            /** At */
+            at: string;
+            /** Error Type */
+            error_type: string | null;
+            /** Http Status */
+            http_status: number | null;
+            /** Task */
+            task: string;
+        };
+        /** LlmHealthOut */
+        LlmHealthOut: {
+            /** Last Call At */
+            last_call_at: string | null;
+            last_error: components["schemas"]["LlmErrorOut"] | null;
+            /** Last Ok At */
+            last_ok_at: string | null;
+            parked: components["schemas"]["LlmParkedOut"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "failing" | "unknown";
+            /** Usage 24H */
+            usage_24h: components["schemas"]["LlmTaskUsageOut"][];
+            /** Usage 7D */
+            usage_7d: components["schemas"]["LlmTaskUsageOut"][];
+        };
+        /** LlmParkedOut */
+        LlmParkedOut: {
+            /** Auto Eligible */
+            auto_eligible: number;
+            /** Auto Replays 24H */
+            auto_replays_24h: number;
+            /** Total */
+            total: number;
+        };
+        /** LlmTaskUsageOut */
+        LlmTaskUsageOut: {
+            /** Calls */
+            calls: number;
+            /** Completion Tokens */
+            completion_tokens: number | null;
+            /** Errors */
+            errors: number;
+            /** Median Latency Ms */
+            median_latency_ms: number | null;
+            /** Prompt Tokens */
+            prompt_tokens: number | null;
+            /** Prompt Version */
+            prompt_version: string | null;
+            /** Task */
+            task: string;
         };
         /** LockfileImportResult */
         LockfileImportResult: {
