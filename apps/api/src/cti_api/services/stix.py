@@ -475,8 +475,9 @@ async def build_ioc_stix_bundle(
     identity = _identity_object()
     objects.append(identity)
 
+    # Export tidak pernah memuat IOC `auto_suppressed` (bukan indikator), apa pun parameternya.
     iocs, _total = await AsyncIOCRepo(session).list_filtered(
-        page=1, page_size=min(limit, 1000), ioc_type=ioc_type
+        page=1, page_size=min(limit, 1000), ioc_type=ioc_type, include_suppressed=False
     )
 
     for ioc in iocs:

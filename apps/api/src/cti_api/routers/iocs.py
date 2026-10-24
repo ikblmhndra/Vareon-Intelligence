@@ -114,6 +114,7 @@ async def list_iocs(
     page_size: int = Query(50, ge=1, le=200),
     sort_by: str | None = None,
     actionability: str | None = None,
+    include_suppressed: bool = False,
     session: AsyncSession = Depends(get_db),
     _user: AuthedUser = Depends(require_auth),
 ) -> dict[str, object]:
@@ -124,6 +125,7 @@ async def list_iocs(
         search=search,
         sort_by=sort_by,
         actionability=actionability,
+        include_suppressed=include_suppressed,
     )
     return {
         "iocs": [_serialize_summary(i) for i in iocs],

@@ -179,7 +179,7 @@ class AsyncIOCRepo:
         `recap`, Bagian 5) -- IOC yang PERTAMA ketemu tanggal ini."""
         result = await self.session.execute(
             select(IOC)
-            .where(func.date(IOC.first_seen_at) == day)
+            .where(func.date(IOC.first_seen_at) == day, IOC.auto_suppressed.is_(False))
             .order_by(IOC.first_seen_at)
             .limit(limit)
         )
@@ -194,7 +194,7 @@ class AsyncIOCRepo:
         DB seperti `list_first_seen_on`."""
         result = await self.session.execute(
             select(IOC.type, func.count())
-            .where(func.date(IOC.first_seen_at).between(start, end))
+            .where(func.date(IOC.first_seen_at).between(start, end), IOC.auto_suppressed.is_(False))
             .group_by(IOC.type)
         )
         return {ioc_type: n for ioc_type, n in result.all()}
@@ -271,6 +271,7 @@ class AsyncIOCRepo:
         tags: Sequence[str] | None = None,
         sort_by: str | None = None,
         actionability: str | None = None,
+        include_suppressed: bool = False,
     ) -> tuple[list[IOC], int]:
         """Port `ioc_service.get_iocs()`. `actionability` (filter lama)
         gak diport pas Fase 7.3 -- waktu itu kolomnya emang belum ada.
@@ -279,6 +280,9 @@ class AsyncIOCRepo:
         diwire -- ditambahin di sini pas Grup G4 (`/intelligence/
         ioc-management`) baru butuh beneran dari frontend."""
         stmt = select(IOC)
+        if not include_suppressed:
+            # IOC `auto_suppressed` (cocok allowlist) disembunyikan kecuali diminta eksplisit.
+            stmt = stmt.where(IOC.auto_suppressed.is_(False))
         if ioc_type and ioc_type in _VALID_TYPES:
             stmt = stmt.where(IOC.type == ioc_type)
         if search:
@@ -311,14 +315,22 @@ class AsyncIOCRepo:
         if not article_ids:
             return []
         result = await self.session.execute(
-            select(IOC).join(IOC.sources).where(IOCSource.article_id.in_(article_ids)).distinct()
+            select(IOC)
+            .join(IOC.sources)
+            .where(IOCSource.article_id.in_(article_ids), IOC.auto_suppressed.is_(False))
+            .distinct()
         )
         return list(result.scalars().unique().all())
 
     async def get_stats(self) -> dict[str, object]:
-        total = (await self.session.execute(select(func.count()).select_from(IOC))).scalar_one()
+        total = (
+            await self.session.execute(
+                select(func.count()).select_from(IOC).where(IOC.auto_suppressed.is_(False))
+            )
+        ).scalar_one()
         by_type_stmt = (
             select(IOC.type, func.count())
+            .where(IOC.auto_suppressed.is_(False))
             .group_by(IOC.type)
             .order_by(func.count().desc(), IOC.type)  # tie-break: urutan deterministik
         )
