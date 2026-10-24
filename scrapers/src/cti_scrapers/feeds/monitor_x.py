@@ -199,6 +199,7 @@ def _official_candidates(ctx: ScrapeContext, account: str, since_id: str | None)
 class MonitorX(BaseScraper):
     meta = ScraperMeta(
         id="monitor_x",
+        content_kind="social",
         source="X/Twitter Intel Monitor",
         # Rundeck asli: `0/3` jam (`docs/legacy/rundeck-jobs-map.json`). Dulu `*/15` -- 12x lebih sering,
         # kredit twitterapi.io (dibagi 4 scraper) habis ~3 jam sesudah kunci baru (staging 2026-10-01).

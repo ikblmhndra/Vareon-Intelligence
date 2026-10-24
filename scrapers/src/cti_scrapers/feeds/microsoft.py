@@ -14,6 +14,7 @@ from cti_scraper.schedule import spread
 class Microsoft(RSSScraper):
     meta = ScraperMeta(
         id="microsoft",
+        content_kind="vendor_research",
         source="Microsoft",
         schedule=spread("32 * * * *", "microsoft"),
         tags=("migrated",),

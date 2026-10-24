@@ -45,6 +45,7 @@ def _parse_commit_date(raw: str) -> datetime:
 class Blackorbird(BaseScraper):
     meta = ScraperMeta(
         id="blackorbird",
+        content_kind="vendor_research",
         source="Blackorbird GitHub",
         schedule="47 * * * *",
         rate_limit="30/minute",

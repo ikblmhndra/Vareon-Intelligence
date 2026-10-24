@@ -14,6 +14,7 @@ from cti_scraper.schedule import spread
 class Volexity(XPathScraper):
     meta = ScraperMeta(
         id="volexity",
+        content_kind="vendor_research",
         source="Volexity",
         schedule=spread("1 * * * *", "volexity"),
         runtime="browser",

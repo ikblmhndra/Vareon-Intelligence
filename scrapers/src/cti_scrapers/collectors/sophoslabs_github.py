@@ -28,6 +28,7 @@ _UPLOAD_MESSAGE = "Add files via upload"
 class SophoslabsGithub(GithubCommitWatcher):
     meta = ScraperMeta(
         id="sophoslabs_github",
+        content_kind="vendor_research",
         source="Sophoslabs GitHub Monitor",
         schedule="47 * * * *",
         credential="github",

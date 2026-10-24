@@ -14,6 +14,7 @@ from cti_scraper.schedule import spread
 class Esentire(XPathScraper):
     meta = ScraperMeta(
         id="esentire",
+        content_kind="vendor_research",
         source="Esentire",
         schedule=spread("32 * * * *", "esentire"),
         runtime="browser",

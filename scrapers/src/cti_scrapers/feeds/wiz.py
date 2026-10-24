@@ -16,6 +16,7 @@ from cti_scraper.schedule import spread
 class Wiz(RSSScraper):
     meta = ScraperMeta(
         id="wiz",
+        content_kind="vendor_research",
         source="Wiz",
         schedule=spread("47 * * * *", "wiz"),
         max_items=9,  # scraper lama: count==10 -> break -- 9 item/run

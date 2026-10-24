@@ -13,6 +13,7 @@ from cti_scraper.schedule import spread
 class K7security(RSSScraper):
     meta = ScraperMeta(
         id="k7security",
+        content_kind="vendor_research",
         source="K7 Security",
         schedule=spread("1 * * * *", "k7security"),
         tags=("migrated",),

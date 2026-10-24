@@ -26,6 +26,7 @@ from cti_scraper.schedule import spread
 class Mandiant(RSSScraper):
     meta = ScraperMeta(
         id="mandiant",
+        content_kind="vendor_research",
         source="Mandiant (Google Cloud Threat Intelligence)",
         schedule=spread("15 * * * *", "mandiant"),
         tags=("rewrite", "fase-4.8-test"),

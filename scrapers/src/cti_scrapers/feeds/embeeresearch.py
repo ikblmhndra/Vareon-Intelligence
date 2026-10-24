@@ -14,6 +14,7 @@ from cti_scraper.schedule import spread
 class Embeeresearch(RSSScraper):
     meta = ScraperMeta(
         id="embeeresearch",
+        content_kind="vendor_research",
         source="Embe Research",
         schedule=spread("16 * * * *", "embeeresearch"),
         tags=("migrated",),

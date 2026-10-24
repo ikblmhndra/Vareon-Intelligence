@@ -14,6 +14,7 @@ from cti_scraper.schedule import spread
 class Tenable(RSSScraper):
     meta = ScraperMeta(
         id="tenable",
+        content_kind="vendor_research",
         source="Tenable",
         schedule=spread("45 * * * *", "tenable"),
         tags=("migrated",),

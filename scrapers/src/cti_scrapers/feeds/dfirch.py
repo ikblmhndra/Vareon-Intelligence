@@ -14,6 +14,7 @@ from cti_scraper.schedule import spread
 class Dfirch(RSSScraper):
     meta = ScraperMeta(
         id="dfirch",
+        content_kind="vendor_research",
         source="Dfirch",
         schedule=spread("33 * * * *", "dfirch"),
         tags=("migrated",),

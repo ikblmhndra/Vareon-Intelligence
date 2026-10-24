@@ -46,6 +46,7 @@ def _card(i: int) -> str:
 class AnyRunTrends(BaseScraper):
     meta = ScraperMeta(
         id="any_run_trends",
+        content_kind="vendor_research",
         source="ANY.RUN Malware Trends",
         schedule=spread("0 0 * * 1", "any_run_trends"),  # mingguan, cocok "past 7 days"
         runtime="browser",

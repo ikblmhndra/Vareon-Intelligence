@@ -36,6 +36,7 @@ def _remove_invalid_xml_bytes(raw: bytes) -> str:
 class Cisa(RSSScraper):
     meta = ScraperMeta(
         id="cisa",
+        content_kind="advisory",
         source="CISA",
         schedule=spread("1 * * * *", "cisa"),
         enabled=False,  # waiver 10.D, lihat docstring

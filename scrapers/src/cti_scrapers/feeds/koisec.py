@@ -17,6 +17,7 @@ from cti_scraper.schedule import spread
 class Koisec(XPathScraper):
     meta = ScraperMeta(
         id="koisec",
+        content_kind="vendor_research",
         source="Koi Security",
         schedule=spread("17 * * * *", "koisec"),
         runtime="browser",

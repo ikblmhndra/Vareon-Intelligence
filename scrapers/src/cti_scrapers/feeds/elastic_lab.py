@@ -14,6 +14,7 @@ from cti_scraper.schedule import spread
 class ElasticLab(RSSScraper):
     meta = ScraperMeta(
         id="elastic_lab",
+        content_kind="vendor_research",
         source="Elastic Labs",
         schedule=spread("30 * * * *", "elastic_lab"),
         tags=("migrated",),

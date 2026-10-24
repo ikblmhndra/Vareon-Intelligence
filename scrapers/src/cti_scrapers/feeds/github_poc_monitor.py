@@ -145,6 +145,7 @@ def _mitre_vendor_product(ctx: ScrapeContext, cve_id: str) -> tuple[str, str]:
 class GithubPocMonitor(BaseScraper):
     meta = ScraperMeta(
         id="github_poc_monitor",
+        content_kind="vendor_research",
         source="GitHub CVE POC Monitor",
         schedule=spread("0 * * * *", "github_poc_monitor"),
         rate_limit="30/minute",  # limit GitHub Search API, BUKAN REST biasa (5000/jam)

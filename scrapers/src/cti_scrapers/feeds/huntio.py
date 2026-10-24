@@ -18,6 +18,7 @@ _TITLE, _LINK = link_card_xpaths("contains(@href, '/blog/')")
 class Huntio(XPathScraper):
     meta = ScraperMeta(
         id="huntio",
+        content_kind="vendor_research",
         source="Hunt Io",
         schedule=spread("16 * * * *", "huntio"),
         runtime="browser",

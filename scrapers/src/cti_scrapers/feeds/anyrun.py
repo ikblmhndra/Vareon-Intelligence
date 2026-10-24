@@ -14,6 +14,7 @@ from cti_scraper.schedule import spread
 class Anyrun(RSSScraper):
     meta = ScraperMeta(
         id="anyrun",
+        content_kind="vendor_research",
         source="Anyrun",
         schedule=spread("31 * * * *", "anyrun"),
         tags=("migrated",),

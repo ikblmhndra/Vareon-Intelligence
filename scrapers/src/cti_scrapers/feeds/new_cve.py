@@ -75,6 +75,7 @@ _MITRE_URL = "https://cveawg.mitre.org/api/cve"
 class NewCve(BaseScraper):
     meta = ScraperMeta(
         id="new_cve",
+        content_kind="advisory",
         source="NVD/Tenable CVE Tracker",
         schedule=spread("0 * * * *", "new_cve"),
         rate_limit="60/minute",

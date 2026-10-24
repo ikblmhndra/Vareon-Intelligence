@@ -18,6 +18,7 @@ _TITLE, _LINK = link_card_xpaths("contains(@href, '/us/blog/threat-insight/')")
 class Proofpoint(XPathScraper):
     meta = ScraperMeta(
         id="proofpoint",
+        content_kind="vendor_research",
         source="Proofpoint",
         schedule=spread("0 * * * *", "proofpoint"),
         runtime="browser",

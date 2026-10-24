@@ -14,6 +14,7 @@ from cti_scraper.schedule import spread
 class Rhinosec(RSSScraper):
     meta = ScraperMeta(
         id="rhinosec",
+        content_kind="vendor_research",
         source="Rhino Security",
         schedule=spread("31 * * * *", "rhinosec"),
         tags=("migrated",),

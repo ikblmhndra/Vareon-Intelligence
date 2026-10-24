@@ -14,6 +14,7 @@ from cti_scraper.schedule import spread
 class Starlabs(RSSScraper):
     meta = ScraperMeta(
         id="starlabs",
+        content_kind="vendor_research",
         source="Starlabs",
         schedule=spread("32 * * * *", "starlabs"),
         tags=("migrated",),

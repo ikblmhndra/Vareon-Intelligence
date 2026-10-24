@@ -14,6 +14,7 @@ from cti_scraper.schedule import spread
 class Redcanary(RSSScraper):
     meta = ScraperMeta(
         id="redcanary",
+        content_kind="vendor_research",
         source="Redcanary",
         schedule=spread("30 * * * *", "redcanary"),
         tags=("migrated",),

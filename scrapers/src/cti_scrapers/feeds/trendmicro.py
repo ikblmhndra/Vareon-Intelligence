@@ -18,6 +18,7 @@ _CARD = "/html/body/div[2]/div/div[2]/section/div[1]/article[{i}]/div/div[1]/h3/
 class TrendMicro(XPathScraper):
     meta = ScraperMeta(
         id="trendmicro",
+        content_kind="vendor_research",
         source="Trend Micro Research",
         schedule=spread("0 */2 * * *", "trendmicro"),
         runtime="browser",

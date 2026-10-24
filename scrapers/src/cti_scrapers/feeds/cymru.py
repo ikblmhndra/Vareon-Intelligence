@@ -13,6 +13,7 @@ from cti_scraper.schedule import spread
 class Cymru(RSSScraper):
     meta = ScraperMeta(
         id="cymru",
+        content_kind="vendor_research",
         source="Cymru",
         schedule=spread("47 * * * *", "cymru"),
         tags=("migrated",),

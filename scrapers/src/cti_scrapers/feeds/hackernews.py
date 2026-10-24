@@ -14,6 +14,7 @@ from cti_scraper.schedule import spread
 class Hackernews(RSSScraper):
     meta = ScraperMeta(
         id="hackernews",
+        content_kind="news",
         source="Hackernews",
         schedule=spread("30 * * * *", "hackernews"),
         tags=("migrated",),
