@@ -57,9 +57,13 @@ export default function ExecDashboardPage() {
   const [filters, setFilters] = useState<ExecFilters>(initialFilters);
   const [watchlistSaved, setWatchlistSaved] = useState(() => (typeof window === "undefined" ? false : restoreExecWatchlist() !== null));
   const [brief, setBrief] = useState<ExecBriefResponse | null>(null);
+  // Pilihan "Role preview" tersimpan per browser (localStorage). Non-admin yang memakai browser
+  // bekas admin ikut mengirimnya, dan API menjawab 403 "Role preview is admin-only" untuk SELURUH
+  // halaman. Hanya admin yang mengirim role preview.
+  const rolePreview = isAdmin ? filters.rolePreview : "";
 
   const dashboard = useQuery({
-    queryKey: ["exec", "dashboard-v2", filters.days, filters.incidentOnly, filters.confirmedOnly, filters.rolePreview],
+    queryKey: ["exec", "dashboard-v2", filters.days, filters.incidentOnly, filters.confirmedOnly, rolePreview],
     queryFn: async () => {
       const { data, error } = await api.GET("/api/exec/dashboard-v2", {
         params: {
@@ -67,7 +71,7 @@ export default function ExecDashboardPage() {
             days: filters.days,
             incident_only: filters.incidentOnly,
             confirmed_only: filters.confirmedOnly,
-            role: filters.rolePreview || undefined,
+            role: rolePreview || undefined,
           },
         },
       });
