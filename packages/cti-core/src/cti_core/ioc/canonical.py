@@ -13,36 +13,51 @@ from __future__ import annotations
 
 import re
 
-from cti_core.ioc.extractor import _RE_DEFANG_DOT, _refang
+from cti_core.ioc.extractor import _RE_DEFANG_DOT
 
 CANONICAL_RULES_VERSION = 1
 
+# Pola pemisah titik extractor dipakai ulang, tapi tanpa membedakan huruf besar/kecil
+# (`[DOT]`); extractor sendiri tidak diubah.
+_RE_DOT = re.compile(_RE_DEFANG_DOT.pattern, re.IGNORECASE)
 _RE_DEFANG_AT = re.compile(r"\s*(?:\[@\]|\(@\)|\[at\]|\(at\))\s*", re.IGNORECASE)
 _RE_DEFANG_COLON = re.compile(r"\[:\]")
-_RE_URL_PARTS = re.compile(r"^([A-Za-z][A-Za-z0-9+.\-]*://)([^/?#]*)(.*)$", re.DOTALL)
+# scheme, pemisah (`://` atau `[:]//`), authority, sisanya (path/query/fragment).
+_RE_URL_PARTS = re.compile(r"^([^/?#]*?)(?:\[:\]|:)//([^/?#]*)(.*)$", re.DOTALL)
+_RE_HOST_PREFIX = re.compile(r"^([^/?#]*)(.*)$", re.DOTALL)
 _HASH_TYPES = frozenset({"sha256", "sha1", "md5"})
+_SCHEME_FIX = {"hxxp": "http", "hxxps": "https", "fxp": "ftp"}
+
+
+def _refang_host(authority: str) -> str:
+    """Refang + lowercase host[:port]; userinfo (`user:pw@`) dibiarkan."""
+    userinfo, sep, host = authority.rpartition("@")
+    host = _RE_DEFANG_COLON.sub(":", _RE_DOT.sub(".", host)).lower()
+    return f"{userinfo}{sep}{host}"
 
 
 def _canonical_url(value: str) -> str:
-    v = _refang(_RE_DEFANG_COLON.sub(":", value.strip()))
+    """Hanya scheme dan authority yang di-refang/lowercase; path, query, fragment utuh."""
+    v = value.strip()
     m = _RE_URL_PARTS.match(v)
-    if not m:
-        return v
-    scheme, authority, rest = m.groups()
-    # userinfo (`user:pw@`) tetap apa adanya; hanya host[:port] yang di-lowercase.
-    userinfo, sep, host = authority.rpartition("@")
-    return f"{scheme.lower()}{userinfo}{sep}{host.lower()}{rest}"
+    if m:
+        scheme, authority, rest = m.groups()
+        scheme = scheme.lower()
+        scheme = _SCHEME_FIX.get(scheme, scheme)
+        return f"{scheme}://{_refang_host(authority)}{rest}"
+    authority, rest = _RE_HOST_PREFIX.match(v).groups()  # type: ignore[union-attr]
+    return f"{_refang_host(authority)}{rest}"
 
 
 def canonical(ioc_type: str, value: str) -> str:
     if ioc_type == "ip":
-        return _RE_DEFANG_DOT.sub(".", value).strip()
+        return _RE_DOT.sub(".", value).strip()
     if ioc_type == "domain":
-        return _refang(value).lower().rstrip(".")
+        return _RE_DOT.sub(".", value).strip().lower().rstrip(".")
     if ioc_type == "url":
         return _canonical_url(value)
     if ioc_type == "email":
-        return _refang(_RE_DEFANG_AT.sub("@", value)).lower()
+        return _RE_DOT.sub(".", _RE_DEFANG_AT.sub("@", value)).strip().lower()
     if ioc_type in _HASH_TYPES:
         return value.strip().lower()
     return value.strip()
