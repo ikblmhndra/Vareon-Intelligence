@@ -6,10 +6,13 @@ ada client_id) -- lihat docstring `models/source_reliability.py`."""
 from __future__ import annotations
 
 import datetime
+from collections.abc import Mapping
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
+from cti_core.confidence import DEFAULT_GRADES
 from cti_core.db.models.article import Article
 from cti_core.db.models.source_reliability import SourceReliabilityEntry
 
@@ -39,6 +42,20 @@ _SORT_FIELDS = {
     "added_date": SourceReliabilityEntry.added_date,
     "last_updated": SourceReliabilityEntry.last_updated,
 }
+
+
+class SourceReliabilityRepo:
+    """Versi sync (persist enrichment di worker) -- cuma lookup nama."""
+
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def get_by_name_ci(self, source_name: str) -> SourceReliabilityEntry | None:
+        return self.session.execute(
+            select(SourceReliabilityEntry).where(
+                func.lower(SourceReliabilityEntry.source_name) == source_name.lower()
+            )
+        ).scalar_one_or_none()
 
 
 class AsyncSourceReliabilityRepo:
@@ -82,6 +99,40 @@ class AsyncSourceReliabilityRepo:
             )
         )
         return result.scalar_one_or_none()
+
+    async def ensure_defaults(self, sources: Mapping[str, str]) -> list[str]:
+        """`{nama sumber: content_kind}` -> baris `origin='default'` untuk yang belum ada
+        (case-insensitive), grade dari `DEFAULT_GRADES`. Baris yang sudah ada (analis atau default
+        lama) TIDAK pernah disentuh. Balikin nama yang baru dimasukkan. Flush saja, commit di
+        pemanggil."""
+        existing = {n.lower() for n in await self._all_names()}
+        today = datetime.date.today()
+        inserted: list[str] = []
+        for name, kind in sources.items():
+            if name.lower() in existing or kind not in DEFAULT_GRADES:
+                continue
+            grade, code = DEFAULT_GRADES[kind]
+            self.session.add(
+                SourceReliabilityEntry(
+                    source_name=name,
+                    analyst_name="system",
+                    reliability_grade=grade,
+                    credibility_code=code,
+                    admiralty_code=f"{grade}{code}",
+                    notes="",
+                    added_date=today,
+                    last_updated=today,
+                    origin="default",
+                )
+            )
+            existing.add(name.lower())
+            inserted.append(name)
+        await self.session.flush()
+        return inserted
+
+    async def _all_names(self) -> list[str]:
+        result = await self.session.execute(select(SourceReliabilityEntry.source_name))
+        return list(result.scalars().all())
 
     async def get_all_ratings(self) -> dict[str, SourceReliabilityEntry]:
         """`{source_name.lower(): entry}` -- preload semua entry buat
@@ -132,6 +183,7 @@ class AsyncSourceReliabilityRepo:
             notes=notes,
             added_date=today,
             last_updated=today,
+            origin="analyst",
         )
         self.session.add(entry)
         await self.session.flush()
@@ -154,6 +206,7 @@ class AsyncSourceReliabilityRepo:
         entry.credibility_code = credibility_code
         entry.admiralty_code = f"{reliability_grade.upper()}{credibility_code}"
         entry.notes = notes
+        entry.origin = "analyst"
         entry.last_updated = datetime.date.today()
         await self.session.flush()
         return True

@@ -4918,6 +4918,14 @@
             "title": "Notes",
             "type": "string"
           },
+          "origin": {
+            "enum": [
+              "default",
+              "analyst"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
           "reliability_grade": {
             "title": "Reliability Grade",
             "type": "string"
@@ -4936,7 +4944,8 @@
           "admiralty_code",
           "notes",
           "added_date",
-          "last_updated"
+          "last_updated",
+          "origin"
         ],
         "title": "SREntryOut",
         "type": "object"

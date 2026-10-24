@@ -58,3 +58,11 @@ def send_enrich_task(
     if alert is not None:
         kwargs["alert"] = alert
     get_celery_client().send_task("enrich.article", kwargs=kwargs, queue="enrich")
+
+
+def send_recompute_source(source_name: str) -> None:
+    """Minta worker menghitung ulang `confidence_score` artikel satu sumber (grade sumber baru
+    dibuat atau diubah, rilis 0.8.6). Antrian `maintenance`."""
+    get_celery_client().send_task(
+        "confidence.recompute_source", kwargs={"source_name": source_name}, queue="maintenance"
+    )

@@ -32,10 +32,12 @@ from __future__ import annotations
 import datetime
 from typing import TYPE_CHECKING
 
+from cti_core.confidence import compute_score
 from cti_core.db.models.article import RejectedArticle
 from cti_core.db.repositories.article import ArticleRepo, RejectedArticleRepo
 from cti_core.db.repositories.article_cve import ArticleCveRepo
 from cti_core.db.repositories.ioc import IOCRepo
+from cti_core.db.repositories.source_reliability import SourceReliabilityRepo
 from cti_core.ioc.allowlist import allowlist_match
 from cti_core.ioc.canonical import canonical
 from sqlalchemy import delete
@@ -96,6 +98,23 @@ def _audit_fields(classify_result: ClassifyResult) -> dict[str, dict[str, object
     return {"raw_enrichment": {"classify": classify_result.audit}} if classify_result.audit else {}
 
 
+def _confidence_score(
+    session: Session,
+    source: str,
+    ttp_result: TtpResult | None,
+    routing_result: RoutingResult,
+) -> int:
+    """Skor deterministik: grade sumber (Admiralty, case-insensitive) + bonus TTP/aktor. Nilai
+    self-rating LLM tetap di `raw_enrichment["classify"]`, tidak dipakai di sini."""
+    rating = SourceReliabilityRepo(session).get_by_name_ci(source) if source else None
+    return compute_score(
+        rating.reliability_grade if rating else None,
+        rating.credibility_code if rating else None,
+        len(ttp_result.techniques) if ttp_result else 0,
+        len(routing_result.threat_actors),
+    )
+
+
 def persist(
     *,
     session: Session,
@@ -119,9 +138,7 @@ def persist(
         scraper_id=scraper_id,
         posted_on=posted_on,
         news_type=routing_result.news_type,
-        confidence_score=round(classify_result.confidence * 100)
-        if classify_result.confidence
-        else None,
+        confidence_score=_confidence_score(session, source, ttp_result, routing_result),
         confirmed_incident=bool(classify_result.confirmed_incident),
         incident_confidence=(
             round(classify_result.incident_confidence * 100)

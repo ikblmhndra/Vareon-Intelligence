@@ -373,3 +373,12 @@ def _skip_if_docker_unavailable() -> None:
         subprocess.run(["docker", "info"], capture_output=True, timeout=5, check=True)
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
         pytest.skip("Docker daemon gak jalan")
+
+
+@pytest.fixture(autouse=True)
+def _no_recompute_enqueue(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Edit grade sumber lewat router mengantre `confidence.recompute_source` ke broker; di test
+    tidak ada Redis broker, jadi dibisukan (test yang ingin memeriksa pengirimannya menimpa ini)."""
+    monkeypatch.setattr(
+        "cti_api.routers.source_reliability.send_recompute_source", lambda name: None
+    )

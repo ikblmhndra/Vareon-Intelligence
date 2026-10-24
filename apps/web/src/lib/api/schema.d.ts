@@ -5594,6 +5594,11 @@ export interface components {
             last_updated: string;
             /** Notes */
             notes: string;
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "default" | "analyst";
             /** Reliability Grade */
             reliability_grade: string;
             /** Source Name */

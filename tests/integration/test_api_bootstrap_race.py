@@ -24,6 +24,7 @@ import pytest
 from cti_api.services.roles import SYSTEM_ROLES
 from cti_core.db.engine import async_session
 from cti_core.db.models.auth import Client, Role
+from cti_core.db.models.source_reliability import SourceReliabilityEntry
 from cti_core.db.repositories.auth import AsyncClientRepo
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,6 +46,10 @@ async def _clean_bootstrap_rows(_migrated_schema: None):
         async with async_session() as s:
             await s.execute(delete(Client).where(Client.client_id == "default"))
             await s.execute(delete(Role).where(Role.name.in_(list(SYSTEM_ROLES))))
+            # baris grade bawaan yang dibuat bootstrap (0.8.6) jangan bocor ke test lain
+            await s.execute(
+                delete(SourceReliabilityEntry).where(SourceReliabilityEntry.origin == "default")
+            )
             await s.commit()
 
     await wipe()
@@ -77,5 +82,9 @@ async def test_concurrent_bootstrap_on_empty_db_does_not_collide(
         roles = await s.scalar(
             select(func.count()).select_from(Role).where(Role.name.in_(list(SYSTEM_ROLES)))
         )
+        graded = (await s.scalars(select(SourceReliabilityEntry.source_name))).all()
     assert clients == 1
     assert roles == len(SYSTEM_ROLES)
+    # grade bawaan per sumber scraper (0.8.6): ada, dan tidak dobel walau 4 proses bersamaan
+    assert graded
+    assert len({n.lower() for n in graded}) == len(graded)

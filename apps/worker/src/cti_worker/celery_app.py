@@ -89,6 +89,7 @@ def _fresh_db_pool_per_child(**_kwargs: object) -> None:
 
 from cti_worker.beat import build_beat_schedule  # noqa: E402
 from cti_worker.tasks import (  # noqa: E402,F401  -- registrasi task, harus setelah `app` ada
+    confidence,
     cve_mirror,
     enrich,
     llm_maintenance,
