@@ -193,6 +193,16 @@ def _periodic_schedule() -> dict[str, dict[str, object]]:
             "schedule": crontab(hour=3, minute=30),
             "options": {"queue": QUEUE_MAINTENANCE},
         },
+        "enrich-auto-replay": {
+            "task": "enrich.auto_replay",
+            "schedule": crontab(minute="*/10"),
+            "options": {"queue": QUEUE_MAINTENANCE},
+        },
+        "llm-purge-calls": {
+            "task": "llm.purge_calls",
+            "schedule": crontab(hour=3, minute=40),
+            "options": {"queue": QUEUE_MAINTENANCE},
+        },
         "scraper-purge-expired-items": {
             "task": "scraper.purge_expired_items",
             "schedule": crontab(hour=3, minute=0),

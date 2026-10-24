@@ -283,3 +283,17 @@ def test_the_newsletter_entry_never_expires(monkeypatch) -> None:
     entry = beat.build_beat_schedule()["newsletter-prepare-monthly"]
 
     assert "expires" not in entry["options"]
+
+
+def test_llm_maintenance_entries_run_on_the_maintenance_queue(monkeypatch) -> None:
+    monkeypatch.setattr(beat, "_scraper_configs", lambda: {})
+    schedule = beat.build_beat_schedule()
+
+    replay = schedule["enrich-auto-replay"]
+    assert replay["task"] == "enrich.auto_replay"
+    assert replay["schedule"].minute == set(range(0, 60, 10))
+    assert replay["options"] == {"queue": "maintenance"}
+    purge = schedule["llm-purge-calls"]
+    assert purge["task"] == "llm.purge_calls"
+    assert (purge["schedule"].hour, purge["schedule"].minute) == ({3}, {40})
+    assert purge["options"] == {"queue": "maintenance"}

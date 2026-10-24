@@ -18,6 +18,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cti_core.db.models.article import Article, RejectedArticle
 from cti_core.db.models.ioc import IOC
 from cti_core.db.models.tweet import Tweet
+from cti_core.db.repositories.article import AUTO_REPLAY_KINDS
+from cti_core.enrich_replay import MAX_ATTEMPTS
 
 # Kartu yang benar-benar dicek provider: `raw.skipped` kosong. Ditulis sebagai SQL mentah
 # karena `jsonb_array_elements` di FROM; tanpa operator `?` (bentrok dengan bind param `text()`).
@@ -37,6 +39,14 @@ class EnrichmentFailures:
 
 
 @dataclass(frozen=True)
+class ParkedCounts:
+    total: int
+    auto_eligible: int
+    """Kandidat auto-replay tanpa syarat waktu (backoff tidak dihitung)."""
+    auto_replays_24h: int
+
+
+@dataclass(frozen=True)
 class IocCoverage:
     type: str
     total: int
@@ -46,6 +56,20 @@ class IocCoverage:
 class AsyncDataHealthRepo:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
+
+    async def parked_counts(self, now: datetime.datetime) -> ParkedCounts:
+        eligible = RejectedArticle.failure_kind.in_(AUTO_REPLAY_KINDS) & (
+            RejectedArticle.auto_replay_count < MAX_ATTEMPTS
+        )
+        stmt = select(
+            func.count(),
+            func.count().filter(eligible),
+            func.count().filter(
+                RejectedArticle.last_auto_replay_at >= now - datetime.timedelta(hours=24)
+            ),
+        ).where(RejectedArticle.failure_kind.is_not(None))
+        total, auto, replays = (await self.session.execute(stmt)).one()
+        return ParkedCounts(int(total), int(auto), int(replays))
 
     async def enrichment_failures(self, now: datetime.datetime) -> EnrichmentFailures:
         failed = RejectedArticle.failure_kind.is_not(None)

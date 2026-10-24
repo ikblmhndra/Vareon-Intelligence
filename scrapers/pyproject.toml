@@ -1,6 +1,6 @@
 [project]
 name = "cti-scrapers"
-version = "0.8.4"
+version = "0.8.5"
 description = "Scraper konkret -- satu file per scraper. Lihat docs/ADDING_A_SCRAPER.md."
 requires-python = ">=3.12"
 dependencies = [

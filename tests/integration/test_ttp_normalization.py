@@ -263,9 +263,9 @@ def test_pipeline_persists_normalized_ttps_and_alert_uses_canonical_names(
         lambda s: TtpResult(
             has_techniques=True,
             techniques=[
-                Technique("T1110", "Credential Dumping"),
-                Technique("T1548", "Privilege Escalation"),
-                Technique("T1203", "Remote Code Execution"),
+                Technique("T1110", "Credential Dumping", evidence="Isi artikel."),
+                Technique("T1548", "Privilege Escalation", evidence="Isi artikel."),
+                Technique("T1203", "Remote Code Execution", evidence="Isi artikel."),
             ],
         ),
     )

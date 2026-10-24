@@ -35,13 +35,18 @@ yang sama kayak `cti_enrich`'s pipeline udah pake dari awal."""
 from __future__ import annotations
 
 import json
+import logging
 import re
+import time
 from typing import Any
 
 from openai import OpenAI
 
 from cti_core.config import LlmSettings
+from cti_core.llm import usage
 from cti_core.runtime_secrets.overlay import effective_settings
+
+logger = logging.getLogger(__name__)
 
 _RE_THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 _RE_CODE_FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE)
@@ -58,8 +63,12 @@ _DEFAULT_BASE_URLS = {
 }
 
 
-def get_llm_client(*, settings: LlmSettings | None = None) -> tuple[OpenAI, str]:
-    """Return (OpenAI-compatible client, resolved model name)."""
+def get_llm_client(*, task: str, settings: LlmSettings | None = None) -> tuple[OpenAI, str]:
+    """Return (OpenAI-compatible client, resolved model name).
+
+    `task` wajib: tiap `chat.completions.create` di client ini menulis satu baris `llm_calls`
+    (best-effort, lihat `cti_core.llm.usage`). `create` juga menerima `prompt_version=` opsional
+    yang dibuang sebelum sampai ke SDK."""
     settings = settings or effective_settings().llm
     provider = settings.provider.lower()
     if provider not in _DEFAULT_MODELS:
@@ -73,7 +82,54 @@ def get_llm_client(*, settings: LlmSettings | None = None) -> tuple[OpenAI, str]
     }
     if base_url:
         kwargs["base_url"] = base_url
-    return OpenAI(**kwargs), settings.model or _DEFAULT_MODELS[provider]
+    client = OpenAI(**kwargs)
+    model = settings.model or _DEFAULT_MODELS[provider]
+    _instrument(client, task=task, model=model)
+    return client, model
+
+
+def _instrument(client: OpenAI, *, task: str, model: str) -> None:
+    """Bungkus `client.chat.completions.create` di instance ini (bukan di kelas SDK)."""
+    original = client.chat.completions.create
+
+    def create(*args: Any, prompt_version: str | None = None, **kw: Any) -> Any:
+        started = time.monotonic()
+
+        def record(**extra: Any) -> None:
+            try:
+                usage.record_call(
+                    task=task,
+                    model=model,
+                    prompt_version=prompt_version,
+                    latency_ms=int((time.monotonic() - started) * 1000),
+                    **extra,
+                )
+            except Exception:
+                logger.warning("llm_call_record_failed", exc_info=True)
+
+        try:
+            result = original(*args, **kw)
+        except Exception as exc:
+            record(
+                status="error",
+                error_type=type(exc).__name__,
+                http_status=getattr(exc, "status_code", None),
+                prompt_tokens=None,
+                completion_tokens=None,
+            )
+            raise
+        tokens = usage_from(result)
+        # "Kosong" = definisi `first_choice`: tidak ada `choices`.
+        record(
+            status="ok" if _field(result, "choices") else "empty",
+            error_type=None,
+            http_status=None,
+            prompt_tokens=tokens.get("prompt_tokens"),
+            completion_tokens=tokens.get("completion_tokens"),
+        )
+        return result
+
+    client.chat.completions.create = create  # type: ignore[method-assign]
 
 
 def store_param(settings: LlmSettings | None = None) -> dict[str, Any]:

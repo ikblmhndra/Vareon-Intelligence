@@ -10,7 +10,7 @@ Import `cti_enrich` (spaCy/sumy) LAZY di dalam fungsi -- baca docstring
 
 Kebijakan kegagalan (Fase 10.A2) -- SATU prinsip: artikel yang sudah lolos
 dedup (`scraper_seen` udah di-commit pas `send_task`) TIDAK BOLEH hilang tanpa
-jejak. Tiga jalur:
+jejak. Empat jalur:
 
 1. **Transien** (LLM mati/timeout/5xx/429-bukan-kuota, koneksi DB putus,
    jaringan): retry sampai 6x, backoff eksponensial 30s -> 10 mnt (+jitter),
@@ -18,8 +18,12 @@ jejak. Tiga jalur:
 2. **JSON rusak** (`json.JSONDecodeError` yang lolos dari retry internal
    `classify()`): 2x retry, lebih pelit karena tiap retry = sampai 3 panggilan
    LLM dan kegagalan JSON yang PERSISTEN jarang sembuh sendiri.
-3. **Gagal permanen** (retry habis, atau error yang gak bakal sembuh:
-   401/kuota abis/bug): `on_failure` nulis ke `rejected_articles` dengan
+3. **Konfigurasi gateway** (`failure_kind='config'`: HTTP 400/401/403/404 dari gateway LLM --
+   model salah, key ditolak, endpoint hilang): TANPA retry Celery, langsung diparkir di
+   `rejected_articles` -- mengulang request yang sama pasti gagal sama. Sembuh setelah
+   konfigurasinya diperbaiki (replay otomatis/manual).
+4. **Gagal permanen** (retry habis, atau error yang gak bakal sembuh:
+   kuota abis/bug): `on_failure` nulis ke `rejected_articles` dengan
    `reason="[enrichment_failed] ..."` -> muncul di halaman Filtered Articles,
    bisa di-restore analis. Kalau artikelnya SUDAH tersimpan (gagal SESUDAH
    `persist`, mis. Telegram down) gak ada yang dicatat -- gak ada yang hilang.
@@ -57,6 +61,14 @@ _TRANSIENT_ERRORS = (
 )
 _MAX_RETRIES_TRANSIENT = 6
 _MAX_RETRIES_JSON = 2
+# Salah konfigurasi gateway (400/401/403/404): tidak ada di `_TRANSIENT_ERRORS`, jadi task
+# tidak me-retry; hanya dipakai buat melabeli `failure_kind`.
+_CONFIG_ERRORS = (
+    openai.BadRequestError,
+    openai.AuthenticationError,
+    openai.PermissionDeniedError,
+    openai.NotFoundError,
+)
 
 
 def _backoff_s(retries: int) -> float:
@@ -116,6 +128,8 @@ def _failure_kind(error_class: type[BaseException]) -> str:
         return "json"
     if issubclass(error_class, _TRANSIENT_ERRORS):
         return "transient"
+    if issubclass(error_class, _CONFIG_ERRORS):
+        return "config"
     return "permanent"
 
 
@@ -201,9 +215,11 @@ def enrich_article(
     source: str,
     scraper_id: str | None,
     replay: bool = False,
+    alert: bool | None = None,
 ) -> dict[str, object]:
     """`replay=True` (artikel yang gagal di-enrich dikirim ulang, `send_enrich_task`): disimpan
-    tanpa alert Telegram. Hanya dikirim bila True, jadi pesan lama di antrian tetap valid."""
+    tanpa alert Telegram. `alert` (bila bukan None) menimpa bawaan itu, mis. replay otomatis yang
+    masih segar. Keduanya hanya dikirim bila perlu, jadi pesan lama di antrian tetap valid."""
     from cti_core.db.engine import sync_session
     from cti_enrich.pipeline import run_pipeline
 
@@ -220,7 +236,7 @@ def enrich_article(
                 source=source,
                 scraper_id=scraper_id,
                 session=session,
-                alert=not replay,
+                alert=alert if alert is not None else not replay,
             )
     except json.JSONDecodeError as e:
         raise self.retry(

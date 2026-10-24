@@ -232,9 +232,17 @@ class RejectedArticle(Base):
     reason: Mapped[str | None] = mapped_column(Text)
     failure_kind: Mapped[str | None] = mapped_column(String(30))
     """NULL = ditolak klasifikasi LLM (`reason` = alasan LLM). Selain itu enrichment GAGAL dan
-    artikelnya belum diproses: `transient` (retry habis), `json` (JSON rusak terus), `permanent`
-    (401/kuota/400/bug). Validasi di aplikasi, tanpa CHECK (seperti `daily_recaps.kind`). Prefix
+    artikelnya belum diproses: `transient` (retry habis), `json` (JSON rusak terus), `config`
+    (400/401/403/404 dari gateway; ikut replay otomatis), `permanent` (kuota/bug lain, tidak
+    diputar ulang otomatis). Validasi di aplikasi, tanpa CHECK (seperti `daily_recaps.kind`). Prefix
     `[enrichment_failed]` di `reason` tetap ditulis satu rilis supaya worker lama tetap terbaca."""
+    auto_replay_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    """Berapa kali beat mencoba ulang otomatis artikel yang gagal di-enrich (batas 3). Tidak
+    disentuh `RejectedArticleRepo.upsert` supaya hitungan bertahan lintas kegagalan."""
+    last_auto_replay_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    """Waktu percobaan otomatis terakhir; dasar backoff `30 menit * 2 ** auto_replay_count`."""
     rejected_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

@@ -10,9 +10,11 @@ from __future__ import annotations
 
 import datetime
 import time
+from typing import Literal
 
 from cti_core.config import get_settings
 from cti_core.db.repositories.data_health import AsyncDataHealthRepo
+from cti_core.db.repositories.llm_call import AsyncLlmCallRepo, TaskUsage
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +22,10 @@ from cti_api.schemas.data_health import (
     DataHealthOut,
     EnrichmentHealthOut,
     IocEnrichmentTypeOut,
+    LlmErrorOut,
+    LlmHealthOut,
+    LlmParkedOut,
+    LlmTaskUsageOut,
     QueueHealthOut,
     SourceFreshnessOut,
 )
@@ -30,6 +36,9 @@ _cache: tuple[DataHealthOut, float] | None = None
 
 # Nama list Celery untuk queue `enrich` (sama dengan `cti_scraper.sinks._ENRICH_QUEUE`).
 _ENRICH_QUEUE = "enrich"
+
+# Task yang menentukan status model: jalur enrichment artikel (kegagalan di sini memarkir artikel).
+_STATUS_TASKS = ("classify", "ttp")
 
 
 def _iso(ts: datetime.datetime | None) -> str | None:
@@ -52,6 +61,56 @@ async def _enrich_depth(redis: Redis) -> int | None:
         return int(await redis.llen(_ENRICH_QUEUE))
     except Exception:
         return None
+
+
+def _usage_out(rows: list[TaskUsage]) -> list[LlmTaskUsageOut]:
+    return [
+        LlmTaskUsageOut(
+            task=u.task,
+            calls=u.calls,
+            errors=u.errors,
+            prompt_tokens=u.prompt_tokens,
+            completion_tokens=u.completion_tokens,
+            median_latency_ms=u.median_latency_ms,
+            prompt_version=u.prompt_version,
+        )
+        for u in rows
+    ]
+
+
+async def _llm_health(
+    session: AsyncSession, repo: AsyncDataHealthRepo, now: datetime.datetime
+) -> LlmHealthOut:
+    calls = AsyncLlmCallRepo(session)
+    latest = await calls.latest_for_tasks(_STATUS_TASKS)
+    status: Literal["ok", "failing", "unknown"] = "unknown"
+    if latest is not None:
+        status = "ok" if latest.status == "ok" else "failing"
+    error = await calls.latest_failure(_STATUS_TASKS)
+    parked = await repo.parked_counts(now)
+    return LlmHealthOut(
+        status=status,
+        last_call_at=_iso(await calls.latest_call_at()),
+        last_ok_at=_iso(await calls.latest_ok_at(_STATUS_TASKS)),
+        last_error=(
+            LlmErrorOut(
+                at=error.at.isoformat(),
+                task=error.task,
+                error_type=error.error_type
+                or ("empty response" if error.status == "empty" else None),
+                http_status=error.http_status,
+            )
+            if error is not None
+            else None
+        ),
+        parked=LlmParkedOut(
+            total=parked.total,
+            auto_eligible=parked.auto_eligible,
+            auto_replays_24h=parked.auto_replays_24h,
+        ),
+        usage_24h=_usage_out(await calls.usage_by_task(now - datetime.timedelta(hours=24))),
+        usage_7d=_usage_out(await calls.usage_by_task(now - datetime.timedelta(days=7))),
+    )
 
 
 async def _build(session: AsyncSession, redis: Redis, now: datetime.datetime) -> DataHealthOut:
@@ -83,4 +142,5 @@ async def _build(session: AsyncSession, redis: Redis, now: datetime.datetime) ->
         ioc_enrichment=[
             IocEnrichmentTypeOut(type=c.type, total=c.total, enriched=c.enriched) for c in coverage
         ],
+        llm=await _llm_health(session, repo, now),
     )

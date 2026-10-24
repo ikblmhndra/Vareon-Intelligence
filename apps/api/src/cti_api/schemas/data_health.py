@@ -3,6 +3,8 @@ supaya `schema.d.ts` di web ikut ketat."""
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel
 
 from cti_api.schemas.scraper import ScraperHealthSummary
@@ -38,6 +40,44 @@ class IocEnrichmentTypeOut(BaseModel):
     """Punya minimal satu kartu provider yang benar-benar dicek (bukan `skipped`)."""
 
 
+class LlmErrorOut(BaseModel):
+    at: str
+    task: str
+    error_type: str | None
+    http_status: int | None
+
+
+class LlmParkedOut(BaseModel):
+    total: int
+    """Baris `rejected_articles` dengan `failure_kind` terisi (gagal di-enrich, belum pulang)."""
+    auto_eligible: int
+    """Masih boleh di-replay otomatis: jenis transient/config/json, belum sampai batas percobaan."""
+    auto_replays_24h: int
+
+
+class LlmTaskUsageOut(BaseModel):
+    task: str
+    calls: int
+    errors: int
+    """Baris berstatus `error` atau `empty`."""
+    prompt_tokens: int | None
+    completion_tokens: int | None
+    """`None` kalau tidak ada baris task ini yang melaporkan token."""
+    median_latency_ms: int | None
+    prompt_version: str | None
+
+
+class LlmHealthOut(BaseModel):
+    status: Literal["ok", "failing", "unknown"]
+    """Panggilan terbaru task classify/ttp: ok -> ok, error/empty -> failing, kosong -> unknown."""
+    last_call_at: str | None
+    last_ok_at: str | None
+    last_error: LlmErrorOut | None
+    parked: LlmParkedOut
+    usage_24h: list[LlmTaskUsageOut]
+    usage_7d: list[LlmTaskUsageOut]
+
+
 class DataHealthOut(BaseModel):
     generated_at: str
     """ISO UTC saat angka dihitung (cache 60 detik per proses)."""
@@ -46,3 +86,4 @@ class DataHealthOut(BaseModel):
     queues: QueueHealthOut
     sources: SourceFreshnessOut
     ioc_enrichment: list[IocEnrichmentTypeOut]
+    llm: LlmHealthOut

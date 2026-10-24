@@ -213,6 +213,13 @@
       'identity': dict({
         'actor_type': 'state-sponsored',
         'sponsoring_nation': 'China',
+        'tracking_ids': dict({
+          'mitre_group_id': None,
+        }),
+      }),
+      'profile_metadata': dict({
+        'generated_at': str,
+        'tlp_marking': 'TLP:CLEAR',
       }),
     }),
     'success': True,

@@ -27,6 +27,7 @@ from typing import Any
 
 from cti_core.db.models.article import Article
 from cti_core.llm.client import get_llm_client, parse_json_response, store_param
+from cti_core.llm.usage import prompt_version
 from cti_enrich.stages.llm_messages import build_messages
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -47,6 +48,7 @@ Categories: vulnerabilities, threat actors, malware, data breaches, policy/compl
 
 Output JSON only.
 """  # noqa: E501 -- prompt disalin apa adanya dari skrip lama
+_PROMPT_VERSION = prompt_version(_SYSTEM_PROMPT)
 
 
 @dataclass(frozen=True)
@@ -95,7 +97,7 @@ def _topics_from(data: Any) -> list[dict[str, Any]]:
 def group_topics(titles: list[str]) -> list[dict[str, Any]]:
     """Satu panggilan LLM (dengan retry JSON). Kegagalan NAIK -- jangan diam-diam
     mengirim laporan kosong."""
-    client, model = get_llm_client()
+    client, model = get_llm_client(task="news_of_the_day")
     user = "\n".join(titles)
     last_error: json.JSONDecodeError | None = None
     for attempt in range(_MAX_ATTEMPTS):
@@ -105,6 +107,7 @@ def group_topics(titles: list[str]) -> list[dict[str, Any]]:
             temperature=0,
             n=1,
             max_tokens=_MAX_TOKENS,
+            prompt_version=_PROMPT_VERSION,
             **store_param(),
         )
         try:

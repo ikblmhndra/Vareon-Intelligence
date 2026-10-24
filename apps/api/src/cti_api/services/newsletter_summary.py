@@ -67,6 +67,7 @@ import structlog
 from cti_core.db.models.recap import DailyRecap
 from cti_core.db.repositories.recap import AsyncRecapRepo
 from cti_core.llm.client import get_llm_client, parse_json_response, usage_from
+from cti_core.llm.usage import prompt_version
 from cti_core.runtime_secrets.overlay import scrub_candidates
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -221,16 +222,19 @@ def _call_llm(user_message: str) -> tuple[str, str, dict[str, int]]:
     """`(isi balasan, nama model, pemakaian)`: `usage_from` (kosong kalau gateway tidak mengirim
     `usage`) plus `wall_ms` dan `input_chars`, supaya ukuran panggilan tetap terlihat walau gateway
     diam. Sinkron, dijalankan di thread (`asyncio.to_thread`)."""
-    client, model_name = get_llm_client()
+    client, model_name = get_llm_client(task="newsletter_summary")
+    system = system_prompt()
     started = time.monotonic()
     completion = client.chat.completions.create(
         model=model_name,
         messages=[
-            {"role": "system", "content": system_prompt()},
+            {"role": "system", "content": system},
             {"role": "user", "content": user_message},
         ],
         temperature=0,
         n=1,
+        response_format={"type": "json_object"},
+        prompt_version=prompt_version(system),
     )
     wall_ms = int((time.monotonic() - started) * 1000)
     usage = {**usage_from(completion), "wall_ms": wall_ms, "input_chars": len(user_message)}
