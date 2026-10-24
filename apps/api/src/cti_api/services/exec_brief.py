@@ -35,7 +35,7 @@ Output your response in Markdown. Structure it with exactly these five sections:
 Highlight the highest-risk sectors with their risk scores, and flag any statistically significant industry spikes. Keep language risk-focused and free of operational jargon.
 
 ## Priority Threat Actors
-Cover the top 3 threat actors by activity velocity. For each, note their name, incident count, and why they matter strategically.
+Cover the top 3 threat actors by activity velocity. For each, note their name, article count, and why they matter strategically.
 
 ## Vulnerability Exposure
 Summarize the critical CVE exposure: total critical-severity count and the top technologies affected. Note any active proof-of-concept exploits if present.
@@ -43,11 +43,17 @@ Summarize the critical CVE exposure: total critical-severity count and the top t
 ## Key Findings & Recommendations
 3-5 concise bullet points with concrete, actionable recommendations leadership can act on or assign. Prioritize by risk impact.
 
+Counting rule: the data counts threat news articles, not incidents. Use the word "incident" only for the confirmed incidents count given in the data; describe every other number as articles or reports.
+
 Tone: Concise, risk-focused, suitable for non-technical executives. Avoid acronym overload. Quantify risk wherever possible."""
 
 
 def _build_user_message(days: int, data: dict[str, Any]) -> str:
-    total_incidents = data.get("total_incidents", 0)
+    """`total_incidents` dari dashboard sebenarnya jumlah ARTIKEL berita ancaman, bukan insiden;
+    dulu dikirim sebagai "Total incidents tracked" sehingga brief menyebut 992 artikel sebagai 992
+    insiden. Sekarang labelnya "Threat news articles", dan insiden terkonfirmasi dikirim terpisah
+    (`round(total * rate / 100)`), satu-satunya angka yang boleh disebut insiden oleh prompt."""
+    total_articles = data.get("total_incidents", 0)
     unique_sectors = len(data.get("top_sectors", []))
     unique_tas = data.get("unique_ta_count", 0)
     confirmed_incident_rate = data.get("confirmed_incident_rate")
@@ -61,13 +67,13 @@ def _build_user_message(days: int, data: dict[str, Any]) -> str:
     industry_spikes = data.get("industry_spikes", [])
     spike_lines = [
         f"  - {sp.get('entity', '?')} on {sp.get('date', '?')}: "
-        f"{sp.get('count', 0)} incidents, z-score {sp.get('z_score', 0):.1f} ({sp.get('severity', 'unknown')} severity)"
+        f"{sp.get('count', 0)} articles, z-score {sp.get('z_score', 0):.1f} ({sp.get('severity', 'unknown')} severity)"
         for sp in industry_spikes
     ]
 
     ta_velocity = data.get("ta_velocity", [])[:5]
     ta_lines = [
-        f"  - {ta.get('actor', 'Unknown')}: {ta.get('total', 0)} incidents "
+        f"  - {ta.get('actor', 'Unknown')}: {ta.get('total', 0)} articles "
         f"(velocity: {ta.get('velocity_pct', 0)}%)"
         for ta in ta_velocity
     ]
@@ -93,18 +99,22 @@ def _build_user_message(days: int, data: dict[str, Any]) -> str:
 
     ta_leaderboard = data.get("ta_leaderboard", [])[:3]
     leaderboard_lines = [
-        f"  - {ta.get('name', '?')}: {ta.get('count', 0)} incidents" for ta in ta_leaderboard
+        f"  - {ta.get('name', '?')}: {ta.get('count', 0)} articles" for ta in ta_leaderboard
     ]
 
     confirmed_line = ""
     if confirmed_incident_rate is not None:
-        confirmed_line = f"\n- AI-verified confirmed incident rate: {confirmed_incident_rate}%"
+        confirmed = round(total_articles * confirmed_incident_rate / 100)
+        confirmed_line = (
+            f"\n- Confirmed incidents: {confirmed} "
+            f"(AI-verified confirmed incident rate: {confirmed_incident_rate}%)"
+        )
 
     return f"""Generate an executive intelligence brief based on the following CTI dashboard metrics.
 
 REPORTING PERIOD
 - Period: last {days} days
-- Total incidents tracked: {total_incidents}
+- Threat news articles: {total_articles}
 - Unique sectors affected: {unique_sectors}
 - Unique threat actors observed: {unique_tas}{confirmed_line}
 
@@ -117,7 +127,7 @@ INDUSTRY SPIKE ALERTS (statistically anomalous surges)
 TOP THREAT ACTORS BY VELOCITY
 {chr(10).join(ta_lines) if ta_lines else "  - No threat actor velocity data"}
 
-TOP THREAT ACTORS BY INCIDENT COUNT
+TOP THREAT ACTORS BY ARTICLE COUNT
 {chr(10).join(leaderboard_lines) if leaderboard_lines else "  - No leaderboard data"}
 
 VULNERABILITY EXPOSURE

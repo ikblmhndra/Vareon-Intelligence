@@ -545,7 +545,7 @@ async def test_the_indonesian_prompt_asks_for_indonesian_keeps_names_and_carries
     assert "<<language>>" not in prompt  # slot terisi, tidak bocor ke model
 
 
-async def test_the_metadata_only_prompt_gets_the_same_language_block_and_keeps_its_habit(
+async def test_the_metadata_only_prompt_gets_the_same_language_block_and_invents_nothing(
     cache: Rows, llm: FakeLlm, fetch: AsyncMock
 ) -> None:
     fetch.return_value = (None, True)  # paywall -> ringkasan dari metadata
@@ -555,9 +555,10 @@ async def test_the_metadata_only_prompt_gets_the_same_language_block_and_keeps_i
     [prompt] = llm.system_prompts
     assert "Indonesian (Bahasa Indonesia)" in prompt
     assert "- vulnerability: kerentanan" in prompt
-    # Perilaku prompt metadata-only dipertahankan; `body_source` di cache yang menandainya.
-    assert "generate plausible key points" in prompt
-    assert "Do not mention that the article was paywalled" in prompt
+    # Sejak spec 2026-10-24 (6.1 butir 1) prompt metadata-only tidak lagi meminta poin
+    # "plausible"; `body_source` di cache tetap menandai ringkasan yang begitu.
+    assert "plausible" not in prompt
+    assert "Do not add facts" in prompt
     assert cache[(7, "id")].body_source == "metadata"
 
 
