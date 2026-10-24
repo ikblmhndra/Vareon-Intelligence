@@ -16,7 +16,7 @@ import datetime
 from collections.abc import Callable, Iterable, Sequence
 from typing import Any, Literal
 
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import Select, func, literal_column, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, aliased
 
@@ -29,6 +29,7 @@ from cti_core.db.models.article import (
     ArticleTTP,
     RejectedArticle,
 )
+from cti_core.enrich_replay import BACKOFF_BASE, MAX_ATTEMPTS, ReplayCandidate
 from cti_core.urlkit import url_hash as compute_url_hash
 
 _RESERVED_OVERRIDE_KEYS = frozenset({"_meta"})
@@ -603,6 +604,9 @@ class AsyncArticleRepo:
         }
 
 
+AUTO_REPLAY_KINDS = ("transient", "config", "json")
+
+
 class RejectedArticleRepo:
     """Sync -- dipakai `cti_enrich.stages.persist.persist_rejected()`
     (Celery task `enrich.article`, sama proses tulis kayak `ArticleRepo`)."""
@@ -657,6 +661,57 @@ class RejectedArticleRepo:
             existing.raw_enrichment = raw_enrichment
         self.session.flush()
         return existing
+
+    def auto_replay_candidates(self, now: datetime.datetime, limit: int) -> list[ReplayCandidate]:
+        """Artikel `[enrichment_failed]` yang boleh dicoba otomatis (spec 4.2): jenis `transient`,
+        `config`, `json`; percobaan < `MAX_ATTEMPTS`; jeda `BACKOFF_BASE * 2 ** count` sejak
+        percobaan terakhir sudah lewat; yang paling lama ditolak lebih dulu."""
+        backoff: Any = literal_column("interval '1 minute'") * (
+            func.power(2, RejectedArticle.auto_replay_count) * (BACKOFF_BASE.total_seconds() // 60)
+        )
+        rows = (
+            self.session.execute(
+                select(RejectedArticle)
+                .where(
+                    RejectedArticle.failure_kind.in_(AUTO_REPLAY_KINDS),
+                    RejectedArticle.auto_replay_count < MAX_ATTEMPTS,
+                    or_(
+                        RejectedArticle.last_auto_replay_at.is_(None),
+                        RejectedArticle.last_auto_replay_at + backoff <= now,
+                    ),
+                )
+                .order_by(RejectedArticle.rejected_at, RejectedArticle.id)
+                .limit(limit)
+            )
+            .scalars()
+            .all()
+        )
+        return [
+            ReplayCandidate(
+                id=r.id,
+                url=r.url,
+                title=r.title,
+                source=r.source,
+                scraper_id=r.scraper_id,
+                posted_on=r.posted_on,
+                auto_replay_count=r.auto_replay_count,
+                last_auto_replay_at=r.last_auto_replay_at,
+            )
+            for r in rows
+        ]
+
+    def mark_auto_replayed(self, ids: Sequence[int], now: datetime.datetime) -> None:
+        """Catat satu percobaan otomatis untuk `ids` (caller yang commit)."""
+        if not ids:
+            return
+        self.session.execute(
+            update(RejectedArticle)
+            .where(RejectedArticle.id.in_(ids))
+            .values(
+                auto_replay_count=RejectedArticle.auto_replay_count + 1,
+                last_auto_replay_at=now,
+            )
+        )
 
 
 class AsyncRejectedArticleRepo:
