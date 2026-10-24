@@ -53,7 +53,7 @@ Shipped in **0.8.6** (P2 cheap wins):
 - **IOC hygiene.** IOC values are stored canonical (refang, lowercase; URL path and query kept) and
   the web shows them defanged. CVEs moved out of IOCs into `article_cves`. The allowlist now flags
   (`auto_suppressed`, reason `allowlist:<type>:<entry> (infrastructure-abuse)`) instead of dropping,
-  with a curated seed of 127 domains (no tenant-subdomain services; a URL with a path is never
+  with a curated seed of 124 domains (no tenant-subdomain services; a URL with a path is never
   flagged). Suppressed IOCs leave STIX export, stats, campaigns, recap counts and the FP queue;
   `GET /api/iocs?include_suppressed=`.
 - **Confidence.** Default Admiralty grades per `content_kind` (`origin` default|analyst); article

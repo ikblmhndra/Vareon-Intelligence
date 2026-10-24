@@ -19,13 +19,19 @@ IOC kanonik **tidak bisa dibatalkan**, jadi backup itu satu-satunya jalan mundur
 - Semua skor artikel dihitung ulang sekali setelah start pertama (task `confidence.recompute_all`). Bila broker mati saat start,
   jalankan `POST /api/articles/confidence/recompute` manual.
 - Sebelum deploy ke prod, cek `SELECT count(*) FROM articles WHERE overrides ? 'confidence_score'`: baris di situ mempertahankan
-  skor lamanya sebagai override analis.
+  skor lamanya sebagai override analis. Semua `overrides.confidence_score` yang ada ditulis mesin oleh recompute lama (tidak ada UI
+  analis yang menulisnya), jadi bila ada barisnya: `UPDATE articles SET overrides = overrides - 'confidence_score' WHERE overrides ?
+  'confidence_score'`, lalu `POST /api/articles/confidence/recompute`.
+- Sesudah deploy, cek:
+  - baris log `confidence_recompute_all` muncul; bila tidak, jalankan `POST /api/articles/confidence/recompute` manual (worker lama
+    bisa membuang task itu selama `up -d`);
+  - `SELECT count(*) FROM iocs WHERE type='cve'` = 0; bila tidak, jalankan ulang `DELETE FROM iocs WHERE type = 'cve'`.
 
 ### Ditambah
 - `ScraperMeta.content_kind` dan `default_relevance`: sumber terstruktur (`cisa_kev`, `exploitdb`, `cis`) melewati classify LLM dan
   ekstraksi TTP.
 - Tabel `article_cves` (artikel ke CVE), menggantikan IOC bertipe CVE.
-- Seed allowlist 127 domain infrastruktur yang sering disalahgunakan (tanpa layanan subdomain-per-tenant; URL dengan path tidak
+- Seed allowlist 124 domain infrastruktur yang sering disalahgunakan (tanpa layanan subdomain-per-tenant; URL dengan path tidak
   pernah ditandai).
 - Grade Admiralty bawaan per `content_kind` (`origin` = `default` atau `analyst`); chip skor di UI, misalnya "B2 · 72".
 - Parameter `GET /api/iocs?include_suppressed=` dan filter "suppressed" di tabel IOC.

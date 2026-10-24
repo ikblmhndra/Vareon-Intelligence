@@ -13,11 +13,10 @@ Orkestrasi SEKUENSIAL (bukan `asyncio.gather` per-cluster kayak legacy)
 -- satu `AsyncSession` gak aman dipakai concurrent, constraint yang
 udah didokumentasikan berkali-kali sesi ini.
 
-`iocs`/`cve_ids` per campaign: SATU sumber (`AsyncIOCRepo.
-list_by_article_ids`, IOC apa pun termasuk `type="cve"`) -- gantiin DUA
-sumber legacy (koleksi `iocs` + array `article.cves` terpisah, keduanya
-hasil regex CVE yang sama persis dari `iocExtractor.py`). Lihat
-docstring method itu."""
+`iocs` per campaign dari `AsyncIOCRepo.list_by_article_ids` (IOC yang tersuppress allowlist
+tidak ikut), `cve_ids` dari tabel `article_cves` (`AsyncArticleCveRepo.cve_ids_by_article`):
+sejak 0.8.6 CVE bukan lagi IOC bertipe `cve`. Legacy punya dua sumber CVE (koleksi `iocs` +
+array `article.cves`, keduanya hasil regex yang sama dari `iocExtractor.py`)."""
 
 from __future__ import annotations
 

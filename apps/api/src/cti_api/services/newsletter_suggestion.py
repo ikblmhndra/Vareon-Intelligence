@@ -19,11 +19,11 @@ Tidak ada fetch halaman ataupun penulisan selain baris saran itu; ranking-nya se
 Fungsi di sini tidak commit (session-first), pemanggil yang commit. Dipanggil
 `POST /suggestion/rebuild` dan task terjadwal bulanan (`newsletter_schedule.prepare_monthly`).
 
-**Dari mana CVE sebuah artikel diketahui**: tidak ada tabel artikel-CVE, tapi `persist` menulis
-setiap CVE yang ia temukan di isi artikel sebagai IOC bertipe `cve` yang tersambung ke artikelnya
-(`ioc_sources.article_id`), sama dengan yang dipakai `campaign.get_recent_campaigns`. Itu sumber
-utama (mencakup CVE yang hanya ada di body); judul dipindai lagi dengan regex CVE newsletter
-sebagai jaring pengaman untuk artikel yang IOC-nya belum ada. Status KEV/PoC hanya diketahui
+**Dari mana CVE sebuah artikel diketahui**: tabel `article_cves` (sejak 0.8.6; `persist` menulis
+setiap CVE yang ia temukan di isi artikel ke sana, bukan lagi sebagai IOC bertipe `cve`), sama
+dengan yang dipakai `campaign.get_recent_campaigns`. Itu sumber utama (mencakup CVE yang hanya
+ada di body); judul dipindai lagi dengan regex CVE newsletter sebagai jaring pengaman untuk
+artikel yang barisnya belum ada. Status KEV/PoC hanya diketahui
 untuk CVE yang di-track (tidak ada tabel KEV sendiri); CVE di luar tracker tidak memberi sinyal.
 """
 
@@ -133,9 +133,9 @@ async def load_candidates(
         return []
     article_ids = [a.id for a in articles]
 
-    iocs = await AsyncArticleCveRepo(session).cve_ids_by_article(article_ids)
+    cve_ids = await AsyncArticleCveRepo(session).cve_ids_by_article(article_ids)
     cves_by_article = {
-        a.id: iocs.get(a.id, set()) | set(newsletter_service._extract_cve_ids(a.title, None))
+        a.id: cve_ids.get(a.id, set()) | set(newsletter_service._extract_cve_ids(a.title, None))
         for a in articles
     }
     flags = await AsyncCveTrackerRepo(session).exploit_flags(
