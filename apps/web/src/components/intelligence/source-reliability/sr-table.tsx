@@ -192,7 +192,14 @@ export function SrTable() {
               )}
               {listQuery.data.entries.map((e) => (
                 <TableRow key={e.id}>
-                  <TableCell className="text-xs">{e.source_name}</TableCell>
+                  <TableCell className="text-xs">
+                    {e.source_name}
+                    {e.origin === "default" && (
+                      <Badge variant="outline" className="ml-2 text-xs text-muted-foreground" title="Default grade for this source kind; not set by an analyst">
+                        default
+                      </Badge>
+                    )}
+                  </TableCell>
                   <TableCell className="text-xs text-muted-foreground">{e.analyst_name}</TableCell>
                   <TableCell>
                     <Badge variant="outline" className={cn("font-mono text-xs", GRADE_BADGE_CLASS[e.reliability_grade])} title={e.admiralty_code}>

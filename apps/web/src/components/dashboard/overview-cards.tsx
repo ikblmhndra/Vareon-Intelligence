@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api/client";
 import type { CampaignsResponse } from "@/lib/api/loose-types";
 import { cn } from "@/lib/utils";
+import { GradeChip } from "@/components/newsroom/grade-chip";
 import { useArticleMatchers } from "@/components/newsroom/rubric-queries";
 import { MapCard } from "./stat-box";
 import { TimelineChart } from "./charts";
@@ -124,7 +125,7 @@ export function MustReadCard({ days, className }: { days: number | null; classNa
                     {a.confirmed_incident && <Badge variant="destructive">Insiden</Badge>}
                     {m.watchlist && <Badge variant="outline">Watchlist</Badge>}
                     {m.techstack && <Badge variant="outline">Tech stack</Badge>}
-                    {a.confidence_score != null && <span>Confidence {a.confidence_score}</span>}
+                    <GradeChip a={a} />
                   </div>
                 )}
               </li>

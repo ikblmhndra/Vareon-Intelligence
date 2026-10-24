@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { cvssColorClass } from "@/lib/exec/format";
+import { defang } from "@/lib/intelligence/defang";
 import type { ExecDashboardV2, IocFeedbackResponse } from "@/lib/api/loose-types";
 
 function EmptyNote() {
@@ -107,7 +108,7 @@ export function FpQueue({ d }: { d: ExecDashboardV2 }) {
             const confColor = conf >= 70 ? "text-primary" : conf >= 50 ? "text-foreground" : "text-destructive";
             return (
               <TableRow key={ioc.id}>
-                <TableCell className="font-code text-xs text-primary">{ioc.value || "—"}</TableCell>
+                <TableCell className="font-code text-xs text-primary">{ioc.value ? defang(ioc.type, ioc.value) : "—"}</TableCell>
                 <TableCell className="font-mono text-xs text-muted-foreground">{ioc.type || "—"}</TableCell>
                 <TableCell className="font-mono text-xs text-muted-foreground">{ioc.last_seen || "—"}</TableCell>
                 <TableCell className={cn("font-mono text-xs", confColor)}>{conf}%</TableCell>
