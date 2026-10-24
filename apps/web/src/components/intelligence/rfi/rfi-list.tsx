@@ -11,6 +11,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { cn } from "@/lib/utils";
 import type { components } from "@/lib/api/schema";
 import { RfiFormDialog } from "@/components/intelligence/rfi/rfi-form-dialog";
+import { useCan } from "@/lib/auth/permissions";
 
 type RFIOut = components["schemas"]["RFIOut"];
 
@@ -31,6 +32,7 @@ const STATUS_LABEL: Record<string, string> = { open: "OPEN", in_progress: "IN PR
 /** Port kartu RFI + CRUD + filter status (`pir.js:289-453`,
  * `loadRfis`/`rfiSetFilter`/`openRfiModal`/`deleteRfi`). */
 export function RfiList() {
+  const can = useCan();
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState("");
   const [formOpen, setFormOpen] = useState(false);
@@ -81,15 +83,17 @@ export function RfiList() {
             </Button>
           ))}
         </div>
-        <Button
-          size="sm"
-          onClick={() => {
-            setAddKey((k) => k + 1);
-            setFormOpen(true);
-          }}
-        >
-          + New RFI
-        </Button>
+        {can("manage_rfi") && (
+          <Button
+            size="sm"
+            onClick={() => {
+              setAddKey((k) => k + 1);
+              setFormOpen(true);
+            }}
+          >
+            + New RFI
+          </Button>
+        )}
       </div>
 
       <p className="mb-2 font-mono text-xs text-muted-foreground">{query.data?.total ?? 0} RFIs</p>
@@ -123,14 +127,16 @@ export function RfiList() {
                 )}
               </div>
             </div>
-            <div className="flex shrink-0 flex-col gap-1">
-              <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={() => setEditTarget(r)}>
-                Edit
-              </Button>
-              <Button size="sm" variant="destructive" className="h-6 px-2 text-xs" onClick={() => setRemoveTarget(r)}>
-                Del
-              </Button>
-            </div>
+            {can("manage_rfi") && (
+              <div className="flex shrink-0 flex-col gap-1">
+                <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={() => setEditTarget(r)}>
+                  Edit
+                </Button>
+                <Button size="sm" variant="destructive" className="h-6 px-2 text-xs" onClick={() => setRemoveTarget(r)}>
+                  Del
+                </Button>
+              </div>
+            )}
           </div>
         ))}
       </div>

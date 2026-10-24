@@ -97,3 +97,15 @@ async def test_pir_of_another_client_stays_hidden(
 
     r = await api_client.get(f"/api/mindmap/pir/{theirs}", headers=analyst)
     assert r.status_code == 404
+
+
+async def test_me_lists_the_role_permissions(
+    api_client: AsyncClient, auth_header: Callable[..., dict[str, str]]
+) -> None:
+    """Web memakai daftar ini untuk menyembunyikan tombol yang akan dibalas 403."""
+    analyst = (await api_client.get("/api/auth/me", headers=auth_header(role="analyst"))).json()
+    assert "manage_cve" in analyst["permissions"]
+    assert "manage_newsletter" not in analyst["permissions"]
+
+    superadmin = (await api_client.get("/api/auth/me", headers=auth_header())).json()
+    assert {"manage_clients", "manage_roles", "manage_newsletter"} <= set(superadmin["permissions"])

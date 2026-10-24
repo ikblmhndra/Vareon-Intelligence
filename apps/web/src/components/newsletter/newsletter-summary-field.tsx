@@ -18,6 +18,7 @@ import {
   type SummaryStatus,
 } from "@/lib/newsletter/summary";
 import { cn } from "@/lib/utils";
+import { useCan } from "@/lib/auth/permissions";
 
 interface Props {
   /** Isi field = `custom_intro` (HTML), yang dirender template sebagai blok Executive Summary. */
@@ -104,6 +105,7 @@ function statusNotice(status: SummaryStatus, rebuild: ReactNode): ReactNode {
  * saran tersimpan (yang tidak berubah sampai di-rebuild).
  */
 export function NewsletterSummaryField({ value, onChange, suggestion, suggestedIntro, rebuilding, onUseSuggested, onRebuild }: Props) {
+  const can = useCan();
   const ref = useRef<HTMLTextAreaElement>(null);
   const meta = (suggestion?.summary_meta ?? {}) as NewsletterSummaryMeta;
   const status = suggestion ? summaryStatus(suggestion.summary_text, meta) : null;
@@ -115,12 +117,13 @@ export function NewsletterSummaryField({ value, onChange, suggestion, suggestedI
   const singleGap = gaps.length === 1 && !gaps[0].includes(" - ");
   const canUseSuggested = suggestedIntro !== "" && value.trim() !== suggestedIntro;
 
-  const rebuildButton = (
+  // Rebuild memanggil model lagi: butuh `manage_newsletter` (0.8.4).
+  const rebuildButton = can("manage_newsletter") ? (
     <Button type="button" variant="outline" size="xs" onClick={onRebuild} disabled={rebuilding}>
       <RefreshCwIcon aria-hidden className={rebuilding ? "animate-spin" : undefined} />
       {rebuilding ? "Rebuilding…" : "Rebuild"}
     </Button>
-  );
+  ) : null;
 
   /** Pilih penanda berikutnya di textarea supaya analis tidak mencarinya di teks panjang. */
   function jumpToMarker() {

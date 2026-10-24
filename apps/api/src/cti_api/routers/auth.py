@@ -23,6 +23,7 @@ from cti_api.deps import (
     AuthedUser,
     get_db,
     get_redis,
+    permissions_for,
     request_ip,
     require_auth,
     require_permission,
@@ -145,6 +146,7 @@ async def login(
         client_ids=client_ids,
         client_countries=client_countries,
         force_pw_change=user.force_pw_change,
+        permissions=await permissions_for(session, user.role_name),
     )
 
 
@@ -241,7 +243,12 @@ async def me(
         for cid, doc in zip(client_ids, client_docs, strict=True)
     }
     first_countries = clients_map.get(client_ids[0], []) if client_ids else []
-    return {**user, "client_countries": first_countries, "clients_map": clients_map}
+    return {
+        **user,
+        "client_countries": first_countries,
+        "clients_map": clients_map,
+        "permissions": await permissions_for(session, user["role"]),
+    }
 
 
 @router.get("/users")

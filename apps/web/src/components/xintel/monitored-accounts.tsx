@@ -18,6 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { useCan } from "@/lib/auth/permissions";
 
 const QUERY_KEY = ["xintel", "accounts"] as const;
 
@@ -37,6 +38,7 @@ function useAccounts() {
  * (port apa adanya, sama asimetri kayak kode lama), backend yang nolak
  * kalau bukan admin. */
 export function MonitoredAccounts() {
+  const can = useCan();
   const queryClient = useQueryClient();
   const accounts = useAccounts();
   const [username, setUsername] = useState("");
@@ -86,6 +88,7 @@ export function MonitoredAccounts() {
 
   return (
     <div>
+      {can("manage_tweets") && (
       <div className="mb-4 flex flex-wrap items-end gap-2 border-b border-border pb-3">
         <div className="flex flex-col gap-1">
           <Label className="text-sm font-medium text-muted-foreground">Handle</Label>
@@ -125,6 +128,7 @@ export function MonitoredAccounts() {
           <span className="text-xs text-destructive">{(addMutation.error as Error).message}</span>
         )}
       </div>
+      )}
 
       {accounts.isPending && (
         <div className="space-y-1.5">
@@ -161,6 +165,7 @@ export function MonitoredAccounts() {
                   <TableCell>
                     <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
                       <Checkbox
+                        disabled={!can("manage_tweets")}
                         checked={a.active}
                         onCheckedChange={(checked) =>
                           toggleMutation.mutate({ target: a.username, active: checked === true })
@@ -170,9 +175,11 @@ export function MonitoredAccounts() {
                     </label>
                   </TableCell>
                   <TableCell>
-                    <Button size="sm" variant="destructive" onClick={() => setRemoveTarget(a.username)}>
-                      Remove
-                    </Button>
+                    {can("manage_tweets") && (
+                      <Button size="sm" variant="destructive" onClick={() => setRemoveTarget(a.username)}>
+                        Remove
+                      </Button>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

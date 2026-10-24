@@ -6348,6 +6348,11 @@ export interface components {
              * @default false
              */
             force_pw_change: boolean;
+            /**
+             * Permissions
+             * @default []
+             */
+            permissions: string[];
             /** Role */
             role: string;
             /**

@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import type { components } from "@/lib/api/schema";
 import { PirFormDialog } from "@/components/intelligence/pir/pir-form-dialog";
 import { PirArticlesDialog } from "@/components/intelligence/pir/pir-articles-dialog";
+import { useCan } from "@/lib/auth/permissions";
 
 type PIROut = components["schemas"]["PIROut"];
 
@@ -25,6 +26,7 @@ const PRIORITY_CLASS: Record<string, string> = {
 /** Port kartu PIR + CRUD (`pir.js:124-287`, `loadPirs`/`openPirModal`/
  * `deletePir`). */
 export function PirList() {
+  const can = useCan();
   const queryClient = useQueryClient();
   const [formOpen, setFormOpen] = useState(false);
   // Naik tiap "+ New" -- form add remount fresh, gak bawa isian
@@ -88,15 +90,17 @@ export function PirList() {
     <div>
       <div className="mb-4 flex items-center justify-between border-b border-border pb-3">
         <p className="font-mono text-xs text-muted-foreground">{pirs.length} PIR{pirs.length !== 1 ? "s" : ""} defined</p>
-        <Button
-          size="sm"
-          onClick={() => {
-            setAddKey((k) => k + 1);
-            setFormOpen(true);
-          }}
-        >
-          + New PIR
-        </Button>
+        {can("manage_pir") && (
+          <Button
+            size="sm"
+            onClick={() => {
+              setAddKey((k) => k + 1);
+              setFormOpen(true);
+            }}
+          >
+            + New PIR
+          </Button>
+        )}
       </div>
 
       {query.isPending && <p className="py-8 text-center text-xs text-muted-foreground">Loading…</p>}
@@ -167,15 +171,21 @@ export function PirList() {
                     View {p.coverage_count.toLocaleString()}
                   </Button>
                 )}
-                <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={exporting === p.id} onClick={() => void exportDocx(p)}>
-                  {exporting === p.id ? "…" : "Export"}
-                </Button>
-                <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={() => setEditTarget(p)}>
-                  Edit
-                </Button>
-                <Button size="sm" variant="destructive" className="h-6 px-2 text-xs" onClick={() => setRemoveTarget(p)}>
-                  Del
-                </Button>
+                {can("export_data") && (
+                  <Button size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={exporting === p.id} onClick={() => void exportDocx(p)}>
+                    {exporting === p.id ? "…" : "Export"}
+                  </Button>
+                )}
+                {can("manage_pir") && (
+                  <>
+                    <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={() => setEditTarget(p)}>
+                      Edit
+                    </Button>
+                    <Button size="sm" variant="destructive" className="h-6 px-2 text-xs" onClick={() => setRemoveTarget(p)}>
+                      Del
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
           );

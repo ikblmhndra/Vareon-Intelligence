@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { useAuth } from "@/components/providers/auth-provider";
 import { SimplePager } from "@/components/pager";
 import type { components } from "@/lib/api/schema";
+import { useCan } from "@/lib/auth/permissions";
 
 type PIROut = components["schemas"]["PIROut"];
 type PIRArticleOut = components["schemas"]["PIRArticleOut"];
@@ -29,6 +30,7 @@ interface PirArticlesDialogProps {
 /** Port overlay artikel yang match PIR + note analis (`pir.js:6-105`,
  * `viewPirArticles`/`_fetchPirArticles`/`openPirNote`/`savePirNote`). */
 export function PirArticlesDialog({ pir, onClose }: PirArticlesDialogProps) {
+  const can = useCan();
   const [page, setPage] = useState(1);
   const [noteArticle, setNoteArticle] = useState<PIRArticleOut | null>(null);
 
@@ -85,9 +87,11 @@ export function PirArticlesDialog({ pir, onClose }: PirArticlesDialogProps) {
                         <CheckIcon aria-hidden /> NOTED
                       </Badge>
                     )}
-                    <Button size="sm" variant="outline" className="h-6 px-1.5 text-xs" onClick={() => setNoteArticle(a)}>
-                      <StickyNoteIcon aria-hidden /> Note
-                    </Button>
+                    {can("manage_pir") && (
+                      <Button size="sm" variant="outline" className="h-6 px-1.5 text-xs" onClick={() => setNoteArticle(a)}>
+                        <StickyNoteIcon aria-hidden /> Note
+                      </Button>
+                    )}
                   </div>
                 </div>
                 <div className="mt-1 font-mono text-xs text-muted-foreground">

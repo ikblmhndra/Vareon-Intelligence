@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { MindmapWidget } from "@/components/mindmap/mindmap-widget";
 import type { NewsletterSections } from "@/lib/api/loose-types";
 import { formatPeriodRange } from "@/lib/newsletter/format";
+import { useCan } from "@/lib/auth/permissions";
 
 interface Props {
   refreshKey: number;
@@ -26,6 +27,7 @@ interface Props {
  * "newsletter"`) -- GANTI modal bespoke `_nlShowMindmapModal()`/
  * `_nlMmEdit()` legacy, konsisten sama pola inline-toggle G6/G7. */
 export function NewsletterHistoryPanel({ refreshKey, onPreview, onResend, resendingId }: Props) {
+  const can = useCan();
   const [open, setOpen] = useState(false);
 
   const query = useQuery({
@@ -96,6 +98,7 @@ export function NewsletterHistoryPanel({ refreshKey, onPreview, onResend, resend
                     <Button variant="outline" size="sm" className="h-6 flex-1 px-2 text-xs" onClick={() => onPreview(n.id, n.label)}>
                       Preview
                     </Button>
+                    {can("manage_newsletter") && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -105,6 +108,7 @@ export function NewsletterHistoryPanel({ refreshKey, onPreview, onResend, resend
                     >
                       {resendingId === n.id ? "…" : "Resend"}
                     </Button>
+                    )}
                   </div>
                   <MindmapWidget featureType="newsletter" docId={String(n.id)} title={`Newsletter — ${n.label}`} />
                 </div>

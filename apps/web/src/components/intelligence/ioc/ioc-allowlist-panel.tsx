@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { IocAllowlistResponse } from "@/lib/api/loose-types";
+import { useCan } from "@/lib/auth/permissions";
 
 const TYPE_LABEL: Record<string, string> = { url_domain: "URL Domain", email_domain: "Email Domain", ip: "IP Address" };
 const TYPES = Object.keys(TYPE_LABEL);
@@ -20,6 +21,7 @@ const TYPES = Object.keys(TYPE_LABEL);
  * yang dikecualiin dari deteksi IOC. Add sekalian ngehapus IOC existing
  * yang match (`deleted_iocs` di respons, port apa adanya). */
 export function IocAllowlistPanel() {
+  const can = useCan();
   const queryClient = useQueryClient();
   const [type, setType] = useState<string>(TYPES[0]);
   const [value, setValue] = useState("");
@@ -68,6 +70,7 @@ export function IocAllowlistPanel() {
   return (
     <div>
       <h2 className="mb-3 text-sm font-semibold text-muted-foreground">IOC Allowlist</h2>
+      {can("manage_ioc") && (
       <div className="mb-3 flex flex-wrap items-end gap-2">
         <div className="flex flex-col gap-1">
           <Label className="text-sm font-medium text-muted-foreground">Type</Label>
@@ -98,6 +101,7 @@ export function IocAllowlistPanel() {
           + Add
         </Button>
       </div>
+      )}
 
       {query.isPending && <p className="py-4 text-center text-xs text-muted-foreground">Loading…</p>}
       {query.isError && <p className="py-4 text-center text-xs text-destructive">Failed to load allowlist.</p>}
@@ -131,9 +135,11 @@ export function IocAllowlistPanel() {
                 <TableCell className="font-mono text-xs text-muted-foreground">{e.added_by || "—"}</TableCell>
                 <TableCell className="font-mono text-xs text-muted-foreground">{e.added_at.slice(0, 10)}</TableCell>
                 <TableCell className="text-center">
-                  <button type="button" aria-label={`Remove ${e.value} from allowlist`} onClick={() => void remove(e.id)} className="inline-flex min-h-6 min-w-6 items-center justify-center text-xs text-muted-foreground hover:text-destructive">
-                    <XIcon aria-hidden />
-                  </button>
+                  {can("manage_ioc") && (
+                    <button type="button" aria-label={`Remove ${e.value} from allowlist`} onClick={() => void remove(e.id)} className="inline-flex min-h-6 min-w-6 items-center justify-center text-xs text-muted-foreground hover:text-destructive">
+                      <XIcon aria-hidden />
+                    </button>
+                  )}
                 </TableCell>
               </TableRow>
             ))}

@@ -3,7 +3,6 @@
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
-import { useAuth } from "@/components/providers/auth-provider";
 import { TabPills, type TabPillItem } from "@/components/ui/tab-pills";
 import { defaultNewsroomFilters, periodStart, type NewsroomFilters } from "@/lib/newsroom/filters";
 import type { components } from "@/lib/api/schema";
@@ -15,6 +14,7 @@ import { Masthead } from "@/components/newsroom/masthead";
 import { Rubric } from "@/components/newsroom/rubric";
 import type { RubricKey } from "@/components/newsroom/rubric-queries";
 import { TopicsStrip } from "@/components/newsroom/topics-strip";
+import { useCan } from "@/lib/auth/permissions";
 
 type Article = components["schemas"]["ArticleOut"];
 type SheetSource = { rubric: RubricKey } | { actor: string } | { ttp: string };
@@ -51,8 +51,9 @@ const URL_PERIODS = new Set(["1", "7", "30"]);
  * query di-refetch lewat react-query.
  */
 function NewsroomContent() {
-  const { user } = useAuth();
-  const isAdmin = user?.role === "admin" || user?.role === "superadmin";
+  const can = useCan();
+  // Tab Filtered Articles hanya berguna bagi yang boleh Restore atau Replay.
+  const isAdmin = can("manage_sources") || can("manage_scraper");
   const searchParams = useSearchParams();
 
   const [view, setView] = useState<"cyber" | "filtered">("cyber");

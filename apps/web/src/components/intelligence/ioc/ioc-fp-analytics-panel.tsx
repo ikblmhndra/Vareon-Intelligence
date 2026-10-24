@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { IocTypeBadge } from "@/components/intelligence/ioc/ioc-badges";
 import type { IocFpAnalytics, IocFpBucket } from "@/lib/api/loose-types";
+import { useCan } from "@/lib/auth/permissions";
 
 function FpBar({ rate }: { rate: number }) {
   const pct = Math.round(rate * 100);
@@ -29,6 +30,7 @@ function FpBar({ rate }: { rate: number }) {
  * false-positive per sumber/tipe + saran allowlist otomatis (>=3 FP,
  * 0 TP pada IOC yang sama). */
 export function IocFpAnalyticsPanel() {
+  const can = useCan();
   const queryClient = useQueryClient();
   const [applying, setApplying] = useState(false);
   const [confirmApply, setConfirmApply] = useState(false);
@@ -88,7 +90,7 @@ export function IocFpAnalyticsPanel() {
             <span className="text-sm font-semibold text-muted-foreground">
               Suggested Allowlist Entries ({suggestions.length})
             </span>
-            {suggestions.length > 0 && (
+            {suggestions.length > 0 && can("manage_ioc") && (
               <Button size="sm" variant="outline" disabled={applying} className="h-6 border-destructive/40 px-2 text-xs text-destructive" onClick={() => setConfirmApply(true)}>
                 Apply All to Allowlist
               </Button>

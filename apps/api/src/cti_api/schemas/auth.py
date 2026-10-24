@@ -18,6 +18,7 @@ class TokenResponse(BaseModel):
     client_ids: list[str] = ["default"]
     client_countries: list[str] = []
     force_pw_change: bool = False
+    permissions: list[str] = []
 
 
 class UserCreate(BaseModel):

@@ -52,6 +52,7 @@ import { NewsletterSuggestionBar, type SuggestionPhase } from "@/components/news
 import { NewsletterTemplatePanel } from "@/components/newsletter/newsletter-template-panel";
 import { NewsletterPreviewDialog } from "@/components/newsletter/newsletter-preview-dialog";
 import { NewsletterHistoryPanel } from "@/components/newsletter/newsletter-history-panel";
+import { useCan } from "@/lib/auth/permissions";
 
 type Article = components["schemas"]["ArticleOut"];
 type Suggestion = components["schemas"]["NewsletterSuggestionResponse"];
@@ -107,6 +108,7 @@ function describeMerge(r: MergeResult, mode: "replace" | "merge"): string {
  * hidup di state browser ini, bukan di saran tersimpan. Draft dibuat dari dialog preview, bukan
  * langsung, supaya peringatan ukuran dan penanda CVE terlihat sebelum draft ada. */
 export function NewsletterView() {
+  const can = useCan();
   const [state, setState] = useState<ComposerState>(emptyComposer);
   const [template, setTemplate] = useState<TemplateState>(DEFAULT_TEMPLATE_STATE);
   const [queue, setQueue] = useState<QueueArticle[]>(() => getQueue());
@@ -512,9 +514,11 @@ export function NewsletterView() {
         <div className="order-1 min-w-0 rounded-2xl surface-raised p-5 xl:order-2">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
             <div className="text-base font-semibold text-foreground">Newsletter Composer</div>
-            <Button size="sm" onClick={handlePreview}>
-              Preview &amp; create draft
-            </Button>
+            {can("manage_newsletter") && (
+              <Button size="sm" onClick={handlePreview}>
+                Preview &amp; create draft
+              </Button>
+            )}
           </div>
 
           <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
