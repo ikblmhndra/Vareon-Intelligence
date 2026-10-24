@@ -27,6 +27,14 @@ def _suffix_hit(host: str, entries: set[str]) -> str | None:
     return None
 
 
+def _is_bare_host_url(url: str) -> bool:
+    rest = url.split("://", 1)[-1]
+    _, sep, tail = rest.partition("/")
+    if not sep:
+        return "?" not in rest and "#" not in rest
+    return tail == ""
+
+
 def allowlist_match(
     ioc_type: str, canonical_value: str, allowlist: dict[str, set[str]]
 ) -> str | None:
@@ -36,6 +44,10 @@ def allowlist_match(
         entry = _suffix_hit(canonical_value, url_domains)
         kind = "url_domain"
     elif ioc_type == "url":
+        # URL dengan path/query bermakna adalah indikator payload (`gofile.io/d/abc123`): tidak
+        # pernah ditandai. Hanya URL yang berhenti di host (path kosong atau "/", tanpa query).
+        if not _is_bare_host_url(canonical_value):
+            return None
         entry = _suffix_hit(_url_domain(canonical_value), url_domains)
         kind = "url_domain"
     elif ioc_type == "email":

@@ -98,9 +98,14 @@ async def test_newsletter_writer_stores_canonical(monkeypatch: pytest.MonkeyPatc
     )
     art: dict[str, Any] = {
         "id": 1,
-        "iocs": {"domains": ["Evil[.]com"], "urls_with_path": ["hxxp://a[.]b/x"]},
+        "iocs": {
+            "domains": ["Evil[.]com", "Sub[.]A[.]b"],
+            "urls_with_path": ["hxxp://a[.]b/x"],
+        },
     }
     ctx = {"highlights": [art], "apac": [], "global_news": [], "indonesia": []}
     await newsletter.write_article_findings(MagicMock(), ctx)
     got = [(c.kwargs["type"], c.kwargs["value"]) for c in repo.upsert.call_args_list]
-    assert got == [("domain", "evil.com"), ("url", "http://a.b/x")]
+    assert got == [("domain", "evil.com"), ("domain", "sub.a.b"), ("url", "http://a.b/x")]
+    reasons = [c.kwargs["suppression_reason"] for c in repo.upsert.call_args_list]
+    assert reasons == [None, "allowlist:url_domain:a.b (infrastructure-abuse)", None]

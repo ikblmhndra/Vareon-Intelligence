@@ -20,8 +20,22 @@ def test_domain_lookalikes_do_not_match() -> None:
 
 
 def test_url_host_suffix_match() -> None:
-    assert allowlist_match("url", "https://cdn.gofile.io/x", AL) == REASON
+    assert allowlist_match("url", "https://cdn.gofile.io", AL) == REASON
+    assert allowlist_match("url", "https://cdn.gofile.io/", AL) == REASON
     assert allowlist_match("url", "https://evil.net/gofile.io", AL) is None
+
+
+def test_url_with_path_or_query_is_never_flagged() -> None:
+    assert allowlist_match("url", "https://gofile.io/d/abc123", AL) is None
+    assert allowlist_match("url", "https://gofile.io/?id=1", AL) is None
+    assert allowlist_match("url", "https://gofile.io?id=1", AL) is None
+    assert allowlist_match("url", "https://gofile.io/#frag", AL) is None
+
+
+def test_seed_has_no_tenant_namespaces() -> None:
+    seed = set(load_seed())
+    for bad in ("workers.dev", "trycloudflare.com", "amazonaws.com", "github.io", "anonfiles.com"):
+        assert bad not in seed
 
 
 def test_email_domain_suffix_match() -> None:
