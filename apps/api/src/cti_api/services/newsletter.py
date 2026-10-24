@@ -46,6 +46,7 @@ from cti_core.db.repositories.cve import AsyncCveTrackerRepo
 from cti_core.db.repositories.ioc import AsyncIOCRepo
 from cti_core.db.repositories.ioc_reference import AsyncIocAllowlistRepo
 from cti_core.db.repositories.newsletter import AsyncNewsletterRepo
+from cti_core.ioc.canonical import canonical
 from cti_core.ioc.extractor import extract_iocs
 from cti_core.llm.client import get_llm_client, parse_json_response, usage_from
 from cti_core.llm.usage import prompt_version
@@ -444,7 +445,7 @@ _IOC_TYPE_MAP = {
     "ips": "ip",
     "domains": "domain",
     "urls": "url",
-    "urls_with_path": "url_with_path",
+    "urls_with_path": "url",
     "emails": "email",
     "sha256": "sha256",
     "sha1": "sha1",
@@ -482,9 +483,10 @@ async def write_article_findings(session: AsyncSession, context: dict[str, Any])
             )
         for field_key, values in article.get("iocs", {}).items():
             for value in values:
+                ioc_type = _IOC_TYPE_MAP.get(field_key, field_key)
                 await ioc_repo.upsert(
-                    type=_IOC_TYPE_MAP.get(field_key, field_key),
-                    value=value,
+                    type=ioc_type,
+                    value=canonical(ioc_type, value),
                     source_url=article.get("url", ""),
                     source_name=article.get("source", ""),
                     article_id=article_id,

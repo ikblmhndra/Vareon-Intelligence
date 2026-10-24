@@ -295,14 +295,16 @@ def _ioc_feed_sink(item: IocFeedItem, meta: ScraperMeta, session: Session) -> No
     from cti_alerts.telegram import send_alert
     from cti_core.db.models.ioc_reference import ThreatFeedEntry
     from cti_core.db.repositories.ioc import IOCRepo
+    from cti_core.ioc.canonical import canonical
     from sqlalchemy import select
 
     ioc_repo = IOCRepo(session)
     new_count = 0
     for entry in item.iocs:
+        value = canonical(entry["type"], entry["value"])
         ioc = ioc_repo.upsert(
             type=entry["type"],
-            value=entry["value"],
+            value=value,
             source_url=item.commit_url,
             source_name="deepdarkCTI",
             context=entry["category"],
@@ -315,13 +317,11 @@ def _ioc_feed_sink(item: IocFeedItem, meta: ScraperMeta, session: Session) -> No
                 select(ThreatFeedEntry).where(
                     ThreatFeedEntry.feed == "deepdarkcti_c2",
                     ThreatFeedEntry.type == entry["type"],
-                    ThreatFeedEntry.value == entry["value"],
+                    ThreatFeedEntry.value == value,
                 )
             ).scalar_one_or_none()
             if exists is None:
-                session.add(
-                    ThreatFeedEntry(feed="deepdarkcti_c2", type=entry["type"], value=entry["value"])
-                )
+                session.add(ThreatFeedEntry(feed="deepdarkcti_c2", type=entry["type"], value=value))
                 session.flush()
 
     # IOC udah kesimpen di atas -- gagal alert gak boleh gagalin run.

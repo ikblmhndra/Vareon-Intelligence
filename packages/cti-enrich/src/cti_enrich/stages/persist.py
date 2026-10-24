@@ -35,6 +35,7 @@ from typing import TYPE_CHECKING
 from cti_core.db.models.article import RejectedArticle
 from cti_core.db.repositories.article import ArticleRepo, RejectedArticleRepo
 from cti_core.db.repositories.ioc import IOCRepo
+from cti_core.ioc.canonical import canonical
 from sqlalchemy import delete
 
 from cti_enrich.countries import country_code
@@ -152,7 +153,7 @@ def persist(
         for value in values:
             ioc_repo.upsert(
                 type=ioc_type,
-                value=value,
+                value=canonical(ioc_type, value),
                 source_url=url,
                 source_name=source,
                 article_id=article.id,
