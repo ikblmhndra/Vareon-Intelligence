@@ -211,14 +211,16 @@ incident flag, dedup, scoring, routing, PIR matching) is deterministic.
 Each step is one PR, merged to `Dev` first. Steps 1-3 change nothing the user sees except
 reliability; steps 4-7 move pages one at a time.
 
-1. **Foundation**: LLM gateway + `llm_calls`, persist-first pipeline with `stage_status`,
-   permission enforcement + 403 on bad client header + PIR leak fix, v2 conventions in the API.
+1. **Foundation**: LLM gateway + `llm_calls`, model health probe, self-healing replay of
+   articles parked as `[enrichment_failed]`, permission enforcement + 403 on bad client header +
+   PIR leak fix, v2 conventions in the API.
 2. **Sources and indicators**: `sources` table (reliability as FK), `content_kind`, refang
    dedup, CVE out of IOCs, allowlist seed, indicator state/expiry.
 3. **Extractors and claims**: plugin framework, dictionary/ATT&CK/industry extractors, claims
    with evidence, TTP evidence check; shadow-compare against current LLM output.
-4. **Stories and triage**: story resolver, `/api/v2/stories`, triage queue page, story page;
-   Newsroom becomes a view of it.
+4. **Stories and triage**: `documents` table with persist-first `stage_status` (an LLM outage
+   leaves documents pending instead of parked), story resolver, `/api/v2/stories`, triage queue
+   page, story page; Newsroom becomes a view of it.
 5. **Entities**: unify actors/malware/campaign into `entities` + relationships, entity pages,
    retire TA Room/ATT&CK DB/campaign pages into Explore.
 6. **Relevance model + Admiralty**: local model gate, grade every source, priority score,
@@ -231,7 +233,7 @@ reliability; steps 4-7 move pages one at a time.
 | Step | State | Notes |
 |------|-------|-------|
 | 1. Foundation, security half | **Done in 0.8.4** (PR #73) | `require_permission` on every `/api` route with a coverage test (`tests/unit/test_route_permissions.py`); new permissions `manage_cve` and `view_ops` for analysts; 403 for a foreign `X-Client-ID` (the web proxy drops such a header); `crossref`, `stix/pirs` and PIR mindmaps scoped to the active client; `/api/auth/me` returns `permissions` and the web hides the controls a role cannot use (`useCan()`). |
-| 1. Foundation, remaining | Not started | LLM gateway + `llm_calls`, persist-first pipeline with `stage_status`, model health probe on Data health, v2 API conventions. Still cross-client, to scope next: CVE list in TA profiles (`ta_profile.py`), CVE priority and campaign analysis (`list_by_cve_ids_any_client`), CVE mindmaps. |
+| 1. Foundation, remaining | Not started | LLM gateway + `llm_calls`, model health probe on Data health, self-healing replay of parked articles, v2 API conventions. Still cross-client, to scope next: CVE list in TA profiles (`ta_profile.py`), CVE priority and campaign analysis (`list_by_cve_ids_any_client`), CVE mindmaps. |
 | 2. Sources and indicators | Not started | Feed dates (0.8.3) are a prerequisite already in place. |
 | 3. Extractors and claims | Not started | Software masking and longest-name matching for actors (0.8.3) are a first piece. |
 | 4-7 | Not started | |

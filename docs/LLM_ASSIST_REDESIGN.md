@@ -6,7 +6,7 @@ Status: **in progress** (updated 2026-10-24). A few building blocks shipped in 0
 Goal: turn Vareon from "every article goes through an LLM" into a CTI platform where
 deterministic code, curated reference data and analyst feedback do the bulk of the work, and
 the LLM is called only where it adds value that code cannot. Expected effects: lower token
-cost, no lost articles when the LLM gateway fails, and intelligence whose confidence means
+cost, no articles left waiting for a manual replay when the LLM gateway fails, and intelligence whose confidence means
 something.
 
 ## Progress (2026-10-24)
@@ -31,7 +31,12 @@ endpoint requires a permission, so the LLM-spending and outbound actions (recap,
 TA profile generation, newsletter send, CVE email) now need `manage_intel`, `manage_newsletter`
 or `send_cve_email` instead of any signed-in user.
 
-Not started: P0 (`llm_calls`, model health probe), P1 (persist before LLM), P2 to P7.
+Not started: P0 (`llm_calls`, model health probe), P1 (self-healing enrichment), P2 to P7.
+
+Correction (2026-10-24, rereading against the code): E4 first said these articles were
+"lost"; they are parked and replayable by hand, so P1 is now about recovering them
+automatically. Persisting before the LLM moves to step 4 of `docs/TARGET_ARCHITECTURE.md`,
+together with the `documents` table.
 
 ## 1. Evidence (dev instance 172.25.1.77, v0.8.2, read-only, 2026-10-24)
 
@@ -40,9 +45,9 @@ Numbers come from the API on the dev instance and from the code, not from guesse
 | # | Finding | Evidence |
 |---|---------|----------|
 | E1 | Every new URL costs at least one LLM call; every accepted non-best-practice article costs two (classify on the title, TTP extraction on the summary). Tweets cost one each. | `cti_enrich/pipeline.py` (`classify(title)`, `_extract_ttps_or_empty`), `monitor_x.py`, `tweet_alerts.py` |
-| E2 | The classify system prompt is ~7,000 characters (~1.7k tokens) and is resent for every title, including the ~30% that end up rejected. | `stages/classify.py:40-148` |
+| E2 | The classify system prompt is ~7,000 characters (~1.7k tokens) and is resent for every title, including the ~17% that end up rejected (284 of 1,652 classified titles on dev). | `stages/classify.py:40-148` |
 | E3 | Worst case per article is 18 LLM calls (3 JSON retries x 2 steps x 3 Celery runs), because nothing is persisted before the LLM steps. | `tasks/enrich.py`, `pipeline.py` |
-| E4 | **The LLM is a single point of failure.** 218 of 502 rows in `rejected_articles` are `[enrichment_failed]`: 128 x `400 Unsupported model mimo-auto` (gateway misconfiguration), 80 x `503`, 2 x `404`. Spikes on 16 Oct (91) and 23 Oct (82). Real incidents are in there (Quest Diagnostics breach, SBI PII leak, Storm-0940, M365 token spray). About 12% of everything ingested was lost to the LLM path. | `/api/filtered-articles` |
+| E4 | **The LLM is a single point of failure.** 218 of 502 rows in `rejected_articles` are `[enrichment_failed]`: 128 x `400 Unsupported model mimo-auto` (gateway misconfiguration), 8 x other `APIStatusError`, 80 x `503`, 2 x `404`. Spikes on 16 Oct (91) and 23 Oct (82). Real incidents are in there (Quest Diagnostics breach, SBI PII leak, Storm-0940, M365 token spray). These articles are not lost but parked: `tasks/enrich.py` retries transient errors 6 times over ~30 minutes, then records the row, alerts on Telegram and waits for an analyst to press **Replay** (`POST /api/filtered-articles/{id}/replay`). A gateway 400/404 (wrong model name) is treated as permanent and never retried. About 12% of everything ingested sat outside the news feed until someone replayed it. | `/api/filtered-articles`, `tasks/enrich.py` |
 | E5 | The same story is enriched many times: 16 accepted articles for "PHP2Shell" alone. Dedup before enrichment is by exact URL hash only; the TF-IDF title clustering exists but runs only at API read time. | `/api/articles?search=PHP2Shell`, `services/dedup.py`, `services/cluster.py` |
 | E6 | Structured sources go through the LLM for no reason: CISA KEV entries titled just `CVE-2026-...`, Exploit-DB entries (`[remote] ... - command execution`), CIS advisories. | `/api/articles` samples |
 | E7 | `confidence_score` is the LLM's self-rating x 100: 54% of articles are 90-100, none below 60. It carries no information. | distribution over 1,368 articles |
@@ -50,7 +55,7 @@ Numbers come from the API on the dev instance and from the code, not from guesse
 | E9 | Enrichment coverage is thin: industry unspecified on 835/1,368 (61%), country on 17%, threat actor on 7%, TTP on 41%. | `/api/dashboard` `coverage` |
 | E10 | IOC hygiene: defanged and refanged forms are stored as separate IOCs (`144.172.64[.]99` and `144.172.64.99`), 3,052 of 7,506 "IOCs" are CVE IDs, and legitimate services (`gofile.io`, `ably.io`, `litellm.dev`) are IOCs with no allowlist hit. | `/api/iocs` |
 | E11 | Analyst feedback loops exist in the schema but are empty: IOC TP/FP feedback on 1 IOC, 3 of ~70 sources graded for reliability, 1 PIR, 1 (test) RFI, 0 campaign clusters. | `/api/iocs/fp-analytics`, `/api/sr/*`, `/api/pir`, `/api/rfi`, `/api/clusters/recent` |
-| E12 | LLM output is stored even when it is empty: the weekly recap for 2026-10-12 has an empty headline, `{}` forecast and 84 completion tokens for 8,432 prompt tokens. | `/api/recap/latest` |
+| E12 | A failed LLM reply looked like a valid recap: the weekly recap for 2026-10-12 has an empty headline, `{}` forecast and 84 completion tokens for 8,432 prompt tokens (an unreadable reply kept in `raw_llm`), yet the page said "Grounding check: nothing was dropped". Fixed in 0.8.3. | `/api/recap/latest` |
 | E13 | No token accounting for the high-volume calls (classify, TTP, tweets). Only recap and newsletter record usage. `llm.rate_limit` is defined but never read. | `cti_core/llm/client.py`, `config.py` |
 | E14 | Scraper health showed 37 `dead`, 32 a few minutes later. The scheduler had restarted at 22:28 UTC, so this is mostly recovery, not 30+ broken scrapers. Recheck after a full day before acting. | `/api/scraper/health` |
 | E15 | A 30-line naive Bayes on titles (5-fold CV over 1,368 accepted + 284 LLM-rejected titles, computed in the browser) puts 43% of titles at p >= 0.95 with **97.9% agreement** with the LLM. Its confident "errors" are mostly LLM leniency (Optiv awareness-training launch, Let's Encrypt cert lifetimes, DORA explainer accepted as cyber threat news), so the LLM labels are noisy themselves. The reject side is weak (50% at p <= 0.05) because there are only 284 negatives. | browser-side experiment, section 2 Tier 2 |
@@ -126,14 +131,14 @@ Guard rails for every LLM call:
 
 - **Never on the critical path.** The article is persisted with deterministic fields first;
   LLM fields are filled by a separate `enrich.llm` task. A gateway outage (E4) then means
-  "fields arrive later", not "article lost". Failed LLM tasks retry with backoff and a
+  "fields arrive later", not "article parked until someone replays it". Failed LLM tasks retry with backoff and a
   circuit breaker; the replay tool from #24 handles the rest.
 - **Budget**: `llm_calls` table (call site, model, prompt/completion tokens, latency, outcome,
   article/story id). Daily token budget per call site with a hard stop that degrades to
   deterministic output. Enforce the existing `llm.rate_limit`.
 - **Cache** by `(call_site, prompt_version, sha256(input))`.
 - **Validate model config at startup**: a health probe that calls the configured model once
-  and marks `/data-health` red (would have caught `mimo-auto` before 128 articles were lost).
+  and marks `/data-health` red (would have caught `mimo-auto` before 128 articles were parked).
 
 ### Story dedup before enrichment
 
@@ -184,8 +189,8 @@ testing first. Phases 1-3 can start without schema redesign.
 
 | Phase | Scope | Done when |
 |-------|-------|-----------|
-| P0 Measure | `llm_calls` table + token logging on classify/TTP/tweets; model health probe on `/data-health`; empty-output guard for recap | One week of real cost per call site visible on dev; misconfigured model shows red |
-| P1 Stop losing articles | Persist before LLM, `enrich.llm` async task, circuit breaker, replay of the 218 failed rows | Gateway outage on dev produces 0 `[enrichment_failed]` rejections |
+| P0 Measure | `llm_calls` table + token logging on classify/TTP/tweets; model health probe on `/data-health` (empty-output guard for recap shipped in 0.8.3) | One week of real cost per call site visible on dev; misconfigured model shows red |
+| P1 Self-healing enrichment | Articles parked as `[enrichment_failed]` are replayed automatically once the model probe is healthy again; a gateway 400/404 is treated as "wait for health", not permanent; the 218 parked rows on dev are recovered | After a gateway outage on dev, parked articles reach the news feed without anyone pressing Replay |
 | P2 Cheap wins | `content_kind`/`default_relevance` on scrapers; refang + CVE-out-of-IOC + allowlist seed; TTP evidence substring check; drop LLM `confidence` from UI in favour of `services/confidence.py` | Structured sources make 0 LLM calls; duplicate defanged IOCs = 0; no TTP without verifiable evidence |
 | P3 Story dedup at ingest | Clustering in `cti_core`, `story_sources`, skip Tier 3 for known stories | "PHP2Shell"-type waves enriched once per story |
 | P4 Deterministic extractors | Actor/malware dictionary matcher, explicit + inferred ATT&CK, industry taxonomy, incident rule | Coverage (E9) measured before/after on the same article set; equal or better than LLM for actor and TTP precision on a 100-article hand-labelled sample |
@@ -194,7 +199,7 @@ testing first. Phases 1-3 can start without schema redesign.
 | P7+ CTI model | Entity + relationship tables, TLP, TAXII, Splunk export, sightings, PIR at ingest, hunting packs | Per item in section 4 |
 
 Success metrics tracked from P0: LLM tokens per accepted article, LLM calls per day by call
-site, articles lost to enrichment failures (target 0), TTP precision on the labelled sample,
+site, articles left parked as `[enrichment_failed]` after the model is healthy again (target 0), TTP precision on the labelled sample,
 coverage percentages from `/api/dashboard`.
 
 ## 6. Open decisions
