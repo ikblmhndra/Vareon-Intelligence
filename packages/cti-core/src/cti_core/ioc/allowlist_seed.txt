@@ -6,7 +6,6 @@ ably.io
 mega.nz
 mega.io
 dropbox.com
-box.com
 wetransfer.com
 we.tl
 transfer.sh
@@ -44,22 +43,16 @@ microsoftonline.com
 azure.com
 apple.com
 icloud.com
-slack.com
 discord.com
 discord.gg
 discordapp.com
 telegram.org
 t.me
-zoom.us
 atlassian.com
-notion.so
 trello.com
 asana.com
-salesforce.com
-zendesk.com
 hubspot.com
 mailchimp.com
-sendgrid.net
 twilio.com
 stripe.com
 paypal.com
@@ -71,13 +64,11 @@ facebook.com
 instagram.com
 whatsapp.com
 reddit.com
-medium.com
 wikipedia.org
 archive.org
 # CDN / edge
 cloudflare.com
 cloudflare-dns.com
-fastly.net
 jsdelivr.net
 cdnjs.com
 unpkg.com
@@ -97,7 +88,6 @@ alibabacloud.com
 github.com
 gitlab.com
 bitbucket.org
-sourceforge.net
 npmjs.com
 pypi.org
 pythonhosted.org

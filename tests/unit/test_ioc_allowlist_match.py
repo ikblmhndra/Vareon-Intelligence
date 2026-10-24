@@ -34,7 +34,23 @@ def test_url_with_path_or_query_is_never_flagged() -> None:
 
 def test_seed_has_no_tenant_namespaces() -> None:
     seed = set(load_seed())
-    for bad in ("workers.dev", "trycloudflare.com", "amazonaws.com", "github.io", "anonfiles.com"):
+    for bad in (
+        "workers.dev",
+        "trycloudflare.com",
+        "amazonaws.com",
+        "github.io",
+        "anonfiles.com",
+        "medium.com",
+        "zendesk.com",
+        "sourceforge.net",
+        "salesforce.com",
+        "slack.com",
+        "zoom.us",
+        "box.com",
+        "notion.so",
+        "sendgrid.net",
+        "fastly.net",
+    ):
         assert bad not in seed
 
 
