@@ -47,7 +47,14 @@ if TYPE_CHECKING:
     from cti_core.db.models.scraper import ScraperConfig, ScraperItem, ScraperRun
     from cti_scraper.base import ScraperMeta
 
-from cti_api.deps import AuthedUser, get_db, get_redis, request_ip, require_admin, require_auth
+from cti_api.deps import (
+    AuthedUser,
+    get_db,
+    get_redis,
+    request_ip,
+    require_auth,
+    require_permission,
+)
 from cti_api.schemas.scraper import (
     ScraperConfigOut,
     ScraperConfigUpdateBody,
@@ -68,7 +75,11 @@ from cti_api.schemas.scraper import (
 )
 from cti_api.services.scraper_health import build_scraper_health, scheduler_status
 
-router = APIRouter(prefix="/api/scraper", tags=["scraper"], dependencies=[Depends(require_auth)])
+router = APIRouter(
+    prefix="/api/scraper",
+    tags=["scraper"],
+    dependencies=[Depends(require_permission("view_ops")), Depends(require_auth)],
+)
 
 
 def _config_out(config: ScraperConfig | None, default_enabled: bool) -> ScraperConfigOut:
@@ -264,7 +275,7 @@ async def trigger_scraper(
     scraper_id: str,
     request: Request,
     session: AsyncSession = Depends(get_db),
-    admin: AuthedUser = Depends(require_admin),
+    admin: AuthedUser = Depends(require_permission("manage_scraper")),
 ) -> ScraperTriggerResult:
     try:
         cls = get_scraper_cls(scraper_id)
@@ -291,7 +302,7 @@ async def trigger_scraper(
 async def dry_run_scraper(
     scraper_id: str,
     session: AsyncSession = Depends(get_db),
-    admin: AuthedUser = Depends(require_admin),
+    admin: AuthedUser = Depends(require_permission("manage_scraper")),
 ) -> ScraperDryRunResult:
     try:
         cls = get_scraper_cls(scraper_id)
@@ -336,7 +347,7 @@ async def enable_scraper(
     scraper_id: str,
     request: Request,
     session: AsyncSession = Depends(get_db),
-    admin: AuthedUser = Depends(require_admin),
+    admin: AuthedUser = Depends(require_permission("manage_scraper")),
 ) -> ScraperConfigOut:
     try:
         cls = get_scraper_cls(scraper_id)
@@ -361,7 +372,7 @@ async def disable_scraper(
     body: ScraperDisableBody,
     request: Request,
     session: AsyncSession = Depends(get_db),
-    admin: AuthedUser = Depends(require_admin),
+    admin: AuthedUser = Depends(require_permission("manage_scraper")),
 ) -> ScraperConfigOut:
     try:
         cls = get_scraper_cls(scraper_id)
@@ -387,7 +398,7 @@ async def update_scraper_config(
     body: ScraperConfigUpdateBody,
     request: Request,
     session: AsyncSession = Depends(get_db),
-    admin: AuthedUser = Depends(require_admin),
+    admin: AuthedUser = Depends(require_permission("manage_scraper")),
 ) -> ScraperConfigOut:
     """PATCH-style: cuma field yang beneran dikirim client yang kesentuh
     (`model_dump(exclude_unset=True)`) -- `schedule` override baru kepake
@@ -423,7 +434,7 @@ async def reset_scraper_config(
     scraper_id: str,
     request: Request,
     session: AsyncSession = Depends(get_db),
-    admin: AuthedUser = Depends(require_admin),
+    admin: AuthedUser = Depends(require_permission("manage_scraper")),
 ) -> ScraperConfigOut:
     """Hapus SEMUA override (`ScraperConfig` row-nya, bukan cuma
     enabled) -- balik ke `ScraperMeta` default kode sepenuhnya."""
@@ -447,7 +458,7 @@ async def reset_scraper_dedup(
     scraper_id: str,
     request: Request,
     session: AsyncSession = Depends(get_db),
-    admin: AuthedUser = Depends(require_admin),
+    admin: AuthedUser = Depends(require_permission("manage_scraper")),
 ) -> ScraperResetDedupResult:
     """Control plane "lupain semuanya" -- dipanggil analis abis benerin
     parser yang sempat ngeluarin sampah, biar run berikutnya nge-treat

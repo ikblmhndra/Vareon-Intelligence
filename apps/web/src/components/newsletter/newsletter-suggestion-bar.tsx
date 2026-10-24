@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import type { components } from "@/lib/api/schema";
 import { formatBuiltAt } from "@/lib/newsletter/format";
 import { cn } from "@/lib/utils";
+import { useCan } from "@/lib/auth/permissions";
 
 type Suggestion = components["schemas"]["NewsletterSuggestionResponse"];
 
@@ -62,6 +63,7 @@ function Bar({ tone, icon, children }: { tone: "info" | "primary" | "error"; ico
  * hanya tampilan dan tombol.
  */
 export function NewsletterSuggestionBar({ phase, applied, queueCount, placedCount, busy, onBuild, onRetry, onUse, onMerge, onRebuild }: Props) {
+  const can = useCan();
   if (phase.kind === "loading") {
     return (
       <Bar tone="info" icon="info">
@@ -105,11 +107,11 @@ export function NewsletterSuggestionBar({ phase, applied, queueCount, placedCoun
   const s = phase.suggestion;
   const counts = tierCounts(s);
   const summary = `${s.items.length} article${s.items.length === 1 ? "" : "s"}: ${counts.highlights} highlight${counts.highlights === 1 ? "" : "s"}, ${counts.cards} card${counts.cards === 1 ? "" : "s"}, ${counts.rows} Also Noted`;
-  const rebuild = (
+  const rebuild = can("manage_newsletter") ? (
     <Button type="button" variant="ghost" size="sm" onClick={onRebuild} disabled={busy} title="Rebuild the stored suggestion for this month (calls the model again)">
       <RefreshCwIcon aria-hidden className={busy ? "animate-spin" : undefined} /> {busy ? "Rebuilding…" : "Rebuild"}
     </Button>
-  );
+  ) : null;
 
   if (!applied) {
     const mine = [queueCount > 0 && `${queueCount} queued`, placedCount > 0 && `${placedCount} placed`].filter(Boolean).join(" and ");

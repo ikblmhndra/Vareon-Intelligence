@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SimplePager } from "@/components/pager";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { useCan } from "@/lib/auth/permissions";
 
 const PAGE_SIZE = 50;
 type SortField = "name" | "added_date";
@@ -17,6 +18,7 @@ type SortField = "name" | "added_date";
  * di-remove dari tracking (gak bisa di-re-add lewat Tracked Groups
  * selama masih di sini), Restore ngehapus dari whitelist. */
 export function TaWhitelistPanel() {
+  const can = useCan();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<SortField>("name");
@@ -112,13 +114,15 @@ export function TaWhitelistPanel() {
                   <TableCell className="text-xs text-foreground">{item.name}</TableCell>
                   <TableCell className="font-mono text-xs text-muted-foreground">{item.added_date || "—"}</TableCell>
                   <TableCell className="text-right">
-                    <button
-                      type="button"
-                      onClick={() => setRestoreTarget(item.name)}
-                      className="rounded-full border border-success/35 bg-success/10 px-1.5 py-0.5 font-mono text-xs text-success-text"
-                    >
-                      ↩ RESTORE
-                    </button>
+                    {can("manage_intel") && (
+                      <button
+                        type="button"
+                        onClick={() => setRestoreTarget(item.name)}
+                        className="rounded-full border border-success/35 bg-success/10 px-1.5 py-0.5 font-mono text-xs text-success-text"
+                      >
+                        ↩ RESTORE
+                      </button>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

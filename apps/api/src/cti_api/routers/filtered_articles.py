@@ -24,13 +24,19 @@ from cti_core.db.repositories.auth import AsyncAuditLogRepo
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_api.deps import AuthedUser, get_db, request_ip, require_admin, require_auth
+from cti_api.deps import (
+    AuthedUser,
+    get_db,
+    request_ip,
+    require_auth,
+    require_permission,
+)
 from cti_api.schemas.filtered_article import RejectedArticleListResponse, RejectedArticleOut
 
 router = APIRouter(
     prefix="/api/filtered-articles",
     tags=["filtered-articles"],
-    dependencies=[Depends(require_auth)],
+    dependencies=[Depends(require_permission("view_news")), Depends(require_auth)],
 )
 
 
@@ -64,7 +70,7 @@ async def list_filtered(
     )
 
 
-@router.post("/{article_id}/restore")
+@router.post("/{article_id}/restore", dependencies=[Depends(require_permission("manage_sources"))])
 async def restore_article(
     article_id: int,
     session: AsyncSession = Depends(get_db),
@@ -90,7 +96,7 @@ async def replay_article(
     article_id: int,
     request: Request,
     session: AsyncSession = Depends(get_db),
-    user: AuthedUser = Depends(require_admin),
+    user: AuthedUser = Depends(require_permission("manage_scraper")),
 ) -> dict[str, bool]:
     """Kirim ulang artikel yang GAGAL di-enrich ke pipeline (senyap, tanpa alert Telegram). Admin:
     memakai kuota LLM. Baris gagalnya hilang sendiri begitu artikelnya berhasil diproses."""

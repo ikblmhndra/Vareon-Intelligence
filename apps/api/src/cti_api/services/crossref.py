@@ -3,11 +3,10 @@ nyambungin CVE/PIR/TA lewat overlap threat_actors/TTPs. Fase 7.3 (router
 `crossref`, Bagian 3, dikerjain TERAKHIR karena butuh `cve` [Bagian 1],
 `pir` [Bagian 2], `ta_groups` [Bagian 3, TA profile] semua udah ada).
 
-**Semua query di sini LINTAS CLIENT, TANPA filter `client_id`** -- port
-apa adanya, kode lama juga gak nge-scope (`cross_reference_service.py`
-gak pernah baca `client_id` sama sekali). Endpoint `crossref` gak punya
-konsep client di request-nya sendiri, beda dari `cve.py`/`pir.py` utama
-yang emang per-client.
+**CVE tracker dan PIR di-scope ke client aktif** (`client_id`, dari `X-Client-ID`). Port awal
+memakai query lintas client seperti kode lama, sehingga user satu client bisa membaca PIR dan tech
+stack (CVE yang di-track) client lain lewat `/api/crossref/*` (audit keamanan 2026-10-24). Artikel
+dan profil TA tetap korpus bersama.
 
 False positive dinilai per BARIS client (`is_false_positive_row`): CVE baru ditolak/disembunyikan
 bila SEMUA barisnya ditandai FP oleh clientnya masing-masing. Dulu himpunan FP dari client mana
@@ -50,11 +49,13 @@ def _profile_summary(actor_name: str, profile: dict[str, Any]) -> dict[str, Any]
     }
 
 
-async def get_cve_crossrefs(session: AsyncSession, cve_id: str) -> dict[str, Any]:
+async def get_cve_crossrefs(session: AsyncSession, cve_id: str, client_id: str) -> dict[str, Any]:
     repo = AsyncCveTrackerRepo(session)
-    cve = await repo.get_by_cve_id_any_client(cve_id, exclude_false_positives=True)
+    cve = await repo.get_by_cve_id_any_client(
+        cve_id, exclude_false_positives=True, client_id=client_id
+    )
     if cve is None:
-        if await repo.get_by_cve_id_any_client(cve_id) is None:
+        if await repo.get_by_cve_id_any_client(cve_id, client_id=client_id) is None:
             return {"error": "CVE not found"}
         return {"error": "CVE is a false positive"}
 
@@ -69,7 +70,7 @@ async def get_cve_crossrefs(session: AsyncSession, cve_id: str) -> dict[str, Any
         for t in a.threat_actors:
             article_tas.add(t.threat_actor)
 
-    active_pirs = await AsyncPIRRepo(session).list_active_unscoped()
+    active_pirs = await AsyncPIRRepo(session).list_active_by_client(client_id)
     matched_pirs = []
     for pir in active_pirs:
         pir_tas = set(pir.criteria.get("threat_actors", []))
@@ -108,9 +109,10 @@ async def get_cve_crossrefs(session: AsyncSession, cve_id: str) -> dict[str, Any
     }
 
 
-async def get_pir_crossrefs(session: AsyncSession, pir_id: int) -> dict[str, Any]:
+async def get_pir_crossrefs(session: AsyncSession, pir_id: int, client_id: str) -> dict[str, Any]:
     pir = await AsyncPIRRepo(session).get_by_id(pir_id)
-    if pir is None:
+    # PIR client lain dijawab sama dengan PIR yang tidak ada: keberadaannya tidak bocor.
+    if pir is None or pir.client_id != client_id:
         return {"error": "PIR not found"}
 
     criteria = pir.criteria
@@ -119,7 +121,7 @@ async def get_pir_crossrefs(session: AsyncSession, pir_id: int) -> dict[str, Any
     pir_industries: list[str] = criteria.get("industries", [])
 
     matched_cves_rows = await AsyncCveTrackerRepo(session).search_crossref(
-        threat_actors=pir_tas, ttp_ids=list(pir_ttps), tech_list=pir_industries
+        threat_actors=pir_tas, ttp_ids=list(pir_ttps), tech_list=pir_industries, client_id=client_id
     )
 
     matched_cves = []
@@ -164,9 +166,13 @@ async def get_pir_crossrefs(session: AsyncSession, pir_id: int) -> dict[str, Any
     }
 
 
-async def get_ta_crossrefs(session: AsyncSession, actor_name: str) -> dict[str, Any]:
-    cves = await AsyncCveTrackerRepo(session).get_by_threat_actor_exact(actor_name)
-    active_pirs = await AsyncPIRRepo(session).list_active_unscoped()
+async def get_ta_crossrefs(
+    session: AsyncSession, actor_name: str, client_id: str
+) -> dict[str, Any]:
+    cves = await AsyncCveTrackerRepo(session).get_by_threat_actor_exact(
+        actor_name, client_id=client_id
+    )
+    active_pirs = await AsyncPIRRepo(session).list_active_by_client(client_id)
     pirs = [p for p in active_pirs if actor_name in p.criteria.get("threat_actors", [])]
     articles, _ = await AsyncArticleRepo(session).list_filtered(
         threat_actors=[actor_name], page=1, page_size=20

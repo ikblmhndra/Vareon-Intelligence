@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { RecapHistory } from "@/components/recap/recap-history";
 import { RecapView } from "@/components/recap/recap-view";
+import { useCan } from "@/lib/auth/permissions";
 
 type Mode = "day" | "week";
 /** Recap yang dipilih; `null` = recap MINGGUAN terbaru yang tersimpan (halaman membuka itu). */
@@ -113,6 +114,8 @@ export default function RecapPage() {
   const history = useRecapHistory();
   const doc = useRecapDoc(selected);
   const generate = useGenerateRecap();
+  // Generate memanggil LLM: butuh `manage_intel` (0.8.4); tanpa itu tombolnya disembunyikan.
+  const canGenerate = useCan()("manage_intel");
 
   const weekStart = mondayOf(inputDate);
   const target: Selection =
@@ -205,12 +208,16 @@ export default function RecapPage() {
         <Button size="sm" disabled={!target.date} onClick={() => setSelected(target)}>
           Load
         </Button>
-        <Button size="sm" variant="secondary" onClick={() => setConfirm({ force: false })}>
-          ↻ Generate
-        </Button>
-        <Button size="sm" variant="outline" onClick={() => setConfirm({ force: true })}>
-          <RefreshCwIcon aria-hidden /> Force Regen
-        </Button>
+        {canGenerate && (
+          <>
+            <Button size="sm" variant="secondary" onClick={() => setConfirm({ force: false })}>
+              ↻ Generate
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setConfirm({ force: true })}>
+              <RefreshCwIcon aria-hidden /> Force Regen
+            </Button>
+          </>
+        )}
         <span className={`ml-auto font-mono text-xs ${statusColor}`}>{status.text}</span>
       </div>
 
@@ -258,9 +265,11 @@ export default function RecapPage() {
                   "No weekly recap has been generated yet."
                 )}
               </p>
-              <Button size="sm" onClick={() => setConfirm({ force: false })}>
-                ↻ Generate Now
-              </Button>
+              {canGenerate && (
+                <Button size="sm" onClick={() => setConfirm({ force: false })}>
+                  ↻ Generate Now
+                </Button>
+              )}
             </div>
           )}
         </div>

@@ -587,9 +587,10 @@ async def build_article_stix_bundle(
     return _make_bundle(objects)
 
 
-async def build_pir_stix_bundle(session: AsyncSession) -> dict[str, Any]:
-    """Ambil PIR aktif (lintas client, lihat docstring `list_active_unscoped`)
-    dan wakilkan tiap satu sebagai objek course-of-action STIX 2.1."""
+async def build_pir_stix_bundle(session: AsyncSession, client_id: str) -> dict[str, Any]:
+    """Ambil PIR aktif MILIK `client_id` dan wakilkan tiap satu sebagai objek course-of-action
+    STIX 2.1. Dulu lintas client (`list_active_unscoped`): bundle satu client berisi PIR semua
+    client (audit keamanan 2026-10-24)."""
     ts = _now()
     objects: list[dict[str, Any]] = []
 
@@ -597,7 +598,7 @@ async def build_pir_stix_bundle(session: AsyncSession) -> dict[str, Any]:
     objects.append(identity)
     identity_ref = identity["id"]
 
-    pirs = await AsyncPIRRepo(session).list_active_unscoped()
+    pirs = await AsyncPIRRepo(session).list_active_by_client(client_id)  # urut priority naik
 
     for pir in pirs:
         coa_obj = _build_course_of_action(pir, ts)

@@ -8,13 +8,19 @@ from cti_core.db.repositories.tweet import AsyncMonitoredAccountRepo
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_api.deps import AuthedUser, get_db, request_ip, require_admin, require_auth
+from cti_api.deps import (
+    AuthedUser,
+    get_db,
+    request_ip,
+    require_auth,
+    require_permission,
+)
 from cti_api.schemas.tweet import AddAccountRequest, MonitoredAccountOut, ToggleRequest
 
 router = APIRouter(
     prefix="/api/monitored-accounts",
     tags=["monitored-accounts"],
-    dependencies=[Depends(require_auth)],
+    dependencies=[Depends(require_permission("view_tweets")), Depends(require_auth)],
 )
 
 
@@ -40,7 +46,7 @@ async def post_account(
     body: AddAccountRequest,
     request: Request,
     session: AsyncSession = Depends(get_db),
-    admin: AuthedUser = Depends(require_admin),
+    admin: AuthedUser = Depends(require_permission("manage_tweets")),
 ) -> MonitoredAccountOut:
     if not body.username.strip():
         raise HTTPException(status_code=400, detail="username required")
@@ -65,7 +71,7 @@ async def delete_account(
     username: str,
     request: Request,
     session: AsyncSession = Depends(get_db),
-    admin: AuthedUser = Depends(require_admin),
+    admin: AuthedUser = Depends(require_permission("manage_tweets")),
 ) -> dict[str, bool]:
     ok = await AsyncMonitoredAccountRepo(session).remove(username)
     if not ok:
@@ -86,7 +92,7 @@ async def patch_toggle(
     body: ToggleRequest,
     request: Request,
     session: AsyncSession = Depends(get_db),
-    admin: AuthedUser = Depends(require_admin),
+    admin: AuthedUser = Depends(require_permission("manage_tweets")),
 ) -> dict[str, bool]:
     ok = await AsyncMonitoredAccountRepo(session).toggle(username, body.active)
     if not ok:

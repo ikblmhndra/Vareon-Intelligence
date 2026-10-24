@@ -11,7 +11,14 @@ from cti_core.db.repositories.techstack import AsyncTechStackRepo
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_api.deps import AuthedUser, effective_client_id, get_db, request_ip, require_auth
+from cti_api.deps import (
+    AuthedUser,
+    effective_client_id,
+    get_db,
+    request_ip,
+    require_auth,
+    require_permission,
+)
 from cti_api.schemas.techstack import (
     TechStackAdd,
     TechStackExposureUpdate,
@@ -24,7 +31,11 @@ from cti_api.schemas.techstack import (
 )
 from cti_api.services.monitor import enqueue_promote_entry
 
-router = APIRouter(prefix="/api/techstack", tags=["techstack"])
+router = APIRouter(
+    prefix="/api/techstack",
+    tags=["techstack"],
+    dependencies=[Depends(require_permission("view_cve"))],
+)
 
 
 def _target_out(t: TechStackTarget) -> TechStackTargetOut:
@@ -87,7 +98,7 @@ async def get_techstack(
     )
 
 
-@router.post("")
+@router.post("", dependencies=[Depends(require_permission("manage_cve"))])
 async def post_techstack(
     body: TechStackAdd,
     request: Request,
@@ -134,7 +145,7 @@ async def post_techstack(
     return {"success": True, "item": _serialize(entry).model_dump()}
 
 
-@router.patch("/{tech_id}")
+@router.patch("/{tech_id}", dependencies=[Depends(require_permission("manage_cve"))])
 async def patch_techstack(
     tech_id: int,
     body: TechStackPatch,
@@ -182,7 +193,7 @@ def _target_error(reason: str) -> HTTPException:
     return HTTPException(status_code=status, detail=detail)
 
 
-@router.post("/{tech_id}/targets")
+@router.post("/{tech_id}/targets", dependencies=[Depends(require_permission("manage_cve"))])
 async def add_techstack_target(
     tech_id: int,
     body: TechStackTargetAdd,
@@ -211,7 +222,9 @@ async def add_techstack_target(
     return {"success": True, "item": _serialize(entry).model_dump()}
 
 
-@router.delete("/{tech_id}/targets/{target_id}")
+@router.delete(
+    "/{tech_id}/targets/{target_id}", dependencies=[Depends(require_permission("manage_cve"))]
+)
 async def remove_techstack_target(
     tech_id: int,
     target_id: int,
@@ -238,7 +251,7 @@ async def remove_techstack_target(
     return {"success": True, "item": _serialize(entry).model_dump()}
 
 
-@router.patch("/{tech_id}/exposure")
+@router.patch("/{tech_id}/exposure", dependencies=[Depends(require_permission("manage_cve"))])
 async def patch_exposure(
     tech_id: int,
     body: TechStackExposureUpdate,
@@ -262,7 +275,7 @@ async def patch_exposure(
     return {"success": True}
 
 
-@router.patch("/{tech_id}/hosting")
+@router.patch("/{tech_id}/hosting", dependencies=[Depends(require_permission("manage_cve"))])
 async def patch_hosting(
     tech_id: int,
     body: TechStackHostingUpdate,
@@ -286,7 +299,7 @@ async def patch_hosting(
     return {"success": True}
 
 
-@router.delete("/{tech_id}")
+@router.delete("/{tech_id}", dependencies=[Depends(require_permission("manage_cve"))])
 async def remove_techstack(
     tech_id: int,
     request: Request,

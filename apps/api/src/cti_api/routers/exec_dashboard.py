@@ -12,12 +12,21 @@ from cti_core.db.repositories.auth import AsyncAuditLogRepo
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_api.deps import AuthedUser, effective_client_id, get_db, request_ip, require_auth
+from cti_api.deps import (
+    AuthedUser,
+    effective_client_id,
+    get_db,
+    request_ip,
+    require_auth,
+    require_permission,
+)
 from cti_api.services import exec_brief as exec_brief_service
 from cti_api.services import exec_dashboard as exec_dashboard_service
 
 router = APIRouter(
-    prefix="/api/exec", tags=["exec-dashboard"], dependencies=[Depends(require_auth)]
+    prefix="/api/exec",
+    tags=["exec-dashboard"],
+    dependencies=[Depends(require_permission("view_intel")), Depends(require_auth)],
 )
 
 
@@ -65,7 +74,7 @@ async def dashboard_v2(
     return result
 
 
-@router.post("/brief")
+@router.post("/brief", dependencies=[Depends(require_permission("manage_intel"))])
 async def exec_brief(
     request: Request,
     days: int = Query(90),

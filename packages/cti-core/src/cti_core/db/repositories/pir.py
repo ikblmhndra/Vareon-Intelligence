@@ -132,10 +132,9 @@ class AsyncPIRRepo:
         """Lintas client, TANPA filter -- port apa adanya dari
         `cross_reference_service.get_cve_crossrefs()`
         (`db[PIR_COLLECTION].find({"status": "active"})`, gak nge-scope
-        client). Dipakai `crossref` (Bagian 3) DAN `stix.build_pir_stix_bundle`
-        (Bagian 4, yang terakhir ini butuh urutan priority ascending --
-        `order_by` ditambahin buat match `.sort("priority", 1)` lama;
-        gak ganggu `crossref` yang gak peduli urutan)."""
+        client). Dulu dipakai `crossref` dan `stix.build_pir_stix_bundle`; sejak 2026-10-24
+        keduanya memakai `list_active_by_client` (endpoint user tidak boleh lintas client), jadi
+        sisa pemakainya job internal (`pir_alert`)."""
         result = await self.session.execute(
             select(PIRRequirement)
             .where(PIRRequirement.status == "active")
@@ -152,7 +151,8 @@ class AsyncPIRRepo:
         `client_id` ditambahin), gak relevan lagi di skema baru
         (`PIRRequirement.client_id` NOT NULL, gak ada row "tanpa
         client_id"). Beda dari `list_active_unscoped()` di atas (lintas
-        SEMUA client, dipakai `crossref`/`stix`) -- `_match_pirs` legacy
+        SEMUA client, sekarang hanya untuk job internal seperti `pir_alert`; `crossref`/`stix`
+        yang dipanggil user memakai fungsi ini sejak 2026-10-24) -- `_match_pirs` legacy
         MEMANG scope per-client, bukan lintas client."""
         result = await self.session.execute(
             select(PIRRequirement)

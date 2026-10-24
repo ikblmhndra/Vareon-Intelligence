@@ -6,7 +6,6 @@ import { toast } from "sonner";
 
 import { api } from "@/lib/api/client";
 import { useScraperHealth } from "@/lib/scrapers/health";
-import { useAuth } from "@/components/providers/auth-provider";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -20,6 +19,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { RunStatusText, StatusBadge } from "@/components/scrapers/status-badge";
 import { DisableScraperDialog } from "@/components/scrapers/disable-scraper-dialog";
+import { useCan } from "@/lib/auth/permissions";
 
 const RUNTIME_ITEMS: Record<string, string> = { __all__: "All runtimes", light: "light", browser: "browser" };
 const STATUS_ITEMS: Record<string, string> = {
@@ -67,8 +67,8 @@ export function ScrapersTable({
 }: {
   onOpenDetail: (scraperId: string, status: string) => void;
 }) {
-  const { user } = useAuth();
-  const isAdmin = user?.role === "admin" || user?.role === "superadmin";
+  const can = useCan();
+  const isAdmin = can("manage_scraper");
   const queryClient = useQueryClient();
 
   const [search, setSearch] = useState("");

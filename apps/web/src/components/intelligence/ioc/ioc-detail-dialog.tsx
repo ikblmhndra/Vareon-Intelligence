@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { IocActionabilityChip, IocConfidenceChip, IocTypeBadge } from "@/components/intelligence/ioc/ioc-badges";
 import type { IocDetail, IocTaLink, IocTaLinksResponse } from "@/lib/api/loose-types";
+import { useCan } from "@/lib/auth/permissions";
 
 export interface IocTarget {
   type: string;
@@ -46,6 +47,7 @@ function scoreColor(score: number) {
 /** Port `iocmgmtOpenDetail()` (`ioc_mgmt.js:158-292`) -- detail IOC +
  * TIP enrichment + TA links + linked articles, satu overlay. */
 export function IocDetailDialog({ target, onClose, onDeleted }: IocDetailDialogProps) {
+  const can = useCan();
   const queryClient = useQueryClient();
   const [taInput, setTaInput] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -143,14 +145,16 @@ export function IocDetailDialog({ target, onClose, onDeleted }: IocDetailDialogP
                 <span className="font-code text-xs break-all text-foreground">{ioc.value}</span>
                 <IocConfidenceChip score={ioc.confidence_score} />
                 <IocActionabilityChip label={ioc.actionability_label} />
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="ml-auto h-6 border-destructive/40 px-2 text-xs text-destructive"
-                  onClick={() => setConfirmDelete(true)}
-                >
-                  <Trash2Icon aria-hidden /> Delete IOC
-                </Button>
+                {can("manage_ioc") && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="ml-auto h-6 border-destructive/40 px-2 text-xs text-destructive"
+                    onClick={() => setConfirmDelete(true)}
+                  >
+                    <Trash2Icon aria-hidden /> Delete IOC
+                  </Button>
+                )}
               </div>
 
               {ioc.recommended_action && (
@@ -300,6 +304,7 @@ function IocTaLinksSection({
   onAdd: () => void;
   onRemove: (actor: string) => void;
 }) {
+  const can = useCan();
   return (
     <div className="mb-4">
       <div className="mb-2 text-sm font-semibold text-muted-foreground">Linked Threat Actors ({links.length})</div>
@@ -325,7 +330,7 @@ function IocTaLinksSection({
                   {ta.source === "both" && (
                     <span className="ml-1.5 rounded-full border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-xs text-primary-text">MANUAL+ART</span>
                   )}
-                  {isManual && (
+                  {isManual && can("manage_ioc") && (
                     <button type="button" aria-label={`Remove ${ta.name}`} onClick={() => onRemove(ta.name)} className="ml-2 inline-flex min-h-6 min-w-6 items-center justify-center text-xs text-muted-foreground hover:text-destructive">
                       <XIcon aria-hidden />
                     </button>
@@ -342,6 +347,7 @@ function IocTaLinksSection({
           })
         )}
       </div>
+      {can("manage_ioc") && (
       <div className="mt-2 flex gap-1.5">
         <Input
           placeholder="Add threat actor name…"
@@ -354,6 +360,7 @@ function IocTaLinksSection({
           + Link TA
         </Button>
       </div>
+      )}
     </div>
   );
 }

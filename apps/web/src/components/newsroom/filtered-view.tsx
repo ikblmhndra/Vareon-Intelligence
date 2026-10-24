@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { TabPills, type TabPillItem } from "@/components/ui/tab-pills";
 import { SimplePager, usePageResetOn } from "@/components/pager";
 import { PanelEmpty, PanelError, PanelLoading, PanelShell } from "@/components/newsroom/panel-shell";
+import { useCan } from "@/lib/auth/permissions";
 
 const PAGE_SIZE = 20;
 const QUERY_KEY = ["newsroom", "filtered"] as const;
@@ -82,6 +83,8 @@ export function FilteredView() {
   const totalPages = query.data ? Math.ceil(query.data.total / PAGE_SIZE) : 0;
   const mutation = kind === "failed" ? replayMutation : restoreMutation;
   const actionLabel = kind === "failed" ? "Replay" : "Restore";
+  const can = useCan();
+  const canAct = kind === "failed" ? can("manage_scraper") : can("manage_sources");
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -136,16 +139,18 @@ export function FilteredView() {
                   </div>
                   {a.reason && <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{a.reason}</p>}
                 </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="shrink-0"
-                  aria-label={`${actionLabel} ${a.title}`}
-                  disabled={mutation.isPending && mutation.variables === a.id}
-                  onClick={() => mutation.mutate(a.id)}
-                >
-                  {kind === "failed" ? "↻ Replay" : "↺ Restore"}
-                </Button>
+                {canAct && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="shrink-0"
+                    aria-label={`${actionLabel} ${a.title}`}
+                    disabled={mutation.isPending && mutation.variables === a.id}
+                    onClick={() => mutation.mutate(a.id)}
+                  >
+                    {kind === "failed" ? "↻ Replay" : "↺ Restore"}
+                  </Button>
+                )}
               </div>
             ))}
           </div>

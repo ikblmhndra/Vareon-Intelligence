@@ -7,6 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EXEC_DAY_OPTIONS, EXEC_ROLE_PREVIEW_OPTIONS, type ExecFilters } from "@/lib/exec/filters";
+import { useCan } from "@/lib/auth/permissions";
 
 function selectItems(values: (string | number)[]): Record<string, string> {
   return Object.fromEntries(values.map((v) => [String(v), String(v)]));
@@ -49,6 +50,8 @@ export function ExecFilterBar({
   function set<K extends keyof ExecFilters>(key: K, value: ExecFilters[K]) {
     onChange({ ...filters, [key]: value });
   }
+
+  const can = useCan();
 
   return (
     <div className="mb-4 flex flex-wrap items-end gap-2 border-b border-border pb-3">
@@ -124,9 +127,11 @@ export function ExecFilterBar({
         <Button size="sm" variant="outline" disabled={exportDisabled} onClick={onExportCsv}>
           <DownloadIcon /> Export CSV
         </Button>
-        <Button size="sm" disabled={briefPending} onClick={onGenerateBrief}>
-          {briefPending ? "Generating…" : "Generate Brief"}
-        </Button>
+        {can("manage_intel") && (
+          <Button size="sm" disabled={briefPending} onClick={onGenerateBrief}>
+            {briefPending ? "Generating…" : "Generate Brief"}
+          </Button>
+        )}
       </div>
     </div>
   );

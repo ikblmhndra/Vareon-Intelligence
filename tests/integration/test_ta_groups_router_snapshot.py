@@ -222,7 +222,8 @@ async def test_watchlist_reads_ignore_a_foreign_client_header(
     api_session: AsyncSession,
     auth_header: Callable[..., dict[str, str]],
 ) -> None:
-    """Audit 2026-10-21: `X-Client-ID` milik client lain dulu diterima apa adanya."""
+    """Audit 2026-10-21: `X-Client-ID` milik client lain dulu diterima apa adanya. Sejak
+    2026-10-24 header itu ditolak 403 (dulu diabaikan diam-diam)."""
     await AsyncTARepo(api_session).add_to_watchlist("Lazarus", "default")
     own = await api_client.get("/api/ta/watchlist-names", headers=auth_header())
     assert own.json() == {"names": ["Lazarus"]}  # kontrol: seed-nya memang terlihat
@@ -230,5 +231,5 @@ async def test_watchlist_reads_ignore_a_foreign_client_header(
     outsider = {**auth_header(role="analyst", client_ids=["acme"]), "X-Client-ID": "default"}
     for path in ("/api/ta/watchlist-names", "/api/ta/watchlist"):
         resp = await api_client.get(path, headers=outsider)
-        assert resp.status_code == 200
+        assert resp.status_code == 403
         assert "Lazarus" not in resp.text

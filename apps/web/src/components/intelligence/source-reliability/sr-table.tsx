@@ -18,6 +18,7 @@ import { GRADE_BADGE_CLASS } from "@/lib/intelligence/format";
 import type { components } from "@/lib/api/schema";
 import type { SrActionResult } from "@/lib/api/loose-types";
 import { SrEntryDialog } from "@/components/intelligence/source-reliability/sr-entry-dialog";
+import { useCan } from "@/lib/auth/permissions";
 
 type SREntry = components["schemas"]["SREntryOut"];
 
@@ -33,6 +34,7 @@ type SortCol = "source_name" | "analyst_name" | "reliability_grade" | "last_upda
  * cuma di-DEFINE gak pernah DIPANGGIL, jadi sengaja gak diporting,
  * sama presedennya kayak `wisemap_service.py`). */
 export function SrTable() {
+  const can = useCan();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
@@ -145,16 +147,18 @@ export function SrTable() {
             </SelectContent>
           </Select>
         </div>
-        <Button
-          size="sm"
-          className="ml-auto"
-          onClick={() => {
-            setAddKey((k) => k + 1);
-            setAddOpen(true);
-          }}
-        >
-          + Add Source Rating
-        </Button>
+        {can("manage_sources") && (
+          <Button
+            size="sm"
+            className="ml-auto"
+            onClick={() => {
+              setAddKey((k) => k + 1);
+              setAddOpen(true);
+            }}
+          >
+            + Add Source Rating
+          </Button>
+        )}
       </div>
 
       {listQuery.isPending && <p className="py-8 text-center text-xs text-muted-foreground">Loading…</p>}
@@ -208,14 +212,16 @@ export function SrTable() {
                     {e.last_updated || e.added_date}
                   </TableCell>
                   <TableCell>
-                    <div className="flex gap-1">
-                      <Button size="sm" variant="outline" className="h-6 px-1.5 text-xs" onClick={() => setEditEntry(e)}>
-                        Edit
-                      </Button>
-                      <Button size="sm" variant="destructive" className="h-6 px-1.5 text-xs" onClick={() => setRemoveTarget(e)}>
-                        Remove
-                      </Button>
-                    </div>
+                    {can("manage_sources") && (
+                      <div className="flex gap-1">
+                        <Button size="sm" variant="outline" className="h-6 px-1.5 text-xs" onClick={() => setEditEntry(e)}>
+                          Edit
+                        </Button>
+                        <Button size="sm" variant="destructive" className="h-6 px-1.5 text-xs" onClick={() => setRemoveTarget(e)}>
+                          Remove
+                        </Button>
+                      </div>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

@@ -8,6 +8,7 @@ import { api } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { AttackDomainStatus, AttackSyncStartedResult } from "@/lib/api/loose-types";
+import { useCan } from "@/lib/auth/permissions";
 
 const STATUS_COLOR: Record<string, string> = {
   success: "text-primary",
@@ -35,6 +36,7 @@ function delta(val: number | null | undefined) {
  * kayak monitored-accounts Grup C). */
 export function SyncStatusCards() {
   const queryClient = useQueryClient();
+  const canSync = useCan()("manage_intel");
   const [syncingAll, setSyncingAll] = useState(false);
   const [syncingDomain, setSyncingDomain] = useState<string | null>(null);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -93,9 +95,11 @@ export function SyncStatusCards() {
     <div className="mb-4 border-b border-border pb-4">
       <div className="mb-2 flex items-center justify-between">
         <p className="text-sm font-semibold text-muted-foreground">ATT&amp;CK Sync Status</p>
-        <Button size="sm" variant="outline" disabled={syncingAll} onClick={() => void syncAll()}>
-          {syncingAll ? "Syncing…" : "Sync All Domains"}
-        </Button>
+        {canSync && (
+          <Button size="sm" variant="outline" disabled={syncingAll} onClick={() => void syncAll()}>
+            {syncingAll ? "Syncing…" : "Sync All Domains"}
+          </Button>
+        )}
       </div>
       {query.isPending && <p className="text-xs text-muted-foreground">Loading sync status…</p>}
       {query.isError && <p className="text-xs text-destructive">Failed to load sync status</p>}
@@ -104,15 +108,17 @@ export function SyncStatusCards() {
           <div key={d.domain_key} className="min-w-[220px] flex-1 rounded-xl border border-border bg-background p-3">
             <div className="mb-2 flex items-center justify-between">
               <span className="font-mono text-xs font-bold text-foreground">{d.label || d.domain_key}</span>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-6 px-2 text-xs"
-                disabled={syncingDomain === d.domain_key}
-                onClick={() => void syncDomain(d.domain_key)}
-              >
-                Sync
-              </Button>
+              {canSync && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-6 px-2 text-xs"
+                  disabled={syncingDomain === d.domain_key}
+                  onClick={() => void syncDomain(d.domain_key)}
+                >
+                  Sync
+                </Button>
+              )}
             </div>
             <div className={cn("mb-1.5 font-mono text-xs", STATUS_COLOR[d.status] ?? "text-muted-foreground")}>
               ● {d.status.toUpperCase()} · {d.version ? `v${d.version}` : "—"}

@@ -8,7 +8,14 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_api.deps import AuthedUser, get_db, request_ip, require_auth, require_superadmin
+from cti_api.deps import (
+    AuthedUser,
+    get_db,
+    invalidate_role_permissions,
+    request_ip,
+    require_auth,
+    require_permission,
+)
 from cti_api.services.roles import ALL_PERMISSIONS
 
 router = APIRouter(prefix="/api/roles", tags=["roles"])
@@ -51,7 +58,7 @@ async def add_role(
     body: RoleCreate,
     request: Request,
     session: AsyncSession = Depends(get_db),
-    admin: AuthedUser = Depends(require_superadmin),
+    admin: AuthedUser = Depends(require_permission("manage_roles")),
 ) -> dict[str, object]:
     unknown = [p for p in body.permissions if p not in ALL_PERMISSIONS]
     if unknown:
@@ -73,6 +80,7 @@ async def add_role(
         ip_address=request_ip(request),
     )
     await session.commit()
+    invalidate_role_permissions(body.name)
     return _serialize(role)
 
 
@@ -81,7 +89,7 @@ async def remove_role(
     name: str,
     request: Request,
     session: AsyncSession = Depends(get_db),
-    admin: AuthedUser = Depends(require_superadmin),
+    admin: AuthedUser = Depends(require_permission("manage_roles")),
 ) -> dict[str, bool]:
     repo = AsyncRoleRepo(session)
     role = await repo.get(name)
@@ -102,4 +110,5 @@ async def remove_role(
         ip_address=request_ip(request),
     )
     await session.commit()
+    invalidate_role_permissions(name)
     return {"ok": True}

@@ -1,4 +1,5 @@
-"""FP dinilai per baris client di digest GLOBAL: recap, exec dashboard, dan crossref.
+"""FP dinilai per baris client di digest GLOBAL (recap, exec dashboard) dan di crossref, yang sejak
+2026-10-24 di-scope ke client pemanggil.
 
 `cve_false_positives` berkunci `(cve_id, client_id)`: baris `cve_tracker` baru "false positive"
 kalau CLIENT PEMILIK barisnya yang menandainya (definisi yang sama dengan
@@ -101,17 +102,23 @@ async def test_crossref_cve_is_rejected_only_when_every_owning_client_marked_it(
 ) -> None:
     await seed_per_client_false_positives(async_db_session)
 
-    rejected = {
-        cve_id: "error" in await crossref_service.get_cve_crossrefs(async_db_session, cve_id)
-        for cve_id in (FP_IN_DEFAULT_ONLY, ONLY_IN_ACME, FP_IN_BOTH, FP_IN_ITS_ONLY_CLIENT)
-    }
+    cves = (FP_IN_DEFAULT_ONLY, ONLY_IN_ACME, FP_IN_BOTH, FP_IN_ITS_ONLY_CLIENT)
 
-    assert rejected == {
+    async def rejected_for(client_id: str) -> dict[str, bool]:
+        return {
+            cve_id: "error"
+            in await crossref_service.get_cve_crossrefs(async_db_session, cve_id, client_id)
+            for cve_id in cves
+        }
+
+    # Sejak crossref di-scope per client (2026-10-24) tiap client hanya melihat baris miliknya.
+    assert await rejected_for("acme") == {
         FP_IN_DEFAULT_ONLY: False,
         ONLY_IN_ACME: False,
         FP_IN_BOTH: True,
         FP_IN_ITS_ONLY_CLIENT: True,
     }
+    assert await rejected_for("default") == dict.fromkeys(cves, True)
 
 
 async def test_crossref_cve_describes_the_valid_row_not_the_one_marked_false_positive(
@@ -123,7 +130,7 @@ async def test_crossref_cve_describes_the_valid_row_not_the_one_marked_false_pos
     valid_row = (CveTracker.cve_id == FP_IN_DEFAULT_ONLY) & (CveTracker.client_id == "acme")
     await async_db_session.execute(update(CveTracker).where(valid_row).values(tech="valid-row"))
 
-    result = await crossref_service.get_cve_crossrefs(async_db_session, FP_IN_DEFAULT_ONLY)
+    result = await crossref_service.get_cve_crossrefs(async_db_session, FP_IN_DEFAULT_ONLY, "acme")
 
     assert result["tech"] == "valid-row"
 
@@ -133,12 +140,16 @@ async def test_crossref_pir_matches_only_rows_not_marked_by_their_own_client(
 ) -> None:
     await seed_per_client_false_positives(async_db_session)
     pir = await AsyncPIRRepo(async_db_session).create(
-        {"title": "Watch nginx", "criteria": {"industries": ["nginx"]}}, client_id="default"
+        {"title": "Watch nginx", "criteria": {"industries": ["nginx"]}}, client_id="acme"
     )
 
-    result = await crossref_service.get_pir_crossrefs(async_db_session, pir.id)
+    result = await crossref_service.get_pir_crossrefs(async_db_session, pir.id, "acme")
 
     assert sorted(c["cve_id"] for c in result["matched_cves"]) == TRUE_POSITIVES
+    # PIR acme tidak terbaca dari client lain.
+    assert await crossref_service.get_pir_crossrefs(async_db_session, pir.id, "default") == {
+        "error": "PIR not found"
+    }
 
 
 async def test_crossref_actor_matches_only_rows_not_marked_by_their_own_client(
@@ -151,6 +162,8 @@ async def test_crossref_actor_matches_only_rows_not_marked_by_their_own_client(
     )
     await async_db_session.flush()
 
-    result = await crossref_service.get_ta_crossrefs(async_db_session, "Apt41")
+    acme = await crossref_service.get_ta_crossrefs(async_db_session, "Apt41", "acme")
+    default = await crossref_service.get_ta_crossrefs(async_db_session, "Apt41", "default")
 
-    assert sorted(c["cve_id"] for c in result["matched_cves"]) == TRUE_POSITIVES
+    assert sorted(c["cve_id"] for c in acme["matched_cves"]) == TRUE_POSITIVES
+    assert default["matched_cves"] == []

@@ -17,6 +17,7 @@ import { MapTechDialog } from "@/components/cve/map-tech-dialog";
 import type { TechStackActionResult, TechStackSuccessFlag } from "@/lib/api/loose-types";
 import { targetLabel, useDebounced, useMonitorActions } from "@/lib/cve/catalog";
 import { cn } from "@/lib/utils";
+import { useCan } from "@/lib/auth/permissions";
 
 const PAGE_SIZE = 50;
 const EXPOSURES = ["internal", "public", "both"];
@@ -41,6 +42,7 @@ function selectClass() {
  * (baris CVE-nya jadi yatim), jadi dialognya menawarkan Pause sebagai gantinya.
  */
 export function MonitoredTechPanel() {
+  const can = useCan();
   const queryClient = useQueryClient();
   const actions = useMonitorActions();
   const [search, setSearch] = useState("");
@@ -159,6 +161,7 @@ export function MonitoredTechPanel() {
             ))}
           </select>
         </div>
+        {can("manage_cve") && (
         <div className="ml-auto flex flex-wrap items-end gap-2">
           <div className="flex flex-col gap-1">
             <Label className="text-sm font-medium text-muted-foreground">Add custom (unmapped)</Label>
@@ -187,6 +190,7 @@ export function MonitoredTechPanel() {
             + Add
           </Button>
         </div>
+        )}
       </div>
 
       {unmapped > 0 && (
@@ -241,6 +245,8 @@ export function MonitoredTechPanel() {
                   <TableCell className="font-mono text-xs text-muted-foreground">{t.added_date?.slice(0, 10) || "—"}</TableCell>
                   <TableCell>
                     <select
+                      disabled={!can("manage_cve")}
+                      aria-label={`Exposure of ${t.name}`}
                       value={t.exposure}
                       onChange={(e) => void changeExposure(t.id, e.target.value)}
                       className={selectClass()}
@@ -254,6 +260,8 @@ export function MonitoredTechPanel() {
                   </TableCell>
                   <TableCell>
                     <select
+                      disabled={!can("manage_cve")}
+                      aria-label={`Hosting of ${t.name}`}
                       value={t.hosting_type}
                       onChange={(e) => void changeHosting(t.id, e.target.value)}
                       className={selectClass()}
@@ -271,6 +279,7 @@ export function MonitoredTechPanel() {
                     </Badge>
                   </TableCell>
                   <TableCell>
+                    {can("manage_cve") && (
                     <div className="flex justify-end gap-1.5">
                       <Button size="sm" variant="outline" onClick={() => setMapId(t.id)}>
                         {t.targets.length === 0 ? "Map to catalog" : "Targets"}
@@ -287,6 +296,7 @@ export function MonitoredTechPanel() {
                         Remove
                       </Button>
                     </div>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

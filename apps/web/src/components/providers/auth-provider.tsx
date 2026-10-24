@@ -4,6 +4,8 @@ import { createContext, useCallback, useContext } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 
+import { getActiveClientId, setActiveClientId } from "@/lib/auth/client-id";
+
 export interface AuthUser {
   username: string;
   role: string;
@@ -12,6 +14,8 @@ export interface AuthUser {
   clients_map: Record<string, string[]>;
   /** Wajib ganti password dulu: server menolak semua endpoint lain sampai selesai. */
   force_pw_change?: boolean;
+  /** Permission efektif role user (0.8.4); lihat `useCan` di `lib/auth/permissions.ts`. */
+  permissions?: string[];
 }
 
 interface AuthContextValue {
@@ -28,7 +32,18 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 async function fetchMe(): Promise<AuthUser | null> {
   const res = await fetch("/api/auth/me", { cache: "no-store" });
   if (!res.ok) return null;
-  return (await res.json()) as AuthUser;
+  const user = (await res.json()) as AuthUser;
+  syncActiveClient(user);
+  return user;
+}
+
+/** Cookie client aktif yang bukan milik user (ganti akun di browser yang sama, client dicabut)
+ * dikembalikan ke client pertama user, supaya switcher dan header `X-Client-ID` cocok dengan akses
+ * yang sebenarnya. Superadmin boleh memilih client mana pun. */
+function syncActiveClient(user: AuthUser): void {
+  const active = getActiveClientId();
+  if (user.role === "superadmin" || !user.client_ids.length) return;
+  if (!active || !user.client_ids.includes(active)) setActiveClientId(user.client_ids[0]);
 }
 
 /** `useQuery` (bukan `useEffect`+`useState` manual) buat `/api/auth/me` --
@@ -66,6 +81,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return { ok: false, detail: body?.detail ?? "Login failed" };
       }
       const loggedInUser = (await res.json()) as AuthUser;
+      syncActiveClient(loggedInUser);
       queryClient.setQueryData(ME_QUERY_KEY, loggedInUser);
       return { ok: true };
     },

@@ -25,9 +25,19 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_api.deps import AuthedUser, get_db, request_ip, require_admin, require_auth
+from cti_api.deps import (
+    AuthedUser,
+    get_db,
+    request_ip,
+    require_auth,
+    require_permission,
+)
 
-router = APIRouter(prefix="/api/attack", tags=["attack"], dependencies=[Depends(require_auth)])
+router = APIRouter(
+    prefix="/api/attack",
+    tags=["attack"],
+    dependencies=[Depends(require_permission("view_intel")), Depends(require_auth)],
+)
 
 
 class SyncRequest(BaseModel):
@@ -57,7 +67,7 @@ async def attack_sync(
     request: Request,
     background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_db),
-    admin: AuthedUser = Depends(require_admin),
+    admin: AuthedUser = Depends(require_permission("manage_intel")),
 ) -> dict[str, object]:
     domains = body.domains if body.domains else list(DOMAINS.keys())
     invalid = [d for d in domains if d not in DOMAINS]
@@ -81,7 +91,7 @@ async def attack_sync_single(
     request: Request,
     background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_db),
-    admin: AuthedUser = Depends(require_admin),
+    admin: AuthedUser = Depends(require_permission("manage_intel")),
 ) -> dict[str, object]:
     if domain_key not in DOMAINS:
         raise HTTPException(status_code=404, detail=f"Unknown domain: {domain_key}")

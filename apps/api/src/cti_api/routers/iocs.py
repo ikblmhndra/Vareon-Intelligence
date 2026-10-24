@@ -31,11 +31,19 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_api.deps import AuthedUser, get_db, request_ip, require_admin, require_auth
+from cti_api.deps import (
+    AuthedUser,
+    get_db,
+    request_ip,
+    require_auth,
+    require_permission,
+)
 from cti_api.services import confidence, fp_analytics
 from cti_api.services import ioc_ta_links as ioc_ta_links_service
 
-router = APIRouter(prefix="/api/iocs", tags=["iocs"])
+router = APIRouter(
+    prefix="/api/iocs", tags=["iocs"], dependencies=[Depends(require_permission("view_ioc"))]
+)
 
 
 class TagBody(BaseModel):
@@ -145,7 +153,7 @@ async def ioc_fp_analytics(
 async def apply_fp_suggestions(
     request: Request,
     session: AsyncSession = Depends(get_db),
-    user: AuthedUser = Depends(require_admin),
+    user: AuthedUser = Depends(require_permission("manage_ioc")),
 ) -> dict[str, int]:
     analytics = await fp_analytics.get_fp_analytics(session)
     suggestions = analytics.get("suggested_allowlist", [])
@@ -199,7 +207,7 @@ async def ioc_allowlist_add(
     body: AllowlistBody,
     request: Request,
     session: AsyncSession = Depends(get_db),
-    user: AuthedUser = Depends(require_admin),
+    user: AuthedUser = Depends(require_permission("manage_ioc")),
 ) -> dict[str, object]:
     repo = AsyncIocAllowlistRepo(session)
     try:
@@ -227,7 +235,7 @@ async def ioc_allowlist_remove(
     entry_id: int,
     request: Request,
     session: AsyncSession = Depends(get_db),
-    user: AuthedUser = Depends(require_admin),
+    user: AuthedUser = Depends(require_permission("manage_ioc")),
 ) -> dict[str, bool]:
     ok = await AsyncIocAllowlistRepo(session).delete(entry_id)
     if not ok:
@@ -242,7 +250,10 @@ async def ioc_allowlist_remove(
     return {"ok": True}
 
 
-@router.post("/{ioc_type}/{value:path}/threat-actors")
+@router.post(
+    "/{ioc_type}/{value:path}/threat-actors",
+    dependencies=[Depends(require_permission("manage_ioc"))],
+)
 async def add_ioc_threat_actors(
     ioc_type: str,
     value: str,
@@ -267,7 +278,10 @@ async def add_ioc_threat_actors(
     return {"ok": True}
 
 
-@router.delete("/{ioc_type}/{value:path}/threat-actors/{actor}")
+@router.delete(
+    "/{ioc_type}/{value:path}/threat-actors/{actor}",
+    dependencies=[Depends(require_permission("manage_ioc"))],
+)
 async def remove_ioc_threat_actor(
     ioc_type: str,
     value: str,
@@ -299,7 +313,7 @@ async def bulk_delete(
     body: BulkDeleteBody,
     request: Request,
     session: AsyncSession = Depends(get_db),
-    user: AuthedUser = Depends(require_admin),
+    user: AuthedUser = Depends(require_permission("manage_ioc")),
 ) -> dict[str, int]:
     if not body.ids:
         raise HTTPException(status_code=400, detail="ids required")
@@ -319,7 +333,7 @@ async def delete_ioc_by_id(
     ioc_id: int,
     request: Request,
     session: AsyncSession = Depends(get_db),
-    user: AuthedUser = Depends(require_admin),
+    user: AuthedUser = Depends(require_permission("manage_ioc")),
 ) -> dict[str, bool]:
     ok = await AsyncIOCRepo(session).delete(ioc_id)
     if not ok:
@@ -406,7 +420,9 @@ async def ioc_detail(
     return _serialize_detail(ioc)
 
 
-@router.post("/{ioc_type}/{value:path}/tags")
+@router.post(
+    "/{ioc_type}/{value:path}/tags", dependencies=[Depends(require_permission("manage_ioc"))]
+)
 async def add_ioc_tags(
     ioc_type: str,
     value: str,

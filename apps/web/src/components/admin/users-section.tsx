@@ -30,6 +30,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAdminUsers, useClients, useRoles } from "@/components/admin/hooks";
+import { useCan } from "@/lib/auth/permissions";
 
 const USERS_KEY = ["admin", "users"] as const;
 
@@ -42,8 +43,8 @@ function roleBadgeClass(role: string): string {
 /** Port section "Users" + "Add User" + row action dropdown (⋮) di
  * `tab_usermgmt.html`/`usermgmt.js`. */
 export function UsersSection() {
-  const { user: me } = useAuth();
-  const isAdmin = me?.role === "admin" || me?.role === "superadmin";
+  const can = useCan();
+  const isAdmin = can("manage_users");
   const users = useAdminUsers();
   const [resetTarget, setResetTarget] = useState<AdminUser | null>(null);
   const [roleTarget, setRoleTarget] = useState<AdminUser | null>(null);
@@ -102,7 +103,9 @@ export function UsersSection() {
                           ⋮
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => setResetTarget(u)}>Reset Password</DropdownMenuItem>
+                          {can("reset_password") && (
+                            <DropdownMenuItem onClick={() => setResetTarget(u)}>Reset Password</DropdownMenuItem>
+                          )}
                           {isAdmin && (
                             <>
                               <DropdownMenuItem onClick={() => setClientsTarget(u)}>Edit Clients</DropdownMenuItem>

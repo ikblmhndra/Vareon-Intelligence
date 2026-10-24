@@ -6,7 +6,6 @@ import { toast } from "sonner";
 
 import { api } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
-import { useAuth } from "@/components/providers/auth-provider";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
@@ -22,6 +21,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { StatusBadge } from "@/components/scrapers/status-badge";
 import { ScraperRunsPanel } from "@/components/scrapers/scraper-runs-panel";
 import { ScraperItemsPanel } from "@/components/scrapers/scraper-items-panel";
+import { useCan } from "@/lib/auth/permissions";
 
 type ScraperDetail = components["schemas"]["ScraperDetail"];
 type ScraperOption = components["schemas"]["ScraperOptionOut"];
@@ -96,8 +96,8 @@ function ScraperDetailForm({
   detail: ScraperDetail;
   onClose: () => void;
 }) {
-  const { user } = useAuth();
-  const isAdmin = user?.role === "admin" || user?.role === "superadmin";
+  const can = useCan();
+  const isAdmin = can("manage_scraper");
   const queryClient = useQueryClient();
 
   const [schedule, setSchedule] = useState(detail.config.schedule ?? "");

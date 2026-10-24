@@ -24,14 +24,18 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_api.deps import AuthedUser, get_db, require_auth
+from cti_api.deps import AuthedUser, effective_client_id, get_db, require_auth, require_permission
 from cti_api.services import stix as stix_service
 
-router = APIRouter(prefix="/api/stix", tags=["stix"], dependencies=[Depends(require_auth)])
+router = APIRouter(
+    prefix="/api/stix",
+    tags=["stix"],
+    dependencies=[Depends(require_permission("view_stix")), Depends(require_auth)],
+)
 
 
 def _today() -> str:
@@ -134,10 +138,15 @@ async def export_ioc_stix(
     summary="Export STIX 2.1 bundle for active PIRs",
     response_class=JSONResponse,
 )
-async def export_pir_stix(session: AsyncSession = Depends(get_db)) -> JSONResponse:
-    """Ambil semua Priority Intelligence Requirement aktif dari database
-    dan wakilkan tiap satu sebagai objek course-of-action STIX 2.1 di
-    dalam satu bundle."""
-    bundle = await stix_service.build_pir_stix_bundle(session)
+async def export_pir_stix(
+    user: AuthedUser = Depends(require_auth),
+    x_client_id: str | None = Header(None),
+    session: AsyncSession = Depends(get_db),
+) -> JSONResponse:
+    """PIR aktif client aktif (`X-Client-ID`) sebagai objek course-of-action STIX 2.1 di dalam
+    satu bundle."""
+    bundle = await stix_service.build_pir_stix_bundle(
+        session, effective_client_id(user, x_client_id)
+    )
     filename = f"stix-pirs-{_today()}.json"
     return _stix_response(bundle, filename)
