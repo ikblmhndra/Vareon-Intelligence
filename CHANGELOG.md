@@ -15,6 +15,8 @@ menyatakan hal di luar data diperbaiki.** Satu migrasi, dua entri beat baru, **t
 `enrich.auto_replay` dan `llm.purge_calls`). Migrasi membuat tabel `llm_calls` dan menambah dua kolom di `rejected_articles`;
 baris `permanent` lama yang berasal dari BadRequest/NotFound/Authentication/PermissionDenied otomatis menjadi `config`. Baris
 `config` yang parkir akan mulai diputar ulang otomatis setelah deploy (canary dulu, lalu batch bila model sehat).
+Token input task `ttp` naik sekitar 3x karena TTP sekarang membaca sampai 6.000 karakter teks artikel, bukan ringkasan
+2.000 karakter.
 
 ### Ditambah
 - Tabel `llm_calls`: log tiap panggilan LLM (nama task, model, versi prompt, token, latensi, status `ok`/`empty`/`error`).

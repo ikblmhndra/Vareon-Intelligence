@@ -3,7 +3,7 @@
 Tabel `llm_calls` (log metadata tiap panggilan LLM), dua kolom `rejected_articles`
 (`auto_replay_count`, `last_auto_replay_at`) untuk replay otomatis, dan backfill: baris
 `permanent` yang `reason`-nya BadRequest/NotFound/Authentication/PermissionDenied dipindah ke
-`config` (kegagalan konfigurasi, tidak ikut replay otomatis).
+`config` (kegagalan konfigurasi gateway; tetap ikut replay otomatis, spec 4.2).
 
 Revision ID: c4e7a2b9d1f0
 Revises: b7e4c1a9d256
