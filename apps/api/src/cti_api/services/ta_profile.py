@@ -246,6 +246,32 @@ def apply_overrides(
     return profile
 
 
+_TECHNIQUE_ID_RE = re.compile(r"\bT\d{4}(?:\.\d{3})?\b")
+
+
+def filter_techniques_to_context(profile: dict[str, Any], context: str) -> dict[str, Any]:
+    """Buang teknik yang ID-nya tidak ada di konteks yang dikirim ke model. Larangan di prompt
+    saja tidak cukup: di dev (0.8.5, Scattered Spider) 1 dari 55 teknik (T1485) tidak ada di
+    konteks ATT&CK maupun berita. Entri tanpa ID ikut dibuang; sub-teknik harus tercantum
+    persis (T1059 di konteks tidak meloloskan T1059.001). Key taktik dipertahankan (list
+    kosong), web sudah menyembunyikan taktik kosong."""
+    cap = profile.get("capability_assessment")
+    techniques = cap.get("attack_techniques") if isinstance(cap, dict) else None
+    if not isinstance(techniques, dict):
+        return profile
+    allowed = set(_TECHNIQUE_ID_RE.findall(context))
+    for tactic, entries in techniques.items():
+        if isinstance(entries, list):
+            techniques[tactic] = [
+                e
+                for e in entries
+                if isinstance(e, str)
+                and (m := _TECHNIQUE_ID_RE.search(e)) is not None
+                and m.group(0) in allowed
+            ]
+    return profile
+
+
 _PROMPT_VERSION = prompt_version(_SYSTEM_PROMPT)
 
 
@@ -350,6 +376,7 @@ async def generate_ta_profile(session: AsyncSession, actor_name: str) -> dict[st
     profile = await asyncio.to_thread(_call_llm, user_msg)
     now = datetime.datetime.now(datetime.UTC)
     apply_overrides(profile, mitre_group_id, now)
+    filter_techniques_to_context(profile, user_msg)
     profile["_actor_name"] = actor_name
     profile["_generated_at"] = now.isoformat()
 
