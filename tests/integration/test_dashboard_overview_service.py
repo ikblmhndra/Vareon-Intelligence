@@ -152,13 +152,10 @@ async def test_trending_without_a_usable_baseline_claims_no_rise(
     trending._CACHE.clear()
     repo = AsyncArticleRepo(async_db_session)
     for i in range(3):
-        await repo.upsert(
-            url=f"https://example.com/ttp-{i}",
-            title=f"Exploit {i}",
-            source="S",
-            posted_on=_TODAY,
-            ttps=[("T1190", "Exploit Public-Facing Application")],
+        article = await repo.upsert(
+            url=f"https://example.com/ttp-{i}", title=f"Exploit {i}", source="S", posted_on=_TODAY
         )
+        await repo.set_enrichment(article, ttps=[("T1190", "Exploit Public-Facing Application")])
 
     out = await trending.get_trending(async_db_session, days=7)
     assert out["baseline_reliable"] is False
