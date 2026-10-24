@@ -10,10 +10,14 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_api.deps import get_db, require_auth
+from cti_api.deps import get_db, require_auth, require_permission
 from cti_api.services.d3fend import get_d3fend_countermeasures
 
-router = APIRouter(prefix="/api/mitre", tags=["mitre"], dependencies=[Depends(require_auth)])
+router = APIRouter(
+    prefix="/api/mitre",
+    tags=["mitre"],
+    dependencies=[Depends(require_permission("view_intel")), Depends(require_auth)],
+)
 
 
 def _article_out(a: Article) -> dict[str, object]:

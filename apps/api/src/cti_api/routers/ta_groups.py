@@ -23,7 +23,14 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_api.deps import AuthedUser, effective_client_id, get_db, request_ip, require_auth
+from cti_api.deps import (
+    AuthedUser,
+    effective_client_id,
+    get_db,
+    request_ip,
+    require_auth,
+    require_permission,
+)
 from cti_api.schemas.ta_group import (
     TAGroupAdd,
     TAGroupListResponse,
@@ -36,7 +43,11 @@ from cti_api.schemas.ta_group import (
 
 _TECH_RE = re.compile(r"\b(T\d{4}(?:\.\d{3})?)\b")
 
-router = APIRouter(prefix="/api/ta", tags=["threat-actor-groups"])
+router = APIRouter(
+    prefix="/api/ta",
+    tags=["threat-actor-groups"],
+    dependencies=[Depends(require_permission("view_ta"))],
+)
 
 
 def _group_out(g: ThreatActorGroup) -> TAGroupOut:
@@ -71,7 +82,9 @@ async def ta_stats(session: AsyncSession = Depends(get_db)) -> dict[str, object]
     return await AsyncTARepo(session).get_ta_stats()
 
 
-@router.post("/groups", dependencies=[Depends(require_auth)])
+@router.post(
+    "/groups", dependencies=[Depends(require_permission("manage_intel")), Depends(require_auth)]
+)
 async def post_ta_group(
     body: TAGroupAdd,
     request: Request,
@@ -89,7 +102,10 @@ async def post_ta_group(
     return result
 
 
-@router.delete("/groups/{group_id}", dependencies=[Depends(require_auth)])
+@router.delete(
+    "/groups/{group_id}",
+    dependencies=[Depends(require_permission("manage_intel")), Depends(require_auth)],
+)
 async def delete_ta_group(
     group_id: int,
     group_name: str,
@@ -127,7 +143,10 @@ async def get_whitelist(
     )
 
 
-@router.delete("/whitelist/{name}", dependencies=[Depends(require_auth)])
+@router.delete(
+    "/whitelist/{name}",
+    dependencies=[Depends(require_permission("manage_intel")), Depends(require_auth)],
+)
 async def restore_from_whitelist(
     name: str,
     request: Request,
@@ -215,7 +234,9 @@ async def get_actor_timeline(
     return await AsyncTAProfileRepo(session).get_timeline(actor, months=months)
 
 
-@router.post("/watchlist", dependencies=[Depends(require_auth)])
+@router.post(
+    "/watchlist", dependencies=[Depends(require_permission("manage_pir")), Depends(require_auth)]
+)
 async def post_ta_watchlist(
     body: TAGroupAdd,
     request: Request,
@@ -235,7 +256,10 @@ async def post_ta_watchlist(
     return result
 
 
-@router.delete("/watchlist/{name}", dependencies=[Depends(require_auth)])
+@router.delete(
+    "/watchlist/{name}",
+    dependencies=[Depends(require_permission("manage_pir")), Depends(require_auth)],
+)
 async def delete_ta_watchlist(
     name: str,
     request: Request,
@@ -259,7 +283,10 @@ class TAProfileGenerateBody(BaseModel):
     name: str
 
 
-@router.post("/profile/generate", dependencies=[Depends(require_auth)])
+@router.post(
+    "/profile/generate",
+    dependencies=[Depends(require_permission("manage_intel")), Depends(require_auth)],
+)
 async def post_ta_profile_generate(
     body: TAProfileGenerateBody,
     request: Request,

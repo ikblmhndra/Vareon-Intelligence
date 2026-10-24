@@ -429,7 +429,8 @@ async def test_an_analyst_override_is_saved_audited_and_changes_the_hit_rate(
     snapshot: SnapshotAssertion,
 ) -> None:
     headers = auth_header("analyst1", role="analyst")
-    week = await _two_weeks(api_client, api_session, headers)
+    # Generate butuh `manage_intel` (memanggil LLM); override verdict cukup untuk analyst.
+    week = await _two_weeks(api_client, api_session, auth_header())
 
     resp = await api_client.patch(
         f"/api/recap/{week['id']}/scorecard/f2", headers=headers, json={"verdict": "happened"}

@@ -22,11 +22,13 @@ from cti_core.db.repositories.auth import AsyncAuditLogRepo
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_api.deps import AuthedUser, get_db, request_ip, require_auth
+from cti_api.deps import AuthedUser, get_db, request_ip, require_auth, require_permission
 from cti_api.schemas.recap import ScorecardOverrideIn
 from cti_api.services import recap as recap_service
 
-router = APIRouter(prefix="/api/recap", tags=["recap"])
+router = APIRouter(
+    prefix="/api/recap", tags=["recap"], dependencies=[Depends(require_permission("view_intel"))]
+)
 
 Kind = Literal["daily", "weekly"]
 
@@ -77,7 +79,7 @@ async def recap_get(
     return body
 
 
-@router.post("/generate")
+@router.post("/generate", dependencies=[Depends(require_permission("manage_intel"))])
 async def recap_generate(
     request: Request,
     date: str | None = Query(None, description="kind=daily: YYYY-MM-DD — defaults to yesterday"),
@@ -134,6 +136,8 @@ async def recap_generate(
     return {"recap": doc}
 
 
+# Override verdict scorecard = penilaian analyst atas forecast (tanpa LLM): cukup `view_intel`
+# dari level router, beda dari `generate` yang memanggil LLM.
 @router.patch("/{recap_id}/scorecard/{event_id}")
 async def recap_override_scorecard(
     recap_id: int,

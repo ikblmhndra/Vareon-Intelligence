@@ -43,7 +43,14 @@ from fastapi import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_api.deps import AuthedUser, effective_client_id, get_db, request_ip, require_auth
+from cti_api.deps import (
+    AuthedUser,
+    effective_client_id,
+    get_db,
+    request_ip,
+    require_auth,
+    require_permission,
+)
 from cti_api.schemas.pkg_vuln import (
     LockfileImportResult,
     MonitoredPackageAddBody,
@@ -58,7 +65,9 @@ from cti_api.services import pkg_vuln as pkg_vuln_service
 
 _MAX_LOCKFILE_BYTES = 2_000_000
 
-router = APIRouter(prefix="/api/pkgvuln", tags=["pkgvuln"])
+router = APIRouter(
+    prefix="/api/pkgvuln", tags=["pkgvuln"], dependencies=[Depends(require_permission("view_cve"))]
+)
 
 
 # ── Background task wrappers -- lihat docstring modul ───────────────────────
@@ -178,7 +187,7 @@ async def get_packages(
     )
 
 
-@router.post("/packages")
+@router.post("/packages", dependencies=[Depends(require_permission("manage_cve"))])
 async def post_package(
     body: MonitoredPackageAddBody,
     request: Request,
@@ -205,7 +214,7 @@ async def post_package(
     return result
 
 
-@router.patch("/packages/{pkg_id}")
+@router.patch("/packages/{pkg_id}", dependencies=[Depends(require_permission("manage_cve"))])
 async def patch_package(
     pkg_id: int,
     body: MonitoredPackageEditBody,
@@ -235,7 +244,7 @@ async def patch_package(
     return result
 
 
-@router.delete("/packages/{pkg_id}")
+@router.delete("/packages/{pkg_id}", dependencies=[Depends(require_permission("manage_cve"))])
 async def remove_package(
     pkg_id: int,
     request: Request,
@@ -257,7 +266,9 @@ async def remove_package(
     return result
 
 
-@router.post("/packages/{pkg_id}/resolve-deps")
+@router.post(
+    "/packages/{pkg_id}/resolve-deps", dependencies=[Depends(require_permission("manage_cve"))]
+)
 async def resolve_deps(
     pkg_id: int,
     request: Request,
@@ -316,7 +327,7 @@ async def get_deps(
     )
 
 
-@router.post("/packages/{pkg_id}/scan")
+@router.post("/packages/{pkg_id}/scan", dependencies=[Depends(require_permission("manage_cve"))])
 async def scan_one_package(
     pkg_id: int,
     request: Request,
@@ -345,7 +356,7 @@ async def scan_one_package(
     }
 
 
-@router.post("/scan")
+@router.post("/scan", dependencies=[Depends(require_permission("manage_cve"))])
 async def scan_all(
     request: Request,
     background_tasks: BackgroundTasks,
@@ -362,7 +373,11 @@ async def scan_all(
     return {"started": True}
 
 
-@router.post("/import-lockfile", response_model=LockfileImportResult)
+@router.post(
+    "/import-lockfile",
+    dependencies=[Depends(require_permission("manage_cve"))],
+    response_model=LockfileImportResult,
+)
 async def import_lockfile_endpoint(
     request: Request,
     background_tasks: BackgroundTasks,
@@ -438,7 +453,7 @@ async def get_vulns(
     )
 
 
-@router.patch("/vulns/{vuln_id}/ack")
+@router.patch("/vulns/{vuln_id}/ack", dependencies=[Depends(require_permission("manage_cve"))])
 async def ack_vuln(
     vuln_id: int,
     user: AuthedUser = Depends(require_auth),

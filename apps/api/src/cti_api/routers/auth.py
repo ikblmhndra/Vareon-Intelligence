@@ -19,7 +19,14 @@ from redis.asyncio import Redis
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_api.deps import AuthedUser, get_db, get_redis, request_ip, require_admin, require_auth
+from cti_api.deps import (
+    AuthedUser,
+    get_db,
+    get_redis,
+    request_ip,
+    require_auth,
+    require_permission,
+)
 from cti_api.rate_limit import (
     check_password_lockout,
     clear_password_failures,
@@ -68,7 +75,7 @@ async def update_pw_policy(
     body: PolicySettings,
     request: Request,
     session: AsyncSession = Depends(get_db),
-    admin: AuthedUser = Depends(require_admin),
+    admin: AuthedUser = Depends(require_permission("manage_policy")),
 ) -> dict[str, object]:
     policy = body.model_dump(exclude={"force_all_change"})
     await policy_service.save_policy(session, policy)
@@ -239,7 +246,8 @@ async def me(
 
 @router.get("/users")
 async def get_users(
-    session: AsyncSession = Depends(get_db), admin: AuthedUser = Depends(require_admin)
+    session: AsyncSession = Depends(get_db),
+    admin: AuthedUser = Depends(require_permission("manage_users")),
 ) -> list[dict[str, object]]:
     users = await AsyncUserRepo(session).list_all()
     return [
@@ -282,7 +290,7 @@ async def add_user(
     body: UserCreate,
     request: Request,
     session: AsyncSession = Depends(get_db),
-    admin: AuthedUser = Depends(require_admin),
+    admin: AuthedUser = Depends(require_permission("manage_users")),
 ) -> dict[str, object]:
     policy = await policy_service.get_policy(session)
     errors = policy_service.validate_password(body.password, policy)
@@ -320,7 +328,7 @@ async def reset_user_password(
     request: Request,
     session: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis),
-    admin: AuthedUser = Depends(require_admin),
+    admin: AuthedUser = Depends(require_permission("reset_password")),
 ) -> dict[str, bool]:
     await _forbid_admin_touching_superadmin(session, admin, username)
     user_repo = AsyncUserRepo(session)
@@ -354,7 +362,7 @@ async def update_user_client_list(
     request: Request,
     session: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis),
-    admin: AuthedUser = Depends(require_admin),
+    admin: AuthedUser = Depends(require_permission("manage_users")),
 ) -> dict[str, object]:
     if not body.client_ids:
         raise HTTPException(status_code=400, detail="client_ids must not be empty")
@@ -382,7 +390,7 @@ async def update_user_role_endpoint(
     request: Request,
     session: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis),
-    admin: AuthedUser = Depends(require_admin),
+    admin: AuthedUser = Depends(require_permission("manage_users")),
 ) -> dict[str, object]:
     if not await AsyncRoleRepo(session).exists(body.role):
         raise HTTPException(status_code=422, detail=f"Role '{body.role}' does not exist")
@@ -411,7 +419,7 @@ async def audit_log(
     user: str | None = None,
     action: str | None = None,
     session: AsyncSession = Depends(get_db),
-    _admin: AuthedUser = Depends(require_admin),
+    _admin: AuthedUser = Depends(require_permission("view_audit_log")),
 ) -> dict[str, object]:
     entries, total = await AsyncAuditLogRepo(session).query(
         page=page, page_size=page_size, username=user, action=action

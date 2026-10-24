@@ -164,7 +164,7 @@ async def test_build_pir_stix_bundle_only_active_ordered_by_priority(
     inactive_row.status = "closed"
     await async_db_session.flush()
 
-    bundle = await stix_service.build_pir_stix_bundle(async_db_session)
+    bundle = await stix_service.build_pir_stix_bundle(async_db_session, "default")
     coas = [o for o in bundle["objects"] if o["type"] == "course-of-action"]
     names = [c["name"] for c in coas]
     assert names == [f"PIR: {high.title}", f"PIR: {low.title}"]

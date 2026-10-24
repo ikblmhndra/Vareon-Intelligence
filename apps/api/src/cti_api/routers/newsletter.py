@@ -41,7 +41,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_api.deps import AuthedUser, get_db, request_ip, require_auth
+from cti_api.deps import AuthedUser, get_db, request_ip, require_auth, require_permission
 from cti_api.routers.articles import _serialize as _serialize_article
 from cti_api.schemas.newsletter import (
     NewsletterListItem,
@@ -55,7 +55,11 @@ from cti_api.schemas.newsletter import (
 from cti_api.services import newsletter as newsletter_service
 from cti_api.services import newsletter_edition, newsletter_logo, newsletter_suggestion
 
-router = APIRouter(prefix="/api/newsletter", tags=["newsletter"])
+router = APIRouter(
+    prefix="/api/newsletter",
+    tags=["newsletter"],
+    dependencies=[Depends(require_permission("view_newsletter"))],
+)
 log = structlog.get_logger()
 
 
@@ -210,7 +214,11 @@ async def get_suggestion(
     return await _suggestion_response(session, row)
 
 
-@router.post("/suggestion/rebuild", response_model=NewsletterSuggestionResponse)
+@router.post(
+    "/suggestion/rebuild",
+    dependencies=[Depends(require_permission("manage_newsletter"))],
+    response_model=NewsletterSuggestionResponse,
+)
 async def rebuild_suggestion(
     request: Request,
     body: NewsletterSuggestionRebuildBody | None = None,
@@ -252,7 +260,9 @@ async def get_saved_html(
     return HTMLResponse(content=newsletter_logo.with_data_uris(html))
 
 
-@router.post("/{newsletter_id}/resend")
+@router.post(
+    "/{newsletter_id}/resend", dependencies=[Depends(require_permission("manage_newsletter"))]
+)
 async def resend_newsletter(
     newsletter_id: int,
     request: Request,
@@ -286,7 +296,7 @@ async def resend_newsletter(
     return {"email_id": email_id, "method": "graph", "subject": subject}
 
 
-@router.post("/preview")
+@router.post("/preview", dependencies=[Depends(require_permission("manage_newsletter"))])
 async def preview_newsletter(
     body: NewsletterSectionsBody,
     session: AsyncSession = Depends(get_db),
@@ -320,7 +330,7 @@ async def preview_newsletter(
     }
 
 
-@router.post("/draft-email")
+@router.post("/draft-email", dependencies=[Depends(require_permission("manage_newsletter"))])
 async def draft_email(
     body: NewsletterSectionsBody,
     request: Request,

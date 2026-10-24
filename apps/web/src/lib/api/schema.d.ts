@@ -3111,9 +3111,8 @@ export interface paths {
         };
         /**
          * Export STIX 2.1 bundle for active PIRs
-         * @description Ambil semua Priority Intelligence Requirement aktif dari database
-         *     dan wakilkan tiap satu sebagai objek course-of-action STIX 2.1 di
-         *     dalam satu bundle.
+         * @description PIR aktif client aktif (`X-Client-ID`) sebagai objek course-of-action STIX 2.1 di dalam
+         *     satu bundle.
          */
         get: operations["export_pir_stix_api_stix_pirs_get"];
         put?: never;
@@ -8233,6 +8232,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "x-client-id"?: string | null;
                 authorization?: string | null;
             };
             path: {
@@ -8268,6 +8268,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "x-client-id"?: string | null;
                 authorization?: string | null;
             };
             path: {
@@ -8303,6 +8304,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "x-client-id"?: string | null;
                 authorization?: string | null;
             };
             path: {
@@ -10394,6 +10396,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "x-client-id"?: string | null;
                 authorization?: string | null;
             };
             path: {
@@ -10430,6 +10433,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "x-client-id"?: string | null;
                 authorization?: string | null;
             };
             path: {
@@ -10470,6 +10474,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "x-client-id"?: string | null;
                 authorization?: string | null;
             };
             path: {
@@ -13582,6 +13587,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "x-client-id"?: string | null;
                 authorization?: string | null;
             };
             path?: never;

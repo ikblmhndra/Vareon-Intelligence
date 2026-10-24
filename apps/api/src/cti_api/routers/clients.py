@@ -8,7 +8,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_api.deps import AuthedUser, get_db, request_ip, require_admin, require_superadmin
+from cti_api.deps import (
+    AuthedUser,
+    get_db,
+    request_ip,
+    require_permission,
+)
 
 router = APIRouter(prefix="/api/clients", tags=["clients"])
 
@@ -38,7 +43,8 @@ def _serialize(client: Client) -> dict[str, object]:
 
 @router.get("")
 async def get_clients(
-    session: AsyncSession = Depends(get_db), _admin: AuthedUser = Depends(require_admin)
+    session: AsyncSession = Depends(get_db),
+    _admin: AuthedUser = Depends(require_permission("manage_users")),
 ) -> list[dict[str, object]]:
     clients = await AsyncClientRepo(session).list_all()
     return [_serialize(c) for c in clients]
@@ -49,7 +55,7 @@ async def post_client(
     body: ClientCreate,
     request: Request,
     session: AsyncSession = Depends(get_db),
-    sa: AuthedUser = Depends(require_superadmin),
+    sa: AuthedUser = Depends(require_permission("manage_clients")),
 ) -> dict[str, object]:
     repo = AsyncClientRepo(session)
     if await repo.get(body.client_id):
@@ -72,7 +78,7 @@ async def edit_client(
     body: ClientUpdate,
     request: Request,
     session: AsyncSession = Depends(get_db),
-    sa: AuthedUser = Depends(require_superadmin),
+    sa: AuthedUser = Depends(require_permission("manage_clients")),
 ) -> dict[str, object]:
     updated = await AsyncClientRepo(session).update(
         client_id, name=body.name, countries=body.countries
@@ -95,7 +101,7 @@ async def remove_client(
     client_id: str,
     request: Request,
     session: AsyncSession = Depends(get_db),
-    sa: AuthedUser = Depends(require_superadmin),
+    sa: AuthedUser = Depends(require_permission("manage_clients")),
 ) -> dict[str, bool]:
     if client_id == "default":
         raise HTTPException(status_code=400, detail="Cannot delete the default client")

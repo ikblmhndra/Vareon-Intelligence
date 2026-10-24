@@ -38,6 +38,7 @@ from cti_api.deps import (
     get_db,
     request_ip,
     require_auth,
+    require_permission,
 )
 from cti_api.schemas.pir import (
     PIRArticleListResponse,
@@ -52,7 +53,11 @@ from cti_api.schemas.pir import (
 )
 from cti_api.services.pir_docx import build_docx, export_filename
 
-router = APIRouter(prefix="/api/pir", tags=["pir"], dependencies=[Depends(require_auth)])
+router = APIRouter(
+    prefix="/api/pir",
+    tags=["pir"],
+    dependencies=[Depends(require_permission("view_intel")), Depends(require_auth)],
+)
 
 
 def _to_out(pir: PIRRequirement, total: int, last_match: str | None, recent: int) -> PIROut:
@@ -180,7 +185,11 @@ async def pir_get_note(
     )
 
 
-@router.put("/{pir_id}/note", response_model=PIRNoteOut)
+@router.put(
+    "/{pir_id}/note",
+    dependencies=[Depends(require_permission("manage_pir"))],
+    response_model=PIRNoteOut,
+)
 async def pir_save_note(
     pir_id: int,
     body: PIRNoteIn,
@@ -229,7 +238,7 @@ async def _build_export_data(
     }
 
 
-@router.get("/{pir_id}/export")
+@router.get("/{pir_id}/export", dependencies=[Depends(require_permission("export_data"))])
 async def pir_export(
     pir_id: int,
     session: AsyncSession = Depends(get_db),
@@ -240,7 +249,7 @@ async def pir_export(
     return await _build_export_data(repo, session, pir)
 
 
-@router.get("/{pir_id}/export/docx")
+@router.get("/{pir_id}/export/docx", dependencies=[Depends(require_permission("export_data"))])
 async def pir_export_docx(
     pir_id: int,
     session: AsyncSession = Depends(get_db),
@@ -258,7 +267,7 @@ async def pir_export_docx(
     )
 
 
-@router.post("", response_model=PIROut)
+@router.post("", dependencies=[Depends(require_permission("manage_pir"))], response_model=PIROut)
 async def post_pir(
     body: PIRCreate,
     request: Request,
@@ -282,7 +291,9 @@ async def post_pir(
     return _to_out(pir, total, last_match, recent)
 
 
-@router.put("/{pir_id}", response_model=PIROut)
+@router.put(
+    "/{pir_id}", dependencies=[Depends(require_permission("manage_pir"))], response_model=PIROut
+)
 async def put_pir(
     pir_id: int,
     body: PIRUpdate,
@@ -316,7 +327,7 @@ async def put_pir(
     return _to_out(pir, total, last_match, recent)
 
 
-@router.delete("/{pir_id}")
+@router.delete("/{pir_id}", dependencies=[Depends(require_permission("manage_pir"))])
 async def remove_pir(
     pir_id: int,
     request: Request,
