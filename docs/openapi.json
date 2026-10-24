@@ -22519,7 +22519,7 @@
         "operationId": "export_ioc_stix_api_stix_iocs_get",
         "parameters": [
           {
-            "description": "Filter by IOC type (ip, domain, url, sha256, sha1, md5, email, cve)",
+            "description": "Filter by IOC type (ip, domain, url, sha256, sha1, md5, email)",
             "in": "query",
             "name": "type",
             "required": false,
@@ -22532,7 +22532,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Filter by IOC type (ip, domain, url, sha256, sha1, md5, email, cve)",
+              "description": "Filter by IOC type (ip, domain, url, sha256, sha1, md5, email)",
               "title": "Type"
             }
           },

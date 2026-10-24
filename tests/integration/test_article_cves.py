@@ -21,7 +21,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from tests.integration.test_campaign_service import _TODAY, _seed_campaign_articles
+from tests.integration.test_campaign_service import _seed_campaign_articles
 
 _VERSIONS = pathlib.Path(__file__).resolve().parents[2] / "alembic" / "versions"
 
@@ -82,7 +82,6 @@ async def test_campaign_cve_ids_from_article_cves(async_db_session: AsyncSession
 
     assert len(campaigns) == 1
     assert sorted(campaigns[0]["cve_ids"]) == ["CVE-2026-9001", "CVE-2026-9002"]
-    assert _TODAY  # seed memakai tanggal yang sama dengan test campaign
 
 
 def _load_migration() -> ModuleType:

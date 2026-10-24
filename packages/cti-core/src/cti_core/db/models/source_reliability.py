@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import datetime
 
-from sqlalchemy import BigInteger, Date, String, Text, text
+from sqlalchemy import BigInteger, CheckConstraint, Date, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from cti_core.db.base import Base
@@ -26,6 +26,7 @@ from cti_core.db.base import Base
 
 class SourceReliabilityEntry(Base):
     __tablename__ = "source_reliability_entries"
+    __table_args__ = (CheckConstraint("origin IN ('default', 'analyst')", name="origin"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     source_name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)

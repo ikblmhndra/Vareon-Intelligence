@@ -28,7 +28,6 @@ postimg.cc
 prnt.sc
 # SaaS / collaboration
 google.com
-googleapis.com
 gstatic.com
 goo.gl
 youtube.com
@@ -40,7 +39,6 @@ office365.com
 outlook.com
 onedrive.com
 microsoftonline.com
-azure.com
 apple.com
 icloud.com
 discord.com
@@ -78,7 +76,6 @@ jquery.com
 amazon.com
 aws.amazon.com
 digitalocean.com
-linode.com
 vultr.com
 ovh.com
 hetzner.com

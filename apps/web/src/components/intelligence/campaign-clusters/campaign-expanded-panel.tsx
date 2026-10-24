@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api/client";
+import { defang } from "@/lib/intelligence/defang";
 import { MindmapWidget } from "@/components/mindmap/mindmap-widget";
 import { DiamondModelView } from "@/components/intelligence/campaign-clusters/diamond-model-view";
 import { KillChainView } from "@/components/intelligence/campaign-clusters/kill-chain-view";
@@ -160,7 +161,7 @@ export function CampaignExpandedPanel({
           <div className="flex flex-wrap gap-1">
             {c.iocs.slice(0, 20).map((ioc, i) => (
               <span key={i} title={ioc.type} className="rounded-full border border-destructive/25 bg-destructive/8 px-1.5 py-0.5 font-code text-xs text-destructive-text">
-                {ioc.value}
+                {defang(ioc.type, ioc.value)}
               </span>
             ))}
           </div>

@@ -2,7 +2,8 @@
 
 `default` = baris awal dari `content_kind` scraper (dibuat saat API start), `analyst` = diketik
 atau diedit analis. Baris yang sudah ada hasil kurasi analis, jadi `server_default` 'analyst'.
-Baris `default` TIDAK dibuat di migrasi: bootstrap API membuatnya dari registry scraper.
+CHECK membatasi nilainya ke dua itu. Baris `default` TIDAK dibuat di migrasi: bootstrap API
+membuatnya dari registry scraper.
 
 Revision ID: f3c9e1b5a7d2
 Revises: e7b2d4a9c6f1
@@ -28,7 +29,15 @@ def upgrade() -> None:
         "source_reliability_entries",
         sa.Column("origin", sa.String(length=10), server_default="analyst", nullable=False),
     )
+    op.create_check_constraint(
+        op.f("ck_source_reliability_entries_origin"),
+        "source_reliability_entries",
+        "origin IN ('default', 'analyst')",
+    )
 
 
 def downgrade() -> None:
+    op.drop_constraint(
+        op.f("ck_source_reliability_entries_origin"), "source_reliability_entries", type_="check"
+    )
     op.drop_column("source_reliability_entries", "origin")

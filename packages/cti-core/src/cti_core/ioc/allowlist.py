@@ -1,9 +1,10 @@
 """Pencocokan allowlist IOC -- dipakai persist enrich dan newsletter SESUDAH `canonical()`.
 
 Sejak 0.8.6 IOC yang cocok allowlist TIDAK dibuang di extractor: barisnya disimpan dengan
-`auto_suppressed=True` + alasan, supaya keputusan bisa diaudit dan dibatalkan. Domain ikut dicek
-(dulu hanya IP/URL/email). Entri `url_domain` menutup host URL DAN domain polos, termasuk
-subdomainnya (`store1.gofile.io` kena `gofile.io`, `notgofile.io` tidak)."""
+`auto_suppressed=True` + alasan, supaya keputusan bisa diaudit dan dibatalkan (menghapus entri
+allowlist membatalkan tanda IOC yang alasannya persis entri itu, `AsyncIocAllowlistRepo.delete`).
+Domain ikut dicek (dulu hanya IP/URL/email). Entri `url_domain` menutup host URL DAN domain
+polos, termasuk subdomainnya (`store1.gofile.io` kena `gofile.io`, `notgofile.io` tidak)."""
 
 from __future__ import annotations
 
@@ -60,7 +61,13 @@ def allowlist_match(
         return None
     if entry is None:
         return None
-    return f"allowlist:{kind}:{entry} {_REASON_SUFFIX}"
+    return allowlist_reason(kind, entry)
+
+
+def allowlist_reason(entry_type: str, entry: str) -> str:
+    """Alasan suppression untuk satu entri allowlist. Dipakai juga saat entri dihapus: hanya IOC
+    dengan alasan PERSIS ini yang tandanya dibatalkan (alasan lain/keputusan analis tidak)."""
+    return f"allowlist:{entry_type}:{entry} {_REASON_SUFFIX}"
 
 
 def load_seed() -> list[str]:

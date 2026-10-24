@@ -1,7 +1,8 @@
 """Task `confidence.recompute_source`: hitung ulang `articles.confidence_score` untuk satu sumber
 setelah grade-nya dibuat atau diubah (rilis 0.8.6, spec P2 5.2). Logikanya satu implementasi di
 `cti_api.services.confidence` (lewat `_run_async`, pola sama task periodic lain).
-Artikel dengan `overrides["confidence_score"]` dilewati."""
+Artikel dengan `overrides["confidence_score"]` dilewati. Kedua task commit per batch
+(`commit_each_batch=True`): recompute penuh tidak memegang lock baris sepanjang run."""
 
 from __future__ import annotations
 
@@ -21,7 +22,9 @@ def recompute_source(source_name: str) -> dict[str, int]:
 
     async def _run() -> dict[str, int]:
         async with async_session() as session:
-            result = await recompute_all_confidence(session, source_name=source_name)
+            result = await recompute_all_confidence(
+                session, source_name=source_name, commit_each_batch=True
+            )
             await session.commit()
             return result
 
@@ -38,7 +41,7 @@ def recompute_all() -> dict[str, int]:
 
     async def _run() -> dict[str, int]:
         async with async_session() as session:
-            result = await recompute_all_confidence(session)
+            result = await recompute_all_confidence(session, commit_each_batch=True)
             await session.commit()
             return result
 

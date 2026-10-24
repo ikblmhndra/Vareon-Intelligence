@@ -59,6 +59,12 @@ def _samples() -> list[tuple[str, str]]:
         for t in ("sha256", "sha1", "md5"):
             out.append((t, h))
     out += [("unknown", "  Keep Case  "), ("url", "  HXXPS://Evil[.]com/Payload.EXE?A=B  ")]
+    out += [
+        ("domain", "evil[[.]]com"),
+        ("ip", "1[[.]]2[[.]]3[[.]]4"),
+        ("url", "hxxps://evil[[.]]com/P[[.]]x"),
+        ("email", "bob[[@]]ex[[.]]com"),
+    ]
     return out
 
 

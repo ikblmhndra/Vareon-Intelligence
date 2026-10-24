@@ -94,7 +94,6 @@ _IOC_PATTERN_MAP = {
     "sha1": "[file:hashes.'SHA-1' = '{value}']",
     "md5": "[file:hashes.MD5 = '{value}']",
     "email": "[email-addr:value = '{value}']",
-    "cve": "[vulnerability:name = '{value}']",
 }
 
 
@@ -115,7 +114,6 @@ def _ioc_type_to_indicator_type(ioc_type: str) -> str:
         "sha1": "malicious-activity",
         "md5": "malicious-activity",
         "email": "compromised",
-        "cve": "anomalous-activity",
     }
     return mapping.get(ioc_type, "unknown")
 

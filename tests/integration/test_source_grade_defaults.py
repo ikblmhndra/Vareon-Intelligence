@@ -161,3 +161,65 @@ async def test_editing_default_row_marks_analyst(
     listed = await api_client.get("/api/sr/entries", headers=auth_header())
     row = listed.json()["entries"][0]
     assert (row["origin"], row["admiralty_code"], row["analyst_name"]) == ("analyst", "A2", "bob")
+
+
+def _dup_rows() -> list[SourceReliabilityEntry]:
+    today = datetime.date(2026, 10, 25)
+    return [
+        SourceReliabilityEntry(
+            source_name="Dup Src",
+            analyst_name="system",
+            reliability_grade="C",
+            credibility_code="3",
+            admiralty_code="C3",
+            added_date=today,
+            last_updated=today,
+            origin="default",
+        ),
+        SourceReliabilityEntry(
+            source_name="dup src",
+            analyst_name="bob",
+            reliability_grade="A",
+            credibility_code="1",
+            admiralty_code="A1",
+            added_date=today,
+            last_updated=today,
+            origin="analyst",
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_get_by_name_ci_prefers_analyst_on_case_duplicates(
+    async_db_session: AsyncSession,
+) -> None:
+    # Keunikan nama hanya dijaga repo (bukan constraint DB); baris kembar beda huruf tidak boleh
+    # membuat lookup di jalur enrich meledak (`MultipleResultsFound`). Baris analis menang.
+    async_db_session.add_all(_dup_rows())
+    await async_db_session.flush()
+    entry = await AsyncSourceReliabilityRepo(async_db_session).get_by_name_ci("DUP SRC")
+    assert entry is not None
+    assert (entry.origin, entry.admiralty_code) == ("analyst", "A1")
+
+
+def test_sync_get_by_name_ci_prefers_analyst_on_case_duplicates(db_session: Session) -> None:
+    from cti_core.db.repositories.source_reliability import SourceReliabilityRepo
+
+    db_session.add_all(_dup_rows())
+    db_session.flush()
+    entry = SourceReliabilityRepo(db_session).get_by_name_ci("Dup Src")
+    assert entry is not None
+    assert (entry.origin, entry.admiralty_code) == ("analyst", "A1")
+
+
+def test_origin_is_constrained(db_session: Session) -> None:
+    import sqlalchemy.exc
+
+    row = _dup_rows()[0]
+    row.origin = "bogus"
+    with (
+        pytest.raises(sqlalchemy.exc.IntegrityError, match="ck_source_reliability_entries_origin"),
+        db_session.begin_nested(),
+    ):
+        db_session.add(row)
+        db_session.flush()

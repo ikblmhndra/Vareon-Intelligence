@@ -13621,7 +13621,7 @@ export interface operations {
     export_ioc_stix_api_stix_iocs_get: {
         parameters: {
             query?: {
-                /** @description Filter by IOC type (ip, domain, url, sha256, sha1, md5, email, cve) */
+                /** @description Filter by IOC type (ip, domain, url, sha256, sha1, md5, email) */
                 type?: string | null;
                 /** @description Maximum number of IOCs to export (default 500, max 2000) */
                 limit?: number;

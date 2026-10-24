@@ -50,6 +50,9 @@ def test_seed_has_no_tenant_namespaces() -> None:
         "notion.so",
         "sendgrid.net",
         "fastly.net",
+        "googleapis.com",
+        "azure.com",
+        "linode.com",
     ):
         assert bad not in seed
 

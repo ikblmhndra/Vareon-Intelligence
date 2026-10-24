@@ -85,7 +85,7 @@ def _canonical_url(value: str) -> str:
     return f"{_refang_host(authority)}{rest}"
 
 
-def canonical(ioc_type: str, value: str) -> str:
+def _canonical_once(ioc_type: str, value: str) -> str:
     if ioc_type == "ip":
         return _RE_DOT.sub(".", value).strip()
     if ioc_type == "domain":
@@ -97,6 +97,19 @@ def canonical(ioc_type: str, value: str) -> str:
     if ioc_type in _HASH_TYPES:
         return value.strip().lower()
     return value.strip()
+
+
+_MAX_PASSES = 5
+
+
+def canonical(ioc_type: str, value: str) -> str:
+    """Ulang sampai titik tetap (defang bersarang `[[.]]` terkupas satu lapis per putaran)."""
+    for _ in range(_MAX_PASSES):
+        nxt = _canonical_once(ioc_type, value)
+        if nxt == value:
+            break
+        value = nxt
+    return value
 
 
 # --- salinan beku cti_core.ioc.allowlist (+ helper extractor yang dipakainya) ------------------
@@ -193,7 +206,6 @@ SEED_URL_DOMAINS: tuple[str, ...] = (
     "postimg.cc",
     "prnt.sc",
     "google.com",
-    "googleapis.com",
     "gstatic.com",
     "goo.gl",
     "youtube.com",
@@ -205,7 +217,6 @@ SEED_URL_DOMAINS: tuple[str, ...] = (
     "outlook.com",
     "onedrive.com",
     "microsoftonline.com",
-    "azure.com",
     "apple.com",
     "icloud.com",
     "discord.com",
@@ -241,7 +252,6 @@ SEED_URL_DOMAINS: tuple[str, ...] = (
     "amazon.com",
     "aws.amazon.com",
     "digitalocean.com",
-    "linode.com",
     "vultr.com",
     "ovh.com",
     "hetzner.com",

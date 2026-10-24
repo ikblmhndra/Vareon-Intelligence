@@ -63,12 +63,18 @@ async def compute_and_store_article_confidence(
 
 
 async def recompute_all_confidence(
-    session: AsyncSession, *, batch_size: int = 500, source_name: str | None = None
+    session: AsyncSession,
+    *,
+    batch_size: int = 500,
+    source_name: str | None = None,
+    commit_each_batch: bool = False,
 ) -> dict[str, int]:
     """Port `recompute_all_confidence()`. Preload semua rating source dulu (hindari N+1 query per
     artikel), lalu paging per `id`. `source_name` (case-insensitive) membatasi ke satu sumber
     (task `confidence.recompute_source`). Menulis kolom `confidence_score`, melewati artikel yang
-    `overrides`-nya membawa `confidence_score`."""
+    `overrides`-nya membawa `confidence_score`. `commit_each_batch=True` (task worker) commit
+    tiap batch, supaya recompute penuh di tabel besar tidak memegang lock baris sepanjang run;
+    default-nya hanya flush (pemanggil yang commit)."""
     ratings = {
         name: (e.reliability_grade, e.credibility_code)
         for name, e in (await AsyncSourceReliabilityRepo(session).get_all_ratings()).items()
@@ -96,6 +102,8 @@ async def recompute_all_confidence(
             )
             updated += 1
         await session.flush()
+        if commit_each_batch:
+            await session.commit()
         for article in articles:  # jaga identity map tetap kecil di recompute besar
             session.expunge(article)
 

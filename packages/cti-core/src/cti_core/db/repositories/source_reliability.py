@@ -8,7 +8,7 @@ from __future__ import annotations
 import datetime
 from collections.abc import Mapping
 
-from sqlalchemy import func, select
+from sqlalchemy import Select, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -44,6 +44,22 @@ _SORT_FIELDS = {
 }
 
 
+def _by_name_ci_stmt(source_name: str) -> Select[tuple[SourceReliabilityEntry]]:
+    """Lookup nama case-insensitive yang tidak pernah meledak: keunikan nama hanya dijaga repo
+    (bukan constraint DB), jadi baris kembar beda huruf mungkin ada. Lookup ini ada di jalur enrich
+    (persist), jadi `scalar_one_or_none` (`MultipleResultsFound`) diganti: baris analis menang,
+    lalu `id` terkecil."""
+    return (
+        select(SourceReliabilityEntry)
+        .where(func.lower(SourceReliabilityEntry.source_name) == source_name.lower())
+        .order_by(
+            case((SourceReliabilityEntry.origin == "analyst", 0), else_=1),
+            SourceReliabilityEntry.id,
+        )
+        .limit(1)
+    )
+
+
 class SourceReliabilityRepo:
     """Versi sync (persist enrichment di worker) -- cuma lookup nama."""
 
@@ -51,11 +67,7 @@ class SourceReliabilityRepo:
         self.session = session
 
     def get_by_name_ci(self, source_name: str) -> SourceReliabilityEntry | None:
-        return self.session.execute(
-            select(SourceReliabilityEntry).where(
-                func.lower(SourceReliabilityEntry.source_name) == source_name.lower()
-            )
-        ).scalar_one_or_none()
+        return self.session.execute(_by_name_ci_stmt(source_name)).scalars().first()
 
 
 class AsyncSourceReliabilityRepo:
@@ -93,12 +105,8 @@ class AsyncSourceReliabilityRepo:
         return list(result.scalars().all()), total
 
     async def get_by_name_ci(self, source_name: str) -> SourceReliabilityEntry | None:
-        result = await self.session.execute(
-            select(SourceReliabilityEntry).where(
-                func.lower(SourceReliabilityEntry.source_name) == source_name.lower()
-            )
-        )
-        return result.scalar_one_or_none()
+        result = await self.session.execute(_by_name_ci_stmt(source_name))
+        return result.scalars().first()
 
     async def ensure_defaults(self, sources: Mapping[str, str]) -> list[str]:
         """`{nama sumber: content_kind}` -> baris `origin='default'` untuk yang belum ada

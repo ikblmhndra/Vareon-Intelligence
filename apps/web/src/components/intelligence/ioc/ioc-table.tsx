@@ -274,13 +274,17 @@ export function IocTable({ onSelect }: { onSelect: (target: IocTarget) => void }
                   <TableCell>
                     <IocTypeBadge type={ioc.type} />
                   </TableCell>
-                  <TableCell className="max-w-[320px] truncate font-code text-xs text-foreground" title={defang(ioc.type, ioc.value)}>
-                    {defang(ioc.type, ioc.value)}
-                    {ioc.auto_suppressed && (
-                      <Badge variant="outline" className="ml-2 text-xs" title={ioc.suppression_reason ?? undefined}>
-                        Suppressed
-                      </Badge>
-                    )}
+                  <TableCell className="font-code text-xs text-foreground">
+                    <div className="flex items-center gap-2">
+                      <span className="max-w-[320px] truncate" title={defang(ioc.type, ioc.value)}>
+                        {defang(ioc.type, ioc.value)}
+                      </span>
+                      {ioc.auto_suppressed && (
+                        <Badge variant="outline" className="shrink-0 text-xs" title={ioc.suppression_reason ?? undefined}>
+                          Suppressed
+                        </Badge>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell className="text-center">
                     <IocConfidenceChip score={ioc.confidence_score} />

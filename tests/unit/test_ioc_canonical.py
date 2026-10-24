@@ -46,6 +46,28 @@ def test_canonical_idempotent(ioc_type: str, value: str, expected: str) -> None:
     assert canonical(ioc_type, once) == once
 
 
+NESTED_CASES = [
+    ("domain", "evil[[.]]com", "evil.com"),
+    ("domain", "Evil[[.]]COM[[.]]", "evil.com"),
+    ("ip", "1[[.]]2[[.]]3[[.]]4", "1.2.3.4"),
+    ("url", "hxxps://evil[[.]]com/P", "https://evil.com/P"),
+    ("url", "hxxp[:]//a[[.]]b", "http://a.b"),
+    ("email", "bob[[@]]ex[[.]]com", "bob@ex.com"),
+    ("email", "Bob[[at]]Ex[.]com", "bob@ex.com"),
+]
+
+
+@pytest.mark.parametrize(("ioc_type", "value", "expected"), NESTED_CASES)
+def test_canonical_nested_defang_reaches_fixed_point(
+    ioc_type: str, value: str, expected: str
+) -> None:
+    # Defang bersarang (`[[.]]`) dulu baru terkupas satu lapis per panggilan, jadi canonical()
+    # tidak idempoten dan merge migrasi bisa bertabrakan; sekarang diulang sampai tetap.
+    once = canonical(ioc_type, value)
+    assert once == expected
+    assert canonical(ioc_type, once) == once
+
+
 def test_unknown_type_only_stripped() -> None:
     assert canonical("mystery", "  Foo[.]Bar ") == "Foo[.]Bar"
 
