@@ -32,6 +32,7 @@ class IOCRepo:
         source_name: str,
         context: str | None = None,
         article_id: int | None = None,
+        suppression_reason: str | None = None,
     ) -> IOC:
         existing = self.session.execute(
             select(IOC).where(IOC.type == type, IOC.value == value)
@@ -45,6 +46,10 @@ class IOCRepo:
             ioc = existing
             ioc.last_seen_at = now
             ioc.seen_count += 1
+        # Baris yang SUDAH tersuppress tidak ditimpa alasannya (jejak pertama dipertahankan).
+        if suppression_reason is not None and not ioc.auto_suppressed:
+            ioc.auto_suppressed = True
+            ioc.suppression_reason = suppression_reason
 
         ioc.sources.append(
             IOCSource(
@@ -90,6 +95,7 @@ class AsyncIOCRepo:
         source_name: str,
         context: str | None = None,
         article_id: int | None = None,
+        suppression_reason: str | None = None,
     ) -> IOC:
         result = await self.session.execute(select(IOC).where(IOC.type == type, IOC.value == value))
         existing = result.scalar_one_or_none()
@@ -102,6 +108,10 @@ class AsyncIOCRepo:
             ioc = existing
             ioc.last_seen_at = now
             ioc.seen_count += 1
+        # Baris yang SUDAH tersuppress tidak ditimpa alasannya (jejak pertama dipertahankan).
+        if suppression_reason is not None and not ioc.auto_suppressed:
+            ioc.auto_suppressed = True
+            ioc.suppression_reason = suppression_reason
 
         ioc.sources.append(
             IOCSource(

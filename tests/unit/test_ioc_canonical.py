@@ -91,6 +91,11 @@ async def test_newsletter_writer_stores_canonical(monkeypatch: pytest.MonkeyPatc
     repo.upsert = AsyncMock()
     monkeypatch.setattr(newsletter, "AsyncIOCRepo", lambda s: repo)
     monkeypatch.setattr(newsletter, "AsyncCveTrackerRepo", lambda s: MagicMock())
+    monkeypatch.setattr(
+        newsletter,
+        "_get_allowlist_sets",
+        AsyncMock(return_value={"url_domains": {"a.b"}, "email_domains": set(), "ips": set()}),
+    )
     art: dict[str, Any] = {
         "id": 1,
         "iocs": {"domains": ["Evil[.]com"], "urls_with_path": ["hxxp://a[.]b/x"]},

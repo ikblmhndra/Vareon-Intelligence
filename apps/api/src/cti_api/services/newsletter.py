@@ -46,6 +46,7 @@ from cti_core.db.repositories.cve import AsyncCveTrackerRepo
 from cti_core.db.repositories.ioc import AsyncIOCRepo
 from cti_core.db.repositories.ioc_reference import AsyncIocAllowlistRepo
 from cti_core.db.repositories.newsletter import AsyncNewsletterRepo
+from cti_core.ioc.allowlist import allowlist_match
 from cti_core.ioc.canonical import canonical
 from cti_core.ioc.extractor import extract_iocs
 from cti_core.llm.client import get_llm_client, parse_json_response, usage_from
@@ -296,8 +297,9 @@ async def generate_article_summary(
     dicoba lagi build berikutnya, sekarang akan nempel selamanya kalau disimpan.
 
     Catatan: gagal fetch sementara (timeout, jaringan) juga jadi ringkasan `metadata` yang
-    di-cache; `body_source` menandainya dan `regenerate` adalah jalan keluarnya. IOC ikut
-    allowlist saat baris dibuat, perubahan allowlist sesudahnya tidak mengubah baris lama."""
+    di-cache; `body_source` menandainya dan `regenerate` adalah jalan keluarnya. IOC tidak lagi
+    disaring allowlist di sini (parameter `allowlist` tinggal sisa): penandaan `auto_suppressed`
+    terjadi saat `write_article_findings` menulis ke `iocs`."""
     repo = AsyncNewsletterRepo(session)
     if not regenerate:
         cached = await repo.get_article_summary(article["id"], language)
@@ -312,7 +314,7 @@ async def generate_article_summary(
             partial(_llm_summarize_with_body, title, body, language=language)
         )
         body_source = "fetched"
-        iocs = await asyncio.to_thread(extract_iocs, body, url, allowlist)
+        iocs = await asyncio.to_thread(extract_iocs, body, url)
     else:
         result, model, usage = await asyncio.to_thread(
             partial(_llm_summarize_from_metadata, article, language=language)
@@ -462,6 +464,7 @@ async def write_article_findings(session: AsyncSession, context: dict[str, Any])
     IOC, dan "ikut kalau kebetulan sudah di-cache" membuat hasilnya bergantung riwayat cache."""
     cve_repo = AsyncCveTrackerRepo(session)
     ioc_repo = AsyncIOCRepo(session)
+    allowlist = await _get_allowlist_sets(session)
     seen: set[Any] = set()
     for article in (
         *context["highlights"],
@@ -484,12 +487,14 @@ async def write_article_findings(session: AsyncSession, context: dict[str, Any])
         for field_key, values in article.get("iocs", {}).items():
             for value in values:
                 ioc_type = _IOC_TYPE_MAP.get(field_key, field_key)
+                canon = canonical(ioc_type, value)
                 await ioc_repo.upsert(
                     type=ioc_type,
-                    value=canonical(ioc_type, value),
+                    value=canon,
                     source_url=article.get("url", ""),
                     source_name=article.get("source", ""),
                     article_id=article_id,
+                    suppression_reason=allowlist_match(ioc_type, canon, allowlist),
                 )
 
 

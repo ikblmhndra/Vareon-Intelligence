@@ -62,5 +62,4 @@ def check_c2_hit(ioc_data: dict[str, list[str]], session: Session) -> bool:
 def extract_iocs(text: str, source_url: str, session: Session) -> dict[str, list[str]]:
     if not text:
         return {}
-    allowlist = _get_allowlist(session)
-    return _extract_iocs(text, source_url=source_url, allowlist=allowlist)
+    return _extract_iocs(text, source_url=source_url)

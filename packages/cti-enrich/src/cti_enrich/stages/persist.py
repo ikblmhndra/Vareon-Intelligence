@@ -35,11 +35,13 @@ from typing import TYPE_CHECKING
 from cti_core.db.models.article import RejectedArticle
 from cti_core.db.repositories.article import ArticleRepo, RejectedArticleRepo
 from cti_core.db.repositories.ioc import IOCRepo
+from cti_core.ioc.allowlist import allowlist_match
 from cti_core.ioc.canonical import canonical
 from sqlalchemy import delete
 
 from cti_enrich.countries import country_code
 from cti_enrich.stages.classify import resolve_industries
+from cti_enrich.stages.extract_iocs import _get_allowlist
 from cti_enrich.stages.extract_ttps import as_normalized
 
 if TYPE_CHECKING:
@@ -146,17 +148,20 @@ def persist(
     )
 
     ioc_repo = IOCRepo(session)
+    allowlist = _get_allowlist(session)
     for key, values in ioc_data.items():
         ioc_type = _IOC_TYPE_MAP.get(key)
         if not ioc_type:
             continue
         for value in values:
+            canon = canonical(ioc_type, value)
             ioc_repo.upsert(
                 type=ioc_type,
-                value=canonical(ioc_type, value),
+                value=canon,
                 source_url=url,
                 source_name=source,
                 article_id=article.id,
+                suppression_reason=allowlist_match(ioc_type, canon, allowlist),
             )
 
     # Artikel ini sekarang DITERIMA -- buang catatan "ditolak"/"gagal di-enrich"
