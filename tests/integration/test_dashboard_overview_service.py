@@ -162,3 +162,27 @@ async def test_trending_without_a_usable_baseline_claims_no_rise(
     assert "pembanding belum cukup data" in out["window_label"]
     [item] = [i for i in out["items"] if i["ttp_id"] == "T1190"]
     assert (item["is_new"], item["change_pct"], item["count"]) == (False, None, 3)
+
+
+async def test_attention_brief_does_not_compare_with_a_near_empty_period(
+    async_db_session: AsyncSession,
+) -> None:
+    """1 insiden di periode lalu yang hampir kosong bukan dasar "naik 200%"."""
+    from cti_api.services import dashboard_overview, trending
+
+    dashboard_overview._CACHE.clear()
+    trending._CACHE.clear()
+    await AsyncClientRepo(async_db_session).ensure_default()
+    repo = AsyncArticleRepo(async_db_session)
+    for i, day in enumerate((_TODAY, _TODAY, _TODAY, _TODAY - datetime.timedelta(days=10))):
+        await repo.upsert(
+            url=f"https://example.com/prev-{i}",
+            title=f"Breach {i}",
+            source="S",
+            posted_on=day,
+            confirmed_incident=True,
+            news_type="global",
+        )
+
+    out = await get_attention(async_db_session, client_id="default", days=7)
+    assert out["brief"]["detail"].startswith("3 insiden terkonfirmasi")

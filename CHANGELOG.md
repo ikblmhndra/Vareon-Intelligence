@@ -32,6 +32,8 @@ Data lama tidak dikoreksi otomatis: artikel yang sudah tersimpan tetap memakai t
 ### Diperbaiki
 - Recap yang dibalas kosong oleh model tidak lagi disimpan (HTTP 502, recap lama tetap), dan recap kosong tidak lagi ditandai
   "Grounding check: nothing was dropped".
+- Brief Dashboard tidak lagi membandingkan insiden dengan periode lalu yang hampir kosong ("naik 37400%"); aturannya sama dengan
+  kartu KPI.
 - Korban ransomware tanpa negara di peta Dashboard diberi nama "Negara tidak diketahui".
 - X Intel memberi peringatan bila kolektor tweet diam lebih dari 72 jam. Data health menulis "Newest IOC extracted", bukan "sighting".
 
