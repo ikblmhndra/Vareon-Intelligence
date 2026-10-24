@@ -17,6 +17,7 @@ from cti_scraper.schedule import spread
 class NquiringMinds(RSSScraper):
     meta = ScraperMeta(
         id="nquiring_minds",
+        content_kind="vendor_research",
         source="Nquiringminds",
         schedule=spread("16 * * * *", "nquiring_minds"),
         enabled=False,  # waiver 10.D, lihat docstring

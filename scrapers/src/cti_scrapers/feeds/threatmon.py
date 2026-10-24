@@ -14,6 +14,7 @@ from cti_scraper.schedule import spread
 class Threatmon(RSSScraper):
     meta = ScraperMeta(
         id="threatmon",
+        content_kind="vendor_research",
         source="Threatmon",
         schedule=spread("16 * * * *", "threatmon"),
         tags=("migrated",),

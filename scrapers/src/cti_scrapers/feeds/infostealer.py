@@ -14,6 +14,7 @@ from cti_scraper.schedule import spread
 class Infostealer(RSSScraper):
     meta = ScraperMeta(
         id="infostealer",
+        content_kind="vendor_research",
         source="Infostealer",
         schedule=spread("46 * * * *", "infostealer"),
         tags=("migrated",),

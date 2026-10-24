@@ -15,6 +15,7 @@ from cti_scraper.schedule import spread
 class Bleepcomp(RSSScraper):
     meta = ScraperMeta(
         id="bleepcomp",
+        content_kind="news",
         source="Bleeping Computer",
         schedule=spread("30 * * * *", "bleepcomp"),
         tags=("migrated",),

@@ -18,6 +18,7 @@ _TITLE, _LINK = link_card_xpaths("contains(@href, '/en_us/blog/security/')")
 class Splunk(XPathScraper):
     meta = ScraperMeta(
         id="splunk",
+        content_kind="vendor_research",
         source="Splunk",
         schedule=spread("45 * * * *", "splunk"),
         runtime="browser",

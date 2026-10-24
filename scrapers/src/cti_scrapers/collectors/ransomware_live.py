@@ -38,6 +38,7 @@ def _iso_date(value: object) -> datetime.date | None:
 class RansomwareLive(BaseScraper):
     meta = ScraperMeta(
         id="ransomware_live",
+        content_kind="news",
         source="ransomware.live",
         schedule="17 * * * *",
         rate_limit="4/minute",

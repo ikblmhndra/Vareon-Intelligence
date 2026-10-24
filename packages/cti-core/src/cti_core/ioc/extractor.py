@@ -169,32 +169,20 @@ def _email_domain(email: str) -> str:
     return ""
 
 
-def _filter_iocs(
-    ioc_dict: dict[str, list[str]],
-    source_url: str = "",
-    allowlist: dict[str, set[str]] | None = None,
-) -> dict[str, list[str]]:
-    url_domains: set[str] = (allowlist or {}).get("url_domains", set())
-    email_domains: set[str] = (allowlist or {}).get("email_domains", set())
-    allowlisted_ips: set[str] = (allowlist or {}).get("ips", set())
+def _filter_iocs(ioc_dict: dict[str, list[str]], source_url: str = "") -> dict[str, list[str]]:
+    """Buang HANYA yang pasti bukan indikator: IP privat/reserved dan URL ke domain sumber
+    artikelnya sendiri. Allowlist TIDAK lagi membuang di sini (sejak 0.8.6): yang cocok disimpan
+    dan ditandai `auto_suppressed` saat persist, lihat `cti_core.ioc.allowlist`."""
     source_domain = _url_domain(source_url) if source_url else ""
 
     def _ok_ip(v: str) -> bool:
-        if _is_private_ip(v):
-            return False
-        clean = _RE_DEFANG_DOT.sub(".", v)
-        return clean not in allowlisted_ips
+        return not _is_private_ip(v)
 
     def _ok_url(v: str) -> bool:
         d = _url_domain(v)
-        if source_domain and (d == source_domain or d.endswith("." + source_domain)):
-            return False
-        return d not in url_domains
+        return not (source_domain and (d == source_domain or d.endswith("." + source_domain)))
 
-    def _ok_email(v: str) -> bool:
-        return _email_domain(v) not in email_domains
-
-    filters = {"ips": _ok_ip, "urls": _ok_url, "urls_with_path": _ok_url, "emails": _ok_email}
+    filters = {"ips": _ok_ip, "urls": _ok_url, "urls_with_path": _ok_url}
     result: dict[str, list[str]] = {}
     for key, values in ioc_dict.items():
         fn = filters.get(key)
@@ -202,9 +190,7 @@ def _filter_iocs(
     return {k: v for k, v in result.items() if v}
 
 
-def extract_iocs(
-    text: str, source_url: str = "", allowlist: dict[str, set[str]] | None = None
-) -> dict[str, list[str]]:
+def extract_iocs(text: str, source_url: str = "") -> dict[str, list[str]]:
     if not text:
         return {}
     version_numbers = {m.group(1) for m in _RE_VERSION_PREFIX.finditer(text)}
@@ -223,6 +209,4 @@ def extract_iocs(
         "md5": list(dict.fromkeys(_RE_MD5.findall(text))),
         "cves": list(dict.fromkeys(m.upper() for m in _RE_CVE.findall(text))),
     }
-    return _filter_iocs(
-        {k: v for k, v in raw.items() if v}, source_url=source_url, allowlist=allowlist
-    )
+    return _filter_iocs({k: v for k, v in raw.items() if v}, source_url=source_url)

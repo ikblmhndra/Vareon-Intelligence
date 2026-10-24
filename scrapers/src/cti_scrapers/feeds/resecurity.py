@@ -14,6 +14,7 @@ from cti_scraper.schedule import spread
 class Resecurity(RSSScraper):
     meta = ScraperMeta(
         id="resecurity",
+        content_kind="vendor_research",
         source="Re Security",
         schedule=spread("32 * * * *", "resecurity"),
         tags=("migrated",),

@@ -18,6 +18,7 @@ _TITLE, _LINK = link_card_xpaths("starts-with(@href, '/blog/')")
 class Prodraft(XPathScraper):
     meta = ScraperMeta(
         id="prodraft",
+        content_kind="vendor_research",
         source="Prodaft",
         schedule=spread("45 * * * *", "prodraft"),
         runtime="browser",

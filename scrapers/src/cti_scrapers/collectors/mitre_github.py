@@ -39,6 +39,7 @@ _VERSION = re.compile(r".+-(\d+\.\d+)\.json$")
 class MitreGithub(GithubCommitWatcher):
     meta = ScraperMeta(
         id="mitre_github",
+        content_kind="vendor_research",
         source="MITRE ATT&CK GitHub Monitor",
         schedule="15 * * * *",
         credential="github",

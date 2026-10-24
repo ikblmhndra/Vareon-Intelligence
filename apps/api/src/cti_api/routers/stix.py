@@ -112,7 +112,7 @@ async def export_ioc_stix(
     type: str | None = Query(
         default=None,
         alias="type",
-        description="Filter by IOC type (ip, domain, url, sha256, sha1, md5, email, cve)",
+        description="Filter by IOC type (ip, domain, url, sha256, sha1, md5, email)",
     ),
     limit: int = Query(
         default=500,

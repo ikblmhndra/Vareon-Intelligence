@@ -14,6 +14,7 @@ from cti_scraper.schedule import spread
 class Checkpoint(XPathScraper):
     meta = ScraperMeta(
         id="checkpoint",
+        content_kind="vendor_research",
         source="Checkpoint Research",
         schedule=spread("30 * * * *", "checkpoint"),
         runtime="browser",

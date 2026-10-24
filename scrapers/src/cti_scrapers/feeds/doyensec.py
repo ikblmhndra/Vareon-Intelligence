@@ -21,6 +21,7 @@ _ATOM_NS = "{http://www.w3.org/2005/Atom}"
 class Doyensec(RSSScraper):
     meta = ScraperMeta(
         id="doyensec",
+        content_kind="vendor_research",
         source="Doyensec",
         schedule=spread("46 * * * *", "doyensec"),
         tags=("migrated",),

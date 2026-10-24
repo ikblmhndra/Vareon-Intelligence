@@ -33,6 +33,7 @@ from cti_scraper.schedule import spread
 class Cybersecnews(RSSScraper):
     meta = ScraperMeta(
         id="cybersecnews",
+        content_kind="news",
         source="Cyber Security News",
         schedule=spread("0 * * * *", "cybersecnews"),
         tags=("migrated",),

@@ -14,6 +14,7 @@ from cti_scraper.schedule import spread
 class GoogleCloud(RSSScraper):
     meta = ScraperMeta(
         id="google_cloud",
+        content_kind="vendor_research",
         source="Google Cloud Ti",
         schedule=spread("31 * * * *", "google_cloud"),
         tags=("migrated",),

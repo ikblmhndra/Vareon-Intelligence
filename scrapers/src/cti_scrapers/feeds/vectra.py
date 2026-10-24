@@ -14,6 +14,7 @@ from cti_scraper.schedule import spread
 class Vectra(RSSScraper):
     meta = ScraperMeta(
         id="vectra",
+        content_kind="vendor_research",
         source="Vectra",
         schedule=spread("45 * * * *", "vectra"),
         tags=("migrated",),

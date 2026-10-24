@@ -31,6 +31,7 @@ def _parse_commit_date(raw: str) -> datetime:
 class Unit42Github(BaseScraper):
     meta = ScraperMeta(
         id="unit42_github",
+        content_kind="vendor_research",
         source="Unit42 GitHub",
         schedule="16 * * * *",
         rate_limit="30/minute",

@@ -1,7 +1,7 @@
 # Target architecture: from news aggregator to CTI platform
 
 Status: **in progress** (updated 2026-10-24): the security half of step 1 shipped in 0.8.4 and the
-LLM measurement and self-healing part in 0.8.5, see section 7. Companion to `docs/LLM_ASSIST_REDESIGN.md`, which
+LLM measurement and self-healing part in 0.8.5, and the P2 cheap wins (sources and indicators) in 0.8.6, see section 7. Companion to `docs/LLM_ASSIST_REDESIGN.md`, which
 holds the evidence (E1-E16) and the enrichment detail. This document covers the whole system:
 backend flow, database, API contract and web. It is a redesign of v1 in this repository,
 delivered as a strangler: new tables and `/api/v2` endpoints next to the old ones, pages moved
@@ -235,7 +235,8 @@ reliability; steps 4-7 move pages one at a time.
 | 1. Foundation, security half | **Done in 0.8.4** (PR #73) | `require_permission` on every `/api` route with a coverage test (`tests/unit/test_route_permissions.py`); new permissions `manage_cve` and `view_ops` for analysts; 403 for a foreign `X-Client-ID` (the web proxy drops such a header); `crossref`, `stix/pirs` and PIR mindmaps scoped to the active client; `/api/auth/me` returns `permissions` and the web hides the controls a role cannot use (`useCan()`). |
 | 1. Foundation, LLM measurement and self-healing | **Done in 0.8.5** | `llm_calls` table and instrumented client (every call site names its task); LLM section on Data health; `enrich.auto_replay` (10 min, canary/batch of 20, max 3 attempts with backoff) and `llm.purge_calls` beat tasks; gateway 400/401/403/404 parked as `config`. Prompt fixes: classify, TTP evidence from full text, newsletter metadata, TA profile from ATT&CK data, exec brief labels, CVE email computed fields, JSON mode. |
 | 1. Foundation, remaining | Not started | Persist-first enrichment (step 4, with `documents`), v2 API conventions. Still cross-client, to scope next: CVE list in TA profiles (`ta_profile.py`), CVE priority and campaign analysis (`list_by_cve_ids_any_client`), CVE mindmaps. |
-| 2. Sources and indicators | Not started | Feed dates (0.8.3) are a prerequisite already in place. |
+| 2. Sources and indicators, cheap wins | **Done in 0.8.6** | Structured sources skip LLM classify/TTP (`content_kind`); canonical IOC values (refang, lowercase); CVEs moved from IOCs to `article_cves`; allowlist flags instead of dropping, 124-domain seed; suppressed IOCs leave STIX, stats, campaigns, recap counts; default Admiralty grades per `content_kind` and article confidence from the source grade. Out of scope, still open: CVEs in `ArticleOut`, story dedup, deterministic extractors, local relevance model, credibility from corroboration. |
+| 2. Sources and indicators, remaining | Not started | Feed dates (0.8.3) are a prerequisite already in place. |
 | 3. Extractors and claims | Not started | Software masking and longest-name matching for actors (0.8.3) are a first piece. |
 | 4-7 | Not started | |
 

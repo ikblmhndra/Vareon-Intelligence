@@ -10,6 +10,7 @@ from cti_scraper.families.library_advisories import LibraryAdvisoryScraper
 class TechstackGo(LibraryAdvisoryScraper):
     meta = ScraperMeta(
         id="techstack_go",
+        content_kind="advisory",
         source="TechStack Golang Advisory",
         schedule="50 * * * *",
         rate_limit="300/minute",

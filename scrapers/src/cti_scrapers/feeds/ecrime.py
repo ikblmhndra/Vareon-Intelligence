@@ -14,6 +14,7 @@ from cti_scraper.schedule import spread
 class Ecrime(RSSScraper):
     meta = ScraperMeta(
         id="ecrime",
+        content_kind="news",
         source="Ecrimech",
         schedule=spread("31 * * * *", "ecrime"),
         tags=("migrated",),

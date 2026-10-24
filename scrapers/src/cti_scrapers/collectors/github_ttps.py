@@ -25,6 +25,7 @@ from cti_scraper.items import NoticeItem
 class GithubTtps(GithubCommitWatcher):
     meta = ScraperMeta(
         id="github_ttps",
+        content_kind="vendor_research",
         source="ThreatActors-TTPs GitHub Monitor",
         schedule="0 * * * *",
         credential="github",

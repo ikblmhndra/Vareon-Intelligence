@@ -14,6 +14,7 @@ from cti_scraper.schedule import spread
 class Artic(RSSScraper):
     meta = ScraperMeta(
         id="artic",
+        content_kind="vendor_research",
         source="Artic Wolf",
         schedule=spread("46 * * * *", "artic"),
         tags=("migrated",),

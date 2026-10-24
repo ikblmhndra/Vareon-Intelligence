@@ -17,6 +17,7 @@ from cti_scraper.schedule import spread
 class Sophos(RSSScraper):
     meta = ScraperMeta(
         id="sophos",
+        content_kind="vendor_research",
         source="Sophos",
         schedule=spread("30 * * * *", "sophos"),
         max_items=4,  # scraper lama: count==5 -> break -- 4 item/run

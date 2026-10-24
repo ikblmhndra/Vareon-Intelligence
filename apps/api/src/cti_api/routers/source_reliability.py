@@ -12,6 +12,7 @@ sekarang wajib login (`require_auth`).
 
 from __future__ import annotations
 
+from cti_core.celery_client import send_recompute_source
 from cti_core.db.models.source_reliability import SourceReliabilityEntry
 from cti_core.db.repositories.auth import AsyncAuditLogRepo
 from cti_core.db.repositories.source_reliability import (
@@ -19,6 +20,7 @@ from cti_core.db.repositories.source_reliability import (
     RELIABILITY_LABELS,
     AsyncSourceReliabilityRepo,
 )
+from cti_core.logging import get_logger
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,11 +32,22 @@ from cti_api.schemas.source_reliability import (
     SREntryUpdate,
 )
 
+log = get_logger()
+
 router = APIRouter(
     prefix="/api/sr",
     tags=["source-reliability"],
     dependencies=[Depends(require_permission("view_intel")), Depends(require_auth)],
 )
+
+
+def _enqueue_recompute(source_name: str) -> None:
+    """Skor artikel sumber ini dihitung ulang di worker (maintenance). Gagal kirim dicatat saja:
+    grade sudah tersimpan, recompute bisa dipicu ulang."""
+    try:
+        send_recompute_source(source_name)
+    except Exception:
+        log.warning("recompute_source_enqueue_failed", source=source_name, exc_info=True)
 
 
 def _serialize(e: SourceReliabilityEntry) -> SREntryOut:
@@ -48,6 +61,7 @@ def _serialize(e: SourceReliabilityEntry) -> SREntryOut:
         notes=e.notes,
         added_date=e.added_date.isoformat(),
         last_updated=e.last_updated.isoformat(),
+        origin=e.origin,  # type: ignore[arg-type]
     )
 
 
@@ -115,6 +129,7 @@ async def add_sr_entry(
         ip_address=request_ip(request),
     )
     await session.commit()
+    _enqueue_recompute(entry.source_name)
     return {"success": True, "entry": _serialize(entry).model_dump()}
 
 
@@ -126,7 +141,8 @@ async def update_sr_entry(
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),
 ) -> dict[str, bool]:
-    ok = await AsyncSourceReliabilityRepo(session).update_entry(
+    repo = AsyncSourceReliabilityRepo(session)
+    ok = await repo.update_entry(
         entry_id,
         analyst_name=body.analyst_name.strip(),
         reliability_grade=body.reliability_grade.upper(),
@@ -143,6 +159,10 @@ async def update_sr_entry(
         ip_address=request_ip(request),
     )
     await session.commit()
+    if ok:
+        updated = await repo.get_by_id(entry_id)
+        if updated is not None:
+            _enqueue_recompute(updated.source_name)
     return {"success": ok}
 
 

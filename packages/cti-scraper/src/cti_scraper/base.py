@@ -21,6 +21,10 @@ from cti_scraper.http import DEFAULT_USER_AGENT, ScraperHttpClient
 from cti_scraper.items import Item
 
 Runtime = Literal["light", "browser"]
+ContentKind = Literal[
+    "advisory", "kev", "exploit", "vendor_research", "news", "vendor_marketing", "social"
+]
+Relevance = Literal["always", "classify"]
 
 
 def _utcnow_naive() -> datetime:
@@ -135,6 +139,20 @@ class ScraperMeta:
     = scraper gak butuh apa-apa selain sumber eksternalnya sendiri."""
 
     tags: tuple[str, ...] = ()
+
+    content_kind: ContentKind = "news"
+    """Jenis isi sumber; mendorong grade reliabilitas default sumber. 'advisory' =
+    advisory vendor/pemerintah/paket (CIS, CISA, CloudVulnDB, ZDI, techstack); 'kev' =
+    katalog KEV CISA; 'exploit' = Exploit-DB; 'vendor_research' = blog riset vendor
+    keamanan/peneliti; 'news' = media berita/agregator; 'vendor_marketing' = konten
+    pemasaran vendor; 'social' = X/Twitter. Default 'news' hanya jaring pengaman: tiap
+    scraper wajib menulisnya EKSPLISIT (dijaga `tests/contract/test_scraper_content_kind.py`)."""
+
+    default_relevance: Relevance = "classify"
+    """'classify' (default) = tiap artikel lewat classify LLM buat menentukan relevan-siber.
+    'always' = sumber terstruktur yang SELALU relevan: classify dan ekstraksi TTP dilewati
+    (lihat spec P2 2.2). Hanya boleh dipasang bersama content_kind advisory/kev/exploit
+    (dijaga contract test)."""
 
     legacy_label: str | None = None
     """Label `push_job` lama, mis. "NEW ARTICLE FROM GBHACKER" -- kompat

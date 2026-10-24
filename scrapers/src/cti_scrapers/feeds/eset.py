@@ -14,6 +14,7 @@ from cti_scraper.schedule import spread
 class Eset(RSSScraper):
     meta = ScraperMeta(
         id="eset",
+        content_kind="vendor_research",
         source="Eset",
         schedule=spread("0 0/1 * * *", "eset"),
         tags=("migrated",),

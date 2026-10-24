@@ -8,6 +8,7 @@ from cti_scraper.schedule import spread
 class ZeroDayInitiative(RSSScraper):
     meta = ScraperMeta(
         id="zeroday_initiative",
+        content_kind="advisory",
         source="zerodayinitiative.com",
         schedule=spread("*/15 * * * *", "zeroday_initiative"),
         tags=("Zero Day Initiative",),

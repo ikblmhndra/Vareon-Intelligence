@@ -14,6 +14,7 @@ from cti_scraper.schedule import spread
 class Cyble(RSSScraper):
     meta = ScraperMeta(
         id="cyble",
+        content_kind="vendor_research",
         source="Cyble",
         schedule=spread("30 * * * *", "cyble"),
         tags=("migrated",),

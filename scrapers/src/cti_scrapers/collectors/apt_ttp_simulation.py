@@ -33,6 +33,7 @@ def _filtered_patch(patch: str) -> str:
 class AptTtpSimulation(GithubCommitWatcher):
     meta = ScraperMeta(
         id="apt_ttp_simulation",
+        content_kind="vendor_research",
         source="APT TTP Simulation GitHub Monitor",
         schedule="47 * * * *",
         credential="github",

@@ -3575,6 +3575,8 @@ export interface components {
              * @default []
              */
             actor_countries: string[];
+            /** Admiralty Code */
+            admiralty_code?: string | null;
             /** Confidence Score */
             confidence_score?: number | null;
             /**
@@ -3582,6 +3584,8 @@ export interface components {
              * @default false
              */
             confirmed_incident: boolean;
+            /** Grade Origin */
+            grade_origin?: ("default" | "analyst") | null;
             /** Id */
             id: number;
             /**
@@ -5594,6 +5598,11 @@ export interface components {
             last_updated: string;
             /** Notes */
             notes: string;
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "default" | "analyst";
             /** Reliability Grade */
             reliability_grade: string;
             /** Source Name */
@@ -9916,6 +9925,7 @@ export interface operations {
                 page_size?: number;
                 sort_by?: string | null;
                 actionability?: string | null;
+                include_suppressed?: boolean;
             };
             header?: {
                 authorization?: string | null;
@@ -13611,7 +13621,7 @@ export interface operations {
     export_ioc_stix_api_stix_iocs_get: {
         parameters: {
             query?: {
-                /** @description Filter by IOC type (ip, domain, url, sha256, sha1, md5, email, cve) */
+                /** @description Filter by IOC type (ip, domain, url, sha256, sha1, md5, email) */
                 type?: string | null;
                 /** @description Maximum number of IOCs to export (default 500, max 2000) */
                 limit?: number;

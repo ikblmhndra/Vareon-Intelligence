@@ -14,6 +14,7 @@ from cti_scraper.schedule import spread
 class Bitdefender(RSSScraper):
     meta = ScraperMeta(
         id="bitdefender",
+        content_kind="vendor_research",
         source="Bitdefender Labs",
         schedule=spread("*/15 * * * *", "bitdefender"),
         tags=("vendor",),

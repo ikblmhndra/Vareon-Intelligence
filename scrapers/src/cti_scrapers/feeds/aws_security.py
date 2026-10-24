@@ -8,6 +8,7 @@ from cti_scraper.schedule import spread
 class Awssecurity(RSSScraper):
     meta = ScraperMeta(
         id="aws_security",
+        content_kind="vendor_research",
         source="AWS Security",
         schedule=spread("*/15 * * * *", "awssecurity"),
         tags=("vendor",),

@@ -19,6 +19,7 @@ from cti_api.services import campaign as campaign_service
 from cti_core.db.models.cve import CveTracker
 from cti_core.db.models.pir import PIRRequirement
 from cti_core.db.repositories.article import AsyncArticleRepo
+from cti_core.db.repositories.article_cve import AsyncArticleCveRepo
 from cti_core.db.repositories.auth import AsyncClientRepo
 from cti_core.db.repositories.ioc import AsyncIOCRepo
 from cti_core.db.repositories.ta import AsyncTAProfileRepo
@@ -68,13 +69,7 @@ async def _attach_iocs(session: AsyncSession, article_ids: list[int]) -> None:
         source_name="Source0",
         article_id=article_ids[0],
     )
-    await ioc_repo.upsert(
-        type="cve",
-        value="CVE-2026-9001",
-        source_url="https://example.com/campaign-1",
-        source_name="Source1",
-        article_id=article_ids[1],
-    )
+    await AsyncArticleCveRepo(session).add_many(article_ids[1], ["CVE-2026-9001"], "t")
 
 
 async def test_get_recent_campaigns_builds_enriched_campaign(

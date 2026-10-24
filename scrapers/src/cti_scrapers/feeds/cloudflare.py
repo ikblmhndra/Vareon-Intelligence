@@ -15,6 +15,7 @@ from cti_scraper.schedule import spread
 class Cloudflare(RSSScraper):
     meta = ScraperMeta(
         id="cloudflare",
+        content_kind="vendor_research",
         source="Cloudflare",
         schedule=spread("1 * * * *", "cloudflare"),
         tags=("migrated",),

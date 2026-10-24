@@ -17,6 +17,7 @@ from cti_scraper.schedule import spread
 class Sysdig(RSSScraper):
     meta = ScraperMeta(
         id="sysdig",
+        content_kind="vendor_research",
         source="Sysdig",
         schedule=spread("32 * * * *", "sysdig"),
         max_items=10,

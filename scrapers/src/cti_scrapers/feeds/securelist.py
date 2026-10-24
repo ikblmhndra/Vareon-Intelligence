@@ -14,6 +14,7 @@ from cti_scraper.schedule import spread
 class Securelist(RSSScraper):
     meta = ScraperMeta(
         id="securelist",
+        content_kind="vendor_research",
         source="Securelist",
         schedule=spread("0 * * * *", "securelist"),
         tags=("migrated",),

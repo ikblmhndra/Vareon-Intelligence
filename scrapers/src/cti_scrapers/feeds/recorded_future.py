@@ -14,6 +14,7 @@ from cti_scraper.schedule import spread
 class RecordedFuture(RSSScraper):
     meta = ScraperMeta(
         id="recorded_future",
+        content_kind="vendor_research",
         source="Recordedfuture",
         schedule=spread("30 * * * *", "recorded_future"),
         tags=("migrated",),

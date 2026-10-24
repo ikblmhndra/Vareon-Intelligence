@@ -14,6 +14,7 @@ from cti_scraper.schedule import spread
 class Fortinet(RSSScraper):
     meta = ScraperMeta(
         id="fortinet",
+        content_kind="vendor_research",
         source="Fortinet",
         schedule=spread("45 * * * *", "fortinet"),
         tags=("migrated",),

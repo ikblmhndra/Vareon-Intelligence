@@ -15,6 +15,7 @@ from cti_scraper.schedule import spread
 class Huntress(RSSScraper):
     meta = ScraperMeta(
         id="huntress",
+        content_kind="vendor_research",
         source="Huntress",
         schedule=spread("30 * * * *", "huntress"),
         max_items=10,

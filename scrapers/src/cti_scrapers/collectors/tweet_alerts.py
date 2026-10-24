@@ -286,6 +286,7 @@ _REFERENCE = ("techstack", "threat_actor_groups", "monitored_people")
 class TweetAlerts1h(TweetAlertScraper):
     meta = ScraperMeta(
         id="tweet_alerts_1h",
+        content_kind="social",
         source="X/Twitter Alerts (hourly list)",
         schedule="5 * * * *",
         rate_limit="10/minute",
@@ -306,6 +307,7 @@ class TweetAlerts1h(TweetAlertScraper):
 class TweetAlerts30m(TweetAlertScraper):
     meta = ScraperMeta(
         id="tweet_alerts_30m",
+        content_kind="social",
         source="X/Twitter Alerts (half-hour list)",
         schedule="35 * * * *",
         rate_limit="10/minute",

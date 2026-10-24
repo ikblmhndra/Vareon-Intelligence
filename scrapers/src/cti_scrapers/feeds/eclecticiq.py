@@ -14,6 +14,7 @@ from cti_scraper.schedule import spread
 class Eclecticiq(RSSScraper):
     meta = ScraperMeta(
         id="eclecticiq",
+        content_kind="vendor_research",
         source="Eclecticiq",
         schedule=spread("0 * * * *", "eclecticiq"),
         tags=("migrated",),

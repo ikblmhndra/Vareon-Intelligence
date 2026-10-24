@@ -90,12 +90,10 @@ _IOC_PATTERN_MAP = {
     "ip": "[ipv4-addr:value = '{value}']",
     "domain": "[domain-name:value = '{value}']",
     "url": "[url:value = '{value}']",
-    "url_with_path": "[url:value = '{value}']",
     "sha256": "[file:hashes.'SHA-256' = '{value}']",
     "sha1": "[file:hashes.'SHA-1' = '{value}']",
     "md5": "[file:hashes.MD5 = '{value}']",
     "email": "[email-addr:value = '{value}']",
-    "cve": "[vulnerability:name = '{value}']",
 }
 
 
@@ -112,12 +110,10 @@ def _ioc_type_to_indicator_type(ioc_type: str) -> str:
         "ip": "malicious-activity",
         "domain": "malicious-activity",
         "url": "malicious-activity",
-        "url_with_path": "malicious-activity",
         "sha256": "malicious-activity",
         "sha1": "malicious-activity",
         "md5": "malicious-activity",
         "email": "compromised",
-        "cve": "anomalous-activity",
     }
     return mapping.get(ioc_type, "unknown")
 
@@ -477,8 +473,9 @@ async def build_ioc_stix_bundle(
     identity = _identity_object()
     objects.append(identity)
 
+    # Export tidak pernah memuat IOC `auto_suppressed` (bukan indikator), apa pun parameternya.
     iocs, _total = await AsyncIOCRepo(session).list_filtered(
-        page=1, page_size=min(limit, 1000), ioc_type=ioc_type
+        page=1, page_size=min(limit, 1000), ioc_type=ioc_type, include_suppressed=False
     )
 
     for ioc in iocs:

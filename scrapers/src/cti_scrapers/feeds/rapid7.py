@@ -32,6 +32,7 @@ _ALLOWED_CATEGORIES = {"Emergent Threat Response", "Research", "Threat Intel", "
 class Rapid7(BaseScraper):
     meta = ScraperMeta(
         id="rapid7",
+        content_kind="vendor_research",
         source="Rapid7",
         schedule=spread("2 * * * *", "rapid7"),
         tags=("migrated",),

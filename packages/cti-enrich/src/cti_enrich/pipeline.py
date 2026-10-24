@@ -164,9 +164,15 @@ def run_pipeline(
     scraper_id: str | None,
     session: Session,
     alert: bool = True,
+    content_kind: str | None = None,
+    default_relevance: str = "classify",
 ) -> PipelineOutcome:
     """`alert=False` (replay artikel yang gagal di-enrich) menyimpan artikel tanpa mengirim
-    Telegram: beritanya sudah berhari-hari, ratusan pesan sekaligus hanya menjadi noise."""
+    Telegram: beritanya sudah berhari-hari, ratusan pesan sekaligus hanya menjadi noise.
+
+    `default_relevance="always"` (dari `ScraperMeta`, dicari task worker; `cti_enrich` tidak boleh
+    mengimpor `cti_scraper`) untuk sumber terstruktur (KEV, exploit, advisory): pasti relevan,
+    jadi panggilan LLM classify dan TTP dilewati. Penanda lewat disimpan di audit classify."""
     title = normalize_title(title)
     known = _known_article(session, url)
     if known is not None:
@@ -184,7 +190,15 @@ def run_pipeline(
             accepted=True, article_id=known.id, news_type=known.news_type, duplicate=True
         )
 
-    classify_result = classify(title)
+    always = default_relevance == "always"
+    if always:
+        classify_result = ClassifyResult(
+            related_cyber=True,
+            reason=f"structured source: {content_kind}",
+            audit={"skipped": "default_relevance=always", "content_kind": content_kind},
+        )
+    else:
+        classify_result = classify(title)
     if not classify_result.related_cyber:
         persist_rejected(
             session=session,
@@ -242,7 +256,9 @@ def run_pipeline(
             classify_result=classify_result,
         )
 
-    ttp_result = _extract_ttps_or_empty(url, text, summary)
+    ttp_result = (
+        TtpResult(has_techniques=False) if always else _extract_ttps_or_empty(url, text, summary)
+    )
     if ttp_result.techniques:
         # Normalisasi ke katalog ATT&CK SEBELUM dipakai alert/persist -- LLM
         # sering salah pasang ID/nama (QA BUG-C01), lihat `cti_core.attack_ttp`.

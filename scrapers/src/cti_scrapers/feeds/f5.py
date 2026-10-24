@@ -19,6 +19,7 @@ from cti_scraper.schedule import spread
 class F5(RSSScraper):
     meta = ScraperMeta(
         id="f5",
+        content_kind="vendor_research",
         source="F5 Labs",
         schedule=spread("46 * * * *", "f5"),
         tags=("migrated",),

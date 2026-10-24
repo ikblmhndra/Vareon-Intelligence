@@ -24,6 +24,7 @@ _ALLOWED_CATEGORIES = frozenset({"Counter Adversary Operations", "Threat Hunting
 class Crowdstrike(RSSScraper):
     meta = ScraperMeta(
         id="crowdstrike",
+        content_kind="vendor_research",
         source="CrowdStrike",
         schedule=spread("30 * * * *", "crowdstrike"),
         tags=("migrated",),

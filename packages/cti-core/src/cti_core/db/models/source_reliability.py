@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import datetime
 
-from sqlalchemy import BigInteger, Date, String, Text
+from sqlalchemy import BigInteger, CheckConstraint, Date, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from cti_core.db.base import Base
@@ -26,6 +26,7 @@ from cti_core.db.base import Base
 
 class SourceReliabilityEntry(Base):
     __tablename__ = "source_reliability_entries"
+    __table_args__ = (CheckConstraint("origin IN ('default', 'analyst')", name="origin"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     source_name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
@@ -41,3 +42,8 @@ class SourceReliabilityEntry(Base):
     notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
     added_date: Mapped[datetime.date] = mapped_column(Date, nullable=False)
     last_updated: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+    origin: Mapped[str] = mapped_column(
+        String(10), nullable=False, default="analyst", server_default=text("'analyst'")
+    )
+    """`default` (baris awal dari `content_kind` scraper, dibuat saat API start) atau `analyst`
+    (diketik/diedit analis). Edit lewat API mengubah `default` jadi `analyst`."""

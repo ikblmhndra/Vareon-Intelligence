@@ -20,6 +20,7 @@ from cti_scraper.schedule import spread
 class Trustwave(RSSScraper):
     meta = ScraperMeta(
         id="trustwave",
+        content_kind="vendor_research",
         source="LevelBlue SpiderLabs (dulu Trustwave)",
         schedule=spread("31 * * * *", "trustwave"),
         tags=("migrated",),
