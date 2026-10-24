@@ -47,7 +47,7 @@ def test_stages_raise_empty_response_not_typeerror(
     monkeypatch: pytest.MonkeyPatch, module: Any, call: Any
 ) -> None:
     client = _client_returning(SimpleNamespace(choices=None))
-    monkeypatch.setattr(module, "get_llm_client", lambda: (client, "test-model"))
+    monkeypatch.setattr(module, "get_llm_client", lambda **_: (client, "test-model"))
     monkeypatch.setattr(module, "store_param", lambda: {})
 
     with pytest.raises(EmptyLLMResponse):

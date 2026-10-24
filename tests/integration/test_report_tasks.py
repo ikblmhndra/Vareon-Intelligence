@@ -173,7 +173,7 @@ def llm(monkeypatch: pytest.MonkeyPatch):
     def install(*replies: str) -> FakeLLM:
         fake = FakeLLM(*replies)
         monkeypatch.setattr(
-            "cti_worker.reports.news_of_the_day.get_llm_client", lambda: (fake, "m")
+            "cti_worker.reports.news_of_the_day.get_llm_client", lambda **_: (fake, "m")
         )
         return fake
 

@@ -98,6 +98,15 @@ def _enrich_queue_depth() -> int:
     return int(_broker_redis().llen(_ENRICH_QUEUE))
 
 
+def enrich_queue_depth() -> int | None:
+    """Versi publik `_enrich_queue_depth` buat pembaca non-sink (replay otomatis): None kalau Redis
+    gak terjangkau, jadi pemanggil bisa mundur ke mode hati-hati alih-alih gagal."""
+    try:
+        return _enrich_queue_depth()
+    except Exception:
+        return None
+
+
 def ensure_enrich_capacity() -> None:
     """Guard backpressure (Fase 10.1e). Scraper (~detik per run) jauh lebih
     cepat dari enrichment (~10-13 detik + LLM per artikel), jadi tanpa ini

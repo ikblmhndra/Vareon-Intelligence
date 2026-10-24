@@ -2016,6 +2016,9 @@
             "title": "Ioc Enrichment",
             "type": "array"
           },
+          "llm": {
+            "$ref": "#/components/schemas/LlmHealthOut"
+          },
           "queues": {
             "$ref": "#/components/schemas/QueueHealthOut"
           },
@@ -2032,7 +2035,8 @@
           "enrichment",
           "queues",
           "sources",
-          "ioc_enrichment"
+          "ioc_enrichment",
+          "llm"
         ],
         "title": "DataHealthOut",
         "type": "object"
@@ -2266,6 +2270,215 @@
           "enriched"
         ],
         "title": "IocEnrichmentTypeOut",
+        "type": "object"
+      },
+      "LlmErrorOut": {
+        "properties": {
+          "at": {
+            "title": "At",
+            "type": "string"
+          },
+          "error_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Type"
+          },
+          "http_status": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Http Status"
+          },
+          "task": {
+            "title": "Task",
+            "type": "string"
+          }
+        },
+        "required": [
+          "at",
+          "task",
+          "error_type",
+          "http_status"
+        ],
+        "title": "LlmErrorOut",
+        "type": "object"
+      },
+      "LlmHealthOut": {
+        "properties": {
+          "last_call_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Call At"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LlmErrorOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "last_ok_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Ok At"
+          },
+          "parked": {
+            "$ref": "#/components/schemas/LlmParkedOut"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "failing",
+              "unknown"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "usage_24h": {
+            "items": {
+              "$ref": "#/components/schemas/LlmTaskUsageOut"
+            },
+            "title": "Usage 24H",
+            "type": "array"
+          },
+          "usage_7d": {
+            "items": {
+              "$ref": "#/components/schemas/LlmTaskUsageOut"
+            },
+            "title": "Usage 7D",
+            "type": "array"
+          }
+        },
+        "required": [
+          "status",
+          "last_call_at",
+          "last_ok_at",
+          "last_error",
+          "parked",
+          "usage_24h",
+          "usage_7d"
+        ],
+        "title": "LlmHealthOut",
+        "type": "object"
+      },
+      "LlmParkedOut": {
+        "properties": {
+          "auto_eligible": {
+            "title": "Auto Eligible",
+            "type": "integer"
+          },
+          "auto_replays_24h": {
+            "title": "Auto Replays 24H",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "auto_eligible",
+          "auto_replays_24h"
+        ],
+        "title": "LlmParkedOut",
+        "type": "object"
+      },
+      "LlmTaskUsageOut": {
+        "properties": {
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "completion_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completion Tokens"
+          },
+          "errors": {
+            "title": "Errors",
+            "type": "integer"
+          },
+          "median_latency_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median Latency Ms"
+          },
+          "prompt_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Tokens"
+          },
+          "prompt_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Version"
+          },
+          "task": {
+            "title": "Task",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task",
+          "calls",
+          "errors",
+          "prompt_tokens",
+          "completion_tokens",
+          "median_latency_ms",
+          "prompt_version"
+        ],
+        "title": "LlmTaskUsageOut",
         "type": "object"
       },
       "LockfileImportResult": {
@@ -7567,7 +7780,7 @@
   },
   "info": {
     "title": "Vareon Intelligence API",
-    "version": "0.8.4"
+    "version": "0.8.5"
   },
   "openapi": "3.1.0",
   "paths": {

@@ -10,6 +10,7 @@ import { formatWib, relativeTime } from "@/lib/cve/freshness";
 import { byProblemSeverity, useScraperHealth } from "@/lib/scrapers/health";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/scrapers/status-badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
 type Tone = "ok" | "warn" | "bad" | "unknown";
@@ -46,6 +47,16 @@ function byAge(iso: string | null | undefined, warnH: number, badH: number): Ton
 
 function pct(part: number, whole: number): string {
   return whole > 0 ? `${Math.round((part / whole) * 100)}%` : "—";
+}
+
+const CELL = "px-2 py-1.5 text-xs sm:text-sm";
+const HEAD = "h-8 px-2 text-xs";
+const NUM = cn(CELL, "text-right tabular-nums whitespace-nowrap");
+
+/** "12 / 340"; `—` untuk nilai kosong (token/latensi nullable, atau tugas tanpa panggilan di jendela itu). */
+function pair(a: number | null | undefined, b: number | null | undefined, unit = ""): string {
+  const f = (n: number | null | undefined) => (n === null || n === undefined ? "—" : `${n.toLocaleString()}${unit}`);
+  return `${f(a)} / ${f(b)}`;
 }
 
 /** Halaman Data health (ROADMAP #24 PR-B): `GET /api/data-health` + kesegaran CVE (`/api/cve/freshness`)
@@ -140,6 +151,21 @@ export function DataHealthView() {
 
   const cov = dashboard.data;
 
+  const llm = d.llm;
+  const llmTone: Tone = llm.status === "ok" ? "ok" : llm.status === "failing" ? "bad" : "unknown";
+  const le = llm.last_error;
+  const llmStatusValue =
+    llm.status === "failing"
+      ? le
+        ? `${[le.http_status, le.error_type].filter((x) => x !== null).join(" ") || "error"} · ${le.task} · ${when(le.at)}`
+        : "latest call returned no choices"
+      : llm.status === "ok"
+        ? `last successful call ${when(llm.last_ok_at)}`
+        : "no calls recorded yet";
+  const usage7d = new Map(llm.usage_7d.map((u) => [u.task, u]));
+  const llmTasks = [...new Set([...llm.usage_24h.map((u) => u.task), ...usage7d.keys()])].sort();
+  const usage24h = new Map(llm.usage_24h.map((u) => [u.task, u]));
+
   return (
     <div className="pb-10">
       <p className="mb-6 text-sm text-muted-foreground">
@@ -227,6 +253,54 @@ export function DataHealthView() {
             ))
           )}
         </Section>
+
+        <div className="space-y-4 lg:col-span-2">
+          <Section title="LLM" tone={llmTone}>
+            <Row label="Model status" value={llmStatusValue} tone={llmTone} />
+            <Row
+              label="Parked articles"
+              value={`${llm.parked.total.toLocaleString()} parked · ${llm.parked.auto_eligible.toLocaleString()} eligible for auto-replay · ${llm.parked.auto_replays_24h.toLocaleString()} auto-replays in 24 h`}
+              tone={llm.parked.total ? "warn" : "ok"}
+            />
+            <MoreLink href="/newsroom">Replay from Newsroom › Filtered Articles › Failed enrichment</MoreLink>
+          </Section>
+          <Table framed>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className={HEAD}>Task</TableHead>
+                <TableHead className={cn(HEAD, "text-right")}>Calls 24 h / 7 d</TableHead>
+                <TableHead className={cn(HEAD, "text-right")}>Errors 24 h / 7 d</TableHead>
+                <TableHead className={cn(HEAD, "text-right")}>Prompt tokens 24 h / 7 d</TableHead>
+                <TableHead className={cn(HEAD, "text-right")}>Completion tokens 24 h / 7 d</TableHead>
+                <TableHead className={cn(HEAD, "text-right")}>Median latency 24 h / 7 d</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {llmTasks.length === 0 ? (
+                <TableRow className="hover:bg-transparent">
+                  <TableCell colSpan={6} className="px-2 py-3 text-sm text-muted-foreground">
+                    No LLM calls recorded in the last 7 days.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                llmTasks.map((task) => {
+                  const a = usage24h.get(task);
+                  const b = usage7d.get(task);
+                  return (
+                    <TableRow key={task}>
+                      <TableCell className={cn(CELL, "font-code")}>{task}</TableCell>
+                      <TableCell className={NUM}>{pair(a?.calls, b?.calls)}</TableCell>
+                      <TableCell className={NUM}>{pair(a?.errors, b?.errors)}</TableCell>
+                      <TableCell className={NUM}>{pair(a?.prompt_tokens, b?.prompt_tokens)}</TableCell>
+                      <TableCell className={NUM}>{pair(a?.completion_tokens, b?.completion_tokens)}</TableCell>
+                      <TableCell className={NUM}>{pair(a?.median_latency_ms, b?.median_latency_ms, " ms")}</TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
+            </TableBody>
+          </Table>
+        </div>
       </div>
 
       <HowToRead />
@@ -304,6 +378,13 @@ function HowToRead() {
           <strong className="text-foreground">Coverage</strong>: how many articles (all time) name at least one country, threat
           actor or technique, and how many IOCs of each type were checked by at least one reputation provider (IOCs a provider
           cannot check, such as private IPs, do not count).
+        </li>
+        <li>
+          <strong className="text-foreground">LLM</strong>: Problem when the latest model call failed (the row shows the HTTP
+          status, error type, task and age); OK once a call succeeds again. Articles that could not be enriched because the
+          model failed are parked and replayed automatically when the model works; the row counts how many are parked, how many
+          are eligible for an automatic replay (attempt cap not reached and backoff elapsed) and how many were replayed
+          automatically in 24 hours. The table compares each task over 24 hours and 7 days; a dash means no value was recorded.
         </li>
       </ul>
     </details>

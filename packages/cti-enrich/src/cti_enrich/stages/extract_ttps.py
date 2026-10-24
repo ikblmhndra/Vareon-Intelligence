@@ -8,26 +8,31 @@ adanya termasuk prompt-nya."""
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 
 from cti_core.attack_ttp import NormalizedTTP, TechniqueCatalog, normalize_ttps
 from cti_core.llm.client import first_choice, get_llm_client, parse_json_response, store_param
+from cti_core.llm.usage import prompt_version
 from openai import RateLimitError
 
 from cti_enrich.stages.classify import OpenAIQuotaExhausted
 from cti_enrich.stages.llm_messages import build_messages
 
-_TTP_SYSTEM_PROMPT = """Based on the provided article summary, identify the top 5 most relevant MITRE ATT&CK techniques. For each technique return:
-    The technique name, the technique ID (e.g. "T1566.001"), and the specific string or sentence from the input that led to the identification (evidence). If the content is not related to a threat campaign, set "has_techniques" to false.
+_TTP_SYSTEM_PROMPT = """Based on the provided article text, identify up to 5 MITRE ATT&CK techniques that the article explicitly describes. Fewer than 5 is fine, and so is none: only list a technique when the text itself describes that behaviour. Do not guess techniques the text does not support. For each technique return:
+    The technique name, the technique ID (e.g. "T1566.001"), and the exact string or sentence copied from the input that led to the identification (evidence). If the content is not related to a threat campaign, or no technique is explicitly described, set "has_techniques" to false and return an empty "techniques" list.
 
     Respond ONLY with a valid JSON object:
     {
     "has_techniques": true/false,
     "techniques": [
-        {"technique_name": "text", "technique_id": "text", "evidence": "exact phrase from input"}
+        {"technique_name": "text", "technique_id": "text", "evidence": "exact phrase copied from input"}
     ]
     }
     """
+
+TTP_TEXT_CAP = 6000
+"""Batas karakter teks artikel yang dikirim ke model TTP."""
 
 
 @dataclass
@@ -55,16 +60,17 @@ bug yang sama (truncated mid-`<think>`) berisiko kejadian di sini juga
 walau belum ketauan nyata di korpus test. Dinaikin preventif, bukan reaktif."""
 
 
+_PROMPT_VERSION = prompt_version(_TTP_SYSTEM_PROMPT)
+
 _MAX_ATTEMPTS = 3
 """2 retry -- sama alasan `classify.py::_MAX_ATTEMPTS`, respons kosong/
 rusak dari gateway reasoning-model itu transien."""
 
 
-def extract_ttps(summary: str) -> TtpResult:
-    """Terima ringkasan (LSA, `stages/summarize.py`) yang udah dipotong
-    caller -- `nlp.py` manggil ini dengan `result[:2000]`, potongan itu
-    tanggung jawab caller (`pipeline.py`), bukan di sini."""
-    client, model_name = get_llm_client()
+def extract_ttps(source_text: str) -> TtpResult:
+    """Terima teks artikel yang udah dipotong caller (`TTP_TEXT_CAP`, atau
+    ringkasan kalau teks kosong) -- pemotongan tanggung jawab `pipeline.py`."""
+    client, model_name = get_llm_client(task="ttp")
     last_error: json.JSONDecodeError | None = None
     for attempt in range(_MAX_ATTEMPTS):
         try:
@@ -72,11 +78,12 @@ def extract_ttps(summary: str) -> TtpResult:
                 model=model_name,
                 response_format={"type": "json_object"},
                 messages=build_messages(
-                    _TTP_SYSTEM_PROMPT, summary, attempt=attempt, tag="article_summary"
+                    _TTP_SYSTEM_PROMPT, source_text, attempt=attempt, tag="article_text"
                 ),
                 max_tokens=_MAX_TOKENS,
                 n=1,
                 temperature=0,
+                prompt_version=_PROMPT_VERSION,
                 **store_param(),
             )
         except RateLimitError as e:
@@ -138,3 +145,28 @@ def normalize_ttp_result(result: TtpResult, catalog: TechniqueCatalog) -> TtpRes
 
 def as_normalized(t: Technique) -> NormalizedTTP:
     return NormalizedTTP(t.technique_id, t.technique_name, t.extracted_id, t.extracted_name)
+
+
+_QUOTE_MAP = str.maketrans(
+    {
+        chr(0x201C): '"',
+        chr(0x201D): '"',
+        chr(0x2018): "'",
+        chr(0x2019): "'",
+        chr(0x2026): "...",
+    }
+)
+
+
+def _fold(s: str) -> str:
+    """casefold + kutip lengkung/elipsis diluruskan + semua whitespace jadi satu spasi."""
+    return re.sub(r"\s+", " ", s.translate(_QUOTE_MAP).casefold()).strip()
+
+
+def verify_evidence(result: TtpResult, text: str) -> TtpResult:
+    """Buang technique yang evidence-nya tidak ditemukan di `text` (persis string
+    yang dikirim ke model). Evidence kosong juga dibuang. Model kadang
+    mengarang kutipan; tanpa bukti di teks, technique-nya tidak dipercaya."""
+    haystack = _fold(text)
+    kept = [t for t in result.techniques if (e := _fold(t.evidence)) and e in haystack]
+    return TtpResult(has_techniques=result.has_techniques and bool(kept), techniques=kept)

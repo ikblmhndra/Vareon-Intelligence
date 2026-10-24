@@ -36,6 +36,8 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +45,7 @@ from cti_alerts.mailer import create_graph_draft
 from cti_core.config import platform_name
 from cti_core.db.repositories.cve import AsyncCveTrackerRepo
 from cti_core.llm.client import get_llm_client, parse_json_response
+from cti_core.llm.usage import prompt_version
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_api.services.email_env import make_env
@@ -56,13 +59,12 @@ _SLA_DAYS = {"CRITICAL": 7, "HIGH": 30, "MEDIUM": 60, "LOW": 90}
 _SEV_ORDER = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
 
 
-# ── LLM helpers (port apa adanya dari `cveValidator.py`/legacy service) ───────
+# ── LLM helpers (port dari `cveValidator.py`/legacy service) ─────────────────
 
+_VALIDATOR_PROMPT = """You are a Cyber Threat Intelligence manager with 7+ years of expertise.
 
-def _llm_cve_validator(cve_data: dict[str, Any]) -> dict[str, Any]:
-    prompt = """You are a Cyber Threat Intelligence manager with 7+ years of expertise.
-
-Analyze the CVE data and return ONLY a valid JSON object with these fields. No markdown, no code blocks.
+Analyze the CVE data (a JSON object) and return ONLY a valid JSON object with these fields. No markdown, no code blocks.
+Use only facts present in the CVE data; do not invent versions, products or exploitation status.
 
 {
   "product_name": "The possible impacted product name",
@@ -72,40 +74,20 @@ Analyze the CVE data and return ONLY a valid JSON object with these fields. No m
   "primary_remediation_action": [
     {"version_branch": "affected version branch", "fixed_version": "safe version to upgrade to"}
   ],
-  "affected_version": "version X or below is affected based on 'affected' key",
   "alternative_remediation_action": [
     "5-7 compensating controls if patching delayed, each max 30 words"
   ],
-  "attack_complexity": "Low or High from cvss_vector AC:",
-  "impact": "The impact if CVE exploited",
-  "recommended_timeline": "CRITICAL (24-48h) / HIGH (7 days) / MEDIUM (30 days) / LOW (90 days)",
-  "analysis_timestamp": "ISO 8601 timestamp"
+  "impact": "The impact if CVE exploited"
 }
 
 CRITICAL: Return ONLY the JSON object. Start with { and end with }."""
 
-    client, model_name = get_llm_client()
-    completion = client.chat.completions.create(
-        model=model_name,
-        messages=[
-            {"role": "system", "content": prompt},
-            {"role": "user", "content": str(cve_data)},
-        ],
-        temperature=0,
-        n=1,
-    )
-    content = completion.choices[0].message.content
-    result = parse_json_response(content or "{}")
-    return result
-
-
-def _dedup_mitigation(mitigation_list: list[str]) -> dict[str, Any]:
-    prompt = """You are a Cyber Threat Intelligence manager with 7+ years of expertise.
+_MITIGATION_PROMPT = """You are a Cyber Threat Intelligence manager with 7+ years of expertise.
 
 Return ONLY a valid JSON object:
 {
   "alternative_remediation_action": [
-    "Provide EXACTLY 7 unique, non-overlapping compensating controls if patching is delayed",
+    "Provide 5 to 7 genuinely distinct compensating controls if patching is delayed; fewer distinct controls are better than padded or repeated ones",
     "Each item must be 20-30 words and actionable",
     "NO DUPLICATES - each control must address a different security layer"
   ]
@@ -113,15 +95,90 @@ Return ONLY a valid JSON object:
 
 CRITICAL: Return ONLY the JSON object. Start with { and end with }."""
 
-    client, model_name = get_llm_client()
+# Batas panjang input validator: dulu `str(cve_data)` (repr Python, tanpa batas) sehingga CVE
+# dengan ratusan baris `affected`/`reference` mengirim puluhan ribu karakter.
+_CVE_INPUT_MAX_CHARS = 6000
+_CVE_INPUT_TEXT_CAP = 2000
+_CVE_INPUT_LIST_CAP = 20
+
+_TIMELINE = {
+    "CRITICAL": "CRITICAL (24-48h)",
+    "HIGH": "HIGH (7 days)",
+    "MEDIUM": "MEDIUM (30 days)",
+    "LOW": "LOW (90 days)",
+}
+_ATTACK_COMPLEXITY = {"L": "Low", "H": "High"}
+_AC_RE = re.compile(r"(?:^|/)AC:([A-Z])")
+
+
+def computed_fields(cve_data: dict[str, Any]) -> dict[str, str]:
+    """Field yang dulu diminta ke model padahal bisa dihitung dari data (spec 2026-10-24 6.1
+    butir 4); hasilnya menimpa apa pun yang dikembalikan model. Severity kosong/tak dikenal
+    pakai aturan MEDIUM; `affected_version` digabung dari `affected` (baris `cve_affected`)."""
+    match = _AC_RE.search(cve_data.get("cvss_vector") or "")
+    complexity = _ATTACK_COMPLEXITY.get(match.group(1), "Unknown") if match else "Unknown"
+    severity = (cve_data.get("cve_severity") or "").strip().upper()
+    affected = [str(a).strip() for a in cve_data.get("affected") or [] if str(a).strip()]
+    return {
+        "attack_complexity": complexity,
+        "recommended_timeline": _TIMELINE.get(severity, _TIMELINE["MEDIUM"]),
+        "affected_version": "; ".join(affected) if affected else "Unknown",
+        "analysis_timestamp": datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"),
+    }
+
+
+def _clip(value: Any, text_cap: int, list_cap: int) -> Any:
+    if isinstance(value, str):
+        return value[:text_cap]
+    if isinstance(value, list):
+        return [_clip(v, text_cap, list_cap) for v in value[:list_cap]]
+    return value
+
+
+def _cve_user_message(cve_data: dict[str, Any]) -> str:
+    """JSON valid, maksimal `_CVE_INPUT_MAX_CHARS`: teks dan list dipotong SEBELUM serialisasi
+    (bukan memotong string JSON-nya), batasnya dikecilkan bertahap sampai muat."""
+    text_cap, list_cap = _CVE_INPUT_TEXT_CAP, _CVE_INPUT_LIST_CAP
+    while True:
+        payload = {k: _clip(v, text_cap, list_cap) for k, v in cve_data.items()}
+        msg = json.dumps(payload, ensure_ascii=False, default=str)
+        if len(msg) <= _CVE_INPUT_MAX_CHARS or text_cap == 0:
+            return msg
+        text_cap //= 2
+        list_cap = max(1, list_cap // 2)
+
+
+def _llm_cve_validator(cve_data: dict[str, Any]) -> dict[str, Any]:
+    client, model_name = get_llm_client(task="cve_email_validate")
     completion = client.chat.completions.create(
         model=model_name,
         messages=[
-            {"role": "system", "content": prompt},
+            {"role": "system", "content": _VALIDATOR_PROMPT},
+            {"role": "user", "content": _cve_user_message(cve_data)},
+        ],
+        temperature=0,
+        n=1,
+        response_format={"type": "json_object"},
+        prompt_version=prompt_version(_VALIDATOR_PROMPT),
+    )
+    content = completion.choices[0].message.content
+    result = parse_json_response(content or "{}")
+    result.update(computed_fields(cve_data))
+    return result
+
+
+def _dedup_mitigation(mitigation_list: list[str]) -> dict[str, Any]:
+    client, model_name = get_llm_client(task="cve_email_mitigation")
+    completion = client.chat.completions.create(
+        model=model_name,
+        messages=[
+            {"role": "system", "content": _MITIGATION_PROMPT},
             {"role": "user", "content": str(mitigation_list)},
         ],
         temperature=0,
         n=1,
+        response_format={"type": "json_object"},
+        prompt_version=prompt_version(_MITIGATION_PROMPT),
     )
     content = completion.choices[0].message.content
     result = parse_json_response(content or "{}")
@@ -139,7 +196,7 @@ Generate a concise HTML impact statement (max 100 words) covering:
 
 Wrap important phrases in <strong> tags. Return only the HTML fragment, no surrounding tags."""
 
-    client, model_name = get_llm_client()
+    client, model_name = get_llm_client(task="cve_email_risk")
     completion = client.chat.completions.create(
         model=model_name,
         messages=[
@@ -148,6 +205,7 @@ Wrap important phrases in <strong> tags. Return only the HTML fragment, no surro
         ],
         temperature=0,
         n=1,
+        prompt_version=prompt_version(prompt),
     )
     return completion.choices[0].message.content or ""
 

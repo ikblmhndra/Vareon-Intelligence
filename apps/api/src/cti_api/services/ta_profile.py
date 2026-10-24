@@ -14,9 +14,11 @@ import re
 from typing import Any
 
 from cti_core.db.models.article import Article, ArticleThreatActor
+from cti_core.db.repositories.attack import AsyncAttackQueryRepo
 from cti_core.db.repositories.cve import AsyncCveTrackerRepo
 from cti_core.db.repositories.ta import AsyncTAProfileRepo, build_ta_name_pattern
 from cti_core.llm.client import get_llm_client, parse_json_response
+from cti_core.llm.usage import prompt_version
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,6 +29,15 @@ threat intelligence source, or actor name).
 The profile must be grounded in verified reporting. For any field where information is
 unavailable or unconfirmed, use null and set the corresponding confidence field to "low"
 or "unknown". Do not fabricate or infer beyond what is stated in the source material.
+
+The user message holds the provided context: the MITRE ATT&CK record matched to this actor
+(group ID, aliases, software and techniques), or a note that no ATT&CK group matches, and the
+titles of recent articles about the actor. The fields capability_assessment.known_malware,
+capability_assessment.exploited_vulnerabilities, capability_assessment.attack_techniques and
+infrastructure.known_iocs must be filled only from the provided context: software listed there,
+CVE IDs that appear there, technique IDs listed there, and indicators that appear there. When
+the context has none, leave them empty ([] or empty lists per tactic / IOC type). Do not add
+items from general knowledge to these fields.
 
 Return ONLY a valid JSON object — no preamble, no markdown fencing, no commentary.
 
@@ -167,10 +178,35 @@ Use this exact schema:
 }"""
 
 
-def _build_user_message(actor_name: str, news: list[dict[str, Any]]) -> str:
+def _build_user_message(
+    actor_name: str, news: list[dict[str, Any]], attack_group: dict[str, Any] | None
+) -> str:
+    """Blok konteks yang jadi SATU-SATUNYA sumber malware/CVE/teknik/IOC di profil (spec
+    2026-10-24 6.1 butir 2): dulu model hanya menerima nama aktor (+ judul berita) dan mengisi
+    field itu dari ingatannya sendiri. `attack_group` = hasil `AsyncAttackQueryRepo.get_group()`
+    (software + teknik lewat `attack_relationships`), None kalau nama tidak cocok grup mana pun."""
+    lines = [f"Threat actor: {actor_name}", "", "MITRE ATT&CK context:"]
+    if attack_group is None:
+        lines.append("- No MITRE ATT&CK group matches this name or its aliases.")
+    else:
+        lines.append(
+            f"- Group: {attack_group.get('name', '')} ({attack_group.get('group_id', '')})"
+        )
+        lines.append(f"- Aliases: {', '.join(attack_group.get('aliases') or []) or 'none'}")
+        software = attack_group.get("software") or []
+        lines.append("- Software:" if software else "- Software: none listed")
+        lines.extend(
+            f"  - {sw['name']} ({sw['software_id']}, {sw['software_type']})" for sw in software
+        )
+        techniques = attack_group.get("techniques") or []
+        lines.append("- Techniques:" if techniques else "- Techniques: none listed")
+        lines.extend(
+            f"  - {t['attack_id']} {t['name']} ({', '.join(t.get('tactics') or [])})"
+            for t in techniques
+        )
+    lines += ["", "Recent reporting (newest first):"]
     if not news:
-        return actor_name
-    lines = [f"Threat actor: {actor_name}", "", "Recent reporting (newest first):"]
+        lines.append("- none")
     for a in news:
         lines.append(
             f"- [{a.get('posted_on', 'n/d')}] {a.get('title', '')} "
@@ -179,9 +215,42 @@ def _build_user_message(actor_name: str, news: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def _call_llm(actor_name: str, news: list[dict[str, Any]]) -> dict[str, Any]:
-    client, model_name = get_llm_client()
-    user_msg = _build_user_message(actor_name, news)
+async def build_profile_input(session: AsyncSession, actor_name: str) -> tuple[str, str | None]:
+    """Return (user message, MITRE group ID yang cocok atau None)."""
+    news = await AsyncTAProfileRepo(session).fetch_recent_news(actor_name)
+    attack_repo = AsyncAttackQueryRepo(session)
+    grp = await attack_repo.get_group_by_name_or_alias_ci(actor_name)
+    attack_group = await attack_repo.get_group(grp.group_id) if grp is not None else None
+    mitre_group_id = attack_group["group_id"] if attack_group else None
+    return _build_user_message(actor_name, news, attack_group), mitre_group_id
+
+
+def apply_overrides(
+    profile: dict[str, Any], mitre_group_id: str | None, now: datetime.datetime
+) -> dict[str, Any]:
+    """Field yang tidak boleh ditebak model: waktu pembuatan, TLP (profil dari sumber terbuka),
+    dan ID grup ATT&CK (dari pencocokan DB, bukan ingatan model). Dict perantara dibuat kalau
+    model tidak mengembalikannya."""
+    metadata = profile.get("profile_metadata")
+    if not isinstance(metadata, dict):
+        metadata = profile["profile_metadata"] = {}
+    metadata["generated_at"] = now.isoformat()
+    metadata["tlp_marking"] = "TLP:CLEAR"
+    identity = profile.get("identity")
+    if not isinstance(identity, dict):
+        identity = profile["identity"] = {}
+    tracking = identity.get("tracking_ids")
+    if not isinstance(tracking, dict):
+        tracking = identity["tracking_ids"] = {}
+    tracking["mitre_group_id"] = mitre_group_id
+    return profile
+
+
+_PROMPT_VERSION = prompt_version(_SYSTEM_PROMPT)
+
+
+def _call_llm(user_msg: str) -> dict[str, Any]:
+    client, model_name = get_llm_client(task="ta_profile")
     completion = client.chat.completions.create(
         model=model_name,
         messages=[
@@ -189,6 +258,7 @@ def _call_llm(actor_name: str, news: list[dict[str, Any]]) -> dict[str, Any]:
             {"role": "user", "content": user_msg},
         ],
         response_format={"type": "json_object"},
+        prompt_version=_PROMPT_VERSION,
     )
     raw = completion.choices[0].message.content
     result = parse_json_response(raw or "{}")
@@ -276,10 +346,12 @@ async def _enrich_profile_cves(session: AsyncSession, profile: dict[str, Any]) -
 
 async def generate_ta_profile(session: AsyncSession, actor_name: str) -> dict[str, Any]:
     profile_repo = AsyncTAProfileRepo(session)
-    news = await profile_repo.fetch_recent_news(actor_name)
-    profile = await asyncio.to_thread(_call_llm, actor_name, news)
+    user_msg, mitre_group_id = await build_profile_input(session, actor_name)
+    profile = await asyncio.to_thread(_call_llm, user_msg)
+    now = datetime.datetime.now(datetime.UTC)
+    apply_overrides(profile, mitre_group_id, now)
     profile["_actor_name"] = actor_name
-    profile["_generated_at"] = datetime.datetime.now(datetime.UTC).isoformat()
+    profile["_generated_at"] = now.isoformat()
 
     await profile_repo.save_profile(actor_name, profile)
     # Enrich in-memory buat response doang -- enrichment TIDAK dipersist,

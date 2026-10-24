@@ -47,7 +47,7 @@ class FakeClient:
 def use_client(monkeypatch: pytest.MonkeyPatch):
     def _use(module: Any, replies: list[str]) -> FakeClient:
         client = FakeClient(replies)
-        monkeypatch.setattr(module, "get_llm_client", lambda: (client, "test-model"))
+        monkeypatch.setattr(module, "get_llm_client", lambda **_: (client, "test-model"))
         monkeypatch.setattr(module, "store_param", lambda: {})
         return client
 
@@ -100,7 +100,7 @@ def test_ttp_stage_uses_the_same_policy_with_its_own_tag(use_client) -> None:
     assert result.has_techniques and result.techniques[0].technique_id == "T1566"
     first, second = (user_content(r) for r in client.requests)
     assert first == "Attackers sent phishing emails."
-    assert second.startswith("<article_summary>Attackers sent phishing emails.</article_summary>")
+    assert second.startswith("<article_text>Attackers sent phishing emails.</article_text>")
 
 
 def test_build_messages_shapes() -> None:

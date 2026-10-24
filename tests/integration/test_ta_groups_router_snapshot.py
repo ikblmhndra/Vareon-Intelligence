@@ -27,7 +27,7 @@ _NORMALIZE = path_type(
     {
         r"(.*\.)?id$": (int,),
         r"(.*\.)?added_date$": (str,),
-        r"(.*\.)?_generated_at$": (str,),
+        r"(.*\.)?_?generated_at$": (str,),
     },
     regex=True,
     strict=False,

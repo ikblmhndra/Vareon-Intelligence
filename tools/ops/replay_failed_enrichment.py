@@ -23,7 +23,7 @@ Pengaman:
 DEFAULT-nya laporan saja (tidak mengirim apa pun). `--apply` baru mengirim. Idempoten, aman diulang.
 
 Dari host (dev):
-    uv run python tools/ops/replay_failed_enrichment.py --kind permanent
+    uv run python tools/ops/replay_failed_enrichment.py --kind config
     uv run python tools/ops/replay_failed_enrichment.py --since 2026-10-16 --limit 20 --apply
 
 Di server: `make replay-failed-enrichment ARGS='--since 2026-10-16 --apply'` (Makefile).
@@ -164,7 +164,7 @@ def render(row: Row, action: Action) -> str:
 def main(argv: Sequence[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=(__doc__ or "").split("\n\n")[0])
     ap.add_argument("--apply", action="store_true", help="kirim ke antrian (default: laporan saja)")
-    ap.add_argument("--kind", choices=["transient", "json", "permanent"], default=None)
+    ap.add_argument("--kind", choices=["transient", "json", "config", "permanent"], default=None)
     ap.add_argument("--since", type=datetime.date.fromisoformat, default=None, help="YYYY-MM-DD")
     ap.add_argument("--source", default=None, help="hanya satu sumber (nama persis)")
     ap.add_argument("--limit", type=int, default=None, help="maksimum baris")

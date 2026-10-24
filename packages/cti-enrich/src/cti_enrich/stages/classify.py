@@ -1,8 +1,10 @@
 """Stage 1: klasifikasi judul artikel lewat LLM -- port `articleValidator.
 articleValidator()` (`ScraperNews/modules/articleValidator.py:17-151`).
 
-Prompt disalin VERBATIM (itu business logic asli, bukan boilerplate yang
-boleh diubah). Yang DIPERBAIKI cuma cara parse hasilnya -- kode lama:
+Prompt aslinya disalin dari port itu (business logic, bukan boilerplate);
+revisi Okt 2026 (0.8.5): indentasi dibuang, field `title` (echo yang tak dipakai
+kode) dihapus, enam contoh batas ditambah -- aturan klasifikasi tetap. Cara parse
+hasilnya juga diperbaiki -- kode lama:
 
     llm_response = completion.choices[0].message.json()
     json_string = llm_response.replace("\\n", "").replace("```", "").replace("json", "")
@@ -37,114 +39,120 @@ from cti_enrich.stages.llm_messages import build_messages
 
 log = structlog.get_logger()
 
-_PROMPT = """
-        As a Threat Intelligence analyst, determine whether the following article title provides meaningful insight into the cybersecurity threat landscape.
+_PROMPT = """As a Threat Intelligence analyst, determine whether the following article title provides meaningful insight into the cybersecurity threat landscape.
 
-        Classification Instructions:
+Classification Instructions:
 
-        1. Cyber Threat Relevance:
-        - Classify as {"related_cyber": true} if the title discusses or implies:
-        - Cybersecurity incidents
-        - Threat actor activity
-        - Industry- or country-level cyber threat reports
-        - Attack trends
-        - Cyber-related regulations, risks, or exposure
+1. Cyber Threat Relevance:
+- Classify as {"related_cyber": true} if the title discusses or implies:
+- Cybersecurity incidents
+- Threat actor activity
+- Industry- or country-level cyber threat reports
+- Attack trends
+- Cyber-related regulations, risks, or exposure
 
-        - Classify as {"related_cyber": false} if the title is primarily about:
-        - Vendor marketing or promotions
-        - Product launches or sales
-        - Company financials or business operations unrelated to threat intelligence
-        - General IT news with no direct link to cybersecurity threats
+- Classify as {"related_cyber": false} if the title is primarily about:
+- Vendor marketing or promotions
+- Product launches or sales
+- Company financials or business operations unrelated to threat intelligence
+- General IT news with no direct link to cybersecurity threats
 
-        - Include a "confidence" score from 0.0 to 1.0 to indicate how strongly the title suggests relevance to threat intelligence.
-        - Include a brief "reason" explaining your classification.
+- Include a "confidence" score from 0.0 to 1.0 to indicate how strongly the title suggests relevance to threat intelligence.
+- Include a brief "reason" explaining your classification.
 
-        2. Industry Vertical Impact:
-        - Identify which industry verticals might be affected using the following list:
-        ["Government & Public Sector", "Finance & Insurance", "Healthcare & Life Sciences", "Energy & Utilities", "Telecommunications", "Information Technology & Software", "Critical Infrastructure", "Retail & E-commerce", "Manufacturing & Industrial", "Education & Research", "Legal & Professional Services", "Media & Entertainment", "Transportation & Logistics", "Real Estate & Construction", "Non-profit & NGOs", "Aerospace & Defense Contractors", "Agriculture & Food", "Mining & Natural Resources", "Hospitality & Travel", "General"]
+2. Industry Vertical Impact:
+- Identify which industry verticals might be affected using the following list:
+["Government & Public Sector", "Finance & Insurance", "Healthcare & Life Sciences", "Energy & Utilities", "Telecommunications", "Information Technology & Software", "Critical Infrastructure", "Retail & E-commerce", "Manufacturing & Industrial", "Education & Research", "Legal & Professional Services", "Media & Entertainment", "Transportation & Logistics", "Real Estate & Construction", "Non-profit & NGOs", "Aerospace & Defense Contractors", "Agriculture & Food", "Mining & Natural Resources", "Hospitality & Travel", "General"]
 
-        - Use up to 3 specific industries, or "General" if the title has broad relevance across sectors.
-        - Do NOT mix "General" with specific industries.
+- Use up to 3 specific industries, or "General" if the title has broad relevance across sectors.
+- Do NOT mix "General" with specific industries.
 
-        3. Security Technology & Best Practices Classification:
-        - Classify the title as "security_tech_best_practice": true only if it focuses on:
-        - Cybersecurity tools, techniques, or architectures (e.g., SIEM, EDR, IAM, SSO, MFA)
-        - Technical implementations (e.g., Zero Trust, network segmentation, threat modeling)
-        - Defensive strategies or best practices (e.g., DDoS mitigation, incident response planning)
+3. Security Technology & Best Practices Classification:
+- Classify the title as "security_tech_best_practice": true only if it focuses on:
+- Cybersecurity tools, techniques, or architectures (e.g., SIEM, EDR, IAM, SSO, MFA)
+- Technical implementations (e.g., Zero Trust, network segmentation, threat modeling)
+- Defensive strategies or best practices (e.g., DDoS mitigation, incident response planning)
 
-        - Do NOT classify as "security_tech_best_practice": true if the title:
-        - Discusses threat actors, attack campaigns, data breaches, vulnerabilities, or threat trends
-        - Is purely promotional, financial, or business-oriented
-        - Is a vendor report unless it emphasizes actionable implementation guidance
+- Do NOT classify as "security_tech_best_practice": true if the title:
+- Discusses threat actors, attack campaigns, data breaches, vulnerabilities, or threat trends
+- Is purely promotional, financial, or business-oriented
+- Is a vendor report unless it emphasizes actionable implementation guidance
 
-        4. Country Role Classification:
-        - Identify countries or geopolitical entities mentioned in the title and classify each by role:
+4. Country Role Classification:
+- Identify countries or geopolitical entities mentioned in the title and classify each by role:
 
-        - "victim_countries": Countries/regions that were attacked, targeted, breached, or compromised.
-            Examples: "Indonesia hit by ransomware" -> victim: Indonesia
-                    "APT targets Philippine government" -> victim: Philippines
+- "victim_countries": Countries/regions that were attacked, targeted, breached, or compromised.
+    Examples: "Indonesia hit by ransomware" -> victim: Indonesia
+    "APT targets Philippine government" -> victim: Philippines
 
-        - "actor_countries": Countries/regions attributed as the origin of the threat actor or attack.
-            Examples: "China-linked APT attacks Indonesia" -> actor: China
-                    "North Korean hackers steal crypto" -> actor: North Korea
+- "actor_countries": Countries/regions attributed as the origin of the threat actor or attack.
+    Examples: "China-linked APT attacks Indonesia" -> actor: China
+    "North Korean hackers steal crypto" -> actor: North Korea
 
-        - Rules:
-            - Use full English country names (e.g. "Indonesia" not "Indonesian")
-            - If a country is both victim and actor in the same title, include in both lists
-            - If role is ambiguous (e.g. bilateral cooperation, general regional report), return empty lists
-            - Only include countries explicitly mentioned or strongly implied in the title
-            - Return empty lists [] if no country role can be determined from the title alone
+- Rules:
+    - Use full English country names (e.g. "Indonesia" not "Indonesian")
+    - If a country is both victim and actor in the same title, include in both lists
+    - If role is ambiguous (e.g. bilateral cooperation, general regional report), return empty lists
+    - Only include countries explicitly mentioned or strongly implied in the title
+    - Return empty lists [] if no country role can be determined from the title alone
 
-        5. Incident Confirmation Classification:
-        - Classify as "confirmed_incident": true ONLY if the title indicates a SPECIFIC, CONFIRMED security incident:
-            * Names a specific victim organization, government entity, agency, or individual targeted
-            * AND/OR explicitly states confirmed impact: data breach occurred, data stolen/exposed, systems encrypted,
-            services disrupted, financial loss, system compromise confirmed
-            * The incident is presented as having already happened, not predicted or hypothetical
+5. Incident Confirmation Classification:
+- Classify as "confirmed_incident": true ONLY if the title indicates a SPECIFIC, CONFIRMED security incident:
+    * Names a specific victim organization, government entity, agency, or individual targeted
+    * AND/OR explicitly states confirmed impact: data breach occurred, data stolen/exposed, systems encrypted,
+    services disrupted, financial loss, system compromise confirmed
+    * The incident is presented as having already happened, not predicted or hypothetical
 
-        - Classify as "confirmed_incident": false if the title:
-            * Is a general threat landscape report, analysis, forecast, or prediction
-            * Discloses a CVE/vulnerability without confirmed exploitation against a named victim
-            * Discusses a threat actor's general capabilities without referencing a named incident
-            * Is a vendor advisory, best practices guide, or educational/research content
-            * Uses speculative language: "could", "may", "researchers warn", "risk of"
+- Classify as "confirmed_incident": false if the title:
+    * Is a general threat landscape report, analysis, forecast, or prediction
+    * Discloses a CVE/vulnerability without confirmed exploitation against a named victim
+    * Discusses a threat actor's general capabilities without referencing a named incident
+    * Is a vendor advisory, best practices guide, or educational/research content
+    * Uses speculative language: "could", "may", "researchers warn", "risk of"
 
-        - "incident_confidence": 0.0-1.0 -- confidence in the confirmed_incident classification:
-            * 0.9-1.0: Named victim + confirmed impact + active/recent language
-            * 0.7-0.9: Named victim present OR confirmed impact stated (but not both)
-            * 0.4-0.7: Implicit victim or ambiguous impact language
-            * 0.0-0.4: Weak signal, mostly analytical or predictive
+- "incident_confidence": 0.0-1.0 -- confidence in the confirmed_incident classification:
+    * 0.9-1.0: Named victim + confirmed impact + active/recent language
+    * 0.7-0.9: Named victim present OR confirmed impact stated (but not both)
+    * 0.4-0.7: Implicit victim or ambiguous impact language
+    * 0.0-0.4: Weak signal, mostly analytical or predictive
 
-        - "incident_indicators": list of signals found, from:
-            ["named_victim", "confirmed_breach", "ransomware_deployment", "data_exfiltration",
-            "service_disruption", "financial_loss", "government_disclosure", "vendor_disclosure",
-            "active_campaign", "zero_day_exploitation"]
-            Return [] if confirmed_incident is false.
+- "incident_indicators": list of signals found, from:
+    ["named_victim", "confirmed_breach", "ransomware_deployment", "data_exfiltration",
+    "service_disruption", "financial_loss", "government_disclosure", "vendor_disclosure",
+    "active_campaign", "zero_day_exploitation"]
+    Return [] if confirmed_incident is false.
 
-        6. Victim Name Extraction:
-        - Extract the named victim organization, company, agency, or individual targeted in the incident.
-        - "victim_name": string or null
-            * Set to the organization/entity name if the title names a specific victim (e.g. "MGM Resorts", "Change Healthcare", "Philippine National Police")
-            * Set to null if no specific victim is named (general reports, vendor advisories, threat actor profiles, vulnerability disclosures without a named target)
-            * Use the exact name as it appears in the title -- do not abbreviate or expand
-            * If multiple victims are named, return the first/most prominent one
+6. Victim Name Extraction:
+- Extract the named victim organization, company, agency, or individual targeted in the incident.
+- "victim_name": string or null
+    * Set to the organization/entity name if the title names a specific victim (e.g. "MGM Resorts", "Change Healthcare", "Philippine National Police")
+    * Set to null if no specific victim is named (general reports, vendor advisories, threat actor profiles, vulnerability disclosures without a named target)
+    * Use the exact name as it appears in the title -- do not abbreviate or expand
+    * If multiple victims are named, return the first/most prominent one
 
-        Respond strictly in the following JSON format:
-        {
-        "title": "Your Title Here",
-        "related_cyber": true/false,
-        "confidence": 0.0-1.0,
-        "reason": "Brief explanation",
-        "industries_impacted": ["list", "of", "industries"],
-        "security_tech_best_practice": true/false,
-        "victim_countries": ["list", "of", "victim", "countries"],
-        "actor_countries": ["list", "of", "actor", "origin", "countries"],
-        "confirmed_incident": true/false,
-        "incident_confidence": 0.0-1.0,
-        "incident_indicators": ["list", "of", "signals"],
-        "victim_name": "Organization Name or null"
-        }
-    """
+Boundary examples (title -> verdict):
+- "Acme launches new endpoint security suite" -> {"related_cyber": false}
+- "Globex earns ISO 27001 certification" -> {"related_cyber": false}
+- "Initech named Security Vendor of the Year" -> {"related_cyber": false}
+- "What the new data protection regulation means for your business" -> {"related_cyber": false}
+- "Critical remote code execution flaw in Widget Server exploited in the wild" -> {"related_cyber": true}
+- "Ransomware gang leaks customer data from regional hospital" -> {"related_cyber": true}
+
+Respond strictly in the following JSON format:
+{
+"related_cyber": true/false,
+"confidence": 0.0-1.0,
+"reason": "Brief explanation",
+"industries_impacted": ["list", "of", "industries"],
+"security_tech_best_practice": true/false,
+"victim_countries": ["list", "of", "victim", "countries"],
+"actor_countries": ["list", "of", "actor", "origin", "countries"],
+"confirmed_incident": true/false,
+"incident_confidence": 0.0-1.0,
+"incident_indicators": ["list", "of", "signals"],
+"victim_name": "Organization Name or null"
+}
+"""
 
 
 PROMPT_VERSION = hashlib.sha256(_PROMPT.encode()).hexdigest()[:8]
@@ -217,8 +225,9 @@ ke nol -- itu batas realistis gateway LLM dev yang gak 100% reliable,
 dilaporkan apa adanya di hasil korpus test, bukan disembunyiin."""
 
 
-def classify(title: str) -> ClassifyResult:
-    client, model_name = get_llm_client()
+def classify(title: str, *, task: str = "classify") -> ClassifyResult:
+    """`task` menamai panggilan di log `llm_calls`; tweet memakai `classify_tweet`."""
+    client, model_name = get_llm_client(task=task)
     last_error: json.JSONDecodeError | None = None
     attempts: list[dict[str, Any]] = []
     for attempt in range(_MAX_ATTEMPTS):
@@ -232,6 +241,7 @@ def classify(title: str) -> ClassifyResult:
                 temperature=0,
                 n=1,
                 max_tokens=_MAX_TOKENS,
+                prompt_version=PROMPT_VERSION,
                 **store_param(),
             )
         except RateLimitError as e:

@@ -37,6 +37,7 @@ from cti_core.db.models.cve import (
 from cti_core.db.models.cve_mirror import CvePromotionShadow, CveRecord, CveRecordProduct
 from cti_core.db.models.ioc import IOC, IOCFeedback, IOCSource, IOCTag, IOCThreatActor
 from cti_core.db.models.ioc_reference import IocAllowlistEntry, ThreatFeedEntry
+from cti_core.db.models.llm_call import LlmCall
 from cti_core.db.models.malware_trend import MalwareTrend
 from cti_core.db.models.mindmap import MindmapDoc
 from cti_core.db.models.newsletter import (
@@ -101,6 +102,7 @@ __all__ = [
     "IOCThreatActor",
     "IocAllowlistEntry",
     "JobState",
+    "LlmCall",
     "MalwareTrend",
     "MindmapDoc",
     "MonitoredAccount",

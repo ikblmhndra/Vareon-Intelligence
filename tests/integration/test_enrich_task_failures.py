@@ -200,7 +200,7 @@ def test_auth_error_is_not_retried_and_is_recorded(mod, monkeypatch) -> None:
         result.failed() and len(calls) == 1
     )  # retry cuma buang waktu: key salah gak sembuh sendiri
     assert "AuthenticationError" in (rejected_reason() or "")
-    assert rejected_kind() == "permanent"
+    assert rejected_kind() == "config"
 
 
 def test_quota_exhausted_is_not_retried_and_is_recorded(mod, monkeypatch) -> None:

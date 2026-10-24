@@ -235,7 +235,7 @@ class TweetAlertScraper(BaseScraper):
             return
 
         try:
-            verdict = classify(text)
+            verdict = classify(text, task="classify_tweet")
         except OpenAIQuotaExhausted:
             raise
         except Exception as e:

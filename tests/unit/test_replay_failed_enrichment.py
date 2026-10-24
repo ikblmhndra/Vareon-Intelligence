@@ -105,3 +105,25 @@ def test_send_enrich_task_sends_the_sink_payload_and_adds_replay_only_when_true(
     assert plain["name"] == replay["name"] == "enrich.article" and plain["queue"] == "enrich"
     assert plain["kwargs"] == {**base, "posted_on": "2026-10-16"}  # sama dengan payload sink
     assert replay["kwargs"] == {**base, "posted_on": None, "replay": True}
+
+
+def test_send_enrich_task_adds_alert_only_when_not_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    from cti_core import celery_client
+
+    fake = FakeCelery()
+    monkeypatch.setattr(celery_client, "get_celery_client", lambda: fake)
+    base = {
+        "title": "T",
+        "url": "https://x/1",
+        "source": "S",
+        "scraper_id": "sc",
+        "posted_on": None,
+    }
+
+    celery_client.send_enrich_task(**base, replay=True, alert=None)
+    celery_client.send_enrich_task(**base, replay=True, alert=True)
+    celery_client.send_enrich_task(**base, replay=True, alert=False)
+
+    none, yes, no = fake.calls
+    assert "alert" not in none["kwargs"]
+    assert yes["kwargs"]["alert"] is True and no["kwargs"]["alert"] is False

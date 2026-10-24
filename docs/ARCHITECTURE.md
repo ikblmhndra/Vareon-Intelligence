@@ -149,7 +149,7 @@ tweet would move `since_id` past tweets the alert filters rejected.
 **Failure policy** (`apps/worker/src/cti_worker/tasks/enrich.py`). Transient errors (LLM connection, 5xx,
 429 that is not quota, a 200 reply without `choices`, network, DB connection) retry up to 6 times with
 30 s → 10 min backoff and jitter. Broken JSON retries twice. On the final failure `on_failure` writes
-`rejected_articles` with `failure_kind` (`transient`, `json` or `permanent`; `NULL` means the classifier
+`rejected_articles` with `failure_kind` (`transient`, `json`, `config` or `permanent`; `NULL` means the classifier
 rejected it) and reason `[enrichment_failed] ...` (secrets scrubbed), unless the article was already
 persisted. The prefix stays in `reason` for one release so an older worker is still readable.
 
@@ -421,7 +421,8 @@ sync_session`), and **async asyncpg** in FastAPI (`deps.get_db`). The schema has
 | `scraper_runs` | `run_id` | `Runner.execute` (start, finish) | API (`/scrapers`), `scraper.health_digest` |
 | `scraper_seen` | `dedup_key` = sha256(`scraper_id`, raw key) | `Runner` via `DedupStore` (reserve, commit, release) | `Runner` |
 | `articles` (+ `article_countries`, `_industries`, `_threat_actors`, `_ttps`) | `url_hash` (unique) | `enrich.article` (`ArticleRepo.upsert`) | API, reports, PIR alerts |
-| `rejected_articles` | `url_hash` | `enrich.article` (not cyber, or final failure with `failure_kind`) | API (Filtered Articles: restore for rejects, admin replay for failures) |
+| `rejected_articles` | `url_hash` | `enrich.article` (not cyber, or final failure with `failure_kind`) | API (Filtered Articles: restore for rejects, admin replay for failures); `enrich.auto_replay` (every 10 min; kinds `transient`/`config`/`json`, max 3 attempts, backoff 30 min x 2^count, tracked in `auto_replay_count` / `last_auto_replay_at`) |
+| `llm_calls` | `id` | LLM client (one row per call: task, model, prompt version, tokens, latency, status `ok`/`empty`/`error`; purged after 90 days by `llm.purge_calls`) | API (`/data-health` LLM block) |
 | `iocs` (+ sources, tags, actors, feedback) | `(type, value)` | `enrich.article`, IOC feed sink, `ioc.enrich_pending` (the `enrichment` column) | API, `ioc.decay_sweep` |
 | `techstack_entries` | `(name, client_id)` | API (techstack, catalog) | `new_cve` (`reference_data`), promotion, API |
 | `cve_tracker` (+ `cve_references`, `cve_affected`, ...) | `(cve_id, client_id)` | `_cve_sink`, `_promote_live`, `cve.enrichment_sweep` | API (CVE tab, dashboards, export) |

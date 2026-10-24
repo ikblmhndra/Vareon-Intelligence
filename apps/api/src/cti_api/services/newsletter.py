@@ -48,6 +48,7 @@ from cti_core.db.repositories.ioc_reference import AsyncIocAllowlistRepo
 from cti_core.db.repositories.newsletter import AsyncNewsletterRepo
 from cti_core.ioc.extractor import extract_iocs
 from cti_core.llm.client import get_llm_client, parse_json_response, usage_from
+from cti_core.llm.usage import prompt_version
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_api.schemas.newsletter import DEFAULT_SUMMARY_LANGUAGE, SummaryLanguage
@@ -184,21 +185,26 @@ Return ONLY valid JSON (no markdown, no code blocks):
 }"""
 
 _PROMPT_FROM_METADATA = """You are a Cyber Threat Intelligence analyst writing a monthly newsletter.
-Based on available metadata, generate plausible key points and a summary for this threat news item.
-Note: full article text is unavailable (possible paywall).
+The full article text is unavailable. You receive only the metadata of this threat news item as JSON.
+Summarise only what that metadata states. Do not add facts, numbers, names, dates, impacts or
+attribution that are not in the metadata, and do not guess what the article probably says.
+If the metadata supports fewer than 3 key points, return fewer (at least 1).
 
 <<language>>
 
 Return ONLY valid JSON (no markdown, no code blocks):
 {
-  "key_points": ["point 1 (max 20 words)", "point 2 (max 20 words)", "point 3 (max 20 words)"],
-  "summary": "2-3 sentence paragraph covering the likely threat context based on metadata. Max 80 words. Do not mention that the article was paywalled."
+  "key_points": ["1 to 3 points, each max 20 words, each stated in the metadata"],
+  "summary": "1-3 sentences restating only the metadata. Max 80 words."
 }"""
 """Kedua prompt meminta bahasa dalam SATU panggilan yang sama dengan ringkasannya (tanpa panggilan
 terjemahan kedua, jadi biaya per artikel tidak naik); blok bahasa + glosariumnya datang dari
 `newsletter_glossary`. Kata "weekly" di prompt lama jadi "monthly": edisinya bulanan sekarang dan
-kata itu menarik model ke "this week" di teks. Prompt metadata tetap menulis teks yang "plausible"
-(perilaku lama dipertahankan); `body_source` di cache menandai ringkasan yang begitu."""
+kata itu menarik model ke "this week" di teks. Prompt metadata dulu meminta poin yang "plausible"
+dan melarang menyebut paywall, jadi model mengarang isi artikel; sejak 2026-10-24 (spec LLM calls
+self-healing 6.1) ia hanya meringkas metadata yang diberikan, boleh kurang dari 3 poin, dan
+`body_source` di cache tetap menandai ringkasan yang begitu (peringatan "Summary from metadata
+only" di composer tidak berubah)."""
 
 
 def _prompt(template: str, language: SummaryLanguage) -> str:
@@ -209,15 +215,18 @@ def _llm_summarize_with_body(
     title: str, body: str, *, language: SummaryLanguage
 ) -> tuple[dict[str, Any], str, dict[str, int]]:
     """Return (hasil parse, nama model, token usage); dua terakhir ikut disimpan di cache."""
-    client, model_name = get_llm_client()
+    system = _prompt(_PROMPT_WITH_BODY, language)
+    client, model_name = get_llm_client(task="newsletter_article")
     completion = client.chat.completions.create(
         model=model_name,
         messages=[
-            {"role": "system", "content": _prompt(_PROMPT_WITH_BODY, language)},
+            {"role": "system", "content": system},
             {"role": "user", "content": f"Title: {title}\n\nArticle body:\n{body[:4000]}"},
         ],
         temperature=0,
         n=1,
+        response_format={"type": "json_object"},
+        prompt_version=prompt_version(system),
     )
     content = completion.choices[0].message.content
     result = parse_json_response(content or "{}")
@@ -237,15 +246,18 @@ def _llm_summarize_from_metadata(
         "threat_actors": article.get("threat_actors", []),
         "ttps": [t.get("name", "") for t in article.get("ttps", [])],
     }
-    client, model_name = get_llm_client()
+    system = _prompt(_PROMPT_FROM_METADATA, language)
+    client, model_name = get_llm_client(task="newsletter_metadata")
     completion = client.chat.completions.create(
         model=model_name,
         messages=[
-            {"role": "system", "content": _prompt(_PROMPT_FROM_METADATA, language)},
+            {"role": "system", "content": system},
             {"role": "user", "content": json.dumps(meta)},
         ],
         temperature=0,
         n=1,
+        response_format={"type": "json_object"},
+        prompt_version=prompt_version(system),
     )
     content = completion.choices[0].message.content
     result = parse_json_response(content or "{}")

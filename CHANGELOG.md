@@ -6,6 +6,38 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
+## [0.8.5] - 2026-10-24
+
+**Setiap panggilan LLM sekarang tercatat, artikel yang parkir karena gangguan LLM diputar ulang otomatis, dan beberapa prompt yang
+menyatakan hal di luar data diperbaiki.** Satu migrasi, dua entri beat baru, **tanpa kunci `.env` baru.**
+
+**Saat upgrade dari 0.8.4:** `make deploy` (migrasi jalan dulu, lalu `beat` restart karena ada dua entri beat baru:
+`enrich.auto_replay` dan `llm.purge_calls`). Migrasi membuat tabel `llm_calls` dan menambah dua kolom di `rejected_articles`;
+baris `permanent` lama yang berasal dari BadRequest/NotFound/Authentication/PermissionDenied otomatis menjadi `config`. Baris
+`config` yang parkir akan mulai diputar ulang otomatis setelah deploy (canary dulu, lalu batch bila model sehat).
+Token input task `ttp` naik sekitar 3x karena TTP sekarang membaca sampai 6.000 karakter teks artikel, bukan ringkasan
+2.000 karakter.
+
+### Ditambah
+- Tabel `llm_calls`: log tiap panggilan LLM (nama task, model, versi prompt, token, latensi, status `ok`/`empty`/`error`).
+  Dihapus otomatis setelah 90 hari.
+- Data health punya bagian LLM: status model, artikel yang parkir, dan pemakaian token per task (24 jam dan 7 hari).
+- Auto-replay artikel parkir tiap 10 menit: satu artikel canary bila status model belum diketahui, batch sampai 20 bila model
+  sehat, maksimal 3 percobaan dengan backoff, dan alert Telegram hanya untuk artikel yang diposting dalam 24 jam terakhir.
+
+### Diubah
+- Error konfigurasi gateway (400/401/403/404) langsung diparkir sebagai `config`, tidak dihitung sebagai kegagalan artikel
+  permanen.
+- Prompt classify lebih ringkas dan murah, dengan contoh batas kasus.
+- Enam panggilan LLM yang balasannya di-parse sebagai JSON sekarang memakai JSON mode.
+
+### Diperbaiki
+- Ekstraksi TTP hanya menyimpan TTP yang bukti kutipannya ditemukan di teks lengkap artikel.
+- Metadata newsletter tidak lagi mengarang isi yang tidak ada di data.
+- Profil threat actor disusun dari data ATT&CK, bukan tebakan model.
+- Exec brief membedakan berita ancaman dari insiden yang terkonfirmasi.
+- Email CVE memakai field hasil hitungan, bukan diminta dikarang ulang oleh model.
+
 ## [0.8.4] - 2026-10-24
 
 **Permission role sekarang benar-benar ditegakkan per endpoint, dan data antar-client tidak lagi bocor.** Sebelumnya 26 permission

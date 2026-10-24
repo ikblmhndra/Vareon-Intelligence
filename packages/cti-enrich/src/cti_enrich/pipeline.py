@@ -53,7 +53,13 @@ from cti_enrich.stages import extract_iocs as extract_iocs_stage
 from cti_enrich.stages import score as score_stage
 from cti_enrich.stages.alert import build_message_base, route_alerts
 from cti_enrich.stages.classify import ClassifyResult, classify, resolve_industries
-from cti_enrich.stages.extract_ttps import TtpResult, extract_ttps, normalize_ttp_result
+from cti_enrich.stages.extract_ttps import (
+    TTP_TEXT_CAP,
+    TtpResult,
+    extract_ttps,
+    normalize_ttp_result,
+    verify_evidence,
+)
 from cti_enrich.stages.fetch_text import fetch_text
 from cti_enrich.stages.persist import persist, persist_rejected
 from cti_enrich.stages.score import ScoreResult
@@ -63,7 +69,13 @@ from cti_enrich.stages.title import normalize_title
 log = structlog.get_logger()
 
 
-def _extract_ttps_or_empty(url: str, summary: str) -> TtpResult:
+def _ttp_input(text: str, summary: str) -> str:
+    """Teks yang dikirim ke model TTP: artikel (dipotong `TTP_TEXT_CAP`), atau ringkasan
+    kalau teks kosong. `verify_evidence` HARUS memakai string yang sama persis."""
+    return text[:TTP_TEXT_CAP] if text else summary
+
+
+def _extract_ttps_or_empty(url: str, text: str, summary: str) -> TtpResult:
     """TTP itu pengayaan OPSIONAL -- klasifikasi (stage 1) UDAH nentuin artikel
     ini relevan. Kalau LLM gak ngasih JSON setelah semua percobaan
     (`extract_ttps` udah retry 3x sendiri), artikel TETAP disimpan tanpa TTP
@@ -71,10 +83,11 @@ def _extract_ttps_or_empty(url: str, summary: str) -> TtpResult:
     seluruh task gagal, artikel yang sudah lolos klasifikasi hilang tanpa
     jejak selain log (e2e staging Fase 10). Cuma `JSONDecodeError`: masalah
     LLM/kuota/jaringan tetap naik ke retry Celery seperti biasa."""
-    if not summary:
+    sent = _ttp_input(text, summary)
+    if not sent:
         return TtpResult(has_techniques=False)
     try:
-        return extract_ttps(summary[:2000])
+        return extract_ttps(sent)
     except json.JSONDecodeError as e:
         log.warning("ttp_extraction_failed_article_kept", url=url, error=str(e))
         return TtpResult(has_techniques=False)
@@ -229,11 +242,13 @@ def run_pipeline(
             classify_result=classify_result,
         )
 
-    ttp_result = _extract_ttps_or_empty(url, summary)
+    ttp_result = _extract_ttps_or_empty(url, text, summary)
     if ttp_result.techniques:
         # Normalisasi ke katalog ATT&CK SEBELUM dipakai alert/persist -- LLM
         # sering salah pasang ID/nama (QA BUG-C01), lihat `cti_core.attack_ttp`.
         ttp_result = normalize_ttp_result(ttp_result, load_catalog(session))
+        # Buang technique yang kutipan buktinya tidak ada di teks yang dikirim ke model.
+        ttp_result = verify_evidence(ttp_result, _ttp_input(text, summary))
     ttp_string = ""
     if ttp_result.has_techniques:
         ttp_string = ", ".join(
