@@ -225,6 +225,7 @@ def _llm_summarize_with_body(
         ],
         temperature=0,
         n=1,
+        response_format={"type": "json_object"},
         prompt_version=prompt_version(system),
     )
     content = completion.choices[0].message.content
@@ -255,6 +256,7 @@ def _llm_summarize_from_metadata(
         ],
         temperature=0,
         n=1,
+        response_format={"type": "json_object"},
         prompt_version=prompt_version(system),
     )
     content = completion.choices[0].message.content

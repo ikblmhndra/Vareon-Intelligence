@@ -233,6 +233,7 @@ def _call_llm(user_message: str) -> tuple[str, str, dict[str, int]]:
         ],
         temperature=0,
         n=1,
+        response_format={"type": "json_object"},
         prompt_version=prompt_version(system),
     )
     wall_ms = int((time.monotonic() - started) * 1000)

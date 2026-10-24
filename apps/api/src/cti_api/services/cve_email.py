@@ -158,6 +158,7 @@ def _llm_cve_validator(cve_data: dict[str, Any]) -> dict[str, Any]:
         ],
         temperature=0,
         n=1,
+        response_format={"type": "json_object"},
         prompt_version=prompt_version(_VALIDATOR_PROMPT),
     )
     content = completion.choices[0].message.content
@@ -176,6 +177,7 @@ def _dedup_mitigation(mitigation_list: list[str]) -> dict[str, Any]:
         ],
         temperature=0,
         n=1,
+        response_format={"type": "json_object"},
         prompt_version=prompt_version(_MITIGATION_PROMPT),
     )
     content = completion.choices[0].message.content
