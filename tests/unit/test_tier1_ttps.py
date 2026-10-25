@@ -85,10 +85,52 @@ def test_pinned_examples() -> None:
         "hidden cryptojacking payload": "T1496",
     }
     for text, tid in cases.items():
-        assert tid in {t.ttp_id for t in extract_techniques(text, CATALOG)}, text
+        assert tid in {t.ttp_id for t in extract_techniques(text, TechniqueCatalog(names={}))}, text
 
 
 def test_sentence_at_caps_and_collapses() -> None:
-    text = "a" * 400 + " b.  next   sentence"
-    assert len(sentence_at(text, 5)) <= 300
     assert sentence_at("x.  Hello\n  world. y", 6) == "Hello world."
+    text = "a " * 300 + "TRIGGER PHRASE " + "b " * 300 + "."
+    out = sentence_at(text, text.index("TRIGGER"))
+    assert len(out) <= 300
+    assert "TRIGGER PHRASE" in out
+
+
+def test_noisy_probe_sentences_yield_nothing() -> None:
+    probes = [
+        "CVE-2026-1 allows unauthenticated remote code execution in Foo.",
+        "Users should avoid clicking malicious links and attachments.",
+        "Millions of stolen credentials were posted on a forum.",
+        "A local privilege escalation vulnerability was patched.",
+        "Valid accounts should be reviewed. Exposed VPN gateways exist.",
+        "Malware-as-a-service is a growing market. Malicious scripts are common.",
+        "The group did not exploit anything. Internet-facing hosts are common.",
+    ]
+    for text in probes:
+        assert extract_techniques(text, CATALOG) == [], text
+
+
+def test_actor_context_enables_contextual_rules() -> None:
+    out = extract_techniques(
+        "Threat actors used stolen credentials to log in.", TechniqueCatalog(names={})
+    )
+    assert "T1078" in {t.ttp_id for t in out}
+
+
+def test_keyword_dropped_when_id_not_in_nonempty_catalog() -> None:
+    cat = TechniqueCatalog(names={"T1486": "Data Encrypted for Impact"})
+    assert extract_techniques("They installed a web shell.", cat) == []
+
+
+def test_new_rules_t1684_t1685() -> None:
+    out = extract_techniques(
+        "Attackers impersonated the IT help desk. They disabled EDR on hosts.",
+        TechniqueCatalog(names={}),
+    )
+    assert {"T1684.001", "T1685"} <= {t.ttp_id for t in out}
+    out = extract_techniques("Attackers ran a social engineering campaign to steal data.", CATALOG)
+    assert out == []  # T1684 tidak ada di katalog uji
+    out = extract_techniques(
+        "Attackers ran a social engineering campaign to steal data.", TechniqueCatalog(names={})
+    )
+    assert "T1684" in {t.ttp_id for t in out}

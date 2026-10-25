@@ -33,6 +33,20 @@ class KeywordRule:
     requires: tuple[str, ...] = ()
 
 
+# Konteks pelaku/aksi untuk aturan yang frasanya ambigu (bisa muncul di deskripsi
+# kerentanan, nasihat, atau berita pasar). Dipakai lewat `requires`.
+_ACTOR = (
+    r"attackers?",
+    r"threat\s+actors?",
+    r"hackers?",
+    r"operators",
+    r"campaigns?",
+    r"gained\s+access",
+    r"leveraged",
+    r"\bused\b",
+)
+
+
 def _r(ttp_id: str, name: str, *phrases: str, requires: tuple[str, ...] = ()) -> KeywordRule:
     return KeywordRule(ttp_id, name, phrases, requires)
 
@@ -42,8 +56,7 @@ KEYWORD_MAP: tuple[KeywordRule, ...] = (
         "T1190",
         "Exploit Public-Facing Application",
         r"exploit(?:ed|s|ing)?\s+(?:a|the)\s+(?:\w+\s+)?vulnerabilit(?:y|ies)\s+in",
-        r"exploit(?:ed|s|ing)?\b.{0,40}(?:public|internet)[- ]facing",
-        r"unauthenticated\s+remote\s+code\s+execution",
+        r"exploit(?:ed|s|ing)?\b[^.!?\n]{0,40}(?:public|internet)[- ]facing",
     ),
     _r(
         "T1566",
@@ -56,13 +69,18 @@ KEYWORD_MAP: tuple[KeywordRule, ...] = (
         "Spearphishing Attachment",
         r"spear[- ]?phishing\s+attachments?",
         r"malicious\s+(?:email\s+)?attachments?",
+    ),
+    _r(
+        "T1566.001",
+        "Spearphishing Attachment",
         r"weaponi[sz]ed\s+(?:office\s+)?documents?",
+        requires=_ACTOR,
     ),
     _r(
         "T1566.002",
         "Spearphishing Link",
         r"phishing\s+links?",
-        r"malicious\s+links?",
+        r"(?<!clicking )(?<!click )(?<!opening )(?<!open )malicious\s+links?",
         r"spear[- ]?phishing\s+links?",
     ),
     _r(
@@ -78,13 +96,12 @@ KEYWORD_MAP: tuple[KeywordRule, ...] = (
         r"compromised\s+(?:credentials|accounts)",
         r"stolen\s+credentials",
         r"legitimate\s+credentials",
+        requires=_ACTOR,
     ),
     _r(
         "T1068",
         "Exploitation for Privilege Escalation",
-        r"privilege\s+escalation\s+vulnerabilit(?:y|ies)",
         r"escalat(?:e|ed|es|ing)\s+privileges?\s+(?:via|using|through|by\s+exploiting)",
-        r"local\s+privilege\s+escalation",
     ),
     _r(
         "T1041",
@@ -167,6 +184,7 @@ KEYWORD_MAP: tuple[KeywordRule, ...] = (
         "Command and Scripting Interpreter",
         r"command[- ]line\s+interpreter",
         r"malicious\s+(?:shell\s+)?scripts?",
+        requires=_ACTOR,
     ),
     _r(
         "T1059.001",
@@ -343,6 +361,7 @@ KEYWORD_MAP: tuple[KeywordRule, ...] = (
         r"(?:exposed|internet[- ]facing)\s+(?:vpn|rdp|remote\s+desktop)",
         r"(?:vpn|rdp|citrix)\s+access\s+(?:to|into)\s+(?:the\s+)?(?:victim|network|environment)",
         r"remote\s+desktop\s+protocol\s+exposed",
+        requires=_ACTOR,
     ),
     _r(
         "T1020",
@@ -397,6 +416,7 @@ KEYWORD_MAP: tuple[KeywordRule, ...] = (
         r"(?:purchas(?:e|ed|es|ing)|bought|acquir(?:e|ed|es|ing))\s+(?:\w+\s+)?"
         r"(?:malware|exploits?|tools)\s+(?:from|on)\s+(?:an?\s+)?(?:underground|dark\s*web|criminal)",
         r"malware[- ]as[- ]a[- ]service",
+        requires=_ACTOR,
     ),
     _r(
         "T1557",
@@ -433,6 +453,26 @@ KEYWORD_MAP: tuple[KeywordRule, ...] = (
         r"crypto[- ]?(?:miner|mining|jacking)s?",
         r"coin[- ]?miners?",
         r"\bxmrig\b",
+    ),
+    _r(
+        "T1684",
+        "Social Engineering",
+        r"social\s+engineering\s+(?:attacks?|campaigns?|tactics?)\s+(?:to|that)",
+        requires=_ACTOR,
+    ),
+    _r(
+        "T1684.001",
+        "Impersonation",
+        r"impersonat(?:e|ed|es|ing)\s+(?:\w+\s+){0,3}"
+        r"(?:it|help\s?desk|support|executives?|ceo|cfo|employees?)\b",
+        requires=_ACTOR,
+    ),
+    _r(
+        "T1685",
+        "Disable or Modify Tools",
+        r"disabl(?:e|ed|es|ing)\s+(?:the\s+)?(?:edr|antivirus|anti-virus|security\s+tools?|defender)",
+        r"kill(?:ed|s|ing)?\s+(?:the\s+)?(?:edr|av)\b",
+        requires=_ACTOR,
     ),
     _r(
         "T1663",

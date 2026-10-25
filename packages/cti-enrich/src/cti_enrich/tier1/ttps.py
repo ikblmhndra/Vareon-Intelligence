@@ -30,7 +30,7 @@ class SourcedTechnique:
 
 
 def _compile(phrases: tuple[str, ...]) -> re.Pattern[str]:
-    return re.compile(r"\b(?:" + "|".join(phrases) + r")\b", re.IGNORECASE | re.DOTALL)
+    return re.compile(r"\b(?:" + "|".join(phrases) + r")\b", re.IGNORECASE)
 
 
 # Dikompilasi sekali saat import; peta konstan.
@@ -54,6 +54,9 @@ def extract_techniques(text: str, catalog: TechniqueCatalog) -> list[SourcedTech
             continue
         m = pattern.search(text)
         if m is None or (requires is not None and requires.search(text) is None):
+            continue
+        # Katalog terisi: ID di luar katalog dibuang (konsisten dengan eksplisit).
+        if not catalog.is_empty and rule.ttp_id not in catalog.names:
             continue
         name = catalog.names.get(rule.ttp_id, rule.ttp_name)
         found[rule.ttp_id] = SourcedTechnique(
