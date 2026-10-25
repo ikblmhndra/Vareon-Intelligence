@@ -35,6 +35,7 @@ _dictionary_cache_ts = 0.0
 _dictionary_loaded = False  # True kalau cache berasal dari load yang sukses
 _catalog_cache: TechniqueCatalog | None = None
 _catalog_cache_ts = 0.0
+_catalog_loaded = False
 
 
 def get_dictionary(session: Session) -> EntityDictionary:
@@ -58,11 +59,24 @@ def get_dictionary(session: Session) -> EntityDictionary:
 
 
 def _get_catalog(session: Session) -> TechniqueCatalog:
-    """Katalog teknik ATT&CK, cache proses dengan TTL yang sama (tadinya 3 query per artikel)."""
-    global _catalog_cache, _catalog_cache_ts
+    """Katalog teknik ATT&CK, cache proses dengan TTL yang sama (tadinya 3 query per artikel).
+
+    Dimuat dalam SAVEPOINT supaya statement gagal tidak membatalkan transaksi pemanggil. Gagal ->
+    katalog baik terakhir, atau katalog kosong yang dicoba ulang sesudah `_RETRY_AFTER` (bukan
+    di-cache sejam); entitas/industri tier 1 tetap terpakai."""
+    global _catalog_cache, _catalog_cache_ts, _catalog_loaded
     now = time.monotonic()
-    if _catalog_cache is None or (now - _catalog_cache_ts) > _DICTIONARY_TTL:
-        _catalog_cache = load_catalog(session)
+    ttl = _DICTIONARY_TTL if _catalog_loaded else _RETRY_AFTER
+    if _catalog_cache is None or (now - _catalog_cache_ts) > ttl:
+        try:
+            with session.begin_nested():
+                _catalog_cache = load_catalog(session)
+            _catalog_loaded = True
+        except Exception as exc:
+            log.warning("tier1_catalog_load_failed", error=str(exc))
+            if _catalog_cache is None:
+                _catalog_cache = TechniqueCatalog()
+                _catalog_loaded = False
         _catalog_cache_ts = now
     return _catalog_cache
 

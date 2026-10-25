@@ -16,6 +16,8 @@ from sqlalchemy.orm import Session
 def _fresh_cache() -> None:
     tier1._dictionary_cache = None
     tier1._dictionary_cache_ts = 0.0
+    tier1._catalog_cache = None
+    tier1._catalog_loaded = False
 
 
 def test_run_tier1_without_attack_data(db_session: Session) -> None:
@@ -89,6 +91,34 @@ def test_catalog_cached_within_ttl(db_session: Session, monkeypatch: pytest.Monk
 
     monkeypatch.setattr(tier1, "load_catalog", counting)
     tier1._catalog_cache = None
+    tier1._catalog_loaded = False
     for _ in range(2):
         run_tier1(session=db_session, title="t", text="b", victim_name=None)
     assert len(calls) == 1
+
+
+def test_catalog_failure_keeps_session_usable_and_entities(
+    db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from sqlalchemy import select, text
+
+    db_session.add(ThreatActorGroup(name="kimsuky", source="manual"))
+    db_session.flush()
+
+    def broken(session: Session) -> object:
+        session.execute(text("SELECT * FROM tabel_yang_tidak_ada"))
+        raise AssertionError("tidak tercapai")
+
+    monkeypatch.setattr(tier1, "load_catalog", broken)
+    tier1._catalog_cache = None
+    tier1._catalog_loaded = False
+
+    result = run_tier1(
+        session=db_session,
+        title="North Korean APT Kimsuky targets researchers",
+        text="Kimsuky group operators used spearphishing.",
+        victim_name=None,
+    )
+
+    assert result.actors == ["kimsuky"]
+    assert db_session.execute(select(ThreatActorGroup.id)).all() is not None
