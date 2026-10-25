@@ -163,6 +163,14 @@ overrides. Output a probability.
 
 Shadow-run it next to the current LLM classify first and report agreement before switching.
 
+Note for P5 if a sentence-embedding model is chosen: the same runtime can also feed the story
+resolver. The P3 offline experiment (`all-MiniLM-L6-v2`, appendix A of
+`docs/superpowers/specs/2026-10-25-p3-story-dedup-design.md`) found that adding "embedding cosine
+>= 0.8" as an alternative to TF-IDF in the title rule gives about 13% more follow-ups at the same
+precision (about 91%). Below 0.8 the model merges by topic, not event (about 68% precision in the
+0.7-0.8 band). Use 0.8 or higher, keep the CVE veto and the other-source rule, and re-run the replay
+test (`tests/unit/test_story_replay.py`) before switching it on.
+
 ### Tier 3: LLM as assistant
 
 The LLM is called only for:
