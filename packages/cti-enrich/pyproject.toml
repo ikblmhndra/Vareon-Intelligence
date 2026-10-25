@@ -10,6 +10,7 @@ dependencies = [
     "trafilatura>=1.9",
     "playwright>=1.44",
     "pycountry>=24.6",
+    "scikit-learn>=1.5",
 ]
 
 # Heavy models live behind an extra so the API image never pulls spacy/sumy.
