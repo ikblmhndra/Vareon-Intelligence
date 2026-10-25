@@ -56,6 +56,7 @@ from cti_core.db.models.rfi import RFIRequest
 from cti_core.db.models.runtime_secret import RuntimeSecret
 from cti_core.db.models.scraper import ScraperConfig, ScraperItem, ScraperRun, ScraperSeen
 from cti_core.db.models.source_reliability import SourceReliabilityEntry
+from cti_core.db.models.story import Story
 from cti_core.db.models.ta import TAProfile, TAWatchlistEntry, TAWhitelistEntry
 from cti_core.db.models.techstack import TechStackEntry, TechStackTarget
 from cti_core.db.models.threat_reference import MonitoredPerson, ThreatActorGroup
@@ -128,6 +129,7 @@ __all__ = [
     "ScraperRun",
     "ScraperSeen",
     "SourceReliabilityEntry",
+    "Story",
     "TAProfile",
     "TAWatchlistEntry",
     "TAWhitelistEntry",

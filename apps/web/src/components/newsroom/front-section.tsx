@@ -54,7 +54,15 @@ function Chips({ a }: { a: Article }) {
 type Matchers = ReturnType<typeof useArticleMatchers>;
 
 /** "Why it matters" (spec 4.1/5.3): insiden, skor confidence, dan chip Watchlist/Tech stack. */
-function Kicker({ a, match }: { a: Article; match: Matchers }) {
+function Kicker({
+  a,
+  match,
+  onOpenStory,
+}: {
+  a: Article;
+  match: Matchers;
+  onOpenStory: (storyId: number, title: string) => void;
+}) {
   const m = match(a);
   return (
     <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11.5px] text-muted-foreground">
@@ -62,6 +70,20 @@ function Kicker({ a, match }: { a: Article; match: Matchers }) {
       {m.watchlist && <Badge variant="outline">Watchlist</Badge>}
       {m.techstack && <Badge variant="outline">Tech stack</Badge>}
       <GradeChip a={a} />
+      {a.story && a.story.source_count > 1 && (
+        <Badge
+          variant="outline"
+          render={
+            <button
+              type="button"
+              aria-label={`Lihat ${a.story.source_count} sumber cerita ini`}
+              onClick={() => onOpenStory(a.story!.id, a.title)}
+            />
+          }
+        >
+          {`+${a.story.source_count - 1} sumber`}
+        </Badge>
+      )}
       {a.news_type && <span>{a.news_type}</span>}
       <span>{formatPostedOn(a.posted_on)}</span>
     </p>
@@ -75,9 +97,11 @@ const TITLE_BUTTON =
 export function FrontSection({
   filters,
   onSelect,
+  onOpenStory,
 }: {
   filters: NewsroomFilters;
   onSelect: (a: Article) => void;
+  onOpenStory: (storyId: number, title: string) => void;
 }) {
   const { data, isPending, isError, refetch } = useFrontQuery(filters);
   const match = useArticleMatchers();
@@ -114,7 +138,7 @@ export function FrontSection({
       {lead && (
         <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
           <article>
-            <Kicker a={lead} match={match} />
+            <Kicker a={lead} match={match} onOpenStory={onOpenStory} />
             <h2 className="mt-2 text-3xl font-bold tracking-tight text-balance">
               <button type="button" className={TITLE_BUTTON} onClick={() => onSelect(lead)}>
                 {lead.title}
@@ -125,7 +149,7 @@ export function FrontSection({
           <div className="flex flex-col divide-y divide-border lg:border-l lg:border-border lg:pl-6">
             {rest.map((a) => (
               <article key={a.id} className="py-3 first:pt-0 last:pb-0">
-                <Kicker a={a} match={match} />
+                <Kicker a={a} match={match} onOpenStory={onOpenStory} />
                 <h3 className="mt-1 text-[15px] leading-snug font-semibold">
                   <button type="button" className={TITLE_BUTTON} onClick={() => onSelect(a)}>
                     {a.title}

@@ -6,6 +6,43 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
+## [0.8.7] - 2026-10-25
+
+**Artikel yang membahas peristiwa yang sama dikelompokkan jadi satu "cerita" (story) saat ingest, dan artikel lanjutan memakai ulang
+klasifikasi artikel pertama tanpa memanggil LLM.** Satu migrasi, **tanpa kunci `.env` baru** (semua `STORY__*` punya default).
+
+**Saat upgrade dari 0.8.6:** `make deploy` (migrasi jalan otomatis). Untuk mematikan fitur ini: `STORY__ENABLED=false` lalu restart
+worker; pipeline kembali persis seperti 0.8.6 (classify sebelum fetch, tanpa tulisan ke `stories`).
+- Cerita lama tidak terbentuk sendiri. Untuk mengelompokkan artikel yang sudah ada, hitung dulu dengan
+  `python -m cti_enrich.story_backfill --dry-run` (hanya menghitung lalu rollback), lalu jalankan tanpa `--dry-run`
+  (opsional `--since YYYY-MM-DD`). Backfill hanya menulis `stories`, `story_id` dan `story_match`; tanpa LLM, tanpa alert, dan aman
+  diulang.
+
+### Ditambah
+- Tabel `stories` serta kolom `articles.story_id` dan `articles.story_match` (`lead`, `cve`, `title_exact`, `title`).
+- Pencocok cerita deterministik: CVE yang sama (paling banyak 5 CVE kunci, minimal 50% overlap; bila seri, cerita dengan anggota
+  lebih banyak lalu id terkecil), judul identik dari sumber mana pun, atau judul mirip (TF-IDF >= 0.5) dari sumber lain. Kata periode
+  seperti "report", "weekly", "Q3" atau nama bulan tidak dihitung, dan CVE yang berbeda memveto kecocokan judul. Jendela 72 jam, umur
+  cerita maksimum 7 hari.
+- Badge "+N sumber" pada kartu artikel (menuju daftar artikel dengan filter `story_id`); di detail artikel lanjutan ada keterangan
+  klasifikasi diwarisi dari artikel pertama.
+- `GET /api/articles?story_id=` dan field `story` / `classify_inherited_from` pada artikel.
+- Data health: cerita baru, artikel lanjutan, persentase klasifikasi diwarisi, dan perkiraan panggilan LLM yang dihemat (24 jam dan 7 hari).
+- Task harian `story.purge_empty` (antrean `maintenance`) menghapus cerita kosong yang lebih tua dari `STORY__MAX_AGE_DAYS`.
+- Pengaturan `STORY__ENABLED`, `STORY__WINDOW_HOURS`, `STORY__MAX_AGE_DAYS`, `STORY__MAX_KEY_CVES`, `STORY__CVE_OVERLAP`,
+  `STORY__TITLE_SIMILARITY`.
+
+### Diubah
+- Dengan `STORY__ENABLED=true`, `fetch_text` jalan sebelum classify (untuk membaca CVE dari isi artikel); artikel yang ditolak classify
+  kini juga ikut mengunduh teksnya.
+- Artikel lanjutan mewarisi klasifikasi artikel pertama dan melewati classify serta ekstraksi TTP; ringkasan, IOC, skor, routing dan
+  alert tetap per artikel. TTP tidak disalin ke artikel lanjutan.
+- Sumber Tier 0 (`default_relevance="always"`) ikut bergabung ke cerita tetapi tidak pernah mengisi atau mewarisi klasifikasi.
+- Artikel pertama yang ditolak classify tidak menghapus ceritanya; hanya purge harian yang membuang cerita kosong.
+- Replay pada snapshot dev (1.401 artikel): 171 artikel lanjutan; gelombang PHP2Shell 24 artikel jadi satu cerita, NetScaler 15,
+  Atlassian 9.
+- `scikit-learn` jadi dependensi eksplisit `cti-enrich` (sudah ada di `uv.lock` lewat `cti-api`, tidak ada paket baru).
+
 ## [0.8.6] - 2026-10-25
 
 **Sumber terstruktur tidak lagi melewati LLM, IOC disimpan dalam bentuk kanonik, allowlist menandai (bukan membuang) IOC infrastruktur,

@@ -3577,6 +3577,8 @@ export interface components {
             actor_countries: string[];
             /** Admiralty Code */
             admiralty_code?: string | null;
+            /** Classify Inherited From */
+            classify_inherited_from?: number | null;
             /** Confidence Score */
             confidence_score?: number | null;
             /**
@@ -3625,6 +3627,7 @@ export interface components {
              * @default
              */
             source: string;
+            story?: components["schemas"]["StoryRef"] | null;
             /**
              * Threat Actors
              * @default []
@@ -4554,6 +4557,8 @@ export interface components {
              * @enum {string}
              */
             status: "ok" | "failing" | "unknown";
+            stories_24h: components["schemas"]["StoryHealthOut"];
+            stories_7d: components["schemas"]["StoryHealthOut"];
             /** Usage 24H */
             usage_24h: components["schemas"]["LlmTaskUsageOut"][];
             /** Usage 7D */
@@ -6122,6 +6127,29 @@ export interface components {
              */
             unacknowledged: number;
         };
+        /** StoryHealthOut */
+        StoryHealthOut: {
+            /** Followups */
+            followups: number;
+            /** Inherited */
+            inherited: number;
+            /** Llm Calls Avoided */
+            llm_calls_avoided: number;
+            /** New Stories */
+            new_stories: number;
+        };
+        /**
+         * StoryRef
+         * @description Story (kelompok berita sama) tempat artikel bergabung.
+         */
+        StoryRef: {
+            /** Article Count */
+            article_count: number;
+            /** Id */
+            id: number;
+            /** Source Count */
+            source_count: number;
+        };
         /** SyncRequest */
         SyncRequest: {
             /** Domains */
@@ -6733,6 +6761,7 @@ export interface operations {
                 ttp?: string[] | null;
                 sort?: "recent" | "priority";
                 confirmed_only?: boolean;
+                story_id?: number | null;
                 dedup?: boolean;
                 dedup_threshold?: number;
             };

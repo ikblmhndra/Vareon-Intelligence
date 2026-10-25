@@ -25,7 +25,7 @@ const PAGE_SIZE = 20;
 const RELATED_PAGE_SIZE = 8;
 const ALL = "__all__";
 
-type Source = { rubric: RubricKey } | { actor: string } | { ttp: string };
+type Source = { rubric: RubricKey } | { actor: string } | { ttp: string } | { story: number };
 
 function Row({ item, onSelect }: { item: RubricItem; onSelect: (a: Article) => void }) {
   const cls =
@@ -88,9 +88,17 @@ function useSheetList(
     open && "ttp" in source,
     true,
   );
+  // Satu cerita: semua anggotanya, tanpa filter periode/negara/pencarian (anggota bisa di luar periode).
+  const story = "story" in source ? source.story : 0;
+  const byStory = useArticlesQuery(
+    ["sheet-story", story],
+    { page, page_size: PAGE_SIZE, sort: "recent" as const, story_id: story },
+    open && "story" in source,
+    true,
+  );
 
   if ("rubric" in source) return rubric;
-  const q = "actor" in source ? byActor : byTtp;
+  const q = "actor" in source ? byActor : "story" in source ? byStory : byTtp;
   const items: RubricItem[] = (q.data?.articles ?? []).map(articleRow);
   return {
     items,
@@ -267,7 +275,7 @@ function SheetBody({
   );
 }
 
-/** Daftar lengkap satu rubrik / aktor / TTP, 20 per halaman, di panel samping.
+/** Daftar lengkap satu rubrik / aktor / TTP / cerita, 20 per halaman, di panel samping.
  * Isi di-mount hanya saat terbuka sehingga halaman kembali ke 1 tiap dibuka. */
 export function ArticleListSheet({
   open,
@@ -284,7 +292,14 @@ export function ArticleListSheet({
   filters: NewsroomFilters;
   onSelect: (a: Article) => void;
 }) {
-  const key = "rubric" in source ? source.rubric : "actor" in source ? `a:${source.actor}` : `t:${source.ttp}`;
+  const key =
+    "rubric" in source
+      ? source.rubric
+      : "actor" in source
+        ? `a:${source.actor}`
+        : "story" in source
+          ? `s:${source.story}`
+          : `t:${source.ttp}`;
   return (
     <Sheet open={open} onOpenChange={onOpenChange} title={title}>
       {open && <SheetBody key={key} source={source} filters={filters} open={open} onSelect={onSelect} />}

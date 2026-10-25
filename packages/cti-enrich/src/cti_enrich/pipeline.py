@@ -3,6 +3,15 @@ BUKAN logikanya sendiri (itu semua udah di `stages/*.py` + `routing.py`).
 Urutan: `classify -> fetch_text -> summarize -> extract_iocs -> [ttp+score+
 routing, DI-SKIP kalau security_tech_best_practice] -> persist -> alert`.
 
+Dedup story (P3, `STORY__ENABLED=true`, spec 4.1) mengubah urutan depannya:
+`fetch_text -> resolve_story -> classify (ATAU warisan story) -> summarize -> ...`. Fetch
+dipindah ke depan karena CVE kunci diambil dari judul + isi; fetch yang gagal memberi teks
+kosong, jadi CVE dari judul saja. Follow-up story yang sudah punya `classify` mewarisinya:
+panggilan LLM classify DAN TTP dilewati (TTP tetap milik lead, tidak disalin). Resolve
+memakai sesi SENDIRI (`cti_enrich.story.attach`): transaksi sesi utama memegang kunci URL
+`_known_article` sepanjang panggilan LLM, dan commit lebih awal di sana melepas kunci itu.
+`STORY__ENABLED=false` = urutan 0.8.6 persis (classify sebelum fetch, tanpa tulisan story).
+
 Dua short-circuit dipertahankan APA ADANYA dari kode lama:
 
 1. `related_cyber == False` -> return lebih awal, gak ada fetch/summarize/
@@ -39,6 +48,7 @@ import json
 from dataclasses import dataclass
 
 import structlog
+from cti_core.config import get_settings
 from cti_core.db.models.article import Article
 from cti_core.db.models.report_state import SCOPE_NEWS
 from cti_core.db.repositories.article import ArticleRepo
@@ -65,6 +75,7 @@ from cti_enrich.stages.persist import persist, persist_rejected
 from cti_enrich.stages.score import ScoreResult
 from cti_enrich.stages.summarize import summarize
 from cti_enrich.stages.title import normalize_title
+from cti_enrich.story.attach import StoryLink, classify_from_story, resolve_story
 
 log = structlog.get_logger()
 
@@ -153,6 +164,8 @@ class PipelineOutcome:
     duplicate: bool = False
     """True kalau URL ini sudah jadi artikel: tidak ada LLM, persist, maupun alert;
     hanya `seen_count`/`last_seen_at` artikel lama yang naik."""
+    story_id: int | None = None
+    """Story tempat artikel yang diterima ini menempel (P3); `None` kalau P3 mati."""
 
 
 def run_pipeline(
@@ -190,12 +203,34 @@ def run_pipeline(
             accepted=True, article_id=known.id, news_type=known.news_type, duplicate=True
         )
 
+    story_cfg = get_settings().story
+    story: StoryLink | None = None
+    if story_cfg.enabled:
+        text = fetch_text(url)
+        story = resolve_story(
+            title=title,
+            source=source,
+            text=text,
+            now=datetime.datetime.now(datetime.UTC),
+            cfg=story_cfg,
+        )
+    inherited = story is not None and story.inherited is not None
+
     always = default_relevance == "always"
     if always:
+        # Tier 0 tetap classify sintetis walau story-nya punya classify: sumber terstruktur
+        # dinilai dari jenisnya, dan penanda `skipped` menjaga Tier 0 tidak mengisi story.
         classify_result = ClassifyResult(
             related_cyber=True,
             reason=f"structured source: {content_kind}",
             audit={"skipped": "default_relevance=always", "content_kind": content_kind},
+        )
+    elif story is not None and story.inherited is not None:
+        classify_result = classify_from_story(
+            story.inherited,
+            story_id=story.story_id,
+            rule=story.rule,
+            lead_article_id=story.lead_article_id,
         )
     else:
         classify_result = classify(title)
@@ -209,9 +244,13 @@ def run_pipeline(
             posted_on=posted_on,
             classify_result=classify_result,
         )
+        # Story-nya SENGAJA tidak dihapus walau masih kosong (Ruling 11): artikel lain bisa sudah
+        # resolve ke story ini dan masih di-enrich; menghapusnya membuat insert artikel itu gagal
+        # FK. Story yang tetap kosong disapu task harian sesudah `STORY__MAX_AGE_DAYS`.
         return PipelineOutcome(accepted=False, classify_result=classify_result)
 
-    text = fetch_text(url)
+    if story is None:
+        text = fetch_text(url)
     summary = summarize(text)
     ioc_data = extract_iocs_stage.extract_iocs(text or summary, url, session)
     c2_indicator = extract_iocs_stage.check_c2_hit(ioc_data, session)
@@ -245,6 +284,7 @@ def run_pipeline(
             ttp_result=None,
             ioc_data=ioc_data,
             c2_indicator=c2_indicator,
+            story=story,
         )
         session.commit()  # lihat catatan di situs kedua: alert gagal != artikel batal
         if alert:
@@ -254,10 +294,13 @@ def run_pipeline(
             article_id=article.id,
             news_type=result.news_type,
             classify_result=classify_result,
+            story_id=story.story_id if story else None,
         )
 
     ttp_result = (
-        TtpResult(has_techniques=False) if always else _extract_ttps_or_empty(url, text, summary)
+        TtpResult(has_techniques=False)
+        if always or inherited
+        else _extract_ttps_or_empty(url, text, summary)
     )
     if ttp_result.techniques:
         # Normalisasi ke katalog ATT&CK SEBELUM dipakai alert/persist -- LLM
@@ -310,6 +353,7 @@ def run_pipeline(
         ttp_result=ttp_result,
         ioc_data=ioc_data,
         c2_indicator=c2_indicator,
+        story=story,
     )
     # COMMIT dulu sebelum alert: `persist` + `route_alerts` satu sesi/transaksi,
     # dan `sync_session()` ROLLBACK kalau ada exception. Tanpa commit ini, alert
@@ -325,4 +369,5 @@ def run_pipeline(
         article_id=article.id,
         news_type=result.news_type,
         classify_result=classify_result,
+        story_id=story.story_id if story else None,
     )

@@ -297,3 +297,13 @@ def test_llm_maintenance_entries_run_on_the_maintenance_queue(monkeypatch) -> No
     assert purge["task"] == "llm.purge_calls"
     assert (purge["schedule"].hour, purge["schedule"].minute) == ({3}, {40})
     assert purge["options"] == {"queue": "maintenance"}
+
+
+def test_story_purge_empty_runs_daily_on_the_maintenance_queue(monkeypatch) -> None:
+    monkeypatch.setattr(beat, "_scraper_configs", lambda: {})
+
+    entry = beat.build_beat_schedule()["story-purge-empty"]
+
+    assert entry["task"] == "story.purge_empty"
+    assert (entry["schedule"].hour, entry["schedule"].minute) == ({3}, {50})
+    assert entry["options"] == {"queue": "maintenance"}

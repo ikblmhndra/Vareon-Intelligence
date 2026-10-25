@@ -96,6 +96,13 @@ class Article(TimestampMixin, Base):
 
     schema_version: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=1)
 
+    story_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("stories.id", ondelete="SET NULL"), index=True
+    )
+    """Story (kelompok berita sama) tempat artikel ini bergabung; NULL = belum/tanpa story."""
+    story_match: Mapped[str | None] = mapped_column(String(20))
+    """Aturan yang menautkan: `lead`, `cve`, `title_exact`, `title`."""
+
     countries: Mapped[list[ArticleCountry]] = relationship(
         back_populates="article", cascade="all, delete-orphan", lazy="selectin"
     )
