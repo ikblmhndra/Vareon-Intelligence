@@ -88,3 +88,18 @@ def test_matcher_speed_on_large_text():
     hits = match_entities(text, dictionary)
     assert time.perf_counter() - start < 2.0
     assert [h.canonical for h in hits] == ["synthgroup0042x"]
+
+
+def test_ta_name_clashing_with_case_sensitive_attack_key_loses():
+    dictionary = build_dictionary(
+        [("APT29", ["Cozy Bear"])], [("Emotet", "malware", [])], ["apt29"], []
+    )
+    hits = match_entities("APT29 hackers", dictionary)
+    assert [(h.canonical, h.kind) for h in hits] == [("APT29", "actor")]
+
+
+def test_unicode_case_folding_chars_do_not_crash():
+    dictionary = build_dictionary([("Lazarus", [])], [("Kimsuky", "malware", [])], [], [])
+    for text in (f"Lazaru{chr(0x17F)} group", f"{chr(0x212A)}imsuky malware"):
+        assert match_entities(text, dictionary) == []
+    assert [h.canonical for h in match_entities("LAZARUS group", dictionary)] == ["Lazarus"]

@@ -110,7 +110,11 @@ def _compile(dictionary: EntityDictionary) -> tuple[re.Pattern[str] | None, re.P
     def build(keys: list[str], flags: int) -> re.Pattern[str] | None:
         if not keys:
             return None
-        return re.compile(rf"(?<!\w)(?:{_trie_pattern(keys)})(?!\w)", flags)
+        # Case-folding dibatasi ASCII lewat flag lokal: tanpa itu U+017F (s panjang) dan U+212A
+        # (tanda Kelvin) ikut cocok dengan "s"/"k" tapi `.lower()`-nya bukan key kamus (KeyError).
+        # Batas kata tetap Unicode, jadi teks CJK/aksara lain tidak berubah.
+        body = f"(?a:{_trie_pattern(keys)})" if flags else _trie_pattern(keys)
+        return re.compile(rf"(?<!\w)(?:{body})(?!\w)", flags)
 
     compiled = (build(insensitive, re.IGNORECASE), build(sensitive, 0))
     _COMPILED[dictionary.version] = compiled

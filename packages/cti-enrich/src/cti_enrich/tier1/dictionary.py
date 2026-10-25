@@ -81,17 +81,18 @@ def build_dictionary(
         for term in (name, *aliases):
             add(term, name, "actor")
 
-    software_terms: set[str] = set()
-    for name, software_type, aliases in software:
+    software_list = [(n, t, list(a)) for n, t, a in software]
+    software_terms = {term.lower() for n, _, a in software_list for term in (n, *a)}
+    for name, software_type, aliases in software_list:
         kind: Kind = "tool" if software_type == "tool" else "malware"
         for term in (name, *aliases):
-            software_terms.add(term.lower())
             if term.lower() in group_terms:
                 continue  # sudah masuk sebagai actor di atas
             add(term, name, kind)
 
     for name in ta_names:
-        if name.lower() in software_terms:
+        # ATT&CK menang, juga untuk key case-sensitive ('APT29' vs 'apt29').
+        if name.lower() in software_terms or name.lower() in group_terms:
             continue
         add(name, name, "actor", from_ta_only=True)
 
