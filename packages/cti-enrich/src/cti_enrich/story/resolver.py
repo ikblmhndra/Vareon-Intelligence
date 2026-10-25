@@ -55,15 +55,15 @@ def resolve(
 
     key = key_cves(keys.cve_ids, cfg.max_key_cves)
 
-    # Aturan CVE: overlap terbesar, lalu last_seen_at terbaru, lalu id terkecil.
+    # Aturan CVE: overlap terbesar, lalu anggota terbanyak, lalu id terkecil (Ruling 8).
     if key:
-        best: tuple[int, datetime, int] | None = None
+        best: tuple[int, int, int] | None = None
         best_id = 0
         for c in pool:
             overlap = len(key & c.cve_ids)
             if overlap / len(key) < cfg.cve_overlap or overlap == 0:
                 continue
-            rank = (overlap, c.last_seen_at, -c.id)
+            rank = (overlap, len(c.members), -c.id)
             if best is None or rank > best:
                 best, best_id = rank, c.id
         if best is not None:

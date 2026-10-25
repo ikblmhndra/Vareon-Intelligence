@@ -49,9 +49,9 @@ def test_cve_tie_break():
     one, two = story(1, {"CVE-1"}), story(2, {"CVE-1", "CVE-2"})
     k = keys(cves={"CVE-1", "CVE-2"})
     assert resolve(k, [one, two], CFG) == Match(2, "cve")
-    older = story(3, {"CVE-1"}, last=timedelta(hours=5))
-    newer = story(4, {"CVE-1"}, last=timedelta(hours=1))
-    assert resolve(keys(cves={"CVE-1"}), [older, newer], CFG) == Match(4, "cve")
+    small = story(3, {"CVE-1"}, members=[("a b", "X")])
+    big = story(4, {"CVE-1"}, members=[("a b", "X"), ("c d", "Y")])
+    assert resolve(keys(cves={"CVE-1"}), [small, big], CFG) == Match(4, "cve")
     tie_a, tie_b = story(9, {"CVE-1"}), story(5, {"CVE-1"})
     assert resolve(keys(cves={"CVE-1"}), [tie_a, tie_b], CFG) == Match(5, "cve")
 
@@ -96,3 +96,8 @@ def test_title_tie_break_lowest_id():
         keys(title + " now", "A"), [story(7, members=members), story(3, members=members)], CFG
     )
     assert got == Match(3, "title")
+
+
+def test_period_tokens_ignored():
+    s = story(1, members=[("Ransomware 2026 Report September", "Threatmon")])
+    assert resolve(keys("September 2026 Dark Web Issue Trend Report", "Asec"), [s], CFG) is None

@@ -61,7 +61,7 @@ repo; the replay test in section 7 replaces them):
 |------|---------|------------|
 | `cti_core/db/models/story.py` | `Story` model (section 5) | - |
 | `cti_core/db/repositories/story.py` | `StoryRepo`: `candidates(now)` (stories in the window with their member titles and sources), `create`, `attach` (counts, `cve_ids`, lead, classify), `discard_if_empty`, `purge_empty(older_than)` | model |
-| `cti_enrich/story/similarity.py` | `title_similarity(titles: list[str]) -> matrix`; TF-IDF (word, English stop words, sublinear tf) fitted on the candidate titles plus the new one. This is the swap point for an embedding model later (section 8) | scikit-learn |
+| `cti_enrich/story/similarity.py` | `title_similarity(titles: list[str]) -> matrix`; TF-IDF (word, English stop words, sublinear tf) fitted on the candidate titles plus the new one. Years, month names and generic period/report words (report, weekly, quarter, q1-q4, trend, ...) join the stop list, so two "September 2026 report" titles do not look alike. This is the swap point for an embedding model later (section 8) | scikit-learn |
 | `cti_enrich/story/resolver.py` | pure `resolve(keys: ArticleKeys, candidates: list[Candidate], now) -> Match | None`, no DB, so it is unit-testable and replayable | similarity |
 
 `scikit-learn` becomes an explicit dependency of `cti-enrich`; it is already in `uv.lock` through
@@ -76,7 +76,7 @@ The rules run in order; the first match wins.
 1. **Candidates**: stories with `last_seen_at >= now - 72 h` and `first_seen_at >= now - 7 days`.
 2. **CVE**: the article's key CVEs are its CVEs only if there are at most 5 (more is a roundup and
    gives no key). Match a story when at least 50% of the key CVEs are in `stories.cve_ids`. Several
-   matches: the largest overlap, then the latest `last_seen_at`. `match = "cve"`.
+   matches: the largest overlap, then the story with more members (it is the established wave), then the lowest story id. `match = "cve"`.
 3. **Exact title**: the normalised title (lowercase, punctuation collapsed to spaces) equals a
    member title, from any source. This is a repost under another URL. `match = "title_exact"`.
 4. **Similar title**: TF-IDF cosine >= 0.5 against a member title **from a different source**.
