@@ -8,7 +8,7 @@ router `changelog.py`) -- parser-nya expect header persis
 
 ## [0.8.8] - 2026-10-25
 
-**Setiap artikel yang diterima kini melewati Tier 1 deterministik (tanpa LLM) yang mengekstrak aktor, malware, TTP dan industri dari teks penuh, lengkap dengan label asal datanya.**
+**Setiap artikel yang diterima kini melewati Tier 1 deterministik (tanpa LLM) yang mengekstrak aktor, malware, TTP dan industri dari teks penuh, lengkap dengan label asal datanya (kecuali artikel best practice: hanya malware dan industri, tanpa TTP dan tanpa aktor tersimpan).**
 Satu migrasi (`b8e2c4a6d1f3`), **tanpa kunci `.env` baru.** LLM classify dan TTP tetap jalan; Tier 1 hanya melengkapi.
 
 **Saat upgrade dari 0.8.7:** `make deploy` (migrasi jalan otomatis). Artikel lama tidak berubah sendiri. Untuk mengisi artikel yang sudah ada,
@@ -18,6 +18,8 @@ tanpa LLM, aman diulang).
 ### Ditambah
 - Aktor dan malware dicari di teks penuh lewat kamus ATT&CK + `threat_actor_groups`, alias dipetakan ke nama kanonik, dengan aturan kata
   konteks untuk nama yang berupa kata umum.
+- Nama utilitas Windows dari ATT&CK (at, cmd, net, dst.) hanya cocok sebagai `<nama>.exe`, dan nama kata-umum butuh kata konteks.
+- TTP keyword tidak memberi bonus confidence. Rule keyword T1078 dan "powershell" polos dibuang setelah evaluasi.
 - TTP explicit dari ID `T####` di teks, dan TTP keyword dari peta ~60 teknik. Gabungan per ID: explicit > llm > keyword.
 - Industri dari taksonomi kata kunci, hanya dipakai saat LLM cuma memberi "General".
 - Rule confirmed-incident berjalan shadow (hasilnya di `raw_enrichment`, belum memengaruhi perilaku).

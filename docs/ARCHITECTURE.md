@@ -156,6 +156,9 @@ tweet would move `since_id` past tweets the alert filters rejected.
    (alias to canonical name; a context-word rule guards common-word names); explicit TTPs are `T####` ids found in the text;
    keyword TTPs come from a map of about 60 techniques; industries come from a keyword taxonomy and are used only when the
    LLM returned just "General"; a confirmed-incident rule runs in shadow mode (written to `raw_enrichment`, no behaviour).
+   Best-practice articles run Tier 1 for malware and industry only: no TTPs and no stored Tier 1 actors (actors reach
+   `mentioned_group` only on the scored path). Keyword TTPs give no confidence bonus. Tweet tagging (`monitor_x`,
+   `tweet_alerts`) keeps the 0.8.x behaviour, without the context-word rule.
 3. If `security_tech_best_practice`, skip TTPs and scoring: persist and alert on the `best_practice` topic.
 4. Otherwise `extract_ttps` (normalised against the ATT&CK catalog), `score`, `routing.route`. Tier 1 complements the LLM
    and does not replace it. `tier1.merge.merge_ttps` merges per technique id with the priority explicit > llm > keyword
