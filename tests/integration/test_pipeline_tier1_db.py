@@ -10,7 +10,6 @@ from cti_core.db.models.article import Article
 from cti_core.db.models.attack import AttackSoftware, AttackTechnique
 from cti_core.urlkit import url_hash
 from cti_enrich import pipeline
-from cti_enrich.stages import tier1
 from cti_enrich.stages.classify import ClassifyResult
 from cti_enrich.stages.extract_ttps import Technique
 from cti_enrich.stages.score import ScoreResult
@@ -40,14 +39,6 @@ def session(_migrated_schema: None) -> Iterator[Session]:
         s.close()
         connection.rollback()
         connection.close()
-
-
-@pytest.fixture(autouse=True)
-def _fresh_tier1_cache() -> Iterator[None]:
-    """Cache kamus/katalog per proses: jangan bawa isi DB test lain (atau ke test lain)."""
-    tier1.reset_caches()
-    yield
-    tier1.reset_caches()
 
 
 @pytest.fixture(autouse=True)
