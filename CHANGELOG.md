@@ -13,7 +13,8 @@ Satu migrasi (`b8e2c4a6d1f3`), **tanpa kunci `.env` baru.** LLM classify dan TTP
 
 **Saat upgrade dari 0.8.7:** `make deploy` (migrasi jalan otomatis). Artikel lama tidak berubah sendiri. Untuk mengisi artikel yang sudah ada,
 jalankan manual `python -m cti_enrich.backfill_tier1 [--since YYYY-MM-DD] [--limit N] [--sleep S] [--dry-run]` (hanya menambah baris,
-tanpa LLM, aman diulang).
+tanpa LLM, aman diulang). Untuk menyatukan nama aktor lama berbentuk alias dengan nama kanonik, jalankan manual
+`python -m cti_enrich.canonicalise_actors` (dry-run, di-rollback) lalu `python -m cti_enrich.canonicalise_actors --apply`. Aman diulang.
 
 ### Ditambah
 - Aktor dan malware dicari di teks penuh lewat kamus ATT&CK + `threat_actor_groups`, alias dipetakan ke nama kanonik, dengan aturan kata
@@ -28,6 +29,11 @@ tanpa LLM, aman diulang).
 - Parameter `ttp_source` pada daftar artikel dan heatmap MITRE.
 - Modal artikel menampilkan asal tiap TTP, malware, dan TTP inferred.
 - Alat evaluasi `tools/eval/tier1_eval.py`.
+- `python -m cti_enrich.canonicalise_actors [--apply]`: perintah sekali jalan yang mengganti nama alias lama ke nama kanonik di
+  `article_threat_actors`, `ta_watchlist`, `ta_profiles` dan daftar aktor di kriteria PIR, lalu mencetak jumlah per `lama -> baru`, supaya
+  satu aktor tidak tampil sebagai dua seri (mis. "Midnight blizzard" dan "Apt29"). Baris alias yang nama kanoniknya sudah ada di
+  artikel/watchlist client/PIR yang sama digabung (dihapus). Bila dua profil TA jatuh ke nama yang sama, profil dengan `generated_at`
+  terbaru dipertahankan dan sisanya dihapus (namanya dicetak).
 
 ### Diubah
 - Aktor dicari di teks penuh, jadi sebagian artikel baru pindah dari "Global Article" ke "TA Group Article", dan alert Telegram mendapat
@@ -43,7 +49,13 @@ tanpa LLM, aman diulang).
   "ShinyHunters members ..." tanpa kata konteks tidak lagi menandai aktor.
 - Perubahan `threat_actor_groups` / `ta_whitelist` dari UI baru berlaku ke artikel paling lambat 1 jam per proses worker (cache kamus).
 - Nama aktor lama berbentuk alias (mis. "Lazarus") tetap apa adanya; artikel baru memakai nama kanonik ATT&CK ("Lazarus group"), jadi
-  seri bisa terpecah sampai ada remap. Backfill tidak menambah nama kanonik bila alias yang sama sudah ada di artikel.
+  seri bisa terpecah sampai `canonicalise_actors --apply` dijalankan. Backfill tidak menambah nama kanonik bila alias yang sama sudah ada
+  di artikel.
+- `canonicalise_actors` hanya mengubah nama yang di kamus Tier 1 berjenis aktor; nama di luar kamus, nama yang dikenal sebagai
+  malware/tool (mis. "Qilin"), `raw_enrichment`, `cve_threat_actors` dan `ioc_threat_actors` tidak disentuh. Beda huruf besar saja tidak
+  dianggap alias. Ukuran per 2026-10-25: prod 7 baris artikel (6 nama), dev 4 baris; satu profil TA ("apt36" -> "Transparent tribe").
+- Watchlist/profil yang ditambahkan nanti dengan nama alias tetap tidak cocok dengan artikel baru berbentuk kanonik; perintah ini hanya
+  membereskan data yang sudah ada.
 
 ## [0.8.7] - 2026-10-25
 

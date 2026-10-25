@@ -198,6 +198,8 @@ table. Inferred TTPs are not stored: `GET /api/articles/{id}/inferred-ttps` comp
 relationships of the article's actors and malware. The article list and the MITRE heatmap accept `ttp_source`.
 `python -m cti_enrich.backfill_tier1 [--since] [--limit] [--sleep] [--dry-run]` runs Tier 1 over stored articles by hand;
 it only adds rows and makes no LLM call. `tools/eval/tier1_eval.py` is the evaluation harness.
+`python -m cti_enrich.canonicalise_actors [--apply]` (dry-run unless `--apply`) is the one-off remap of pre-0.8.8 alias-form actor
+names to the canonical stored form in `article_threat_actors`, `ta_watchlist`, `ta_profiles` and PIR criteria, merging duplicates.
 
 **Story settings** (`Settings.story`, all optional; a change needs a worker restart):
 
