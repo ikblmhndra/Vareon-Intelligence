@@ -1,7 +1,7 @@
 # LLM as an assistant: enrichment redesign and CTI gaps
 
 Status: **in progress** (updated 2026-10-24). Building blocks shipped in 0.8.3 and 0.8.4, and
-P0 and P1 shipped in 0.8.5 and P2 in 0.8.6 (see Progress below); P3-P7 have not started.
+P0 and P1 shipped in 0.8.5, P2 in 0.8.6 and P3 in 0.8.7 (see Progress below); P4-P7 have not started.
 
 Goal: turn Vareon from "every article goes through an LLM" into a CTI platform where
 deterministic code, curated reference data and analyst feedback do the bulk of the work, and
@@ -59,12 +59,31 @@ Shipped in **0.8.6** (P2 cheap wins):
 - **Confidence.** Default Admiralty grades per `content_kind` (`origin` default|analyst); article
   confidence = source grade + TTP/actor bonus instead of the LLM self-rating; chip "B2 · 72";
   one recompute-all task after the first start.
-- Moved out of scope (spec section 6): CVEs in the article modal and `ArticleOut`; story dedup (P3),
-  deterministic actor/malware/ATT&CK extractors (P4), local relevance model (P5), credibility from
+- Moved out of scope (spec section 6): CVEs in the article modal and `ArticleOut`; deterministic
+  actor/malware/ATT&CK extractors (P4), local relevance model (P5), credibility from
   corroboration (P6); persist-first enrichment, token ceilings and caching.
 
-Not started: P3 to P7 (persist-first enrichment, story dedup, extractors, local
-relevance model, CTI model). Cost measurement over a week of real data is now possible
+Shipped in **0.8.7** (P3 story dedup at ingest, spec `docs/superpowers/specs/2026-10-25-p3-story-dedup-design.md`):
+
+- **Stories.** A deterministic resolver (no LLM) groups articles about the same event into a `stories`
+  row: shared CVE (at most 5 key CVEs, at least 50% overlap; ties go to the story with more members, then
+  the lowest id), an identical title, or a similar title (TF-IDF >= 0.5, different source, period words such
+  as "report"/"weekly"/month names ignored), within 72 h and a story age of 7 days. A CVE mismatch vetoes the
+  title rules. `articles.story_id` / `story_match` record the link.
+- **Inheritance.** A follow-up inherits the lead's classification and skips the classify and TTP LLM calls
+  (TTPs stay on the lead; alerts stay per article). A Tier 0 member never fills or inherits
+  `stories.classify`. `fetch_text` now runs before classify when `STORY__ENABLED=true`; the resolver runs
+  in its own short session under an advisory lock so concurrent workers see one story per wave.
+  A rejected lead keeps its story; only the daily `story.purge_empty` removes empty ones.
+- **UI and measurement.** "+N sources" badge, "classification inherited" line, `GET /api/articles?story_id=`,
+  story and avoided-call figures in Data health, and `python -m cti_enrich.story_backfill [--dry-run]`.
+- **Replay on the 1,401-article dev snapshot** (`tests/fixtures/story_replay/dev_2026-10.json`): 171 follow-ups
+  (12%) that would skip both LLM calls; PHP2Shell 24 articles in one story, NetScaler 15, Atlassian 9; the
+  Asec monthly reports stay separate. The LLM-call reduction on a live wave still has to be measured on dev
+  once the OpenRouter quota recovers.
+
+Not started: P4 to P7 (extractors, local relevance model, CTI model; persist-first
+enrichment). Cost measurement over a week of real data is now possible
 on dev.
 
 Correction (2026-10-24, rereading against the code): E4 first said these articles were
@@ -82,7 +101,7 @@ Numbers come from the API on the dev instance and from the code, not from guesse
 | E2 | The classify system prompt is ~7,000 characters (~1.7k tokens) and is resent for every title, including the ~17% that end up rejected (284 of 1,652 classified titles on dev). | `stages/classify.py:40-148` |
 | E3 | Worst case per article is 18 LLM calls (3 JSON retries x 2 steps x 3 Celery runs), because nothing is persisted before the LLM steps. | `tasks/enrich.py`, `pipeline.py` |
 | E4 | **The LLM is a single point of failure.** 218 of 502 rows in `rejected_articles` are `[enrichment_failed]`: 128 x `400 Unsupported model mimo-auto` (gateway misconfiguration), 8 x other `APIStatusError`, 80 x `503`, 2 x `404`. Spikes on 16 Oct (91) and 23 Oct (82). Real incidents are in there (Quest Diagnostics breach, SBI PII leak, Storm-0940, M365 token spray). These articles are not lost but parked: `tasks/enrich.py` retries transient errors 6 times over ~30 minutes, then records the row, alerts on Telegram and waits for an analyst to press **Replay** (`POST /api/filtered-articles/{id}/replay`). A gateway 400/404 (wrong model name) is treated as permanent and never retried. About 12% of everything ingested sat outside the news feed until someone replayed it. | `/api/filtered-articles`, `tasks/enrich.py` |
-| E5 | The same story is enriched many times: 16 accepted articles for "PHP2Shell" alone. Dedup before enrichment is by exact URL hash only; the TF-IDF title clustering exists but runs only at API read time. | `/api/articles?search=PHP2Shell`, `services/dedup.py`, `services/cluster.py` |
+| E5 | The same story is enriched many times: 16 accepted articles for "PHP2Shell" alone (the title search; counting articles that share its CVEs in the body as well gives 24, see the P3 spec). Dedup before enrichment is by exact URL hash only; the TF-IDF title clustering exists but runs only at API read time. | `/api/articles?search=PHP2Shell`, `services/dedup.py`, `services/cluster.py` |
 | E6 | Structured sources go through the LLM for no reason: CISA KEV entries titled just `CVE-2026-...`, Exploit-DB entries (`[remote] ... - command execution`), CIS advisories. | `/api/articles` samples |
 | E7 | `confidence_score` is the LLM's self-rating x 100: 54% of articles are 90-100, none below 60. It carries no information. | distribution over 1,368 articles |
 | E8 | TTP extraction hallucinates. Exploit-DB "Open eClass 3.15 - RCE" got PowerShell, DNS C2 and Keylogging; an opinion piece "AI Tools Are Generating Massive Attacks" got Boot/Logon Autostart. The prompt asks for an "exact phrase from input" as evidence, but nothing checks that the phrase exists. | `/api/articles`, `extract_ttps.py:20`, `cti_core/attack_ttp.py` |
@@ -226,7 +245,7 @@ testing first. Phases 1-3 can start without schema redesign.
 | P0 Measure (**done in 0.8.5**) | `llm_calls` table + token logging on classify/TTP/tweets; model health probe on `/data-health` (empty-output guard for recap shipped in 0.8.3) | One week of real cost per call site visible on dev; misconfigured model shows red |
 | P1 Self-healing enrichment (**done in 0.8.5**) | Articles parked as `[enrichment_failed]` are replayed automatically once the model probe is healthy again; a gateway 400/404 is treated as "wait for health", not permanent; the 218 parked rows on dev are recovered | After a gateway outage on dev, parked articles reach the news feed without anyone pressing Replay |
 | P2 Cheap wins (**done in 0.8.6**) | `content_kind`/`default_relevance` on scrapers; refang + CVE-out-of-IOC + allowlist seed; TTP evidence substring check; drop LLM `confidence` from UI in favour of `services/confidence.py` | Structured sources make 0 LLM calls; duplicate defanged IOCs = 0; no TTP without verifiable evidence |
-| P3 Story dedup at ingest | Clustering in `cti_core`, `story_sources`, skip Tier 3 for known stories | "PHP2Shell"-type waves enriched once per story |
+| P3 Story dedup at ingest (**done in 0.8.7**) | Clustering in `cti_core`, `story_sources`, skip Tier 3 for known stories | "PHP2Shell"-type waves enriched once per story |
 | P4 Deterministic extractors | Actor/malware dictionary matcher, explicit + inferred ATT&CK, industry taxonomy, incident rule | Coverage (E9) measured before/after on the same article set; equal or better than LLM for actor and TTP precision on a 100-article hand-labelled sample |
 | P5 Local relevance model | Train on audit trail, shadow mode, then gate | Agreement with LLM >= 95% on the confident bands; LLM classify calls down by the measured share |
 | P6 Confidence | Grade all sources, Admiralty score in API/UI | Every article shows A-F/1-6 |

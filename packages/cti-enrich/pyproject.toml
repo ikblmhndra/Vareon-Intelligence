@@ -1,6 +1,6 @@
 [project]
 name = "cti-enrich"
-version = "0.8.6"
+version = "0.8.7"
 description = "Article enrichment pipeline — the decomposition of the legacy nlp_scan()"
 requires-python = ">=3.12"
 dependencies = [
