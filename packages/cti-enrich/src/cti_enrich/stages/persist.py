@@ -38,6 +38,7 @@ from cti_core.db.repositories.article import ArticleRepo, RejectedArticleRepo
 from cti_core.db.repositories.article_cve import ArticleCveRepo
 from cti_core.db.repositories.ioc import IOCRepo
 from cti_core.db.repositories.source_reliability import SourceReliabilityRepo
+from cti_core.db.repositories.story import StoryRepo
 from cti_core.ioc.allowlist import allowlist_match
 from cti_core.ioc.canonical import canonical
 from sqlalchemy import delete
@@ -46,6 +47,7 @@ from cti_enrich.countries import country_code
 from cti_enrich.stages.classify import resolve_industries
 from cti_enrich.stages.extract_iocs import _get_allowlist
 from cti_enrich.stages.extract_ttps import as_normalized
+from cti_enrich.story.attach import classify_to_story
 
 if TYPE_CHECKING:
     from cti_core.db.models.article import Article, RejectedArticle
@@ -55,6 +57,7 @@ if TYPE_CHECKING:
     from cti_enrich.stages.classify import ClassifyResult
     from cti_enrich.stages.extract_ttps import TtpResult
     from cti_enrich.stages.score import ScoreResult
+    from cti_enrich.story.attach import StoryLink
 
 _IOC_TYPE_MAP = {
     "ips": "ip",
@@ -115,6 +118,16 @@ def _confidence_score(
     )
 
 
+def _story_classify(classify_result: ClassifyResult) -> dict[str, object] | None:
+    """Isi `stories.classify` hanya dari classify LLM. Warisan (sudah dari story) dan Tier 0
+    (`default_relevance="always"`, classify sintetis tanpa industri/korban) tidak pernah
+    mengisinya: kalau Tier 0 mengisi, follow-up berita akan mewarisi industri kosong."""
+    audit = classify_result.audit
+    if "inherited_from_story" in audit or "skipped" in audit:
+        return None
+    return classify_to_story(classify_result)
+
+
 def persist(
     *,
     session: Session,
@@ -129,8 +142,13 @@ def persist(
     ttp_result: TtpResult | None,
     ioc_data: dict[str, list[str]],
     c2_indicator: bool,
+    story: StoryLink | None = None,
 ) -> Article:
+    """`story` (P3) menempelkan artikel ke story-nya di transaksi yang sama: `story_id`/
+    `story_match` ikut di-upsert (di-flush), BARU `StoryRepo.attach` -- `source_count` dihitung
+    ulang dari `articles WHERE story_id`. `None` (P3 mati) = tidak ada tulisan story sama sekali."""
     article_repo = ArticleRepo(session)
+    story_fields = {"story_id": story.story_id, "story_match": story.rule} if story else {}
     article = article_repo.upsert(
         url=url,
         title=title,
@@ -150,7 +168,16 @@ def persist(
         # Audit trail respons LLM mentah (`raw_enrichment`, lihat `ClassifyResult.audit`).
         # Cuma kalau ada isinya, supaya pemanggil tanpa audit gak mengosongkan yang lama.
         **_audit_fields(classify_result),
+        **story_fields,
     )
+    if story is not None:
+        StoryRepo(session).attach(
+            story.story_id,
+            article_id=article.id,
+            cve_ids=set(story.cve_ids),
+            now=datetime.datetime.now(datetime.UTC),
+            classify=_story_classify(classify_result),
+        )
 
     industries = resolve_industries(classify_result.industries_impacted)
 
