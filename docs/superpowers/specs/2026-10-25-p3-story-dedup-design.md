@@ -252,3 +252,41 @@ code is not merged.
 - `source_count` as a credibility signal (P6, on top of P2's deterministic confidence).
 - Actor, victim and named-vulnerability keys (P4); embeddings (P5, see section 8).
 - Story merge and split by analysts (`/api/v2/stories`, `docs/TARGET_ARCHITECTURE.md`).
+
+## Appendix A: embedding experiment result (2026-10-25)
+
+Setup: `sentence-transformers/all-MiniLM-L6-v2` (ONNX via `fastembed`, 384 dimensions, ~87 MB, CPU),
+run offline over the replay fixture (1,401 dev articles, 1,390 unique titles). The real resolver ran
+with `title_similarity` swapped: **emb** = embedding cosine replaces TF-IDF for rule 4; **union** =
+rule 4 matches when TF-IDF >= 0.5 or embedding cosine >= T. Everything else (CVE rule, exact title,
+CVE veto, other-source requirement, window) unchanged. Scripts stayed in the session scratchpad;
+nothing was merged.
+
+| Variant | Follow-ups | PHP2Shell (1302) | NetScaler (162) | Atlassian (713) | 1278 joins PHP2Shell | Asec 956-958 apart |
+|---------|-----------:|-----:|----:|----:|:---:|:---:|
+| TF-IDF (shipped) | 171 | 24 | 15 | 9 | no | yes |
+| emb 0.6 | 390 | 25 | 20 | 9 | yes | yes |
+| emb 0.7 | 253 | 24 | 18 | 8 | no | yes |
+| emb 0.8 | 181 | 23 | 17 | 8 | no | yes |
+| union 0.6 | 390 | 25 | 20 | 9 | yes | yes |
+| union 0.7 | 257 | 24 | 18 | 9 | no | yes |
+| union 0.8 | 194 | 24 | 17 | 9 | no | yes |
+
+Precision, judged by hand on every title merge that only the embedding variant made:
+
+- **union 0.8**: 23 extra merges, about 21 the same event under different headlines (Kiteworks
+  shutdown, JadePuffer, Carbonato, KillSec arrest, Ledger implant, Ghostscript, SonicWall SMA1000,
+  ConnectWise 173 tenants). Two borderline (a later NetScaler RCE advisory joined the earlier
+  exploitation story; a ShinyHunters executive arrest joined another suspect's arrest). About 91%,
+  on par with TF-IDF.
+- **0.7 to 0.8 band**: 62 more merges, about 20 wrong: different breaches (Denmark CPR vs DTU),
+  different arrests (Qilin in Japan vs Germany), different releases (Chrome 10 vs 37 fixes), different
+  GitLab flaws, monthly ransomware reports from Asec, Threatmon and Cymru, and opinion pieces on
+  "agentic SOC". About 68%: the model groups by topic, not by event.
+- **0.6** is the only setting that brings in 1278 (the one PHP2Shell article without a CVE), at the
+  cost of 390 follow-ups with many topic-level merges.
+
+Conclusion for P5: embeddings add little at a safe threshold (union 0.8: +23 follow-ups, about +13%,
+no change on the target waves) and become unsafe below it, where a false merge skips classify and TTP.
+Worth adding only as `union >= 0.8` once P5 ships a local model runtime for the relevance gate, so
+the extra dependency is paid once. Not worth a separate model just for story dedup.
