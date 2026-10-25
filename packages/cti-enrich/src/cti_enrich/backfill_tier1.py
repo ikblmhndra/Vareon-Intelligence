@@ -58,18 +58,26 @@ class Tier1BackfillStats:
     """Jumlah ARTIKEL yang industri "General"-nya diganti tebakan keyword."""
 
 
+def canonical_actor_name(name: str, dictionary: EntityDictionary) -> str | None:
+    """Bentuk simpan canonical kamus untuk nama aktor tersimpan (alias -> nama kanonik), atau
+    None bila nama tidak ada di kamus atau bukan aktor (malware/tool). Bentuk simpan =
+    `capitalize()`, jadi key kamus case-sensitive (alias huruf kapital semua, mis. "NOBELIUM")
+    dicoba juga lewat `upper()`. Dipakai juga `cti_enrich.canonicalise_actors`."""
+    entries = dictionary.entries
+    entity = entries.get(name) or entries.get(name.lower()) or entries.get(name.upper())
+    if entity is None or entity.kind != "actor":
+        return None
+    return threat_actor_names([entity.canonical.lower()])[0]
+
+
 def _known_actor_names(article: Article, dictionary: EntityDictionary) -> set[str]:
-    """Bentuk simpan canonical kamus dari aktor yang sudah dimiliki artikel (nama lama berbentuk
-    alias -> nama kanonik); aktor Tier 1 di set ini dilewati. Nama yang persis sama sudah
-    dilewati `add_tier1`. Bentuk simpan = `capitalize()`, jadi key kamus case-sensitive (alias
-    huruf kapital semua, mis. "NOBELIUM") dicoba juga lewat `upper()`."""
+    """Bentuk simpan canonical dari aktor yang sudah dimiliki artikel; aktor Tier 1 di set ini
+    dilewati. Nama yang persis sama sudah dilewati `add_tier1`."""
     known: set[str] = set()
     for row in article.threat_actors:
-        name = row.threat_actor
-        entries = dictionary.entries
-        entity = entries.get(name) or entries.get(name.lower()) or entries.get(name.upper())
-        if entity is not None and entity.kind == "actor":
-            known.update(threat_actor_names([entity.canonical.lower()]))
+        canonical = canonical_actor_name(row.threat_actor, dictionary)
+        if canonical is not None:
+            known.add(canonical)
     return known
 
 
