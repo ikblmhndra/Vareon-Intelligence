@@ -79,3 +79,23 @@ def test_score_with_lists_alias_canonical() -> None:
         dictionary=dictionary,  # type: ignore[arg-type]
     )
     assert result.mentioned_group == ["lazarus group"]
+
+
+def test_score_fallback_single_token_list_name_needs_no_context() -> None:
+    # Ruling 10: monitor_x/tweet_alerts tanpa kamus; nama group_list bebas aturan konteks.
+    result = score_with_lists(
+        "Turla targets EU ministries",
+        "",
+        techstack=[],
+        group_list=["turla"],
+        apac_people_list=[],
+    )
+    assert "turla" in result.mentioned_group
+
+
+def test_compiled_cache_is_bounded() -> None:
+    from cti_enrich.tier1 import entities
+
+    for i in range(10):
+        entities.match_entities("x", build_dictionary([], [], [f"name{i}x"], []))
+    assert len(entities._COMPILED) <= 4

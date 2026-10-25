@@ -58,8 +58,6 @@ import pycountry
 from cti_core.db.models.techstack import TechStackEntry
 from cti_core.db.repositories.threat_reference import (
     list_monitored_people,
-    list_non_actor_software_names,
-    list_threat_actor_groups,
 )
 from cti_core.tech_match import mentions_any
 from sqlalchemy import select
@@ -455,15 +453,15 @@ def score(title: str, body: str, session: Session) -> ScoreResult:
         .scalars()
         .all()
     )
-    group_list = list_threat_actor_groups(session)
     apac_people_list = list_monitored_people(session)
     return score_with_lists(
         title,
         body,
         techstack=techstack,
-        group_list=group_list,
+        # Kamus tier 1 sudah memuat grup + software; query daftar per artikel tidak perlu.
+        group_list=[],
         apac_people_list=apac_people_list,
-        non_actor_names=list_non_actor_software_names(session),
+        non_actor_names=None,
         dictionary=get_dictionary(session),
     )
 
@@ -489,7 +487,11 @@ def score_with_lists(
     menutupi grup "Cobalt" (audit UI U8)."""
     if dictionary is None:
         dictionary = build_dictionary(
-            [], [(n, "tool", []) for n in non_actor_names or []], group_list, []
+            [],
+            [(n, "tool", []) for n in non_actor_names or []],
+            group_list,
+            [],
+            ta_needs_context=False,
         )
     country_list = _country_list()
 

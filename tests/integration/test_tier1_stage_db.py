@@ -54,3 +54,41 @@ def test_dictionary_cache_ttl(db_session: Session) -> None:
     assert len(statements) == after_first
     assert second is first
     assert time.monotonic() - tier1._dictionary_cache_ts < 3600
+
+
+def test_dictionary_load_failure_keeps_session_usable(
+    db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from sqlalchemy import select, text
+
+    def broken(session: Session) -> object:
+        session.execute(text("SELECT * FROM tabel_yang_tidak_ada"))
+        raise AssertionError("tidak tercapai")
+
+    monkeypatch.setattr(tier1, "load_entity_sources", broken)
+
+    dictionary = get_dictionary(db_session)
+
+    assert dict(dictionary.entries) == {}
+    assert db_session.execute(select(ThreatActorGroup.id)).all() is not None
+    # gagal tanpa kamus lama: dicoba lagi sesudah _RETRY_AFTER, bukan di-cache satu jam
+    monkeypatch.undo()
+    tier1._dictionary_cache_ts = time.monotonic() - tier1._RETRY_AFTER - 1
+    db_session.add(ThreatActorGroup(name="kimsuky", source="manual"))
+    db_session.flush()
+    assert "kimsuky" in get_dictionary(db_session).entries
+
+
+def test_catalog_cached_within_ttl(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[int] = []
+    real = tier1.load_catalog
+
+    def counting(session: Session) -> object:
+        calls.append(1)
+        return real(session)
+
+    monkeypatch.setattr(tier1, "load_catalog", counting)
+    tier1._catalog_cache = None
+    for _ in range(2):
+        run_tier1(session=db_session, title="t", text="b", victim_name=None)
+    assert len(calls) == 1

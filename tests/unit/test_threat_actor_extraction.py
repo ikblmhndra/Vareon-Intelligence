@@ -26,9 +26,7 @@ def _score_title(title: str, groups: list[str], people: list[str] | None = None)
 
 def test_group_from_title_becomes_a_stored_threat_actor() -> None:
     groups = ["lazarus group", "shinyhunters", "star blizzard"]
-    # P4: nama satu kata dari `threat_actor_groups` butuh kata konteks (aturan tier 1), jadi
-    # "members" saja tidak cukup; "hackers" ditambahkan di judul.
-    result = _score_title("FBI tells ShinyHunters hackers to turn themselves in", groups)
+    result = _score_title("FBI tells ShinyHunters members to turn themselves in", groups)
 
     assert result.mentioned_group == ["shinyhunters"]
     routed = route(
@@ -65,8 +63,8 @@ def test_group_names_with_regex_characters_match_literally() -> None:
 def test_unbalanced_group_name_does_not_break_scoring() -> None:
     # nama kayak gini bisa masuk lewat UI `ta_groups`; dulu -> re.error di tiap artikel
     groups = ["apt (unbalanced", "shinyhunters"]
-    # P4: "hackers" ditambahkan sebagai kata konteks, dan urutan = urutan kemunculan di teks.
-    result = _score_title("ShinyHunters hackers leak, and apt (unbalanced too", groups)
+    # P4: urutan = urutan kemunculan di teks (bukan urutan daftar).
+    result = _score_title("ShinyHunters leak, and apt (unbalanced too", groups)
     assert result.mentioned_group == ["shinyhunters", "apt (unbalanced"]
 
 

@@ -59,7 +59,11 @@ def build_dictionary(
     software: Iterable[tuple[str, str, Sequence[str]]],
     ta_names: Iterable[str],
     suppressed: Iterable[str],
+    *,
+    ta_needs_context: bool = True,
 ) -> EntityDictionary:
+    """`ta_needs_context=False` dipakai pemanggil tanpa Session (monitor_x/tweet_alerts): daftar
+    nama mereka sudah dikurasi, jadi nama satu kata ("turla") tidak diminta kata konteks."""
     blocked = {s.lower() for s in suppressed}
     entries: dict[str, Entity] = {}
 
@@ -71,7 +75,9 @@ def build_dictionary(
         key = term if case_sensitive else lowered
         if key in entries:
             return
-        needs_context = lowered in AMBIGUOUS or (from_ta_only and _is_single_token(lowered))
+        needs_context = lowered in AMBIGUOUS or (
+            ta_needs_context and from_ta_only and _is_single_token(lowered)
+        )
         entries[key] = Entity(canonical, kind, needs_context, case_sensitive)
 
     group_list = [(name, list(aliases)) for name, aliases in groups]

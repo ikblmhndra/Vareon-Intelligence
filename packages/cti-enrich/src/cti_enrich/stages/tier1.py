@@ -12,6 +12,7 @@ import time
 from dataclasses import dataclass, field
 
 import structlog
+from cti_core.attack_ttp import TechniqueCatalog
 from cti_core.db.repositories.threat_reference import load_entity_sources
 from cti_core.db.repositories.ttp_catalog import load_catalog
 from sqlalchemy.orm import Session
@@ -27,23 +28,43 @@ log = structlog.get_logger()
 
 _DICTIONARY_TTL = 3600.0
 
+_RETRY_AFTER = 60.0  # gagal load tanpa kamus lama: coba lagi cepat, jangan tahan kamus kosong 1 jam
+
 _dictionary_cache: EntityDictionary | None = None
 _dictionary_cache_ts = 0.0
+_dictionary_loaded = False  # True kalau cache berasal dari load yang sukses
+_catalog_cache: TechniqueCatalog | None = None
+_catalog_cache_ts = 0.0
 
 
 def get_dictionary(session: Session) -> EntityDictionary:
     """Kamus dari cache proses. Gagal baca DB -> kamus terakhir yang baik, atau kosong."""
-    global _dictionary_cache, _dictionary_cache_ts
+    global _dictionary_cache, _dictionary_cache_ts, _dictionary_loaded
     now = time.monotonic()
-    if _dictionary_cache is None or (now - _dictionary_cache_ts) > _DICTIONARY_TTL:
+    ttl = _DICTIONARY_TTL if _dictionary_loaded else _RETRY_AFTER
+    if _dictionary_cache is None or (now - _dictionary_cache_ts) > ttl:
         try:
-            _dictionary_cache = build_dictionary(*load_entity_sources(session))
+            # SAVEPOINT: statement yang gagal tidak boleh membatalkan transaksi pemanggil.
+            with session.begin_nested():
+                _dictionary_cache = build_dictionary(*load_entity_sources(session))
+            _dictionary_loaded = True
         except Exception as exc:
             log.warning("tier1_dictionary_load_failed", error=str(exc))
             if _dictionary_cache is None:
                 _dictionary_cache = build_dictionary([], [], [], [])
+                _dictionary_loaded = False
         _dictionary_cache_ts = now
     return _dictionary_cache
+
+
+def _get_catalog(session: Session) -> TechniqueCatalog:
+    """Katalog teknik ATT&CK, cache proses dengan TTL yang sama (tadinya 3 query per artikel)."""
+    global _catalog_cache, _catalog_cache_ts
+    now = time.monotonic()
+    if _catalog_cache is None or (now - _catalog_cache_ts) > _DICTIONARY_TTL:
+        _catalog_cache = load_catalog(session)
+        _catalog_cache_ts = now
+    return _catalog_cache
 
 
 @dataclass
@@ -90,11 +111,17 @@ def run_tier1(
     victim_name: str | None,
     techniques: bool = True,
 ) -> Tier1Result:
+    """Jalankan semua pencocok tier 1 untuk satu artikel.
+
+    Entitas dicocokkan di `judul + isi`; teknik dan insiden di isi (judul kalau isi kosong);
+    industri di judul + isi. `techniques=False` melewati ekstraksi teknik (artikel non-ATT&CK).
+    Kegagalan apa pun -> `Tier1Result.empty()` + log `tier1_failed`, supaya enrichment LLM
+    tetap jalan."""
     try:
         dictionary = get_dictionary(session)
         body = text or title
         entities = match_entities(f"{title}\n{text}", dictionary)
-        found = extract_techniques(body, load_catalog(session)) if techniques else []
+        found = extract_techniques(body, _get_catalog(session)) if techniques else []
         return Tier1Result(
             entities=entities,
             techniques=found,

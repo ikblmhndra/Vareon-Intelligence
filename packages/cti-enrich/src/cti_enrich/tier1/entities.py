@@ -98,6 +98,7 @@ def _trie_pattern(words: list[str]) -> str:
 
 
 _COMPILED: dict[str, tuple[re.Pattern[str] | None, re.Pattern[str] | None]] = {}
+_COMPILED_MAX = 4  # kamus berganti versi tiap data berubah; simpan beberapa terakhir saja
 
 
 def _compile(dictionary: EntityDictionary) -> tuple[re.Pattern[str] | None, re.Pattern[str] | None]:
@@ -118,6 +119,8 @@ def _compile(dictionary: EntityDictionary) -> tuple[re.Pattern[str] | None, re.P
 
     compiled = (build(insensitive, re.IGNORECASE), build(sensitive, 0))
     _COMPILED[dictionary.version] = compiled
+    while len(_COMPILED) > _COMPILED_MAX:
+        del _COMPILED[next(iter(_COMPILED))]
     return compiled
 
 
