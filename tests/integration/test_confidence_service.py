@@ -155,6 +155,35 @@ async def test_recompute_all_confidence_commits_each_batch(api_session: AsyncSes
     assert commits >= 3
 
 
+async def test_recompute_ignores_keyword_ttps_like_persist(
+    async_db_session: AsyncSession,
+) -> None:
+    # Spec P4: bonus TTP hanya explicit + llm. Persist menghitung 50 + 1*5 = 55 untuk artikel
+    # ini (sumber tanpa rating); recompute (per artikel maupun massal) harus sama, bukan 60.
+    from cti_core.attack_ttp import NormalizedTTP
+
+    article_repo = AsyncArticleRepo(async_db_session)
+    created = await article_repo.upsert(
+        url="https://example.com/kw1", title="Keyword TTP article", source="UnratedKw"
+    )
+    article = await article_repo.get_by_id(created.id)
+    assert article is not None
+    await article_repo.set_enrichment(
+        article,
+        ttps=[
+            NormalizedTTP("T1059", "Command and Scripting Interpreter", source="llm"),
+            NormalizedTTP("T1566", "Phishing", source="keyword"),
+        ],
+    )
+    assert sorted(t.source for t in article.ttps) == ["keyword", "llm"]
+
+    assert await svc.compute_article_confidence(async_db_session, article) == 55
+    await svc.recompute_all_confidence(async_db_session, source_name="UnratedKw")
+    fetched = await article_repo.get_by_id(created.id)
+    assert fetched is not None
+    assert fetched.confidence_score == 55
+
+
 async def test_recompute_ioc_confidence_and_actionability_persists_all_fields(
     async_db_session: AsyncSession,
 ) -> None:

@@ -12,6 +12,7 @@ from collections.abc import Sequence
 from typing import Literal
 
 from cti_core.attack_ttp import NormalizedTTP
+from cti_core.confidence import bonus_ttp_count
 
 from cti_enrich.stages.classify import resolve_industries
 from cti_enrich.stages.extract_ttps import TtpResult
@@ -58,5 +59,6 @@ def merge_industries(
 
 
 def confidence_ttp_count(ttps: Sequence[NormalizedTTP]) -> int:
-    """Hanya explicit + llm yang dihitung untuk confidence; keyword tidak."""
-    return sum(1 for t in ttps if t.source in {"explicit", "llm"})
+    """Hanya explicit + llm yang dihitung untuk confidence; keyword tidak (aturannya di
+    `cti_core.confidence.bonus_ttp_count`, dipakai juga recompute API)."""
+    return bonus_ttp_count(t.source for t in ttps)

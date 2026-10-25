@@ -155,3 +155,10 @@ def test_common_word_software_and_groups_need_context():
     assert _eval_pairs("RTM is a benchmark") == []  # key case-sensitive "RTM"
     assert _eval_pairs("the RTM group used a backdoor") == [("RTM", "actor")]
     assert _eval_pairs("a harvester and comando team") == []
+
+
+def test_ta_needs_context_false_also_exempts_ambiguous_ta_names():
+    # Jalur artikel (default) tetap meminta konteks untuk nama AMBIGUOUS dari daftar TA.
+    assert build_dictionary([], [], ["akira"], []).entries["akira"].needs_context
+    lenient = build_dictionary([], [], ["akira"], [], ta_needs_context=False)
+    assert not lenient.entries["akira"].needs_context

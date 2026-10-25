@@ -63,9 +63,9 @@ def test_group_names_with_regex_characters_match_literally() -> None:
 def test_unbalanced_group_name_does_not_break_scoring() -> None:
     # nama kayak gini bisa masuk lewat UI `ta_groups`; dulu -> re.error di tiap artikel
     groups = ["apt (unbalanced", "shinyhunters"]
-    # P4: urutan = urutan kemunculan di teks (bukan urutan daftar).
+    # Jalur tanpa kamus (tweet): urutan daftar seperti 0.8.x (Ruling 18).
     result = _score_title("ShinyHunters leak, and apt (unbalanced too", groups)
-    assert result.mentioned_group == ["shinyhunters", "apt (unbalanced"]
+    assert result.mentioned_group == ["apt (unbalanced", "shinyhunters"]
 
 
 def test_threat_actor_names_dedupes_after_capitalize() -> None:
@@ -107,3 +107,20 @@ def test_regex_fallback_victims_are_also_mentioned() -> None:
     roles = set(_country_roles(classify, score, is_global_branch=False))
 
     assert roles == {("JP", "victim"), ("JP", "mentioned")}
+
+
+def test_tweet_path_ambiguous_ta_name_needs_no_context() -> None:
+    # Ruling 18: jalur tweet (tanpa kamus) tetap seperti 0.8.x -- "akira" di AMBIGUOUS tapi
+    # daftar pemanggil sudah dikurasi, jadi tidak diminta kata konteks.
+    assert _score_title("Akira claims attack on Acme", ["akira"]).mentioned_group == ["akira"]
+
+
+def test_tweet_path_keeps_group_list_order() -> None:
+    result = _score_title("Lockbit and Akira hit Acme", ["akira", "lockbit"])
+    assert result.mentioned_group == ["akira", "lockbit"]
+
+
+def test_tweet_path_returns_list_name_as_0_8_x() -> None:
+    # 0.8.x mengembalikan nama persis dari daftar (huruf asli), bukan huruf kecil.
+    result = _score_title("lockbit and Akira hit Acme", ["LockBit", "Akira"])
+    assert result.mentioned_group == ["LockBit", "Akira"]

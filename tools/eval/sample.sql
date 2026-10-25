@@ -12,7 +12,7 @@ with c as (
                     where i.article_id = a.id), '{}') as industries,
          random() as r
     from articles a
-   where a.news_type is distinct from 'security_tech_best_practice'
+   where a.news_type is distinct from 'Security Technology & Best Practices'
      and a.url is not null and a.url <> ''
 ), s as (
   select c.*,

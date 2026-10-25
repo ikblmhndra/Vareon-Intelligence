@@ -485,7 +485,13 @@ def score_with_lists(
     Tanpa `dictionary` (scraper `monitor_x`/`tweet_alerts` yang gak punya Session) kamus dibangun
     dari `group_list` plus `non_actor_names` sebagai software, jadi "Cobalt Strike" tetap
     menutupi grup "Cobalt" (audit UI U8)."""
+    # Jalur tweet (tanpa kamus): hasil tetap seperti 0.8.x -- urutan `group_list` (bukan urutan
+    # kemunculan di teks seperti jalur artikel) dan nama persis dari daftar (`\-` -> `-`).
+    from_list: dict[str, tuple[int, str]] | None = None
     if dictionary is None:
+        from_list = {}
+        for i, name in enumerate(group_list):
+            from_list.setdefault(name.lower(), (i, name.replace("\\-", "-")))
         dictionary = build_dictionary(
             [],
             [(n, "tool", []) for n in non_actor_names or []],
@@ -504,7 +510,11 @@ def score_with_lists(
     people_patterns = compile_name_patterns(apac_people_list)
 
     def actors_in(text: str) -> list[str]:
-        return [h.canonical.lower() for h in match_entities(text, dictionary) if h.kind == "actor"]
+        found = [h.canonical.lower() for h in match_entities(text, dictionary) if h.kind == "actor"]
+        if from_list is None:
+            return found
+        listed = sorted((from_list[n] for n in found if n in from_list), key=lambda p: p[0])
+        return [name for _, name in listed]
 
     # --- Title ---
     mentioned_group.extend(actors_in(title))

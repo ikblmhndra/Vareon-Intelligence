@@ -8,6 +8,7 @@ from collections.abc import Iterator
 
 import pytest
 from cti_core.db.models.article import Article
+from cti_core.db.models.attack import AttackGroup
 from cti_core.db.models.threat_reference import ThreatActorGroup
 from cti_core.db.repositories.article import ArticleRepo
 from cti_enrich.backfill_tier1 import backfill_tier1
@@ -178,3 +179,28 @@ def test_sleep_applies_after_every_fetch_attempt(
 
     assert len(calls) == stats.scanned
     assert stats.fetch_failed >= 1
+
+
+def test_alias_row_blocks_canonical_actor(session: Session) -> None:
+    # Ruling 17: baris lama "Lazarus" (alias) dan hasil Tier 1 "Lazarus Group" resolve ke
+    # canonical yang sama di kamus -> tidak ditambah. Baris lama tidak ditulis ulang.
+    session.add(
+        AttackGroup(
+            stix_id="intrusion-set--test-lazarus",
+            group_id="G9032",
+            name="Lazarus Group",
+            aliases=["Lazarus", "HIDDEN COBRA"],
+        )
+    )
+    session.flush()
+    art = _add(session, 14)
+    ArticleRepo(session).set_enrichment(art, threat_actors=["Lazarus"])
+    session.commit()
+
+    def lazarus(url: str) -> str:
+        return "The Lazarus Group targeted crypto exchanges."
+
+    stats = backfill_tier1(session, since=None, limit=None, sleep=0, dry_run=False, fetch=lazarus)
+
+    assert stats.actor_rows_added == 0
+    assert _actors(session, art) == ["Lazarus"]

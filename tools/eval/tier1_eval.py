@@ -7,9 +7,9 @@ Jalankan dari root repo: `uv run python -m tools.eval.tier1_eval {fetch,run,scor
 
 Langkah operator (SQL read-only; tidak ada yang dijalankan oleh tool ini terhadap dev):
 
-  ssh nameless@172.25.1.77 'cd ~/Vareon-Intelligence && docker compose exec -T postgres \\
+  ssh <user>@<dev-host> 'cd ~/Vareon-Intelligence && docker compose exec -T postgres \\
       psql -q -U cti -d cti -At' < tools/eval/sample.sql > DIR/sample.jsonl
-  ssh nameless@172.25.1.77 'cd ~/Vareon-Intelligence && docker compose exec -T postgres \\
+  ssh <user>@<dev-host> 'cd ~/Vareon-Intelligence && docker compose exec -T postgres \\
       psql -q -U cti -d cti -At' < tools/eval/reference.sql > DIR/reference.json
 
 (`-q` wajib: tanpa itu psql mencetak tag `SET` sebagai baris pertama; reader juga melewati baris
