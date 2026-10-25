@@ -136,3 +136,45 @@ def test_since_and_limit(seeded: Session) -> None:
     assert _actors(seeded, old) == []
     assert _actors(seeded, new1) == ["Kimsuky"]  # id terkecil lebih dulu
     assert _actors(seeded, new2) == []
+
+
+def test_article_error_is_counted_and_run_continues(
+    seeded: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bad = _add(seeded, 10)
+    good = _add(seeded, 11)
+    seeded.commit()
+    real = ArticleRepo.add_tier1
+
+    def flaky(self: ArticleRepo, article: Article, **kw: object) -> dict[str, int]:
+        if article.url.endswith("-10"):
+            raise RuntimeError("constraint")
+        return real(self, article, **kw)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(ArticleRepo, "add_tier1", flaky)
+
+    stats = backfill_tier1(seeded, since=None, limit=None, sleep=0, dry_run=False, fetch=_fetch)
+
+    assert stats.errored == 1
+    assert _actors(seeded, bad) == []
+    assert _actors(seeded, good) == ["Kimsuky"]
+
+
+def test_sleep_applies_after_every_fetch_attempt(
+    seeded: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _add(seeded, 12)
+    _add(seeded, 13)
+    seeded.commit()
+    calls: list[float] = []
+    monkeypatch.setattr("cti_enrich.backfill_tier1.time.sleep", calls.append)
+
+    def flaky(url: str) -> str:
+        if url.endswith("-12"):
+            raise RuntimeError("boom")
+        return TEXT
+
+    stats = backfill_tier1(seeded, since=None, limit=None, sleep=0.5, dry_run=False, fetch=flaky)
+
+    assert len(calls) == stats.scanned
+    assert stats.fetch_failed >= 1

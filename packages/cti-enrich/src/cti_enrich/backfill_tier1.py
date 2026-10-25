@@ -44,11 +44,69 @@ class Tier1BackfillStats:
     scanned: int = 0
     fetched: int = 0
     fetch_failed: int = 0
+    errored: int = 0
+    """Artikel yang gagal di tengah jalan (tier 1/DB/commit): di-rollback, run lanjut."""
     ttp_rows_added: int = 0
     actor_rows_added: int = 0
     malware_rows_added: int = 0
     industry_replaced: int = 0
     """Jumlah ARTIKEL yang industri "General"-nya diganti tebakan keyword."""
+
+
+def _process(
+    session: Session,
+    article_id: int,
+    stats: Tier1BackfillStats,
+    *,
+    dry_run: bool,
+    fetch: Callable[[str], str],
+) -> None:
+    article = session.get(Article, article_id)
+    if article is None:
+        return
+    try:
+        text = fetch(article.url)
+    except Exception as exc:
+        log.warning("tier1_backfill_fetch_failed", article_id=article_id, error=str(exc))
+        text = ""
+    if not text:
+        stats.fetch_failed += 1
+        session.rollback()
+        return
+    stats.fetched += 1
+
+    best_practice = article.news_type == BEST_PRACTICE_NEWS_TYPE
+    result = run_tier1(
+        session=session,
+        title=article.title or "",
+        text=text,
+        victim_name=article.victim_name,
+        techniques=not best_practice,
+    )
+    counts = ArticleRepo(session).add_tier1(
+        article,
+        ttps=[
+            NormalizedTTP(t.ttp_id, t.ttp_name, source=t.source, evidence=t.evidence)
+            for t in result.techniques
+        ],
+        # Sama seperti pipeline: huruf kecil lalu `threat_actor_names` (bentuk tersimpan).
+        threat_actors=(
+            [] if best_practice else threat_actor_names([a.lower() for a in result.actors])
+        ),
+        malware=result.malware,
+        industries=result.industries,
+    )
+    if dry_run:
+        session.rollback()
+    else:
+        session.commit()
+    # Statistik baru dihitung setelah commit/rollback sukses, supaya artikel yang gagal
+    # tidak ikut terhitung.
+    stats.ttp_rows_added += counts["ttps"]
+    stats.actor_rows_added += counts["threat_actors"]
+    stats.malware_rows_added += counts["malware"]
+    if counts["industries"]:
+        stats.industry_replaced += 1
 
 
 def backfill_tier1(
@@ -71,53 +129,18 @@ def backfill_tier1(
         ids = ids[:limit]
 
     for article_id in ids:
-        article = session.get(Article, article_id)
-        if article is None:
-            continue
         stats.scanned += 1
         try:
-            text = fetch(article.url)
+            _process(session, article_id, stats, dry_run=dry_run, fetch=fetch)
         except Exception as exc:
-            log.warning("tier1_backfill_fetch_failed", article_id=article_id, error=str(exc))
-            text = ""
-        if not text:
-            stats.fetch_failed += 1
+            # Satu artikel bermasalah (run_tier1, constraint, commit) tidak boleh membuang
+            # ringkasan seluruh run: batalkan artikel itu saja lalu lanjut.
             session.rollback()
-            continue
-        stats.fetched += 1
-
-        best_practice = article.news_type == BEST_PRACTICE_NEWS_TYPE
-        result = run_tier1(
-            session=session,
-            title=article.title or "",
-            text=text,
-            victim_name=article.victim_name,
-            techniques=not best_practice,
-        )
-        counts = ArticleRepo(session).add_tier1(
-            article,
-            ttps=[
-                NormalizedTTP(t.ttp_id, t.ttp_name, source=t.source, evidence=t.evidence)
-                for t in result.techniques
-            ],
-            # Sama seperti pipeline: huruf kecil lalu `threat_actor_names` (bentuk tersimpan).
-            threat_actors=(
-                [] if best_practice else threat_actor_names([a.lower() for a in result.actors])
-            ),
-            malware=result.malware,
-            industries=result.industries,
-        )
-        stats.ttp_rows_added += counts["ttps"]
-        stats.actor_rows_added += counts["threat_actors"]
-        stats.malware_rows_added += counts["malware"]
-        if counts["industries"]:
-            stats.industry_replaced += 1
-        if dry_run:
-            session.rollback()
-        else:
-            session.commit()
-        if sleep > 0:
-            time.sleep(sleep)
+            stats.errored += 1
+            log.warning("tier1_backfill_article_failed", article_id=article_id, error=str(exc))
+        finally:
+            if sleep > 0:
+                time.sleep(sleep)
     return stats
 
 
@@ -145,6 +168,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"== backfill tier 1 -- {mode}")
     print(f"artikel dipindai   : {stats.scanned}")
     print(f"teks diambil       : {stats.fetched} (gagal/kosong: {stats.fetch_failed})")
+    print(f"artikel error      : {stats.errored}")
     print(f"TTP                : +{stats.ttp_rows_added} baris")
     print(f"threat actor       : +{stats.actor_rows_added} baris")
     print(f"malware/tool       : +{stats.malware_rows_added} baris")
