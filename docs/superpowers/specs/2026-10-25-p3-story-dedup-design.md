@@ -171,6 +171,7 @@ One hand-written migration, `down_revision = "f3c9e1b5a7d2"` (P2 head);
 |--------|------|-------|
 | `id` | bigint PK | |
 | `title` | text | lead title |
+| `lead_source` | varchar(200) | lead source, so a story without attached articles yet still has one member for the cross-source title rule |
 | `lead_article_id` | bigint FK `articles.id`, nullable, `ON DELETE SET NULL` | filled when the first member persists |
 | `cve_ids` | `text[]` not null default `{}`, GIN index | union of members' key CVEs |
 | `classify` | jsonb, nullable | lead's `ClassifyResult` without `audit`; NULL = not inheritable yet |
@@ -189,7 +190,8 @@ holds the per-article CVEs), and no change to the old `clusters` table.
 
 **API** (schema changes, so `tools/export_openapi.py` and `pnpm run gen:api` in the same PR):
 
-- Article list and detail gain `story: {id, article_count, source_count} | null`.
+- Article list and detail gain `story: {id, article_count, source_count} | null` and
+  `classify_inherited_from: int | null` (the lead article id from the classify audit).
 - `GET /api/articles?story_id=X` lists a story's members; no new `/stories` endpoint.
 - `dedup=true` (read-time TF-IDF) is unchanged.
 
