@@ -1,7 +1,13 @@
 """Orkestrasi stage -- port alur kontrol `nlp_scan()` (`nlp.py:144-729`),
 BUKAN logikanya sendiri (itu semua udah di `stages/*.py` + `routing.py`).
-Urutan: `classify -> fetch_text -> summarize -> extract_iocs -> [ttp+score+
+Urutan: `classify -> fetch_text -> summarize -> extract_iocs -> tier1 -> [ttp+score+
 routing, DI-SKIP kalau security_tech_best_practice] -> persist -> alert`.
+
+Tier 1 (P4, `stages/tier1.py`) = ekstraktor deterministik tanpa LLM di atas `text or summary`:
+aktor/malware, teknik ATT&CK (`explicit`/`keyword`), industri, vonis insiden. Hasilnya DIGABUNG
+dengan LLM (`tier1/merge.py`), tidak menggantikannya; keyword TIDAK dikirim ke LLM TTP supaya dua
+sumber tetap independen untuk pengukuran. Tier 0 dan follow-up story (tanpa LLM TTP) tetap
+menjalankan Tier 1; cabang best practice hanya entitas + industri. Gagal = hasil kosong.
 
 Dedup story (P3, `STORY__ENABLED=true`, spec 4.1) mengubah urutan depannya:
 `fetch_text -> resolve_story -> classify (ATAU warisan story) -> summarize -> ...`. Fetch
@@ -62,7 +68,7 @@ from cti_enrich import routing
 from cti_enrich.stages import extract_iocs as extract_iocs_stage
 from cti_enrich.stages import score as score_stage
 from cti_enrich.stages.alert import build_message_base, route_alerts
-from cti_enrich.stages.classify import ClassifyResult, classify, resolve_industries
+from cti_enrich.stages.classify import ClassifyResult, classify
 from cti_enrich.stages.extract_ttps import (
     TTP_TEXT_CAP,
     TtpResult,
@@ -74,8 +80,10 @@ from cti_enrich.stages.fetch_text import fetch_text
 from cti_enrich.stages.persist import persist, persist_rejected
 from cti_enrich.stages.score import ScoreResult
 from cti_enrich.stages.summarize import summarize
+from cti_enrich.stages.tier1 import run_tier1
 from cti_enrich.stages.title import normalize_title
 from cti_enrich.story.attach import StoryLink, classify_from_story, resolve_story
+from cti_enrich.tier1.merge import merge_industries, merge_ttps
 
 log = structlog.get_logger()
 
@@ -254,8 +262,18 @@ def run_pipeline(
     summary = summarize(text)
     ioc_data = extract_iocs_stage.extract_iocs(text or summary, url, session)
     c2_indicator = extract_iocs_stage.check_c2_hit(ioc_data, session)
+    tier1 = run_tier1(
+        session=session,
+        title=title,
+        text=text or summary,
+        victim_name=classify_result.victim_name,
+        techniques=not classify_result.security_tech_best_practice,
+    )
+    # Industri gabungan dipakai di SEMUA tempat (pesan alert, routing OT, persist) supaya baris
+    # tersimpan dan teks Telegram tidak berbeda.
+    industries = merge_industries(classify_result.industries_impacted, tier1.industries)
 
-    industries_display = resolve_industries(classify_result.industries_impacted)
+    industries_display = industries[0]
     msg_base = build_message_base(
         script_name=source,
         title=title,
@@ -285,6 +303,8 @@ def run_pipeline(
             ioc_data=ioc_data,
             c2_indicator=c2_indicator,
             story=story,
+            tier1=tier1,
+            industries=industries,
         )
         session.commit()  # lihat catatan di situs kedua: alert gagal != artikel batal
         if alert:
@@ -308,13 +328,16 @@ def run_pipeline(
         ttp_result = normalize_ttp_result(ttp_result, load_catalog(session))
         # Buang technique yang kutipan buktinya tidak ada di teks yang dikirim ke model.
         ttp_result = verify_evidence(ttp_result, _ttp_input(text, summary))
-    ttp_string = ""
-    if ttp_result.has_techniques:
-        ttp_string = ", ".join(
-            f"{t.technique_name} ({t.technique_id})" for t in ttp_result.techniques
-        )
+    # Gabung per ID: explicit > llm > keyword (`tier1/merge.py`).
+    merged_ttps = merge_ttps(ttp_result, tier1.techniques)
+    ttp_string = ", ".join(f"{t.ttp_name} ({t.ttp_id})" for t in merged_ttps)
 
     score_result = score_stage.score(title, summary, session)
+    # `score` hanya melihat judul + RINGKASAN; aktor Tier 1 dari teks penuh ditambahkan di sini
+    # (huruf kecil = bentuk `mentioned_group`; disimpan lewat `routing.threat_actor_names`).
+    score_result.mentioned_group = list(
+        dict.fromkeys([*score_result.mentioned_group, *(a.lower() for a in tier1.actors)])
+    )
 
     # Funding line ikut nempel di msg_data (kode lama nambahinnya di Phase 4
     # scoring, SEBELUM cascade -- lihat nlp.py:429-432), bukan di
@@ -325,7 +348,11 @@ def run_pipeline(
 
     routing_input = routing.RoutingInput(
         msg_data_base=msg_base,
-        industries_impacted=classify_result.industries_impacted,
+        # Sumber LLM: daftar mentah seperti dulu (cek OT membaca semua isinya, termasuk industri
+        # yang `resolve_industries` buang di samping "General"); sumber keyword: hasil Tier 1.
+        industries_impacted=(
+            classify_result.industries_impacted if industries[1] == "llm" else industries[0]
+        ),
         mentioned_group=score_result.mentioned_group,
         mentioned_countries=score_result.mentioned_countries,
         mentioned_apac_people=score_result.mentioned_apac_people,
@@ -354,6 +381,9 @@ def run_pipeline(
         ioc_data=ioc_data,
         c2_indicator=c2_indicator,
         story=story,
+        tier1=tier1,
+        merged_ttps=merged_ttps,
+        industries=industries,
     )
     # COMMIT dulu sebelum alert: `persist` + `route_alerts` satu sesi/transaksi,
     # dan `sync_session()` ROLLBACK kalau ada exception. Tanpa commit ini, alert
