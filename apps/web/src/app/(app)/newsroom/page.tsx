@@ -17,7 +17,7 @@ import { TopicsStrip } from "@/components/newsroom/topics-strip";
 import { useCan } from "@/lib/auth/permissions";
 
 type Article = components["schemas"]["ArticleOut"];
-type SheetSource = { rubric: RubricKey } | { actor: string } | { ttp: string };
+type SheetSource = { rubric: RubricKey } | { actor: string } | { ttp: string } | { story: number };
 
 const RUBRIC_TITLES: Record<RubricKey, string> = {
   apac: "APAC",
@@ -111,7 +111,11 @@ function NewsroomContent() {
       {view === "cyber" ? (
         <>
           <Masthead filters={filters} onChange={setFilters} total={front.data?.total} />
-          <FrontSection filters={filters} onSelect={setSelected} />
+          <FrontSection
+            filters={filters}
+            onSelect={setSelected}
+            onOpenStory={(story, title) => setSheet({ open: true, title, source: { story } })}
+          />
           <TopicsStrip
             filters={filters}
             onOpen={(source, title) => setSheet({ open: true, title, source })}
