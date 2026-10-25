@@ -203,6 +203,11 @@ def _periodic_schedule() -> dict[str, dict[str, object]]:
             "schedule": crontab(hour=3, minute=40),
             "options": {"queue": QUEUE_MAINTENANCE},
         },
+        "story-purge-empty": {
+            "task": "story.purge_empty",
+            "schedule": crontab(hour=3, minute=50),
+            "options": {"queue": QUEUE_MAINTENANCE},
+        },
         "scraper-purge-expired-items": {
             "task": "scraper.purge_expired_items",
             "schedule": crontab(hour=3, minute=0),
