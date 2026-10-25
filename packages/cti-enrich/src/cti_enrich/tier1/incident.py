@@ -17,35 +17,38 @@ _HEAD_WINDOW = 500
 # Nama berkapital 1-4 kata diikuti kata kerja pengumuman. Pemisah spasi tunggal
 # (bukan `\s`) supaya tidak melompati kalimat/baris.
 _NAME = r"[A-Z][\w&'-]*(?: [A-Z][\w&'-]*){0,3}"
-_VICTIM_PATTERN = re.compile(rf"\b({_NAME}) (?:confirms|discloses|reports|says)\b")
+_VICTIM_PATTERN = re.compile(rf"\b({_NAME}) (?:confirms|discloses)\b")
 
-_VERBS: tuple[str, ...] = (
-    r"breached",
-    r"hacked",
-    r"confirms? (?:a |an )?(?:cyber)?[- ]?attack",
-    r"ransomware attack on",
-    r"data (?:was )?stolen",
-    r"leaked",
-    r"data breach at",
-    r"disrupted by (?:a )?cyber[- ]?attack",
-    r"systems encrypted",
-    r"confirms? (?:a )?(?:data )?breach",
+# (label terbaca untuk `reasons`, regex). "reports/says" sengaja TIDAK ada di pola
+# korban: vendor/peneliti ("Mandiant says ...") bukan organisasi yang diretas.
+_VERBS: tuple[tuple[str, str], ...] = (
+    ("breached", r"breached"),
+    ("hacked", r"hacked"),
+    ("confirms attack", r"confirms? (?:a |an )?(?:ransomware |cyber)?[- ]?attack"),
+    ("ransomware attack on", r"ransomware attack on"),
+    ("data stolen", r"data (?:was )?stolen"),
+    ("leaked", r"leaked"),
+    ("data breach at", r"data breach at"),
+    ("disrupted by cyberattack", r"disrupted by (?:a )?cyber[- ]?attack"),
+    ("systems encrypted", r"systems encrypted"),
+    ("confirms breach", r"confirms? (?:a )?(?:data )?breach"),
 )
-_VERB_RE = tuple((v, re.compile(rf"\b{v}\b", re.IGNORECASE)) for v in _VERBS)
+_VERB_RE = tuple((label, re.compile(rf"\b{rx}\b", re.IGNORECASE)) for label, rx in _VERBS)
 
-_GUIDE: tuple[str, ...] = (
-    r"how to",
-    r"guide",
-    r"best practices",
-    r"what is",
-    r"explained",
-    r"tips",
-    r"report:",
-    r"predictions?",
-    r"could",
-    r"may",
+# `may`/`could` dicocokkan case-sensitive huruf kecil supaya bulan "May" lolos.
+_GUIDE: tuple[tuple[str, str, int], ...] = (
+    ("how to", r"how to", re.IGNORECASE),
+    ("guide", r"guide", re.IGNORECASE),
+    ("best practices", r"best practices", re.IGNORECASE),
+    ("what is", r"what is", re.IGNORECASE),
+    ("explained", r"explained", re.IGNORECASE),
+    ("tips", r"tips", re.IGNORECASE),
+    ("report:", r"report:", re.IGNORECASE),
+    ("predictions", r"predictions?", re.IGNORECASE),
+    ("could", r"could", 0),
+    ("may", r"may", 0),
 )
-_GUIDE_RE = tuple((g, re.compile(rf"\b{g}(?!\w)", re.IGNORECASE)) for g in _GUIDE)
+_GUIDE_RE = tuple((label, re.compile(rf"\b{rx}(?!\w)", flags)) for label, rx, flags in _GUIDE)
 
 
 @dataclass(frozen=True)
