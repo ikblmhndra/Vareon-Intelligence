@@ -62,11 +62,12 @@ def test_backfill_groups_articles_and_is_idempotent(db_session: Session) -> None
 
 def test_dry_run_reports_but_leaves_no_rows(db_session: Session) -> None:
     ids = _seed(db_session)
+    before = db_session.scalar(select(func.count()).select_from(Story))
 
     report = backfill(db_session, since=None, dry_run=True)
 
     assert (report.stories, report.followups) == (2, 1)
-    assert db_session.scalar(select(func.count()).select_from(Story)) == 0
+    assert db_session.scalar(select(func.count()).select_from(Story)) == before
     stored = db_session.execute(select(Article.story_id).where(Article.id.in_(ids))).scalars().all()
     assert stored == [None, None, None]
 
