@@ -53,7 +53,6 @@ from cti_core.db.models.article import Article
 from cti_core.db.models.report_state import SCOPE_NEWS
 from cti_core.db.repositories.article import ArticleRepo
 from cti_core.db.repositories.report_state import CveMentionRepo
-from cti_core.db.repositories.story import StoryRepo
 from cti_core.db.repositories.ttp_catalog import load_catalog
 from cti_core.urlkit import url_hash
 from sqlalchemy import text
@@ -245,10 +244,9 @@ def run_pipeline(
             posted_on=posted_on,
             classify_result=classify_result,
         )
-        if story is not None and story.rule == "lead":
-            # Story baru milik artikel ini saja: buang lagi selama belum ada anggota. Story
-            # hasil cocok (milik artikel lain, mungkin lead-nya masih di-enrich) dibiarkan.
-            StoryRepo(session).discard_if_empty(story.story_id)
+        # Story-nya SENGAJA tidak dihapus walau masih kosong (Ruling 11): artikel lain bisa sudah
+        # resolve ke story ini dan masih di-enrich; menghapusnya membuat insert artikel itu gagal
+        # FK. Story yang tetap kosong disapu task harian sesudah `STORY__MAX_AGE_DAYS`.
         return PipelineOutcome(accepted=False, classify_result=classify_result)
 
     if story is None:

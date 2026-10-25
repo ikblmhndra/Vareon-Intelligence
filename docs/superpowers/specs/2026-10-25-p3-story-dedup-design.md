@@ -148,8 +148,10 @@ So the second article of a wave already sees the story that the first created, t
 - **Tier 0 lead** (`default_relevance="always"`, e.g. CISA KEV titled only `CVE-2026-87902`): Tier 0
   articles join and can lead stories, but their synthetic classify never fills `stories.classify`;
   otherwise a news follow-up would inherit empty industries and no victim.
-- **Lead rejected by classify**: the story is deleted if `article_count = 0`; otherwise it stays and
-  the next accepted LLM-classified member fills `classify`.
+- **Lead rejected by classify**: the story is kept. Another article may already have resolved into
+  it and still be enriching, so deleting it would make that article's insert fail its foreign key.
+  If it stays empty, the daily purge deletes it after `STORY__MAX_AGE_DAYS`; otherwise the next
+  accepted LLM-classified member fills `classify`.
 - **Task fails after the story was created** (LLM 503, article parked): on replay, the exact-title
   rule finds the empty story again. Stories still empty after `STORY__MAX_AGE_DAYS` are removed by
   a daily `maintenance` task.
@@ -218,7 +220,7 @@ classifications, and estimated LLM calls avoided (inherited follow-ups x 2), com
 |-------|--------|
 | Unit, resolver | CVE rule (at most 5, at least 50%, tie-break), roundup gives no key, exact title, similar title only across sources, CVE veto, window and age cap, no match -> new story |
 | Unit, pipeline (fakes, style of `test_pipeline_tier0.py`) | inherited branch calls neither `classify` nor `extract_ttps`; classify-NULL branch enriches fully and links; `fetch_text` before `classify`; `STORY__ENABLED=false` matches 0.8.6; a Tier 0 member never fills `stories.classify` |
-| Integration (Docker) | migration matches models; two concurrent resolves of the same title give one story; persist updates counts, `cve_ids`, lead and classify; rejected lead deletes an empty story; maintenance purge; backfill idempotent, `--dry-run` rolls back |
+| Integration (Docker) | migration matches models; two concurrent resolves of the same title give one story; persist updates counts, `cve_ids`, lead and classify; rejected lead keeps its story; maintenance purge; backfill idempotent, `--dry-run` rolls back |
 | Replay | fixture `tests/fixtures/story_replay/dev_2026-10.json` (id, title, source, `first_seen_at`, CVEs for the 1,451 dev articles; public news, no user data) through the real resolver: the thresholds of success criterion 1, plus follow-ups between 150 and 220 as a regression guard when thresholds change |
 | Contract | `STORY__*` in `.env.example` and `.env.prod.template`; `openapi.json` and `schema.d.ts` regenerated |
 

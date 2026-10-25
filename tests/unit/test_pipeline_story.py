@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from cti_core.config import StorySettings
+from cti_core.db.repositories.story import StoryRepo
 from cti_enrich import pipeline
 from cti_enrich.stages import persist as persist_mod
 from cti_enrich.stages.classify import ClassifyResult
@@ -53,6 +54,7 @@ def rec(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         "related": True,
         "fetched": "Isi artikel. " * 40,
         "discard": [],
+        "rejected": [],
     }
 
     def fake_classify(title: str) -> ClassifyResult:
@@ -76,13 +78,9 @@ def rec(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         r["resolve"].append(kw)
         return r["link"]  # type: ignore[no-any-return]
 
-    class FakeStoryRepo:
-        def __init__(self, session: Any) -> None:
-            pass
-
-        def discard_if_empty(self, story_id: int) -> bool:
-            r["discard"].append(story_id)
-            return True
+    def fake_discard(self: Any, story_id: int) -> bool:
+        r["discard"].append(story_id)
+        return True
 
     monkeypatch.setattr(
         pipeline,
@@ -93,10 +91,11 @@ def rec(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     monkeypatch.setattr(pipeline, "classify", fake_classify)
     monkeypatch.setattr(pipeline, "extract_ttps", fake_ttp)
     monkeypatch.setattr(pipeline, "persist", fake_persist)
-    monkeypatch.setattr(pipeline, "persist_rejected", lambda **kw: None)
+    monkeypatch.setattr(pipeline, "persist_rejected", lambda **kw: r["rejected"].append(kw))
     monkeypatch.setattr(pipeline, "fetch_text", fake_fetch)
     monkeypatch.setattr(pipeline, "resolve_story", fake_resolve)
-    monkeypatch.setattr(pipeline, "StoryRepo", FakeStoryRepo)
+    # Dicegat di kelasnya: jalur mana pun yang memanggilnya (seharusnya tidak ada) tercatat.
+    monkeypatch.setattr(StoryRepo, "discard_if_empty", fake_discard)
     monkeypatch.setattr(pipeline, "summarize", lambda text: "Ringkasan.")
     monkeypatch.setattr(pipeline.extract_iocs_stage, "extract_iocs", lambda *a, **k: {})
     monkeypatch.setattr(pipeline.extract_iocs_stage, "check_c2_hit", lambda *a, **k: False)
@@ -188,12 +187,15 @@ def test_story_disabled_rejected_never_fetches(rec: dict[str, Any]) -> None:
     assert rec["discard"] == []
 
 
-def test_rejected_lead_discards_empty_story(rec: dict[str, Any]) -> None:
+def test_rejected_lead_keeps_story(rec: dict[str, Any]) -> None:
+    """Ruling 11: story kosong tidak dihapus saat lead ditolak (artikel lain mungkin sudah
+    resolve ke sana); hanya purge harian yang membuangnya."""
     rec["link"] = _link("lead")
     rec["related"] = False
     outcome = _run()
     assert not outcome.accepted
-    assert rec["discard"] == [42]
+    assert rec["discard"] == []
+    assert len(rec["rejected"]) == 1
     assert rec["persist"] == []
 
 
