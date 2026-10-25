@@ -262,6 +262,8 @@ export function DataHealthView() {
               value={`${llm.parked.total.toLocaleString()} parked · ${llm.parked.auto_eligible.toLocaleString()} eligible for auto-replay · ${llm.parked.auto_replays_24h.toLocaleString()} auto-replays in 24 h`}
               tone={llm.parked.total ? "warn" : "ok"}
             />
+            <Row label="Stories, last 24 hours" value={storySummary(llm.stories_24h)} />
+            <Row label="Stories, last 7 days" value={storySummary(llm.stories_7d)} />
             <MoreLink href="/newsroom">Replay from Newsroom › Filtered Articles › Failed enrichment</MoreLink>
           </Section>
           <Table framed>
@@ -306,6 +308,10 @@ export function DataHealthView() {
       <HowToRead />
     </div>
   );
+}
+
+function storySummary(s: { new_stories: number; followups: number; inherited: number; llm_calls_avoided: number }) {
+  return `${s.new_stories.toLocaleString()} new · ${s.followups.toLocaleString()} follow-ups · ${s.inherited.toLocaleString()} inherited · ${s.llm_calls_avoided.toLocaleString()} LLM calls avoided`;
 }
 
 function Section({ title, tone, children }: { title: string; tone?: Tone; children: ReactNode }) {

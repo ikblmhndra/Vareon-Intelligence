@@ -158,6 +158,10 @@ export function ArticleModal({ article: a, onOpenChange }: { article: Article | 
           </div>
         </div>
 
+        {a.classify_inherited_from != null && (
+          <p className="text-xs text-muted-foreground">Klasifikasi diwarisi dari artikel lead</p>
+        )}
+
         <div className="space-y-4">
           <Section title="Impacted Industries">
             <Tags items={(a.impacted_industries ?? []).map((i) => ({ label: i }))} />

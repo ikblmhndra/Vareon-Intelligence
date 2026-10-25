@@ -207,6 +207,30 @@ class CveMirrorSettings(_StrictModel):
     """Timeout satu unduhan; `deltaLog.json` (24 MB) memakai tiga kali lipat nilai ini."""
 
 
+class StorySettings(_StrictModel):
+    """Dedup story saat ingest (P3, spec 3.3): artikel yang membahas peristiwa yang sama
+    dikelompokkan ke satu `stories` supaya klasifikasi LLM dipakai ulang. Semua field punya
+    default, jadi tidak ada key `.env` baru yang wajib; ganti nilai butuh restart worker."""
+
+    enabled: bool = True
+    """`false` = pipeline persis 0.8.6 (classify sebelum fetch, tanpa tulisan ke `stories`).
+    Mematikan P3 = `STORY__ENABLED=false` + restart worker."""
+    window_hours: int = 72
+    """Jendela waktu pencocokan: artikel hanya digabung ke story yang aktivitas terakhirnya masih
+    dalam rentang ini."""
+    max_age_days: int = 7
+    """Umur maksimum story sejak artikel pertama; lewat batas ini artikel baru membuka story baru
+    walau CVE/judulnya cocok."""
+    max_key_cves: int = 5
+    """Batas CVE kunci yang diambil dari judul+isi untuk pencocokan; artikel yang menyebut lebih
+    banyak CVE (rekap/roundup) tidak diberi kunci CVE sama sekali (bukan dipotong), supaya tidak
+    menyatukan story yang tidak terkait."""
+    cve_overlap: float = 0.5
+    """Rasio minimal irisan CVE kunci agar dua artikel dianggap satu story."""
+    title_similarity: float = 0.5
+    """Ambang kemiripan judul (TF-IDF cosine) untuk pencocokan tanpa CVE bersama."""
+
+
 class WorkerSettings(_StrictModel):
     """Interval buat 2 dari 5 loop Celery beat (Fase 7.8) yang nentuin
     LOGIKA task, bukan cuma jadwal cron-nya -- IOC decay/CVE enrichment/recap
@@ -341,6 +365,7 @@ class Settings(BaseSettings):
     scraper: ScraperSettings = Field(default_factory=ScraperSettings)
     worker: WorkerSettings = Field(default_factory=WorkerSettings)
     cve_mirror: CveMirrorSettings = Field(default_factory=CveMirrorSettings)
+    story: StorySettings = Field(default_factory=StorySettings)
 
     cors_origins: str = "http://localhost:3000"
     api_base_url: str = "http://api:8000"

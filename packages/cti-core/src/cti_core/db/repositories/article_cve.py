@@ -30,6 +30,20 @@ class ArticleCveRepo:
         if rows:
             self.session.execute(pg_insert(ArticleCve).values(rows).on_conflict_do_nothing())
 
+    def cve_ids_by_article(self, article_ids: Sequence[int]) -> dict[int, set[str]]:
+        """Id CVE (huruf besar) per artikel; artikel tanpa CVE tidak ada di hasil."""
+        if not article_ids:
+            return {}
+        result = self.session.execute(
+            select(ArticleCve.article_id, ArticleCve.cve_id).where(
+                ArticleCve.article_id.in_(article_ids)
+            )
+        )
+        found: dict[int, set[str]] = {}
+        for article_id, cve_id in result.all():
+            found.setdefault(article_id, set()).add(cve_id)
+        return found
+
 
 class AsyncArticleCveRepo:
     def __init__(self, session: AsyncSession) -> None:

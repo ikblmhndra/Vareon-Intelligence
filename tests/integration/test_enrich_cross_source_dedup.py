@@ -20,6 +20,7 @@ from collections.abc import Iterator
 
 import pytest
 from cti_core.db.models.article import Article
+from cti_core.db.models.story import Story
 from cti_core.urlkit import url_hash
 from cti_enrich import pipeline
 from cti_enrich.stages.classify import ClassifyResult
@@ -223,3 +224,6 @@ def test_concurrent_tasks_for_the_same_url_enrich_and_alert_once(
         b.join(timeout=30)
         with sync_session() as s:  # sesi sungguhan meng-commit: bersihkan
             s.execute(delete(Article).where(Article.url_hash == url_hash(URL)))
+            # Story (P3) yang ikut ter-commit: kalau tertinggal ber-`classify`, test lain dengan
+            # judul sama mewarisinya dan tidak memanggil classify palsunya.
+            s.execute(delete(Story).where(Story.title == "Ransomware hits hospital"))

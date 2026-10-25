@@ -16,6 +16,14 @@ class TTP(BaseModel):
     name: str
 
 
+class StoryRef(BaseModel):
+    """Story (kelompok berita sama) tempat artikel bergabung."""
+
+    id: int
+    article_count: int
+    source_count: int
+
+
 class ArticleOut(BaseModel):
     id: int
     year: int = 0
@@ -39,6 +47,9 @@ class ArticleOut(BaseModel):
     grade_origin: Literal["default", "analyst"] | None = None
     iocs: dict[str, object] = {}
     confirmed_incident: bool = False
+    story: StoryRef | None = None
+    classify_inherited_from: int | None = None
+    """Id artikel lead kalau klasifikasi artikel ini diwarisi dari story-nya (audit classify)."""
 
 
 class FilterOptions(BaseModel):
