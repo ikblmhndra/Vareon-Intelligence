@@ -29,6 +29,19 @@ def test_valid_config_loads(monkeypatch: pytest.MonkeyPatch) -> None:
     assert s.secrets_backend == "env"
 
 
+def test_story_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    """P3 (story dedup): semua field punya default, jadi tidak ada key `.env` baru yang wajib."""
+    monkeypatch.delenv("STORY__ENABLED", raising=False)
+    s = _settings(monkeypatch)
+    assert s.story.enabled is True
+    assert s.story.window_hours == 72
+    assert s.story.max_age_days == 7
+    assert s.story.max_key_cves == 5
+    assert s.story.cve_overlap == 0.5
+    assert s.story.title_similarity == 0.5
+    assert _settings(monkeypatch, STORY__ENABLED="false").story.enabled is False
+
+
 def test_missing_required_secret_fails_loud(monkeypatch: pytest.MonkeyPatch) -> None:
     """Pengganti RuntimeError manual di app lama (main.py L276-278)."""
     monkeypatch.delenv("SECRETS_BACKEND", raising=False)
