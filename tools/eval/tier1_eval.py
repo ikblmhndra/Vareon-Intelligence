@@ -15,7 +15,8 @@ Langkah operator (SQL read-only; tidak ada yang dijalankan oleh tool ini terhada
 (`-q` wajib: tanpa itu psql mencetak tag `SET` sebagai baris pertama; reader juga melewati baris
 yang tidak diawali `{`. Dua file karena satu `psql -At` menghasilkan satu aliran; sample.sql =
 satu baris per artikel, reference.sql = satu baris JSON.) Lalu: `fetch` (teks ke
-DIR/texts/<id>.txt, yang sudah ada dilewati, kegagalan dicatat di DIR/fetch_failures.jsonl), `run` (DIR/candidates.jsonl TANPA
+DIR/texts/<id>.txt, yang sudah ada dilewati, kegagalan dicatat di DIR/fetch_failures.jsonl),
+`run` (DIR/candidates.jsonl TANPA
 sumber, supaya pelabel tidak bias; DIR/provenance.jsonl; DIR/merged.jsonl untuk cakupan),
 pelabelan (DIR/labels.jsonl: candidate_id, correct, quote, labeller), lalu `score`.
 
