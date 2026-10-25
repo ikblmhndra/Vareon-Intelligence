@@ -69,13 +69,13 @@ class LlmTaskUsageOut(BaseModel):
 
 class StoryHealthOut(BaseModel):
     new_stories: int
-    """Story yang dibuat dalam jendela."""
+    """Story yang mulai dalam jendela dan sudah punya artikel."""
     followups: int
     """Artikel yang menempel ke story yang sudah ada (match cve/judul) dalam jendela."""
     inherited: int
     """Dari follow-up itu, yang mewarisi classify story (tanpa panggilan LLM classify)."""
     llm_calls_avoided: int
-    """Perkiraan panggilan LLM yang dihemat: inherited x 2 (classify + ringkasan/ekstraksi)."""
+    """Perkiraan panggilan LLM yang dihemat: inherited x 2 (classify + ekstraksi TTP)."""
 
 
 class LlmHealthOut(BaseModel):

@@ -139,4 +139,18 @@ def test_replay_reuses_empty_story(rec: dict[str, Any]) -> None:
         stories = s.scalars(select(Story).where(Story.title == REPLAY_TITLE)).all()
         assert len(stories) == 1 and stories[0].article_count == 1
         article = s.scalar(select(Article).where(Article.url_hash == url_hash(REPLAY_URL)))
+        assert article is not None and article.story_match == "lead"
+
+
+def test_other_article_matching_empty_story_keeps_its_rule(rec: dict[str, Any]) -> None:
+    """Story kosong milik percobaan gagal artikel lain: artikel BEDA (sumber lain) yang cocok
+    ke sana tetap dicatat dengan aturan resolver aslinya, bukan `lead`."""
+    rec["fail"] = True
+    with pytest.raises(RuntimeError):
+        _run(REPLAY_URL, REPLAY_TITLE, "Vendor Blog")
+    rec["fail"] = False
+    outcome = _run(FOLLOW_URL, REPLAY_TITLE, "Aggregator")
+    assert outcome.accepted
+    with sync_session() as s:
+        article = s.scalar(select(Article).where(Article.url_hash == url_hash(FOLLOW_URL)))
         assert article is not None and article.story_match == "title_exact"

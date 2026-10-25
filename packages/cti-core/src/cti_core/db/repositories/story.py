@@ -138,6 +138,18 @@ class StoryRepo:
             return None, None
         return row[0], row[1]
 
+    def own_empty_lead(self, story_id: int, *, title: str, source: str) -> bool:
+        """True kalau story ini kosong-tanpa-lead (belum ada artikel/classify) dan judul serta
+        sumber lead-nya sama dengan `title`/`source`: percobaan lama artikel yang sama (replay)."""
+        row = self.session.execute(
+            select(Story.title, Story.lead_source).where(
+                Story.id == story_id,
+                Story.lead_article_id.is_(None),
+                Story.classify.is_(None),
+            )
+        ).one_or_none()
+        return row is not None and row[0] == title and row[1] == source
+
     def attach(
         self,
         story_id: int,
@@ -190,9 +202,13 @@ class AsyncStoryRepo:
 
     async def stats_since(self, since: datetime.datetime) -> StoryStats:
         """Story baru, follow-up (artikel yang menempel ke story lewat cve/judul), dan berapa
-        follow-up yang mewarisi classify."""
+        follow-up yang mewarisi classify. Story baru = `first_seen_at` dalam jendela DAN sudah
+        punya artikel: story kosong (lead ditolak/masih jalan/parkir) tidak dihitung, dan story
+        hasil backfill tidak masuk jendela karena `first_seen_at`-nya mengikuti artikel."""
         new_stories = await self.session.scalar(
-            select(func.count()).select_from(Story).where(Story.created_at >= since)
+            select(func.count())
+            .select_from(Story)
+            .where(Story.first_seen_at >= since, Story.article_count > 0)
         )
         follow = and_(
             Article.created_at >= since,

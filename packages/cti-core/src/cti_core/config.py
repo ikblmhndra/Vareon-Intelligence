@@ -223,7 +223,8 @@ class StorySettings(_StrictModel):
     walau CVE/judulnya cocok."""
     max_key_cves: int = 5
     """Batas CVE kunci yang diambil dari judul+isi untuk pencocokan; artikel yang menyebut lebih
-    banyak CVE (rekap/roundup) dipotong supaya tidak menyatukan story yang tidak terkait."""
+    banyak CVE (rekap/roundup) tidak diberi kunci CVE sama sekali (bukan dipotong), supaya tidak
+    menyatukan story yang tidak terkait."""
     cve_overlap: float = 0.5
     """Rasio minimal irisan CVE kunci agar dua artikel dianggap satu story."""
     title_similarity: float = 0.5

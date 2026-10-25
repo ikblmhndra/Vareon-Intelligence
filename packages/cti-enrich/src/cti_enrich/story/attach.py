@@ -61,7 +61,11 @@ def resolve_story(
             story_id = repo.create(title=title, source=source, cve_ids=set(cves), now=now)
             return StoryLink(story_id, "lead", None, None, cves)
         classify, lead_article_id = repo.get_inherit(match.story_id)
-        return StoryLink(match.story_id, match.rule, classify, lead_article_id, cves)
+        rule = match.rule
+        if repo.own_empty_lead(match.story_id, title=title, source=source):
+            # Story kosong buatan percobaan sebelumnya artikel ini (replay): bukan follow-up.
+            rule = "lead"
+        return StoryLink(match.story_id, rule, classify, lead_article_id, cves)
 
 
 def classify_from_story(

@@ -240,11 +240,23 @@ async def test_data_health_last_error_describes_latest_empty_status_row(
 async def test_data_health_story_stats(
     api_client: AsyncClient, api_session: AsyncSession, auth_header, fake_redis
 ) -> None:
-    """Selisih terhadap data bersama: satu story baru + satu follow-up yang mewarisi classify."""
+    """Selisih terhadap data bersama: story berartikel dalam jendela dihitung; story kosong dan
+    story lama (`first_seen_at` > 7 hari, walau `created_at` baru, spt hasil backfill) tidak."""
     now = datetime.datetime.now(datetime.UTC)
-    before = await AsyncStoryRepo(api_session).stats_since(now - datetime.timedelta(hours=24))
-    story = Story(title="S", lead_source="A", first_seen_at=now, last_seen_at=now)
-    api_session.add(story)
+    before = {
+        h: await AsyncStoryRepo(api_session).stats_since(now - datetime.timedelta(hours=h))
+        for h in (24, 168)
+    }
+    story = Story(title="S", lead_source="A", first_seen_at=now, last_seen_at=now, article_count=1)
+    empty = Story(title="E", lead_source="A", first_seen_at=now, last_seen_at=now)
+    old = Story(
+        title="O",
+        lead_source="A",
+        first_seen_at=now - datetime.timedelta(days=10),
+        last_seen_at=now,
+        article_count=1,
+    )
+    api_session.add_all([story, empty, old])
     await api_session.flush()
     follow = await AsyncArticleRepo(api_session).upsert(
         url="https://h.example/follow", title="F", source="B"
@@ -259,9 +271,9 @@ async def test_data_health_story_stats(
     llm = (await api_client.get("/api/data-health", headers=auth_header(role="analyst"))).json()[
         "llm"
     ]
-    for key in ("stories_24h", "stories_7d"):
+    for key, h in (("stories_24h", 24), ("stories_7d", 168)):
         got = llm[key]
-        assert got["new_stories"] == before.new_stories + 1
-        assert got["followups"] == before.followups + 1
-        assert got["inherited"] == before.inherited + 1
+        assert got["new_stories"] == before[h].new_stories + 1
+        assert got["followups"] == before[h].followups + 1
+        assert got["inherited"] == before[h].inherited + 1
         assert got["llm_calls_avoided"] == got["inherited"] * 2
