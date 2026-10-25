@@ -38,6 +38,19 @@ _catalog_cache_ts = 0.0
 _catalog_loaded = False
 
 
+def reset_caches() -> None:
+    """Kosongkan cache kamus + katalog proses. Untuk test: cache 1 jam per proses pytest
+    membawa isi DB/MagicMock satu test ke test berikutnya."""
+    global _dictionary_cache, _dictionary_cache_ts, _dictionary_loaded
+    global _catalog_cache, _catalog_cache_ts, _catalog_loaded
+    _dictionary_cache = None
+    _dictionary_cache_ts = 0.0
+    _dictionary_loaded = False
+    _catalog_cache = None
+    _catalog_cache_ts = 0.0
+    _catalog_loaded = False
+
+
 def get_dictionary(session: Session) -> EntityDictionary:
     """Kamus dari cache proses. Gagal baca DB -> kamus terakhir yang baik, atau kosong."""
     global _dictionary_cache, _dictionary_cache_ts, _dictionary_loaded

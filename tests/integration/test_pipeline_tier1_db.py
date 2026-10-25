@@ -45,18 +45,9 @@ def session(_migrated_schema: None) -> Iterator[Session]:
 @pytest.fixture(autouse=True)
 def _fresh_tier1_cache() -> Iterator[None]:
     """Cache kamus/katalog per proses: jangan bawa isi DB test lain (atau ke test lain)."""
-
-    def reset() -> None:
-        tier1._dictionary_cache = None
-        tier1._dictionary_cache_ts = 0.0
-        tier1._dictionary_loaded = False
-        tier1._catalog_cache = None
-        tier1._catalog_cache_ts = 0.0
-        tier1._catalog_loaded = False
-
-    reset()
+    tier1.reset_caches()
     yield
-    reset()
+    tier1.reset_caches()
 
 
 @pytest.fixture(autouse=True)

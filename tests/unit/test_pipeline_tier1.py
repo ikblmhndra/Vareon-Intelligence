@@ -164,3 +164,29 @@ def test_best_practice_gets_entities_and_industry_only(rec: dict[str, Any]) -> N
     assert kw["ttp_result"] is None
     # LLM cuma "General" -> industri keyword Tier 1 menggantikannya.
     assert kw["industries"] == (["Finance & Insurance"], "keyword")
+    # Ruling 11: aktor Tier 1 tidak disimpan di cabang best practice (routing tanpa aktor).
+    assert tier1.actors == ["Lazarus Group"]
+    assert kw["routing_result"].threat_actors == []
+
+
+def test_mixed_general_list_keeps_ot_marker(rec: dict[str, Any]) -> None:
+    """LLM ["General", "Energy & Utilities"] -> `resolve_industries` = ["General"] -> sumber
+    keyword. Routing tetap menerima daftar mentah LLM + industri keyword (Ruling 12)."""
+    rec["classify_result"] = ClassifyResult(
+        related_cyber=True,
+        confidence=0.9,
+        reason="llm",
+        industries_impacted=["General", "Energy & Utilities"],
+    )
+
+    outcome = _run(title="Hackers breach banks across the region")
+
+    kw = rec["persist"][0]
+    assert kw["industries"] == (["Finance & Insurance"], "keyword")
+    assert rec["route"][0].industries_impacted == [
+        "General",
+        "Energy & Utilities",
+        "Finance & Insurance",
+    ]
+    assert "OT-relevant" in kw["routing_result"].msg_data
+    assert outcome.accepted

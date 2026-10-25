@@ -348,10 +348,13 @@ def run_pipeline(
 
     routing_input = routing.RoutingInput(
         msg_data_base=msg_base,
-        # Sumber LLM: daftar mentah seperti dulu (cek OT membaca semua isinya, termasuk industri
-        # yang `resolve_industries` buang di samping "General"); sumber keyword: hasil Tier 1.
+        # Daftar MENTAH LLM selalu ikut: cek OT membaca semua isinya, termasuk industri yang
+        # `resolve_industries` buang di samping "General" (mis. ["General", "Energy & Utilities"]
+        # -> sumber keyword, tapi penanda OT tidak boleh hilang). Sumber keyword: + hasil Tier 1.
         industries_impacted=(
-            classify_result.industries_impacted if industries[1] == "llm" else industries[0]
+            classify_result.industries_impacted
+            if industries[1] == "llm"
+            else list(dict.fromkeys([*classify_result.industries_impacted, *industries[0]]))
         ),
         mentioned_group=score_result.mentioned_group,
         mentioned_countries=score_result.mentioned_countries,
