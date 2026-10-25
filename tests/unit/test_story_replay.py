@@ -15,7 +15,7 @@ from pathlib import Path
 
 from cti_core.config import StorySettings
 from cti_core.db.repositories.story import StoryCandidate, StoryMember
-from cti_enrich.story.resolver import ArticleKeys, resolve
+from cti_enrich.story.resolver import ArticleKeys, key_cves, resolve
 
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "story_replay" / "dev_2026-10.json"
 
@@ -27,7 +27,7 @@ def _replay() -> tuple[dict[int, int], Counter[int], int]:
     follow_ups = 0
     for a in json.loads(FIXTURE.read_text()):
         at = datetime.fromisoformat(a["first_seen_at"])
-        cves = frozenset(c.upper() for c in a["cves"])
+        cves = key_cves(a["cves"], cfg.max_key_cves)  # produksi: story hanya simpan CVE kunci
         match = resolve(ArticleKeys(a["title"], a["source"], cves, at), stories, cfg)
         member = StoryMember(a["title"], a["source"])
         if match is None:
