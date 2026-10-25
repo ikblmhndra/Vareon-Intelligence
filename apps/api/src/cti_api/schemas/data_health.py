@@ -67,6 +67,17 @@ class LlmTaskUsageOut(BaseModel):
     prompt_version: str | None
 
 
+class StoryHealthOut(BaseModel):
+    new_stories: int
+    """Story yang dibuat dalam jendela."""
+    followups: int
+    """Artikel yang menempel ke story yang sudah ada (match cve/judul) dalam jendela."""
+    inherited: int
+    """Dari follow-up itu, yang mewarisi classify story (tanpa panggilan LLM classify)."""
+    llm_calls_avoided: int
+    """Perkiraan panggilan LLM yang dihemat: inherited x 2 (classify + ringkasan/ekstraksi)."""
+
+
 class LlmHealthOut(BaseModel):
     status: Literal["ok", "failing", "unknown"]
     """Panggilan terbaru task classify/ttp: ok -> ok, error/empty -> failing, kosong -> unknown."""
@@ -76,6 +87,8 @@ class LlmHealthOut(BaseModel):
     parked: LlmParkedOut
     usage_24h: list[LlmTaskUsageOut]
     usage_7d: list[LlmTaskUsageOut]
+    stories_24h: StoryHealthOut
+    stories_7d: StoryHealthOut
 
 
 class DataHealthOut(BaseModel):

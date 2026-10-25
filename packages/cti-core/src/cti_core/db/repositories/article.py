@@ -52,6 +52,7 @@ def _apply_list_filters(
     ttps: Sequence[str] | None = None,
     created_at_start: datetime.datetime | None = None,
     confirmed_only: bool = False,
+    story_id: int | None = None,
 ) -> Select[tuple[Article]]:
     """Filter bersama buat query list DAN count -- port dari `article_service.
     get_articles()` (Mongo query dict) ke SQL. Tiga field negara Mongo lama
@@ -77,6 +78,8 @@ def _apply_list_filters(
         stmt = stmt.where(Article.created_at >= created_at_start)
     if confirmed_only:
         stmt = stmt.where(Article.confirmed_incident.is_(True))
+    if story_id is not None:
+        stmt = stmt.where(Article.story_id == story_id)
     if industries:
         stmt = stmt.join(Article.industries).where(ArticleIndustry.industry.in_(industries))
     if countries:
@@ -470,6 +473,7 @@ class AsyncArticleRepo:
         created_at_start: datetime.datetime | None = None,
         sort: Literal["recent", "priority"] = "recent",
         confirmed_only: bool = False,
+        story_id: int | None = None,
     ) -> tuple[list[Article], int]:
         """Port `article_service.get_articles()`. Filter di-`join()` ke
         tabel anak -- `.distinct()` WAJIB begitu ada join one-to-many
@@ -505,6 +509,7 @@ class AsyncArticleRepo:
             ttps=ttps,
             created_at_start=created_at_start,
             confirmed_only=confirmed_only,
+            story_id=story_id,
         )
         has_join = bool(
             industries or countries or victim_countries or actor_countries or threat_actors or ttps

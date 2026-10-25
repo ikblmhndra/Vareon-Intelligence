@@ -99,6 +99,17 @@
             ],
             "title": "Admiralty Code"
           },
+          "classify_inherited_from": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classify Inherited From"
+          },
           "confidence_score": {
             "anyOf": [
               {
@@ -175,6 +186,16 @@
             "default": "",
             "title": "Source",
             "type": "string"
+          },
+          "story": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StoryRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "threat_actors": {
             "default": [],
@@ -2386,6 +2407,12 @@
             "title": "Status",
             "type": "string"
           },
+          "stories_24h": {
+            "$ref": "#/components/schemas/StoryHealthOut"
+          },
+          "stories_7d": {
+            "$ref": "#/components/schemas/StoryHealthOut"
+          },
           "usage_24h": {
             "items": {
               "$ref": "#/components/schemas/LlmTaskUsageOut"
@@ -2408,7 +2435,9 @@
           "last_error",
           "parked",
           "usage_24h",
-          "usage_7d"
+          "usage_7d",
+          "stories_24h",
+          "stories_7d"
         ],
         "title": "LlmHealthOut",
         "type": "object"
@@ -6495,6 +6524,58 @@
         "title": "StatusBreakdown",
         "type": "object"
       },
+      "StoryHealthOut": {
+        "properties": {
+          "followups": {
+            "title": "Followups",
+            "type": "integer"
+          },
+          "inherited": {
+            "title": "Inherited",
+            "type": "integer"
+          },
+          "llm_calls_avoided": {
+            "title": "Llm Calls Avoided",
+            "type": "integer"
+          },
+          "new_stories": {
+            "title": "New Stories",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "new_stories",
+          "followups",
+          "inherited",
+          "llm_calls_avoided"
+        ],
+        "title": "StoryHealthOut",
+        "type": "object"
+      },
+      "StoryRef": {
+        "description": "Story (kelompok berita sama) tempat artikel bergabung.",
+        "properties": {
+          "article_count": {
+            "title": "Article Count",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "source_count": {
+            "title": "Source Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "article_count",
+          "source_count"
+        ],
+        "title": "StoryRef",
+        "type": "object"
+      },
       "SyncRequest": {
         "properties": {
           "domains": {
@@ -8089,6 +8170,22 @@
               "default": false,
               "title": "Confirmed Only",
               "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "story_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Story Id"
             }
           },
           {

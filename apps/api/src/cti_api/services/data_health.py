@@ -15,6 +15,7 @@ from typing import Literal
 from cti_core.config import get_settings
 from cti_core.db.repositories.data_health import AsyncDataHealthRepo
 from cti_core.db.repositories.llm_call import AsyncLlmCallRepo, TaskUsage
+from cti_core.db.repositories.story import AsyncStoryRepo, StoryStats
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,6 +29,7 @@ from cti_api.schemas.data_health import (
     LlmTaskUsageOut,
     QueueHealthOut,
     SourceFreshnessOut,
+    StoryHealthOut,
 )
 from cti_api.services.scraper_health import build_scraper_health
 
@@ -78,6 +80,15 @@ def _usage_out(rows: list[TaskUsage]) -> list[LlmTaskUsageOut]:
     ]
 
 
+def _story_out(stats: StoryStats) -> StoryHealthOut:
+    return StoryHealthOut(
+        new_stories=stats.new_stories,
+        followups=stats.followups,
+        inherited=stats.inherited,
+        llm_calls_avoided=stats.inherited * 2,
+    )
+
+
 async def _llm_health(
     session: AsyncSession, repo: AsyncDataHealthRepo, now: datetime.datetime
 ) -> LlmHealthOut:
@@ -88,6 +99,7 @@ async def _llm_health(
         status = "ok" if latest.status == "ok" else "failing"
     error = await calls.latest_failure(_STATUS_TASKS)
     parked = await repo.parked_counts(now)
+    stories = AsyncStoryRepo(session)
     return LlmHealthOut(
         status=status,
         last_call_at=_iso(await calls.latest_call_at()),
@@ -110,6 +122,8 @@ async def _llm_health(
         ),
         usage_24h=_usage_out(await calls.usage_by_task(now - datetime.timedelta(hours=24))),
         usage_7d=_usage_out(await calls.usage_by_task(now - datetime.timedelta(days=7))),
+        stories_24h=_story_out(await stories.stats_since(now - datetime.timedelta(hours=24))),
+        stories_7d=_story_out(await stories.stats_since(now - datetime.timedelta(days=7))),
     )
 
 

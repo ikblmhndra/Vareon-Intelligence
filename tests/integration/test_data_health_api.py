@@ -9,7 +9,9 @@ import datetime
 from cti_core.db.models.article import RejectedArticle
 from cti_core.db.models.ioc import IOC
 from cti_core.db.models.llm_call import LlmCall
+from cti_core.db.models.story import Story
 from cti_core.db.repositories.article import AsyncArticleRepo
+from cti_core.db.repositories.story import AsyncStoryRepo
 from httpx import AsyncClient
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -233,3 +235,33 @@ async def test_data_health_last_error_describes_latest_empty_status_row(
     assert err["task"] == "classify"
     assert err["error_type"] == "empty response"
     assert err["http_status"] is None
+
+
+async def test_data_health_story_stats(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header, fake_redis
+) -> None:
+    """Selisih terhadap data bersama: satu story baru + satu follow-up yang mewarisi classify."""
+    now = datetime.datetime.now(datetime.UTC)
+    before = await AsyncStoryRepo(api_session).stats_since(now - datetime.timedelta(hours=24))
+    story = Story(title="S", lead_source="A", first_seen_at=now, last_seen_at=now)
+    api_session.add(story)
+    await api_session.flush()
+    follow = await AsyncArticleRepo(api_session).upsert(
+        url="https://h.example/follow", title="F", source="B"
+    )
+    follow.story_id = story.id
+    follow.story_match = "cve"
+    follow.raw_enrichment = {
+        "classify": {"inherited_from_story": story.id, "lead_article_id": None}
+    }
+    await api_session.flush()
+
+    llm = (await api_client.get("/api/data-health", headers=auth_header(role="analyst"))).json()[
+        "llm"
+    ]
+    for key in ("stories_24h", "stories_7d"):
+        got = llm[key]
+        assert got["new_stories"] == before.new_stories + 1
+        assert got["followups"] == before.followups + 1
+        assert got["inherited"] == before.inherited + 1
+        assert got["llm_calls_avoided"] == got["inherited"] * 2

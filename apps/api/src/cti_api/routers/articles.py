@@ -29,6 +29,7 @@ from cti_core.db.models.source_reliability import SourceReliabilityEntry
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.auth import AsyncAuditLogRepo
 from cti_core.db.repositories.source_reliability import AsyncSourceReliabilityRepo
+from cti_core.db.repositories.story import AsyncStoryRepo
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -46,6 +47,7 @@ from cti_api.schemas.article import (
     ArticleOut,
     DashboardStats,
     FilterOptions,
+    StoryRef,
 )
 from cti_api.schemas.dashboard_overview import (
     CveExposure,
@@ -73,6 +75,7 @@ def _serialize(
     article: Article,
     machine_fields: dict[str, object],
     ratings: Mapping[str, SourceReliabilityEntry] | None = None,
+    stories: Mapping[int, tuple[int, int]] | None = None,
 ) -> ArticleOut:
     posted_on = machine_fields.get("posted_on")
     year, month, week = 0, "", ""
@@ -84,6 +87,10 @@ def _serialize(
 
     source = str(machine_fields.get("source", ""))
     rating = ratings.get(source.lower()) if ratings else None
+    counts = stories.get(article.story_id) if stories and article.story_id is not None else None
+    audit = article.raw_enrichment.get("classify")
+    inherited = isinstance(audit, dict) and audit.get("inherited_from_story") is not None
+    lead_id = audit.get("lead_article_id") if inherited and isinstance(audit, dict) else None
     return ArticleOut(
         id=article.id,
         year=year,
@@ -105,6 +112,12 @@ def _serialize(
         grade_origin=rating.origin if rating else None,  # type: ignore[arg-type]
         iocs={},
         confirmed_incident=bool(article.confirmed_incident),
+        story=(
+            StoryRef(id=article.story_id, article_count=counts[0], source_count=counts[1])
+            if counts is not None and article.story_id is not None
+            else None
+        ),
+        classify_inherited_from=lead_id if isinstance(lead_id, int) else None,
     )
 
 
@@ -138,6 +151,7 @@ async def list_articles(
     ttp: list[str] | None = Query(None),
     sort: Literal["recent", "priority"] = Query("recent"),
     confirmed_only: bool = Query(False),
+    story_id: int | None = Query(None),
     dedup: bool = Query(False),
     dedup_threshold: float = Query(0.75, ge=0.5, le=0.99),
     session: AsyncSession = Depends(get_db),
@@ -160,9 +174,14 @@ async def list_articles(
         ttps=ttp,
         sort=sort,
         confirmed_only=confirmed_only,
+        story_id=story_id,
     )
     # Satu query rating per request (bukan per artikel) buat kode Admiralty + asal grade.
     ratings = await AsyncSourceReliabilityRepo(session).get_all_ratings()
+    # Satu query story per request: (article_count, source_count) untuk story di halaman ini.
+    stories = await AsyncStoryRepo(session).counts(
+        sorted({a.story_id for a in articles if a.story_id is not None})
+    )
     if dedup and articles:
         # `find_dedup_groups` operasi di dict, bukan ORM -- stash objek
         # `Article` aslinya balik ke tiap dict biar `_serialize()` bisa
@@ -173,10 +192,10 @@ async def list_articles(
             d["_article"] = a
             machine_dicts.append(d)
         deduped = dedup_service.find_dedup_groups(machine_dicts, dedup_threshold)
-        parsed = [_serialize(d["_article"], d, ratings) for d in deduped]
+        parsed = [_serialize(d["_article"], d, ratings, stories) for d in deduped]
         return ArticleListResponse(articles=parsed, total=total, page=page, page_size=page_size)
 
-    parsed = [_serialize(a, repo.to_dict(a), ratings) for a in articles]
+    parsed = [_serialize(a, repo.to_dict(a), ratings, stories) for a in articles]
     return ArticleListResponse(articles=parsed, total=total, page=page, page_size=page_size)
 
 
@@ -321,4 +340,9 @@ async def get_article_by_id(article_id: int, session: AsyncSession = Depends(get
     article = await repo.get_by_id(article_id)
     if article is None:
         raise HTTPException(status_code=404, detail="Article not found")
-    return _serialize(article, repo.to_dict(article))
+    stories = (
+        await AsyncStoryRepo(session).counts([article.story_id])
+        if article.story_id is not None
+        else None
+    )
+    return _serialize(article, repo.to_dict(article), stories=stories)
