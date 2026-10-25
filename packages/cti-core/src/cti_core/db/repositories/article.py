@@ -251,12 +251,19 @@ def _apply_enrichment(
         lambda c: c.threat_actor,
         lambda k: ArticleThreatActor(threat_actor=k, source="dictionary"),
     )
+    # kunci unik = (article_id, name): dedup per nama (pertama menang), kind baris pakai-ulang
+    # ikut diperbarui -- kalau tidak, nama sama beda kind -> UniqueViolation dan artikel hilang.
+    kinds: dict[str, str] = {}
+    for name, kind in malware:
+        kinds.setdefault(name, kind)
     article.malware = _reconcile(
         article.malware,
-        dict(dict.fromkeys(malware)),
-        lambda c: (c.name, c.kind),
-        lambda k: ArticleMalware(name=k[0], kind=k[1], source="dictionary"),
+        kinds,
+        lambda c: c.name,
+        lambda k: ArticleMalware(name=k, kind=kinds[k], source="dictionary"),
     )
+    for m in article.malware:
+        m.kind = kinds[m.name]
     apply_ttps(article, ttps)
 
 
@@ -415,14 +422,16 @@ class ArticleRepo:
         have_actor = {a.threat_actor for a in article.threat_actors}
         for name in dict.fromkeys(threat_actors):
             if name not in have_actor:
-                article.threat_actors.append(ArticleThreatActor(threat_actor=name))
+                article.threat_actors.append(
+                    ArticleThreatActor(threat_actor=name, source="dictionary")
+                )
                 counts["threat_actors"] += 1
         have_mal = {m.name for m in article.malware}
         for name, kind in malware:
             _check(kind, _MALWARE_KINDS, "malware kind")
             if name not in have_mal:
                 have_mal.add(name)
-                article.malware.append(ArticleMalware(name=name, kind=kind))
+                article.malware.append(ArticleMalware(name=name, kind=kind, source="dictionary"))
                 counts["malware"] += 1
         if industries and [i.industry for i in article.industries] == ["General"]:
             article.industries = [

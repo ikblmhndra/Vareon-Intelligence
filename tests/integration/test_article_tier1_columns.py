@@ -109,3 +109,52 @@ def test_existing_rows_default_sources(db_session: Session) -> None:
     assert [t.source for t in art.ttps] == ["llm"]
     assert [a.source for a in art.threat_actors] == ["dictionary"]
     assert [i.source for i in art.industries] == ["llm"]
+
+
+def test_remap_keeps_tier1_source_and_evidence(db_session: Session) -> None:
+    from cti_core.db.repositories.ttp_catalog import load_catalog, remap_article_ttps
+
+    from tests.integration.test_ttp_normalization import _catalog_rows
+
+    db_session.add_all(_catalog_rows())
+    db_session.flush()
+    repo, art = _article(db_session, "remap")
+    # (T1110, "Credential Dumping") di-remap ke T1003; dua baris lama menyatu ke satu ID
+    # (T1110 salah-pasang) -> sumber terkuat (explicit) dan buktinya yang dipertahankan.
+    repo.set_enrichment(
+        art,
+        ttps=[
+            NormalizedTTP("T1110", "Credential Dumping", source="explicit", evidence="bukti"),
+            NormalizedTTP("T1548", "Abuse Elevation Control Mechanism", source="keyword"),
+        ],
+    )
+    article_id = art.id
+    remap_article_ttps(db_session, load_catalog(db_session))
+    art = db_session.get_one(Article, article_id)
+    got = {t.ttp_id: (t.source, t.evidence) for t in art.ttps}
+    assert got["T1003"] == ("explicit", "bukti")
+    assert got["T1548"] == ("keyword", None)
+
+
+def test_malware_same_name_different_kind(db_session: Session) -> None:
+    repo, art = _article(db_session, "malkind")
+    repo.set_enrichment(art, malware=[("Mimikatz", "tool"), ("Mimikatz", "malware")])
+    db_session.refresh(art)
+    assert [(m.name, m.kind) for m in art.malware] == [("Mimikatz", "tool")]
+    repo.set_enrichment(art, malware=[("Mimikatz", "malware")])
+    db_session.refresh(art)
+    assert [(m.name, m.kind) for m in art.malware] == [("Mimikatz", "malware")]
+
+
+def test_reenrichment_updates_reused_rows(db_session: Session) -> None:
+    repo, art = _article(db_session, "reuse")
+    repo.set_enrichment(art, industries=["Finance"], ttps=[("T1190", "Exploit")])
+    repo.set_enrichment(
+        art,
+        industries=["Finance"],
+        industry_source="keyword",
+        ttps=[NormalizedTTP("T1190", "Exploit", source="explicit", evidence="e")],
+    )
+    db_session.refresh(art)
+    assert [(t.source, t.evidence) for t in art.ttps] == [("explicit", "e")]
+    assert [i.source for i in art.industries] == ["keyword"]
