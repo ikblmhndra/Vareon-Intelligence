@@ -4,6 +4,8 @@ ada asimetri baca-vs-tulis di sini."""
 
 from __future__ import annotations
 
+from typing import Literal
+
 from cti_core.db.models.article import Article
 from cti_core.db.repositories.mitre import AsyncMitreHeatmapRepo
 from fastapi import APIRouter, Depends, Query
@@ -37,10 +39,11 @@ async def mitre_heatmap(
     days: int = Query(90, ge=7, le=365),
     top_rows: int = Query(15, ge=3, le=30),
     top_ttps: int = Query(20, ge=5, le=40),
+    ttp_source: list[Literal["explicit", "keyword", "llm"]] | None = Query(None),
     session: AsyncSession = Depends(get_db),
 ) -> dict[str, object]:
     return await AsyncMitreHeatmapRepo(session).get_heatmap(
-        view=view, days=days, top_rows=top_rows, top_ttps=top_ttps
+        view=view, days=days, top_rows=top_rows, top_ttps=top_ttps, ttp_sources=ttp_source
     )
 
 

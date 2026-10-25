@@ -66,6 +66,7 @@ def _apply_list_filters(
     created_at_start: datetime.datetime | None = None,
     confirmed_only: bool = False,
     story_id: int | None = None,
+    ttp_sources: Sequence[str] | None = None,
 ) -> Select[tuple[Article]]:
     """Filter bersama buat query list DAN count -- port dari `article_service.
     get_articles()` (Mongo query dict) ke SQL. Tiga field negara Mongo lama
@@ -121,8 +122,13 @@ def _apply_list_filters(
         stmt = stmt.join(Article.threat_actors).where(
             func.lower(ArticleThreatActor.threat_actor).in_(lowered)
         )
-    if ttps:
-        stmt = stmt.join(Article.ttps).where(ArticleTTP.ttp_id.in_(ttps))
+    if ttps or ttp_sources:
+        # Satu join: ID dan sumber harus cocok pada BARIS TTP yang sama.
+        stmt = stmt.join(Article.ttps)
+        if ttps:
+            stmt = stmt.where(ArticleTTP.ttp_id.in_(ttps))
+        if ttp_sources:
+            stmt = stmt.where(ArticleTTP.source.in_(ttp_sources))
     keyword_or = (
         [Article.title.ilike(f"%{kw}%") for kw in title_keywords] if title_keywords else None
     )
@@ -574,6 +580,7 @@ class AsyncArticleRepo:
         sort: Literal["recent", "priority"] = "recent",
         confirmed_only: bool = False,
         story_id: int | None = None,
+        ttp_sources: Sequence[str] | None = None,
     ) -> tuple[list[Article], int]:
         """Port `article_service.get_articles()`. Filter di-`join()` ke
         tabel anak -- `.distinct()` WAJIB begitu ada join one-to-many
@@ -610,9 +617,16 @@ class AsyncArticleRepo:
             created_at_start=created_at_start,
             confirmed_only=confirmed_only,
             story_id=story_id,
+            ttp_sources=ttp_sources,
         )
         has_join = bool(
-            industries or countries or victim_countries or actor_countries or threat_actors or ttps
+            industries
+            or countries
+            or victim_countries
+            or actor_countries
+            or threat_actors
+            or ttps
+            or ttp_sources
         )
 
         count_stmt = select(func.count()).select_from(base.distinct().subquery())

@@ -153,11 +153,34 @@
             "title": "Impacted Industries",
             "type": "array"
           },
+          "industry_source": {
+            "anyOf": [
+              {
+                "enum": [
+                  "llm",
+                  "keyword"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Industry Source"
+          },
           "iocs": {
             "additionalProperties": true,
             "default": {},
             "title": "Iocs",
             "type": "object"
+          },
+          "malware": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/MalwareRef"
+            },
+            "title": "Malware",
+            "type": "array"
           },
           "mentioned_countries": {
             "default": [],
@@ -2296,6 +2319,61 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "InferredEntity": {
+        "description": "Aktor/malware artikel yang cocok di ATT&CK beserta teknik yang DIPAKAI-nya menurut\nATT&CK. Tidak disimpan (tidak ada `source`): ini inferensi, bukan isi artikel.",
+        "properties": {
+          "attack_id": {
+            "title": "Attack Id",
+            "type": "string"
+          },
+          "entity": {
+            "title": "Entity",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "actor",
+              "malware",
+              "tool"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "techniques": {
+            "items": {
+              "$ref": "#/components/schemas/InferredTechnique"
+            },
+            "title": "Techniques",
+            "type": "array"
+          }
+        },
+        "required": [
+          "entity",
+          "kind",
+          "attack_id",
+          "techniques"
+        ],
+        "title": "InferredEntity",
+        "type": "object"
+      },
+      "InferredTechnique": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "InferredTechnique",
+        "type": "object"
+      },
       "IocEnrichmentTypeOut": {
         "properties": {
           "enriched": {
@@ -2592,6 +2670,28 @@
           "password"
         ],
         "title": "LoginRequest",
+        "type": "object"
+      },
+      "MalwareRef": {
+        "properties": {
+          "kind": {
+            "enum": [
+              "malware",
+              "tool"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "kind"
+        ],
+        "title": "MalwareRef",
         "type": "object"
       },
       "MapPoint": {
@@ -6796,12 +6896,33 @@
       },
       "TTP": {
         "properties": {
+          "evidence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence"
+          },
           "id": {
             "title": "Id",
             "type": "string"
           },
           "name": {
             "title": "Name",
+            "type": "string"
+          },
+          "source": {
+            "default": "llm",
+            "enum": [
+              "explicit",
+              "keyword",
+              "llm"
+            ],
+            "title": "Source",
             "type": "string"
           }
         },
@@ -8150,6 +8271,30 @@
           },
           {
             "in": "query",
+            "name": "ttp_source",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "enum": [
+                      "explicit",
+                      "keyword",
+                      "llm"
+                    ],
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ttp Source"
+            }
+          },
+          {
+            "in": "query",
             "name": "sort",
             "required": false,
             "schema": {
@@ -8508,6 +8653,68 @@
           }
         },
         "summary": "Compute Article Confidence",
+        "tags": [
+          "articles"
+        ]
+      }
+    },
+    "/api/articles/{article_id}/inferred-ttps": {
+      "get": {
+        "operationId": "get_article_inferred_ttps_api_articles__article_id__inferred_ttps_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "article_id",
+            "required": true,
+            "schema": {
+              "title": "Article Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/InferredEntity"
+                  },
+                  "title": "Response Get Article Inferred Ttps Api Articles  Article Id  Inferred Ttps Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Article Inferred Ttps",
         "tags": [
           "articles"
         ]
@@ -16812,6 +17019,30 @@
               "minimum": 5,
               "title": "Top Ttps",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ttp_source",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "enum": [
+                      "explicit",
+                      "keyword",
+                      "llm"
+                    ],
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ttp Source"
             }
           },
           {
