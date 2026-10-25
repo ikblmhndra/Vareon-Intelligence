@@ -151,8 +151,16 @@ tweet would move `since_id` past tweets the alert filters rejected.
    Sources whose `ScraperMeta.content_kind` is structured (`cisa_kev`, `exploitdb`, `cis`; `default_relevance="always"`)
    skip classify and TTP extraction.
 2. `fetch_text` → `summarize` → `extract_iocs` and the C2 check.
+2b. **Tier 1** (`stages/tier1.run_tier1`, no LLM, always runs on an accepted article, over `text or summary`):
+   threat actors and malware are looked up in the full text from the ATT&CK dictionary plus `threat_actor_groups`
+   (alias to canonical name; a context-word rule guards common-word names); explicit TTPs are `T####` ids found in the text;
+   keyword TTPs come from a map of about 60 techniques; industries come from a keyword taxonomy and are used only when the
+   LLM returned just "General"; a confirmed-incident rule runs in shadow mode (written to `raw_enrichment`, no behaviour).
 3. If `security_tech_best_practice`, skip TTPs and scoring: persist and alert on the `best_practice` topic.
-4. Otherwise `extract_ttps` (normalised against the ATT&CK catalog), `score`, `routing.route`.
+4. Otherwise `extract_ttps` (normalised against the ATT&CK catalog), `score`, `routing.route`. Tier 1 complements the LLM
+   and does not replace it. `tier1.merge.merge_ttps` merges per technique id with the priority explicit > llm > keyword
+   (keyword hits are not sent to the TTP LLM call); Tier 1 actors join the scorer's `mentioned_group`, so some new
+   articles move from "Global Article" to "TA Group Article" and the Telegram alert gains a "Related Threat Actor" line.
 5. `persist` upserts `articles` by `url_hash` and writes countries, industries, threat actors, TTPs, IOCs and
    `article_cves` (CVE ids no longer go into `iocs`). IOC values are stored in canonical form
    (`cti_core.ioc.canonical.canonical`: refang, lowercase; URL path and query keep their case) and the web shows them defanged.
@@ -180,6 +188,13 @@ is days old). Success deletes the failed row; a classifier reject turns it into 
 keeps it. The Newsroom "Restore" button does **not** do this: it only creates a "Manually Restored" article without
 enrichment, and that stub makes the pipeline skip the URL (`_known_article`), so the tool skips such rows unless
 `--replace-restored-stubs` removes the stub first.
+
+**Tier 1 provenance and backfill.** Rows carry their origin: `article_ttps.source` (`explicit`/`llm`/`keyword`) and
+`evidence`, `article_threat_actors.source`, `article_industries.source`, and malware lives in the new `article_malware`
+table. Inferred TTPs are not stored: `GET /api/articles/{id}/inferred-ttps` computes them on read from the ATT&CK
+relationships of the article's actors and malware. The article list and the MITRE heatmap accept `ttp_source`.
+`python -m cti_enrich.backfill_tier1 [--since] [--limit] [--sleep] [--dry-run]` runs Tier 1 over stored articles by hand;
+it only adds rows and makes no LLM call. `tools/eval/tier1_eval.py` is the evaluation harness.
 
 **Story settings** (`Settings.story`, all optional; a change needs a worker restart):
 
@@ -455,7 +470,7 @@ sync_session`), and **async asyncpg** in FastAPI (`deps.get_db`). The schema has
 | `scraper_config` | `scraper_id` | API (control plane) | beat (once, at import), `Runner` (every run), API |
 | `scraper_runs` | `run_id` | `Runner.execute` (start, finish) | API (`/scrapers`), `scraper.health_digest` |
 | `scraper_seen` | `dedup_key` = sha256(`scraper_id`, raw key) | `Runner` via `DedupStore` (reserve, commit, release) | `Runner` |
-| `articles` (+ `article_countries`, `_industries`, `_threat_actors`, `_ttps`) | `url_hash` (unique) | `enrich.article` (`ArticleRepo.upsert`) | API, reports, PIR alerts |
+| `articles` (+ `article_countries`, `_industries`, `_threat_actors`, `_ttps`, `_malware`) | `url_hash` (unique) | `enrich.article` (`ArticleRepo.upsert`) | API, reports, PIR alerts |
 | `rejected_articles` | `url_hash` | `enrich.article` (not cyber, or final failure with `failure_kind`) | API (Filtered Articles: restore for rejects, admin replay for failures); `enrich.auto_replay` (every 10 min; kinds `transient`/`config`/`json`, max 3 attempts, backoff 30 min x 2^count, tracked in `auto_replay_count` / `last_auto_replay_at`) |
 | `llm_calls` | `id` | LLM client (one row per call: task, model, prompt version, tokens, latency, status `ok`/`empty`/`error`; purged after 90 days by `llm.purge_calls`) | API (`/data-health` LLM block) |
 | `article_cves` | `(article_id, cve_id)` | `enrich.article` persist (CVEs no longer live in `iocs`) | API, campaigns |

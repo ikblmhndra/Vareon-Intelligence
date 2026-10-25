@@ -6,6 +6,34 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
+## [0.8.8] - 2026-10-25
+
+**Setiap artikel yang diterima kini melewati Tier 1 deterministik (tanpa LLM) yang mengekstrak aktor, malware, TTP dan industri dari teks penuh, lengkap dengan label asal datanya.**
+Satu migrasi (`b8e2c4a6d1f3`), **tanpa kunci `.env` baru.** LLM classify dan TTP tetap jalan; Tier 1 hanya melengkapi.
+
+**Saat upgrade dari 0.8.7:** `make deploy` (migrasi jalan otomatis). Artikel lama tidak berubah sendiri. Untuk mengisi artikel yang sudah ada,
+jalankan manual `python -m cti_enrich.backfill_tier1 [--since YYYY-MM-DD] [--limit N] [--sleep S] [--dry-run]` (hanya menambah baris,
+tanpa LLM, aman diulang).
+
+### Ditambah
+- Aktor dan malware dicari di teks penuh lewat kamus ATT&CK + `threat_actor_groups`, alias dipetakan ke nama kanonik, dengan aturan kata
+  konteks untuk nama yang berupa kata umum.
+- TTP explicit dari ID `T####` di teks, dan TTP keyword dari peta ~60 teknik. Gabungan per ID: explicit > llm > keyword.
+- Industri dari taksonomi kata kunci, hanya dipakai saat LLM cuma memberi "General".
+- Rule confirmed-incident berjalan shadow (hasilnya di `raw_enrichment`, belum memengaruhi perilaku).
+- Label sumber: `article_ttps.source` dan `evidence`, `article_threat_actors.source`, `article_industries.source`, serta tabel baru `article_malware`.
+- `GET /api/articles/{id}/inferred-ttps` (dihitung saat dibaca dari relasi ATT&CK aktor dan malware artikel).
+- Parameter `ttp_source` pada daftar artikel dan heatmap MITRE.
+- Modal artikel menampilkan asal tiap TTP, malware, dan TTP inferred.
+- Alat evaluasi `tools/eval/tier1_eval.py`.
+
+### Diubah
+- Aktor dicari di teks penuh, jadi sebagian artikel baru pindah dari "Global Article" ke "TA Group Article", dan alert Telegram mendapat
+  baris "Related Threat Actor".
+- TTP keyword ikut tampil di baris TTP alert.
+- Industri dari keyword bisa memicu penanda OT.
+- Tagging tweet X Intel tidak berubah.
+
 ## [0.8.7] - 2026-10-25
 
 **Artikel yang membahas peristiwa yang sama dikelompokkan jadi satu "cerita" (story) saat ingest, dan artikel lanjutan memakai ulang
