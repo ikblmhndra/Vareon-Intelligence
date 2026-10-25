@@ -90,15 +90,6 @@ KEYWORD_MAP: tuple[KeywordRule, ...] = (
         r"fake\s+login\s+pages?",
     ),
     _r(
-        "T1078",
-        "Valid Accounts",
-        r"valid\s+(?:credentials|accounts)",
-        r"compromised\s+(?:credentials|accounts)",
-        r"stolen\s+credentials",
-        r"legitimate\s+credentials",
-        requires=_ACTOR,
-    ),
-    _r(
         "T1068",
         "Exploitation for Privilege Escalation",
         r"escalat(?:e|ed|es|ing)\s+privileges?\s+(?:via|using|through|by\s+exploiting)",
@@ -185,11 +176,6 @@ KEYWORD_MAP: tuple[KeywordRule, ...] = (
         r"command[- ]line\s+interpreter",
         r"malicious\s+(?:shell\s+)?scripts?",
         requires=_ACTOR,
-    ),
-    _r(
-        "T1059.001",
-        "PowerShell",
-        r"power[- ]?shell",
     ),
     _r(
         "T1059.003",

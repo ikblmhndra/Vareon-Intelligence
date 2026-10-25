@@ -39,6 +39,48 @@ AMBIGUOUS: frozenset[str] = frozenset(
         "nickel",
         "copper",
         "outlaw",
+        # P4 eval: nama software/grup ATT&CK yang juga kata biasa (false positive di 57 artikel).
+        "tor",
+        "chaos",
+        "exodus",
+        "cuba",
+        "embargo",
+        "responder",
+        "equation",
+        "silence",
+        "harvester",
+        "comando",
+        "rtm",
+    }
+)
+
+# P4 eval: software ATT&CK yang namanya utilitas Windows / kata Inggris umum ("at" 40x salah,
+# "cmd" 9x, "Net" 6x, "route" 6x, ...). Untuk nama ini HANYA bentuk `<nama>.exe` yang cocok;
+# kata telanjang tidak pernah. Canonical tetap nama ATT&CK. Nama yang khas (netstat, certutil,
+# Nltest, PsExec, schtasks) sengaja TIDAK di sini. Daftar kurasi: nama <= 6 huruf yang juga kata
+# Inggris/perintah umum, plus perintah panjang yang lazim muncul di prosa (tasklist, whoami, ...).
+WINDOWS_UTILITY_NAMES: frozenset[str] = frozenset(
+    {
+        "at",
+        "cmd",
+        "net",
+        "route",
+        "expand",
+        "reg",
+        "netsh",
+        "ping",
+        "tasklist",
+        "systeminfo",
+        "whoami",
+        "ipconfig",
+        "arp",
+        "sc",
+        "ftp",
+        "find",
+        "copy",
+        "del",
+        "dir",
+        "query",
     }
 )
 

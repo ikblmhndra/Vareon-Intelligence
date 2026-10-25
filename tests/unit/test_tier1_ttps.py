@@ -46,10 +46,16 @@ def test_keyword_evidence_is_sentence() -> None:
 
 
 def test_empty_catalog_keeps_keywords_drops_explicit() -> None:
-    out = extract_techniques("T1059 via PowerShell", TechniqueCatalog(names={}))
+    # P4 eval: kata "powershell" telanjang dibuang (presisi 0/4); pakai frasa perilaku lain.
+    out = extract_techniques("T1059 via a web shell", TechniqueCatalog(names={}))
     assert [(t.ttp_id, t.ttp_name, t.source) for t in out] == [
-        ("T1059.001", "PowerShell", "keyword")
+        ("T1505.003", "Web Shell", "keyword")
     ]
+
+
+def test_bare_powershell_gives_no_keyword_hit() -> None:
+    out = extract_techniques("PowerShell was used", TechniqueCatalog(names={}))
+    assert "T1059.001" not in {t.ttp_id for t in out}
 
 
 def test_keyword_map_size_and_ids() -> None:
@@ -111,10 +117,14 @@ def test_noisy_probe_sentences_yield_nothing() -> None:
 
 
 def test_actor_context_enables_contextual_rules() -> None:
+    # P4 eval: aturan T1078 dibuang (0/5 benar); konteks aktor dites lewat T1685.
     out = extract_techniques(
         "Threat actors used stolen credentials to log in.", TechniqueCatalog(names={})
     )
-    assert "T1078" in {t.ttp_id for t in out}
+    assert "T1078" not in {t.ttp_id for t in out}
+    out = extract_techniques("Attackers disabled EDR on hosts.", TechniqueCatalog(names={}))
+    assert "T1685" in {t.ttp_id for t in out}
+    assert extract_techniques("They disabled EDR on hosts.", TechniqueCatalog(names={})) == []
 
 
 def test_keyword_dropped_when_id_not_in_nonempty_catalog() -> None:

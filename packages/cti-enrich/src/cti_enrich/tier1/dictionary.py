@@ -21,7 +21,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
-from cti_enrich.tier1.entities import AMBIGUOUS
+from cti_enrich.tier1.entities import AMBIGUOUS, WINDOWS_UTILITY_NAMES
 
 Kind = Literal["actor", "malware", "tool"]
 
@@ -94,6 +94,8 @@ def build_dictionary(
         for term in (name, *aliases):
             if term.lower() in group_terms:
                 continue  # sudah masuk sebagai actor di atas
+            if term.lower() in WINDOWS_UTILITY_NAMES:
+                term = f"{term}.exe"  # kata telanjang terlalu berisik; hanya "<nama>.exe"
             add(term, name, kind)
 
     for name in ta_names:

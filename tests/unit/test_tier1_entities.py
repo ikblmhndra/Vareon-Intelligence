@@ -103,3 +103,55 @@ def test_unicode_case_folding_chars_do_not_crash():
     for text in (f"Lazaru{chr(0x17F)} group", f"{chr(0x212A)}imsuky malware"):
         assert match_entities(text, dictionary) == []
     assert [h.canonical for h in match_entities("LAZARUS group", dictionary)] == ["Lazarus"]
+
+
+def _eval_dictionary() -> EntityDictionary:
+    # P4 eval: nama utilitas Windows / kata biasa dari ATT&CK memicu false positive.
+    groups = [("Equation", []), ("Silence", []), ("RTM", []), ("Comando", ["comando"])]
+    software = [
+        ("at", "tool", []),
+        ("cmd", "tool", []),
+        ("Net", "tool", []),
+        ("Reg", "tool", []),
+        ("route", "tool", []),
+        ("Expand", "tool", []),
+        ("netstat", "tool", []),
+        ("Tor", "tool", []),
+        ("Nltest", "tool", []),
+    ]
+    return build_dictionary(groups, software, [], [])
+
+
+def _eval_pairs(text: str) -> list[tuple[str, str]]:
+    return [(h.canonical, h.kind) for h in match_entities(text, _eval_dictionary())]
+
+
+def test_windows_utility_names_never_match_bare_word():
+    assert _eval_pairs("Run at 10pm") == []
+    assert _eval_pairs("the net result was bad") == []
+    assert _eval_pairs("route traffic through a proxy") == []
+    assert _eval_pairs("expand access to the network") == []
+    assert _eval_pairs("ran reg and cmd by hand") == []
+
+
+def test_windows_utility_matches_exe_form_with_canonical_name():
+    assert _eval_pairs("attackers ran cmd.exe /C whoami") == [("cmd", "tool")]
+    assert _eval_pairs("then NET.EXE user /add") == [("Net", "tool")]
+    assert _eval_pairs("scheduled via at.exe") == [("at", "tool")]
+
+
+def test_distinctive_names_stay_normal():
+    assert _eval_pairs("they used netstat and Nltest") == [
+        ("netstat", "tool"),
+        ("Nltest", "tool"),
+    ]
+
+
+def test_common_word_software_and_groups_need_context():
+    assert _eval_pairs("the Tor network is popular") == []
+    assert _eval_pairs("the ransomware used Tor to exfiltrate") == [("Tor", "tool")]
+    assert _eval_pairs("Equation of state") == []
+    assert _eval_pairs("the Equation group struck") == [("Equation", "actor")]
+    assert _eval_pairs("RTM is a benchmark") == []  # key case-sensitive "RTM"
+    assert _eval_pairs("the RTM group used a backdoor") == [("RTM", "actor")]
+    assert _eval_pairs("a harvester and comando team") == []
