@@ -54,3 +54,27 @@ def test_candidates_have_no_source_field() -> None:
         assert set(c.row()) == {"candidate_id", "article_id", "field", "value"}
     actor = next(c for c in candidates if c.field == "actor")
     assert actor.sources == {"dictionary", "llm"}
+
+
+def test_json_lines_skips_psql_command_tags() -> None:
+    from tools.eval.tier1_eval import _json_lines
+
+    assert _json_lines('SET\n{"id": 1}\n\n{"id": 2}\n') == ['{"id": 1}', '{"id": 2}']
+
+
+def test_written_order_does_not_depend_on_source() -> None:
+    from tools.eval.tier1_eval import Candidate, shuffle_key
+
+    a = [Candidate(i, "ttp", f"T{i}", frozenset({s})) for i, s in enumerate(["llm", "keyword"] * 5)]
+    b = [Candidate(c.article_id, c.field, c.value, frozenset({"dictionary"})) for c in a]
+    order_a = [c.candidate_id for c in sorted(a, key=lambda c: shuffle_key(c.candidate_id))]
+    order_b = [c.candidate_id for c in sorted(b, key=lambda c: shuffle_key(c.candidate_id))]
+    assert order_a == order_b
+
+
+def test_general_industry_is_not_a_candidate() -> None:
+    dictionary = build_dictionary([], [], [], [])
+    article = {"id": 1, "title": "x", "industries": ["General"]}
+    candidates, merged = build_candidates(article, "", dictionary, TechniqueCatalog(names={}))
+    assert not [c for c in candidates if c.field == "industry"]
+    assert "general" not in merged["industry"]

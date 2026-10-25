@@ -8,13 +8,14 @@ Jalankan dari root repo: `uv run python -m tools.eval.tier1_eval {fetch,run,scor
 Langkah operator (SQL read-only; tidak ada yang dijalankan oleh tool ini terhadap dev):
 
   ssh nameless@172.25.1.77 'cd ~/Vareon-Intelligence && docker compose exec -T postgres \\
-      psql -U cti -d cti -At' < tools/eval/sample.sql > DIR/sample.jsonl
+      psql -q -U cti -d cti -At' < tools/eval/sample.sql > DIR/sample.jsonl
   ssh nameless@172.25.1.77 'cd ~/Vareon-Intelligence && docker compose exec -T postgres \\
-      psql -U cti -d cti -At' < tools/eval/reference.sql > DIR/reference.json
+      psql -q -U cti -d cti -At' < tools/eval/reference.sql > DIR/reference.json
 
-(Dua file karena satu `psql -At` menghasilkan satu aliran; sample.sql = satu baris per artikel,
-reference.sql = satu baris JSON.) Lalu: `fetch` (teks ke DIR/texts/<id>.txt, yang sudah ada
-dilewati, kegagalan dicatat di DIR/fetch_failures.jsonl), `run` (DIR/candidates.jsonl TANPA
+(`-q` wajib: tanpa itu psql mencetak tag `SET` sebagai baris pertama; reader juga melewati baris
+yang tidak diawali `{`. Dua file karena satu `psql -At` menghasilkan satu aliran; sample.sql =
+satu baris per artikel, reference.sql = satu baris JSON.) Lalu: `fetch` (teks ke
+DIR/texts/<id>.txt, yang sudah ada dilewati, kegagalan dicatat di DIR/fetch_failures.jsonl), `run` (DIR/candidates.jsonl TANPA
 sumber, supaya pelabel tidak bias; DIR/provenance.jsonl; DIR/merged.jsonl untuk cakupan),
 pelabelan (DIR/labels.jsonl: candidate_id, correct, quote, labeller), lalu `score`.
 
@@ -28,6 +29,7 @@ TTP, insiden = gabungan per nilai, sama dengan `merge_ttps` yang memenangkan per
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from collections import defaultdict
@@ -67,6 +69,18 @@ class Candidate:
             "field": self.field,
             "value": self.value,
         }
+
+
+def stratum_of(article: Mapping[str, Any]) -> int:
+    """Sama dengan stratum di sample.sql: 1 = punya TTP LLM, 2 = punya aktor, 3 = sisanya."""
+    if article.get("ttps"):
+        return 1
+    return 2 if article.get("actors") else 3
+
+
+def shuffle_key(candidate_id: str) -> str:
+    """Urutan stabil yang tidak bergantung pada sumber kandidat (hash dari id)."""
+    return hashlib.sha256(candidate_id.encode()).hexdigest()
 
 
 def field_of(candidate_id: str) -> str:
@@ -133,10 +147,10 @@ def build_candidates(
     for t in article.get("ttps") or []:
         add("ttp", t["id"], "llm")
 
-    tier1_inds = match_industries(title, text)
+    tier1_inds = [i for i in match_industries(title, text) if i != "General"]
     for ind in tier1_inds:
         add("industry", ind, "keyword")
-    llm_inds = list(article.get("industries") or [])
+    llm_inds = [i for i in (article.get("industries") or []) if i != "General"]
     for ind in llm_inds:
         add("industry", ind, "llm")
 
@@ -154,17 +168,22 @@ def build_candidates(
         if c.field != "industry":
             merged[c.field].add(c.value.lower())
     merged_inds, _ = merge_industries(llm_inds, tier1_inds)
-    merged["industry"] = {i.lower() for i in merged_inds}
+    merged["industry"] = {i.lower() for i in merged_inds if i != "General"}
     return candidates, merged
 
 
 # ---------------------------------------------------------------- I/O dan CLI
 
 
+def _json_lines(raw: str) -> list[str]:
+    """Hanya baris objek JSON; tag perintah psql (mis. `SET`) dan baris kosong dilewati."""
+    return [line for line in raw.splitlines() if line.lstrip().startswith("{")]
+
+
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
-    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+    return [json.loads(line) for line in _json_lines(path.read_text())]
 
 
 def _write_jsonl(path: Path, rows: Iterable[Mapping[str, Any]]) -> None:
@@ -206,7 +225,7 @@ def cmd_run(workdir: Path) -> None:
     from cti_core.attack_ttp import TechniqueCatalog
     from cti_enrich.tier1.dictionary import build_dictionary
 
-    ref = json.loads((workdir / "reference.json").read_text())
+    ref = json.loads(_json_lines((workdir / "reference.json").read_text())[0])
     dictionary = build_dictionary(
         [(g["name"], g["aliases"] or []) for g in ref["groups"]],
         [(s["name"], s["software_type"], s["aliases"] or []) for s in ref["software"]],
@@ -214,24 +233,32 @@ def cmd_run(workdir: Path) -> None:
         ref["suppressed"],
     )
     catalog = TechniqueCatalog(names=ref["techniques"])
-    cand_rows: list[dict[str, Any]] = []
-    prov_rows: list[dict[str, Any]] = []
+    all_candidates: list[Candidate] = []
+    articles = _read_jsonl(workdir / "sample.jsonl")
     merged_rows: list[dict[str, Any]] = []
     for article in _read_jsonl(workdir / "sample.jsonl"):
         path = workdir / "texts" / f"{article['id']}.txt"
         text = path.read_text() if path.exists() else ""
         candidates, merged = build_candidates(article, text, dictionary, catalog)
-        for c in candidates:
-            cand_rows.append(c.row())
-            prov_rows.append({"candidate_id": c.candidate_id, "sources": sorted(c.sources)})
+        all_candidates.extend(candidates)
         for field, values in merged.items():
             merged_rows.extend(
                 {"article_id": article["id"], "field": field, "value": v} for v in sorted(values)
             )
+    # Urut menurut hash id: urutan tulis tidak membocorkan sumber ke pelabel.
+    all_candidates.sort(key=lambda c: shuffle_key(c.candidate_id))
+    cand_rows = [c.row() for c in all_candidates]
+    prov_rows = [
+        {"candidate_id": c.candidate_id, "sources": sorted(c.sources)} for c in all_candidates
+    ]
     _write_jsonl(workdir / "candidates.jsonl", cand_rows)
     _write_jsonl(workdir / "provenance.jsonl", prov_rows)
     _write_jsonl(workdir / "merged.jsonl", merged_rows)
-    print(f"{len(cand_rows)} kandidat dari {len(_read_jsonl(workdir / 'sample.jsonl'))} artikel")
+    strata = [stratum_of(a) for a in articles]
+    realised = {k: strata.count(k) for k in (1, 2, 3)}
+    sources = len({a.get("source") for a in articles})
+    print(f"{len(cand_rows)} kandidat dari {len(articles)} artikel")
+    print(f"stratum (target 40/20/40): {realised}; source berbeda: {sources}")
 
 
 def _pct(num: int, den: int) -> str:
@@ -247,6 +274,8 @@ def cmd_score(workdir: Path) -> None:
     for (field, source), (ok, total) in sorted(score_precision(labels, provenance).items()):
         print(f"  {field:9} {source:11} {_pct(ok, total)}")
 
+    articles = _read_jsonl(workdir / "sample.jsonl")
+    stratum = {int(a["id"]): stratum_of(a) for a in articles}
     before: dict[str, set[int]] = defaultdict(set)
     for cid, sources in provenance.items():
         if sources & {"llm", "stored"}:
@@ -254,10 +283,22 @@ def cmd_score(workdir: Path) -> None:
     after: dict[str, set[int]] = defaultdict(set)
     for row in _read_jsonl(workdir / "merged.jsonl"):
         after[row["field"]].add(row["article_id"])
-    total_articles = len(_read_jsonl(workdir / "sample.jsonl"))
-    print(f"Cakupan artikel (dari {total_articles}) sebelum -> sesudah:")
-    for field in FIELDS:
-        print(f"  {field:9} {len(before[field])} -> {len(after[field])}")
+    print(
+        "Cakupan (artikel dengan >=1 nilai) sebelum -> sesudah. CATATAN: sampel BERSTRATA "
+        "(40 TTP / 20 aktor / 40 sisanya), bukan angka populasi dashboard; "
+        "industri tanpa 'General'."
+    )
+    groups: list[tuple[str, set[int]]] = [("semua", set(stratum))]
+    groups += [(f"stratum {k}", {a for a, v in stratum.items() if v == k}) for k in (1, 2, 3)]
+    for name, ids in groups:
+        cells = "  ".join(f"{f} {len(before[f] & ids)}->{len(after[f] & ids)}" for f in FIELDS)
+        print(f"  {name:10} (n={len(ids)}): {cells}")
+
+    texts = workdir / "texts"
+    no_text = sum(1 for a in articles if not (texts / f"{a['id']}.txt").exists())
+    labelled = {label.candidate_id for label in labels}
+    unlabelled = sum(1 for cid in provenance if cid not in labelled)
+    print(f"Artikel tanpa teks terambil: {no_text}; kandidat belum berlabel: {unlabelled}")
 
     agree, both = agreement_rate(labels)
     print(f"Kesepakatan subagent vs user: {_pct(agree, both)}")

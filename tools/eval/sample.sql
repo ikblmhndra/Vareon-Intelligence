@@ -1,5 +1,5 @@
 set default_transaction_read_only = on;
--- Sampel evaluasi Tier 1 (P4): 100 artikel diterima, bukan best practice, maksimal 6 per source.
+-- Sampel evaluasi Tier 1 (P4): 100 artikel diterima, bukan best practice, maksimal 6 per source PER stratum.
 -- Strata: 40 dengan TTP LLM, 20 dengan aktor (tanpa TTP), 40 sisanya. Satu baris JSON per artikel.
 -- Kolom `source` per-item (P4) TIDAK dipakai: dev masih 0.8.7 dan kolomnya belum ada.
 with c as (
@@ -20,7 +20,7 @@ with c as (
               when cardinality(actors) > 0 then 2 else 3 end as stratum
     from c
 ), capped as (
-  select s.*, row_number() over (partition by source order by stratum, r) as rn_src from s
+  select s.*, row_number() over (partition by source, stratum order by r) as rn_src from s
 ), ranked as (
   select capped.*, row_number() over (partition by stratum order by r) as rn
     from capped where rn_src <= 6
