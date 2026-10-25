@@ -34,7 +34,16 @@ tanpa LLM, aman diulang).
   baris "Related Threat Actor".
 - TTP keyword ikut tampil di baris TTP alert.
 - Industri dari keyword bisa memicu penanda OT.
-- Tagging tweet X Intel tidak berubah.
+- Tagging tweet X Intel tidak berubah (nama, urutan daftar, dan nama kata umum seperti "Akira" tetap ditandai tanpa kata konteks).
+
+### Catatan perilaku
+- Confidence artikel baru lebih sering naik: aktor Tier 1 dari teks penuh memberi bonus aktor, dan TTP explicit ikut dihitung (juga di
+  artikel Tier 0 dan follow-up story yang sebelumnya 0). Recompute confidence memakai aturan yang sama (TTP keyword tanpa bonus).
+- Aturan kata konteks berlaku untuk SETIAP nama satu kata yang hanya dikenal dari `threat_actor_groups`, bukan hanya kata umum: judul
+  "ShinyHunters members ..." tanpa kata konteks tidak lagi menandai aktor.
+- Perubahan `threat_actor_groups` / `ta_whitelist` dari UI baru berlaku ke artikel paling lambat 1 jam per proses worker (cache kamus).
+- Nama aktor lama berbentuk alias (mis. "Lazarus") tetap apa adanya; artikel baru memakai nama kanonik ATT&CK ("Lazarus group"), jadi
+  seri bisa terpecah sampai ada remap. Backfill tidak menambah nama kanonik bila alias yang sama sudah ada di artikel.
 
 ## [0.8.7] - 2026-10-25
 
