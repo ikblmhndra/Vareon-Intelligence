@@ -106,6 +106,7 @@ def _patch_preview(patch: str) -> str:
 class DeepDarkCti(BaseScraper):
     meta = ScraperMeta(
         id="deepdark_cti",
+        content_kind="vendor_research",
         source="deepdarkCTI GitHub Monitor",
         schedule=spread("0 */6 * * *", "deepdark_cti"),
         credential="github",

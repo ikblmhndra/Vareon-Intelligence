@@ -14,6 +14,7 @@ from cti_scraper.schedule import spread
 class Dfir(RSSScraper):
     meta = ScraperMeta(
         id="dfir",
+        content_kind="vendor_research",
         source="Dfir Report",
         schedule=spread("1 * * * *", "dfir"),
         tags=("migrated",),

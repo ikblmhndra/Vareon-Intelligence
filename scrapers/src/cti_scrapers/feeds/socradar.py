@@ -22,6 +22,7 @@ _CARD = '//*[@id="list"]/div[2]/div/div/div/div[2]/h5/strong/a'
 class Socradar(XPathScraper):
     meta = ScraperMeta(
         id="socradar",
+        content_kind="vendor_research",
         source="SOCRadar",
         schedule=spread("0 * * * *", "socradar"),
         runtime="browser",

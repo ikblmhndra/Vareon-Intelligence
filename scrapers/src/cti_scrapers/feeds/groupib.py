@@ -13,6 +13,7 @@ from cti_scraper.schedule import spread
 class Groupib(RSSScraper):
     meta = ScraperMeta(
         id="groupib",
+        content_kind="vendor_research",
         source="Group Ib",
         schedule=spread("15 * * * *", "groupib"),
         max_items=10,

@@ -8,6 +8,7 @@ from cti_scraper.schedule import spread
 class CloudVulnDB(RSSScraper):
     meta = ScraperMeta(
         id="cloud_vuln_db",
+        content_kind="advisory",
         source="cloudvulndb.org",
         schedule=spread("*/15 * * * *", "cloud_vuln_db"),
         tags=("Cloud Vulnerability Database",),

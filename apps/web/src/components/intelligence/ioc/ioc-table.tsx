@@ -5,11 +5,14 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/lib/api/client";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SimplePager } from "@/components/pager";
+import { Checkbox } from "@/components/ui/checkbox";
+import { defang } from "@/lib/intelligence/defang";
 import { cn } from "@/lib/utils";
 import { iocTypeStyle } from "@/lib/intelligence/ioc-style";
 import { IocActionabilityChip, IocConfidenceChip, IocTypeBadge } from "@/components/intelligence/ioc/ioc-badges";
@@ -21,12 +24,10 @@ const IOC_TYPES = Object.keys({
   ip: 0,
   domain: 0,
   url: 0,
-  url_with_path: 0,
   email: 0,
   sha256: 0,
   sha1: 0,
   md5: 0,
-  cve: 0,
 });
 const ACTIONABILITY_OPTIONS = ["block_now", "investigate", "monitor", "archive"];
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
@@ -42,6 +43,7 @@ export function IocTable({ onSelect }: { onSelect: (target: IocTarget) => void }
   const [sortBy, setSortBy] = useState("");
   const [pageSize, setPageSize] = useState(50);
   const [page, setPage] = useState(1);
+  const [includeSuppressed, setIncludeSuppressed] = useState(false);
   const [feedbackPending, setFeedbackPending] = useState<number | null>(null);
 
   const statsQuery = useQuery({
@@ -54,7 +56,7 @@ export function IocTable({ onSelect }: { onSelect: (target: IocTarget) => void }
   });
 
   const listQuery = useQuery({
-    queryKey: ["intelligence", "ioc-list", type, search, actionability, sortBy, pageSize, page],
+    queryKey: ["intelligence", "ioc-list", type, search, actionability, sortBy, pageSize, page, includeSuppressed],
     queryFn: async () => {
       const { data, error } = await api.GET("/api/iocs", {
         params: {
@@ -63,6 +65,7 @@ export function IocTable({ onSelect }: { onSelect: (target: IocTarget) => void }
             search: search || undefined,
             sort_by: sortBy || undefined,
             actionability: actionability || undefined,
+            include_suppressed: includeSuppressed || undefined,
             page,
             page_size: pageSize,
           },
@@ -227,6 +230,16 @@ export function IocTable({ onSelect }: { onSelect: (target: IocTarget) => void }
             </SelectContent>
           </Select>
         </div>
+        <label className="flex items-center gap-1.5 pb-1.5 text-sm font-medium text-muted-foreground">
+          <Checkbox
+            checked={includeSuppressed}
+            onCheckedChange={(v) => {
+              setIncludeSuppressed(v === true);
+              setPage(1);
+            }}
+          />
+          Include suppressed
+        </label>
         <span className="ml-auto font-mono text-xs text-muted-foreground">{total} IOCs</span>
       </div>
 
@@ -261,8 +274,17 @@ export function IocTable({ onSelect }: { onSelect: (target: IocTarget) => void }
                   <TableCell>
                     <IocTypeBadge type={ioc.type} />
                   </TableCell>
-                  <TableCell className="max-w-[320px] truncate font-code text-xs text-foreground" title={ioc.value}>
-                    {ioc.value}
+                  <TableCell className="font-code text-xs text-foreground">
+                    <div className="flex items-center gap-2">
+                      <span className="max-w-[320px] truncate" title={defang(ioc.type, ioc.value)}>
+                        {defang(ioc.type, ioc.value)}
+                      </span>
+                      {ioc.auto_suppressed && (
+                        <Badge variant="outline" className="shrink-0 text-xs" title={ioc.suppression_reason ?? undefined}>
+                          Suppressed
+                        </Badge>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell className="text-center">
                     <IocConfidenceChip score={ioc.confidence_score} />

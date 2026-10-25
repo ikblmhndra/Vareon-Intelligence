@@ -138,10 +138,20 @@ tweet would move `since_id` past tweets the alert filters rejected.
 **Enrichment** (`cti_enrich.pipeline.run_pipeline`):
 
 1. `classify(title)`. If `related_cyber` is false, write a light `rejected_articles` row and return.
+   Sources whose `ScraperMeta.content_kind` is structured (`cisa_kev`, `exploitdb`, `cis`; `default_relevance="always"`)
+   skip classify and TTP extraction.
 2. `fetch_text` → `summarize` → `extract_iocs` and the C2 check.
 3. If `security_tech_best_practice`, skip TTPs and scoring: persist and alert on the `best_practice` topic.
 4. Otherwise `extract_ttps` (normalised against the ATT&CK catalog), `score`, `routing.route`.
-5. `persist` upserts `articles` by `url_hash` and writes countries, industries, threat actors, TTPs and IOCs.
+5. `persist` upserts `articles` by `url_hash` and writes countries, industries, threat actors, TTPs, IOCs and
+   `article_cves` (CVE ids no longer go into `iocs`). IOC values are stored in canonical form
+   (`cti_core.ioc.canonical.canonical`: refang, lowercase; URL path and query keep their case) and the web shows them defanged.
+   An IOC that matches the infrastructure allowlist (a curated domain seed; a URL with a path never matches) is not
+   dropped but flagged `auto_suppressed` with reason `allowlist:<type>:<entry> (infrastructure-abuse)`; suppressed
+   IOCs stay out of STIX export, stats, campaigns, recap counts and the FP queue, and `GET /api/iocs` hides them
+   unless `include_suppressed=true`. Article confidence is the source's Admiralty grade (a default per
+   `content_kind` unless an analyst set one, `origin` on `source_reliability`) plus a TTP/actor bonus, not the LLM
+   self-rating.
    It also deletes any `rejected_articles` row for the same URL.
 6. **Commit**, track CVE mentions (new articles only), then `route_alerts` sends one Telegram message per
    topic.
@@ -423,6 +433,7 @@ sync_session`), and **async asyncpg** in FastAPI (`deps.get_db`). The schema has
 | `articles` (+ `article_countries`, `_industries`, `_threat_actors`, `_ttps`) | `url_hash` (unique) | `enrich.article` (`ArticleRepo.upsert`) | API, reports, PIR alerts |
 | `rejected_articles` | `url_hash` | `enrich.article` (not cyber, or final failure with `failure_kind`) | API (Filtered Articles: restore for rejects, admin replay for failures); `enrich.auto_replay` (every 10 min; kinds `transient`/`config`/`json`, max 3 attempts, backoff 30 min x 2^count, tracked in `auto_replay_count` / `last_auto_replay_at`) |
 | `llm_calls` | `id` | LLM client (one row per call: task, model, prompt version, tokens, latency, status `ok`/`empty`/`error`; purged after 90 days by `llm.purge_calls`) | API (`/data-health` LLM block) |
+| `article_cves` | `(article_id, cve_id)` | `enrich.article` persist (CVEs no longer live in `iocs`) | API, campaigns |
 | `iocs` (+ sources, tags, actors, feedback) | `(type, value)` | `enrich.article`, IOC feed sink, `ioc.enrich_pending` (the `enrichment` column) | API, `ioc.decay_sweep` |
 | `techstack_entries` | `(name, client_id)` | API (techstack, catalog) | `new_cve` (`reference_data`), promotion, API |
 | `cve_tracker` (+ `cve_references`, `cve_affected`, ...) | `(cve_id, client_id)` | `_cve_sink`, `_promote_live`, `cve.enrichment_sweep` | API (CVE tab, dashboards, export) |

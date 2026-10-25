@@ -19,6 +19,7 @@ from cti_scraper.schedule import spread
 class Intel471(RSSScraper):
     meta = ScraperMeta(
         id="intel471",
+        content_kind="vendor_research",
         source="Intel471",
         schedule=spread("0 * * * *", "intel471"),
         max_items=10,

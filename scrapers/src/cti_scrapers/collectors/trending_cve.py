@@ -36,6 +36,7 @@ _WINDOW = datetime.timedelta(minutes=30)
 class TrendingCve(BaseScraper):
     meta = ScraperMeta(
         id="trending_cve",
+        content_kind="social",
         source="X/Twitter CVE Trending",
         schedule="*/15 * * * *",
         rate_limit="10/minute",

@@ -10,6 +10,7 @@ from cti_scraper.families.library_advisories import LibraryAdvisoryScraper
 class TechstackPypi(LibraryAdvisoryScraper):
     meta = ScraperMeta(
         id="techstack_pypi",
+        content_kind="advisory",
         source="TechStack PyPI Advisory",
         schedule="48 * * * *",
         rate_limit="300/minute",

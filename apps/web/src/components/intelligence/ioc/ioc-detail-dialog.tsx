@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { IocActionabilityChip, IocConfidenceChip, IocTypeBadge } from "@/components/intelligence/ioc/ioc-badges";
 import type { IocDetail, IocTaLink, IocTaLinksResponse } from "@/lib/api/loose-types";
+import { defang } from "@/lib/intelligence/defang";
 import { useCan } from "@/lib/auth/permissions";
 
 export interface IocTarget {
@@ -142,7 +143,7 @@ export function IocDetailDialog({ target, onClose, onDeleted }: IocDetailDialogP
             <div className="font-mono text-xs">
               <div className="mb-3 flex flex-wrap items-center gap-2.5">
                 <IocTypeBadge type={ioc.type} />
-                <span className="font-code text-xs break-all text-foreground">{ioc.value}</span>
+                <span className="font-code text-xs break-all text-foreground">{defang(ioc.type, ioc.value)}</span>
                 <IocConfidenceChip score={ioc.confidence_score} />
                 <IocActionabilityChip label={ioc.actionability_label} />
                 {can("manage_ioc") && (
@@ -282,7 +283,7 @@ export function IocDetailDialog({ target, onClose, onDeleted }: IocDetailDialogP
         open={confirmDelete}
         onOpenChange={setConfirmDelete}
         title="Delete this IOC?"
-        description={ioc ? `${ioc.type}: ${ioc.value}` : undefined}
+        description={ioc ? `${ioc.type}: ${defang(ioc.type, ioc.value)}` : undefined}
         warning="This cannot be undone."
         confirmLabel="Delete"
         onConfirm={() => void doDelete()}

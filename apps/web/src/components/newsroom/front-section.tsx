@@ -5,6 +5,7 @@ import type { NewsroomFilters } from "@/lib/newsroom/filters";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatPostedOn } from "@/lib/newsroom/dates";
+import { GradeChip } from "@/components/newsroom/grade-chip";
 import { useArticlesQuery } from "@/components/newsroom/use-articles";
 import { useArticleMatchers } from "@/components/newsroom/rubric-queries";
 
@@ -60,7 +61,7 @@ function Kicker({ a, match }: { a: Article; match: Matchers }) {
       {a.confirmed_incident && <Badge variant="destructive">Insiden</Badge>}
       {m.watchlist && <Badge variant="outline">Watchlist</Badge>}
       {m.techstack && <Badge variant="outline">Tech stack</Badge>}
-      {a.confidence_score != null && <span>Confidence {a.confidence_score}</span>}
+      <GradeChip a={a} />
       {a.news_type && <span>{a.news_type}</span>}
       <span>{formatPostedOn(a.posted_on)}</span>
     </p>

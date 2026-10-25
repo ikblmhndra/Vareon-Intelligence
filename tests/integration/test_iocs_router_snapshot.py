@@ -16,6 +16,7 @@ from collections.abc import Callable
 import pytest
 from cti_core.db.repositories.ioc import AsyncIOCRepo
 from httpx import AsyncClient
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from syrupy.assertion import SnapshotAssertion
 from syrupy.matchers import path_type
@@ -103,6 +104,8 @@ async def test_ioc_allowlist_list_empty(
     auth_header: Callable[..., dict[str, str]],
     snapshot: SnapshotAssertion,
 ) -> None:
+    # Skema test sudah di head: kosongkan seed migrasi 0.8.6 supaya daftar benar-benar kosong.
+    await api_session.execute(text("DELETE FROM ioc_allowlist_entries"))
     resp = await api_client.get("/api/iocs/allowlist", headers=auth_header())
     assert resp.status_code == 200
     assert resp.json() == snapshot

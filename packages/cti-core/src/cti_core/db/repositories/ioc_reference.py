@@ -18,11 +18,13 @@ inti nambah allowlist entry."""
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
+from cti_core.db.models.ioc import IOC
 from cti_core.db.models.ioc_reference import IocAllowlistEntry, ThreatFeedEntry
+from cti_core.ioc.allowlist import allowlist_reason
 
 _VALID_ALLOWLIST_TYPES = frozenset({"url_domain", "email_domain", "ip"})
 
@@ -82,12 +84,20 @@ class AsyncIocAllowlistRepo:
         return entry
 
     async def delete(self, entry_id: int) -> bool:
+        """Hapus entri DAN batalkan tanda `auto_suppressed` yang dibuatnya (sejak 0.8.6 allowlist
+        menandai, bukan membuang): hanya IOC yang alasannya persis entri ini, jadi alasan lain
+        (entri allowlist lain, FP analis) tidak tersentuh."""
         result = await self.session.execute(
             select(IocAllowlistEntry).where(IocAllowlistEntry.id == entry_id)
         )
         entry = result.scalar_one_or_none()
         if entry is None:
             return False
+        await self.session.execute(
+            update(IOC)
+            .where(IOC.suppression_reason == allowlist_reason(entry.type, entry.value))
+            .values(auto_suppressed=False, suppression_reason=None)
+        )
         await self.session.delete(entry)
         await self.session.flush()
         return True

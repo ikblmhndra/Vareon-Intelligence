@@ -27,6 +27,7 @@ from cti_core.db.models.ioc import IOC
 from cti_core.db.repositories.auth import AsyncAuditLogRepo
 from cti_core.db.repositories.ioc import AsyncIOCRepo
 from cti_core.db.repositories.ioc_reference import AsyncIocAllowlistRepo
+from cti_core.ioc.canonical import canonical
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -114,6 +115,7 @@ async def list_iocs(
     page_size: int = Query(50, ge=1, le=200),
     sort_by: str | None = None,
     actionability: str | None = None,
+    include_suppressed: bool = False,
     session: AsyncSession = Depends(get_db),
     _user: AuthedUser = Depends(require_auth),
 ) -> dict[str, object]:
@@ -121,9 +123,12 @@ async def list_iocs(
         page=page,
         page_size=page_size,
         ioc_type=ioc_type,
-        search=search,
+        # nilai tersimpan kanonik: `evil[.]com` yang di-paste tetap ketemu (tanpa tipe: aturan URL,
+        # yang me-refang host dan membiarkan sisanya)
+        search=canonical(ioc_type or "url", search) if search else search,
         sort_by=sort_by,
         actionability=actionability,
+        include_suppressed=include_suppressed,
     )
     return {
         "iocs": [_serialize_summary(i) for i in iocs],
@@ -263,7 +268,7 @@ async def add_ioc_threat_actors(
     user: AuthedUser = Depends(require_auth),
 ) -> dict[str, bool]:
     repo = AsyncIOCRepo(session)
-    ioc = await repo.get(type=ioc_type, value=value)
+    ioc = await repo.get(type=ioc_type, value=canonical(ioc_type, value))
     if ioc is None:
         raise HTTPException(status_code=404, detail="IOC not found")
     await repo.add_threat_actors(ioc, body.threat_actors)
@@ -291,7 +296,7 @@ async def remove_ioc_threat_actor(
     user: AuthedUser = Depends(require_auth),
 ) -> dict[str, bool]:
     repo = AsyncIOCRepo(session)
-    ioc = await repo.get(type=ioc_type, value=value)
+    ioc = await repo.get(type=ioc_type, value=canonical(ioc_type, value))
     if ioc is None:
         raise HTTPException(status_code=404, detail="IOC not found")
     ok = await repo.remove_threat_actor(ioc, actor)
@@ -401,7 +406,9 @@ async def ioc_ta_links(
     session: AsyncSession = Depends(get_db),
     _user: AuthedUser = Depends(require_auth),
 ) -> dict[str, object]:
-    result = await ioc_ta_links_service.get_ioc_ta_links(session, ioc_type, value)
+    result = await ioc_ta_links_service.get_ioc_ta_links(
+        session, ioc_type, canonical(ioc_type, value)
+    )
     if result is None:
         raise HTTPException(status_code=404, detail="IOC not found")
     return result
@@ -414,7 +421,7 @@ async def ioc_detail(
     session: AsyncSession = Depends(get_db),
     _user: AuthedUser = Depends(require_auth),
 ) -> dict[str, object]:
-    ioc = await AsyncIOCRepo(session).get(type=ioc_type, value=value)
+    ioc = await AsyncIOCRepo(session).get(type=ioc_type, value=canonical(ioc_type, value))
     if ioc is None:
         raise HTTPException(status_code=404, detail="IOC not found")
     return _serialize_detail(ioc)
@@ -432,7 +439,7 @@ async def add_ioc_tags(
     user: AuthedUser = Depends(require_auth),
 ) -> dict[str, bool]:
     repo = AsyncIOCRepo(session)
-    ioc = await repo.get(type=ioc_type, value=value)
+    ioc = await repo.get(type=ioc_type, value=canonical(ioc_type, value))
     if ioc is None:
         raise HTTPException(status_code=404, detail="IOC not found")
     await repo.add_tags(ioc, body.tags)

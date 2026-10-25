@@ -14,6 +14,7 @@ from cti_scraper.schedule import spread
 class Darkreading(RSSScraper):
     meta = ScraperMeta(
         id="darkreading",
+        content_kind="news",
         source="Dark Reading",
         schedule=spread("30 * * * *", "darkreading"),
         tags=("migrated",),

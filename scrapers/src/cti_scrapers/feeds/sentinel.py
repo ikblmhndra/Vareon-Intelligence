@@ -41,6 +41,7 @@ _ALLOWED_CATEGORIES = frozenset(
 class Sentinel(RSSScraper):
     meta = ScraperMeta(
         id="sentinel",
+        content_kind="vendor_research",
         source="SentinelOne Labs",
         schedule=spread("30 * * * *", "sentinel"),
         tags=("migrated",),

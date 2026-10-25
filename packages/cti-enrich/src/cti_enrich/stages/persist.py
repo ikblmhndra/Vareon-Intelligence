@@ -32,13 +32,19 @@ from __future__ import annotations
 import datetime
 from typing import TYPE_CHECKING
 
+from cti_core.confidence import compute_score
 from cti_core.db.models.article import RejectedArticle
 from cti_core.db.repositories.article import ArticleRepo, RejectedArticleRepo
+from cti_core.db.repositories.article_cve import ArticleCveRepo
 from cti_core.db.repositories.ioc import IOCRepo
+from cti_core.db.repositories.source_reliability import SourceReliabilityRepo
+from cti_core.ioc.allowlist import allowlist_match
+from cti_core.ioc.canonical import canonical
 from sqlalchemy import delete
 
 from cti_enrich.countries import country_code
 from cti_enrich.stages.classify import resolve_industries
+from cti_enrich.stages.extract_iocs import _get_allowlist
 from cti_enrich.stages.extract_ttps import as_normalized
 
 if TYPE_CHECKING:
@@ -59,7 +65,6 @@ _IOC_TYPE_MAP = {
     "sha256": "sha256",
     "sha1": "sha1",
     "md5": "md5",
-    "cves": "cve",
 }
 
 
@@ -93,6 +98,23 @@ def _audit_fields(classify_result: ClassifyResult) -> dict[str, dict[str, object
     return {"raw_enrichment": {"classify": classify_result.audit}} if classify_result.audit else {}
 
 
+def _confidence_score(
+    session: Session,
+    source: str,
+    ttp_result: TtpResult | None,
+    routing_result: RoutingResult,
+) -> int:
+    """Skor deterministik: grade sumber (Admiralty, case-insensitive) + bonus TTP/aktor. Nilai
+    self-rating LLM tetap di `raw_enrichment["classify"]`, tidak dipakai di sini."""
+    rating = SourceReliabilityRepo(session).get_by_name_ci(source) if source else None
+    return compute_score(
+        rating.reliability_grade if rating else None,
+        rating.credibility_code if rating else None,
+        len(ttp_result.techniques) if ttp_result else 0,
+        len(routing_result.threat_actors),
+    )
+
+
 def persist(
     *,
     session: Session,
@@ -116,9 +138,7 @@ def persist(
         scraper_id=scraper_id,
         posted_on=posted_on,
         news_type=routing_result.news_type,
-        confidence_score=round(classify_result.confidence * 100)
-        if classify_result.confidence
-        else None,
+        confidence_score=_confidence_score(session, source, ttp_result, routing_result),
         confirmed_incident=bool(classify_result.confirmed_incident),
         incident_confidence=(
             round(classify_result.incident_confidence * 100)
@@ -145,18 +165,24 @@ def persist(
     )
 
     ioc_repo = IOCRepo(session)
+    allowlist = _get_allowlist(session)
     for key, values in ioc_data.items():
         ioc_type = _IOC_TYPE_MAP.get(key)
         if not ioc_type:
             continue
         for value in values:
+            canon = canonical(ioc_type, value)
             ioc_repo.upsert(
                 type=ioc_type,
-                value=value,
+                value=canon,
                 source_url=url,
                 source_name=source,
                 article_id=article.id,
+                suppression_reason=allowlist_match(ioc_type, canon, allowlist),
             )
+
+    # CVE bukan IOC: relasi artikel -> CVE ada di `article_cves` (insert-ignore, idempotent).
+    ArticleCveRepo(session).add_many(article.id, ioc_data.get("cves", []), title)
 
     # Artikel ini sekarang DITERIMA -- buang catatan "ditolak"/"gagal di-enrich"
     # (`rejected_articles`) untuk URL yang sama kalau ada. Tanpa ini artikel yang

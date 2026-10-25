@@ -167,6 +167,26 @@ async def test_recompute_confidence_all(
     assert resp.json() == snapshot
 
 
+async def test_recompute_confidence_all_commits_each_batch(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Endpoint ini dipanggil operator di prod (catatan upgrade 0.8.6): tidak boleh memegang lock
+    # baris seluruh tabel artikel sepanjang recompute.
+    seen: list[dict[str, object]] = []
+
+    async def fake(session: AsyncSession, **kwargs: object) -> dict[str, int]:
+        seen.append(kwargs)
+        return {"updated": 0}
+
+    monkeypatch.setattr("cti_api.services.confidence.recompute_all_confidence", fake)
+    resp = await api_client.post("/api/articles/confidence/recompute", headers=auth_header())
+    assert resp.status_code == 200
+    assert seen == [{"commit_each_batch": True}]
+
+
 async def test_get_article_by_id(
     api_client: AsyncClient,
     api_session: AsyncSession,

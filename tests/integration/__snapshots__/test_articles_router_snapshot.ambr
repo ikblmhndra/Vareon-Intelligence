@@ -81,8 +81,10 @@
   dict({
     'actor_countries': list([
     ]),
+    'admiralty_code': None,
     'confidence_score': None,
     'confirmed_incident': False,
+    'grade_origin': None,
     'id': int,
     'impacted_industries': list([
     ]),
@@ -112,8 +114,10 @@
       dict({
         'actor_countries': list([
         ]),
+        'admiralty_code': None,
         'confidence_score': None,
         'confirmed_incident': False,
+        'grade_origin': None,
         'id': int,
         'impacted_industries': list([
         ]),
@@ -148,8 +152,10 @@
       dict({
         'actor_countries': list([
         ]),
+        'admiralty_code': None,
         'confidence_score': None,
         'confirmed_incident': False,
+        'grade_origin': None,
         'id': int,
         'impacted_industries': list([
         ]),

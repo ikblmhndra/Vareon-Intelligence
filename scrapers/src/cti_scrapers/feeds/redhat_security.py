@@ -8,6 +8,7 @@ from cti_scraper.schedule import spread
 class RedHatSecurity(RSSScraper):
     meta = ScraperMeta(
         id="redhat_security",
+        content_kind="vendor_research",
         source="redhat.com",
         schedule=spread("*/15 * * * *", "redhat_security"),
         tags=("Red Hat Security Blog",),

@@ -17,6 +17,7 @@ from cti_scraper.schedule import spread
 class Google(RSSScraper):
     meta = ScraperMeta(
         id="google",
+        content_kind="vendor_research",
         source="Google Threat Group",
         schedule=spread("30 * * * *", "google"),
         enabled=False,  # waiver 10.D, lihat docstring

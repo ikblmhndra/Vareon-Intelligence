@@ -13,11 +13,10 @@ Orkestrasi SEKUENSIAL (bukan `asyncio.gather` per-cluster kayak legacy)
 -- satu `AsyncSession` gak aman dipakai concurrent, constraint yang
 udah didokumentasikan berkali-kali sesi ini.
 
-`iocs`/`cve_ids` per campaign: SATU sumber (`AsyncIOCRepo.
-list_by_article_ids`, IOC apa pun termasuk `type="cve"`) -- gantiin DUA
-sumber legacy (koleksi `iocs` + array `article.cves` terpisah, keduanya
-hasil regex CVE yang sama persis dari `iocExtractor.py`). Lihat
-docstring method itu."""
+`iocs` per campaign dari `AsyncIOCRepo.list_by_article_ids` (IOC yang tersuppress allowlist
+tidak ikut), `cve_ids` dari tabel `article_cves` (`AsyncArticleCveRepo.cve_ids_by_article`):
+sejak 0.8.6 CVE bukan lagi IOC bertipe `cve`. Legacy punya dua sumber CVE (koleksi `iocs` +
+array `article.cves`, keduanya hasil regex yang sama dari `iocExtractor.py`)."""
 
 from __future__ import annotations
 
@@ -29,6 +28,7 @@ from typing import Any
 import structlog
 from cti_core.db.models.article import Article
 from cti_core.db.repositories.article import AsyncArticleRepo, all_country_codes
+from cti_core.db.repositories.article_cve import AsyncArticleCveRepo
 from cti_core.db.repositories.ioc import AsyncIOCRepo
 from cti_core.db.repositories.pir import AsyncPIRRepo
 from cti_core.db.repositories.source_reliability import AsyncSourceReliabilityRepo
@@ -89,7 +89,9 @@ async def get_recent_campaigns(
     ioc_rows = await AsyncIOCRepo(session).list_by_article_ids(article_ids)
     ioc_map = _build_ioc_map(ioc_rows, set(article_ids))
 
-    campaigns = await asyncio.to_thread(_build_campaign_groups, raw, ioc_map, min_size)
+    cve_map = await AsyncArticleCveRepo(session).cve_ids_by_article(article_ids)
+
+    campaigns = await asyncio.to_thread(_build_campaign_groups, raw, ioc_map, cve_map, min_size)
     if not campaigns:
         return []
 
@@ -172,7 +174,10 @@ def _build_ioc_map(ioc_rows: list[Any], article_ids: set[int]) -> dict[int, list
 
 
 def _build_campaign_groups(
-    articles: list[dict[str, Any]], ioc_map: dict[int, list[dict[str, Any]]], min_size: int
+    articles: list[dict[str, Any]],
+    ioc_map: dict[int, list[dict[str, Any]]],
+    cve_map: dict[int, set[str]],
+    min_size: int,
 ) -> list[dict[str, Any]]:
     """CPU-bound murni (TF-IDF union-find + agregasi) -- dijalanin lewat
     `asyncio.to_thread`. `_articles_raw` (dilampirin ke tiap campaign,
@@ -298,12 +303,11 @@ def _build_campaign_groups(
                 if name and name not in tech_set:
                     tech_set.add(name)
                     attack_techniques.append(name)
+            for cve in sorted(cve_map.get(aid, ())):
+                if cve not in cve_set:
+                    cve_set.add(cve)
+                    cve_ids.append(cve)
             for ioc in ioc_map.get(aid, []):
-                if ioc["type"] == "cve":
-                    if ioc["value"] not in cve_set:
-                        cve_set.add(ioc["value"])
-                        cve_ids.append(ioc["value"])
-                    continue
                 key = f"{ioc['type']}:{ioc['value']}"
                 if key not in ioc_seen:
                     ioc_seen.add(key)

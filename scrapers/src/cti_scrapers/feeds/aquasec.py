@@ -13,6 +13,7 @@ from cti_scraper.schedule import spread
 class Aquasec(RSSScraper):
     meta = ScraperMeta(
         id="aquasec",
+        content_kind="vendor_research",
         source="Aquasec",
         schedule=spread("45 * * * *", "aquasec"),
         tags=("migrated",),

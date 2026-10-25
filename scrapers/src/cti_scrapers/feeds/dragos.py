@@ -18,6 +18,7 @@ _TITLE, _LINK = link_card_xpaths("contains(@href, '/blog/')")
 class Dragos(XPathScraper):
     meta = ScraperMeta(
         id="dragos",
+        content_kind="vendor_research",
         source="Dragos",
         schedule=spread("1 * * * *", "dragos"),
         runtime="browser",

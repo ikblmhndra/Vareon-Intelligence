@@ -37,6 +37,8 @@ _URL_RE = re.compile(r"https:\/\/[a-zA-Z0-9\-._~:\/?#\[\]@!$&'()*+,;=%]+")
 class CisaKev(BaseScraper):
     meta = ScraperMeta(
         id="cisa_kev",
+        content_kind="kev",
+        default_relevance="always",
         source="CISA KEV",
         schedule="*/30 * * * *",
         max_items=1000,  # snapshot katalog penuh, difilter tanggal di dalam fetch()

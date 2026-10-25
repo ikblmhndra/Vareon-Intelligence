@@ -14,6 +14,7 @@ from cti_scraper.schedule import spread
 class Landth(RSSScraper):
     meta = ScraperMeta(
         id="landth",
+        content_kind="vendor_research",
         source="Depi (dulu L&H)",
         schedule=spread("16 * * * *", "landth"),
         tags=("migrated",),

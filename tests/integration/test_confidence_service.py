@@ -84,7 +84,7 @@ async def test_compute_article_confidence_no_rating_defaults_50(
     assert score == 50
 
 
-async def test_compute_and_store_article_confidence_writes_via_overrides(
+async def test_compute_and_store_article_confidence_writes_column(
     async_db_session: AsyncSession,
 ) -> None:
     article_repo = AsyncArticleRepo(async_db_session)
@@ -97,11 +97,9 @@ async def test_compute_and_store_article_confidence_writes_via_overrides(
 
     fetched = await article_repo.get_by_id(article.id)
     assert fetched is not None
-    # kolom mesin `confidence_score` TIDAK disentuh -- yang keisi cuma
-    # `overrides` (docstring `Article.overrides` nyebut field ini sebagai
-    # contoh field yang dilacak lewat overrides)
-    assert fetched.confidence_score is None
-    assert fetched.overrides.get("confidence_score") == 50
+    # sejak 0.8.6 kolom mesin yang ditulis; `overrides` (koreksi analis) tidak disentuh
+    assert fetched.confidence_score == 50
+    assert "confidence_score" not in fetched.overrides
     merged = article_repo.to_dict(fetched)
     assert merged["confidence_score"] == 50
 
@@ -135,6 +133,26 @@ async def test_recompute_all_confidence_updates_every_article(
     assert fetched1 is not None and fetched2 is not None
     assert article_repo.to_dict(fetched1)["confidence_score"] == 100
     assert article_repo.to_dict(fetched2)["confidence_score"] == 50
+
+
+async def test_recompute_all_confidence_commits_each_batch(api_session: AsyncSession) -> None:
+    # Recompute penuh di tabel besar tidak boleh memegang lock baris sepanjang run: tiap batch
+    # di-commit sendiri bila `commit_each_batch=True` (dipakai task worker).
+    article_repo = AsyncArticleRepo(api_session)
+    for i in range(3):
+        await article_repo.upsert(url=f"https://example.com/cb{i}", title=f"C{i}", source="S")
+    commits = 0
+    real_commit = api_session.commit
+
+    async def counting_commit() -> None:
+        nonlocal commits
+        commits += 1
+        await real_commit()
+
+    api_session.commit = counting_commit  # type: ignore[method-assign]
+    result = await svc.recompute_all_confidence(api_session, batch_size=1, commit_each_batch=True)
+    assert result["updated"] >= 3
+    assert commits >= 3
 
 
 async def test_recompute_ioc_confidence_and_actionability_persists_all_fields(

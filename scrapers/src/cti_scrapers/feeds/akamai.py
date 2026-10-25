@@ -17,6 +17,7 @@ from cti_scraper.schedule import spread
 class Akamai(RSSScraper):
     meta = ScraperMeta(
         id="akamai",
+        content_kind="vendor_research",
         source="Akamai",
         schedule=spread("31 * * * *", "akamai"),
         tags=("migrated",),

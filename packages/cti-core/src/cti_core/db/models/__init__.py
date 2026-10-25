@@ -10,6 +10,7 @@ from cti_core.db.models.article import (
     ArticleTTP,
     RejectedArticle,
 )
+from cti_core.db.models.article_cve import ArticleCve
 from cti_core.db.models.attack import (
     AttackGroup,
     AttackMitigation,
@@ -64,6 +65,7 @@ __all__ = [
     "IOC",
     "Article",
     "ArticleCountry",
+    "ArticleCve",
     "ArticleIndustry",
     "ArticleTTP",
     "ArticleThreatActor",

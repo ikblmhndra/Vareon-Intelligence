@@ -18,6 +18,8 @@ _TITLE, _LINK = link_card_xpaths("contains(@href, '/advisory/')")
 class Cis(XPathScraper):
     meta = ScraperMeta(
         id="cis",
+        content_kind="advisory",
+        default_relevance="always",
         source="Cis",
         schedule=spread("30 * * * *", "cis"),
         runtime="browser",

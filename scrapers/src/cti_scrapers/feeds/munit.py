@@ -14,6 +14,7 @@ from cti_scraper.schedule import spread
 class Munit(RSSScraper):
     meta = ScraperMeta(
         id="munit",
+        content_kind="vendor_research",
         source="Munit",
         schedule=spread("45 * * * *", "munit"),
         tags=("migrated",),

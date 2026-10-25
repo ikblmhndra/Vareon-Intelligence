@@ -72,7 +72,6 @@ function exportIocsCsv(a: Article) {
     ips: "ip",
     domains: "domain",
     urls: "url",
-    urls_with_path: "url_with_path",
     emails: "email",
     sha256: "sha256",
     sha1: "sha1",

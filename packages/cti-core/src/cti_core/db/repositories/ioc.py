@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from cti_core.db.models.ioc import IOC, IOCFeedback, IOCSource, IOCTag, IOCThreatActor
 
 _VALID_VERDICTS = frozenset({"tp", "fp"})
-_VALID_TYPES = frozenset({"ip", "url", "domain", "email", "sha256", "sha1", "md5", "cve"})
+_VALID_TYPES = frozenset({"ip", "url", "domain", "email", "sha256", "sha1", "md5"})
 
 
 class IOCRepo:
@@ -32,6 +32,7 @@ class IOCRepo:
         source_name: str,
         context: str | None = None,
         article_id: int | None = None,
+        suppression_reason: str | None = None,
     ) -> IOC:
         existing = self.session.execute(
             select(IOC).where(IOC.type == type, IOC.value == value)
@@ -45,6 +46,10 @@ class IOCRepo:
             ioc = existing
             ioc.last_seen_at = now
             ioc.seen_count += 1
+        # Baris yang SUDAH tersuppress tidak ditimpa alasannya (jejak pertama dipertahankan).
+        if suppression_reason is not None and not ioc.auto_suppressed:
+            ioc.auto_suppressed = True
+            ioc.suppression_reason = suppression_reason
 
         ioc.sources.append(
             IOCSource(
@@ -90,6 +95,7 @@ class AsyncIOCRepo:
         source_name: str,
         context: str | None = None,
         article_id: int | None = None,
+        suppression_reason: str | None = None,
     ) -> IOC:
         result = await self.session.execute(select(IOC).where(IOC.type == type, IOC.value == value))
         existing = result.scalar_one_or_none()
@@ -102,6 +108,10 @@ class AsyncIOCRepo:
             ioc = existing
             ioc.last_seen_at = now
             ioc.seen_count += 1
+        # Baris yang SUDAH tersuppress tidak ditimpa alasannya (jejak pertama dipertahankan).
+        if suppression_reason is not None and not ioc.auto_suppressed:
+            ioc.auto_suppressed = True
+            ioc.suppression_reason = suppression_reason
 
         ioc.sources.append(
             IOCSource(
@@ -169,7 +179,7 @@ class AsyncIOCRepo:
         `recap`, Bagian 5) -- IOC yang PERTAMA ketemu tanggal ini."""
         result = await self.session.execute(
             select(IOC)
-            .where(func.date(IOC.first_seen_at) == day)
+            .where(func.date(IOC.first_seen_at) == day, IOC.auto_suppressed.is_(False))
             .order_by(IOC.first_seen_at)
             .limit(limit)
         )
@@ -184,7 +194,7 @@ class AsyncIOCRepo:
         DB seperti `list_first_seen_on`."""
         result = await self.session.execute(
             select(IOC.type, func.count())
-            .where(func.date(IOC.first_seen_at).between(start, end))
+            .where(func.date(IOC.first_seen_at).between(start, end), IOC.auto_suppressed.is_(False))
             .group_by(IOC.type)
         )
         return {ioc_type: n for ioc_type, n in result.all()}
@@ -261,6 +271,7 @@ class AsyncIOCRepo:
         tags: Sequence[str] | None = None,
         sort_by: str | None = None,
         actionability: str | None = None,
+        include_suppressed: bool = False,
     ) -> tuple[list[IOC], int]:
         """Port `ioc_service.get_iocs()`. `actionability` (filter lama)
         gak diport pas Fase 7.3 -- waktu itu kolomnya emang belum ada.
@@ -269,6 +280,9 @@ class AsyncIOCRepo:
         diwire -- ditambahin di sini pas Grup G4 (`/intelligence/
         ioc-management`) baru butuh beneran dari frontend."""
         stmt = select(IOC)
+        if not include_suppressed:
+            # IOC `auto_suppressed` (cocok allowlist) disembunyikan kecuali diminta eksplisit.
+            stmt = stmt.where(IOC.auto_suppressed.is_(False))
         if ioc_type and ioc_type in _VALID_TYPES:
             stmt = stmt.where(IOC.type == ioc_type)
         if search:
@@ -294,43 +308,29 @@ class AsyncIOCRepo:
         return list(result.scalars().all())
 
     async def list_by_article_ids(self, article_ids: Sequence[int]) -> list[IOC]:
-        """IOC (semua tipe, TERMASUK `type="cve"`) yang nyantol ke salah
-        satu `article_ids` lewat `IOCSource` -- port `cluster_service.py`'s
-        `ioc_map` building (Fase 7.4 Grup A, `get_recent_campaigns()`).
-        Gantiin DUA sumber legacy sekaligus: koleksi `iocs` (IOC jaringan/
-        hash) DAN `article.cves` (array terpisah, `iocExtractor.py`'s
-        regex CVE match yang sama persis) -- di skema baru CVE mention
-        cuma IOC biasa dengan `type="cve"`, gak ada array duplikat lagi."""
+        """IOC yang nyantol ke salah satu `article_ids` lewat `IOCSource` -- port
+        `cluster_service.py`'s `ioc_map` building (Fase 7.4 Grup A,
+        `get_recent_campaigns()`). CVE tidak termasuk: relasinya ada di `article_cves`
+        (`AsyncArticleCveRepo.cve_ids_by_article`)."""
         if not article_ids:
             return []
         result = await self.session.execute(
-            select(IOC).join(IOC.sources).where(IOCSource.article_id.in_(article_ids)).distinct()
+            select(IOC)
+            .join(IOC.sources)
+            .where(IOCSource.article_id.in_(article_ids), IOC.auto_suppressed.is_(False))
+            .distinct()
         )
         return list(result.scalars().unique().all())
 
-    async def cve_ids_by_article(self, article_ids: Sequence[int]) -> dict[int, set[str]]:
-        """Id CVE (IOC `type="cve"`, huruf besar) per artikel lewat `IOCSource` -- satu query
-        ramping: tanpa memuat objek IOC beserta sumber, tag, dan feedback-nya seperti
-        `list_by_article_ids`. Inilah satu-satunya hubungan artikel -> CVE yang tersimpan (tidak
-        ada tabel khusus; `persist` menulis IOC dari isi artikel), jadi mencakup CVE yang hanya
-        disebut di body. Artikel tanpa CVE tidak ada di hasil."""
-        if not article_ids:
-            return {}
-        result = await self.session.execute(
-            select(IOCSource.article_id, IOC.value)
-            .join(IOC, IOC.id == IOCSource.ioc_id)
-            .where(IOC.type == "cve", IOCSource.article_id.in_(article_ids))
-            .distinct()
-        )
-        found: dict[int, set[str]] = {}
-        for article_id, value in result.all():
-            found.setdefault(article_id, set()).add(value.upper())
-        return found
-
     async def get_stats(self) -> dict[str, object]:
-        total = (await self.session.execute(select(func.count()).select_from(IOC))).scalar_one()
+        total = (
+            await self.session.execute(
+                select(func.count()).select_from(IOC).where(IOC.auto_suppressed.is_(False))
+            )
+        ).scalar_one()
         by_type_stmt = (
             select(IOC.type, func.count())
+            .where(IOC.auto_suppressed.is_(False))
             .group_by(IOC.type)
             .order_by(func.count().desc(), IOC.type)  # tie-break: urutan deterministik
         )

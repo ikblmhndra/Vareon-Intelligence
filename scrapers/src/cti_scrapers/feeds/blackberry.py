@@ -17,6 +17,7 @@ from cti_scraper.schedule import spread
 class Blackberry(XPathScraper):
     meta = ScraperMeta(
         id="blackberry",
+        content_kind="vendor_research",
         source="BlackBerry",
         schedule=spread("0 * * * *", "blackberry"),
         runtime="browser",

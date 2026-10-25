@@ -4,12 +4,9 @@ Grup D (survei 2026-09-19). Dua skor beda tapi satu file (sama kayak
 bonus TTP/TA) dan confidence+actionability IOC (recency+corroborasi+
 peluruhan waktu), dua-duanya dipanggil dari router `articles`/`iocs`.
 
-Confidence artikel ditulis lewat `AsyncArticleRepo.set_overrides()`
-(BUKAN kolom `confidence_score` langsung) -- docstring `Article.overrides`
-(Fase 2) SENGAJA nyebut `confidence_score` sebagai contoh field yang
-dilacak lewat overrides, meskipun tulisan Mongo lama (`compute_and_store`)
-langsung `$set` tanpa konsep override. Keputusan desain ini ngikutin
-dokumentasi skema yang UDAH ADA, bukan port literal.
+Sejak 0.8.6 confidence artikel ditulis LANGSUNG ke kolom `confidence_score` (sebelumnya lewat
+`overrides`), karena persist enrichment juga menulis kolom itu dengan rumus yang sama. Artikel
+yang `overrides`-nya sudah membawa `confidence_score` (koreksi analis) dilewati: analis menang.
 
 `compute_ioc_actionability`'s `campaign_score` SELALU 0 -- butuh
 `CLUSTERS_COLLECTION` (mesin cluster, Grup A, BELUM diport, lihat plan
@@ -21,39 +18,18 @@ from __future__ import annotations
 import datetime
 from typing import Any
 
+from cti_core.confidence import compute_score
 from cti_core.db.models.article import Article
 from cti_core.db.models.ioc import IOC
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.ioc import AsyncIOCRepo
 from cti_core.db.repositories.source_reliability import AsyncSourceReliabilityRepo
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ── Confidence artikel ───────────────────────────────────────────────────────
 
-_RELIABILITY_SCORE = {"A": 100, "B": 80, "C": 60, "D": 40, "E": 20, "F": 50}
-_CREDIBILITY_SCORE = {"1": 100, "2": 80, "3": 60, "4": 40, "5": 20, "6": 50}
-
-
-def _reliability_to_score(grade: str) -> int:
-    return _RELIABILITY_SCORE.get(grade.upper(), 50)
-
-
-def _credibility_to_score(code: str) -> int:
-    return _CREDIBILITY_SCORE.get(str(code), 50)
-
-
-def compute_score(
-    reliability_grade: str | None,
-    credibility_code: str | None,
-    ttp_count: int,
-    ta_count: int,
-) -> int:
-    rel = _reliability_to_score(reliability_grade) if reliability_grade else 50
-    cred = _credibility_to_score(credibility_code) if credibility_code else 50
-    base = (rel + cred) / 2
-    ttp_bonus = min(ttp_count * 5, 20)
-    ta_bonus = min(ta_count * 10, 10)
-    return min(100, max(0, round(base + ttp_bonus + ta_bonus)))
+__all__ = ["compute_score"]  # re-export: rumusnya pindah ke `cti_core.confidence` (0.8.6)
 
 
 async def compute_article_confidence(session: AsyncSession, article: Article) -> int:
@@ -72,45 +48,64 @@ async def compute_article_confidence(session: AsyncSession, article: Article) ->
 async def compute_and_store_article_confidence(
     session: AsyncSession, article_id: int
 ) -> int | None:
-    """Port `compute_and_store()`. `None` kalau artikel gak ketemu."""
-    repo = AsyncArticleRepo(session)
-    article = await repo.get_by_id(article_id)
+    """Port `compute_and_store()`. `None` kalau artikel gak ketemu. Ditulis ke kolom
+    `confidence_score`; kalau analis sudah menimpa lewat `overrides`, nilai itu yang dikembalikan
+    dan kolom tidak disentuh."""
+    article = await AsyncArticleRepo(session).get_by_id(article_id)
     if article is None:
         return None
+    if "confidence_score" in article.overrides:
+        return int(article.overrides["confidence_score"])
     score = await compute_article_confidence(session, article)
-    await repo.set_overrides(article, confidence_score=score)
+    article.confidence_score = score
+    await session.flush()
     return score
 
 
 async def recompute_all_confidence(
-    session: AsyncSession, *, batch_size: int = 500
+    session: AsyncSession,
+    *,
+    batch_size: int = 500,
+    source_name: str | None = None,
+    commit_each_batch: bool = False,
 ) -> dict[str, int]:
-    """Port `recompute_all_confidence()`. Preload semua rating source dulu
-    (hindari N+1 query per artikel, sama optimasi kayak legacy), lalu
-    paging lewat `list_filtered()` -- gak ada method "list semua artikel"
-    terpisah, `list_filtered()` tanpa filter udah setara."""
-    ratings = await AsyncSourceReliabilityRepo(session).get_all_ratings()
-    repo = AsyncArticleRepo(session)
+    """Port `recompute_all_confidence()`. Preload semua rating source dulu (hindari N+1 query per
+    artikel), lalu paging per `id`. `source_name` (case-insensitive) membatasi ke satu sumber
+    (task `confidence.recompute_source`). Menulis kolom `confidence_score`, melewati artikel yang
+    `overrides`-nya membawa `confidence_score`. `commit_each_batch=True` (task worker) commit
+    tiap batch, supaya recompute penuh di tabel besar tidak memegang lock baris sepanjang run;
+    default-nya hanya flush (pemanggil yang commit)."""
+    ratings = {
+        name: (e.reliability_grade, e.credibility_code)
+        for name, e in (await AsyncSourceReliabilityRepo(session).get_all_ratings()).items()
+    }
 
     updated = 0
-    page = 1
+    last_id = 0
     while True:
-        articles, total = await repo.list_filtered(page=page, page_size=batch_size)
+        stmt = select(Article).where(Article.id > last_id).order_by(Article.id).limit(batch_size)
+        if source_name is not None:
+            stmt = stmt.where(func.lower(Article.source) == source_name.lower())
+        articles = list((await session.execute(stmt)).scalars().all())
         if not articles:
             break
         for article in articles:
-            rating = ratings.get((article.source or "").lower())
-            score = compute_score(
-                reliability_grade=rating.reliability_grade if rating else None,
-                credibility_code=rating.credibility_code if rating else None,
+            last_id = article.id
+            if "confidence_score" in article.overrides:
+                continue
+            grade, code = ratings.get((article.source or "").lower(), (None, None))
+            article.confidence_score = compute_score(
+                reliability_grade=grade,
+                credibility_code=code,
                 ttp_count=len(article.ttps),
                 ta_count=len(article.threat_actors),
             )
-            await repo.set_overrides(article, confidence_score=score)
             updated += 1
-        if page * batch_size >= total:
-            break
-        page += 1
+        await session.flush()
+        if commit_each_batch:
+            await session.commit()
+        for article in articles:  # jaga identity map tetap kecil di recompute besar
+            session.expunge(article)
 
     return {"updated": updated}
 
@@ -125,7 +120,6 @@ _IOC_HALF_LIFE: dict[str, float] = {
     "sha256": 90.0,
     "sha1": 90.0,
     "md5": 90.0,
-    "cve": 90.0,
 }
 """Legacy juga punya entry `url_with_path` -- tipe itu gak ada di
 `IOC._VALID_TYPES` skema baru (cuma `url`), jadi entry dead-nya di-drop,

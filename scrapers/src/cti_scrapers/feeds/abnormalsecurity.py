@@ -20,6 +20,7 @@ _TITLE, _LINK = link_card_xpaths(
 class Abnormalsecurity(XPathScraper):
     meta = ScraperMeta(
         id="abnormalsecurity",
+        content_kind="vendor_research",
         source="Abnormal Security",
         schedule=spread("15 * * * *", "abnormalsecurity"),
         runtime="browser",

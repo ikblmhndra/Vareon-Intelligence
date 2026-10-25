@@ -18,6 +18,7 @@ _TITLE, _LINK = link_card_xpaths("contains(@href, '/white-papers/')")
 class Sans(XPathScraper):
     meta = ScraperMeta(
         id="sans",
+        content_kind="vendor_research",
         source="Sans",
         schedule=spread("30 * * * *", "sans"),
         runtime="browser",

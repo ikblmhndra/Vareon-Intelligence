@@ -14,6 +14,7 @@ from cti_scraper.schedule import spread
 class Cyfirma(XPathScraper):
     meta = ScraperMeta(
         id="cyfirma",
+        content_kind="vendor_research",
         source="CYFIRMA",
         schedule=spread("*/30 * * * *", "cyfirma"),
         runtime="light",

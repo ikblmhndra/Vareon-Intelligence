@@ -5,6 +5,8 @@ file)."""
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -33,6 +35,7 @@ class SREntryOut(BaseModel):
     notes: str
     added_date: str
     last_updated: str
+    origin: Literal["default", "analyst"]
 
 
 class SREntryListResponse(BaseModel):

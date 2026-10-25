@@ -14,6 +14,7 @@ from cti_scraper.schedule import spread
 class AsecAhn(RSSScraper):
     meta = ScraperMeta(
         id="asec_ahn",
+        content_kind="vendor_research",
         source="Asec Ahn Lab",
         schedule=spread("30 * * * *", "asec_ahn"),
         tags=("migrated",),

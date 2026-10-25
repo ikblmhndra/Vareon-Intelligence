@@ -24,6 +24,7 @@ from cti_scraper.schedule import spread
 class Forcepoint(XPathScraper):
     meta = ScraperMeta(
         id="forcepoint",
+        content_kind="vendor_research",
         source="Forcepoint",
         schedule=spread("50 * * * *", "forcepoint"),
         runtime="browser",

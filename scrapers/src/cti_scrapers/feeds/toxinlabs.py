@@ -27,6 +27,7 @@ _ATOM_NS = "{http://www.w3.org/2005/Atom}"
 class ToxinLabs(RSSScraper):
     meta = ScraperMeta(
         id="0xtoxin",
+        content_kind="vendor_research",
         source="0xToxin (Toxin Labs)",
         schedule=spread("40 * * * *", "0xtoxin"),
         tags=("migrated", "fase-10.1c"),

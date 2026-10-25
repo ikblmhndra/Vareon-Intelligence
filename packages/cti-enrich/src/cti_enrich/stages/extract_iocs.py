@@ -14,6 +14,7 @@ from __future__ import annotations
 import time
 
 from cti_core.db.repositories.ioc_reference import get_c2_feed, get_ioc_allowlist
+from cti_core.ioc.canonical import canonical
 from cti_core.ioc.extractor import extract_iocs as _extract_iocs
 from sqlalchemy.orm import Session
 
@@ -54,13 +55,13 @@ def check_c2_hit(ioc_data: dict[str, list[str]], session: Session) -> bool:
     feed = _get_c2_feed(session)
     if not feed["ips"] and not feed["domains"]:
         return False
-    article_ips = set(ioc_data.get("ips", []))
-    article_domains = set(ioc_data.get("domains", []))
+    # Feed disimpan kanonik (0.8.6); nilai artikel bisa defanged/huruf besar, jadi kanonikkan dulu.
+    article_ips = {canonical("ip", v) for v in ioc_data.get("ips", [])}
+    article_domains = {canonical("domain", v) for v in ioc_data.get("domains", [])}
     return bool(article_ips & feed["ips"] or article_domains & feed["domains"])
 
 
 def extract_iocs(text: str, source_url: str, session: Session) -> dict[str, list[str]]:
     if not text:
         return {}
-    allowlist = _get_allowlist(session)
-    return _extract_iocs(text, source_url=source_url, allowlist=allowlist)
+    return _extract_iocs(text, source_url=source_url)

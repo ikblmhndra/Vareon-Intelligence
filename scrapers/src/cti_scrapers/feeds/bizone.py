@@ -14,6 +14,7 @@ from cti_scraper.schedule import spread
 class Bizone(XPathScraper):
     meta = ScraperMeta(
         id="bizone",
+        content_kind="vendor_research",
         source="Bizone",
         schedule=spread("0 * * * *", "bizone"),
         runtime="browser",

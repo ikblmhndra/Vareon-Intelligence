@@ -57,12 +57,10 @@ def test_allowlist_filters_source_domain() -> None:
     assert result == {}
 
 
-def test_allowlist_filters_configured_domain() -> None:
-    result = extract_iocs(
-        "See https://wiz.io/blog for details.",
-        allowlist={"url_domains": {"wiz.io"}, "email_domains": set(), "ips": set()},
-    )
-    assert result == {}
+def test_allowlisted_domain_is_no_longer_dropped_at_extraction() -> None:
+    """Sejak 0.8.6 allowlist menandai (auto_suppressed) di persist, bukan membuang di extractor."""
+    result = extract_iocs("See https://wiz.io/blog for details.")
+    assert result["urls"] == ["https://wiz.io/blog"]
 
 
 def test_private_ip_excluded() -> None:

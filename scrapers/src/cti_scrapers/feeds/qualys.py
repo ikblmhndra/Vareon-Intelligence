@@ -14,6 +14,7 @@ from cti_scraper.schedule import spread
 class Qualys(RSSScraper):
     meta = ScraperMeta(
         id="qualys",
+        content_kind="vendor_research",
         source="Qualys Security",
         schedule=spread("46 * * * *", "qualys"),
         tags=("migrated",),

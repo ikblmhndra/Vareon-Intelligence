@@ -88,6 +88,17 @@
             "title": "Actor Countries",
             "type": "array"
           },
+          "admiralty_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Admiralty Code"
+          },
           "confidence_score": {
             "anyOf": [
               {
@@ -103,6 +114,21 @@
             "default": false,
             "title": "Confirmed Incident",
             "type": "boolean"
+          },
+          "grade_origin": {
+            "anyOf": [
+              {
+                "enum": [
+                  "default",
+                  "analyst"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grade Origin"
           },
           "id": {
             "title": "Id",
@@ -4918,6 +4944,14 @@
             "title": "Notes",
             "type": "string"
           },
+          "origin": {
+            "enum": [
+              "default",
+              "analyst"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
           "reliability_grade": {
             "title": "Reliability Grade",
             "type": "string"
@@ -4936,7 +4970,8 @@
           "admiralty_code",
           "notes",
           "added_date",
-          "last_updated"
+          "last_updated",
+          "origin"
         ],
         "title": "SREntryOut",
         "type": "object"
@@ -7780,7 +7815,7 @@
   },
   "info": {
     "title": "Vareon Intelligence API",
-    "version": "0.8.5"
+    "version": "0.8.6"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -15224,6 +15259,16 @@
             }
           },
           {
+            "in": "query",
+            "name": "include_suppressed",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Suppressed",
+              "type": "boolean"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -22474,7 +22519,7 @@
         "operationId": "export_ioc_stix_api_stix_iocs_get",
         "parameters": [
           {
-            "description": "Filter by IOC type (ip, domain, url, sha256, sha1, md5, email, cve)",
+            "description": "Filter by IOC type (ip, domain, url, sha256, sha1, md5, email)",
             "in": "query",
             "name": "type",
             "required": false,
@@ -22487,7 +22532,7 @@
                   "type": "null"
                 }
               ],
-              "description": "Filter by IOC type (ip, domain, url, sha256, sha1, md5, email, cve)",
+              "description": "Filter by IOC type (ip, domain, url, sha256, sha1, md5, email)",
               "title": "Type"
             }
           },

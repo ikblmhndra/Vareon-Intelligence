@@ -840,7 +840,11 @@ class AsyncDashboardRepo:
     async def pending_fp_queue(self, *, limit: int = 20) -> list[IOC]:
         stmt = (
             select(IOC)
-            .where(IOC.confidence_score >= 40, IOC.confidence_score < 75)
+            .where(
+                IOC.confidence_score >= 40,
+                IOC.confidence_score < 75,
+                IOC.auto_suppressed.is_(False),
+            )
             .order_by(IOC.last_seen_at.desc())
             .limit(limit)
         )
@@ -852,6 +856,10 @@ class AsyncDashboardRepo:
         stmt = (
             select(func.count())
             .select_from(IOC)
-            .where(IOC.confidence_score >= 40, IOC.confidence_score < 75)
+            .where(
+                IOC.confidence_score >= 40,
+                IOC.confidence_score < 75,
+                IOC.auto_suppressed.is_(False),
+            )
         )
         return int((await self.session.execute(stmt)).scalar_one())

@@ -14,6 +14,7 @@ from cti_scraper.schedule import spread
 class Vmware(RSSScraper):
     meta = ScraperMeta(
         id="vmware",
+        content_kind="vendor_research",
         source="Vmware",
         schedule=spread("32 * * * *", "vmware"),
         tags=("migrated",),
