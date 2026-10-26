@@ -140,11 +140,15 @@ def evaluate() -> dict[str, Any]:
                     "train_triggered": _trigger_train(),
                 }
         if change is None and row is not None:
+            current = "gate" if row.gate_state == "gate" else "shadow"
             stats: GateStats = repo.gate_stats(
                 since=now - datetime.timedelta(days=cfg.gate_window_days),
                 revert_samples=cfg.revert_samples,
+                # Audit hanya dipakai untuk revert; batasi ke periode gate sekarang supaya sampel
+                # basi (sebelum revert terakhir) tidak membalik gate tiap jam. Di shadow tidak
+                # dipakai untuk transisi.
+                audit_since=row.gate_changed_at if current == "gate" else None,
             )
-            current = "gate" if row.gate_state == "gate" else "shadow"
             new_state = next_state(current, stats, cfg)
             result.update(state=current, band_n=stats.band_n, band_agree=stats.band_agree)
             if new_state != current:

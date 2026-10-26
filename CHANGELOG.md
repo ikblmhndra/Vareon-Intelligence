@@ -11,7 +11,7 @@ router `changelog.py`) -- parser-nya expect header persis
 **Model lokal kini menilai relevansi tiap artikel dari judulnya: artikel yang jelas berita ancaman (p >= 0,85) melewati panggilan LLM classify, sisanya tetap ke LLM. Model berlatih sendiri tiap minggu dari label instance itu, mulai dari mode shadow, dan gate menyala/mati otomatis dari kesepakatan terukur dengan LLM.**
 Satu migrasi (`c4f1a9d27e6b`), tanpa kunci `.env` baru. Evaluasi pada label prod (2.112 judul unik, embedder asli): holdout 14 hari band 54,5% dengan kesepakatan 98,1%, CV 5-fold band 52,2% dengan kesepakatan 97,6% (ambang 0,85). Perkiraan: sekitar 42% panggilan classify berkurang (band x (1 - sampel audit 20%)).
 
-**Saat upgrade dari 0.8.8:** `make deploy` (migrasi jalan otomatis). Model pertama dilatih sendiri dalam satu jam setelah worker naik (tugas `relevance.evaluate` tiap jam memicunya bila belum ada model aktif; pelatihan rutin Minggu 02:00 lokal). Instance dengan label kurang dari 1.000 judul (atau kurang dari 100 per kelas) mencatat run `skipped` beserta alasannya. Model mulai dari shadow dan baru menyala sendiri setelah 200 judul dalam 14 hari menunjukkan kesepakatan >= 95%. Untuk menahan gate tetap mati di prod, isi `RELEVANCE__MODE=shadow` di `.env` prod sebelum deploy. `STORY__EMBEDDING_SIMILARITY` tetap 0 (aturan embedding story mati) sampai diaktifkan. Image `worker-nlp` kini mengunduh model sekitar 90 MB dari huggingface.co saat build (bukan saat jalan).
+**Saat upgrade dari 0.8.8:** `make deploy` (migrasi jalan otomatis). Model pertama dilatih sendiri dalam satu jam setelah worker naik, atau paling lama 24 jam kemudian bila percobaan itu dilewati atau ditolak (pemicu latih ulang punya cooldown 24 jam; tugas `relevance.evaluate` tiap jam memicunya bila belum ada model aktif; pelatihan rutin Minggu 02:00 lokal). Instance dengan label kurang dari 1.000 judul (atau kurang dari 100 per kelas) mencatat run `skipped` beserta alasannya. Model mulai dari shadow dan baru menyala sendiri setelah 200 judul dalam 14 hari menunjukkan kesepakatan >= 95%. Untuk menahan gate tetap mati di prod, isi `RELEVANCE__MODE=shadow` di `.env` prod sebelum deploy. `STORY__EMBEDDING_SIMILARITY` tetap 0 (aturan embedding story mati) sampai diaktifkan. Image `worker-nlp` kini mengunduh model (unduhan sekitar 90 MB, sekitar 88 MB di disk) dari huggingface.co saat build (bukan saat jalan).
 
 ### Ditambah
 - Tabel `relevance_models` (artefak model, metrik holdout, status `active`/`retired`/`rejected`, gate state) dan repository-nya.
@@ -24,7 +24,7 @@ Satu migrasi (`c4f1a9d27e6b`), tanpa kunci `.env` baru. Evaluasi pada label prod
 - Alat evaluasi `tools/eval/relevance_eval.py` (holdout 14 hari + CV 5-fold pada ekspor label).
 
 ### Diubah
-- Image `worker-nlp` membawa model embedding MiniLM (sekitar 88 MB) dan memuatnya dengan `local_files_only`; model tidak pernah diunduh saat jalan.
+- Image `worker-nlp` membawa model embedding MiniLM (unduhan sekitar 90 MB, sekitar 88 MB di disk) dan memuatnya dengan `local_files_only`; model tidak pernah diunduh saat jalan.
 - CI smoke import di dalam image ikut memuat model, sehingga model yang hilang menggagalkan build, bukan deploy.
 
 ## [0.8.8] - 2026-10-25

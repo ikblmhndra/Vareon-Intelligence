@@ -67,12 +67,25 @@ class _Cached:
 
 _cache: _Cached | None = None
 _stale_warned: set[int] = set()
+_runtime_fv: str | None = None
+
+
+def _runtime_feature_version(embedder: Any) -> str:
+    """`feature_version` runtime, di-cache per proses (importlib.metadata dua kali per panggilan
+    terlalu mahal untuk jalur per-artikel; paket dan embedder tidak berganti saat proses hidup)."""
+    global _runtime_fv
+    if _runtime_fv is None:
+        from cti_enrich.relevance import model as model_mod
+
+        _runtime_fv = model_mod.feature_version(embedder)
+    return _runtime_fv
 
 
 def _reset_cache() -> None:
     """Hook test: kosongkan cache model dan catatan peringatan stale."""
-    global _cache
+    global _cache, _runtime_fv
     _cache = None
+    _runtime_fv = None
     _stale_warned.clear()
 
 
@@ -133,7 +146,7 @@ def run_relevance(
         if active is None:
             return None
         embedder = get_embedder()
-        if active.feature_version != model_mod.feature_version(embedder):
+        if active.feature_version != _runtime_feature_version(embedder):
             if active.model_id not in _stale_warned:
                 _stale_warned.add(active.model_id)
                 log.warning("relevance_model_stale", model_id=active.model_id)
@@ -157,9 +170,7 @@ def needs_retrain(session: Session) -> bool:
     `EmbedderUnavailable` -> False: di proses yang embedder-nya tidak ada, model hasil latih
     ulang pun tidak bisa jalan, jadi melatih di sana hanya membuang tenaga."""
     try:
-        from cti_enrich.relevance import model as model_mod
-
-        runtime = model_mod.feature_version(get_embedder())
+        runtime = _runtime_feature_version(get_embedder())
     except EmbedderUnavailable:
         return False
     row = RelevanceModelRepo(session).get_active()

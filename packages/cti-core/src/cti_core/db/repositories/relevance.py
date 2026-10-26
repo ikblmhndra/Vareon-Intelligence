@@ -41,6 +41,8 @@ _BAND_UNION_SQL = """
     FROM rejected_articles
     WHERE raw_enrichment->'relevance'->>'in_band' = 'true'
       AND raw_enrichment->'relevance'->>'decision' IN ('shadow', 'audit')
+      AND failure_kind IS NULL
+      AND COALESCE(reason, '') NOT LIKE '[enrichment_failed]%'
 """
 """Satu teks SQL untuk repo sync (gate, worker) dan async (Data health): angka yang dilihat
 operator dan yang dipakai gate tidak boleh berbeda."""
@@ -49,8 +51,13 @@ _BAND_COUNT_SQL = (
     f"SELECT count(*), count(*) FILTER (WHERE agree) FROM ({_BAND_UNION_SQL}) r WHERE ts >= :since"
 )
 _AUDIT_LAST_SQL = (
-    f"SELECT agree FROM ({_BAND_UNION_SQL}) r WHERE decision = 'audit' ORDER BY ts DESC LIMIT :n"
+    f"SELECT agree FROM ({_BAND_UNION_SQL}) r WHERE decision = 'audit' "
+    "AND (CAST(:audit_since AS timestamptz) IS NULL OR ts >= CAST(:audit_since AS timestamptz)) "
+    "ORDER BY ts DESC LIMIT :n"
 )
+"""`:audit_since` NULL = tanpa batas waktu: itu yang dipakai tampilan Data health (N audit
+terakhir apa adanya). Gate memakai `gate_changed_at` supaya sampel basi dari periode gate
+sebelumnya tidak membalik gate lagi."""
 _MIDDLE_BAND_SQL = """
     SELECT (SELECT count(*) FROM articles WHERE created_at >= :since
               AND raw_enrichment->'relevance'->>'in_band' = 'false')
@@ -164,18 +171,24 @@ class RelevanceModelRepo:
             .values(gate_state=state, gate_changed_at=now)
         )
 
-    def gate_stats(self, *, since: datetime.datetime, revert_samples: int) -> GateStats:
+    def gate_stats(
+        self,
+        *,
+        since: datetime.datetime,
+        revert_samples: int,
+        audit_since: datetime.datetime | None = None,
+    ) -> GateStats:
         """Hitung baris dalam band (`in_band` true, keputusan shadow/audit) dari `articles` dan
         `rejected_articles`. Setuju = vonis LLM `threat_news`: artikel bukan best practice;
         baris rejected tidak pernah setuju. Keputusan `gated` tidak dihitung (LLM tidak
-        dipanggil, tidak ada vonis)."""
+        dipanggil, tidak ada vonis). `audit_since` hanya membatasi daftar audit, bukan hitungan band."""
         band = self.session.execute(
             text(_BAND_COUNT_SQL),
             {"bp": _BEST_PRACTICE, "since": since},
         ).one()
         audits = self.session.execute(
             text(_AUDIT_LAST_SQL),
-            {"bp": _BEST_PRACTICE, "n": revert_samples},
+            {"bp": _BEST_PRACTICE, "n": revert_samples, "audit_since": audit_since},
         ).scalars()
         return GateStats(
             band_n=int(band[0]), band_agree=int(band[1]), audit_last=[bool(a) for a in audits]
@@ -202,7 +215,13 @@ class AsyncRelevanceModelRepo:
         )
         return result.scalar_one_or_none()
 
-    async def gate_stats(self, *, since: datetime.datetime, revert_samples: int) -> GateStats:
+    async def gate_stats(
+        self,
+        *,
+        since: datetime.datetime,
+        revert_samples: int,
+        audit_since: datetime.datetime | None = None,
+    ) -> GateStats:
         """Cermin `RelevanceModelRepo.gate_stats` (SQL yang sama) untuk API."""
         band = (
             await self.session.execute(
@@ -211,7 +230,8 @@ class AsyncRelevanceModelRepo:
         ).one()
         audits = (
             await self.session.execute(
-                text(_AUDIT_LAST_SQL), {"bp": _BEST_PRACTICE, "n": revert_samples}
+                text(_AUDIT_LAST_SQL),
+                {"bp": _BEST_PRACTICE, "n": revert_samples, "audit_since": audit_since},
             )
         ).scalars()
         return GateStats(

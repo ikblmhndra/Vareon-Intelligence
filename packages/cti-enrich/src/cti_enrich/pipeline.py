@@ -285,7 +285,8 @@ def run_pipeline(
     if classify_result.audit.get("skipped") == "relevance_gate" and tier1.incident is not None:
         # LLM classify dilewati: vonis insiden + korban dari aturan (`incident_source="rule"`).
         classify_result.confirmed_incident = tier1.incident.confirmed
-        classify_result.victim_name = tier1.incident.victim
+        if tier1.incident.confirmed:
+            classify_result.victim_name = tier1.incident.victim
     # Industri gabungan dipakai di SEMUA tempat (pesan alert, routing OT, persist) supaya baris
     # tersimpan dan teks Telegram tidak berbeda.
     industries = merge_industries(classify_result.industries_impacted, tier1.industries)

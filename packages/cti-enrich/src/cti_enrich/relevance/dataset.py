@@ -1,7 +1,8 @@
 """Label latih model relevansi dari `articles` dan `rejected_articles` (spec 6).
 
-Modul ini sengaja TIDAK mengimpor sklearn: `to_examples` murni dan `load_examples` cuma
-SELECT kolom yang perlu, jadi murah diimpor dari tempat lain.
+Modul ini mengimpor `relevance.model` (hanya untuk dataclass `Example`; sklearn ikut terimpor
+lewat sana, jadi jangan impor dari jalur yang harus ringan). `to_examples` murni dan
+`load_examples` cuma SELECT kolom yang perlu.
 """
 
 from __future__ import annotations

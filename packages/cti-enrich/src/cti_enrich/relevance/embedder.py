@@ -15,6 +15,10 @@ from typing import Any, Protocol
 import numpy as np
 
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+EMBEDDING_REVISION = "d13954661f83248295ba75c1ed411eef3b7b936e"
+"""Revisi HF model ONNX yang dipin di image; HARUS sama dengan `MINILM_REVISION` di
+`docker/worker.Dockerfile` (dijaga `test_relevance_embedder.py`). Masuk `feature_version`
+supaya ganti revisi memaksa latih ulang."""
 EMBEDDING_DIM = 384
 
 
@@ -31,7 +35,7 @@ class Embedder(Protocol):
 
 
 class FastEmbedEmbedder:
-    name = EMBEDDING_MODEL
+    name = f"{EMBEDDING_MODEL}@{EMBEDDING_REVISION[:8]}"
 
     def __init__(self, model: Any) -> None:
         self._model = model

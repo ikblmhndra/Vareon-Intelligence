@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from cti_core.config import RelevanceSettings, StorySettings
@@ -111,6 +111,16 @@ def test_gated_article_incident_from_rule(rec: dict[str, Any]) -> None:
     assert cr.victim_name == "Acme"
 
 
+def test_gated_unconfirmed_incident_leaves_victim_empty(rec: dict[str, Any]) -> None:
+    rec["tier1"] = Tier1Result(incident=IncidentVerdict(False, ("alleged",), victim="Acme"))
+
+    _run()
+
+    cr = rec["persist"][0]["classify_result"]
+    assert cr.confirmed_incident is False
+    assert cr.victim_name is None
+
+
 def test_gated_lead_does_not_fill_story(rec: dict[str, Any]) -> None:
     _run()
 
@@ -178,3 +188,25 @@ def test_persist_writes_relevance_audit() -> None:
     plain = persist_stage._with_relevance({}, _rel("shadow"), ClassifyResult(related_cyber=True))
     assert "incident_source" not in plain["raw_enrichment"]["relevance"]
     assert persist_stage._with_relevance({}, None, cr) == {}
+
+
+def test_persist_rejected_writes_relevance_after_llm_reject() -> None:
+    """Shadow lalu LLM menolak: `rejected_articles.raw_enrichment["relevance"]` terisi."""
+    captured: dict[str, Any] = {}
+
+    class _Repo:
+        def __init__(self, session: Any) -> None: ...
+
+        def upsert(self, **kw: Any) -> None:
+            captured.update(kw)
+
+    cr = ClassifyResult(related_cyber=False, reason="no", audit={"raw": 1})
+    with patch.object(persist_stage, "RejectedArticleRepo", _Repo):
+        persist_stage.persist_rejected(
+            session=MagicMock(), url="u", title="t", source="s", scraper_id=None,
+            posted_on=None, classify_result=cr, relevance=_rel("shadow"),
+        )  # fmt: skip
+
+    rel = captured["raw_enrichment"]["relevance"]
+    assert rel["decision"] == "shadow"
+    assert captured["raw_enrichment"]["classify"] == {"raw": 1}

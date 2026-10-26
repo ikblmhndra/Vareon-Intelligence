@@ -89,11 +89,13 @@ def mod(_migrated_schema: None):
     return relevance
 
 
-def _activate(artifact: bytes = b"x", gate_state: str = "shadow") -> int:
+def _activate(
+    artifact: bytes = b"x", gate_state: str = "shadow", gate_changed_at: dt.datetime | None = None
+) -> int:
     with sync_session() as s:
         row = RelevanceModel(
             status="active", artifact=artifact, feature_version="v", n_examples=1,
-            class_counts={}, metrics={}, gate_state=gate_state,
+            class_counts={}, metrics={}, gate_state=gate_state, gate_changed_at=gate_changed_at,
         )  # fmt: skip
         s.add(row)
         s.flush()
@@ -294,3 +296,64 @@ def test_evaluate_reverts_gate_on_low_audit_agreement(clean, mod, monkeypatch) -
     assert out["action"] == "changed"
     assert _gate_state(model_id) == "shadow"
     assert [k for k, _ in sent] == ["relevance:gate:shadow"]
+
+
+def test_evaluate_ignores_audit_samples_older_than_current_gate_period(
+    clean, mod, monkeypatch
+) -> None:
+    """Sesudah revert + gate ulang, sampel audit buruk dari periode gate sebelumnya tidak
+    boleh membalik gate lagi (flapping tiap jam)."""
+    model_id = _activate(gate_state="gate", gate_changed_at=NOW - dt.timedelta(minutes=10))
+    sent = _patch_healthy(monkeypatch, mod)
+    with sync_session() as s:
+        # 50 sampel audit basi (semua tidak setuju), lebih tua dari gate_changed_at
+        s.add_all(
+            [
+                _article(f"stale{i}", "audit", bp=True, at=NOW - dt.timedelta(hours=1, minutes=i))
+                for i in range(50)
+            ]
+        )
+
+    out = mod.evaluate()
+
+    assert out["action"] == "none"
+    assert _gate_state(model_id) == "gate"
+    assert sent == []
+
+
+def test_gate_stats_audit_since_bounds_audit_only(db_session: Session) -> None:
+    db_session.execute(delete(Article))
+    db_session.execute(delete(RejectedArticle))
+    db_session.add_all(
+        [
+            _article("a-old", "audit", at=NOW - dt.timedelta(hours=2)),
+            _article("a-new", "audit", bp=True, at=NOW - dt.timedelta(minutes=1)),
+        ]
+    )
+    db_session.flush()
+    repo = RelevanceModelRepo(db_session)
+    since = NOW - dt.timedelta(days=14)
+
+    bounded = repo.gate_stats(
+        since=since, revert_samples=10, audit_since=NOW - dt.timedelta(hours=1)
+    )
+    unbounded = repo.gate_stats(since=since, revert_samples=10)
+
+    assert bounded.audit_last == [False]
+    assert bounded.band_n == 2  # band count tidak ikut dibatasi
+    assert unbounded.audit_last == [False, True]
+
+
+def test_band_union_skips_failed_rejected_rows(db_session: Session) -> None:
+    db_session.execute(delete(Article))
+    db_session.execute(delete(RejectedArticle))
+    failed = _rejected("rej-failed", "shadow")
+    failed.failure_kind = "llm_error"
+    db_session.add_all([failed, _rejected("rej-ok", "shadow")])
+    db_session.flush()
+
+    stats = RelevanceModelRepo(db_session).gate_stats(
+        since=NOW - dt.timedelta(days=1), revert_samples=5
+    )
+
+    assert stats.band_n == 1

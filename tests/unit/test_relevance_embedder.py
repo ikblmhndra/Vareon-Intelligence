@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 import textwrap
@@ -9,7 +10,13 @@ import textwrap
 import numpy as np
 import pytest
 from cti_enrich.relevance import embedder
-from cti_enrich.relevance.embedder import EMBEDDING_DIM, EmbedderUnavailable, get_embedder
+from cti_enrich.relevance.embedder import (
+    EMBEDDING_DIM,
+    EMBEDDING_REVISION,
+    EmbedderUnavailable,
+    FastEmbedEmbedder,
+    get_embedder,
+)
 
 from tests.unit.relevance_fakes import FakeEmbedder
 
@@ -61,3 +68,17 @@ def test_pipeline_still_imports_without_fastembed() -> None:
     )
 
     assert proc.returncode == 0, proc.stderr[-3000:]
+
+
+def test_embedding_revision_matches_dockerfile() -> None:
+    from pathlib import Path
+
+    dockerfile = Path(__file__).resolve().parents[2] / "docker" / "worker.Dockerfile"
+    match = re.search(r"^ARG MINILM_REVISION=(\S+)$", dockerfile.read_text(), re.MULTILINE)
+
+    assert match is not None
+    assert match.group(1) == EMBEDDING_REVISION
+
+
+def test_embedder_name_includes_revision() -> None:
+    assert FastEmbedEmbedder.name.endswith(f"@{EMBEDDING_REVISION[:8]}")

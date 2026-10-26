@@ -140,11 +140,12 @@ Built for **0.8.9** (P5 local relevance model, branch `claude/p5-relevance-model
 - **Weekly training.** `relevance.train` runs on Sunday 02:00 local on each instance's own labels (articles plus
   rejected articles, analyst overrides applied, titles deduplicated). Training needs at least 1,000 titles and 100 per class; a model is activated only if its 14-day time holdout shows
   >= 95% agreement and a band share >= 20% (otherwise the run is stored as `rejected` with the reason); the artifact is stored in `relevance_models` (one migration, `c4f1a9d27e6b`).
-  A first model is trained within the hour after deploy.
+  A first model is trained within the hour after deploy, or up to 24 h later if that attempt is skipped or
+  rejected (the retrain trigger has a 24 h cooldown).
 - **Embedding story rule.** `STORY__EMBEDDING_SIMILARITY` (default 0, off) adds a MiniLM title rule to the P3
   resolver. Replay of the 1,390-title fixture at 0.8: 194 follow-ups (P3 replay without embeddings: 171), PHP2Shell 24 / NetScaler 17 /
   Atlassian 9 waves intact, Asec monthly reports still apart.
-- **Image.** `worker-nlp` bakes the 88 MB MiniLM model in at build (downloaded from huggingface.co at a pinned
+- **Image.** `worker-nlp` bakes the MiniLM model in at build (download ~90 MB, ~88 MB on disk) (downloaded from huggingface.co at a pinned
   revision); at run time it is loaded with `local_files_only`, never downloaded.
 - **Data health** has a relevance section (active model, mode, gate state, band share, audit agreement, avoided calls).
 
@@ -153,7 +154,7 @@ Built for **0.8.9** (P5 local relevance model, branch `claude/p5-relevance-model
 `tools/eval/relevance_eval.py` on 2,175 prod rows (2,112 distinct titles after dedup: 1,507 threat news, 359 reject,
 246 best practice) with the real embedder, using the product's own train and decision code. Prod runs 0.8.2, so
 `failure_kind` is empty (failed rows are caught by the `[enrichment_failed]` reason prefix); the exported classify audit
-is passed to the product's label rules.
+is passed to the product's label rules where present (most prod rows predate the audit trail).
 
 | Split | Threshold | Band share | Agreement | Band n |
 |---|---|---|---|---|
@@ -340,7 +341,7 @@ testing first. Phases 1-3 can start without schema redesign.
 | P2 Cheap wins (**done in 0.8.6**) | `content_kind`/`default_relevance` on scrapers; refang + CVE-out-of-IOC + allowlist seed; TTP evidence substring check; drop LLM `confidence` from UI in favour of `services/confidence.py` | Structured sources make 0 LLM calls; duplicate defanged IOCs = 0; no TTP without verifiable evidence |
 | P3 Story dedup at ingest (**done in 0.8.7**) | Clustering in `cti_core`, `story_sources`, skip Tier 3 for known stories | "PHP2Shell"-type waves enriched once per story |
 | P4 Deterministic extractors (**built for 0.8.8**) | Actor/malware dictionary matcher, explicit + inferred ATT&CK, industry taxonomy, incident rule | Coverage (E9) measured before/after on the same article set; equal or better than LLM for actor and TTP precision on a 100-article hand-labelled sample. Measured 2026-10-25 on silver labels: met for actor (71% vs 70%) and TTP (keyword 70%, explicit 99% vs LLM 35%) precision and for coverage; malware precision 47% is the weakest field |
-| P5 Local relevance model (**done in 0.8.9**) | Train on audit trail, shadow mode, then gate | Agreement with LLM >= 95% on the confident bands; LLM classify calls down by the measured share. Measured 2026-10-26 on prod labels at 0.85: holdout 98.1% agreement over 54.5% of titles, 5-fold CV 97.6% over 52.2%; the share of calls actually avoided is read from Data health after deploy |
+| P5 Local relevance model (**built for 0.8.9**) | Train on audit trail, shadow mode, then gate | Agreement with LLM >= 95% on the confident bands; LLM classify calls down by the measured share. Measured 2026-10-26 on prod labels at 0.85: holdout 98.1% agreement over 54.5% of titles, 5-fold CV 97.6% over 52.2%; the share of calls actually avoided is read from Data health after deploy |
 | P6 Confidence | Grade all sources, Admiralty score in API/UI | Every article shows A-F/1-6 |
 | P7+ CTI model | Entity + relationship tables, TLP, TAXII, Splunk export, sightings, PIR at ingest, hunting packs | Per item in section 4 |
 
