@@ -4,15 +4,36 @@
 from __future__ import annotations
 
 import datetime
+from collections.abc import Sequence
+from typing import Any
 
 import pytest
 from cti_api.services import confidence as svc
+from cti_core.db.models.article import Article
+from cti_core.db.models.story import Story
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.ioc import AsyncIOCRepo
 from cti_core.db.repositories.source_reliability import AsyncSourceReliabilityRepo
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 pytestmark = pytest.mark.asyncio
+
+
+async def _columns(session: AsyncSession, article_id: int) -> tuple[Any, ...]:
+    # Baca kolom langsung (bukan objek di identity map): `apply_assessments_async` menulis lewat
+    # bulk UPDATE yang tidak menyegarkan objek `Article` yang sudah dimuat sesi.
+    row = (
+        await session.execute(
+            select(
+                Article.reliability_grade,
+                Article.credibility,
+                Article.confidence_score,
+                Article.priority_score,
+            ).where(Article.id == article_id)
+        )
+    ).one()
+    return tuple(row)
 
 
 async def test_compute_article_confidence_uses_source_rating(
@@ -36,9 +57,14 @@ async def test_compute_article_confidence_uses_source_rating(
         ttps=[("T1059", "Command Scripting"), ("T1574", "Hijack")],
     )
 
-    score = await svc.compute_article_confidence(async_db_session, article)
-    # rel=100, cred=100, base=100, ttp_bonus=min(2*5,20)=10, ta_bonus=min(1*10,10)=10 -> clamp 100
-    assert score == 100
+    result = await svc.compute_article_confidence(async_db_session, article)
+    # P6: kredibilitas per artikel, bukan kode sumber. Sumber A tanpa content_kind, satu sumber,
+    # TTP llm (bukan eksplisit) -> A4; confidence (90+30)/2 = 60; prioritas 60 + 2*3 TTP + 8 aktor.
+    assert result.admiralty_code == "A4"
+    assert result.confidence_score == 60
+    assert result.priority_score == 74
+    # hanya menghitung, tidak menulis
+    assert (await _columns(async_db_session, article.id))[1] is None
 
 
 async def test_compute_article_confidence_source_case_insensitive(
@@ -53,38 +79,29 @@ async def test_compute_article_confidence_source_case_insensitive(
         notes="",
     )
     article_repo = AsyncArticleRepo(async_db_session)
-    created = await article_repo.upsert(
+    article = await article_repo.upsert(
         url="https://example.com/a2", title="Some article", source="bleepingcomputer"
     )
-    # re-fetch lewat `get_by_id()` (SELECT) -- objek langsung dari
-    # `upsert()`'s cabang INSERT baru gak pernah lewat query `selectin`,
-    # jadi `.ttps`/`.threat_actors` belum "loaded" (beda dari cabang
-    # UPDATE yang emang query dulu). Sama pola persis kayak yang udah
-    # didokumentasikan buat `CveTracker(...)`/`apply_exploit_hits` --
-    # murni artefak test-setup, bukan bug produksi (router selalu manggil
-    # `get_by_id()` dulu).
-    article = await article_repo.get_by_id(created.id)
-    assert article is not None
 
-    score = await svc.compute_article_confidence(async_db_session, article)
-    # rel=80, cred=80, base=80, no ttp/ta bonus
-    assert score == 80
+    result = await svc.compute_article_confidence(async_db_session, article)
+    # B4: (70+30)/2 = 50
+    assert result.admiralty_code == "B4"
+    assert result.confidence_score == 50
 
 
-async def test_compute_article_confidence_no_rating_defaults_50(
+async def test_compute_article_confidence_no_rating_is_f6(
     async_db_session: AsyncSession,
 ) -> None:
     article_repo = AsyncArticleRepo(async_db_session)
-    created = await article_repo.upsert(
+    article = await article_repo.upsert(
         url="https://example.com/a3", title="Unknown source article", source="TotallyUnknownBlog"
     )
-    article = await article_repo.get_by_id(created.id)
-    assert article is not None
-    score = await svc.compute_article_confidence(async_db_session, article)
-    assert score == 50
+    result = await svc.compute_article_confidence(async_db_session, article)
+    assert result.admiralty_code == "F6"
+    assert result.confidence_score == 50
 
 
-async def test_compute_and_store_article_confidence_writes_column(
+async def test_compute_and_store_article_confidence_writes_columns(
     async_db_session: AsyncSession,
 ) -> None:
     article_repo = AsyncArticleRepo(async_db_session)
@@ -92,16 +109,33 @@ async def test_compute_and_store_article_confidence_writes_column(
         url="https://example.com/a4", title="Article to score", source="X"
     )
 
-    score = await svc.compute_and_store_article_confidence(async_db_session, article.id)
-    assert score == 50
+    result = await svc.compute_and_store_article_confidence(async_db_session, article.id)
+    assert result is not None
+    assert (result.admiralty_code, result.confidence_score, result.priority_score) == (
+        "F6",
+        50,
+        50,
+    )
+    assert await _columns(async_db_session, article.id) == ("F", 6, 50, 50)
+    # kolom mesin yang ditulis; `overrides` (koreksi analis) tidak disentuh
+    overrides = await async_db_session.scalar(
+        select(Article.overrides).where(Article.id == article.id)
+    )
+    assert overrides == {}
 
-    fetched = await article_repo.get_by_id(article.id)
-    assert fetched is not None
-    # sejak 0.8.6 kolom mesin yang ditulis; `overrides` (koreksi analis) tidak disentuh
-    assert fetched.confidence_score == 50
-    assert "confidence_score" not in fetched.overrides
-    merged = article_repo.to_dict(fetched)
-    assert merged["confidence_score"] == 50
+
+async def test_compute_and_store_respects_confidence_override(
+    async_db_session: AsyncSession,
+) -> None:
+    # P6 spec 4.5: override analis tidak lagi melewati artikel; `assess` memakainya, jadi kolom
+    # `confidence_score` = nilai override dan kredibilitas/prioritas tetap dihitung.
+    article_repo = AsyncArticleRepo(async_db_session)
+    article = await article_repo.upsert(url="https://example.com/a5", title="Pinned", source="X")
+    await article_repo.set_overrides(article, confidence_score=7)
+
+    result = await svc.compute_and_store_article_confidence(async_db_session, article.id)
+    assert result is not None
+    assert await _columns(async_db_session, article.id) == ("F", 6, 7, 7)
 
 
 async def test_compute_and_store_article_confidence_missing_returns_none(
@@ -126,13 +160,55 @@ async def test_recompute_all_confidence_updates_every_article(
     a2 = await article_repo.upsert(url="https://example.com/r2", title="A2", source="Unrated")
 
     result = await svc.recompute_all_confidence(async_db_session, batch_size=1)
-    assert result["updated"] == 2
+    assert result["updated"] >= 2
 
-    fetched1 = await article_repo.get_by_id(a1.id)
-    fetched2 = await article_repo.get_by_id(a2.id)
-    assert fetched1 is not None and fetched2 is not None
-    assert article_repo.to_dict(fetched1)["confidence_score"] == 100
-    assert article_repo.to_dict(fetched2)["confidence_score"] == 50
+    assert await _columns(async_db_session, a1.id) == ("A", 4, 60, 60)
+    assert await _columns(async_db_session, a2.id) == ("F", 6, 50, 50)
+
+
+async def test_recompute_all_confidence_restricted_to_story_members(
+    async_db_session: AsyncSession,
+) -> None:
+    # `story_ids` (dipakai task `confidence.refresh_stories`) hanya menilai ulang anggota story.
+    s = async_db_session
+    now = datetime.datetime.now(datetime.UTC)
+    story = Story(title="t", lead_source="x", first_seen_at=now, last_seen_at=now)
+    other = Story(title="u", lead_source="y", first_seen_at=now, last_seen_at=now)
+    s.add_all([story, other])
+    await s.flush()
+    article_repo = AsyncArticleRepo(s)
+    member = await article_repo.upsert(
+        url="https://example.com/st1", title="M", source="S", story_id=story.id
+    )
+    outsider = await article_repo.upsert(
+        url="https://example.com/st2", title="O", source="S", story_id=other.id
+    )
+    loose = await article_repo.upsert(url="https://example.com/st3", title="L", source="S")
+
+    result = await svc.recompute_all_confidence(s, story_ids=[story.id])
+
+    assert result == {"updated": 1}
+    assert (await _columns(s, member.id))[1] == 6
+    assert (await _columns(s, outsider.id))[1] is None
+    assert (await _columns(s, loose.id))[1] is None
+
+
+async def test_recompute_all_confidence_caps_batch_at_500(
+    async_db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Loader fakta dirancang untuk maks 500 id per panggilan; batch lebih besar dipotong.
+    article_repo = AsyncArticleRepo(async_db_session)
+    await article_repo.upsert(url="https://example.com/cap", title="Cap", source="S")
+    sizes: list[int] = []
+    real = svc.apply_assessments_async
+
+    async def spy(session: AsyncSession, ids: Sequence[int]) -> dict[int, Any]:
+        sizes.append(len(ids))
+        return await real(session, ids)
+
+    monkeypatch.setattr(svc, "apply_assessments_async", spy)
+    await svc.recompute_all_confidence(async_db_session, batch_size=10_000)
+    assert sizes and max(sizes) <= 500
 
 
 async def test_recompute_all_confidence_commits_each_batch(api_session: AsyncSession) -> None:
@@ -158,8 +234,8 @@ async def test_recompute_all_confidence_commits_each_batch(api_session: AsyncSes
 async def test_recompute_ignores_keyword_ttps_like_persist(
     async_db_session: AsyncSession,
 ) -> None:
-    # Spec P4: bonus TTP hanya explicit + llm. Persist menghitung 50 + 1*5 = 55 untuk artikel
-    # ini (sumber tanpa rating); recompute (per artikel maupun massal) harus sama, bukan 60.
+    # Spec P4: bonus TTP hanya explicit + llm. Persist dan recompute (per artikel maupun massal)
+    # memakai loader fakta yang sama: prioritas = 50 + 1 TTP llm * 3, keyword tidak dihitung.
     from cti_core.attack_ttp import NormalizedTTP
 
     article_repo = AsyncArticleRepo(async_db_session)
@@ -177,11 +253,9 @@ async def test_recompute_ignores_keyword_ttps_like_persist(
     )
     assert sorted(t.source for t in article.ttps) == ["keyword", "llm"]
 
-    assert await svc.compute_article_confidence(async_db_session, article) == 55
+    assert (await svc.compute_article_confidence(async_db_session, article)).priority_score == 53
     await svc.recompute_all_confidence(async_db_session, source_name="UnratedKw")
-    fetched = await article_repo.get_by_id(created.id)
-    assert fetched is not None
-    assert fetched.confidence_score == 55
+    assert (await _columns(async_db_session, created.id))[3] == 53
 
 
 async def test_recompute_ioc_confidence_and_actionability_persists_all_fields(
@@ -194,8 +268,8 @@ async def test_recompute_ioc_confidence_and_actionability_persists_all_fields(
         source_url="https://a.com",
         source_name="a",
     )
-    # re-fetch dulu -- sama alasan kayak di `test_compute_article_confidence_*`
-    # di atas, `.feedback` belum "loaded" abis cabang INSERT baru `upsert()`.
+    # re-fetch dulu: `.feedback` belum "loaded" abis cabang INSERT baru `upsert()` (objek
+    # INSERT tidak lewat query `selectin`).
     ioc = await ioc_repo.get_by_id(created.id)
     assert ioc is not None
     await ioc_repo.add_feedback(ioc, verdict="tp", submitted_by="analyst1")

@@ -320,18 +320,23 @@ async def compute_article_confidence(
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),
 ) -> dict[str, object]:
-    score = await confidence.compute_and_store_article_confidence(session, article_id)
-    if score is None:
+    assessment = await confidence.compute_and_store_article_confidence(session, article_id)
+    if assessment is None:
         raise HTTPException(status_code=404, detail="Article not found")
     await AsyncAuditLogRepo(session).write(
         username=user["username"],
         action="compute_confidence",
         target_id=str(article_id),
-        detail={"score": score},
+        detail={"score": assessment.confidence_score, "admiralty_code": assessment.admiralty_code},
         ip_address=request_ip(request),
     )
     await session.commit()
-    return {"article_id": article_id, "confidence_score": score}
+    return {
+        "article_id": article_id,
+        "confidence_score": assessment.confidence_score,
+        "admiralty_code": assessment.admiralty_code,
+        "priority_score": assessment.priority_score,
+    }
 
 
 @router.post(

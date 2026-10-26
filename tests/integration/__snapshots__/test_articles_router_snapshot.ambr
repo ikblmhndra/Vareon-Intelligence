@@ -29,8 +29,10 @@
 # ---
 # name: test_compute_article_confidence
   dict({
+    'admiralty_code': 'F6',
     'article_id': int,
     'confidence_score': 50,
+    'priority_score': 50,
   })
 # ---
 # name: test_dashboard_stats

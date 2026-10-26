@@ -273,3 +273,25 @@ async def test_sync_and_async_agree(db_session: Session, async_db_session: Async
     # B (vendor_research, primer) + TTP eksplisit -> 2; prioritas = 77 + 25 + 6 + 8.
     assert async_result[art_a.id].admiralty_code == "B2"
     assert async_result[art_a.id].priority_score == 77 + 25 + 6 + 8
+
+
+@pytest.mark.asyncio
+async def test_malformed_override_is_ignored_not_fatal(async_db_session: AsyncSession) -> None:
+    # Satu nilai `overrides` JSONB yang rusak tidak boleh menggagalkan batch 500 artikel: nilai
+    # bukan int (termasuk bool) dianggap tidak ada override.
+    s = async_db_session
+    s.add(_sr("Hackernews", "C", "news"))
+    bad = _article(
+        "https://ex.com/ov-bad",
+        "Hackernews",
+        overrides={"credibility": "high", "confidence_score": True},
+    )
+    good = _article("https://ex.com/ov-good", "Hackernews", overrides={"credibility": 2})
+    s.add_all([bad, good])
+    await s.flush()
+
+    result = await apply_assessments_async(s, [bad.id, good.id])
+
+    assert result[bad.id].admiralty_code == "C4"
+    assert result[bad.id].confidence_score == 40
+    assert result[good.id].credibility == 2

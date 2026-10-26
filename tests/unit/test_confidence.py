@@ -35,39 +35,6 @@ def _ioc(
     return ioc
 
 
-# ── compute_score (confidence artikel) ───────────────────────────────────────
-
-
-def test_compute_score_no_rating_defaults_to_50_50() -> None:
-    # (50+50)/2 = 50, gak ada bonus
-    assert svc.compute_score(None, None, 0, 0) == 50
-
-
-def test_compute_score_grade_a_credibility_1_is_100() -> None:
-    assert svc.compute_score("A", "1", 0, 0) == 100
-
-
-def test_compute_score_ttp_bonus_caps_at_20() -> None:
-    # 5 TTP * 5 = 25, tapi dibatasin 20
-    base = svc.compute_score(None, None, 0, 0)
-    capped = svc.compute_score(None, None, 5, 0)
-    assert capped - base == 20
-
-
-def test_compute_score_ta_bonus_caps_at_10() -> None:
-    base = svc.compute_score(None, None, 0, 0)
-    capped = svc.compute_score(None, None, 0, 5)
-    assert capped - base == 10
-
-
-def test_compute_score_clamped_to_100() -> None:
-    assert svc.compute_score("A", "1", 5, 5) == 100
-
-
-def test_compute_score_unknown_grade_falls_back_to_50() -> None:
-    assert svc.compute_score("Z", "9", 0, 0) == 50
-
-
 # ── compute_ioc_confidence ────────────────────────────────────────────────────
 
 
@@ -155,9 +122,8 @@ def test_compute_ioc_actionability_score_between_0_and_100() -> None:
     assert 0 <= result["actionability_score"] <= 100
 
 
-def test_bonus_ttp_count_counts_only_explicit_and_llm() -> None:
-    # Spec P4: bonus confidence hanya untuk TTP `explicit` + `llm`; `keyword` belum diukur.
-    from cti_core.confidence import bonus_ttp_count
+def test_bonus_ttp_sources_are_explicit_and_llm() -> None:
+    # Spec P4: poin TTP hanya untuk `explicit` + `llm`; `keyword` belum diukur presisinya.
+    from cti_core.confidence import BONUS_TTP_SOURCES
 
-    assert bonus_ttp_count(["llm", "keyword", "explicit", "keyword"]) == 2
-    assert bonus_ttp_count([]) == 0
+    assert frozenset({"explicit", "llm"}) == BONUS_TTP_SOURCES

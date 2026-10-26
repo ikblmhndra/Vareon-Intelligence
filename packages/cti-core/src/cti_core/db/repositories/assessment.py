@@ -99,8 +99,13 @@ def facts_stmt(article_ids: Sequence[int]) -> Select[Any]:
 
 
 def _override_int(overrides: Mapping[str, Any] | None, key: str) -> int | None:
+    """Nilai override yang bukan int (string, float, null, bool) dianggap TIDAK ada override,
+    bukan error: satu `overrides` JSONB yang rusak tidak boleh menggagalkan batch 500 artikel.
+    `bool` subclass `int` di Python, jadi dikecualikan eksplisit."""
     value = (overrides or {}).get(key)
-    return None if value is None else int(value)
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value
 
 
 def facts_from_row(row: RowMapping) -> ArticleFacts:
@@ -148,7 +153,11 @@ def _update_params(assessments: Mapping[int, Assessment]) -> list[dict[str, Any]
 def apply_assessments(session: Session, article_ids: Sequence[int]) -> dict[int, Assessment]:
     """Nilai ulang dan tulis kolom penilaian `article_ids` (maks 500). Flush saja, tanpa commit:
     transaksi milik pemanggil. Kembalian: id artikel -> `Assessment`; id yang tidak ada
-    dilewati."""
+    dilewati.
+
+    Catatan: ditulis lewat ORM bulk UPDATE yang TIDAK menyegarkan objek `Article` yang sudah ada
+    di identity map sesi; pemanggil yang masih memegang objeknya harus `session.refresh(...)`
+    (atau select ulang) sebelum membaca kolom penilaian."""
     if not article_ids:
         return {}
     rows = session.execute(facts_stmt(article_ids)).mappings().all()
@@ -162,7 +171,11 @@ def apply_assessments(session: Session, article_ids: Sequence[int]) -> dict[int,
 async def apply_assessments_async(
     session: AsyncSession, article_ids: Sequence[int]
 ) -> dict[int, Assessment]:
-    """Versi async `apply_assessments` (API/recompute); statement dan nilai UPDATE sama persis."""
+    """Versi async `apply_assessments` (API/recompute); statement dan nilai UPDATE sama persis.
+
+    Catatan: ditulis lewat ORM bulk UPDATE yang TIDAK menyegarkan objek `Article` yang sudah ada
+    di identity map sesi; pemanggil yang masih memegang objeknya harus `await session.refresh(...)`
+    (atau select ulang) sebelum membaca kolom penilaian."""
     if not article_ids:
         return {}
     rows = (await session.execute(facts_stmt(article_ids))).mappings().all()
