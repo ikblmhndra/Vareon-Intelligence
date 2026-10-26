@@ -17,6 +17,7 @@ from contextlib import asynccontextmanager
 from cti_core.celery_client import send_recompute_all
 from cti_core.config import get_settings
 from cti_core.db.engine import async_session
+from cti_core.db.models.article import Article
 from cti_core.db.repositories.auth import AsyncClientRepo
 from cti_core.db.repositories.source_reliability import AsyncSourceReliabilityRepo
 from cti_core.logging import configure_logging, get_logger
@@ -26,7 +27,7 @@ from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
-from sqlalchemy import text
+from sqlalchemy import exists, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_api import __version__
@@ -118,7 +119,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     configure_logging(level=settings.log_level, json=settings.environment != "dev")
     async with async_session() as session:
         new_sources = await bootstrap_reference_rows(session)
-    if new_sources:
+        # Artikel tanpa `credibility` (mis. baris lama sebelum P6) juga butuh recompute; satu
+        # enqueue cukup, jadi dua pemicu digabung.
+        unassessed = bool(
+            await session.scalar(select(exists().where(Article.credibility.is_(None))))
+        )
+    if new_sources or unassessed:
         # SATU task untuk semua artikel (bukan satu per sumber): skala skor lama (self-rating LLM)
         # dan baru tidak boleh bercampur, dan satu panggilan broker tidak menahan startup.
         try:
@@ -127,6 +133,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             log.error(
                 "recompute_all_enqueue_failed",
                 new_default_sources=len(new_sources),
+                unassessed_articles=unassessed,
                 remedy="POST /api/articles/confidence/recompute (atau kirim task "
                 "confidence.recompute_all) secara manual",
                 exc_info=True,

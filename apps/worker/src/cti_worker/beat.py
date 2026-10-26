@@ -216,6 +216,16 @@ def _periodic_schedule() -> dict[str, dict[str, object]]:
             "schedule": crontab(minute=7),
             "options": {"queue": QUEUE_ENRICH},
         },
+        "confidence-refresh-stories": {
+            "task": "confidence.refresh_stories",
+            "schedule": crontab(minute="*/10"),
+            "options": {"queue": QUEUE_MAINTENANCE},
+        },
+        "confidence-recompute-all": {
+            "task": "confidence.recompute_all",
+            "schedule": crontab(hour=3, minute=20),
+            "options": {"queue": QUEUE_MAINTENANCE},
+        },
         "story-purge-empty": {
             "task": "story.purge_empty",
             "schedule": crontab(hour=3, minute=50),
