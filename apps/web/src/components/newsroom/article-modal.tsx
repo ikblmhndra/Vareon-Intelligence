@@ -229,7 +229,7 @@ export function ArticleModal({ article: a, onOpenChange }: { article: Article | 
                   {a.ttps.map((t) => (
                     <TableRow key={t.id}>
                       <TableCell className="font-code text-xs text-primary">{t.id}</TableCell>
-                      <TableCell className="text-xs">{t.name}</TableCell>
+                      <TableCell className="text-xs whitespace-normal">{t.name}</TableCell>
                       <TableCell>
                         {t.evidence ? (
                           <Tooltip>
