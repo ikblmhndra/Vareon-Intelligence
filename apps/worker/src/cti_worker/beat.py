@@ -49,7 +49,7 @@ from cti_scraper.queues import queue_for
 from cti_scraper.registry import discover
 from cti_scraper.supersede import effective_enabled
 
-from cti_worker.queues import QUEUE_MAINTENANCE, QUEUE_NOTIFY
+from cti_worker.queues import QUEUE_ENRICH, QUEUE_MAINTENANCE, QUEUE_NOTIFY
 from cti_worker.reports.timeutil import local_to_utc_cron
 
 if TYPE_CHECKING:
@@ -129,6 +129,7 @@ def _report_schedule(offset: int) -> dict[str, dict[str, object]]:
 
 def _periodic_schedule() -> dict[str, dict[str, object]]:
     w = get_settings().worker
+    offset = w.report_utc_offset_hours
     return {
         "pir-check-p1-alerts": {
             "task": "pir.check_p1_alerts",
@@ -202,6 +203,18 @@ def _periodic_schedule() -> dict[str, dict[str, object]]:
             "task": "llm.purge_calls",
             "schedule": crontab(hour=3, minute=40),
             "options": {"queue": QUEUE_MAINTENANCE},
+        },
+        "relevance-train": {
+            "task": "relevance.train",
+            # Minggu 02:00 lokal; `weekday` memakai konvensi Python di `local_to_utc_cron`
+            # (0=Senin..6=Minggu), jadi Minggu = 6 (sama seperti recap di `_report_schedule`).
+            "schedule": crontab(**local_to_utc_cron(2, 0, offset, weekday=6)),
+            "options": {"queue": QUEUE_ENRICH},
+        },
+        "relevance-evaluate": {
+            "task": "relevance.evaluate",
+            "schedule": crontab(minute=7),
+            "options": {"queue": QUEUE_ENRICH},
         },
         "story-purge-empty": {
             "task": "story.purge_empty",

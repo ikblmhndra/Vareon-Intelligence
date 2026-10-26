@@ -10,10 +10,14 @@ artikel pertama walau lead-nya masih di-enrich.
 from __future__ import annotations
 
 import dataclasses
+import logging
+from collections import OrderedDict
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal
 
+import numpy as np
 from cti_core.config import StorySettings
 from cti_core.db.engine import sync_session
 from cti_core.db.repositories.story import StoryRepo
@@ -21,11 +25,18 @@ from cti_core.db.repositories.story import StoryRepo
 from cti_enrich.stages.classify import ClassifyResult
 from cti_enrich.stages.extract_cves import extract_cves
 
+log = logging.getLogger(__name__)
+_embedding_unavailable_logged = False
+_embedding_failed_logged = False
+_VEC_CACHE_MAX = 4096
+_VEC_CACHE: OrderedDict[str, np.ndarray] = OrderedDict()
+"""Judul -> vektor MiniLM (384 float32, ~1,5 KB): batas 4.096 entri = ~6 MB per proses."""
+
 
 @dataclass(frozen=True)
 class StoryLink:
     story_id: int
-    rule: Literal["lead", "cve", "title_exact", "title"]
+    rule: Literal["lead", "cve", "title_exact", "title", "title_embedding"]
     """`lead` = story baru dibuat untuk artikel ini; selain itu aturan resolver yang cocok."""
     inherited: dict[str, Any] | None
     """`stories.classify` saat resolve; `None` = belum bisa diwariskan (lead masih jalan, atau
@@ -48,6 +59,7 @@ def resolve_story(
     from cti_enrich.story.resolver import ArticleKeys, key_cves, resolve
 
     cves = key_cves(extract_cves(f"{title} {text}"), cfg.max_key_cves)
+    embed = _embedding_fn(cfg)
     with sync_session() as session:
         repo = StoryRepo(session)
         repo.lock()
@@ -55,7 +67,10 @@ def resolve_story(
             now, window_hours=cfg.window_hours, max_age_days=cfg.max_age_days
         )
         match = resolve(
-            ArticleKeys(title=title, source=source, cve_ids=cves, at=now), candidates, cfg
+            ArticleKeys(title=title, source=source, cve_ids=cves, at=now),
+            candidates,
+            cfg,
+            embedding_similarity=embed,
         )
         if match is None:
             story_id = repo.create(title=title, source=source, cve_ids=set(cves), now=now)
@@ -66,6 +81,53 @@ def resolve_story(
             # Story kosong buatan percobaan sebelumnya artikel ini (replay): bukan follow-up.
             rule = "lead"
         return StoryLink(match.story_id, rule, classify, lead_article_id, cves)
+
+
+def _embedding_fn(cfg: StorySettings) -> Callable[[str, list[str]], list[float]] | None:
+    """Fungsi embedding untuk resolver, hanya bila diaktifkan. Model tak ada di disk (image
+    tanpa extra `nlp`) = resolve tanpa embedding, dicatat sekali per proses.
+
+    Resolve jalan di dalam kunci advisory story yang menyerialkan semua artikel, jadi biayanya
+    ditekan: vektor judul di-cache per proses (LRU `_VEC_CACHE_MAX`), hanya judul baru yang
+    di-embed (satu panggilan batch) bersama query. Kegagalan `embed()` (mis. ONNX) tidak boleh
+    menggagalkan artikel: dicatat sekali, skor jadi 0.0 sehingga resolver lanjut dengan TF-IDF."""
+    global _embedding_unavailable_logged
+    if cfg.embedding_similarity <= 0:
+        return None
+    # Import lambat: fastembed hanya ada di image worker-nlp.
+    from cti_enrich.relevance.embedder import EmbedderUnavailable, get_embedder
+
+    try:
+        embedder = get_embedder()
+    except EmbedderUnavailable as exc:
+        if not _embedding_unavailable_logged:
+            _embedding_unavailable_logged = True
+            log.warning("story_embedding_unavailable", extra={"error": str(exc)})
+        return None
+
+    def score(query: str, titles: list[str]) -> list[float]:
+        global _embedding_failed_logged
+        if not titles:
+            return []
+        try:
+            missing = list(dict.fromkeys(t for t in [query, *titles] if t not in _VEC_CACHE))
+            if missing:
+                for t, v in zip(missing, embedder.embed(missing), strict=True):
+                    _VEC_CACHE[t] = v
+            for t in [query, *titles]:
+                _VEC_CACHE.move_to_end(t)
+            q = _VEC_CACHE[query]
+            result = [float(_VEC_CACHE[t] @ q) for t in titles]
+            while len(_VEC_CACHE) > _VEC_CACHE_MAX:
+                _VEC_CACHE.popitem(last=False)
+            return result
+        except Exception as exc:
+            if not _embedding_failed_logged:
+                _embedding_failed_logged = True
+                log.warning("story_embedding_failed", extra={"error": str(exc)})
+            return [0.0] * len(titles)
+
+    return score
 
 
 def classify_from_story(

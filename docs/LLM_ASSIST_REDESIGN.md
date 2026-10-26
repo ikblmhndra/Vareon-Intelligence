@@ -1,8 +1,8 @@
 # LLM as an assistant: enrichment redesign and CTI gaps
 
-Status: **in progress** (updated 2026-10-25). Building blocks shipped in 0.8.3 and 0.8.4, and
+Status: **in progress** (updated 2026-10-26). Building blocks shipped in 0.8.3 and 0.8.4, and
 P0 and P1 shipped in 0.8.5, P2 in 0.8.6 and P3 in 0.8.7 (PR #76 open; see Progress below). P4 is
-implemented for 0.8.8 (branch not yet released or merged); P5-P7 have not started.
+implemented for 0.8.8 and P5 for 0.8.9 (branches not yet merged to `main`); P6-P7 have not started.
 
 Goal: turn Vareon from "every article goes through an LLM" into a CTI platform where
 deterministic code, curated reference data and analyst feedback do the bulk of the work, and
@@ -124,7 +124,51 @@ Built for **0.8.8** (P4 deterministic extractors, branch not yet merged; spec
   coverage; the actor margin is small. Malware precision is the weakest field (the second labeller treats
   legitimate OS binaries used by attackers as false).
 
-Not started: P5 to P7 (local relevance model, CTI model; persist-first
+Built for **0.8.9** (P5 local relevance model, branch `claude/p5-relevance-model-a447e0`, not yet merged; spec
+`docs/superpowers/specs/2026-10-25-p5-relevance-model-design.md`, plan
+`docs/superpowers/plans/2026-10-25-p5-relevance-model.md`):
+
+- **Gate.** A local model (word and char TF-IDF plus MiniLM sentence embeddings, logistic regression, three classes
+  `reject` / `best_practice` / `threat_news`) scores the title. When `p(threat_news) >= 0.85` the article skips the
+  classify LLM call, takes its incident fields from the Tier 1 rule and carries `raw_enrichment.relevance`. Everything else
+  goes to the LLM as before. Any failure in the relevance path falls back to the LLM.
+- **Automatic gate.** The model starts in shadow (decisions recorded, LLM still called). `relevance.evaluate` (hourly)
+  turns the gate on once at least 200 titles in 14 days show >= 95% agreement with the LLM, and off again when the audit
+  sample drops below 92% over the last 50. `RELEVANCE__MODE=shadow` holds the gate off, `off` disables the model.
+- **Audit sample.** 20% of gated articles (deterministic by URL hash) still call the LLM, so agreement keeps being
+  measured and the model never trains on its own decisions (gated decisions are excluded from labels).
+- **Weekly training.** `relevance.train` runs on Sunday 02:00 local on each instance's own labels (articles plus
+  rejected articles, analyst overrides applied, titles deduplicated). Training needs at least 1,000 titles and 100 per class; a model is activated only if its 14-day time holdout shows
+  >= 95% agreement and a band share >= 20% (otherwise the run is stored as `rejected` with the reason); the artifact is stored in `relevance_models` (one migration, `c4f1a9d27e6b`).
+  A first model is trained within the hour after deploy, or up to 24 h later if that attempt is skipped or
+  rejected (the retrain trigger has a 24 h cooldown).
+- **Embedding story rule.** `STORY__EMBEDDING_SIMILARITY` (default 0, off) adds a MiniLM title rule to the P3
+  resolver. Replay of the 1,390-title fixture at 0.8: 194 follow-ups (P3 replay without embeddings: 171), PHP2Shell 24 / NetScaler 17 /
+  Atlassian 9 waves intact, Asec monthly reports still apart.
+- **Image.** `worker-nlp` bakes the MiniLM model in at build (download ~90 MB, ~88 MB on disk) (downloaded from huggingface.co at a pinned
+  revision); at run time it is loaded with `local_files_only`, never downloaded.
+- **Data health** has a relevance section (active model, mode, gate state, band share, audit agreement, avoided calls).
+
+### P5 evaluation (2026-10-26, prod labels, read-only export)
+
+`tools/eval/relevance_eval.py` on 2,175 prod rows (2,112 distinct titles after dedup: 1,507 threat news, 359 reject,
+246 best practice) with the real embedder, using the product's own train and decision code. Prod runs 0.8.2, so
+`failure_kind` is empty (failed rows are caught by the `[enrichment_failed]` reason prefix); the exported classify audit
+is passed to the product's label rules where present (most prod rows predate the audit trail).
+
+| Split | Threshold | Band share | Agreement | Band n |
+|---|---|---|---|---|
+| 14-day holdout (n=871, train 1,241) | 0.85 | 54.5% | 98.1% | 475 |
+| 14-day holdout | 0.90 | 49.8% | 98.6% | 434 |
+| 5-fold CV (n=2,112) | 0.85 | 52.2% | 97.6% | 1,103 |
+| 5-fold CV | 0.90 | 46.2% | 98.5% | 976 |
+
+Release gate (agreement >= 95% and band share >= 35% at 0.85): met on both the holdout and the CV. The offline
+experiment in the brainstorm (TF-IDF + embedding, same labels) gave 53% / 97.9% at 0.85 and 47% / 98.5% at 0.9, so the
+product model reproduces it. Expected effect once the gate is on: about 52% x (1 - 0.2) = 42% fewer classify calls.
+Measured avoided calls on dev and prod are still to be read from Data health after deploy.
+
+Not started: P6 and P7 (CTI model; persist-first
 enrichment). Cost measurement over a week of real data is now possible
 on dev.
 
@@ -297,7 +341,7 @@ testing first. Phases 1-3 can start without schema redesign.
 | P2 Cheap wins (**done in 0.8.6**) | `content_kind`/`default_relevance` on scrapers; refang + CVE-out-of-IOC + allowlist seed; TTP evidence substring check; drop LLM `confidence` from UI in favour of `services/confidence.py` | Structured sources make 0 LLM calls; duplicate defanged IOCs = 0; no TTP without verifiable evidence |
 | P3 Story dedup at ingest (**done in 0.8.7**) | Clustering in `cti_core`, `story_sources`, skip Tier 3 for known stories | "PHP2Shell"-type waves enriched once per story |
 | P4 Deterministic extractors (**built for 0.8.8**) | Actor/malware dictionary matcher, explicit + inferred ATT&CK, industry taxonomy, incident rule | Coverage (E9) measured before/after on the same article set; equal or better than LLM for actor and TTP precision on a 100-article hand-labelled sample. Measured 2026-10-25 on silver labels: met for actor (71% vs 70%) and TTP (keyword 70%, explicit 99% vs LLM 35%) precision and for coverage; malware precision 47% is the weakest field |
-| P5 Local relevance model | Train on audit trail, shadow mode, then gate | Agreement with LLM >= 95% on the confident bands; LLM classify calls down by the measured share |
+| P5 Local relevance model (**built for 0.8.9**) | Train on audit trail, shadow mode, then gate | Agreement with LLM >= 95% on the confident bands; LLM classify calls down by the measured share. Measured 2026-10-26 on prod labels at 0.85: holdout 98.1% agreement over 54.5% of titles, 5-fold CV 97.6% over 52.2%; the share of calls actually avoided is read from Data health after deploy |
 | P6 Confidence | Grade all sources, Admiralty score in API/UI | Every article shows A-F/1-6 |
 | P7+ CTI model | Entity + relationship tables, TLP, TAXII, Splunk export, sightings, PIR at ingest, hunting packs | Per item in section 4 |
 

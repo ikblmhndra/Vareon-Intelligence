@@ -59,6 +59,7 @@ if TYPE_CHECKING:
     from cti_enrich.routing import RoutingResult
     from cti_enrich.stages.classify import ClassifyResult
     from cti_enrich.stages.extract_ttps import TtpResult
+    from cti_enrich.stages.relevance import RelevanceResult
     from cti_enrich.stages.score import ScoreResult
     from cti_enrich.stages.tier1 import Tier1Result
     from cti_enrich.story.attach import StoryLink
@@ -103,6 +104,21 @@ def _country_roles(
 
 def _audit_fields(classify_result: ClassifyResult) -> dict[str, dict[str, object]]:
     return {"raw_enrichment": {"classify": classify_result.audit}} if classify_result.audit else {}
+
+
+def _with_relevance(
+    audit: dict[str, dict[str, object]],
+    relevance: RelevanceResult | None,
+    classify_result: ClassifyResult,
+) -> dict[str, dict[str, object]]:
+    """Tambah `raw_enrichment["relevance"]` (P5). Artikel yang lolos gate memakai vonis insiden
+    aturan Tier 1 karena LLM classify dilewati: sumbernya dicatat di `incident_source`."""
+    if relevance is None:
+        return audit
+    entry: dict[str, object] = relevance.to_audit()
+    if classify_result.audit.get("skipped") == "relevance_gate":
+        entry["incident_source"] = "rule"
+    return {"raw_enrichment": {**audit.get("raw_enrichment", {}), "relevance": entry}}
 
 
 def _with_tier1(
@@ -166,6 +182,7 @@ def persist(
     tier1: Tier1Result | None = None,
     merged_ttps: Sequence[NormalizedTTP] | None = None,
     industries: tuple[list[str], str] | None = None,
+    relevance: RelevanceResult | None = None,
 ) -> Article:
     """`story` (P3) menempelkan artikel ke story-nya di transaksi yang sama: `story_id`/
     `story_match` ikut di-upsert (di-flush), BARU `StoryRepo.attach` -- `source_count` dihitung
@@ -173,7 +190,9 @@ def persist(
 
     Tier 1 (P4): `tier1` -> malware + `raw_enrichment["tier1"]`; `merged_ttps` (hasil
     `merge_ttps`, bawa `source`/`evidence`) menggantikan TTP dari `ttp_result`; `industries` =
-    `(list, sumber)` dari `merge_industries`. Tanpa argumen ini perilakunya sama seperti dulu."""
+    `(list, sumber)` dari `merge_industries`. Tanpa argumen ini perilakunya sama seperti dulu.
+
+    Relevansi (P5): `relevance` -> `raw_enrichment["relevance"]` (model, probabilitas)."""
     article_repo = ArticleRepo(session)
     story_fields = {"story_id": story.story_id, "story_match": story.rule} if story else {}
     article = article_repo.upsert(
@@ -196,7 +215,9 @@ def persist(
         c2_indicator=c2_indicator,
         # Audit trail respons LLM mentah (`raw_enrichment`, lihat `ClassifyResult.audit`).
         # Cuma kalau ada isinya, supaya pemanggil tanpa audit gak mengosongkan yang lama.
-        **_with_tier1(_audit_fields(classify_result), tier1),
+        **_with_tier1(
+            _with_relevance(_audit_fields(classify_result), relevance, classify_result), tier1
+        ),
         **story_fields,
     )
     if story is not None:
@@ -266,6 +287,7 @@ def persist_rejected(
     scraper_id: str | None,
     posted_on: datetime.date | None,
     classify_result: ClassifyResult,
+    relevance: RelevanceResult | None = None,
 ) -> RejectedArticle:
     """Tulis `rejected_articles` -- dipanggil `pipeline.py` pas
     `classify_result.related_cyber == False` (satu-satunya jalur reject
@@ -284,5 +306,7 @@ def persist_rejected(
         scraper_id=scraper_id,
         posted_on=posted_on,
         reason=classify_result.reason,
-        raw_enrichment=_audit_fields(classify_result).get("raw_enrichment"),
+        raw_enrichment=_with_relevance(
+            _audit_fields(classify_result), relevance, classify_result
+        ).get("raw_enrichment"),
     )

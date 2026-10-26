@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 import pytest
 import structlog
 from cti_core.attack_ttp import TechniqueCatalog
-from cti_core.config import StorySettings
+from cti_core.config import RelevanceSettings, StorySettings
 from cti_enrich import pipeline
 from cti_enrich.stages import tier1 as tier1_stage
 from cti_enrich.stages.classify import ClassifyResult
@@ -66,7 +66,11 @@ def rec(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     monkeypatch.setattr(tier1_stage, "get_dictionary", lambda session: dictionary)
     monkeypatch.setattr(tier1_stage, "_get_catalog", lambda session: TechniqueCatalog())
     monkeypatch.setattr(
-        pipeline, "get_settings", lambda: SimpleNamespace(story=StorySettings(enabled=False))
+        pipeline,
+        "get_settings",
+        lambda: SimpleNamespace(
+            story=StorySettings(enabled=False), relevance=RelevanceSettings(mode="off")
+        ),
     )
     monkeypatch.setattr(pipeline, "_known_article", lambda session, url: None)
     monkeypatch.setattr(pipeline, "classify", fake_classify)

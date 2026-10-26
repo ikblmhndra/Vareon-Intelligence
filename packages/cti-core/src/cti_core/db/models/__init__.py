@@ -52,6 +52,7 @@ from cti_core.db.models.package import MonitoredPackage, PackageDepGraph, Packag
 from cti_core.db.models.pir import PIRNote, PIRRequirement
 from cti_core.db.models.ransomware import RansomwareVictim
 from cti_core.db.models.recap import DailyRecap
+from cti_core.db.models.relevance import RelevanceModel
 from cti_core.db.models.report_state import CveMention, JobState
 from cti_core.db.models.rfi import RFIRequest
 from cti_core.db.models.runtime_secret import RuntimeSecret
@@ -124,6 +125,7 @@ __all__ = [
     "RFIRequest",
     "RansomwareVictim",
     "RejectedArticle",
+    "RelevanceModel",
     "Role",
     "RuntimeSecret",
     "ScraperConfig",

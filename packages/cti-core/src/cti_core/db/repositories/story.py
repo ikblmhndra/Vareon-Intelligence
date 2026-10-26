@@ -62,6 +62,8 @@ class StoryStats:
     new_stories: int
     followups: int
     inherited: int
+    by_embedding: int
+    """Artikel dengan `story_match = 'title_embedding'` dalam jendela (aturan embedding P5)."""
 
 
 class StoryRepo:
@@ -212,7 +214,7 @@ class AsyncStoryRepo:
         )
         follow = and_(
             Article.created_at >= since,
-            Article.story_match.in_(("cve", "title_exact", "title")),
+            Article.story_match.in_(("cve", "title_exact", "title", "title_embedding")),
         )
         followups = await self.session.scalar(
             select(func.count()).select_from(Article).where(follow)
@@ -222,8 +224,14 @@ class AsyncStoryRepo:
             .select_from(Article)
             .where(follow, Article.raw_enrichment["classify"].has_key("inherited_from_story"))
         )
+        by_embedding = await self.session.scalar(
+            select(func.count())
+            .select_from(Article)
+            .where(Article.created_at >= since, Article.story_match == "title_embedding")
+        )
         return StoryStats(
             new_stories=int(new_stories or 0),
             followups=int(followups or 0),
             inherited=int(inherited or 0),
+            by_embedding=int(by_embedding or 0),
         )
