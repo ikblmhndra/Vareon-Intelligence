@@ -17,7 +17,7 @@ def _b(v: str) -> bool:
 
 def _load() -> list[dict]:
     rows = []
-    with FIXTURE.open(newline="") as fh:
+    with FIXTURE.open(newline="", encoding="utf-8") as fh:
         for r in csv.DictReader(fh):
             facts = ArticleFacts(
                 reliability_grade=r["reliability_grade"] or None,
