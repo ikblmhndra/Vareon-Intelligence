@@ -164,7 +164,8 @@ migration does not backfill (section 4.4 does). `NULL` credibility marks "not ye
   start. Non-scraper sources (for example CYFIRMA) stay `NULL` and count as not primary.
 - `credibility_code` and `admiralty_code` are kept (no destructive migration) but no longer drive
   scoring. New and confirmed rows keep writing them as before so existing readers do not break;
-  the edit form stops asking for credibility and the API defaults it from the P2 mapping.
+  the edit form stops asking for credibility; the API keeps the stored code on update and writes
+  `6` on a new analyst row when none is given.
 
 ## 4. When scores are computed
 
