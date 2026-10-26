@@ -7,6 +7,7 @@ tidak commit: caller yang memegang transaksi (sama seperti `StoryRepo`).
 from __future__ import annotations
 
 import datetime
+from dataclasses import dataclass
 from typing import Any, Literal
 
 from sqlalchemy import delete, select, text, update
@@ -22,6 +23,21 @@ Beda namespace supaya ketiganya tidak saling bentur."""
 
 _STATUSES = ("active", "retired", "rejected")
 _GATE_STATES = ("shadow", "gate")
+
+
+_BEST_PRACTICE = "Security Technology & Best Practices"
+"""Salinan `cti_enrich.relevance.dataset.BEST_PRACTICE` (cti_core tidak boleh mengimpor
+cti_enrich); vonis LLM `best_practice` dibaca dari `articles.news_type`."""
+
+
+@dataclass(frozen=True)
+class GateStats:
+    """Ukuran kesepakatan band model dengan LLM. `audit_last`: sampel audit terbaru lebih dulu,
+    True = LLM setuju `threat_news`."""
+
+    band_n: int
+    band_agree: int
+    audit_last: list[bool]
 
 
 def check_status(status: str) -> str:
@@ -113,6 +129,41 @@ class RelevanceModelRepo:
             update(RelevanceModel)
             .where(RelevanceModel.id == model_id)
             .values(gate_state=state, gate_changed_at=now)
+        )
+
+    def gate_stats(self, *, since: datetime.datetime, revert_samples: int) -> GateStats:
+        """Hitung baris dalam band (`in_band` true, keputusan shadow/audit) dari `articles` dan
+        `rejected_articles`. Setuju = vonis LLM `threat_news`: artikel bukan best practice;
+        baris rejected tidak pernah setuju. Keputusan `gated` tidak dihitung (LLM tidak
+        dipanggil, tidak ada vonis)."""
+        union = """
+            SELECT created_at AS ts, (news_type IS DISTINCT FROM :bp) AS agree,
+                   raw_enrichment->'relevance'->>'decision' AS decision
+            FROM articles
+            WHERE raw_enrichment->'relevance'->>'in_band' = 'true'
+              AND raw_enrichment->'relevance'->>'decision' IN ('shadow', 'audit')
+            UNION ALL
+            SELECT rejected_at AS ts, false AS agree,
+                   raw_enrichment->'relevance'->>'decision' AS decision
+            FROM rejected_articles
+            WHERE raw_enrichment->'relevance'->>'in_band' = 'true'
+              AND raw_enrichment->'relevance'->>'decision' IN ('shadow', 'audit')
+        """
+        band = self.session.execute(
+            text(
+                f"SELECT count(*), count(*) FILTER (WHERE agree) FROM ({union}) r "
+                "WHERE ts >= :since"
+            ),
+            {"bp": _BEST_PRACTICE, "since": since},
+        ).one()
+        audits = self.session.execute(
+            text(
+                f"SELECT agree FROM ({union}) r WHERE decision = 'audit' ORDER BY ts DESC LIMIT :n"
+            ),
+            {"bp": _BEST_PRACTICE, "n": revert_samples},
+        ).scalars()
+        return GateStats(
+            band_n=int(band[0]), band_agree=int(band[1]), audit_last=[bool(a) for a in audits]
         )
 
     def purge(self, older_than: datetime.datetime) -> int:

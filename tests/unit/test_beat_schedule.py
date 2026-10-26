@@ -318,3 +318,13 @@ def test_relevance_train_runs_sunday_0200_local_on_the_enrich_queue(monkeypatch)
     assert entry["task"] == "relevance.train"
     assert entry["options"]["queue"] == "enrich"
     assert _cron(entry) == ("0", "19", "6")
+
+
+def test_relevance_evaluate_runs_hourly_on_the_enrich_queue(monkeypatch) -> None:
+    monkeypatch.setattr(beat, "_scraper_configs", lambda: {})
+
+    entry = beat.build_beat_schedule()["relevance-evaluate"]
+
+    assert entry["task"] == "relevance.evaluate"
+    assert entry["options"]["queue"] == "enrich"
+    assert _cron(entry)[0] == "7"

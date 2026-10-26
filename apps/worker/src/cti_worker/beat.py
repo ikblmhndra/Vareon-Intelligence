@@ -211,6 +211,11 @@ def _periodic_schedule() -> dict[str, dict[str, object]]:
             "schedule": crontab(**local_to_utc_cron(2, 0, offset, weekday=6)),
             "options": {"queue": QUEUE_ENRICH},
         },
+        "relevance-evaluate": {
+            "task": "relevance.evaluate",
+            "schedule": crontab(minute=7),
+            "options": {"queue": QUEUE_ENRICH},
+        },
         "story-purge-empty": {
             "task": "story.purge_empty",
             "schedule": crontab(hour=3, minute=50),
