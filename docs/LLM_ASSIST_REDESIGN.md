@@ -168,6 +168,22 @@ experiment in the brainstorm (TF-IDF + embedding, same labels) gave 53% / 97.9% 
 product model reproduces it. Expected effect once the gate is on: about 52% x (1 - 0.2) = 42% fewer classify calls.
 Measured avoided calls on dev and prod are still to be read from Data health after deploy.
 
+### P5 on dev (2026-10-26): a dev-only threshold to remember
+
+- **Dev `.env` differs from prod on purpose.** Dev has `RELEVANCE__MODE=auto`, `STORY__ENABLED=true`,
+  `STORY__EMBEDDING_SIMILARITY=0.8` and **`RELEVANCE__GATE_MIN_AGREEMENT=0.94`** (backup of the previous file:
+  `.env.bak-sebelum-0.8.9`). Prod keeps the default **0.95**: do not copy the 0.94 line to prod.
+- **Why 0.94 on dev.** The first dev training (1,799 titles: 1,244 threat news, 295 reject, 260 best practice) reached
+  94.89% agreement over 50.8% of the 14-day holdout (313 titles in the band) and was correctly rejected at 0.95, which left dev with
+  no active model and therefore no shadow data. Dev labels come from the free OpenRouter models and are noisier than
+  prod's (`gpt-4o`). With 0.94 the same model (id 2) became active in shadow. The same setting is also the threshold
+  that turns the dev gate on, so the dev gate can open at 94%.
+- **First shadow decision** (08:24-09:10 UTC): one article, in band (`p = 0.85`), accepted by the LLM, so it agreed.
+  Dev ingests only a few articles per hour, so the automatic gate (200 in-band titles with an LLM verdict in 14 days) will
+  take several days. Follow progress in Data health > Relevance model.
+- **Revisit** when dev has a week of shadow data: if the shadow agreement on dev stays >= 95%, remove the 0.94 line so
+  dev and prod use the same threshold.
+
 Not started: P6 and P7 (CTI model; persist-first
 enrichment). Cost measurement over a week of real data is now possible
 on dev.
