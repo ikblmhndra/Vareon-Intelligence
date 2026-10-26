@@ -147,6 +147,17 @@ tweet would move `since_id` past tweets the alert filters rejected.
    and TTP LLM calls; everything else (summarize, IOCs, score, routing, alert) runs per article. `persist` sets
    `articles.story_id`/`story_match` and updates the story counts, `cve_ids`, lead and `classify` after the article row is
    flushed. Tier 0 members never fill or inherit `classify`; a rejected lead keeps its story.
+1a. **Relevance gate** (P5, `stages/relevance.run_relevance`, before the LLM classify, skipped for inherited and Tier 0 articles):
+   a local model scores the title (word and char TF-IDF plus MiniLM embeddings, logistic regression over `reject` /
+   `best_practice` / `threat_news`, trained weekly by `relevance.train` per instance and stored in `relevance_models`).
+   With the gate on and `p(threat_news) >= RELEVANCE__ACCEPT_THRESHOLD` (0.85) the article skips the classify call, except a
+   deterministic `RELEVANCE__AUDIT_RATE` (0.2) share that still calls the LLM to keep agreement measurable; gated decisions
+   (`audit["skipped"]`) never become training labels. In shadow the LLM is always called and the decision is only recorded in
+   `raw_enrichment.relevance`. `relevance.evaluate` (hourly) turns the gate on at >= 95% agreement over 200 titles and off
+   below 92% over 50 audits; `RELEVANCE__MODE=shadow|off` overrides it. Any failure falls back to the LLM. The embedder
+   (`relevance/embedder.py`) imports `fastembed` lazily and loads the model from `FASTEMBED_CACHE_PATH` with
+   `local_files_only` (baked into the `worker-nlp` image), so `cti_enrich.pipeline` still imports without the `nlp` extra.
+   The same embedder feeds the optional story title rule `STORY__EMBEDDING_SIMILARITY` (default 0, off).
 1. `classify(title)`, or the inherited result from step 0. If `related_cyber` is false, write a light `rejected_articles` row and return.
    Sources whose `ScraperMeta.content_kind` is structured (`cisa_kev`, `exploitdb`, `cis`; `default_relevance="always"`)
    skip classify and TTP extraction.

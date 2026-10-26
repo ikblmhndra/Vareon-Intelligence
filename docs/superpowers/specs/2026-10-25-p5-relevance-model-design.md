@@ -1,6 +1,6 @@
 # P5 local relevance model: classify gate without the LLM, plus embeddings for story dedup
 
-Date: 2026-10-25. Status: design approved in chat (five sections), awaiting review of this written spec.
+Date: 2026-10-25. Status: Implemented in 0.8.9 (branch claude/p5-relevance-model-a447e0).
 Release: **0.8.9** (one PR, after P4 / 0.8.8; merged into `origin/Dev` and tested on the dev instance
 first).
 Parent documents: `docs/LLM_ASSIST_REDESIGN.md` (section 2 "Tier 2", rollout row P5, evidence E2/E15),

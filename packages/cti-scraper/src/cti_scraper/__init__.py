@@ -1,3 +1,3 @@
 """cti_scraper — skeleton Fase 1. Isi datang di fase-nya masing-masing (lihat docs/PROGRESS.md)."""
 
-__version__ = "0.8.8"
+__version__ = "0.8.9"
