@@ -429,12 +429,17 @@ async def get_article_by_id(article_id: int, session: AsyncSession = Depends(get
     article = await repo.get_by_id(article_id)
     if article is None:
         raise HTTPException(status_code=404, detail="Article not found")
+    # Satu lookup rating (bukan `get_all_ratings`) biar `grade_origin` sama dengan endpoint
+    # list; tanpa ini modal artikel selalu dapat `None`. Kunci mapping lowercase = bentuk
+    # yang dibaca `_serialize`.
+    rating = await AsyncSourceReliabilityRepo(session).get_by_name_ci(article.source)
+    ratings = {article.source.lower(): rating} if rating is not None else None
     stories = (
         await AsyncStoryRepo(session).counts([article.story_id])
         if article.story_id is not None
         else None
     )
-    return _serialize(article, repo.to_dict(article), stories=stories)
+    return _serialize(article, repo.to_dict(article), ratings, stories)
 
 
 @router.get(

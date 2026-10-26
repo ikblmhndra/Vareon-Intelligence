@@ -101,3 +101,42 @@ async def test_article_carries_own_assessment(
     assert fresh["admiralty_code"] is None
     assert fresh["credibility"] is None
     assert fresh["score_reasons"] == {"credibility": [], "priority": []}
+
+
+async def test_article_detail_carries_source_grade_origin(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+) -> None:
+    """`GET /api/articles/{id}` (modal artikel) harus membawa `grade_origin` seperti endpoint
+    list; dulu `_serialize` dipanggil tanpa rating sehingga selalu `None` di sini."""
+    await AsyncClientRepo(api_session).ensure_default()
+    today = datetime.date.today()
+    api_session.add(
+        SourceReliabilityEntry(
+            source_name="DetailSource",
+            analyst_name="analyst",
+            reliability_grade="A",
+            credibility_code="1",
+            admiralty_code="A1",
+            notes="",
+            added_date=today,
+            last_updated=today,
+            origin="analyst",
+        )
+    )
+    repo = AsyncArticleRepo(api_session)
+    graded = await repo.upsert(
+        url="https://d.example/1", title="Graded detail", source="detailsource", posted_on=today
+    )
+    ungraded = await repo.upsert(
+        url="https://d.example/2", title="Ungraded detail", source="NoRow", posted_on=today
+    )
+    await api_session.commit()
+
+    resp = await api_client.get(f"/api/articles/{graded.id}", headers=auth_header())
+    assert resp.status_code == 200
+    assert resp.json()["grade_origin"] == "analyst"
+    resp = await api_client.get(f"/api/articles/{ungraded.id}", headers=auth_header())
+    assert resp.status_code == 200
+    assert resp.json()["grade_origin"] is None
