@@ -8,7 +8,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-from cti_core.config import StorySettings
+from cti_core.config import RelevanceSettings, StorySettings
 from cti_enrich import pipeline
 from cti_enrich.stages.classify import ClassifyResult
 from cti_enrich.stages.persist import _audit_fields
@@ -33,7 +33,11 @@ def calls(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
 
     # Jalur story (P3) diuji di `test_pipeline_story.py`; di sini perilaku Tier 0 0.8.6.
     monkeypatch.setattr(
-        pipeline, "get_settings", lambda: SimpleNamespace(story=StorySettings(enabled=False))
+        pipeline,
+        "get_settings",
+        lambda: SimpleNamespace(
+            story=StorySettings(enabled=False), relevance=RelevanceSettings(mode="off")
+        ),
     )
     monkeypatch.setattr(pipeline, "_known_article", lambda session, url: None)
     monkeypatch.setattr(pipeline, "classify", fake_classify)

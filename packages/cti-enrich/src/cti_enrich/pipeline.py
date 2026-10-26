@@ -18,6 +18,12 @@ memakai sesi SENDIRI (`cti_enrich.story.attach`): transaksi sesi utama memegang 
 `_known_article` sepanjang panggilan LLM, dan commit lebih awal di sana melepas kunci itu.
 `STORY__ENABLED=false` = urutan 0.8.6 persis (classify sebelum fetch, tanpa tulisan story).
 
+Gate relevansi (P5, `stages/relevance.py`): sebelum LLM classify, model lokal memprediksi
+relevansi dari judul. Keputusan `gated` (yakin berita ancaman, gate menyala, bukan sampel audit)
+melewati panggilan LLM classify; vonis insiden dan korbannya lalu datang dari aturan Tier 1.
+`shadow`/`audit`/`llm` tetap memanggil LLM; keputusannya dicatat di `raw_enrichment["relevance"]`.
+Tier 0 dan warisan story tidak menjalankan model. Gagal apa pun = LLM classify seperti dulu.
+
 Dua short-circuit dipertahankan APA ADANYA dari kode lama:
 
 1. `related_cyber == False` -> return lebih awal, gak ada fetch/summarize/
@@ -78,6 +84,7 @@ from cti_enrich.stages.extract_ttps import (
 )
 from cti_enrich.stages.fetch_text import fetch_text
 from cti_enrich.stages.persist import persist, persist_rejected
+from cti_enrich.stages.relevance import RelevanceResult, gated_classify, run_relevance
 from cti_enrich.stages.score import ScoreResult
 from cti_enrich.stages.summarize import summarize
 from cti_enrich.stages.tier1 import run_tier1
@@ -225,6 +232,7 @@ def run_pipeline(
     inherited = story is not None and story.inherited is not None
 
     always = default_relevance == "always"
+    relevance: RelevanceResult | None = None
     if always:
         # Tier 0 tetap classify sintetis walau story-nya punya classify: sumber terstruktur
         # dinilai dari jenisnya, dan penanda `skipped` menjaga Tier 0 tidak mengisi story.
@@ -241,7 +249,11 @@ def run_pipeline(
             lead_article_id=story.lead_article_id,
         )
     else:
-        classify_result = classify(title)
+        relevance = run_relevance(session, title=title, url=url, cfg=get_settings().relevance)
+        if relevance is not None and relevance.decision.decision == "gated":
+            classify_result = gated_classify(relevance)
+        else:
+            classify_result = classify(title)
     if not classify_result.related_cyber:
         persist_rejected(
             session=session,
@@ -251,6 +263,7 @@ def run_pipeline(
             scraper_id=scraper_id,
             posted_on=posted_on,
             classify_result=classify_result,
+            relevance=relevance,
         )
         # Story-nya SENGAJA tidak dihapus walau masih kosong (Ruling 11): artikel lain bisa sudah
         # resolve ke story ini dan masih di-enrich; menghapusnya membuat insert artikel itu gagal
@@ -269,6 +282,10 @@ def run_pipeline(
         victim_name=classify_result.victim_name,
         techniques=not classify_result.security_tech_best_practice,
     )
+    if classify_result.audit.get("skipped") == "relevance_gate" and tier1.incident is not None:
+        # LLM classify dilewati: vonis insiden + korban dari aturan (`incident_source="rule"`).
+        classify_result.confirmed_incident = tier1.incident.confirmed
+        classify_result.victim_name = tier1.incident.victim
     # Industri gabungan dipakai di SEMUA tempat (pesan alert, routing OT, persist) supaya baris
     # tersimpan dan teks Telegram tidak berbeda.
     industries = merge_industries(classify_result.industries_impacted, tier1.industries)
@@ -305,6 +322,7 @@ def run_pipeline(
             story=story,
             tier1=tier1,
             industries=industries,
+            relevance=relevance,
         )
         session.commit()  # lihat catatan di situs kedua: alert gagal != artikel batal
         if alert:
@@ -387,6 +405,7 @@ def run_pipeline(
         tier1=tier1,
         merged_ttps=merged_ttps,
         industries=industries,
+        relevance=relevance,
     )
     # COMMIT dulu sebelum alert: `persist` + `route_alerts` satu sesi/transaksi,
     # dan `sync_session()` ROLLBACK kalau ada exception. Tanpa commit ini, alert

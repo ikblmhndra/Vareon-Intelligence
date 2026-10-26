@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from cti_enrich.relevance.embedder import EmbedderUnavailable, get_embedder
 from cti_enrich.relevance.gate import GateDecision, decide
+from cti_enrich.stages.classify import ClassifyResult
 
 if TYPE_CHECKING:
     from cti_enrich.relevance.model import Probs, TrainedModel
@@ -82,7 +83,10 @@ def _active(session: Session) -> _Cached | None:
     now = time.monotonic()
     if _cache is not None and now - _cache.loaded_at < CACHE_TTL_SECONDS:
         return _cache
-    row = RelevanceModelRepo(session).get_active()
+    # Savepoint (R4): sesi pipeline memegang kunci advisory URL dari `_known_article`; error SQL
+    # di sini tanpa savepoint membuat transaksi sesi gagal dan menjatuhkan artikelnya.
+    with session.begin_nested():
+        row = RelevanceModelRepo(session).get_active()
     if row is None or row.artifact is None:
         _cache = None
         return None
@@ -101,6 +105,20 @@ def _active(session: Session) -> _Cached | None:
         loaded_at=now,
     )
     return _cache
+
+
+def gated_classify(result: RelevanceResult) -> ClassifyResult:
+    """Classify sintetis untuk artikel yang lolos gate: LLM dilewati. Penanda `skipped` menjaga
+    artikel ini tidak mengisi `stories.classify` dan tidak jadi label latih (spec 5)."""
+    p = result.probs.threat_news
+    return ClassifyResult(
+        related_cyber=True,
+        security_tech_best_practice=False,
+        industries_impacted=[],
+        confidence=p,
+        reason=f"relevance model p={p:.2f}",
+        audit={"skipped": "relevance_gate", "model_id": result.model_id, "p": p},
+    )
 
 
 def run_relevance(

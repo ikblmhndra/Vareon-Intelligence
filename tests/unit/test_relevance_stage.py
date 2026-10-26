@@ -8,6 +8,7 @@ import sys
 import textwrap
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 from cti_core.config import RelevanceSettings
@@ -63,7 +64,7 @@ def _patch_active(monkeypatch: pytest.MonkeyPatch, rows: list[Any]) -> list[int]
 
 def _run(cfg: RelevanceSettings | None = None) -> Any:
     return stage.run_relevance(
-        None,  # type: ignore[arg-type]
+        MagicMock(),  # sesi tiruan: `begin_nested()` (savepoint R4) dipakai di `_active`
         title="ransomware breach attack item 1",
         url="https://example.com/a",
         cfg=cfg or RelevanceSettings(),

@@ -174,3 +174,24 @@ def test_concurrent_training_one_active(_migrated_schema: None) -> None:
             session.execute(delete(RelevanceModel))
             session.execute(delete(Article))
             session.execute(delete(RejectedArticle))
+
+
+def test_run_relevance_db_error_leaves_session_usable(db_session: Session, monkeypatch) -> None:
+    """R4: error SQL di `get_active` hanya membatalkan savepoint; sesi pipeline (pemegang kunci
+    advisory URL) tetap bisa dipakai dan `run_relevance` mengembalikan None."""
+    from cti_core.db.repositories.relevance import RelevanceModelRepo
+    from cti_enrich.stages import relevance as rel_stage
+    from sqlalchemy import text
+
+    def broken(self: RelevanceModelRepo) -> None:
+        self.session.execute(text("SELECT * FROM tabel_yang_tidak_ada"))
+
+    monkeypatch.setattr(RelevanceModelRepo, "get_active", broken)
+    rel_stage._reset_cache()
+    db_session.execute(text("SELECT 1"))
+    result = rel_stage.run_relevance(
+        db_session, title="x", url="https://e.com/a", cfg=RelevanceSettings()
+    )
+    assert result is None
+    assert db_session.execute(text("SELECT 2")).scalar_one() == 2
+    rel_stage._reset_cache()
