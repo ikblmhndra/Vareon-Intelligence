@@ -47,3 +47,7 @@ class SourceReliabilityEntry(Base):
     )
     """`default` (baris awal dari `content_kind` scraper, dibuat saat API start) atau `analyst`
     (diketik/diedit analis). Edit lewat API mengubah `default` jadi `analyst`."""
+    content_kind: Mapped[str | None] = mapped_column(String(20))
+    """Jenis konten scraper (`news`, `advisory`, `vendor_research`, ...) untuk model Admiralty
+    P6 (spec 3.2). Diisi `ensure_defaults` saat API start untuk SEMUA baris yang namanya cocok
+    `meta.source` (default maupun analis); sumber non-scraper tetap NULL (dianggap bukan primer)."""

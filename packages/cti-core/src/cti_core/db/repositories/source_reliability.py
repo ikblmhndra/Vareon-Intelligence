@@ -109,31 +109,41 @@ class AsyncSourceReliabilityRepo:
         return result.scalars().first()
 
     async def ensure_defaults(self, sources: Mapping[str, str]) -> list[str]:
-        """`{nama sumber: content_kind}` -> baris `origin='default'` untuk yang belum ada
+        """`{nama sumber: content_kind}`. Baris `origin='default'` dibuat untuk yang belum ada
         (case-insensitive), grade dari `DEFAULT_GRADES`. Baris yang sudah ada (analis atau default
-        lama) TIDAK pernah disentuh. Balikin nama yang baru dimasukkan. Flush saja, commit di
+        lama) TIDAK disentuh grade-nya, tapi `content_kind`-nya selalu disegarkan (P6 spec 3.2).
+        Balikin hanya nama yang BARU dimasukkan (memicu recompute). Flush saja, commit di
         pemanggil."""
-        existing = {n.lower() for n in await self._all_names()}
+        rows = (await self.session.execute(select(SourceReliabilityEntry))).scalars().all()
+        by_name: dict[str, list[SourceReliabilityEntry]] = {}
+        for row in rows:
+            by_name.setdefault(row.source_name.lower(), []).append(row)
         today = datetime.date.today()
         inserted: list[str] = []
         for name, kind in sources.items():
-            if name.lower() in existing or kind not in DEFAULT_GRADES:
+            existing = by_name.get(name.lower())
+            if existing:
+                for row in existing:
+                    if row.content_kind != kind:
+                        row.content_kind = kind
+                continue
+            if kind not in DEFAULT_GRADES:
                 continue
             grade, code = DEFAULT_GRADES[kind]
-            self.session.add(
-                SourceReliabilityEntry(
-                    source_name=name,
-                    analyst_name="system",
-                    reliability_grade=grade,
-                    credibility_code=code,
-                    admiralty_code=f"{grade}{code}",
-                    notes="",
-                    added_date=today,
-                    last_updated=today,
-                    origin="default",
-                )
+            entry = SourceReliabilityEntry(
+                source_name=name,
+                analyst_name="system",
+                reliability_grade=grade,
+                credibility_code=code,
+                admiralty_code=f"{grade}{code}",
+                notes="",
+                added_date=today,
+                last_updated=today,
+                origin="default",
+                content_kind=kind,
             )
-            existing.add(name.lower())
+            self.session.add(entry)
+            by_name[name.lower()] = [entry]
             inserted.append(name)
         await self.session.flush()
         return inserted
