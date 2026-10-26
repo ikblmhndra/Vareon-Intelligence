@@ -181,7 +181,8 @@ class RelevanceModelRepo:
         """Hitung baris dalam band (`in_band` true, keputusan shadow/audit) dari `articles` dan
         `rejected_articles`. Setuju = vonis LLM `threat_news`: artikel bukan best practice;
         baris rejected tidak pernah setuju. Keputusan `gated` tidak dihitung (LLM tidak
-        dipanggil, tidak ada vonis). `audit_since` hanya membatasi daftar audit, bukan hitungan band."""
+        dipanggil, tidak ada vonis). `audit_since` hanya membatasi daftar audit, bukan hitungan
+        band."""
         band = self.session.execute(
             text(_BAND_COUNT_SQL),
             {"bp": _BEST_PRACTICE, "since": since},
