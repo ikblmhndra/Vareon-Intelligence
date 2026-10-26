@@ -8,6 +8,7 @@ from collections.abc import Callable
 import pytest
 from cti_core.db.models import SourceReliabilityEntry
 from cti_core.db.repositories.article import AsyncArticleRepo
+from cti_core.db.repositories.assessment import apply_assessments_async
 from cti_core.db.repositories.auth import AsyncClientRepo
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -48,7 +49,55 @@ async def test_list_articles_carries_source_grade(
     resp = await api_client.get("/api/articles", headers=auth_header())
     assert resp.status_code == 200
     by_source = {a["source"]: a for a in resp.json()["articles"]}
-    assert by_source["gradedsource"]["admiralty_code"] == "C3"
+    # P6: kode Admiralty kini milik artikel (belum dinilai -> None); asal grade source tetap
+    assert by_source["gradedsource"]["admiralty_code"] is None
     assert by_source["gradedsource"]["grade_origin"] == "default"
     assert by_source["NoSuchSource"]["admiralty_code"] is None
     assert by_source["NoSuchSource"]["grade_origin"] is None
+
+
+async def test_article_carries_own_assessment(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+) -> None:
+    """P6: `admiralty_code` sekarang kode ARTIKEL (grade + kredibilitas), `grade_origin` tetap
+    asal grade source; artikel yang belum dinilai -> `None`."""
+    await AsyncClientRepo(api_session).ensure_default()
+    today = datetime.date.today()
+    api_session.add(
+        SourceReliabilityEntry(
+            source_name="AssessedSource",
+            analyst_name="system",
+            reliability_grade="C",
+            credibility_code="3",
+            admiralty_code="C3",
+            notes="",
+            added_date=today,
+            last_updated=today,
+            origin="default",
+        )
+    )
+    repo = AsyncArticleRepo(api_session)
+    a = await repo.upsert(
+        url="https://a.example/1", title="Assessed", source="AssessedSource", posted_on=today
+    )
+    b = await repo.upsert(
+        url="https://b.example/1", title="Fresh", source="AssessedSource", posted_on=today
+    )
+    await apply_assessments_async(api_session, [a.id])
+    await api_session.commit()
+
+    resp = await api_client.get("/api/articles", headers=auth_header())
+    by_id = {x["id"]: x for x in resp.json()["articles"]}
+    assessed = by_id[a.id]
+    assert assessed["admiralty_code"] == "C4"
+    assert assessed["reliability_grade"] == "C"
+    assert assessed["credibility"] == 4
+    assert assessed["priority_score"] == 40
+    assert assessed["score_reasons"]["credibility"] == ["single_aggregator"]
+    assert assessed["grade_origin"] == "default"
+    fresh = by_id[b.id]
+    assert fresh["admiralty_code"] is None
+    assert fresh["credibility"] is None
+    assert fresh["score_reasons"] == {"credibility": [], "priority": []}

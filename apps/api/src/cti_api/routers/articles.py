@@ -27,6 +27,7 @@ from typing import Literal
 from cti_core.db.models.article import Article
 from cti_core.db.models.source_reliability import SourceReliabilityEntry
 from cti_core.db.repositories.article import AsyncArticleRepo
+from cti_core.db.repositories.assessment import apply_assessments_async
 from cti_core.db.repositories.auth import AsyncAuditLogRepo
 from cti_core.db.repositories.source_reliability import AsyncSourceReliabilityRepo
 from cti_core.db.repositories.story import AsyncStoryRepo
@@ -45,10 +46,12 @@ from cti_api.schemas.article import (
     TTP,
     ArticleListResponse,
     ArticleOut,
+    CredibilityOverrideIn,
     DashboardStats,
     FilterOptions,
     InferredEntity,
     MalwareRef,
+    ScoreReasons,
     StoryRef,
 )
 from cti_api.schemas.dashboard_overview import (
@@ -131,8 +134,16 @@ def _serialize(
         ),
         news_type=str(machine_fields.get("news_type") or ""),
         confidence_score=machine_fields.get("confidence_score"),  # type: ignore[arg-type]
-        admiralty_code=rating.admiralty_code if rating else None,
+        admiralty_code=(
+            f"{article.reliability_grade}{article.credibility}"
+            if article.reliability_grade and article.credibility is not None
+            else None
+        ),
         grade_origin=rating.origin if rating else None,  # type: ignore[arg-type]
+        reliability_grade=article.reliability_grade,
+        credibility=article.credibility,
+        priority_score=article.priority_score,
+        score_reasons=ScoreReasons.model_validate(article.score_reasons or {}),
         iocs={},
         confirmed_incident=bool(article.confirmed_incident),
         story=(
@@ -337,6 +348,54 @@ async def compute_article_confidence(
         "admiralty_code": assessment.admiralty_code,
         "priority_score": assessment.priority_score,
     }
+
+
+@router.put(
+    "/articles/{article_id}/credibility",
+    response_model=ArticleOut,
+    dependencies=[Depends(require_permission("manage_intel")), Depends(require_auth)],
+)
+async def set_article_credibility(
+    article_id: int,
+    body: CredibilityOverrideIn,
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+    user: AuthedUser = Depends(require_auth),
+) -> ArticleOut:
+    """Override kredibilitas (1-6) oleh analis, atau hapus (`null`); artikel dinilai ulang di
+    tempat dan recompute massal menghormati override ini (P6 5.1)."""
+    repo = AsyncArticleRepo(session)
+    article = await repo.get_by_id(article_id)
+    if article is None:
+        raise HTTPException(status_code=404, detail="Article not found")
+    # dict baru, bukan mutasi di tempat: kolom JSONB tanpa MutableDict tidak melihat perubahan
+    # in-place.
+    overrides = dict(article.overrides)
+    if body.credibility is None:
+        overrides.pop("credibility", None)
+    else:
+        overrides["credibility"] = body.credibility
+    article.overrides = overrides
+    await session.flush()
+    await apply_assessments_async(session, [article_id])
+    # bulk UPDATE tidak menyegarkan objek di identity map
+    await session.refresh(article)
+    await AsyncAuditLogRepo(session).write(
+        username=user["username"],
+        action="set_credibility",
+        target_id=str(article_id),
+        detail={"credibility": body.credibility, "note": body.note},
+        ip_address=request_ip(request),
+    )
+    await session.commit()
+    await session.refresh(article)
+    ratings = await AsyncSourceReliabilityRepo(session).get_all_ratings()
+    stories = (
+        await AsyncStoryRepo(session).counts([article.story_id])
+        if article.story_id is not None
+        else None
+    )
+    return _serialize(article, repo.to_dict(article), ratings, stories)
 
 
 @router.post(

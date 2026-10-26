@@ -126,6 +126,17 @@
             "title": "Confirmed Incident",
             "type": "boolean"
           },
+          "credibility": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credibility"
+          },
           "grade_origin": {
             "anyOf": [
               {
@@ -204,6 +215,35 @@
             "default": "",
             "title": "Posted On",
             "type": "string"
+          },
+          "priority_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority Score"
+          },
+          "reliability_grade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reliability Grade"
+          },
+          "score_reasons": {
+            "$ref": "#/components/schemas/ScoreReasons",
+            "default": {
+              "credibility": [],
+              "priority": []
+            }
           },
           "source": {
             "default": "",
@@ -743,6 +783,32 @@
           "name"
         ],
         "title": "ClientUpdate",
+        "type": "object"
+      },
+      "CredibilityOverrideIn": {
+        "description": "`credibility=None` menghapus override (kembali ke hasil hitung).",
+        "properties": {
+          "credibility": {
+            "anyOf": [
+              {
+                "maximum": 6.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credibility"
+          },
+          "note": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "title": "CredibilityOverrideIn",
         "type": "object"
       },
       "CveCheckSource": {
@@ -4549,6 +4615,24 @@
         "title": "PolicySettings",
         "type": "object"
       },
+      "PriorityReason": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "points": {
+            "title": "Points",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "code",
+          "points"
+        ],
+        "title": "PriorityReason",
+        "type": "object"
+      },
       "PurgeOrphanedBody": {
         "properties": {
           "dry_run": {
@@ -5352,6 +5436,29 @@
           "stale_after_s"
         ],
         "title": "SchedulerStatusOut",
+        "type": "object"
+      },
+      "ScoreReasons": {
+        "description": "Alasan penilaian artikel (P6 3.1): kode kredibilitas + rincian poin prioritas.",
+        "properties": {
+          "credibility": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Credibility",
+            "type": "array"
+          },
+          "priority": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PriorityReason"
+            },
+            "title": "Priority",
+            "type": "array"
+          }
+        },
+        "title": "ScoreReasons",
         "type": "object"
       },
       "ScorecardOverrideIn": {
@@ -8806,6 +8913,75 @@
           }
         },
         "summary": "Compute Article Confidence",
+        "tags": [
+          "articles"
+        ]
+      }
+    },
+    "/api/articles/{article_id}/credibility": {
+      "put": {
+        "description": "Override kredibilitas (1-6) oleh analis, atau hapus (`null`); artikel dinilai ulang di\ntempat dan recompute massal menghormati override ini (P6 5.1).",
+        "operationId": "set_article_credibility_api_articles__article_id__credibility_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "article_id",
+            "required": true,
+            "schema": {
+              "title": "Article Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CredibilityOverrideIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArticleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Article Credibility",
         "tags": [
           "articles"
         ]

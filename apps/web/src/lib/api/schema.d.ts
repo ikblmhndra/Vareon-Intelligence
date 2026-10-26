@@ -89,6 +89,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/articles/{article_id}/credibility": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Article Credibility
+         * @description Override kredibilitas (1-6) oleh analis, atau hapus (`null`); artikel dinilai ulang di
+         *     tempat dan recompute massal menghormati override ini (P6 5.1).
+         */
+        put: operations["set_article_credibility_api_articles__article_id__credibility_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/articles/{article_id}/inferred-ttps": {
         parameters: {
             query?: never;
@@ -3603,6 +3624,8 @@ export interface components {
              * @default false
              */
             confirmed_incident: boolean;
+            /** Credibility */
+            credibility?: number | null;
             /** Grade Origin */
             grade_origin?: ("default" | "analyst") | null;
             /** Id */
@@ -3646,6 +3669,17 @@ export interface components {
              * @default
              */
             posted_on: string;
+            /** Priority Score */
+            priority_score?: number | null;
+            /** Reliability Grade */
+            reliability_grade?: string | null;
+            /**
+             * @default {
+             *       "credibility": [],
+             *       "priority": []
+             *     }
+             */
+            score_reasons: components["schemas"]["ScoreReasons"];
             /**
              * Source
              * @default
@@ -3864,6 +3898,19 @@ export interface components {
             countries?: string[] | null;
             /** Name */
             name: string;
+        };
+        /**
+         * CredibilityOverrideIn
+         * @description `credibility=None` menghapus override (kembali ke hasil hitung).
+         */
+        CredibilityOverrideIn: {
+            /** Credibility */
+            credibility?: number | null;
+            /**
+             * Note
+             * @default
+             */
+            note: string;
         };
         /**
          * CveCheckSource
@@ -5483,6 +5530,13 @@ export interface components {
              */
             require_upper: boolean;
         };
+        /** PriorityReason */
+        PriorityReason: {
+            /** Code */
+            code: string;
+            /** Points */
+            points: number;
+        };
         /** PurgeOrphanedBody */
         PurgeOrphanedBody: {
             /**
@@ -5744,6 +5798,22 @@ export interface components {
             started_at: string | null;
             /** State */
             state: string;
+        };
+        /**
+         * ScoreReasons
+         * @description Alasan penilaian artikel (P6 3.1): kode kredibilitas + rincian poin prioritas.
+         */
+        ScoreReasons: {
+            /**
+             * Credibility
+             * @default []
+             */
+            credibility: string[];
+            /**
+             * Priority
+             * @default []
+             */
+            priority: components["schemas"]["PriorityReason"][];
         };
         /**
          * ScorecardOverrideIn
@@ -7026,6 +7096,43 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_article_credibility_api_articles__article_id__credibility_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                article_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CredibilityOverrideIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArticleOut"];
                 };
             };
             /** @description Validation Error */

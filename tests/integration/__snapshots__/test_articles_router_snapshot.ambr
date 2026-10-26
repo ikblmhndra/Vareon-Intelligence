@@ -87,6 +87,7 @@
     'classify_inherited_from': None,
     'confidence_score': None,
     'confirmed_incident': False,
+    'credibility': None,
     'grade_origin': None,
     'id': int,
     'impacted_industries': list([
@@ -101,6 +102,14 @@
     'month': '2026-09',
     'news_type': '',
     'posted_on': str,
+    'priority_score': None,
+    'reliability_grade': None,
+    'score_reasons': dict({
+      'credibility': list([
+      ]),
+      'priority': list([
+      ]),
+    }),
     'source': 'gbhacker',
     'story': None,
     'threat_actors': list([
@@ -125,6 +134,7 @@
         'classify_inherited_from': None,
         'confidence_score': None,
         'confirmed_incident': False,
+        'credibility': None,
         'grade_origin': None,
         'id': int,
         'impacted_industries': list([
@@ -139,6 +149,14 @@
         'month': '2026-09',
         'news_type': '',
         'posted_on': str,
+        'priority_score': None,
+        'reliability_grade': None,
+        'score_reasons': dict({
+          'credibility': list([
+          ]),
+          'priority': list([
+          ]),
+        }),
         'source': 'gbhacker',
         'story': None,
         'threat_actors': list([
@@ -168,6 +186,7 @@
         'classify_inherited_from': None,
         'confidence_score': None,
         'confirmed_incident': False,
+        'credibility': None,
         'grade_origin': None,
         'id': int,
         'impacted_industries': list([
@@ -182,6 +201,14 @@
         'month': '2026-09',
         'news_type': '',
         'posted_on': str,
+        'priority_score': None,
+        'reliability_grade': None,
+        'score_reasons': dict({
+          'credibility': list([
+          ]),
+          'priority': list([
+          ]),
+        }),
         'source': 'SourceB',
         'story': None,
         'threat_actors': list([
