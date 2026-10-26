@@ -229,6 +229,51 @@ class StorySettings(_StrictModel):
     """Rasio minimal irisan CVE kunci agar dua artikel dianggap satu story."""
     title_similarity: float = 0.5
     """Ambang kemiripan judul (TF-IDF cosine) untuk pencocokan tanpa CVE bersama."""
+    embedding_similarity: float = 0.0
+    """Ambang cosine embedding judul (P5) untuk pencocokan story tanpa CVE bersama. `0` = mati:
+    jalur embedding baru dinyalakan (mis. 0.8) setelah replay test membuktikan tidak menyatukan
+    story yang tidak terkait."""
+
+
+class RelevanceSettings(_StrictModel):
+    """Model relevansi lokal (P5, spec 5 dan 8): classifier ringan di atas embedding yang
+    menggantikan sebagian panggilan LLM classify. Semua field punya default, jadi tidak ada key
+    `.env` baru yang wajib; ganti nilai butuh restart worker. Kegagalan di jalur ini selalu jatuh
+    ke LLM classify, tidak pernah menggagalkan artikel."""
+
+    mode: Literal["off", "shadow", "auto"] = "auto"
+    """`off` = model tidak dipanggil; `shadow` = ukur kesepakatan dengan LLM, tidak pernah
+    menggantikannya; `auto` = gate menyala/mati sendiri menurut ambang di bawah. Gate adalah state
+    di baris model aktif, bukan nilai mode. Untuk menahan prod di shadow, set `shadow` sebelum
+    deploy."""
+    accept_threshold: float = 0.85
+    """Probabilitas minimal kelas `threat_news` agar artikel masuk band yang boleh di-gate; di
+    bawahnya selalu LLM."""
+    audit_rate: float = 0.2
+    """Porsi artikel dalam band yang TETAP dikirim ke LLM saat gate menyala (dipilih deterministik
+    dari hash URL). Tanpa sampel ini kesepakatan tidak bisa diukur dan revert otomatis mustahil."""
+    gate_min_titles: int = 200
+    """Jumlah judul minimal (dalam band, dengan vonis LLM) di jendela evaluasi sebelum shadow boleh
+    naik ke gate; sampel kecil terlalu berisik."""
+    gate_window_days: int = 14
+    """Jendela evaluasi gate. 14 hari karena prod hanya melihat sekitar 30 judul dalam band per
+    hari."""
+    gate_min_agreement: float = 0.95
+    """Kesepakatan persis minimal dengan LLM di jendela itu agar shadow naik ke gate."""
+    revert_samples: int = 50
+    """Jumlah sampel audit terakhir yang dinilai untuk menurunkan gate kembali ke shadow."""
+    revert_min_agreement: float = 0.92
+    """Kesepakatan di bawah ini pada `revert_samples` sampel audit terakhir menurunkan gate. Lebih
+    longgar dari `gate_min_agreement` supaya gate tidak berkedip karena noise."""
+    train_min_examples: int = 1000
+    """Contoh berlabel minimal sebelum training mingguan boleh menghasilkan model."""
+    train_min_per_class: int = 100
+    """Contoh minimal per kelas; mencegah model yang hanya hafal kelas mayoritas."""
+    holdout_days: int = 14
+    """Contoh terbaru sepanjang ini disisihkan sebagai holdout evaluasi, bukan untuk training."""
+    min_band_share: float = 0.2
+    """Porsi holdout minimal yang jatuh dalam band; model yang nyaris tidak pernah yakin tidak
+    menghemat panggilan LLM, jadi training ditolak."""
 
 
 class WorkerSettings(_StrictModel):
@@ -366,6 +411,7 @@ class Settings(BaseSettings):
     worker: WorkerSettings = Field(default_factory=WorkerSettings)
     cve_mirror: CveMirrorSettings = Field(default_factory=CveMirrorSettings)
     story: StorySettings = Field(default_factory=StorySettings)
+    relevance: RelevanceSettings = Field(default_factory=RelevanceSettings)
 
     cors_origins: str = "http://localhost:3000"
     api_base_url: str = "http://api:8000"

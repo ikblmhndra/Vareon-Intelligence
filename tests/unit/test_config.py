@@ -42,6 +42,27 @@ def test_story_settings_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     assert _settings(monkeypatch, STORY__ENABLED="false").story.enabled is False
 
 
+def test_relevance_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    """P5 (model relevansi lokal): semua field punya default, tanpa key `.env` baru yang wajib."""
+    monkeypatch.delenv("RELEVANCE__MODE", raising=False)
+    s = _settings(monkeypatch)
+    assert s.relevance.mode == "auto"
+    assert s.relevance.accept_threshold == 0.85
+    assert s.relevance.audit_rate == 0.2
+    assert (s.relevance.gate_min_titles, s.relevance.gate_window_days) == (200, 14)
+    assert s.relevance.gate_min_agreement == 0.95
+    assert (s.relevance.revert_samples, s.relevance.revert_min_agreement) == (50, 0.92)
+    assert (s.relevance.train_min_examples, s.relevance.train_min_per_class) == (1000, 100)
+    assert (s.relevance.holdout_days, s.relevance.min_band_share) == (14, 0.2)
+    assert s.story.embedding_similarity == 0.0
+
+
+def test_relevance_mode_rejects_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`gate` adalah state, bukan mode: nilai selain off/shadow/auto harus gagal saat start."""
+    with pytest.raises(ValidationError):
+        _settings(monkeypatch, RELEVANCE__MODE="gate")
+
+
 def test_missing_required_secret_fails_loud(monkeypatch: pytest.MonkeyPatch) -> None:
     """Pengganti RuntimeError manual di app lama (main.py L276-278)."""
     monkeypatch.delenv("SECRETS_BACKEND", raising=False)
