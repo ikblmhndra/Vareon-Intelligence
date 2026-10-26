@@ -125,5 +125,22 @@ RUN python -m nltk.downloader -d "${NLTK_DATA}" punkt_tab
 # spaCy + model beneran ke-load, dan data NLTK ketemu (OFFLINE) -- gagal di
 # sini = build gagal, bukan worker crash-loop di produksi.
 RUN python -c "import spacy, nltk; spacy.load('en_core_web_sm'); nltk.data.find('tokenizers/punkt_tab')"
+# Model embedding MiniLM (ONNX, ~90MB, model relevansi P5 + story resolver) DI-BAKE
+# di sini, di-pin ke revisi tertentu -- sama seperti punkt_tab: container yang
+# di-recreate gak boleh butuh internet (egress produksi cuma :443) dan runtime
+# gak pernah download (`local_files_only=True`, HF_HUB_OFFLINE=1). Layout cache
+# HF standar (`models--Qdrant--all-MiniLM-L6-v2-onnx/snapshots/<rev>`) yang dicari
+# fastembed. Build butuh akses huggingface.co. Naikkan revisi = ganti ARG ini.
+ARG MINILM_REVISION=d13954661f83248295ba75c1ed411eef3b7b936e
+ENV FASTEMBED_CACHE_PATH=/opt/fastembed
+# `refs/main` ditulis manual: download dgn revisi SHA tidak membuatnya, padahal
+# fastembed (local_files_only) me-resolve snapshot lewat `refs/main`.
+RUN python -c "from huggingface_hub import snapshot_download; snapshot_download('Qdrant/all-MiniLM-L6-v2-onnx', revision='${MINILM_REVISION}', cache_dir='/opt/fastembed')" \
+    && mkdir -p /opt/fastembed/models--Qdrant--all-MiniLM-L6-v2-onnx/refs \
+    && printf '%s' "${MINILM_REVISION}" > /opt/fastembed/models--Qdrant--all-MiniLM-L6-v2-onnx/refs/main \
+    && chmod -R a+rX /opt/fastembed
+ENV HF_HUB_OFFLINE=1
+# Model beneran ke-load dari disk (OFFLINE) dan dimensinya 384 -- gagal = build gagal.
+RUN python -c "from cti_enrich.relevance.embedder import get_embedder; assert get_embedder().embed(['x']).shape == (1, 384)"
 USER cti
 CMD ["celery", "-A", "cti_worker.celery_app", "worker", "-Q", "enrich", "--loglevel", "INFO"]
