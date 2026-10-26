@@ -10,7 +10,6 @@ artikel pertama walau lead-nya masih di-enrich.
 from __future__ import annotations
 
 import dataclasses
-import logging
 from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -18,6 +17,7 @@ from datetime import datetime
 from typing import Any, Literal
 
 import numpy as np
+import structlog
 from cti_core.config import StorySettings
 from cti_core.db.engine import sync_session
 from cti_core.db.repositories.story import StoryRepo
@@ -25,7 +25,7 @@ from cti_core.db.repositories.story import StoryRepo
 from cti_enrich.stages.classify import ClassifyResult
 from cti_enrich.stages.extract_cves import extract_cves
 
-log = logging.getLogger(__name__)
+log = structlog.get_logger()
 _embedding_unavailable_logged = False
 _embedding_failed_logged = False
 _VEC_CACHE_MAX = 4096
@@ -102,7 +102,7 @@ def _embedding_fn(cfg: StorySettings) -> Callable[[str, list[str]], list[float]]
     except EmbedderUnavailable as exc:
         if not _embedding_unavailable_logged:
             _embedding_unavailable_logged = True
-            log.warning("story_embedding_unavailable", extra={"error": str(exc)})
+            log.warning("story_embedding_unavailable", error=str(exc))
         return None
 
     def score(query: str, titles: list[str]) -> list[float]:
@@ -124,7 +124,7 @@ def _embedding_fn(cfg: StorySettings) -> Callable[[str, list[str]], list[float]]
         except Exception as exc:
             if not _embedding_failed_logged:
                 _embedding_failed_logged = True
-                log.warning("story_embedding_failed", extra={"error": str(exc)})
+                log.warning("story_embedding_failed", error=str(exc))
             return [0.0] * len(titles)
 
     return score
