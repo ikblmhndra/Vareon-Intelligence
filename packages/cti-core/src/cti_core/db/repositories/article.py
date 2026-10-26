@@ -25,6 +25,7 @@ from cti_core.db.models.article import (
     Article,
     ArticleCountry,
     ArticleIndustry,
+    ArticleMalware,
     ArticleThreatActor,
     ArticleTTP,
     RejectedArticle,
@@ -33,6 +34,18 @@ from cti_core.enrich_replay import BACKOFF_BASE, MAX_ATTEMPTS, ReplayCandidate
 from cti_core.urlkit import url_hash as compute_url_hash
 
 _RESERVED_OVERRIDE_KEYS = frozenset({"_meta"})
+
+_TTP_SOURCES = frozenset({"llm", "explicit", "keyword"})
+_ACTOR_SOURCES = frozenset({"dictionary", "llm", "analyst"})
+_INDUSTRY_SOURCES = frozenset({"llm", "keyword"})
+_MALWARE_KINDS = frozenset({"malware", "tool"})
+"""Nilai sah kolom `source`/`kind` Tier 1. Dicek di sini, bukan Postgres CHECK (konvensi
+`ArticleCountry.role`), biar nilai baru tidak butuh migrasi."""
+
+
+def _check(value: str, allowed: frozenset[str], what: str) -> None:
+    if value not in allowed:
+        raise ValueError(f"{what} tidak valid: {value!r} (sah: {sorted(allowed)})")
 
 
 def _apply_list_filters(
@@ -53,6 +66,7 @@ def _apply_list_filters(
     created_at_start: datetime.datetime | None = None,
     confirmed_only: bool = False,
     story_id: int | None = None,
+    ttp_sources: Sequence[str] | None = None,
 ) -> Select[tuple[Article]]:
     """Filter bersama buat query list DAN count -- port dari `article_service.
     get_articles()` (Mongo query dict) ke SQL. Tiga field negara Mongo lama
@@ -108,8 +122,13 @@ def _apply_list_filters(
         stmt = stmt.join(Article.threat_actors).where(
             func.lower(ArticleThreatActor.threat_actor).in_(lowered)
         )
-    if ttps:
-        stmt = stmt.join(Article.ttps).where(ArticleTTP.ttp_id.in_(ttps))
+    if ttps or ttp_sources:
+        # Satu join: ID dan sumber harus cocok pada BARIS TTP yang sama.
+        stmt = stmt.join(Article.ttps)
+        if ttps:
+            stmt = stmt.where(ArticleTTP.ttp_id.in_(ttps))
+        if ttp_sources:
+            stmt = stmt.where(ArticleTTP.source.in_(ttp_sources))
     keyword_or = (
         [Article.title.ilike(f"%{kw}%") for kw in title_keywords] if title_keywords else None
     )
@@ -210,9 +229,14 @@ def _apply_enrichment(
     industries: Sequence[str],
     threat_actors: Sequence[str],
     ttps: Sequence[TTPInput],
+    malware: Sequence[tuple[str, str]] = (),
+    industry_source: str = "llm",
 ) -> None:
     """Pasang hasil enrichment ke child rows -- idempoten (lihat `_reconcile`).
     Dipakai versi sync DAN async, biar logikanya gak bisa drift."""
+    _check(industry_source, _INDUSTRY_SOURCES, "industry_source")
+    for _, kind in malware:
+        _check(kind, _MALWARE_KINDS, "malware kind")
     article.countries = _reconcile(
         article.countries,
         dict.fromkeys(countries),
@@ -223,14 +247,29 @@ def _apply_enrichment(
         article.industries,
         dict.fromkeys(industries),
         lambda c: c.industry,
-        lambda k: ArticleIndustry(industry=k),
+        lambda k: ArticleIndustry(industry=k, source=industry_source),
     )
+    for ind in article.industries:
+        ind.source = industry_source
     article.threat_actors = _reconcile(
         article.threat_actors,
         dict.fromkeys(threat_actors),
         lambda c: c.threat_actor,
-        lambda k: ArticleThreatActor(threat_actor=k),
+        lambda k: ArticleThreatActor(threat_actor=k, source="dictionary"),
     )
+    # kunci unik = (article_id, name): dedup per nama (pertama menang), kind baris pakai-ulang
+    # ikut diperbarui -- kalau tidak, nama sama beda kind -> UniqueViolation dan artikel hilang.
+    kinds: dict[str, str] = {}
+    for name, kind in malware:
+        kinds.setdefault(name, kind)
+    article.malware = _reconcile(
+        article.malware,
+        kinds,
+        lambda c: c.name,
+        lambda k: ArticleMalware(name=k, kind=kinds[k], source="dictionary"),
+    )
+    for m in article.malware:
+        m.kind = kinds[m.name]
     apply_ttps(article, ttps)
 
 
@@ -241,6 +280,7 @@ def apply_ttps(article: Article, ttps: Sequence[TTPInput]) -> None:
     kept = {t.ttp_id: t for t in article.ttps}
     rows: list[ArticleTTP] = []
     for tid, n in _first_ttps(ttps).items():
+        _check(n.source, _TTP_SOURCES, "ttp source")
         row = kept.get(tid)
         if row is None:
             row = ArticleTTP(ttp_id=tid, ttp_name=n.ttp_name)
@@ -248,6 +288,8 @@ def apply_ttps(article: Article, ttps: Sequence[TTPInput]) -> None:
             row.ttp_name = n.ttp_name
         row.extracted_id = n.extracted_id
         row.extracted_name = n.extracted_name
+        row.source = n.source
+        row.evidence = n.evidence
         rows.append(row)
     article.ttps = rows
 
@@ -322,6 +364,8 @@ class ArticleRepo:
         industries: Sequence[str] = (),
         threat_actors: Sequence[str] = (),
         ttps: Sequence[TTPInput] = (),
+        malware: Sequence[tuple[str, str]] = (),
+        industry_source: str = "llm",
     ) -> Article:
         """Ganti SEMUA child row (countries/industries/threat_actors/ttps)
         dari SATU hasil enrichment -- Fase 5 (`cti_enrich.pipeline`), satu-
@@ -343,9 +387,66 @@ class ArticleRepo:
             industries=industries,
             threat_actors=threat_actors,
             ttps=ttps,
+            malware=malware,
+            industry_source=industry_source,
         )
         self.session.flush()
         return article
+
+    def add_tier1(
+        self,
+        article: Article,
+        *,
+        ttps: Sequence[NormalizedTTP],
+        threat_actors: Sequence[str],
+        malware: Sequence[tuple[str, str]],
+        industries: Sequence[str],
+    ) -> dict[str, int]:
+        """ADD-ONLY untuk backfill Tier 1: tidak pernah mengubah/menghapus baris yang ada
+        (TTP LLM tetap, TTP keyword dengan ID sama tidak ditambah). Industri `keyword` hanya
+        ditambah kalau industri sekarang persis `["General"]` (baris General lalu dibuang) --
+        industri spesifik dari LLM tidak boleh ditimpa tebakan keyword. Return jumlah baris
+        baru per jenis."""
+        counts = {"ttps": 0, "threat_actors": 0, "malware": 0, "industries": 0}
+        have_ttp = {t.ttp_id for t in article.ttps}
+        for n in ttps:
+            _check(n.source, _TTP_SOURCES, "ttp source")
+            if n.ttp_id in have_ttp:
+                continue
+            have_ttp.add(n.ttp_id)
+            article.ttps.append(
+                ArticleTTP(
+                    ttp_id=n.ttp_id,
+                    ttp_name=n.ttp_name,
+                    extracted_id=n.extracted_id,
+                    extracted_name=n.extracted_name,
+                    source=n.source,
+                    evidence=n.evidence,
+                )
+            )
+            counts["ttps"] += 1
+        have_actor = {a.threat_actor for a in article.threat_actors}
+        for name in dict.fromkeys(threat_actors):
+            if name not in have_actor:
+                article.threat_actors.append(
+                    ArticleThreatActor(threat_actor=name, source="dictionary")
+                )
+                counts["threat_actors"] += 1
+        have_mal = {m.name for m in article.malware}
+        for name, kind in malware:
+            _check(kind, _MALWARE_KINDS, "malware kind")
+            if name not in have_mal:
+                have_mal.add(name)
+                article.malware.append(ArticleMalware(name=name, kind=kind, source="dictionary"))
+                counts["malware"] += 1
+        if industries and [i.industry for i in article.industries] == ["General"]:
+            article.industries = [
+                ArticleIndustry(industry=name, source="keyword")
+                for name in dict.fromkeys(industries)
+            ]
+            counts["industries"] = len(article.industries)
+        self.session.flush()
+        return counts
 
     def to_dict(self, article: Article) -> dict[str, Any]:
         """Field mesin + overrides tergabung, overrides menang. Ini yang
@@ -398,19 +499,22 @@ class AsyncArticleRepo:
         industries: Sequence[str] = (),
         threat_actors: Sequence[str] = (),
         ttps: Sequence[TTPInput] = (),
+        malware: Sequence[tuple[str, str]] = (),
+        industry_source: str = "llm",
     ) -> Article:
         """Logic sama persis `ArticleRepo.set_enrichment` -- dipakai test
         integrasi Fase 7 (setup fixture artikel via jalur async), bukan
         Fase 5 (itu tetap lewat `ArticleRepo` sync, Celery task).
 
-        `refresh()` 4 relationship dulu SEBELUM di-assign ulang -- ganti
+        `refresh()` 5 relationship dulu SEBELUM di-assign ulang -- ganti
         koleksi (`article.countries = [...]`) di sesi ASYNC butuh state
         koleksi LAMA buat ngitung diff (cascade delete-orphan), dan itu
         lazy-load implisit yang gak bisa jalan sinkron di luar `await`
         (`MissingGreenlet`). Versi sync (`ArticleRepo`) gak kena ini --
         lazy-load implisit sinkron biasa jalan di sana."""
         await self.session.refresh(
-            article, attribute_names=["countries", "industries", "threat_actors", "ttps"]
+            article,
+            attribute_names=["countries", "industries", "threat_actors", "ttps", "malware"],
         )
         _apply_enrichment(
             article,
@@ -418,6 +522,8 @@ class AsyncArticleRepo:
             industries=industries,
             threat_actors=threat_actors,
             ttps=ttps,
+            malware=malware,
+            industry_source=industry_source,
         )
         await self.session.flush()
         return article
@@ -474,6 +580,7 @@ class AsyncArticleRepo:
         sort: Literal["recent", "priority"] = "recent",
         confirmed_only: bool = False,
         story_id: int | None = None,
+        ttp_sources: Sequence[str] | None = None,
     ) -> tuple[list[Article], int]:
         """Port `article_service.get_articles()`. Filter di-`join()` ke
         tabel anak -- `.distinct()` WAJIB begitu ada join one-to-many
@@ -510,9 +617,16 @@ class AsyncArticleRepo:
             created_at_start=created_at_start,
             confirmed_only=confirmed_only,
             story_id=story_id,
+            ttp_sources=ttp_sources,
         )
         has_join = bool(
-            industries or countries or victim_countries or actor_countries or threat_actors or ttps
+            industries
+            or countries
+            or victim_countries
+            or actor_countries
+            or threat_actors
+            or ttps
+            or ttp_sources
         )
 
         count_stmt = select(func.count()).select_from(base.distinct().subquery())

@@ -7,6 +7,8 @@ perubahan rumus."""
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 DEFAULT_GRADES: dict[str, tuple[str, str]] = {
     "kev": ("A", "1"),
     "advisory": ("A", "2"),
@@ -17,6 +19,16 @@ DEFAULT_GRADES: dict[str, tuple[str, str]] = {
     "social": ("D", "4"),
 }
 """`content_kind` -> `(reliability_grade, credibility_code)` untuk baris `origin='default'`."""
+
+BONUS_TTP_SOURCES = frozenset({"explicit", "llm"})
+"""Sumber TTP yang dapat bonus confidence (P4): TTP `keyword` Tier 1 belum diukur presisinya."""
+
+
+def bonus_ttp_count(sources: Iterable[str]) -> int:
+    """Jumlah TTP yang dihitung untuk bonus confidence, dari kolom `source` tiap TTP. Satu
+    aturan untuk persist enrichment dan recompute API, supaya skor tidak beda antar jalur."""
+    return sum(1 for s in sources if s in BONUS_TTP_SOURCES)
+
 
 _RELIABILITY_SCORE = {"A": 100, "B": 80, "C": 60, "D": 40, "E": 20, "F": 50}
 _CREDIBILITY_SCORE = {"1": 100, "2": 80, "3": 60, "4": 40, "5": 20, "6": 50}

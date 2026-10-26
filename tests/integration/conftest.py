@@ -361,6 +361,18 @@ def _clear_in_process_caches() -> None:
 
 
 @pytest.fixture(autouse=True)
+def _reset_tier1_caches() -> Iterator[None]:
+    """Cache kamus/katalog Tier 1 (`cti_enrich.stages.tier1`, TTL 1 jam per proses) bisa terisi
+    dari DB test sebelumnya (kamus kosong/lain) sehingga test yang seed `threat_actor_groups`
+    sendiri membaca kamus basi. Reset sebelum dan sesudah tiap test."""
+    from cti_enrich.stages import tier1
+
+    tier1.reset_caches()
+    yield
+    tier1.reset_caches()
+
+
+@pytest.fixture(autouse=True)
 def _skip_if_docker_unavailable() -> None:
     """Testcontainers butuh Docker daemon. Kalau gak ada, skip jelas --
     bukan error yang bikin bingung."""

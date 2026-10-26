@@ -86,8 +86,11 @@
           'id': int,
           'impacted_industries': list([
           ]),
+          'industry_source': None,
           'iocs': dict({
           }),
+          'malware': list([
+          ]),
           'mentioned_countries': list([
           ]),
           'month': '2026-10',
@@ -141,8 +144,11 @@
           'id': int,
           'impacted_industries': list([
           ]),
+          'industry_source': None,
           'iocs': dict({
           }),
+          'malware': list([
+          ]),
           'mentioned_countries': list([
             'ID',
           ]),
@@ -198,8 +204,11 @@
           'id': int,
           'impacted_industries': list([
           ]),
+          'industry_source': None,
           'iocs': dict({
           }),
+          'malware': list([
+          ]),
           'mentioned_countries': list([
           ]),
           'month': '2026-10',
@@ -250,8 +259,11 @@
           'id': int,
           'impacted_industries': list([
           ]),
+          'industry_source': None,
           'iocs': dict({
           }),
+          'malware': list([
+          ]),
           'mentioned_countries': list([
           ]),
           'month': '2026-10',

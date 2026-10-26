@@ -14,6 +14,30 @@ from pydantic import BaseModel
 class TTP(BaseModel):
     id: str
     name: str
+    source: Literal["explicit", "keyword", "llm"] = "llm"
+    """Asal TTP: `explicit` (ID disebut artikel), `keyword` (kamus Tier 1), `llm`."""
+    evidence: str | None = None
+    """Kalimat bukti (Tier 1); `None` kalau tidak ada."""
+
+
+class MalwareRef(BaseModel):
+    name: str
+    kind: Literal["malware", "tool"]
+
+
+class InferredTechnique(BaseModel):
+    id: str
+    name: str
+
+
+class InferredEntity(BaseModel):
+    """Aktor/malware artikel yang cocok di ATT&CK beserta teknik yang DIPAKAI-nya menurut
+    ATT&CK. Tidak disimpan (tidak ada `source`): ini inferensi, bukan isi artikel."""
+
+    entity: str
+    kind: Literal["actor", "malware", "tool"]
+    attack_id: str
+    techniques: list[InferredTechnique]
 
 
 class StoryRef(BaseModel):
@@ -39,6 +63,9 @@ class ArticleOut(BaseModel):
     actor_countries: list[str] = []
     threat_actors: list[str] = []
     ttps: list[TTP] = []
+    malware: list[MalwareRef] = []
+    industry_source: Literal["llm", "keyword"] | None = None
+    """Asal industri (dari baris industri pertama); `None` kalau tidak ada baris."""
     news_type: str = ""
     confidence_score: int | None = None
     # Grade source (Task 9): kode Admiralty (mis. "B2") + asal baris rating; `None` = source

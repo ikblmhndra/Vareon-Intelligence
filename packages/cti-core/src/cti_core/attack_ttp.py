@@ -112,6 +112,11 @@ class NormalizedTTP(NamedTuple):
     ttp_name: str
     extracted_id: str | None = None
     extracted_name: str | None = None
+    source: str = "llm"
+    """Asal teknik: `explicit`/`keyword` (Tier 1) atau `llm`. Default `llm`
+    supaya semua pemanggil lama tetap jalan."""
+    evidence: str | None = None
+    """Kalimat bukti (Tier 1) atau bukti LLM."""
 
 
 _PUNCT_MAP = str.maketrans({0x2019: "'", 0x2013: "-", 0x2014: "-"})

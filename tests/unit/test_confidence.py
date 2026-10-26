@@ -153,3 +153,11 @@ def test_compute_ioc_actionability_score_between_0_and_100() -> None:
     ioc = _ioc(last_seen_at=now, seen_count=1)
     result = svc.compute_ioc_actionability(ioc, now, confidence_score=100)
     assert 0 <= result["actionability_score"] <= 100
+
+
+def test_bonus_ttp_count_counts_only_explicit_and_llm() -> None:
+    # Spec P4: bonus confidence hanya untuk TTP `explicit` + `llm`; `keyword` belum diukur.
+    from cti_core.confidence import bonus_ttp_count
+
+    assert bonus_ttp_count(["llm", "keyword", "explicit", "keyword"]) == 2
+    assert bonus_ttp_count([]) == 0

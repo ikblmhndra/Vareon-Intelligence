@@ -17,6 +17,7 @@ BEDA bareng-bareng di satu dict bikin mypy nge-widen tipe elemennya ke
 from __future__ import annotations
 
 import datetime
+from collections.abc import Sequence
 from typing import Any
 
 from sqlalchemy import func, select
@@ -37,10 +38,18 @@ class AsyncMitreHeatmapRepo:
         self.session = session
 
     async def get_heatmap(
-        self, *, view: str, days: int, top_rows: int = 15, top_ttps: int = 20
+        self,
+        *,
+        view: str,
+        days: int,
+        top_rows: int = 15,
+        top_ttps: int = 20,
+        ttp_sources: Sequence[str] | None = None,
     ) -> dict[str, Any]:
+        """`ttp_sources` (P4): hanya hitung baris TTP dengan sumber itu (explicit/keyword/llm)."""
         cutoff = datetime.date.today() - datetime.timedelta(days=days)
         count_articles = func.count(func.distinct(Article.id))
+        source_cond = [ArticleTTP.source.in_(ttp_sources)] if ttp_sources else []
 
         if view == "industry":
             rows_stmt = (
@@ -66,7 +75,7 @@ class AsyncMitreHeatmapRepo:
         top_ttps_result = await self.session.execute(
             select(ArticleTTP.ttp_id, canonical_ttp_name(), count_articles)
             .join(Article, ArticleTTP.article_id == Article.id)
-            .where(Article.posted_on >= cutoff)
+            .where(Article.posted_on >= cutoff, *source_cond)
             .group_by(ArticleTTP.ttp_id)
             .order_by(count_articles.desc())
             .limit(top_ttps)
@@ -88,6 +97,7 @@ class AsyncMitreHeatmapRepo:
                     Article.posted_on >= cutoff,
                     ArticleIndustry.industry.in_(row_names),
                     ArticleTTP.ttp_id.in_(ttp_ids),
+                    *source_cond,
                 )
                 .group_by(ArticleIndustry.industry, ArticleTTP.ttp_id)
             )
@@ -101,6 +111,7 @@ class AsyncMitreHeatmapRepo:
                     Article.posted_on >= cutoff,
                     ArticleThreatActor.threat_actor.in_(row_names),
                     ArticleTTP.ttp_id.in_(ttp_ids),
+                    *source_cond,
                 )
                 .group_by(ArticleThreatActor.threat_actor, ArticleTTP.ttp_id)
             )

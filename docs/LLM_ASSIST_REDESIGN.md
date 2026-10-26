@@ -1,7 +1,8 @@
 # LLM as an assistant: enrichment redesign and CTI gaps
 
-Status: **in progress** (updated 2026-10-24). Building blocks shipped in 0.8.3 and 0.8.4, and
-P0 and P1 shipped in 0.8.5, P2 in 0.8.6 and P3 in 0.8.7 (see Progress below); P4-P7 have not started.
+Status: **in progress** (updated 2026-10-25). Building blocks shipped in 0.8.3 and 0.8.4, and
+P0 and P1 shipped in 0.8.5, P2 in 0.8.6 and P3 in 0.8.7 (PR #76 open; see Progress below). P4 is
+implemented for 0.8.8 (branch not yet released or merged); P5-P7 have not started.
 
 Goal: turn Vareon from "every article goes through an LLM" into a CTI platform where
 deterministic code, curated reference data and analyst feedback do the bulk of the work, and
@@ -82,7 +83,48 @@ Shipped in **0.8.7** (P3 story dedup at ingest, spec `docs/superpowers/specs/202
   Asec monthly reports stay separate. The LLM-call reduction on a live wave still has to be measured on dev
   once the OpenRouter quota recovers.
 
-Not started: P4 to P7 (extractors, local relevance model, CTI model; persist-first
+Built for **0.8.8** (P4 deterministic extractors, branch not yet merged; spec
+`docs/superpowers/specs/2026-10-25-p4-deterministic-extractors-design.md`, plan
+`docs/superpowers/plans/2026-10-25-p4-deterministic-extractors.md`):
+
+- **Tier 1 runs on every accepted article and complements the LLM** (classify and TTP extraction still run).
+  Actor/malware dictionary over the full text (ATT&CK groups and software plus `threat_actor_groups`, alias
+  -> canonical name; single-token and common-word names need a context word; Windows utilities only as
+  `<name>.exe`). ATT&CK techniques from explicit `T####` IDs and a keyword map (~60 techniques). Industry
+  keywords only when the LLM answered "General". The confirmed-incident rule is shadow-only (measured, not
+  applied).
+- **Provenance and read path.** `source` on TTP, actor and industry rows plus the new `article_malware`;
+  inferred TTPs are computed on read (`GET /api/articles/{id}/inferred-ttps`).
+- **Backfill and measurement.** Add-only `python -m cti_enrich.backfill_tier1`; evaluation harness
+  `tools/eval/tier1_eval.py`.
+
+### Evaluation (2026-10-25, silver standard)
+
+- **Sample.** 100 accepted dev articles, stratified 40 with LLM TTPs / 20 with actors / 40 other, 34 sources.
+  Text was refetched for 86 (14 failed). The sample unintentionally included best-practice articles (a literal
+  bug in the filter, fixed after sampling).
+- **Labels.** All 575 candidates on the 86 articles were labelled blind (no provenance) by an LLM subagent;
+  20 random articles (113 candidates) were labelled again independently by a second, stronger LLM. Agreement
+  92% (104/113; actor 21/24, TTP 57/61, malware 16/18, industry 4/4, incident 6/6). The user delegated the
+  human adjudication step, so no human-verified labels exist.
+- **Precision, full set (first labeller), after the evaluation-driven fixes.**
+  - Actor dictionary 35/49 (71%) vs stored (LLM-era) actors 14/20 (70%).
+  - TTP: explicit 101/102 (99%), keyword 52/74 (70%), LLM 51/144 (35%).
+  - Industry keyword 5/5 vs LLM 19/49 (39%).
+  - Malware/tool dictionary 28/59 (47%).
+  - Incident rule 2/2 vs LLM 9/24 (38%).
+- **Stricter second labeller, 20-article subset.** Actor dictionary 15/24 (63%) vs LLM 5/9 (56%); TTP
+  keyword 18/22 (82%) vs LLM 20/39 (51%); malware 7/18 (39%).
+- **Coverage, same stratified sample** (not dashboard population numbers): actor 23 -> 32, malware 0 -> 30,
+  TTP 40 -> 58, specific industry 39 -> 40.
+- **Fixes driven by the evaluation.** Windows-utility ATT&CK names (at, cmd, net, route, expand, reg, ...)
+  only as `<name>.exe` (malware precision 22% -> 47%); common-word ATT&CK names need a context word; keyword
+  rules for T1078 (0/5) and bare "powershell" (0/4) dropped.
+- **Verdict against the P4 success criteria.** Met on silver labels for actor and TTP precision and for
+  coverage; the actor margin is small. Malware precision is the weakest field (the second labeller treats
+  legitimate OS binaries used by attackers as false).
+
+Not started: P5 to P7 (local relevance model, CTI model; persist-first
 enrichment). Cost measurement over a week of real data is now possible
 on dev.
 
@@ -254,7 +296,7 @@ testing first. Phases 1-3 can start without schema redesign.
 | P1 Self-healing enrichment (**done in 0.8.5**) | Articles parked as `[enrichment_failed]` are replayed automatically once the model probe is healthy again; a gateway 400/404 is treated as "wait for health", not permanent; the 218 parked rows on dev are recovered | After a gateway outage on dev, parked articles reach the news feed without anyone pressing Replay |
 | P2 Cheap wins (**done in 0.8.6**) | `content_kind`/`default_relevance` on scrapers; refang + CVE-out-of-IOC + allowlist seed; TTP evidence substring check; drop LLM `confidence` from UI in favour of `services/confidence.py` | Structured sources make 0 LLM calls; duplicate defanged IOCs = 0; no TTP without verifiable evidence |
 | P3 Story dedup at ingest (**done in 0.8.7**) | Clustering in `cti_core`, `story_sources`, skip Tier 3 for known stories | "PHP2Shell"-type waves enriched once per story |
-| P4 Deterministic extractors | Actor/malware dictionary matcher, explicit + inferred ATT&CK, industry taxonomy, incident rule | Coverage (E9) measured before/after on the same article set; equal or better than LLM for actor and TTP precision on a 100-article hand-labelled sample |
+| P4 Deterministic extractors (**built for 0.8.8**) | Actor/malware dictionary matcher, explicit + inferred ATT&CK, industry taxonomy, incident rule | Coverage (E9) measured before/after on the same article set; equal or better than LLM for actor and TTP precision on a 100-article hand-labelled sample. Measured 2026-10-25 on silver labels: met for actor (71% vs 70%) and TTP (keyword 70%, explicit 99% vs LLM 35%) precision and for coverage; malware precision 47% is the weakest field |
 | P5 Local relevance model | Train on audit trail, shadow mode, then gate | Agreement with LLM >= 95% on the confident bands; LLM classify calls down by the measured share |
 | P6 Confidence | Grade all sources, Admiralty score in API/UI | Every article shows A-F/1-6 |
 | P7+ CTI model | Entity + relationship tables, TLP, TAXII, Splunk export, sightings, PIR at ingest, hunting packs | Per item in section 4 |

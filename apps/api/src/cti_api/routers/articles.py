@@ -47,6 +47,8 @@ from cti_api.schemas.article import (
     ArticleOut,
     DashboardStats,
     FilterOptions,
+    InferredEntity,
+    MalwareRef,
     StoryRef,
 )
 from cti_api.schemas.dashboard_overview import (
@@ -56,7 +58,13 @@ from cti_api.schemas.dashboard_overview import (
     RansomwareOverview,
     TrendingResponse,
 )
-from cti_api.services import article_dashboard, confidence, dashboard_overview, trending
+from cti_api.services import (
+    article_dashboard,
+    confidence,
+    dashboard_overview,
+    inferred_ttps,
+    trending,
+)
 from cti_api.services import dedup as dedup_service
 
 router = APIRouter(
@@ -105,7 +113,22 @@ def _serialize(
         victim_countries=[c.country_code for c in article.countries if c.role == "victim"],
         actor_countries=[c.country_code for c in article.countries if c.role == "actor"],
         threat_actors=[t.threat_actor for t in article.threat_actors],
-        ttps=[TTP(id=t.ttp_id, name=t.ttp_name) for t in article.ttps],
+        ttps=[
+            TTP(
+                id=t.ttp_id,
+                name=t.ttp_name,
+                source=t.source,  # type: ignore[arg-type]
+                evidence=t.evidence,
+            )
+            for t in article.ttps
+        ],
+        malware=[
+            MalwareRef(name=m.name, kind=m.kind)  # type: ignore[arg-type]
+            for m in article.malware
+        ],
+        industry_source=(
+            article.industries[0].source if article.industries else None  # type: ignore[arg-type]
+        ),
         news_type=str(machine_fields.get("news_type") or ""),
         confidence_score=machine_fields.get("confidence_score"),  # type: ignore[arg-type]
         admiralty_code=rating.admiralty_code if rating else None,
@@ -149,6 +172,7 @@ async def list_articles(
     actor_country: list[str] | None = Query(None),
     title_keyword: list[str] | None = Query(None),
     ttp: list[str] | None = Query(None),
+    ttp_source: list[Literal["explicit", "keyword", "llm"]] | None = Query(None),
     sort: Literal["recent", "priority"] = Query("recent"),
     confirmed_only: bool = Query(False),
     story_id: int | None = Query(None),
@@ -172,6 +196,7 @@ async def list_articles(
         search=search,
         title_keywords=title_keyword,
         ttps=ttp,
+        ttp_sources=ttp_source,
         sort=sort,
         confirmed_only=confirmed_only,
         story_id=story_id,
@@ -346,3 +371,17 @@ async def get_article_by_id(article_id: int, session: AsyncSession = Depends(get
         else None
     )
     return _serialize(article, repo.to_dict(article), stories=stories)
+
+
+@router.get(
+    "/articles/{article_id}/inferred-ttps",
+    response_model=list[InferredEntity],
+    dependencies=[Depends(require_auth)],
+)
+async def get_article_inferred_ttps(
+    article_id: int, session: AsyncSession = Depends(get_db)
+) -> list[InferredEntity]:
+    article = await AsyncArticleRepo(session).get_by_id(article_id)
+    if article is None:
+        raise HTTPException(status_code=404, detail="Article not found")
+    return await inferred_ttps.for_article(session, article)

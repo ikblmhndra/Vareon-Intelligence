@@ -6,6 +6,57 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
+## [0.8.8] - 2026-10-25
+
+**Setiap artikel yang diterima kini melewati Tier 1 deterministik (tanpa LLM) yang mengekstrak aktor, malware, TTP dan industri dari teks penuh, lengkap dengan label asal datanya (kecuali artikel best practice: hanya malware dan industri, tanpa TTP dan tanpa aktor tersimpan).**
+Satu migrasi (`b8e2c4a6d1f3`), **tanpa kunci `.env` baru.** LLM classify dan TTP tetap jalan; Tier 1 hanya melengkapi.
+
+**Saat upgrade dari 0.8.7:** `make deploy` (migrasi jalan otomatis). Artikel lama tidak berubah sendiri. Untuk mengisi artikel yang sudah ada,
+jalankan manual `python -m cti_enrich.backfill_tier1 [--since YYYY-MM-DD] [--limit N] [--sleep S] [--dry-run]` (hanya menambah baris,
+tanpa LLM, aman diulang). Untuk menyatukan nama aktor lama berbentuk alias dengan nama kanonik, jalankan manual
+`python -m cti_enrich.canonicalise_actors` (dry-run, di-rollback) lalu `python -m cti_enrich.canonicalise_actors --apply`. Aman diulang.
+
+### Ditambah
+- Aktor dan malware dicari di teks penuh lewat kamus ATT&CK + `threat_actor_groups`, alias dipetakan ke nama kanonik, dengan aturan kata
+  konteks untuk nama yang berupa kata umum.
+- Nama utilitas Windows dari ATT&CK (at, cmd, net, dst.) hanya cocok sebagai `<nama>.exe`, dan nama kata-umum butuh kata konteks.
+- TTP keyword tidak memberi bonus confidence. Rule keyword T1078 dan "powershell" polos dibuang setelah evaluasi.
+- TTP explicit dari ID `T####` di teks, dan TTP keyword dari peta ~60 teknik. Gabungan per ID: explicit > llm > keyword.
+- Industri dari taksonomi kata kunci, hanya dipakai saat LLM cuma memberi "General".
+- Rule confirmed-incident berjalan shadow (hasilnya di `raw_enrichment`, belum memengaruhi perilaku).
+- Label sumber: `article_ttps.source` dan `evidence`, `article_threat_actors.source`, `article_industries.source`, serta tabel baru `article_malware`.
+- `GET /api/articles/{id}/inferred-ttps` (dihitung saat dibaca dari relasi ATT&CK aktor dan malware artikel).
+- Parameter `ttp_source` pada daftar artikel dan heatmap MITRE.
+- Modal artikel menampilkan asal tiap TTP, malware, dan TTP inferred.
+- Alat evaluasi `tools/eval/tier1_eval.py`.
+- `python -m cti_enrich.canonicalise_actors [--apply]`: perintah sekali jalan yang mengganti nama alias lama ke nama kanonik di
+  `article_threat_actors`, `ta_watchlist`, `ta_profiles` dan daftar aktor di kriteria PIR, lalu mencetak jumlah per `lama -> baru`, supaya
+  satu aktor tidak tampil sebagai dua seri (mis. "Midnight blizzard" dan "Apt29"). Baris alias yang nama kanoniknya sudah ada di
+  artikel/watchlist client/PIR yang sama digabung (dihapus). Bila dua profil TA jatuh ke nama yang sama, profil dengan `generated_at`
+  terbaru dipertahankan dan sisanya dihapus (namanya dicetak).
+
+### Diubah
+- Aktor dicari di teks penuh, jadi sebagian artikel baru pindah dari "Global Article" ke "TA Group Article", dan alert Telegram mendapat
+  baris "Related Threat Actor".
+- TTP keyword ikut tampil di baris TTP alert.
+- Industri dari keyword bisa memicu penanda OT.
+- Tagging tweet X Intel tidak berubah (nama, urutan daftar, dan nama kata umum seperti "Akira" tetap ditandai tanpa kata konteks).
+
+### Catatan perilaku
+- Confidence artikel baru lebih sering naik: aktor Tier 1 dari teks penuh memberi bonus aktor, dan TTP explicit ikut dihitung (juga di
+  artikel Tier 0 dan follow-up story yang sebelumnya 0). Recompute confidence memakai aturan yang sama (TTP keyword tanpa bonus).
+- Aturan kata konteks berlaku untuk SETIAP nama satu kata yang hanya dikenal dari `threat_actor_groups`, bukan hanya kata umum: judul
+  "ShinyHunters members ..." tanpa kata konteks tidak lagi menandai aktor.
+- Perubahan `threat_actor_groups` / `ta_whitelist` dari UI baru berlaku ke artikel paling lambat 1 jam per proses worker (cache kamus).
+- Nama aktor lama berbentuk alias (mis. "Lazarus") tetap apa adanya; artikel baru memakai nama kanonik ATT&CK ("Lazarus group"), jadi
+  seri bisa terpecah sampai `canonicalise_actors --apply` dijalankan. Backfill tidak menambah nama kanonik bila alias yang sama sudah ada
+  di artikel.
+- `canonicalise_actors` hanya mengubah nama yang di kamus Tier 1 berjenis aktor; nama di luar kamus, nama yang dikenal sebagai
+  malware/tool (mis. "Qilin"), `raw_enrichment`, `cve_threat_actors` dan `ioc_threat_actors` tidak disentuh. Beda huruf besar saja tidak
+  dianggap alias. Ukuran per 2026-10-25: prod 7 baris artikel (6 nama), dev 4 baris; satu profil TA ("apt36" -> "Transparent tribe").
+- Watchlist/profil yang ditambahkan nanti dengan nama alias tetap tidak cocok dengan artikel baru berbentuk kanonik; perintah ini hanya
+  membereskan data yang sudah ada.
+
 ## [0.8.7] - 2026-10-25
 
 **Artikel yang membahas peristiwa yang sama dikelompokkan jadi satu "cerita" (story) saat ingest, dan artikel lanjutan memakai ulang
