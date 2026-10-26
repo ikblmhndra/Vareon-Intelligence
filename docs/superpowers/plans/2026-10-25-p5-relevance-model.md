@@ -67,6 +67,7 @@ def test_relevance_defaults():
     assert (s.relevance.revert_samples, s.relevance.revert_min_agreement) == (50, 0.92)
     assert s.story.embedding_similarity == 0.0
 
+
 def test_relevance_mode_rejects_unknown(monkeypatch):
     monkeypatch.setenv("RELEVANCE__MODE", "gate")
     with pytest.raises(ValidationError):
