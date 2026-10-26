@@ -3042,6 +3042,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sr/entries/{entry_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Sr Entry
+         * @description Analis mengambil alih baris (origin jadi `analyst`, `analyst_name` = user login), opsional
+         *     dengan grade baru. Recompute skor artikel hanya kalau grade benar-benar berubah.
+         */
+        post: operations["confirm_sr_entry_api_sr_entries__entry_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sr/labels": {
         parameters: {
             query?: never;
@@ -3051,6 +3072,27 @@ export interface paths {
         };
         /** Sr Labels */
         get: operations["sr_labels_api_sr_labels_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sr/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Review Sources
+         * @description Antrean review: tiap baris grade bawaan (`origin='default'`) dengan statistik 30 hari dan
+         *     saran grade dari `suggest_grade`. Baris analis tidak ikut: grade-nya sudah keputusan manusia.
+         */
+        get: operations["review_sources_api_sr_review_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5711,12 +5753,17 @@ export interface components {
             /** Permissions */
             permissions?: string[];
         };
+        /** SRConfirmIn */
+        SRConfirmIn: {
+            /** Reliability Grade */
+            reliability_grade?: string | null;
+        };
         /** SREntryAdd */
         SREntryAdd: {
             /** Analyst Name */
             analyst_name: string;
             /** Credibility Code */
-            credibility_code: string;
+            credibility_code?: string | null;
             /**
              * Notes
              * @default
@@ -5746,6 +5793,8 @@ export interface components {
             admiralty_code: string;
             /** Analyst Name */
             analyst_name: string;
+            /** Content Kind */
+            content_kind?: string | null;
             /** Credibility Code */
             credibility_code: string;
             /** Id */
@@ -5769,7 +5818,7 @@ export interface components {
             /** Analyst Name */
             analyst_name: string;
             /** Credibility Code */
-            credibility_code: string;
+            credibility_code?: string | null;
             /**
              * Notes
              * @default
@@ -5777,6 +5826,42 @@ export interface components {
             notes: string;
             /** Reliability Grade */
             reliability_grade: string;
+        };
+        /**
+         * SRReviewItem
+         * @description Satu baris antrean review grade sumber (P6 spec 5.3), statistik 30 hari.
+         */
+        SRReviewItem: {
+            /** Artefact Articles */
+            artefact_articles: number;
+            /** Artefact Pct */
+            artefact_pct: number;
+            /** Articles */
+            articles: number;
+            entry: components["schemas"]["SREntryOut"];
+            /** Ioc Fp */
+            ioc_fp: number;
+            /** Ioc Fp Pct */
+            ioc_fp_pct: number;
+            /** Ioc Verdicts */
+            ioc_verdicts: number;
+            /** Lead Count */
+            lead_count: number;
+            /** Multi Source Stories */
+            multi_source_stories: number;
+            /** Rejected */
+            rejected: number;
+            /** Rejected Pct */
+            rejected_pct: number;
+            /** Suggested Grade */
+            suggested_grade: string | null;
+            /** Suggestion Reasons */
+            suggestion_reasons: string[];
+        };
+        /** SRReviewResponse */
+        SRReviewResponse: {
+            /** Items */
+            items: components["schemas"]["SRReviewItem"][];
         };
         /** SaveSyntaxRequest */
         SaveSyntaxRequest: {
@@ -13762,6 +13847,43 @@ export interface operations {
             };
         };
     };
+    confirm_sr_entry_api_sr_entries__entry_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                entry_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SRConfirmIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SREntryOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     sr_labels_api_sr_labels_get: {
         parameters: {
             query?: never;
@@ -13784,6 +13906,37 @@ export interface operations {
                             [key: string]: string;
                         };
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_sources_api_sr_review_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SRReviewResponse"];
                 };
             };
             /** @description Validation Error */

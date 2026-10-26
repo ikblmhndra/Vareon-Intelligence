@@ -153,3 +153,77 @@ def assess(facts: ArticleFacts) -> Assessment:
             "priority": [{"code": c, "points": p} for c, p in signals],
         },
     )
+
+
+REVIEW_MIN_ARTICLES = 10
+REVIEW_REJECTED_PCT = 30
+REVIEW_ARTEFACT_PCT = 30
+REVIEW_IOC_MIN_VERDICTS = 5
+REVIEW_IOC_FP_PCT = 20
+REVIEW_MIN_MULTI_STORIES = 5
+REVIEW_LEAD_RATIO = 0.5
+"""Ambang saran grade sumber di antrean review (P6 spec 5.3)."""
+
+_ONE_GRADE_LOWER = {"A": "B", "B": "C", "C": "D", "D": "E"}
+"""E dan F tidak punya saran turun: E sudah paling bawah, F berarti "belum bisa dinilai"."""
+
+
+@dataclass(frozen=True, slots=True)
+class SourceStats:
+    """Statistik satu sumber dalam jendela review (lihat `review_stats` di repo SR)."""
+
+    articles: int
+    rejected: int
+    artefact_articles: int
+    multi_source_stories: int
+    lead_count: int
+    ioc_verdicts: int
+    ioc_fp: int
+
+    @property
+    def rejected_pct(self) -> float:
+        """Penolakan atas semua yang masuk (diterima + ditolak), bukan atas artikel diterima."""
+        total = self.articles + self.rejected
+        return self.rejected / total * 100 if total else 0.0
+
+    @property
+    def artefact_pct(self) -> float:
+        return self.artefact_articles / self.articles * 100 if self.articles else 0.0
+
+    @property
+    def ioc_fp_pct(self) -> float:
+        return self.ioc_fp / self.ioc_verdicts * 100 if self.ioc_verdicts else 0.0
+
+
+@dataclass(frozen=True, slots=True)
+class GradeSuggestion:
+    grade: str
+    reasons: list[str]
+
+
+def suggest_grade(current: str, stats: SourceStats) -> GradeSuggestion | None:
+    """Saran grade dari data, cocok-pertama menang (spec 5.3). `None` = pertahankan, termasuk saat
+    data terlalu sedikit (`articles < REVIEW_MIN_ARTICLES`). Sistem tidak pernah menyarankan A
+    (hanya analis yang memberi A), jadi naik hanya C ke B. Rasio penolakan tinggi mengukur konten
+    di luar topik (marketing, best practice), bukan ketidakakuratan; karena itu hanya dihitung bila
+    artikelnya juga jarang membawa artefak."""
+    if stats.articles < REVIEW_MIN_ARTICLES:
+        return None
+    grade = current.upper()
+
+    lower_reason: str | None = None
+    if stats.rejected_pct >= REVIEW_REJECTED_PCT and stats.artefact_pct < REVIEW_ARTEFACT_PCT:
+        lower_reason = "off_topic"
+    elif stats.ioc_verdicts >= REVIEW_IOC_MIN_VERDICTS and stats.ioc_fp_pct >= REVIEW_IOC_FP_PCT:
+        lower_reason = "ioc_false_positives"
+    if lower_reason is not None:
+        lower = _ONE_GRADE_LOWER.get(grade)
+        return GradeSuggestion(lower, [lower_reason]) if lower else None
+
+    if (
+        grade == "C"
+        and stats.multi_source_stories >= REVIEW_MIN_MULTI_STORIES
+        and stats.lead_count / stats.multi_source_stories >= REVIEW_LEAD_RATIO
+    ):
+        return GradeSuggestion("B", ["reports_first"])
+    return None
