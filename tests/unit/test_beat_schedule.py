@@ -307,3 +307,14 @@ def test_story_purge_empty_runs_daily_on_the_maintenance_queue(monkeypatch) -> N
     assert entry["task"] == "story.purge_empty"
     assert (entry["schedule"].hour, entry["schedule"].minute) == ({3}, {50})
     assert entry["options"] == {"queue": "maintenance"}
+
+
+def test_relevance_train_runs_sunday_0200_local_on_the_enrich_queue(monkeypatch) -> None:
+    """Minggu 02:00 WIB (offset default +7) = Sabtu 19:00 UTC; hari-dalam-pekan cron 6 = Sabtu."""
+    monkeypatch.setattr(beat, "_scraper_configs", lambda: {})
+
+    entry = beat.build_beat_schedule()["relevance-train"]
+
+    assert entry["task"] == "relevance.train"
+    assert entry["options"]["queue"] == "enrich"
+    assert _cron(entry) == ("0", "19", "6")
