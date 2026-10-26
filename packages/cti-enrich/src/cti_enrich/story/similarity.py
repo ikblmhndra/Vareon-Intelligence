@@ -1,4 +1,4 @@
-"""Kemiripan judul TF-IDF (titik tukar ke model embedding nanti, spec bagian 8)."""
+"""Kemiripan judul untuk resolver story: TF-IDF, dan cosine embedding MiniLM (P5, opsional)."""
 
 from __future__ import annotations
 

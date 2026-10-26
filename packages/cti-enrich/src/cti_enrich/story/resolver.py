@@ -89,8 +89,11 @@ def resolve(
     flat = [(c.id, m.source, m.title) for c in eligible for m in c.members]
     titles = [t for _, _, t in flat]
     tfidf = title_similarity(keys.title, titles)
-    use_emb = cfg.embedding_similarity > 0 and embedding_similarity is not None
-    emb = embedding_similarity(keys.title, titles) if use_emb and embedding_similarity else None
+    emb = (
+        embedding_similarity(keys.title, titles)
+        if cfg.embedding_similarity > 0 and embedding_similarity is not None
+        else None
+    )
     best_story: int | None = None
     best_score = 0.0
     best_rule: Literal["title", "title_embedding"] = "title"
