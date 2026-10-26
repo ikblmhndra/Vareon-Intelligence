@@ -76,6 +76,8 @@ class StoryHealthOut(BaseModel):
     """Dari follow-up itu, yang mewarisi classify story (tanpa panggilan LLM classify)."""
     llm_calls_avoided: int
     """Perkiraan panggilan LLM yang dihemat: inherited x 2 (classify + ekstraksi TTP)."""
+    by_embedding: int
+    """Artikel yang menempel ke story lewat aturan judul-embedding (`title_embedding`)."""
 
 
 class LlmHealthOut(BaseModel):
@@ -91,6 +93,29 @@ class LlmHealthOut(BaseModel):
     stories_7d: StoryHealthOut
 
 
+class RelevanceHealthOut(BaseModel):
+    """Model relevansi lokal (P5). `None` = belum ada data (tanpa model aktif / penyebut nol)."""
+
+    mode: Literal["off", "shadow", "auto"]
+    gate_state: Literal["shadow", "gate"] | None
+    """Status gate di baris model aktif; `None` tanpa model aktif."""
+    gate_changed_at: str | None
+    model_trained_at: str | None
+    n_examples: int | None
+    holdout_agreement: float | None
+    holdout_band_share: float | None
+    band_titles_14d: int
+    """Judul dalam band dengan vonis LLM (keputusan shadow/audit) dalam jendela gate."""
+    band_agreement_14d: float | None
+    middle_band_14d: int
+    """Baris dengan skor di luar band dalam jendela itu (selalu ke LLM)."""
+    audit_samples: int
+    audit_agreement: float | None
+    """Kesepakatan pada `revert_samples` sampel audit terakhir."""
+    classify_avoided_24h: int
+    classify_avoided_7d: int
+
+
 class DataHealthOut(BaseModel):
     generated_at: str
     """ISO UTC saat angka dihitung (cache 60 detik per proses)."""
@@ -100,3 +125,4 @@ class DataHealthOut(BaseModel):
     sources: SourceFreshnessOut
     ioc_enrichment: list[IocEnrichmentTypeOut]
     llm: LlmHealthOut
+    relevance: RelevanceHealthOut

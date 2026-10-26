@@ -29,6 +29,39 @@ _BEST_PRACTICE = "Security Technology & Best Practices"
 """Salinan `cti_enrich.relevance.dataset.BEST_PRACTICE` (cti_core tidak boleh mengimpor
 cti_enrich); vonis LLM `best_practice` dibaca dari `articles.news_type`."""
 
+_BAND_UNION_SQL = """
+    SELECT created_at AS ts, (news_type IS DISTINCT FROM :bp) AS agree,
+           raw_enrichment->'relevance'->>'decision' AS decision
+    FROM articles
+    WHERE raw_enrichment->'relevance'->>'in_band' = 'true'
+      AND raw_enrichment->'relevance'->>'decision' IN ('shadow', 'audit')
+    UNION ALL
+    SELECT rejected_at AS ts, false AS agree,
+           raw_enrichment->'relevance'->>'decision' AS decision
+    FROM rejected_articles
+    WHERE raw_enrichment->'relevance'->>'in_band' = 'true'
+      AND raw_enrichment->'relevance'->>'decision' IN ('shadow', 'audit')
+"""
+"""Satu teks SQL untuk repo sync (gate, worker) dan async (Data health): angka yang dilihat
+operator dan yang dipakai gate tidak boleh berbeda."""
+
+_BAND_COUNT_SQL = (
+    f"SELECT count(*), count(*) FILTER (WHERE agree) FROM ({_BAND_UNION_SQL}) r WHERE ts >= :since"
+)
+_AUDIT_LAST_SQL = (
+    f"SELECT agree FROM ({_BAND_UNION_SQL}) r WHERE decision = 'audit' ORDER BY ts DESC LIMIT :n"
+)
+_MIDDLE_BAND_SQL = """
+    SELECT (SELECT count(*) FROM articles WHERE created_at >= :since
+              AND raw_enrichment->'relevance'->>'in_band' = 'false')
+         + (SELECT count(*) FROM rejected_articles WHERE rejected_at >= :since
+              AND raw_enrichment->'relevance'->>'in_band' = 'false')
+"""
+_GATED_SQL = """
+    SELECT count(*) FROM articles WHERE created_at >= :since
+      AND raw_enrichment->'relevance'->>'decision' = 'gated'
+"""
+
 
 @dataclass(frozen=True)
 class GateStats:
@@ -136,30 +169,12 @@ class RelevanceModelRepo:
         `rejected_articles`. Setuju = vonis LLM `threat_news`: artikel bukan best practice;
         baris rejected tidak pernah setuju. Keputusan `gated` tidak dihitung (LLM tidak
         dipanggil, tidak ada vonis)."""
-        union = """
-            SELECT created_at AS ts, (news_type IS DISTINCT FROM :bp) AS agree,
-                   raw_enrichment->'relevance'->>'decision' AS decision
-            FROM articles
-            WHERE raw_enrichment->'relevance'->>'in_band' = 'true'
-              AND raw_enrichment->'relevance'->>'decision' IN ('shadow', 'audit')
-            UNION ALL
-            SELECT rejected_at AS ts, false AS agree,
-                   raw_enrichment->'relevance'->>'decision' AS decision
-            FROM rejected_articles
-            WHERE raw_enrichment->'relevance'->>'in_band' = 'true'
-              AND raw_enrichment->'relevance'->>'decision' IN ('shadow', 'audit')
-        """
         band = self.session.execute(
-            text(
-                f"SELECT count(*), count(*) FILTER (WHERE agree) FROM ({union}) r "
-                "WHERE ts >= :since"
-            ),
+            text(_BAND_COUNT_SQL),
             {"bp": _BEST_PRACTICE, "since": since},
         ).one()
         audits = self.session.execute(
-            text(
-                f"SELECT agree FROM ({union}) r WHERE decision = 'audit' ORDER BY ts DESC LIMIT :n"
-            ),
+            text(_AUDIT_LAST_SQL),
             {"bp": _BEST_PRACTICE, "n": revert_samples},
         ).scalars()
         return GateStats(
@@ -186,3 +201,29 @@ class AsyncRelevanceModelRepo:
             select(RelevanceModel).where(RelevanceModel.status == "active")
         )
         return result.scalar_one_or_none()
+
+    async def gate_stats(self, *, since: datetime.datetime, revert_samples: int) -> GateStats:
+        """Cermin `RelevanceModelRepo.gate_stats` (SQL yang sama) untuk API."""
+        band = (
+            await self.session.execute(
+                text(_BAND_COUNT_SQL), {"bp": _BEST_PRACTICE, "since": since}
+            )
+        ).one()
+        audits = (
+            await self.session.execute(
+                text(_AUDIT_LAST_SQL), {"bp": _BEST_PRACTICE, "n": revert_samples}
+            )
+        ).scalars()
+        return GateStats(
+            band_n=int(band[0]), band_agree=int(band[1]), audit_last=[bool(a) for a in audits]
+        )
+
+    async def middle_band_count(self, since: datetime.datetime) -> int:
+        """Baris (articles + rejected_articles) yang skornya di luar band sejak `since`."""
+        return int(
+            (await self.session.execute(text(_MIDDLE_BAND_SQL), {"since": since})).scalar_one()
+        )
+
+    async def gated_count(self, since: datetime.datetime) -> int:
+        """Artikel yang classify-nya dilewati gate sejak `since` (panggilan LLM yang dihemat)."""
+        return int((await self.session.execute(text(_GATED_SQL), {"since": since})).scalar_one())

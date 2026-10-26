@@ -2092,6 +2092,9 @@
           "queues": {
             "$ref": "#/components/schemas/QueueHealthOut"
           },
+          "relevance": {
+            "$ref": "#/components/schemas/RelevanceHealthOut"
+          },
           "scrapers": {
             "$ref": "#/components/schemas/ScraperHealthSummary"
           },
@@ -2106,7 +2109,8 @@
           "queues",
           "sources",
           "ioc_enrichment",
-          "llm"
+          "llm",
+          "relevance"
         ],
         "title": "DataHealthOut",
         "type": "object"
@@ -4942,6 +4946,150 @@
         "title": "RejectedArticleOut",
         "type": "object"
       },
+      "RelevanceHealthOut": {
+        "description": "Model relevansi lokal (P5). `None` = belum ada data (tanpa model aktif / penyebut nol).",
+        "properties": {
+          "audit_agreement": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audit Agreement"
+          },
+          "audit_samples": {
+            "title": "Audit Samples",
+            "type": "integer"
+          },
+          "band_agreement_14d": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Band Agreement 14D"
+          },
+          "band_titles_14d": {
+            "title": "Band Titles 14D",
+            "type": "integer"
+          },
+          "classify_avoided_24h": {
+            "title": "Classify Avoided 24H",
+            "type": "integer"
+          },
+          "classify_avoided_7d": {
+            "title": "Classify Avoided 7D",
+            "type": "integer"
+          },
+          "gate_changed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gate Changed At"
+          },
+          "gate_state": {
+            "anyOf": [
+              {
+                "enum": [
+                  "shadow",
+                  "gate"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gate State"
+          },
+          "holdout_agreement": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holdout Agreement"
+          },
+          "holdout_band_share": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holdout Band Share"
+          },
+          "middle_band_14d": {
+            "title": "Middle Band 14D",
+            "type": "integer"
+          },
+          "mode": {
+            "enum": [
+              "off",
+              "shadow",
+              "auto"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "model_trained_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Trained At"
+          },
+          "n_examples": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Examples"
+          }
+        },
+        "required": [
+          "mode",
+          "gate_state",
+          "gate_changed_at",
+          "model_trained_at",
+          "n_examples",
+          "holdout_agreement",
+          "holdout_band_share",
+          "band_titles_14d",
+          "band_agreement_14d",
+          "middle_band_14d",
+          "audit_samples",
+          "audit_agreement",
+          "classify_avoided_24h",
+          "classify_avoided_7d"
+        ],
+        "title": "RelevanceHealthOut",
+        "type": "object"
+      },
       "RoleCreate": {
         "properties": {
           "display_name": {
@@ -6626,6 +6774,10 @@
       },
       "StoryHealthOut": {
         "properties": {
+          "by_embedding": {
+            "title": "By Embedding",
+            "type": "integer"
+          },
           "followups": {
             "title": "Followups",
             "type": "integer"
@@ -6647,7 +6799,8 @@
           "new_stories",
           "followups",
           "inherited",
-          "llm_calls_avoided"
+          "llm_calls_avoided",
+          "by_embedding"
         ],
         "title": "StoryHealthOut",
         "type": "object"

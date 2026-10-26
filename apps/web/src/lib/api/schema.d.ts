@@ -4458,6 +4458,7 @@ export interface components {
             ioc_enrichment: components["schemas"]["IocEnrichmentTypeOut"][];
             llm: components["schemas"]["LlmHealthOut"];
             queues: components["schemas"]["QueueHealthOut"];
+            relevance: components["schemas"]["RelevanceHealthOut"];
             scrapers: components["schemas"]["ScraperHealthSummary"];
             sources: components["schemas"]["SourceFreshnessOut"];
         };
@@ -5610,6 +5611,43 @@ export interface components {
             /** Url */
             url: string;
         };
+        /**
+         * RelevanceHealthOut
+         * @description Model relevansi lokal (P5). `None` = belum ada data (tanpa model aktif / penyebut nol).
+         */
+        RelevanceHealthOut: {
+            /** Audit Agreement */
+            audit_agreement: number | null;
+            /** Audit Samples */
+            audit_samples: number;
+            /** Band Agreement 14D */
+            band_agreement_14d: number | null;
+            /** Band Titles 14D */
+            band_titles_14d: number;
+            /** Classify Avoided 24H */
+            classify_avoided_24h: number;
+            /** Classify Avoided 7D */
+            classify_avoided_7d: number;
+            /** Gate Changed At */
+            gate_changed_at: string | null;
+            /** Gate State */
+            gate_state: ("shadow" | "gate") | null;
+            /** Holdout Agreement */
+            holdout_agreement: number | null;
+            /** Holdout Band Share */
+            holdout_band_share: number | null;
+            /** Middle Band 14D */
+            middle_band_14d: number;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "off" | "shadow" | "auto";
+            /** Model Trained At */
+            model_trained_at: string | null;
+            /** N Examples */
+            n_examples: number | null;
+        };
         /** RoleCreate */
         RoleCreate: {
             /** Display Name */
@@ -6188,6 +6226,8 @@ export interface components {
         };
         /** StoryHealthOut */
         StoryHealthOut: {
+            /** By Embedding */
+            by_embedding: number;
             /** Followups */
             followups: number;
             /** Inherited */
