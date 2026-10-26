@@ -165,7 +165,7 @@ def test_concurrent_training_one_active(_migrated_schema: None) -> None:
         for t in threads:
             t.join(timeout=120)
         assert not errors
-        assert statuses == ["active", "active"]
+        assert sorted(statuses) == ["active", "active"]
         with sync_session() as session:
             assert _active_count(session) == 1
             assert session.scalar(select(func.count()).select_from(RelevanceModel)) == 2

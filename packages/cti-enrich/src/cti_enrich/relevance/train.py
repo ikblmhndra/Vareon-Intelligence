@@ -57,7 +57,9 @@ def split_holdout(
     cutoff = now - dt.timedelta(days=holdout_days)
     test = [e for e in examples if e.at >= cutoff]
     train = [e for e in examples if e.at < cutoff]
-    if len(test) >= min_time_holdout and train:
+    # Semua kelas harus ada di `train`: kelas yang seluruhnya jatuh di jendela terakhir tidak
+    # akan bisa dipelajari, jadi pakai fallback berstrata.
+    if len(test) >= min_time_holdout and {e.label for e in train} >= set(CLASSES):
         return Holdout(train, test, "time")
     from sklearn.model_selection import train_test_split
 
@@ -80,6 +82,15 @@ def band_metrics(probs: list[Probs], labels: list[str], threshold: float) -> dic
         "agreement": agreement,
         "n": n,
     }
+
+
+def confusion_matrix(probs: list[Probs], labels: list[str]) -> dict[str, dict[str, int]]:
+    """{label sebenarnya: {prediksi argmax: jumlah}} atas SEMUA contoh holdout, nol disertakan."""
+    out = {t: {p: 0 for p in CLASSES} for t in CLASSES}
+    for prob, label in zip(probs, labels, strict=True):
+        pred = max(CLASSES, key=lambda c: getattr(prob, c))
+        out[label][pred] += 1
+    return out
 
 
 def _skipped(reason: str, counts: dict[str, int]) -> TrainOutcome:
@@ -118,6 +129,7 @@ def run_training(
         band_metrics(probs, [e.label for e in split.test], cfg.accept_threshold)
     )
     holdout_tally = Counter(e.label for e in split.test)
+    metrics["confusion"] = confusion_matrix(probs, [e.label for e in split.test])
     metrics["holdout_kind"] = split.kind
     metrics["holdout_counts"] = {c: holdout_tally.get(c, 0) for c in CLASSES}
 
