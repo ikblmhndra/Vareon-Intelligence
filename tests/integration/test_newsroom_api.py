@@ -99,13 +99,18 @@ async def test_articles_confirmed_only_and_priority(
 ) -> None:
     await AsyncClientRepo(api_session).ensure_default()
     repo = AsyncArticleRepo(api_session)
-    await repo.upsert(url="https://e.com/x", title="plain", source="S", posted_on=_TODAY)
+    # P6 5.2: urutan priority dari `priority_score` (insiden terkonfirmasi sudah +25 di dalamnya),
+    # bukan dari `confirmed_incident` langsung.
+    await repo.upsert(
+        url="https://e.com/x", title="plain", source="S", posted_on=_TODAY, priority_score=60
+    )
     await repo.upsert(
         url="https://e.com/y",
         title="incident",
         source="S",
         posted_on=_TODAY - datetime.timedelta(days=3),
         confirmed_incident=True,
+        priority_score=85,
     )
     h = auth_header()
     r = await api_client.get("/api/articles", params={"confirmed_only": "true"}, headers=h)
