@@ -10,6 +10,8 @@ artikel pertama walau lead-nya masih di-enrich.
 from __future__ import annotations
 
 import dataclasses
+import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal
@@ -21,11 +23,14 @@ from cti_core.db.repositories.story import StoryRepo
 from cti_enrich.stages.classify import ClassifyResult
 from cti_enrich.stages.extract_cves import extract_cves
 
+log = logging.getLogger(__name__)
+_embedding_unavailable_logged = False
+
 
 @dataclass(frozen=True)
 class StoryLink:
     story_id: int
-    rule: Literal["lead", "cve", "title_exact", "title"]
+    rule: Literal["lead", "cve", "title_exact", "title", "title_embedding"]
     """`lead` = story baru dibuat untuk artikel ini; selain itu aturan resolver yang cocok."""
     inherited: dict[str, Any] | None
     """`stories.classify` saat resolve; `None` = belum bisa diwariskan (lead masih jalan, atau
@@ -48,6 +53,7 @@ def resolve_story(
     from cti_enrich.story.resolver import ArticleKeys, key_cves, resolve
 
     cves = key_cves(extract_cves(f"{title} {text}"), cfg.max_key_cves)
+    embed = _embedding_fn(cfg)
     with sync_session() as session:
         repo = StoryRepo(session)
         repo.lock()
@@ -55,7 +61,10 @@ def resolve_story(
             now, window_hours=cfg.window_hours, max_age_days=cfg.max_age_days
         )
         match = resolve(
-            ArticleKeys(title=title, source=source, cve_ids=cves, at=now), candidates, cfg
+            ArticleKeys(title=title, source=source, cve_ids=cves, at=now),
+            candidates,
+            cfg,
+            embedding_similarity=embed,
         )
         if match is None:
             story_id = repo.create(title=title, source=source, cve_ids=set(cves), now=now)
@@ -66,6 +75,26 @@ def resolve_story(
             # Story kosong buatan percobaan sebelumnya artikel ini (replay): bukan follow-up.
             rule = "lead"
         return StoryLink(match.story_id, rule, classify, lead_article_id, cves)
+
+
+def _embedding_fn(cfg: StorySettings) -> Callable[[str, list[str]], list[float]] | None:
+    """Fungsi embedding untuk resolver, hanya bila diaktifkan. Model tak ada di disk (image
+    tanpa extra `nlp`) = resolve tanpa embedding, dicatat sekali per proses."""
+    global _embedding_unavailable_logged
+    if cfg.embedding_similarity <= 0:
+        return None
+    # Import lambat: fastembed hanya ada di image worker-nlp.
+    from cti_enrich.relevance.embedder import EmbedderUnavailable, get_embedder
+    from cti_enrich.story.similarity import embedding_similarity
+
+    try:
+        embedder = get_embedder()
+    except EmbedderUnavailable as exc:
+        if not _embedding_unavailable_logged:
+            _embedding_unavailable_logged = True
+            log.warning("story_embedding_unavailable", extra={"error": str(exc)})
+        return None
+    return lambda query, titles: embedding_similarity(query, titles, embedder)
 
 
 def classify_from_story(

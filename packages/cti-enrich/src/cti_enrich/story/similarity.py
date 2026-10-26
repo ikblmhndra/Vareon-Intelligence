@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import re
+from typing import TYPE_CHECKING
 
+import numpy as np
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS, TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+
+if TYPE_CHECKING:
+    from cti_enrich.relevance.embedder import Embedder
 
 _PERIOD_WORDS = frozenset(
     [
@@ -78,3 +83,20 @@ def title_similarity(query: str, titles: list[str]) -> list[float]:
         return [0.0] * len(titles)
     scores = cosine_similarity(matrix[-1], matrix[:-1])[0]
     return [float(s) for s in scores]
+
+
+def embedding_similarity(
+    query: str, titles: list[str], embedder: Embedder | None = None
+) -> list[float]:
+    """Cosine embedding MiniLM `query` terhadap tiap judul (vektor sudah L2-normal).
+
+    `embedder=None` memakai singleton proses; import-nya lambat supaya modul ini tetap
+    bisa di-import tanpa extra `nlp`."""
+    if not titles:
+        return []
+    if embedder is None:
+        from cti_enrich.relevance.embedder import get_embedder
+
+        embedder = get_embedder()
+    vecs = embedder.embed([query, *titles])
+    return [float(x) for x in np.asarray(vecs[1:] @ vecs[0])]

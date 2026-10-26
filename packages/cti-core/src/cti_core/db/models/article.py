@@ -101,7 +101,7 @@ class Article(TimestampMixin, Base):
     )
     """Story (kelompok berita sama) tempat artikel ini bergabung; NULL = belum/tanpa story."""
     story_match: Mapped[str | None] = mapped_column(String(20))
-    """Aturan yang menautkan: `lead`, `cve`, `title_exact`, `title`."""
+    """Aturan yang menautkan: `lead`, `cve`, `title_exact`, `title`, `title_embedding`."""
 
     countries: Mapped[list[ArticleCountry]] = relationship(
         back_populates="article", cascade="all, delete-orphan", lazy="selectin"

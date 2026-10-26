@@ -212,7 +212,7 @@ class AsyncStoryRepo:
         )
         follow = and_(
             Article.created_at >= since,
-            Article.story_match.in_(("cve", "title_exact", "title")),
+            Article.story_match.in_(("cve", "title_exact", "title", "title_embedding")),
         )
         followups = await self.session.scalar(
             select(func.count()).select_from(Article).where(follow)
