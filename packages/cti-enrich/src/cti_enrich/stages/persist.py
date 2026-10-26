@@ -30,6 +30,7 @@ lama dibetulkan `python -m cti_enrich.backfill`."""
 from __future__ import annotations
 
 import datetime
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from cti_core.confidence import compute_score
@@ -48,8 +49,10 @@ from cti_enrich.stages.classify import resolve_industries
 from cti_enrich.stages.extract_iocs import _get_allowlist
 from cti_enrich.stages.extract_ttps import as_normalized
 from cti_enrich.story.attach import classify_to_story
+from cti_enrich.tier1.merge import confidence_ttp_count
 
 if TYPE_CHECKING:
+    from cti_core.attack_ttp import NormalizedTTP
     from cti_core.db.models.article import Article, RejectedArticle
     from sqlalchemy.orm import Session
 
@@ -57,6 +60,7 @@ if TYPE_CHECKING:
     from cti_enrich.stages.classify import ClassifyResult
     from cti_enrich.stages.extract_ttps import TtpResult
     from cti_enrich.stages.score import ScoreResult
+    from cti_enrich.stages.tier1 import Tier1Result
     from cti_enrich.story.attach import StoryLink
 
 _IOC_TYPE_MAP = {
@@ -101,19 +105,35 @@ def _audit_fields(classify_result: ClassifyResult) -> dict[str, dict[str, object
     return {"raw_enrichment": {"classify": classify_result.audit}} if classify_result.audit else {}
 
 
+def _with_tier1(
+    audit: dict[str, dict[str, object]], tier1: Tier1Result | None
+) -> dict[str, dict[str, object]]:
+    """`raw_enrichment` = SATU dict (upsert menimpa kolomnya utuh), jadi jejak Tier 1 digabung ke
+    audit classify di sini; ditulis terpisah, yang belakangan menghapus `classify`."""
+    if tier1 is None:
+        return audit
+    return {"raw_enrichment": {**audit.get("raw_enrichment", {}), "tier1": tier1.audit()}}
+
+
 def _confidence_score(
     session: Session,
     source: str,
     ttp_result: TtpResult | None,
     routing_result: RoutingResult,
+    merged_ttps: Sequence[NormalizedTTP] | None = None,
 ) -> int:
     """Skor deterministik: grade sumber (Admiralty, case-insensitive) + bonus TTP/aktor. Nilai
-    self-rating LLM tetap di `raw_enrichment["classify"]`, tidak dipakai di sini."""
+    self-rating LLM tetap di `raw_enrichment["classify"]`, tidak dipakai di sini. Dengan TTP
+    gabungan Tier 1, hanya `explicit` + `llm` yang dapat bonus: presisi `keyword` belum diukur."""
     rating = SourceReliabilityRepo(session).get_by_name_ci(source) if source else None
+    if merged_ttps is not None:
+        ttp_count = confidence_ttp_count(merged_ttps)
+    else:
+        ttp_count = len(ttp_result.techniques) if ttp_result else 0
     return compute_score(
         rating.reliability_grade if rating else None,
         rating.credibility_code if rating else None,
-        len(ttp_result.techniques) if ttp_result else 0,
+        ttp_count,
         len(routing_result.threat_actors),
     )
 
@@ -143,10 +163,17 @@ def persist(
     ioc_data: dict[str, list[str]],
     c2_indicator: bool,
     story: StoryLink | None = None,
+    tier1: Tier1Result | None = None,
+    merged_ttps: Sequence[NormalizedTTP] | None = None,
+    industries: tuple[list[str], str] | None = None,
 ) -> Article:
     """`story` (P3) menempelkan artikel ke story-nya di transaksi yang sama: `story_id`/
     `story_match` ikut di-upsert (di-flush), BARU `StoryRepo.attach` -- `source_count` dihitung
-    ulang dari `articles WHERE story_id`. `None` (P3 mati) = tidak ada tulisan story sama sekali."""
+    ulang dari `articles WHERE story_id`. `None` (P3 mati) = tidak ada tulisan story sama sekali.
+
+    Tier 1 (P4): `tier1` -> malware + `raw_enrichment["tier1"]`; `merged_ttps` (hasil
+    `merge_ttps`, bawa `source`/`evidence`) menggantikan TTP dari `ttp_result`; `industries` =
+    `(list, sumber)` dari `merge_industries`. Tanpa argumen ini perilakunya sama seperti dulu."""
     article_repo = ArticleRepo(session)
     story_fields = {"story_id": story.story_id, "story_match": story.rule} if story else {}
     article = article_repo.upsert(
@@ -156,7 +183,9 @@ def persist(
         scraper_id=scraper_id,
         posted_on=posted_on,
         news_type=routing_result.news_type,
-        confidence_score=_confidence_score(session, source, ttp_result, routing_result),
+        confidence_score=_confidence_score(
+            session, source, ttp_result, routing_result, merged_ttps
+        ),
         confirmed_incident=bool(classify_result.confirmed_incident),
         incident_confidence=(
             round(classify_result.incident_confidence * 100)
@@ -167,7 +196,7 @@ def persist(
         c2_indicator=c2_indicator,
         # Audit trail respons LLM mentah (`raw_enrichment`, lihat `ClassifyResult.audit`).
         # Cuma kalau ada isinya, supaya pemanggil tanpa audit gak mengosongkan yang lama.
-        **_audit_fields(classify_result),
+        **_with_tier1(_audit_fields(classify_result), tier1),
         **story_fields,
     )
     if story is not None:
@@ -179,16 +208,25 @@ def persist(
             classify=_story_classify(classify_result),
         )
 
-    industries = resolve_industries(classify_result.industries_impacted)
+    industry_list, industry_source = industries or (
+        resolve_industries(classify_result.industries_impacted),
+        "llm",
+    )
+    if merged_ttps is not None:
+        ttps: Sequence[NormalizedTTP] = merged_ttps
+    else:
+        ttps = [as_normalized(t) for t in ttp_result.techniques] if ttp_result else []
 
     article_repo.set_enrichment(
         article,
         countries=_country_roles(
             classify_result, score_result, is_global_branch=routing_result.is_global_branch
         ),
-        industries=industries,
+        industries=industry_list,
         threat_actors=routing_result.threat_actors,
-        ttps=[as_normalized(t) for t in ttp_result.techniques] if ttp_result else [],
+        ttps=ttps,
+        malware=tier1.malware if tier1 is not None else (),
+        industry_source=industry_source,
     )
 
     ioc_repo = IOCRepo(session)

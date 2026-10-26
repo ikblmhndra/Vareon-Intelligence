@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from cti_core.db.models.attack import AttackGroup, AttackSoftware
+from cti_core.db.models.ta import TAWhitelistEntry
 from cti_core.db.models.threat_reference import MonitoredPerson, ThreatActorGroup
 
 
@@ -35,3 +36,24 @@ def list_non_actor_software_names(session: Session) -> list[str]:
 
 def list_monitored_people(session: Session) -> list[str]:
     return sorted(session.execute(select(MonitoredPerson.name)).scalars().all())
+
+
+def load_entity_sources(
+    session: Session,
+) -> tuple[list[tuple[str, list[str]]], list[tuple[str, str, list[str]]], list[str], list[str]]:
+    """Bahan mentah kamus entitas tier 1: (grup ATT&CK, software ATT&CK, nama
+    `threat_actor_groups`, nama `ta_whitelist`). `ta_whitelist` = daftar nama yang SENGAJA
+    ditolak jadi aktor (huruf kecil), jadi dilempar ke `build_dictionary` sebagai `suppressed`."""
+    groups = [
+        (name, list(aliases or []))
+        for name, aliases in session.execute(select(AttackGroup.name, AttackGroup.aliases)).all()
+    ]
+    software = [
+        (name, software_type, list(aliases or []))
+        for name, software_type, aliases in session.execute(
+            select(AttackSoftware.name, AttackSoftware.software_type, AttackSoftware.aliases)
+        ).all()
+    ]
+    ta_names = list(session.execute(select(ThreatActorGroup.name)).scalars().all())
+    suppressed = list(session.execute(select(TAWhitelistEntry.name)).scalars().all())
+    return groups, software, ta_names, suppressed

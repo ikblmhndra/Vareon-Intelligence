@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Table,
   TableBody,
@@ -21,6 +22,7 @@ import {
 } from "@/components/ui/table";
 import type { components } from "@/lib/api/schema";
 import { D3fendToggle } from "@/components/newsroom/d3fend-toggle";
+import { InferredTtpsSection } from "@/components/newsroom/inferred-ttps-section";
 import { addToQueue } from "@/lib/newsletter/queue";
 
 type Article = components["schemas"]["ArticleOut"];
@@ -53,16 +55,35 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-function Tags({ items }: { items: { label: string; suffix?: string; variant?: "outline" | "destructive" }[] }) {
+const TTP_SOURCE_BADGE: Record<string, string> = { explicit: "ID", keyword: "KW", llm: "LLM" };
+
+function Tags({
+  items,
+  after,
+}: {
+  items: { label: string; suffix?: string; variant?: "outline" | "destructive"; tip?: string }[];
+  after?: ReactNode;
+}) {
   if (!items.length) return <span className="text-xs text-muted-foreground">—</span>;
   return (
     <div className="flex flex-wrap gap-1.5">
-      {items.map((it, i) => (
-        <Badge key={`${it.label}-${i}`} variant={it.variant ?? "outline"} className="text-xs">
-          {it.label}
-          {it.suffix && <span className="ml-1 text-xs opacity-70">{it.suffix}</span>}
-        </Badge>
-      ))}
+      {items.map((it, i) => {
+        const badge = (
+          <Badge variant={it.variant ?? "outline"} className="text-xs">
+            {it.label}
+            {it.suffix && <span className="ml-1 text-xs opacity-70">{it.suffix}</span>}
+          </Badge>
+        );
+        return it.tip ? (
+          <Tooltip key={`${it.label}-${i}`}>
+            <TooltipTrigger render={<span tabIndex={0} />}>{badge}</TooltipTrigger>
+            <TooltipContent>{it.tip}</TooltipContent>
+          </Tooltip>
+        ) : (
+          <span key={`${it.label}-${i}`}>{badge}</span>
+        );
+      })}
+      {after}
     </div>
   );
 }
@@ -164,7 +185,19 @@ export function ArticleModal({ article: a, onOpenChange }: { article: Article | 
 
         <div className="space-y-4">
           <Section title="Impacted Industries">
-            <Tags items={(a.impacted_industries ?? []).map((i) => ({ label: i }))} />
+            <Tags
+              items={(a.impacted_industries ?? []).map((i) => ({ label: i }))}
+              after={
+                a.industry_source === "keyword" ? (
+                  <Tooltip>
+                    <TooltipTrigger render={<span tabIndex={0} />}>
+                      <Badge variant="secondary" className="text-xs">KW</Badge>
+                    </TooltipTrigger>
+                    <TooltipContent>Industries matched by keyword</TooltipContent>
+                  </Tooltip>
+                ) : null
+              }
+            />
           </Section>
 
           <Section title="Countries">
@@ -175,6 +208,12 @@ export function ArticleModal({ article: a, onOpenChange }: { article: Article | 
             <Tags items={(a.threat_actors ?? []).map((t) => ({ label: t, variant: "destructive" as const }))} />
           </Section>
 
+          {(a.malware ?? []).length > 0 && (
+            <Section title="Malware / Tools">
+              <Tags items={a.malware.map((m) => ({ label: m.name, tip: m.kind }))} />
+            </Section>
+          )}
+
           <Section title="MITRE ATT&CK TTPs">
             {a.ttps.length ? (
               <Table>
@@ -182,6 +221,7 @@ export function ArticleModal({ article: a, onOpenChange }: { article: Article | 
                   <TableRow>
                     <TableHead>Technique ID</TableHead>
                     <TableHead>Name</TableHead>
+                    <TableHead className="w-16">Source</TableHead>
                     <TableHead className="w-32">D3FEND</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -190,6 +230,18 @@ export function ArticleModal({ article: a, onOpenChange }: { article: Article | 
                     <TableRow key={t.id}>
                       <TableCell className="font-code text-xs text-primary">{t.id}</TableCell>
                       <TableCell className="text-xs">{t.name}</TableCell>
+                      <TableCell>
+                        {t.evidence ? (
+                          <Tooltip>
+                            <TooltipTrigger render={<span tabIndex={0} />}>
+                              <Badge variant="outline" className="text-xs">{TTP_SOURCE_BADGE[t.source] ?? t.source}</Badge>
+                            </TooltipTrigger>
+                            <TooltipContent>{t.evidence}</TooltipContent>
+                          </Tooltip>
+                        ) : (
+                          <Badge variant="outline" className="text-xs">{TTP_SOURCE_BADGE[t.source] ?? t.source}</Badge>
+                        )}
+                      </TableCell>
                       <TableCell>
                         <D3fendToggle ttpId={t.id} />
                       </TableCell>
@@ -201,6 +253,10 @@ export function ArticleModal({ article: a, onOpenChange }: { article: Article | 
               <span className="text-xs text-muted-foreground">No TTPs recorded</span>
             )}
           </Section>
+
+          {((a.threat_actors ?? []).length > 0 || (a.malware ?? []).length > 0) && (
+            <InferredTtpsSection articleId={a.id} />
+          )}
 
           {iocEntries.length > 0 && (
             <Section title="Indicators of Compromise">

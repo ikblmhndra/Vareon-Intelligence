@@ -85,6 +85,37 @@ class RemapStats:
     """Contoh perubahan (maks 20) buat ditampilkan di dry-run."""
 
 
+_SOURCE_PRIORITY = {"explicit": 0, "llm": 1, "keyword": 2}
+"""Urutan kekuatan `source` saat dua baris lama menyatu ke satu ID: explicit > llm > keyword."""
+
+
+def _carry_sources(
+    normalized: list[NormalizedTTP], rows: list[ArticleTTP], catalog: TechniqueCatalog
+) -> list[NormalizedTTP]:
+    """`normalize_ttps` tidak tahu `source`/`evidence` (selalu default `llm`); tanpa ini remap
+    menimpa baris explicit/keyword Tier 1 jadi `llm`. Tiap baris lama di-resolve sendiri untuk
+    mendapat ID akhirnya, lalu baris dengan `source` terkuat (urutan baris menang bila seri)
+    menyumbang `source`/`evidence`-nya ke hasil dengan ID itu."""
+    best: dict[str, ArticleTTP] = {}
+    for r in rows:
+        rid = r.extracted_id or r.ttp_id
+        if not rid:
+            continue
+        hit = normalize_ttps([(rid, r.extracted_name or r.ttp_name)], catalog)
+        if not hit:
+            continue
+        tid = hit[0].ttp_id
+        cur = best.get(tid)
+        if cur is None or _SOURCE_PRIORITY.get(r.source, 9) < _SOURCE_PRIORITY.get(cur.source, 9):
+            best[tid] = r
+    return [
+        n._replace(source=best[n.ttp_id].source, evidence=best[n.ttp_id].evidence)
+        if n.ttp_id in best
+        else n
+        for n in normalized
+    ]
+
+
 def remap_article_ttps(
     session: Session, catalog: TechniqueCatalog, *, batch_size: int = 500
 ) -> RemapStats:
@@ -126,10 +157,13 @@ def remap_article_ttps(
                 for r in rows
                 if (r.extracted_id or r.ttp_id)
             ]
-            normalized = normalize_ttps(raw, catalog)
+            normalized = _carry_sources(normalize_ttps(raw, catalog), rows, catalog)
             stats.rows_after += len(normalized)
             current = [
-                NormalizedTTP(r.ttp_id, r.ttp_name, r.extracted_id, r.extracted_name) for r in rows
+                NormalizedTTP(
+                    r.ttp_id, r.ttp_name, r.extracted_id, r.extracted_name, r.source, r.evidence
+                )
+                for r in rows
             ]
             if sorted(current) == sorted(normalized):
                 continue

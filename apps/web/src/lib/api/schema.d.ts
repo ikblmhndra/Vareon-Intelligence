@@ -89,6 +89,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/articles/{article_id}/inferred-ttps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Article Inferred Ttps */
+        get: operations["get_article_inferred_ttps_api_articles__article_id__inferred_ttps_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/attack/groups": {
         parameters: {
             query?: never;
@@ -3595,6 +3612,8 @@ export interface components {
              * @default []
              */
             impacted_industries: string[];
+            /** Industry Source */
+            industry_source?: ("llm" | "keyword") | null;
             /**
              * Iocs
              * @default {}
@@ -3602,6 +3621,11 @@ export interface components {
             iocs: {
                 [key: string]: unknown;
             };
+            /**
+             * Malware
+             * @default []
+             */
+            malware: components["schemas"]["MalwareRef"][];
             /**
              * Mentioned Countries
              * @default []
@@ -4524,6 +4548,31 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /**
+         * InferredEntity
+         * @description Aktor/malware artikel yang cocok di ATT&CK beserta teknik yang DIPAKAI-nya menurut
+         *     ATT&CK. Tidak disimpan (tidak ada `source`): ini inferensi, bukan isi artikel.
+         */
+        InferredEntity: {
+            /** Attack Id */
+            attack_id: string;
+            /** Entity */
+            entity: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "actor" | "malware" | "tool";
+            /** Techniques */
+            techniques: components["schemas"]["InferredTechnique"][];
+        };
+        /** InferredTechnique */
+        InferredTechnique: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+        };
         /** IocEnrichmentTypeOut */
         IocEnrichmentTypeOut: {
             /** Enriched */
@@ -4617,6 +4666,16 @@ export interface components {
             password: string;
             /** Username */
             username: string;
+        };
+        /** MalwareRef */
+        MalwareRef: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "malware" | "tool";
+            /** Name */
+            name: string;
         };
         /** MapPoint */
         MapPoint: {
@@ -6234,10 +6293,18 @@ export interface components {
         };
         /** TTP */
         TTP: {
+            /** Evidence */
+            evidence?: string | null;
             /** Id */
             id: string;
             /** Name */
             name: string;
+            /**
+             * Source
+             * @default llm
+             * @enum {string}
+             */
+            source: "explicit" | "keyword" | "llm";
         };
         /** TagBody */
         TagBody: {
@@ -6759,6 +6826,7 @@ export interface operations {
                 actor_country?: string[] | null;
                 title_keyword?: string[] | null;
                 ttp?: string[] | null;
+                ttp_source?: ("explicit" | "keyword" | "llm")[] | null;
                 sort?: "recent" | "priority";
                 confirmed_only?: boolean;
                 story_id?: number | null;
@@ -6918,6 +6986,39 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_article_inferred_ttps_api_articles__article_id__inferred_ttps_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                article_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InferredEntity"][];
                 };
             };
             /** @description Validation Error */
@@ -10689,6 +10790,7 @@ export interface operations {
                 days?: number;
                 top_rows?: number;
                 top_ttps?: number;
+                ttp_source?: ("explicit" | "keyword" | "llm")[] | null;
             };
             header?: {
                 authorization?: string | null;

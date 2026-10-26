@@ -115,6 +115,9 @@ class Article(TimestampMixin, Base):
     ttps: Mapped[list[ArticleTTP]] = relationship(
         back_populates="article", cascade="all, delete-orphan", lazy="selectin"
     )
+    malware: Mapped[list[ArticleMalware]] = relationship(
+        back_populates="article", cascade="all, delete-orphan", lazy="selectin"
+    )
 
 
 class CountryRole(str):
@@ -161,6 +164,8 @@ class ArticleIndustry(Base):
         ForeignKey("articles.id", ondelete="CASCADE"), nullable=False
     )
     industry: Mapped[str] = mapped_column(String(150), nullable=False, index=True)
+    source: Mapped[str] = mapped_column(String(10), nullable=False, server_default="llm")
+    """llm | keyword (Tier 1). Dicek di repository, bukan Postgres CHECK."""
 
     article: Mapped[Article] = relationship(back_populates="industries")
 
@@ -178,6 +183,8 @@ class ArticleThreatActor(Base):
         ForeignKey("articles.id", ondelete="CASCADE"), nullable=False
     )
     threat_actor: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+    source: Mapped[str] = mapped_column(String(10), nullable=False, server_default="dictionary")
+    """dictionary | llm | analyst. Dicek di repository, bukan Postgres CHECK."""
 
     article: Mapped[Article] = relationship(back_populates="threat_actors")
 
@@ -203,8 +210,30 @@ class ArticleTTP(Base):
     dinormalisasi (QA BUG-C01: LLM sering salah pasang ID/nama). Disimpan
     buat audit + bahan remap ulang (`tools/ops/remap_article_ttps.py`).
     NULL = baris lama sebelum kolom ini ada / ditulis tanpa normalisasi."""
+    source: Mapped[str] = mapped_column(String(10), nullable=False, server_default="llm")
+    """llm | explicit | keyword (Tier 1). Dicek di repository, bukan Postgres CHECK."""
+    evidence: Mapped[str | None] = mapped_column(Text)
+    """Kalimat bukti teknik (Tier 1); NULL = tidak ada."""
 
     article: Mapped[Article] = relationship(back_populates="ttps")
+
+
+class ArticleMalware(Base):
+    """Malware/tool hasil kamus Tier 1 (`kind` malware | tool)."""
+
+    __tablename__ = "article_malware"
+    __table_args__ = (UniqueConstraint("article_id", "name", name="uq_article_malware"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    article_id: Mapped[int] = mapped_column(
+        ForeignKey("articles.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(10), nullable=False)
+    """malware | tool. Dicek di repository, bukan Postgres CHECK."""
+    source: Mapped[str] = mapped_column(String(10), nullable=False, server_default="dictionary")
+
+    article: Mapped[Article] = relationship(back_populates="malware")
 
 
 class RejectedArticle(Base):

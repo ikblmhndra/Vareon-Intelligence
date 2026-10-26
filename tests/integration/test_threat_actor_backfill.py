@@ -195,7 +195,9 @@ def test_new_article_gets_threat_actor_and_mentioned_country(
     pipeline_session.flush()
 
     outcome = pipeline.run_pipeline(
-        title="FBI tells ShinyHunters members to turn themselves in",
+        # P4 (Tier 1): nama TA satu kata dari `threat_actor_groups` butuh kata konteks di dekatnya
+        # ("hackers"); tanpa itu "ShinyHunters" tidak dicocokkan lagi.
+        title="FBI tells ShinyHunters hackers to turn themselves in",
         url="https://example.com/new",
         posted_on=_TODAY,
         source="Test",

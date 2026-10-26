@@ -58,12 +58,14 @@ import pycountry
 from cti_core.db.models.techstack import TechStackEntry
 from cti_core.db.repositories.threat_reference import (
     list_monitored_people,
-    list_non_actor_software_names,
-    list_threat_actor_groups,
 )
 from cti_core.tech_match import mentions_any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+
+from cti_enrich.stages.tier1 import get_dictionary
+from cti_enrich.tier1.dictionary import EntityDictionary, build_dictionary
+from cti_enrich.tier1.entities import match_entities
 
 
 @lru_cache(maxsize=1)
@@ -352,7 +354,10 @@ def _blank(pattern: re.Pattern[str], text: str) -> str:
 
 
 def match_names(patterns: NamePatterns, text: str, *, mask: NamePatterns = ()) -> list[str]:
-    """Nama yang disebut di `text` (case-insensitive), urut sesuai daftar.
+    """Pencocok lama; setelah P4 (tier 1) HANYA `cti_enrich.backfill` yang masih memakainya --
+    `score_with_lists` memakai `tier1.match_entities`.
+
+    Nama yang disebut di `text` (case-insensitive), urut sesuai daftar.
 
     Nama terpanjang dicocokkan dulu dan kemunculannya dikosongkan sebelum nama yang lebih pendek
     dicoba, dan nama di `mask` (software ATT&CK) dikosongkan sebelum semuanya: tanpa itu "Cobalt
@@ -448,15 +453,16 @@ def score(title: str, body: str, session: Session) -> ScoreResult:
         .scalars()
         .all()
     )
-    group_list = list_threat_actor_groups(session)
     apac_people_list = list_monitored_people(session)
     return score_with_lists(
         title,
         body,
         techstack=techstack,
-        group_list=group_list,
+        # Kamus tier 1 sudah memuat grup + software; query daftar per artikel tidak perlu.
+        group_list=[],
         apac_people_list=apac_people_list,
-        non_actor_names=list_non_actor_software_names(session),
+        non_actor_names=None,
+        dictionary=get_dictionary(session),
     )
 
 
@@ -468,10 +474,31 @@ def score_with_lists(
     group_list: list[str],
     apac_people_list: list[str],
     non_actor_names: list[str] | None = None,
+    dictionary: EntityDictionary | None = None,
 ) -> ScoreResult:
     """Inti scoring, PURE -- gak ada I/O Postgres (MITRE tetap HTTP, lihat
     `_check_cve_vendor`). `country_list` gak perlu di-passing -- dari
-    `pycountry`, gak berubah per-caller (lihat `_country_list()`)."""
+    `pycountry`, gak berubah per-caller (lihat `_country_list()`).
+
+    Aktor dicocokkan lewat kamus tier 1 (`match_entities`, hanya kind `actor`, nama kanonik
+    huruf kecil supaya `threat_actor_names()` tetap menghasilkan bentuk simpan yang sama).
+    Tanpa `dictionary` (scraper `monitor_x`/`tweet_alerts` yang gak punya Session) kamus dibangun
+    dari `group_list` plus `non_actor_names` sebagai software, jadi "Cobalt Strike" tetap
+    menutupi grup "Cobalt" (audit UI U8)."""
+    # Jalur tweet (tanpa kamus): hasil tetap seperti 0.8.x -- urutan `group_list` (bukan urutan
+    # kemunculan di teks seperti jalur artikel) dan nama persis dari daftar (`\-` -> `-`).
+    from_list: dict[str, tuple[int, str]] | None = None
+    if dictionary is None:
+        from_list = {}
+        for i, name in enumerate(group_list):
+            from_list.setdefault(name.lower(), (i, name.replace("\\-", "-")))
+        dictionary = build_dictionary(
+            [],
+            [(n, "tool", []) for n in non_actor_names or []],
+            group_list,
+            [],
+            ta_needs_context=False,
+        )
     country_list = _country_list()
 
     result = ScoreResult()
@@ -480,13 +507,17 @@ def score_with_lists(
     mentioned_countries: list[str] = []
     mentioned_apac_people: list[str] = []
 
-    group_patterns = compile_name_patterns(group_list)
     people_patterns = compile_name_patterns(apac_people_list)
-    software_mask = compile_name_patterns(non_actor_names or [])
+
+    def actors_in(text: str) -> list[str]:
+        found = [h.canonical.lower() for h in match_entities(text, dictionary) if h.kind == "actor"]
+        if from_list is None:
+            return found
+        listed = sorted((from_list[n] for n in found if n in from_list), key=lambda p: p[0])
+        return [name for _, name in listed]
 
     # --- Title ---
-    for group in match_names(group_patterns, title, mask=software_mask):
-        mentioned_group.append(group.replace("\\-", "-"))
+    mentioned_group.extend(actors_in(title))
 
     for country in country_list:
         if re.search(rf"\b{country.lower()}\b", title.lower()):
@@ -521,8 +552,7 @@ def score_with_lists(
 
     # --- Body (regex + NER) ---
     if body:
-        for group in match_names(group_patterns, body, mask=software_mask):
-            mentioned_group.append(group.replace("\\-", "-"))
+        mentioned_group.extend(actors_in(body))
 
         for country in country_list:
             if re.search(rf"\b{country.lower()}\b", body.lower()):
@@ -548,8 +578,6 @@ def score_with_lists(
 
         doc = _get_nlp()(body[:1_000_000])
         for ent in doc.ents:
-            if ent.label_ in ("ORG", "PERSON", "GPE"):
-                mentioned_group.extend(match_names(group_patterns, str(ent), mask=software_mask))
             if ent.label_ in ("NORP", "GPE"):
                 for country in country_list:
                     if re.search(rf"\b{country.lower()}\b", str(ent).lower()):

@@ -12,6 +12,16 @@ from sqlalchemy import delete
 pytestmark = pytest.mark.asyncio
 
 
+@pytest.fixture(autouse=True)
+def _keep_logging_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`lifespan` memanggil `configure_logging()` yang mengubah konfigurasi structlog global
+    (`cache_logger_on_first_use=True`) dan tidak pernah dibatalkan. Logger modul yang dipakai
+    sesudahnya ikut terkunci ke konfigurasi itu, sehingga `structlog.testing.capture_logs()` di
+    test lain (mis. `tests/unit/test_newsletter_summary.py`) tidak menangkap apa pun saat seluruh
+    `tests/` dijalankan sekaligus seperti di CI. Konfigurasi logging bukan yang diuji di sini."""
+    monkeypatch.setattr("cti_api.main.configure_logging", lambda **_: None)
+
+
 @pytest.fixture
 async def _no_default_rows(_migrated_schema: None):
     async def wipe() -> None:

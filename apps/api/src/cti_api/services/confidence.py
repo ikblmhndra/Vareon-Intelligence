@@ -18,7 +18,7 @@ from __future__ import annotations
 import datetime
 from typing import Any
 
-from cti_core.confidence import compute_score
+from cti_core.confidence import bonus_ttp_count, compute_score
 from cti_core.db.models.article import Article
 from cti_core.db.models.ioc import IOC
 from cti_core.db.repositories.article import AsyncArticleRepo
@@ -41,7 +41,10 @@ async def compute_article_confidence(session: AsyncSession, article: Article) ->
     reliability_grade = rating.reliability_grade if rating else None
     credibility_code = rating.credibility_code if rating else None
     return compute_score(
-        reliability_grade, credibility_code, len(article.ttps), len(article.threat_actors)
+        reliability_grade,
+        credibility_code,
+        bonus_ttp_count(t.source for t in article.ttps),  # P4: TTP keyword tanpa bonus
+        len(article.threat_actors),
     )
 
 
@@ -97,7 +100,7 @@ async def recompute_all_confidence(
             article.confidence_score = compute_score(
                 reliability_grade=grade,
                 credibility_code=code,
-                ttp_count=len(article.ttps),
+                ttp_count=bonus_ttp_count(t.source for t in article.ttps),
                 ta_count=len(article.threat_actors),
             )
             updated += 1
