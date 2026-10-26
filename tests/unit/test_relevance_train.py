@@ -140,3 +140,50 @@ def test_alert_ops_dedupes_by_key(monkeypatch) -> None:
     finally:
         get_settings.cache_clear()
     assert sent == ["a"]
+
+
+def _assert_telegram_html_safe(text: str) -> None:
+    """Parse mode HTML Telegram menolak `<`/`>` mentah di luar tag yang dikenal (insiden dev
+    2026-10-26: "agreement 0.949 < 0.95" -> `Can't parse entities`)."""
+    stripped = text.replace("<b>", "").replace("</b>", "")
+    assert "<" not in stripped and ">" not in stripped, text
+
+
+def test_train_rejected_alert_escapes_reason(monkeypatch) -> None:
+    import contextlib
+
+    import cti_core.db.engine as engine
+    import cti_enrich.relevance.embedder as embedder_mod
+    import cti_enrich.relevance.train as train_mod
+
+    _env(monkeypatch)
+    import cti_worker.tasks.relevance as tasks
+
+    sent: list[str] = []
+    monkeypatch.setattr(tasks, "alert_ops", lambda text, **kw: sent.append(text))
+    monkeypatch.setattr(engine, "sync_session", lambda: contextlib.nullcontext(None))
+    monkeypatch.setattr(embedder_mod, "get_embedder", lambda: None)
+    monkeypatch.setattr(
+        train_mod,
+        "run_training",
+        lambda *a, **kw: train_mod.TrainOutcome("rejected", 1, {}, "agreement 0.949 < 0.95"),
+    )
+    try:
+        tasks.train()
+    finally:
+        from cti_core.config import get_settings
+
+        get_settings.cache_clear()
+    assert len(sent) == 1
+    _assert_telegram_html_safe(sent[0])
+    assert "0.949 &lt; 0.95" in sent[0]
+
+
+def test_gate_change_alert_is_html_safe(monkeypatch) -> None:
+    _env(monkeypatch)
+    import cti_worker.tasks.relevance as tasks
+
+    sent: list[str] = []
+    monkeypatch.setattr(tasks, "alert_ops", lambda text, **kw: sent.append(text))
+    tasks._alert_gate_change("shadow", "gate", 200, 195, None)
+    _assert_telegram_html_safe(sent[0])

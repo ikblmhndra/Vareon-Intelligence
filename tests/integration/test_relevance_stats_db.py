@@ -152,7 +152,7 @@ def test_evaluate_switches_to_gate_and_alerts(clean, mod, monkeypatch) -> None:
     assert out["action"] == "changed"
     assert _gate_state(model_id) == "gate"
     assert [k for k, _ in sent] == ["relevance:gate:gate"]
-    assert "shadow -> gate" in sent[0][1]
+    assert "shadow ke gate" in sent[0][1]
 
 
 def test_evaluate_unchanged_state_sends_no_alert(clean, mod, monkeypatch) -> None:
