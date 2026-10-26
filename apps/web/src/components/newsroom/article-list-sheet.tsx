@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sheet } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SimplePager } from "@/components/pager";
+import { GradeChip } from "@/components/newsroom/grade-chip";
 import { useArticlesQuery } from "@/components/newsroom/use-articles";
 import {
   useRubric,
@@ -33,7 +34,10 @@ function Row({ item, onSelect }: { item: RubricItem; onSelect: (a: Article) => v
   const body = (
     <>
       <span className="block text-[13.5px] leading-snug font-semibold text-foreground">{item.title}</span>
-      <span className="mt-0.5 block text-[11.5px] text-muted-foreground">{item.meta}</span>
+      <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11.5px] text-muted-foreground">
+        {item.meta}
+        {item.article && <GradeChip a={item.article} />}
+      </span>
     </>
   );
   if (item.article) {
