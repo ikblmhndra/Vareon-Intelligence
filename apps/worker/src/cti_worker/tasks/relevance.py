@@ -5,6 +5,7 @@ start (lihat `tasks/enrich.py` dan `tasks/story.py`)."""
 
 from __future__ import annotations
 
+import html
 from dataclasses import asdict
 from typing import Any
 
@@ -49,8 +50,11 @@ def train() -> dict[str, Any]:
         )
     log.info("relevance_trained", status=outcome.status, model_id=outcome.model_id)
     if outcome.status == "rejected":
+        # Teks alert memakai parse mode HTML Telegram: nilai dinamis WAJIB di-escape. Alasan
+        # seperti "agreement 0.949 < 0.95" membuat Telegram menolak pesan (dev, 2026-10-26).
         alert_ops(
-            f"<b>Model relevansi baru DITOLAK</b>: {outcome.reason}. Model sebelumnya tetap aktif.",
+            f"<b>Model relevansi baru DITOLAK</b>: {html.escape(outcome.reason or '')}. "
+            "Model sebelumnya tetap aktif.",
             key="cti:relevance:train_rejected",
             cooldown_s=6 * 24 * 3600,
         )
@@ -82,7 +86,7 @@ def _alert_gate_change(
     audit_txt = f"{audit_pct:.1f}%" if audit_pct is not None else "belum ada sampel"
     log.info("relevance_gate_changed", old=old, new=new, band_n=band_n)
     alert_ops(
-        f"<b>Gate relevansi berubah: {old} -> {new}</b>\n"
+        f"<b>Gate relevansi berubah: {html.escape(old)} ke {html.escape(new)}</b>\n"
         f"Judul dalam band: {band_n}, kesepakatan dengan LLM {agree_pct:.1f}%, "
         f"kesepakatan sampel audit {audit_txt}.",
         key=f"relevance:gate:{new}",
@@ -124,7 +128,8 @@ def evaluate() -> dict[str, Any]:
                     model_mod.loads(row.artifact or b"")
                 except Exception as load_error:
                     alert_ops(
-                        f"<b>Model relevansi aktif gagal dimuat</b>: {str(load_error)[:200]}. "
+                        "<b>Model relevansi aktif gagal dimuat</b>: "
+                        f"{html.escape(str(load_error)[:200])}. "
                         "Pelatihan ulang dipicu; sementara itu LLM classify dipakai.",
                         key="relevance:load",
                     )
