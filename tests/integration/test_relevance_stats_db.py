@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import datetime as dt
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 from cti_core.db.engine import sync_session
@@ -131,7 +131,7 @@ def test_evaluate_alerts_and_retrains_on_corrupt_artifact(clean, mod, monkeypatc
     alerts: list[str] = []
     trained: list[bool] = []
     monkeypatch.setattr(mod, "alert_ops", lambda text, *, key, cooldown_s=3600: alerts.append(key))
-    monkeypatch.setattr(mod.train, "delay", lambda: trained.append(True))
+    monkeypatch.setattr(mod, "_trigger_train", lambda: trained.append(True) or True)
 
     out = mod.evaluate()
 
@@ -193,3 +193,104 @@ def test_evaluate_commits_state_when_alert_fails(clean, mod, monkeypatch, failin
 
     assert out["action"] == "changed"
     assert _gate_state(model_id) == "gate"
+
+
+class _FakeRedis:
+    store: ClassVar[dict[str, str]] = {}
+
+    def set(self, key: str, value: str, nx: bool = False, ex: int | None = None) -> bool:
+        if nx and key in self.store:
+            return False
+        self.store[key] = value
+        return True
+
+
+def _fake_redis(monkeypatch, *, broken: bool = False) -> None:
+    import redis
+
+    _FakeRedis.store = {}
+
+    def from_url(cls, url):
+        if broken:
+            raise redis.ConnectionError("unreachable")
+        return _FakeRedis()
+
+    monkeypatch.setattr(redis.Redis, "from_url", classmethod(from_url))
+
+
+def _set_mode(monkeypatch, mode: str) -> None:
+    from cti_core.config import get_settings
+
+    monkeypatch.setattr(get_settings().relevance, "mode", mode)
+
+
+def _count_train(monkeypatch, mod) -> list[bool]:
+    from cti_enrich.stages import relevance as stage
+
+    calls: list[bool] = []
+    monkeypatch.setattr(mod.train, "delay", lambda: calls.append(True))
+    monkeypatch.setattr(stage, "needs_retrain", lambda session: True)
+    return calls
+
+
+def test_evaluate_triggers_train_once_per_day(clean, mod, monkeypatch) -> None:
+    _fake_redis(monkeypatch)
+    calls = _count_train(monkeypatch, mod)
+
+    first = mod.evaluate()
+    second = mod.evaluate()
+
+    assert calls == [True]
+    assert first["train_triggered"] is True
+    assert second["train_triggered"] is False
+
+
+def test_evaluate_never_trains_when_mode_off(clean, mod, monkeypatch) -> None:
+    _fake_redis(monkeypatch)
+    _set_mode(monkeypatch, "off")
+    calls = _count_train(monkeypatch, mod)
+
+    mod.evaluate()
+
+    assert calls == []
+
+
+def test_evaluate_skips_train_when_redis_fails(clean, mod, monkeypatch) -> None:
+    _fake_redis(monkeypatch, broken=True)
+    calls = _count_train(monkeypatch, mod)
+
+    out = mod.evaluate()
+
+    assert calls == []
+    assert out["train_triggered"] is False
+
+
+def test_evaluate_reverts_gate_when_mode_not_auto(clean, mod, monkeypatch) -> None:
+    model_id = _activate(gate_state="gate")
+    sent = _patch_healthy(monkeypatch, mod)
+    _set_mode(monkeypatch, "shadow")
+
+    out = mod.evaluate()
+
+    assert out["action"] == "changed"
+    assert _gate_state(model_id) == "shadow"
+    assert [k for k, _ in sent] == ["relevance:gate:shadow"]
+
+
+def test_evaluate_reverts_gate_on_low_audit_agreement(clean, mod, monkeypatch) -> None:
+    model_id = _activate(gate_state="gate")
+    sent = _patch_healthy(monkeypatch, mod)
+    with sync_session() as s:
+        # 50 sampel audit, 40 setuju (80% < 92%)
+        s.add_all(
+            [
+                _article(f"aud{i}", "audit", bp=i >= 40, at=NOW - dt.timedelta(minutes=i))
+                for i in range(50)
+            ]
+        )
+
+    out = mod.evaluate()
+
+    assert out["action"] == "changed"
+    assert _gate_state(model_id) == "shadow"
+    assert [k for k, _ in sent] == ["relevance:gate:shadow"]

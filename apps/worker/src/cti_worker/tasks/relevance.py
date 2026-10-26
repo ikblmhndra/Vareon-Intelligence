@@ -57,15 +57,48 @@ def train() -> dict[str, Any]:
     return asdict(outcome)
 
 
+def _trigger_train() -> bool:
+    """Picu `relevance.train` paling sering sekali per 24 jam (Redis `SET NX EX`). Tanpa dedupe,
+    evaluate tiap jam akan melatih ulang penuh terus selama model belum ada/tidak terpakai.
+    Redis error -> TIDAK memicu (lebih baik terlambat daripada banjir latih)."""
+    try:
+        import redis
+        from cti_core.config import get_settings
+
+        client = redis.Redis.from_url(get_settings().redis.url)
+        if not client.set("relevance:train_trigger", "1", nx=True, ex=86400):
+            return False
+    except Exception as trigger_error:
+        log.warning("relevance_train_trigger_skipped", error=str(trigger_error)[:200])
+        return False
+    train.delay()
+    return True
+
+
+def _alert_gate_change(
+    old: str, new: str, band_n: int, band_agree: int, audit_pct: float | None
+) -> None:
+    agree_pct = 100 * band_agree / band_n if band_n else 0.0
+    audit_txt = f"{audit_pct:.1f}%" if audit_pct is not None else "belum ada sampel"
+    log.info("relevance_gate_changed", old=old, new=new, band_n=band_n)
+    alert_ops(
+        f"<b>Gate relevansi berubah: {old} -> {new}</b>\n"
+        f"Judul dalam band: {band_n}, kesepakatan dengan LLM {agree_pct:.1f}%, "
+        f"kesepakatan sampel audit {audit_txt}.",
+        key=f"relevance:gate:{new}",
+    )
+
+
 @app.task(name="relevance.evaluate", queue=QUEUE_ENRICH)
 def evaluate() -> dict[str, Any]:
     """Tiap jam: ukur kesepakatan band model dengan LLM dan geser gate shadow <-> gate.
-    Model tidak bisa dimuat atau perlu latih ulang -> picu `relevance.train`, tidak menilai gate."""
+    Model tidak bisa dimuat atau perlu latih ulang -> picu `relevance.train` (dibatasi sekali
+    per 24 jam, tidak pernah saat mode `off`), tidak menilai gate."""
     import datetime
 
     from cti_core.config import get_settings
     from cti_core.db.engine import sync_session
-    from cti_core.db.repositories.relevance import RelevanceModelRepo
+    from cti_core.db.repositories.relevance import GateStats, RelevanceModelRepo
     from cti_enrich.relevance import model as model_mod
     from cti_enrich.relevance.evaluate import next_state
     from cti_enrich.stages.relevance import needs_retrain
@@ -73,63 +106,58 @@ def evaluate() -> dict[str, Any]:
     cfg = get_settings().relevance
     now = datetime.datetime.now(datetime.UTC)
     change: tuple[str, str, int, int, float | None] | None = None
+    result: dict[str, Any] = {"action": "none", "train_triggered": False}
     with sync_session() as session:
         repo = RelevanceModelRepo(session)
-        row = repo.get_active()
-        if row is not None:
-            try:
-                model_mod.loads(row.artifact or b"")
-            except Exception as load_error:
-                alert_ops(
-                    f"<b>Model relevansi aktif gagal dimuat</b>: {str(load_error)[:200]}. "
-                    "Pelatihan ulang dipicu; sementara itu LLM classify dipakai.",
-                    key="relevance:load",
-                )
-                train.delay()
-                return {"action": "retrain", "reason": "load_failed"}
-        if needs_retrain(session):
-            train.delay()
-            return {"action": "retrain", "reason": "needs_retrain"}
         repo.lock()
         row = repo.get_active()
-        if row is None:
-            return {"action": "none"}
-        stats = repo.gate_stats(
-            since=now - datetime.timedelta(days=cfg.gate_window_days),
-            revert_samples=cfg.revert_samples,
-        )
-        current = "gate" if row.gate_state == "gate" else "shadow"
-        new_state = next_state(current, stats, cfg)
-        result: dict[str, Any] = {
-            "action": "none",
-            "state": current,
-            "band_n": stats.band_n,
-            "band_agree": stats.band_agree,
-        }
-        if new_state != current:
-            # Commit DULU: alert best-effort tidak boleh membatalkan perubahan status.
-            repo.set_gate_state(row.id, new_state, now)
+        if cfg.mode != "auto" and row is not None and row.gate_state == "gate":
+            # Operator menurunkan mode: status di DB harus ikut, sebelum cabang lain.
+            # Commit DULU, alert best-effort sesudahnya.
+            repo.set_gate_state(row.id, "shadow", now)
             session.commit()
-            audit_pct = (
-                100 * sum(stats.audit_last) / len(stats.audit_last) if stats.audit_last else None
+            change = ("gate", "shadow", 0, 0, None)
+            result.update(action="changed", state="shadow")
+        if change is None and cfg.mode != "off":
+            if row is not None:
+                try:
+                    model_mod.loads(row.artifact or b"")
+                except Exception as load_error:
+                    alert_ops(
+                        f"<b>Model relevansi aktif gagal dimuat</b>: {str(load_error)[:200]}. "
+                        "Pelatihan ulang dipicu; sementara itu LLM classify dipakai.",
+                        key="relevance:load",
+                    )
+                    return {
+                        "action": "retrain",
+                        "reason": "load_failed",
+                        "train_triggered": _trigger_train(),
+                    }
+            if needs_retrain(session):
+                return {
+                    "action": "retrain",
+                    "reason": "needs_retrain",
+                    "train_triggered": _trigger_train(),
+                }
+        if change is None and row is not None:
+            stats: GateStats = repo.gate_stats(
+                since=now - datetime.timedelta(days=cfg.gate_window_days),
+                revert_samples=cfg.revert_samples,
             )
-            change = (
-                current,
-                new_state,
-                stats.band_n,
-                stats.band_agree,
-                audit_pct,
-            )
-            result.update(action="changed", state=new_state)
+            current = "gate" if row.gate_state == "gate" else "shadow"
+            new_state = next_state(current, stats, cfg)
+            result.update(state=current, band_n=stats.band_n, band_agree=stats.band_agree)
+            if new_state != current:
+                # Commit DULU: alert best-effort tidak boleh membatalkan perubahan status.
+                repo.set_gate_state(row.id, new_state, now)
+                session.commit()
+                audit_pct = (
+                    100 * sum(stats.audit_last) / len(stats.audit_last)
+                    if stats.audit_last
+                    else None
+                )
+                change = (current, new_state, stats.band_n, stats.band_agree, audit_pct)
+                result.update(action="changed", state=new_state)
     if change is not None:
-        old, new, band_n, band_agree, audit_pct = change
-        agree_pct = 100 * band_agree / band_n if band_n else 0.0
-        audit_txt = f"{audit_pct:.1f}%" if audit_pct is not None else "belum ada sampel"
-        log.info("relevance_gate_changed", old=old, new=new, band_n=band_n)
-        alert_ops(
-            f"<b>Gate relevansi berubah: {old} -> {new}</b>\n"
-            f"Judul dalam band: {band_n}, kesepakatan dengan LLM {agree_pct:.1f}%, "
-            f"kesepakatan sampel audit {audit_txt}.",
-            key=f"relevance:gate:{new}",
-        )
+        _alert_gate_change(*change)
     return result
