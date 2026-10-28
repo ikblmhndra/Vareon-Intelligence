@@ -45,9 +45,9 @@ Success criteria:
   snapshot of 2026-10-28 the rules give **5,281 active, 157 expired, 29 allowlisted, 0 revoked**;
   after deploy on dev the numbers match within the IOCs added since.
 - An analyst FP revokes at once and a TP restores; a revoked indicator leaves STIX export, stats,
-  campaigns, recap counts and the FP queue.
+  campaigns and recap counts (section 4).
 - TLP/PAP are visible and editable per indicator; the STIX export carries `valid_from`,
-  `valid_until`, `revoked` and TLP 2.0 marking refs.
+  `valid_until` and TLP 2.0 marking refs.
 - Changing a TTL in `.env` re-computes `valid_until` for existing rows without a migration.
 - Nothing outside the app that reads `iocs` breaks silently (section 7).
 
@@ -133,7 +133,9 @@ They are added to `.env.example` and `.env.prod.template` in the same commit
 
 ### 3.3 Reconcile task `indicator.reconcile_validity`
 
-Runs on worker start and daily via beat, on the `maintenance` queue. It compares a fingerprint of
+Enqueued on API start (the `lifespan` hook, same mechanism as P6's `confidence.recompute_all`;
+the task is idempotent, so several uvicorn processes enqueueing it is harmless) and daily via beat,
+on the `maintenance` queue. It compares a fingerprint of
 the current TTL settings with `job_state["indicator.ttl_fingerprint"]`. When they differ it runs one
 `UPDATE` that sets `valid_until = last_seen_at + TTL` per type (`NULL` for hashes) on all
 non-revoked rows, then stores the new fingerprint. When they match it returns at once (idempotent).
@@ -166,11 +168,14 @@ TLP on articles, stories and entities is out of scope until a non-public input e
 Effects on existing readers:
 
 - **Revoked** is treated like `auto_suppressed` since P2: excluded from STIX export, stats,
-  campaigns, recap counts and the FP queue.
+  dashboard counts, campaigns, recap counts and the provider-enrichment queue. It stays visible
+  (dimmed) in the IOC list so it can be restored, and FP analytics keeps counting it (a revoked
+  indicator is an FP; removing it would erase the FP data).
 - **Expired** stays in historical statistics (it was real when seen).
-- **STIX export** (`services/stix.py`): indicators carry `valid_from`, `valid_until`,
-  `revoked: true` when revoked, and `object_marking_refs` to the standard TLP 2.0 marking
-  definitions (official OASIS ids).
+- **STIX export** (`services/stix.py`, a snapshot download): indicators carry `valid_from`,
+  `valid_until` and `object_marking_refs` to the standard TLP 2.0 marking definitions (official
+  OASIS ids). Revoked indicators are left out of the bundle; publishing them with `revoked: true`
+  so subscribers delete them belongs to the TAXII collection (P7b).
 
 ## 5. Web (IOC page)
 
@@ -199,7 +204,7 @@ Effects on existing readers:
 | R1 | SQL outside the app that names `iocs` breaks after the rename: hand-run checks, read-only prod check patterns, external dashboards. Concretely, the consolidated runbook runs `SELECT ... FROM iocs` checks after the 0.8.6 step, and prod jumps from 0.8.2 to 0.8.11 in one deploy. | (a) The migration creates **compatibility views** `iocs`, `ioc_sources`, `ioc_tags`, `ioc_threat_actors`, `ioc_feedback` over the new tables (`indicator_id AS ioc_id`), so old read queries keep working. They are read-only by convention, documented as deprecated, and dropped in a later release named in the runbook. (b) The consolidated runbook's post-deploy queries are rewritten to `indicators`/`indicator_sources`; queries run **before** deploy (on 0.8.2) keep `iocs`. (c) A repo-wide grep for the old table names (`tools/`, `docker/`, `Makefile`, `docs/`) is a plan step, with each hit fixed or justified. (d) If Alembic autogenerate reflects views, they are excluded in `include_object` so the drift test stays meaningful. |
 | R2 | `tools/ops/pg_backup.py` verifies backups against `KEY_TABLES = (..., "iocs", ...)` and silently skips tables that do not exist, so IOC verification would vanish without an error. | `KEY_TABLES` gets `indicators` next to `iocs` (backups run on both sides of the migration; the missing one is skipped). A unit test asserts `indicators` is in the list. |
 | R3 | The rename diff is large and conflicts with other branches touching IOC code. Unmerged today: `feat/ioc-enrichment-abuseipdb` (2 commits) and `feat/ioc-enrichment-virustotal-otx` (3 commits), both 13 days old, touching `repositories/ioc.py` and `services/ioc_*`; `claude/react-retheme-ui-ux-pro-max-00bc1b` (1 commit, web IOC components). | Start only after PR #79 merges, rebase at once. The rename is the **first commit, purely mechanical** (no behaviour change, full suite green), so any rebase conflict is a name substitution. Before starting, ask the user whether the three branches are dead or still to land; if they land first, rebase onto them. The web branch is unaffected by the Python rename (`/api/iocs` unchanged) and conflicts at most textually in `ioc-table.tsx`. |
-| R4 | Between the migration and the first reconcile run, `valid_until` is `NULL` and non-hash indicators read as non-expiring. | The reconcile task runs on worker start, minutes after `migrate`. No feed exists before P7b. The runbook's after-deploy step checks that `job_state` holds the fingerprint and the state distribution. |
+| R4 | Between the migration and the first reconcile run, `valid_until` is `NULL` and non-hash indicators read as non-expiring. | The reconcile task is enqueued on API start, minutes after `migrate`. No feed exists before P7b. The runbook's after-deploy step checks that `job_state` holds the fingerprint and the state distribution. |
 | R5 | The feedback endpoint now needs `manage_ioc`; a user with only `view_ioc` loses the TP/FP buttons. | The web hides the buttons via `useCan("manage_ioc")`. All dev users are superadmin today (U28); the release notes say so. |
 | R6 | Downgrade: the compatibility views occupy the old table names. | Downgrade drops the views first, then reverses the renames and drops the new columns; covered by the migration up/down test. |
 
