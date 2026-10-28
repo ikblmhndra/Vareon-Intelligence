@@ -263,3 +263,26 @@ async def test_add_without_credibility_writes_6(
     assert resp.status_code == 200
     entry = resp.json()["entry"]
     assert (entry["credibility_code"], entry["admiralty_code"]) == ("6", "B6")
+
+
+async def test_review_artefact_ignores_revoked_ioc(async_db_session: AsyncSession) -> None:
+    """Artikel yang satu-satunya IOC-nya dicabut tidak terhitung artefak di antrean review."""
+    from cti_core.db.repositories.source_reliability import AsyncSourceReliabilityRepo
+
+    s = async_db_session
+    s.add(_sr("RvRevokedSrc", "B"))
+    art = _article("https://rv.example/revoked/1", "RvRevokedSrc")
+    ioc = Indicator(type="ip", value="10.9.9.9", revoked_at=_NOW)
+    s.add_all([art, ioc])
+    await s.flush()
+    s.add(
+        IndicatorSource(indicator_id=ioc.id, article_id=art.id, url="u", source_name="RvRevokedSrc")
+    )
+    await s.flush()
+
+    rows = await AsyncSourceReliabilityRepo(s).review_stats(
+        since=_TODAY - datetime.timedelta(days=30)
+    )
+    stats = next(st for e, st in rows if e.source_name == "RvRevokedSrc")
+    assert stats.articles == 1
+    assert stats.artefact_articles == 0

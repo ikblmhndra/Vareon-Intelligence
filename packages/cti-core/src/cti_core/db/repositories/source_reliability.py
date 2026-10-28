@@ -271,8 +271,9 @@ class AsyncSourceReliabilityRepo:
         malam). Penolakan karena enrichment GAGAL (`failure_kind` terisi atau `reason` berawalan
         `[enrichment_failed]`) tidak dihitung: itu bukan konten di luar topik. Artefak = definisi
         tangga kredibilitas (`repositories.assessment.facts_stmt`): CVE, IOC yang tidak
-        di-suppress, atau TTP `explicit`. Story dihitung dari artikel dalam jendela: story dengan
-        `source_count > 1`, dan berapa yang `lead_article_id`-nya artikel sumber ini. Verdict IOC
+        di-suppress atau dicabut, atau TTP `explicit`. Story dihitung dari artikel dalam jendela:
+        story dengan `source_count > 1`, dan berapa yang `lead_article_id`-nya artikel sumber ini.
+        Verdict IOC
         tanpa jendela (feedback jarang) untuk IOC yang PERTAMA dilaporkan sumber ini (baris
         `indicator_sources` paling awal per IOC), supaya FP tidak dibebankan ke sumber yang cuma
         ikut menyebut. Semua nama sumber dicocokkan case-insensitive; agregat per tabel satu
@@ -283,7 +284,7 @@ class AsyncSourceReliabilityRepo:
             select(ArticleCve.article_id).where(ArticleCve.article_id == Article.id).exists(),
             select(IndicatorSource.id)
             .join(Indicator, Indicator.id == IndicatorSource.indicator_id)
-            .where(IndicatorSource.article_id == Article.id, Indicator.auto_suppressed.is_(False))
+            .where(IndicatorSource.article_id == Article.id, Indicator.usable)
             .exists(),
             select(ArticleTTP.id)
             .where(ArticleTTP.article_id == Article.id, ArticleTTP.source == "explicit")

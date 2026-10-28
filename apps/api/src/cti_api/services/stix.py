@@ -157,6 +157,7 @@ def _build_indicator(
     seen_count: int | None = None,
     last_seen: str | None = None,
     valid_until: str | None = None,
+    # Default None: bundle threat-actor tanpa marking; bundle IOC selalu mengisi TLP indikator.
     tlp: str | None = None,
 ) -> dict[str, Any] | None:
     """Build a STIX 2.1 indicator. `first_seen`/`last_seen` kalau dikasih

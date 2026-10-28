@@ -50,7 +50,7 @@ def facts_stmt(article_ids: Sequence[int]) -> Select[Any]:
     has_ioc = (
         select(IndicatorSource.id)
         .join(Indicator, Indicator.id == IndicatorSource.indicator_id)
-        .where(IndicatorSource.article_id == Article.id, Indicator.auto_suppressed.is_(False))
+        .where(IndicatorSource.article_id == Article.id, Indicator.usable)
         .exists()
     )
     has_actor = (

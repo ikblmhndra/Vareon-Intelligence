@@ -136,6 +136,28 @@ async def test_suppressed_ioc_is_not_an_artefact(async_db_session: AsyncSession)
     assert (await _cols(s, art.id))[1] == 3
 
 
+@pytest.mark.asyncio
+async def test_revoked_ioc_is_not_an_artefact(async_db_session: AsyncSession) -> None:
+    """IOC dicabut analis (FP) bukan bukti: kredibilitas tetap 4 walau `auto_suppressed` false."""
+    s = async_db_session
+    s.add(_sr("Hackernews", "C", "news"))
+    art = _article("https://ex.com/revoked", "Hackernews")
+    bad = Indicator(
+        type="ip", value="10.0.0.3", auto_suppressed=False,
+        revoked_at=datetime.datetime.now(datetime.UTC),
+    )  # fmt: skip
+    s.add_all([art, bad])
+    await s.flush()
+    s.add(
+        IndicatorSource(
+            indicator_id=bad.id, article_id=art.id, url=art.url, source_name="Hackernews"
+        )
+    )
+    await s.flush()
+
+    assert (await apply_assessments_async(s, [art.id]))[art.id].credibility == 4
+
+
 def test_story_with_three_sources_and_cve_is_1(db_session: Session) -> None:
     s = db_session
     s.add(_sr("Hackernews", "C", "news"))
