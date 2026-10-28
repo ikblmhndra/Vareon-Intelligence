@@ -118,7 +118,7 @@ export function SrReviewTable() {
                 const busy = busyId === e.id;
                 return (
                   <TableRow key={e.id}>
-                    <TableCell className="text-xs">{e.source_name}</TableCell>
+                    <TableCell className="min-w-36 text-xs whitespace-normal">{e.source_name}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{e.content_kind ?? "—"}</TableCell>
                     <TableCell>
                       <Badge variant="outline" className={cn("text-xs", GRADE_BADGE_CLASS[e.reliability_grade])}>
@@ -138,7 +138,8 @@ export function SrReviewTable() {
                     <TableCell className="font-code text-xs" title={`${it.ioc_fp} of ${it.ioc_verdicts} IOC verdicts`}>
                       {it.ioc_verdicts ? pct(it.ioc_fp_pct) : "—"}
                     </TableCell>
-                    <TableCell className="text-xs">
+                    {/* Alasan saran panjang: dibungkus supaya tombol aksi tidak terdorong keluar layar. */}
+                    <TableCell className="min-w-44 text-xs whitespace-normal">
                       {it.suggested_grade ? (
                         <div className="flex flex-col gap-0.5">
                           <Badge variant="outline" className={cn("w-fit text-xs", GRADE_BADGE_CLASS[it.suggested_grade])}>
