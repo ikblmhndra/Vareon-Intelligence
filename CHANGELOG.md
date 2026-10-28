@@ -28,6 +28,7 @@ Satu migrasi (`a9e4c7b1d3f6`), **tanpa kunci `.env` wajib.** Empat kunci opsiona
 
 ### Catatan perilaku
 - Antara migrasi dan run pertama tugas reconcile (beberapa menit sesudah start API), indikator non-hash terbaca tidak kedaluwarsa. Belum ada konsumen yang memakai masa berlaku sebelum P7b.
+- Rollback kode ke 0.8.10 tidak memerlukan downgrade DB (0.8.10 tetap jalan lewat view kompatibilitas); revoke dan TLP/PAP yang diset sesudah upgrade tidak dihormati oleh 0.8.10.
 - Downgrade menghapus view dan kolom baru lalu mengembalikan nama tabel; revoke dan penanda TLP/PAP hilang.
 
 ## [0.8.10] - 2026-10-28
