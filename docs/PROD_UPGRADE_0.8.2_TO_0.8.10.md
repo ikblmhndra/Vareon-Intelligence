@@ -22,14 +22,16 @@ Compose commands differ slightly between sections: use the same compose invocati
    the deploy aborts before any container changes.
 5. **After deploy:** run the "After deploy" blocks in release order. Admin task from 0.8.4: add `manage_cve`/`view_ops` to
    custom roles. Remedy from 0.8.6 (only now, never before): clear machine-written `overrides.confidence_score` if the
-   before-count was > 0.
+   before-count was > 0. For its follow-up recompute, the 0.8.10 section recommends the Celery enqueue over the inline
+   `POST /api/articles/confidence/recompute`, which can hit the proxy timeout.
 6. **One-off WRITE commands, in this order, after the deploy is healthy (each needs approval, dry-run first):**
    1. 0.8.7 story backfill (`cti_enrich.story_backfill`), bounded with `--since`.
    2. 0.8.8 Tier 1 backfill (`cti_enrich.backfill_tier1`, ~3 s/article; never during a deploy).
    3. 0.8.8 actor-name canonicalisation (`cti_enrich.canonicalise_actors --apply`).
 
-   0.8.9 needs nothing: the first model trains itself within an hour. 0.8.10 needs nothing either: the API start enqueues
-   `confidence.recompute_all` once (P6 scoring for every article, overrides kept); check that `credibility is null` reaches 0.
+   0.8.9 needs nothing: the first model trains itself within an hour. 0.8.10 needs nothing either: each API process enqueues
+   `confidence.recompute_all` once at start (one or two runs with `WEB_CONCURRENCY=2`; idempotent; P6 scoring for every
+   article, overrides kept); check that `credibility is null` reaches 0.
 7. **Later, separately:** turn on `STORY__EMBEDDING_SIMILARITY=0.8` only after story dedup is checked on prod (0.8.9).
 
 ## Migration chain
@@ -712,9 +714,11 @@ time, recompute time, live distributions). The numbers below come from the dev s
     the LLM self-rating on 0.8.2, the source grade + bonus on 0.8.6-0.8.9 (many at 100).
 - **New stored `priority_score`** (confidence + incident/KEV/PoC/TTP/actor/corroboration points, uncapped) drives
   `sort=priority`. The dashboard "Perlu dibaca" and the Newsroom front section show **one article per story**.
-- **Interaction with 0.8.6 in the 0.8.2 jump.** The 0.8.6 source-grade + bonus formula never runs on prod. The API start
-  does a single `confidence.recompute_all` enqueue (condition: new default grades inserted **or** any article with
-  `credibility IS NULL`), and that task now runs `assess`.
+- **Interaction with 0.8.6 in the 0.8.2 jump.** The 0.8.6 source-grade + bonus formula never runs on prod. Each API process
+  enqueues `confidence.recompute_all` once at start (condition: new default grades inserted **or** any article with
+  `credibility IS NULL`), and that task now runs `assess`. `lifespan` runs in every uvicorn process and the API image
+  sets `WEB_CONCURRENCY=2`, so a normal deploy enqueues it twice. The task is idempotent: the second pass is extra load,
+  not a fault.
 - **Overrides.** An article whose `overrides` has `confidence_score` keeps that confidence, and its credibility and
   priority are still computed. `overrides.credibility` is new (`PUT /api/articles/{id}/credibility`, `manage_intel`).
 - **New beat entries**, both on the `maintenance` queue (`worker`); beat restarts on deploy:
@@ -782,8 +786,9 @@ Run SQL in the read-only `psql` session shown above.
    cd /home/privy-admin/Niskala-Intelligence && docker compose -p niskala-intelligence logs worker --since 30m | grep -E "confidence_recompute_all|confidence\.recompute_all"
    ```
 
-   Expected: `api_startup_done` and **no** `recompute_all_enqueue_failed`; one `confidence_recompute_all` line in the
-   worker log once the task finishes.
+   Expected: `api_startup_done` (one per API process) and **no** `recompute_all_enqueue_failed`; one or two
+   `confidence_recompute_all` lines in the worker log (one enqueue per API process, `WEB_CONCURRENCY=2`) once the tasks
+   finish. Two lines are normal: the task is idempotent.
 3. **Every article assessed.** Expected: `unassessed = 0` once the task finished.
 
    ```sql
