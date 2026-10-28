@@ -86,6 +86,19 @@ def _apply_upsert(
     return indicator
 
 
+def _apply_verdict(indicator: Indicator, verdict: str, submitted_by: str) -> None:
+    """FP mencabut (revoked_at pertama dipertahankan), TP memulihkan: verdict analis final (P7a)."""
+    if verdict == "tp":
+        indicator.tp_count += 1
+        indicator.revoked_at = None
+        indicator.revoked_by = None
+    else:
+        indicator.fp_count += 1
+        if indicator.revoked_at is None:
+            indicator.revoked_at = datetime.datetime.now(datetime.UTC)
+            indicator.revoked_by = submitted_by
+
+
 class IndicatorRepo:
     def __init__(self, session: Session) -> None:
         self.session = session
@@ -130,10 +143,7 @@ class IndicatorRepo:
         indicator.feedback.append(
             IndicatorFeedback(verdict=verdict, submitted_by=submitted_by, note=note)
         )
-        if verdict == "tp":
-            indicator.tp_count += 1
-        else:
-            indicator.fp_count += 1
+        _apply_verdict(indicator, verdict, submitted_by)
         self.session.flush()
         return indicator
 
@@ -225,10 +235,18 @@ class AsyncIndicatorRepo:
         indicator.feedback.append(
             IndicatorFeedback(verdict=verdict, submitted_by=submitted_by, note=note)
         )
-        if verdict == "tp":
-            indicator.tp_count += 1
-        else:
-            indicator.fp_count += 1
+        _apply_verdict(indicator, verdict, submitted_by)
+        await self.session.flush()
+        return indicator
+
+    async def set_marking(
+        self, indicator: Indicator, *, tlp: str | None, pap: str | None
+    ) -> Indicator:
+        """Atur marking manual oleh analis (boleh menurunkan, berbeda dari ingest); None = tetap."""
+        if tlp is not None:
+            indicator.tlp = tlp
+        if pap is not None:
+            indicator.pap = pap
         await self.session.flush()
         return indicator
 
@@ -380,6 +398,8 @@ class AsyncIndicatorRepo:
         sort_by: str | None = None,
         actionability: str | None = None,
         include_suppressed: bool = False,
+        state: str | None = None,
+        include_revoked: bool = True,
     ) -> tuple[list[Indicator], int]:
         """Port `ioc_service.get_iocs()`. `actionability` (filter lama)
         gak diport pas Fase 7.3 -- waktu itu kolomnya emang belum ada.
@@ -388,9 +408,14 @@ class AsyncIndicatorRepo:
         diwire -- ditambahin di sini pas Grup G4 (`/intelligence/
         ioc-management`) baru butuh beneran dari frontend."""
         stmt = select(Indicator)
-        if not include_suppressed:
+        if state:
+            # state menggantikan include_suppressed: allowlisted justru butuh baris tersembunyi
+            stmt = stmt.where(Indicator.state == state)
+        elif not include_suppressed:
             # IOC `auto_suppressed` (cocok allowlist) disembunyikan kecuali diminta eksplisit.
             stmt = stmt.where(Indicator.auto_suppressed.is_(False))
+        if not include_revoked:
+            stmt = stmt.where(Indicator.revoked_at.is_(None))
         if ioc_type and ioc_type in _VALID_TYPES:
             stmt = stmt.where(Indicator.type == ioc_type)
         if search:

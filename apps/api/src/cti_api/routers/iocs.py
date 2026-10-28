@@ -27,6 +27,7 @@ from cti_core.db.models.indicator import Indicator
 from cti_core.db.repositories.auth import AsyncAuditLogRepo
 from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from cti_core.db.repositories.ioc_reference import AsyncIocAllowlistRepo
+from cti_core.indicator.marking import Pap, Tlp
 from cti_core.ioc.canonical import canonical
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
@@ -60,6 +61,11 @@ class FeedbackBody(BaseModel):
     note: str | None = None
 
 
+class MarkingBody(BaseModel):
+    tlp: Tlp | None = None
+    pap: Pap | None = None
+
+
 class BulkDeleteBody(BaseModel):
     ids: list[int]
 
@@ -67,6 +73,10 @@ class BulkDeleteBody(BaseModel):
 class AllowlistBody(BaseModel):
     type: Literal["url_domain", "email_domain", "ip"]
     value: str
+
+
+def _iso(dt: datetime.datetime | None) -> str | None:
+    return dt.isoformat() if dt else None
 
 
 def _serialize_summary(ioc: Indicator) -> dict[str, object]:
@@ -87,6 +97,13 @@ def _serialize_summary(ioc: Indicator) -> dict[str, object]:
         "recommended_action": ioc.recommended_action,
         "auto_suppressed": ioc.auto_suppressed,
         "suppression_reason": ioc.suppression_reason,
+        "state": ioc.state,
+        "valid_from": _iso(ioc.valid_from),
+        "valid_until": _iso(ioc.valid_until),
+        "revoked_at": _iso(ioc.revoked_at),
+        "revoked_by": ioc.revoked_by,
+        "tlp": ioc.tlp,
+        "pap": ioc.pap,
     }
 
 
@@ -116,6 +133,7 @@ async def list_iocs(
     sort_by: str | None = None,
     actionability: str | None = None,
     include_suppressed: bool = False,
+    state: Literal["active", "expired", "revoked", "allowlisted"] | None = None,
     session: AsyncSession = Depends(get_db),
     _user: AuthedUser = Depends(require_auth),
 ) -> dict[str, object]:
@@ -129,6 +147,7 @@ async def list_iocs(
         sort_by=sort_by,
         actionability=actionability,
         include_suppressed=include_suppressed,
+        state=state,
     )
     return {
         "iocs": [_serialize_summary(i) for i in iocs],
@@ -358,7 +377,7 @@ async def ioc_feedback(
     ioc_id: int,
     body: FeedbackBody,
     session: AsyncSession = Depends(get_db),
-    user: AuthedUser = Depends(require_auth),
+    user: AuthedUser = Depends(require_permission("manage_ioc")),
 ) -> dict[str, object]:
     """Port `submit_feedback()` -- feedback + recompute confidence+
     actionability + peringatan FP-rate sumber, SATU alur (Fase 7.4 Grup D
@@ -397,6 +416,31 @@ async def ioc_feedback(
 
     await session.commit()
     return result
+
+
+@router.patch("/{ioc_id}/marking")
+async def set_ioc_marking(
+    ioc_id: int,
+    body: MarkingBody,
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+    user: AuthedUser = Depends(require_permission("manage_ioc")),
+) -> dict[str, object]:
+    """Koreksi TLP/PAP manual oleh analis; nilai yang tidak dikirim tidak diubah."""
+    repo = AsyncIndicatorRepo(session)
+    ioc = await repo.get_by_id(ioc_id)
+    if ioc is None:
+        raise HTTPException(status_code=404, detail="IOC not found")
+    ioc = await repo.set_marking(ioc, tlp=body.tlp, pap=body.pap)
+    await AsyncAuditLogRepo(session).write(
+        username=user["username"],
+        action="ioc_marking",
+        target_id=str(ioc_id),
+        detail={"tlp": body.tlp, "pap": body.pap},
+        ip_address=request_ip(request),
+    )
+    await session.commit()
+    return _serialize_detail(ioc)
 
 
 @router.get("/ta-links/{ioc_type}/{value:path}")

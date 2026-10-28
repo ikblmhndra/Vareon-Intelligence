@@ -2809,6 +2809,47 @@
         "title": "MapPoint",
         "type": "object"
       },
+      "MarkingBody": {
+        "properties": {
+          "pap": {
+            "anyOf": [
+              {
+                "enum": [
+                  "clear",
+                  "green",
+                  "amber",
+                  "red"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pap"
+          },
+          "tlp": {
+            "anyOf": [
+              {
+                "enum": [
+                  "clear",
+                  "green",
+                  "amber",
+                  "amber+strict",
+                  "red"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tlp"
+          }
+        },
+        "title": "MarkingBody",
+        "type": "object"
+      },
       "MetricStat": {
         "properties": {
           "max": {
@@ -16042,6 +16083,28 @@
             }
           },
           {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "active",
+                    "expired",
+                    "revoked",
+                    "allowlisted"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -16685,6 +16748,77 @@
           }
         },
         "summary": "Ioc Feedback",
+        "tags": [
+          "iocs"
+        ]
+      }
+    },
+    "/api/iocs/{ioc_id}/marking": {
+      "patch": {
+        "description": "Koreksi TLP/PAP manual oleh analis; nilai yang tidak dikirim tidak diubah.",
+        "operationId": "set_ioc_marking_api_iocs__ioc_id__marking_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ioc_id",
+            "required": true,
+            "schema": {
+              "title": "Ioc Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarkingBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Set Ioc Marking Api Iocs  Ioc Id  Marking Patch",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Ioc Marking",
         "tags": [
           "iocs"
         ]

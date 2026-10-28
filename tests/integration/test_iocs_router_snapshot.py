@@ -29,6 +29,8 @@ _NORMALIZE = path_type(
         r"(.*\.)?ioc_id$": (int,),
         r"(.*\.)?first_seen$": (str,),
         r"(.*\.)?last_seen$": (str,),
+        r"(.*\.)?valid_from$": (str,),
+        r"(.*\.)?valid_until$": (str,),
         r"(.*\.)?added_at$": (str,),
     },
     regex=True,
