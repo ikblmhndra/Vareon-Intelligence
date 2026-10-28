@@ -295,7 +295,7 @@ class AsyncIndicatorRepo:
         `recap`, Bagian 5) -- IOC yang PERTAMA ketemu tanggal ini."""
         result = await self.session.execute(
             select(Indicator)
-            .where(func.date(Indicator.first_seen_at) == day, Indicator.auto_suppressed.is_(False))
+            .where(func.date(Indicator.first_seen_at) == day, Indicator.usable)
             .order_by(Indicator.first_seen_at)
             .limit(limit)
         )
@@ -312,7 +312,7 @@ class AsyncIndicatorRepo:
             select(Indicator.type, func.count())
             .where(
                 func.date(Indicator.first_seen_at).between(start, end),
-                Indicator.auto_suppressed.is_(False),
+                Indicator.usable,
             )
             .group_by(Indicator.type)
         )
@@ -349,9 +349,10 @@ class AsyncIndicatorRepo:
         checked_before: datetime.datetime,
         limit: int,
     ) -> list[Indicator]:
-        """IOC bertipe `types` (bukan yang `auto_suppressed`) yang BELUM punya kartu `provider` di
-        `enrichment.providers`, atau yang kartunya dicek sebelum `checked_before`. Terbaru dilihat
-        dulu (`last_seen_at`), supaya jatah provider dipakai untuk IOC yang paling relevan.
+        """IOC bertipe `types` (bukan yang `auto_suppressed` atau dicabut) yang BELUM punya kartu
+        `provider` di `enrichment.providers`, atau yang kartunya dicek sebelum `checked_before`.
+        Terbaru dilihat dulu (`last_seen_at`), supaya jatah provider dipakai untuk IOC yang paling
+        relevan.
 
         Kartu dicari lewat `jsonb_array_elements`: `enrichment` kosong (`{}`) tidak punya
         `providers`, jadi `COALESCE` ke array kosong dan IOC-nya terhitung belum dicek."""
@@ -366,7 +367,7 @@ class AsyncIndicatorRepo:
         )
         stmt = (
             select(Indicator)
-            .where(Indicator.type.in_(types), Indicator.auto_suppressed.is_(False), fresh_card)
+            .where(Indicator.type.in_(types), Indicator.usable, fresh_card)
             .order_by(Indicator.last_seen_at.desc(), Indicator.id)
             .limit(limit)
         )
@@ -452,9 +453,7 @@ class AsyncIndicatorRepo:
         result = await self.session.execute(
             select(Indicator)
             .join(Indicator.sources)
-            .where(
-                IndicatorSource.article_id.in_(article_ids), Indicator.auto_suppressed.is_(False)
-            )
+            .where(IndicatorSource.article_id.in_(article_ids), Indicator.usable)
             .distinct()
         )
         return list(result.scalars().unique().all())
@@ -462,14 +461,12 @@ class AsyncIndicatorRepo:
     async def get_stats(self) -> dict[str, object]:
         total = (
             await self.session.execute(
-                select(func.count())
-                .select_from(Indicator)
-                .where(Indicator.auto_suppressed.is_(False))
+                select(func.count()).select_from(Indicator).where(Indicator.usable)
             )
         ).scalar_one()
         by_type_stmt = (
             select(Indicator.type, func.count())
-            .where(Indicator.auto_suppressed.is_(False))
+            .where(Indicator.usable)
             .group_by(Indicator.type)
             .order_by(func.count().desc(), Indicator.type)  # tie-break: urutan deterministik
         )

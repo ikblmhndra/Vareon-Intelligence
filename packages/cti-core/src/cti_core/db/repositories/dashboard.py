@@ -843,7 +843,7 @@ class AsyncDashboardRepo:
             .where(
                 Indicator.confidence_score >= 40,
                 Indicator.confidence_score < 75,
-                Indicator.auto_suppressed.is_(False),
+                Indicator.usable,
             )
             .order_by(Indicator.last_seen_at.desc())
             .limit(limit)
@@ -859,7 +859,7 @@ class AsyncDashboardRepo:
             .where(
                 Indicator.confidence_score >= 40,
                 Indicator.confidence_score < 75,
-                Indicator.auto_suppressed.is_(False),
+                Indicator.usable,
             )
         )
         return int((await self.session.execute(stmt)).scalar_one())

@@ -39,6 +39,8 @@ _NORMALIZE = path_type(
         # tiap hari kalender maju.
         r"(.*\.)?valid_from$": (str,),
         r"(.*\.)?x_last_seen$": (str,),
+        # `valid_until` = last_seen + TTL, jadi ikut maju tiap hari.
+        r"(.*\.)?valid_until$": (str,),
     },
     regex=True,
     strict=False,
