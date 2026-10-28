@@ -15,6 +15,7 @@ from typing import Literal
 from cti_core.config import get_settings
 from cti_core.db.repositories.data_health import AsyncDataHealthRepo
 from cti_core.db.repositories.llm_call import AsyncLlmCallRepo, TaskUsage
+from cti_core.db.repositories.relevance import AsyncRelevanceModelRepo
 from cti_core.db.repositories.story import AsyncStoryRepo, StoryStats
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,6 +29,7 @@ from cti_api.schemas.data_health import (
     LlmParkedOut,
     LlmTaskUsageOut,
     QueueHealthOut,
+    RelevanceHealthOut,
     SourceFreshnessOut,
     StoryHealthOut,
 )
@@ -86,6 +88,7 @@ def _story_out(stats: StoryStats) -> StoryHealthOut:
         followups=stats.followups,
         inherited=stats.inherited,
         llm_calls_avoided=stats.inherited * 2,
+        by_embedding=stats.by_embedding,
     )
 
 
@@ -127,6 +130,38 @@ async def _llm_health(
     )
 
 
+def _ratio(part: int, whole: int) -> float | None:
+    return part / whole if whole > 0 else None
+
+
+async def _relevance_health(session: AsyncSession, now: datetime.datetime) -> RelevanceHealthOut:
+    cfg = get_settings().relevance
+    repo = AsyncRelevanceModelRepo(session)
+    model = await repo.get_active()
+    window = now - datetime.timedelta(days=cfg.gate_window_days)
+    stats = await repo.gate_stats(since=window, revert_samples=cfg.revert_samples)
+    metrics = model.metrics if model is not None else {}
+    gate_state: Literal["shadow", "gate"] | None = None
+    if model is not None:
+        gate_state = "gate" if model.gate_state == "gate" else "shadow"
+    return RelevanceHealthOut(
+        mode=cfg.mode,
+        gate_state=gate_state,
+        gate_changed_at=_iso(model.gate_changed_at) if model is not None else None,
+        model_trained_at=_iso(model.created_at) if model is not None else None,
+        n_examples=model.n_examples if model is not None else None,
+        holdout_agreement=metrics.get("agreement"),
+        holdout_band_share=metrics.get("band_share"),
+        band_titles_14d=stats.band_n,
+        band_agreement_14d=_ratio(stats.band_agree, stats.band_n),
+        middle_band_14d=await repo.middle_band_count(window),
+        audit_samples=len(stats.audit_last),
+        audit_agreement=_ratio(sum(stats.audit_last), len(stats.audit_last)),
+        classify_avoided_24h=await repo.gated_count(now - datetime.timedelta(hours=24)),
+        classify_avoided_7d=await repo.gated_count(now - datetime.timedelta(days=7)),
+    )
+
+
 async def _build(session: AsyncSession, redis: Redis, now: datetime.datetime) -> DataHealthOut:
     repo = AsyncDataHealthRepo(session)
     # Sekuensial: satu `AsyncSession` tidak aman dipakai concurrent.
@@ -157,4 +192,5 @@ async def _build(session: AsyncSession, redis: Redis, now: datetime.datetime) ->
             IocEnrichmentTypeOut(type=c.type, total=c.total, enriched=c.enriched) for c in coverage
         ],
         llm=await _llm_health(session, repo, now),
+        relevance=await _relevance_health(session, now),
     )

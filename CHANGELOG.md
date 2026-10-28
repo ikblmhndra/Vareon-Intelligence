@@ -6,6 +6,28 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
+## [0.8.9] - 2026-10-26
+
+**Model lokal kini menilai relevansi tiap artikel dari judulnya: artikel yang jelas berita ancaman (p >= 0,85) melewati panggilan LLM classify, sisanya tetap ke LLM. Model berlatih sendiri tiap minggu dari label instance itu, mulai dari mode shadow, dan gate menyala/mati otomatis dari kesepakatan terukur dengan LLM.**
+Satu migrasi (`c4f1a9d27e6b`), tanpa kunci `.env` baru. Evaluasi pada label prod (2.112 judul unik, embedder asli): holdout 14 hari band 54,5% dengan kesepakatan 98,1%, CV 5-fold band 52,2% dengan kesepakatan 97,6% (ambang 0,85). Perkiraan: sekitar 42% panggilan classify berkurang (band x (1 - sampel audit 20%)).
+
+**Saat upgrade dari 0.8.8:** `make deploy` (migrasi jalan otomatis). Model pertama dilatih sendiri dalam satu jam setelah worker naik, atau paling lama 24 jam kemudian bila percobaan itu dilewati atau ditolak (pemicu latih ulang punya cooldown 24 jam; tugas `relevance.evaluate` tiap jam memicunya bila belum ada model aktif; pelatihan rutin Minggu 02:00 lokal). Instance dengan label kurang dari 1.000 judul (atau kurang dari 100 per kelas) mencatat run `skipped` beserta alasannya. Model mulai dari shadow dan baru menyala sendiri setelah 200 judul dalam 14 hari menunjukkan kesepakatan >= 95%. Untuk menahan gate tetap mati di prod, isi `RELEVANCE__MODE=shadow` di `.env` prod sebelum deploy. `STORY__EMBEDDING_SIMILARITY` tetap 0 (aturan embedding story mati) sampai diaktifkan. Image `worker-nlp` kini mengunduh model (unduhan sekitar 90 MB, sekitar 88 MB di disk) dari huggingface.co saat build (bukan saat jalan).
+Catatan dev: `.env` dev sengaja memakai `RELEVANCE__GATE_MIN_AGREEMENT=0.94` (label dev dari model gratis lebih berisik; model pertama dev 94,89% ditolak di 0,95). **Jangan salin baris itu ke prod**: prod tetap default 0,95. Detail di `docs/LLM_ASSIST_REDESIGN.md` bagian "P5 on dev".
+
+### Ditambah
+- Tabel `relevance_models` (artefak model, metrik holdout, status `active`/`retired`/`rejected`, gate state) dan repository-nya.
+- Model tiga kelas (`reject`, `best_practice`, `threat_news`) dari TF-IDF kata dan karakter plus embedding MiniLM, dilatih dari `articles` dan `rejected_articles` (override analis berlaku, judul di-dedup, keputusan gate/Tier 0, warisan story dan baris gagal tidak jadi label).
+- Tugas `relevance.train` (mingguan) dan `relevance.evaluate` (tiap jam): gate menyala di 200 judul dengan kesepakatan >= 95%, mati di bawah 92% pada 50 sampel audit, dengan alert Telegram untuk perubahan dan pelatihan yang ditolak.
+- Gate relevansi di pipeline: keputusan `gated` melewati classify, vonis insiden dan korban datang dari aturan Tier 1, 20% sampel audit (deterministik dari hash URL) tetap memanggil LLM, dan hasilnya dicatat di `raw_enrichment.relevance`. Gagal apa pun jatuh ke LLM classify.
+- Mode `RELEVANCE__MODE` (`auto`, `shadow`, `off`) dan pengaturan `RELEVANCE__*` lain (semua punya default).
+- Aturan judul berbasis embedding untuk story dedup, opsional lewat `STORY__EMBEDDING_SIMILARITY` (default 0). Replay fixture pada 0,8: 194 follow-up.
+- Bagian "Relevance model" di Data health (model aktif, mode, status gate, kesepakatan band dan audit, panggilan classify yang dihindari 24 jam dan 7 hari).
+- Alat evaluasi `tools/eval/relevance_eval.py` (holdout 14 hari + CV 5-fold pada ekspor label).
+
+### Diubah
+- Image `worker-nlp` membawa model embedding MiniLM (unduhan sekitar 90 MB, sekitar 88 MB di disk) dan memuatnya dengan `local_files_only`; model tidak pernah diunduh saat jalan.
+- CI smoke import di dalam image ikut memuat model, sehingga model yang hilang menggagalkan build, bukan deploy.
+
 ## [0.8.8] - 2026-10-25
 
 **Setiap artikel yang diterima kini melewati Tier 1 deterministik (tanpa LLM) yang mengekstrak aktor, malware, TTP dan industri dari teks penuh, lengkap dengan label asal datanya (kecuali artikel best practice: hanya malware dan industri, tanpa TTP dan tanpa aktor tersimpan).**

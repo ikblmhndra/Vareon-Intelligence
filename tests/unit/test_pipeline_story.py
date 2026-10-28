@@ -8,7 +8,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-from cti_core.config import StorySettings
+from cti_core.config import RelevanceSettings, StorySettings
 from cti_core.db.repositories.story import StoryRepo
 from cti_enrich import pipeline
 from cti_enrich.stages import persist as persist_mod
@@ -85,7 +85,9 @@ def rec(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     monkeypatch.setattr(
         pipeline,
         "get_settings",
-        lambda: SimpleNamespace(story=StorySettings(enabled=r["enabled"])),
+        lambda: SimpleNamespace(
+            story=StorySettings(enabled=r["enabled"]), relevance=RelevanceSettings(mode="off")
+        ),
     )
     monkeypatch.setattr(pipeline, "_known_article", lambda session, url: None)
     monkeypatch.setattr(pipeline, "classify", fake_classify)

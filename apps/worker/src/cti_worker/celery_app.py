@@ -94,6 +94,7 @@ from cti_worker.tasks import (  # noqa: E402,F401  -- registrasi task, harus set
     enrich,
     llm_maintenance,
     periodic,
+    relevance,
     reports,
     scrape,
     story,

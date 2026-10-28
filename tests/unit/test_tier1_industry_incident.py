@@ -121,3 +121,18 @@ def test_may_month_not_guide():
 )
 def test_noisy_terms_no_industry(title):
     assert match_industries(title, "") == []
+
+
+def test_victim_from_llm_name_stripped():
+    assert incident_verdict("Hospital systems encrypted", "", "  Regional Hospital ").victim == (
+        "Regional Hospital"
+    )
+
+
+def test_victim_from_pattern():
+    v = incident_verdict("Acme Corp confirms ransomware attack", "", None)
+    assert v.victim == "Acme Corp"
+
+
+def test_victim_none_without_victim():
+    assert incident_verdict("Ransomware attacks rise 30%", "", None).victim is None

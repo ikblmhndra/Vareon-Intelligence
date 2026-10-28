@@ -7,7 +7,7 @@ selalu id story terkecil karena `StoryRepo.candidates()` tidak mengurutkan hasil
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Literal
@@ -34,7 +34,7 @@ class ArticleKeys:
 @dataclass(frozen=True)
 class Match:
     story_id: int
-    rule: Literal["cve", "title_exact", "title"]
+    rule: Literal["cve", "title_exact", "title", "title_embedding"]
 
 
 def key_cves(cve_ids: Iterable[str], max_key_cves: int) -> frozenset[str]:
@@ -44,9 +44,16 @@ def key_cves(cve_ids: Iterable[str], max_key_cves: int) -> frozenset[str]:
 
 
 def resolve(
-    keys: ArticleKeys, candidates: list[StoryCandidate], cfg: StorySettings
+    keys: ArticleKeys,
+    candidates: list[StoryCandidate],
+    cfg: StorySettings,
+    *,
+    embedding_similarity: Callable[[str, list[str]], list[float]] | None = None,
 ) -> Match | None:
-    """Story tempat artikel bergabung, atau `None` (artikel membuka story baru)."""
+    """Story tempat artikel bergabung, atau `None` (artikel membuka story baru).
+
+    `embedding_similarity` disuntikkan (P5) supaya resolver tetap murni dan tidak menarik
+    fastembed; dipakai hanya bila `cfg.embedding_similarity > 0`."""
     recent = keys.at - timedelta(hours=cfg.window_hours)
     oldest = keys.at - timedelta(days=cfg.max_age_days)
     pool = [c for c in candidates if c.last_seen_at >= recent and c.first_seen_at >= oldest]
@@ -80,16 +87,30 @@ def resolve(
         return Match(min(exact), "title_exact")
 
     flat = [(c.id, m.source, m.title) for c in eligible for m in c.members]
-    scores = title_similarity(keys.title, [t for _, _, t in flat])
+    titles = [t for _, _, t in flat]
+    tfidf = title_similarity(keys.title, titles)
+    emb = (
+        embedding_similarity(keys.title, titles)
+        if cfg.embedding_similarity > 0 and embedding_similarity is not None
+        else None
+    )
     best_story: int | None = None
     best_score = 0.0
-    for (story_id, source, _), score in zip(flat, scores, strict=True):
-        if source == keys.source or score < cfg.title_similarity:
+    best_rule: Literal["title", "title_embedding"] = "title"
+    for i, (story_id, source, _) in enumerate(flat):
+        if source == keys.source:
             continue
+        t_score = tfidf[i]
+        e_score = emb[i] if emb is not None else 0.0
+        by_tfidf = t_score >= cfg.title_similarity
+        if not by_tfidf and not (emb is not None and e_score >= cfg.embedding_similarity):
+            continue
+        score = max(t_score, e_score)
         if (
             best_story is None
             or score > best_score
             or (score == best_score and story_id < best_story)
         ):
             best_story, best_score = story_id, score
-    return Match(best_story, "title") if best_story is not None else None
+            best_rule = "title" if by_tfidf else "title_embedding"
+    return Match(best_story, best_rule) if best_story is not None else None

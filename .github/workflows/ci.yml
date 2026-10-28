@@ -141,7 +141,7 @@ jobs:
             file: docker/worker.Dockerfile
             target: worker-nlp
             entrypoint: python
-            smoke: "import nltk, cti_enrich.stages.score as s; nltk.data.find('tokenizers/punkt_tab'); s._get_nlp()"
+            smoke: "import nltk, cti_enrich.stages.score as s; nltk.data.find('tokenizers/punkt_tab'); s._get_nlp(); from cti_enrich.relevance.embedder import get_embedder; assert get_embedder().embed(['x']).shape == (1, 384)"
           - name: web
             file: docker/web.Dockerfile
             target: ""

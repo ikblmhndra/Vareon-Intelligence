@@ -149,6 +149,10 @@ export function DataHealthView() {
     .sort()
     .at(-1);
 
+  const rel = d.relevance;
+  const relTone: Tone = rel.mode === "off" || rel.gate_state === null ? "unknown" : "ok";
+  const frac = (x: number | null) => (x === null ? "—" : `${Math.round(x * 100)}%`);
+
   const cov = dashboard.data;
 
   const llm = d.llm;
@@ -266,6 +270,44 @@ export function DataHealthView() {
             <Row label="Stories, last 7 days" value={storySummary(llm.stories_7d)} />
             <MoreLink href="/newsroom">Replay from Newsroom › Filtered Articles › Failed enrichment</MoreLink>
           </Section>
+          <Section title="Relevance model" tone={relTone}>
+            <Row
+              label="Mode"
+              value={
+                rel.gate_state === null
+                  ? `${rel.mode} · no active model yet`
+                  : `${rel.mode} · gate ${rel.gate_state === "gate" ? "on" : "off (shadow)"}${rel.gate_changed_at ? ` since ${when(rel.gate_changed_at)}` : ""}`
+              }
+            />
+            {rel.gate_state !== null && (
+              <>
+                <Row
+                  label="Active model"
+                  value={`trained ${when(rel.model_trained_at)} · ${(rel.n_examples ?? 0).toLocaleString()} examples · holdout agreement ${frac(rel.holdout_agreement)} · band share ${frac(rel.holdout_band_share)}`}
+                />
+                <Row
+                  label="Last 14 days"
+                  value={
+                    rel.band_titles_14d === 0
+                      ? `No in-band titles with an LLM verdict yet · ${rel.middle_band_14d.toLocaleString()} in the middle band`
+                      : `${rel.band_titles_14d.toLocaleString()} in-band titles with an LLM verdict · agreement ${frac(rel.band_agreement_14d)} · ${rel.middle_band_14d.toLocaleString()} in the middle band`
+                  }
+                />
+                <Row
+                  label="Audit samples"
+                  value={
+                    rel.audit_samples === 0
+                      ? "No audit samples yet"
+                      : `${rel.audit_samples.toLocaleString()} latest · agreement ${frac(rel.audit_agreement)}`
+                  }
+                />
+              </>
+            )}
+            <Row
+              label="Classify calls avoided"
+              value={`${rel.classify_avoided_24h.toLocaleString()} in 24 h · ${rel.classify_avoided_7d.toLocaleString()} in 7 days`}
+            />
+          </Section>
           <Table framed>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
@@ -310,8 +352,8 @@ export function DataHealthView() {
   );
 }
 
-function storySummary(s: { new_stories: number; followups: number; inherited: number; llm_calls_avoided: number }) {
-  return `${s.new_stories.toLocaleString()} new · ${s.followups.toLocaleString()} follow-ups · ${s.inherited.toLocaleString()} inherited · ${s.llm_calls_avoided.toLocaleString()} LLM calls avoided`;
+function storySummary(s: { new_stories: number; followups: number; inherited: number; llm_calls_avoided: number; by_embedding: number }) {
+  return `${s.new_stories.toLocaleString()} new · ${s.followups.toLocaleString()} follow-ups · ${s.inherited.toLocaleString()} inherited · ${s.by_embedding.toLocaleString()} by embedding · ${s.llm_calls_avoided.toLocaleString()} LLM calls avoided`;
 }
 
 function Section({ title, tone, children }: { title: string; tone?: Tone; children: ReactNode }) {
@@ -391,6 +433,12 @@ function HowToRead() {
           model failed are parked and replayed automatically when the model works; the row counts how many are parked, how many
           are eligible for an automatic replay (attempt cap not reached and backoff elapsed) and how many were replayed
           automatically in 24 hours. The table compares each task over 24 hours and 7 days; a dash means no value was recorded.
+        </li>
+        <li>
+          <strong className="text-foreground">Relevance model</strong>: a small local classifier that decides whether a title
+          is threat news before the LLM is asked. In shadow it only measures agreement with the LLM; once the gate is on, titles
+          the model is confident about skip the LLM classify call, except for an audit sample that still goes to the LLM so
+          agreement stays measurable. The gate turns itself off if agreement on the latest audit samples drops.
         </li>
       </ul>
     </details>

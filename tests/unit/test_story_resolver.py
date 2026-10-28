@@ -101,3 +101,34 @@ def test_title_tie_break_lowest_id():
 def test_period_tokens_ignored():
     s = story(1, members=[("Ransomware 2026 Report September", "Threatmon")])
     assert resolve(keys("September 2026 Dark Web Issue Trend Report", "Asec"), [s], CFG) is None
+
+
+def _stub(score: float):
+    return lambda query, titles: [score] * len(titles)
+
+
+def test_embedding_match_only_when_enabled():
+    s = story(1, members=[("Alpha bravo charlie", "Other")])
+    k = keys("Delta echo foxtrot", "A")
+    assert resolve(k, [s], CFG, embedding_similarity=_stub(0.85)) is None
+    on = StorySettings(embedding_similarity=0.8)
+    assert resolve(k, [s], on) is None  # callable tak diberikan
+    assert resolve(k, [s], on, embedding_similarity=_stub(0.85)) == Match(1, "title_embedding")
+    assert resolve(k, [s], on, embedding_similarity=_stub(0.7)) is None
+
+
+def test_embedding_keeps_title_rule_when_tfidf_qualifies():
+    title = "Citrix confirms NetScaler zero-days exploited in attacks"
+    s = story(1, members=[(title, "Other")])
+    on = StorySettings(embedding_similarity=0.8)
+    got = resolve(keys(title + " now", "A"), [s], on, embedding_similarity=_stub(0.9))
+    assert got == Match(1, "title")
+
+
+def test_embedding_respects_other_source_and_cve_veto():
+    on = StorySettings(embedding_similarity=0.8)
+    same = story(1, members=[("Alpha bravo", "A")])
+    assert resolve(keys("Delta echo", "A"), [same], on, embedding_similarity=_stub(0.95)) is None
+    vetoed = story(2, {"CVE-2026-1"}, members=[("Alpha bravo", "Other")])
+    k = keys("Delta echo", "A", {"CVE-2026-2"})
+    assert resolve(k, [vetoed], on, embedding_similarity=_stub(0.95)) is None

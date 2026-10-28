@@ -55,6 +55,10 @@ _GUIDE_RE = tuple((label, re.compile(rf"\b{rx}(?!\w)", flags)) for label, rx, fl
 class IncidentVerdict:
     confirmed: bool
     reasons: tuple[str, ...]
+    victim: str | None = None
+    """Korban yang ditemukan aturan: nama dari LLM (di-strip) atau teks yang cocok dengan
+    `_VICTIM_PATTERN`; dipakai artikel yang lolos gate relevansi (P5) karena LLM classify
+    dilewati dan tidak ada `victim_name` lain."""
 
 
 def incident_verdict(title: str, text: str, victim_name: str | None) -> IncidentVerdict:
@@ -66,12 +70,12 @@ def incident_verdict(title: str, text: str, victim_name: str | None) -> Incident
     head = f"{title}\n{text[:_HEAD_WINDOW]}"
     reasons: list[str] = []
 
-    victim = False
+    victim: str | None = None
     if victim_name and victim_name.strip():
-        victim = True
+        victim = victim_name.strip()
         reasons.append("victim:llm")
-    elif _VICTIM_PATTERN.search(head):
-        victim = True
+    elif (m := _VICTIM_PATTERN.search(head)) is not None:
+        victim = m.group(1).strip()
         reasons.append("victim:pattern")
 
     verb = False
@@ -88,4 +92,8 @@ def incident_verdict(title: str, text: str, victim_name: str | None) -> Incident
             reasons.append(f"guide:{phrase}")
             break
 
-    return IncidentVerdict(confirmed=victim and verb and not guide, reasons=tuple(reasons))
+    return IncidentVerdict(
+        confirmed=victim is not None and verb and not guide,
+        reasons=tuple(reasons),
+        victim=victim,
+    )
