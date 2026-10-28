@@ -20,6 +20,7 @@ from typing import Literal
 from cti_core.celery_client import send_enrich_task
 from cti_core.db.models.article import RejectedArticle
 from cti_core.db.repositories.article import AsyncArticleRepo, AsyncRejectedArticleRepo
+from cti_core.db.repositories.assessment import apply_assessments_async
 from cti_core.db.repositories.auth import AsyncAuditLogRepo
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -86,7 +87,9 @@ async def restore_article(
             status_code=409,
             detail="Enrichment failed for this article: use Replay (admin), not Restore",
         )
-    await repo.restore(rejected, AsyncArticleRepo(session))
+    article = await repo.restore(rejected, AsyncArticleRepo(session))
+    # tanpa penilaian: chip kosong, dan tiap start API melihat credibility NULL -> recompute penuh
+    await apply_assessments_async(session, [article.id])
     await session.commit()
     return {"success": True}
 
