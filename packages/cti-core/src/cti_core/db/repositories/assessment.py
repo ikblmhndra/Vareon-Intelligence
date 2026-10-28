@@ -98,12 +98,13 @@ def facts_stmt(article_ids: Sequence[int]) -> Select[Any]:
     )
 
 
-def _override_int(overrides: Mapping[str, Any] | None, key: str) -> int | None:
-    """Nilai override yang bukan int (string, float, null, bool) dianggap TIDAK ada override,
-    bukan error: satu `overrides` JSONB yang rusak tidak boleh menggagalkan batch 500 artikel.
+def _override_int(overrides: Mapping[str, Any] | None, key: str, lo: int, hi: int) -> int | None:
+    """Nilai override yang bukan int (string, float, null, bool) atau di luar `lo..hi` dianggap
+    TIDAK ada override, bukan error: satu `overrides` JSONB yang rusak tidak boleh menggagalkan
+    batch 500 artikel (credibility 0/7 melanggar ck_articles_credibility_range).
     `bool` subclass `int` di Python, jadi dikecualikan eksplisit."""
     value = (overrides or {}).get(key)
-    if isinstance(value, bool) or not isinstance(value, int):
+    if isinstance(value, bool) or not isinstance(value, int) or not lo <= value <= hi:
         return None
     return value
 
@@ -123,8 +124,8 @@ def facts_from_row(row: RowMapping) -> ArticleFacts:
         confirmed_incident=bool(row["confirmed_incident"]),
         kev=bool(row["kev"]),
         poc=bool(row["poc"]),
-        credibility_override=_override_int(overrides, "credibility"),
-        confidence_override=_override_int(overrides, "confidence_score"),
+        credibility_override=_override_int(overrides, "credibility", 1, 6),
+        confidence_override=_override_int(overrides, "confidence_score", 0, 100),
     )
 
 

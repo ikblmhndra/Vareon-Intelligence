@@ -278,7 +278,7 @@ async def test_sync_and_async_agree(db_session: Session, async_db_session: Async
 @pytest.mark.asyncio
 async def test_malformed_override_is_ignored_not_fatal(async_db_session: AsyncSession) -> None:
     # Satu nilai `overrides` JSONB yang rusak tidak boleh menggagalkan batch 500 artikel: nilai
-    # bukan int (termasuk bool) dianggap tidak ada override.
+    # bukan int (termasuk bool) atau di luar rentang dianggap tidak ada override.
     s = async_db_session
     s.add(_sr("Hackernews", "C", "news"))
     bad = _article(
@@ -286,12 +286,23 @@ async def test_malformed_override_is_ignored_not_fatal(async_db_session: AsyncSe
         "Hackernews",
         overrides={"credibility": "high", "confidence_score": True},
     )
+    # di luar rentang: credibility 0/7 melanggar ck_articles_credibility_range
+    high = _article(
+        "https://ex.com/ov-high",
+        "Hackernews",
+        overrides={"credibility": 7, "confidence_score": 101},
+    )
+    low = _article(
+        "https://ex.com/ov-low", "Hackernews", overrides={"credibility": 0, "confidence_score": -1}
+    )
     good = _article("https://ex.com/ov-good", "Hackernews", overrides={"credibility": 2})
-    s.add_all([bad, good])
+    s.add_all([bad, high, low, good])
     await s.flush()
 
-    result = await apply_assessments_async(s, [bad.id, good.id])
+    result = await apply_assessments_async(s, [bad.id, high.id, low.id, good.id])
+    await s.flush()
 
-    assert result[bad.id].admiralty_code == "C4"
-    assert result[bad.id].confidence_score == 40
+    for art in (bad, high, low):
+        assert result[art.id].admiralty_code == "C4"
+        assert result[art.id].confidence_score == 40
     assert result[good.id].credibility == 2

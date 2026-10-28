@@ -80,7 +80,8 @@ class Article(TimestampMixin, Base):
     credibility: Mapped[int | None] = mapped_column(SmallInteger)
     """1-6 hasil tangga aturan `cti_core.confidence.assess`. NULL = belum dinilai (spec 3.1)."""
     priority_score: Mapped[int | None] = mapped_column(SmallInteger)
-    """Skor prioritas 0-100 untuk ranking (indeks `priority_score DESC NULLS LAST`)."""
+    """Skor prioritas untuk ranking: `confidence_score` + poin dampak (maks 76), jadi TIDAK
+    dibatasi 100 (indeks `priority_score DESC NULLS LAST`)."""
     score_reasons: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
     )
