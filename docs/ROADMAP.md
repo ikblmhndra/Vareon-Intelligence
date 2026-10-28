@@ -304,7 +304,7 @@ connecting** to other tooling. `git grep` results in `apps packages scrapers`: z
 **Asked (proposal)**: every IOC is enriched automatically (VirusTotal, AbuseIPDB, urlscan, Shodan/GreyNoise)
 with its score/verdict and its source stored.
 **Current state** (before #55): IOCs are extracted from articles (`cti-enrich`); there was no external enrichment, although
-the `iocs.enrichment` column, the API serialisation and the "TIP Enrichment" cards in `ioc-detail-dialog.tsx` already
+the `indicators.enrichment` column, the API serialisation and the "TIP Enrichment" cards in `ioc-detail-dialog.tsx` already
 existed: nothing wrote them.
 **Needed**: an API key + quota per service (stored through the same secret mechanism as
 `docs/SECRETS_ROTATION.md`), a decision on which IOCs are enriched (all vs only those linked to priority CVEs/actors)
@@ -318,7 +318,7 @@ and one service failing does not fail the others.
 - **Only the writer was missing**, so the work was backend-only: the periodic task `ioc.enrich_pending` (maintenance queue,
   every 15 minutes, no-op without a provider key) -> `cti_api.services.ioc_enrichment.enrich_pending` -> provider clients and
   card mapping in `ioc_providers`. The card shape is the one the UI already read (`key`, `name`, `verdict`, `score`, `raw`,
-  `tags`, `malware_families`, plus `checked_at`); `iocs.enrichment.updated_at` is shown by the dialog. See
+  `tags`, `malware_families`, plus `checked_at`); `indicators.enrichment.updated_at` is shown by the dialog. See
   `docs/ARCHITECTURE.md` section 3.7.
 - **Why a periodic task and not a pipeline stage**: the enrichment pipeline already costs 10-13 s + an LLM call per article;
   a slow or dead provider must not hold articles back.
@@ -1563,7 +1563,7 @@ Commits, in order (each one keeps `main` green; one migration):
    `enrich.article` with the five keyword arguments the sink sends (`title`, `url`, `posted_on` ISO or `None`, `source`, `scraper_id`),
    after `ensure_enrich_capacity`. Plan categories: `enqueue`, `skip_article_exists`, `stub_restored` (an analyst already restored it,
    so a replay would silently do nothing; handled only with an explicit `--replace-restored-stubs`, which deletes the stub article,
-   a cascade that nulls `iocs.article_id`). It prints a reminder to prove the LLM works first. A successful replay deletes the failed
+   a cascade that nulls `indicators.article_id`). It prints a reminder to prove the LLM works first. A successful replay deletes the failed
    row by itself (`persist.py:161-165`); a replay the classifier rejects keeps a row with `failure_kind` cleared; a replay that fails
    again keeps the old `rejected_at`.
 4. **API and the Newsroom tab.** `RejectedArticleOut.failure_kind`; `GET /api/filtered-articles?kind=unrelated|failed|all`;
@@ -1616,7 +1616,7 @@ Starts after PR-A is merged (it reads `failure_kind`).
 3. **Data health API.** Extract `build_scraper_health(session, redis, now)` and `_scheduler_status` from `routers/scraper.py`, then
    `GET /api/data-health` (`require_auth`, typed schemas, no `dict[str, object]`): `generated_at`; `enrichment` (failed in 24 h and 7 d,
    processed in 7 d, failures still waiting for a replay, last failure time); `queues` (`LLEN enrich` through `deps.get_redis` plus
-   `scraper.enrich_queue_max_depth`); `sources` (newest `articles.first_seen_at`, newest `tweets.fetched_at`, newest `iocs.last_seen_at`);
+   `scraper.enrich_queue_max_depth`); `sources` (newest `articles.first_seen_at`, newest `tweets.fetched_at`, newest `indicators.last_seen_at`);
    `ioc_enrichment` per type (total vs enriched, using `providers[].raw.skipped IS NULL` on the `enrichment` JSONB, not the `?` operator
    inside `text()`). A 60-second per-process cache like the other dashboards, registered in the autouse `_clear_in_process_caches`
    fixture; `_FakeRedis` in `tests/integration/conftest.py` needs an `llen`. CVE and ATT&CK freshness are not re-composed: the page
@@ -1661,10 +1661,10 @@ Starts after PR-A is merged (it reads `failure_kind`).
 ### Not in this item (known, not scheduled)
 
 - **Indexes and retention** (not urgent at this size): `scraper_runs (scraper_id, started_at)`; `articles.posted_on`/`created_at`,
-  `rejected_articles.rejected_at`, `iocs.last_seen_at`, `tweets.posted_on`, `scraper_items.url_hash`, the child FKs of `cve_*` and
-  `ioc_sources`; `pg_trgm` for `ILIKE '%x%'`; no retention for `rejected_articles`, `audit_log`, `ioc_sources`, `tweets`,
+  `rejected_articles.rejected_at`, `indicators.last_seen_at`, `tweets.posted_on`, `scraper_items.url_hash`, the child FKs of `cve_*` and
+  `indicator_sources`; `pg_trgm` for `ILIKE '%x%'`; no retention for `rejected_articles`, `audit_log`, `indicator_sources`, `tweets`,
   `ransomware_victims`, `package_vulns`; `threat_feed_entries` has no last-seen so a removed C2 never expires.
-- **Data quality**: `ioc_sources` has 108 duplicate `(ioc_id, url)` rows and no unique constraint; IOC upserts are check-then-insert
+- **Data quality**: `indicator_sources` has 108 duplicate `(indicator_id, url)` rows and no unique constraint; IOC upserts are check-then-insert
   (two workers can collide); IOC values are not case-normalised (10 duplicate groups); ATT&CK sync never flags techniques MITRE
   deprecates later; `cisa_kev_checked_at` is stamped only on KEV hits, so a NULL cannot tell "not KEV" from "never checked";
   `cve_tracker.registered_date` is NULL in every row yet sits in the digest window predicate.

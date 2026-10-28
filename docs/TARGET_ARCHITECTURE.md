@@ -16,7 +16,7 @@ current code shows what stops it being a CTI platform:
 | Area | Current state (verified in code) |
 |------|----------------------------------|
 | Unit of intelligence | The single article. No story/report entity; the same event from 16 sources is 16 rows. Two clustering pipelines (`services/cluster.py`, `services/campaign.py`) recompute at read time, one is never persisted. |
-| Entities | An actor lives in about 9 places with no shared id (`ta_whitelist`, `ta_watchlist`, `threat_actor_groups`, `attack_groups`, `ta_profiles`, string links in `article_threat_actors`, `ioc_threat_actors`, `cve_threat_actors`, `ransomware_victims.group_name`). No malware or campaign table. `cve_threat_actors` and `cve_ttps` are never written. |
+| Entities | An actor lives in about 9 places with no shared id (`ta_whitelist`, `ta_watchlist`, `threat_actor_groups`, `attack_groups`, `ta_profiles`, string links in `article_threat_actors`, `indicator_threat_actors`, `cve_threat_actors`, `ransomware_victims.group_name`). No malware or campaign table. `cve_threat_actors` and `cve_ttps` are never written. |
 | Relationships, evidence | None outside ATT&CK. Link tables carry no confidence or provenance. |
 | Markings | No TLP column anywhere; STIX export has no marking definitions and maps PIRs to `course-of-action`. |
 | Feedback | IOC TP/FP exists (1 IOC used), no sightings, no triage state on anything except CVEs. |
@@ -109,9 +109,9 @@ erDiagram
 | `stories` | id, title, first_seen, last_seen, `source_count`, `credibility` (1-6), `priority`, summary, summary_by, `tlp` | `clusters`, on-the-fly campaigns |
 | `entities` | id, `type` (intrusion_set, malware, tool, campaign, vulnerability, identity/victim, sector, country, attack_pattern), name, stix_id, description, first_seen, last_seen, `tlp` | `threat_actor_groups`, `attack_groups`, `attack_software`, `ta_whitelist` (becomes a flag), `ta_profiles` (becomes `entity_profiles` with draft/approved state), `monitored_people` |
 | `entity_aliases` | entity_id, alias, source | aliases scattered today |
-| `relationships` | src_entity, `type` (uses, targets, attributed-to, exploits, indicates, variant-of), dst_entity, confidence, first_seen, last_seen, `tlp` | `article_threat_actors`, `ioc_threat_actors`, `cve_threat_actors`, `cve_ttps`, `article_ttps` (as story→attack_pattern) |
+| `relationships` | src_entity, `type` (uses, targets, attributed-to, exploits, indicates, variant-of), dst_entity, confidence, first_seen, last_seen, `tlp` | `article_threat_actors`, `indicator_threat_actors`, `cve_threat_actors`, `cve_ttps`, `article_ttps` (as story→attack_pattern) |
 | `claims` | id, subject (relationship / indicator / story field), document_id, `span_text`, `method` (explicit, dictionary, inferred, llm, analyst), extractor_version, llm_call_id, confidence | `raw_enrichment` JSON as the only provenance |
-| `indicators` | type, value (refanged, normalized), `state` (active, expired, revoked, allowlisted), valid_from, valid_until, confidence, `tlp` | `iocs` (CVE moves out to `entities` type vulnerability) |
+| `indicators` | type, value (refanged, normalized), `state` (active, expired, revoked, allowlisted), valid_from, valid_until, confidence, `tlp` | `indicators` (renamed from `iocs` in 0.8.11; CVE moves out to `entities` type vulnerability) |
 | `sightings` | indicator_id, client_id, source (splunk...), count, first_seen, last_seen | none today |
 | `triage` | client_id, story_id, status (new, in_review, assessed, dismissed), assignee, due_at | none (CVE ack/tickets stay as they are) |
 | `assessments` | story_id or entity_id, client_id, key_judgment, admiralty (e.g. B2), recommended_action, `tlp`, author, status (draft, published) | PIR notes, ad-hoc newsletter text |
@@ -135,7 +135,7 @@ leaks and return 403 for an `X-Client-ID` the user does not belong to.
 
 All of it is mechanical: `articles` → `documents` + one story each (then re-clustered by the
 story resolver), actor strings → `entities` by alias match (unmatched become `entities` with
-`source=legacy`), `iocs` → `indicators` with refang dedup (merging `x[.]y` and `x.y`), raw LLM
+`source=legacy`), `iocs` → `indicators` (renamed in 0.8.11, refang dedup in 0.8.6) (merging `x[.]y` and `x.y`), raw LLM
 JSON kept as `claims` with `method=llm` so nothing is lost. Hand-written Alembic migrations, as
 the repo already does; `test_migrations_match_models.py` keeps them honest.
 
@@ -236,7 +236,7 @@ reliability; steps 4-7 move pages one at a time.
 | 1. Foundation, LLM measurement and self-healing | **Done in 0.8.5** | `llm_calls` table and instrumented client (every call site names its task); LLM section on Data health; `enrich.auto_replay` (10 min, canary/batch of 20, max 3 attempts with backoff) and `llm.purge_calls` beat tasks; gateway 400/401/403/404 parked as `config`. Prompt fixes: classify, TTP evidence from full text, newsletter metadata, TA profile from ATT&CK data, exec brief labels, CVE email computed fields, JSON mode. |
 | 1. Foundation, remaining | Not started | Persist-first enrichment (step 4, with `documents`), v2 API conventions. Still cross-client, to scope next: CVE list in TA profiles (`ta_profile.py`), CVE priority and campaign analysis (`list_by_cve_ids_any_client`), CVE mindmaps. |
 | 2. Sources and indicators, cheap wins | **Done in 0.8.6** | Structured sources skip LLM classify/TTP (`content_kind`); canonical IOC values (refang, lowercase); CVEs moved from IOCs to `article_cves`; allowlist flags instead of dropping, 124-domain seed; suppressed IOCs leave STIX, stats, campaigns, recap counts; default Admiralty grades per `content_kind` and article confidence from the source grade. Out of scope, still open: CVEs in `ArticleOut`, story dedup, deterministic extractors, local relevance model, credibility from corroboration. |
-| 2. Sources and indicators, remaining | Not started | Feed dates (0.8.3) are a prerequisite already in place. |
+| 2. Sources and indicators, remaining | **Partly done**: indicator state/expiry built for 0.8.11 (P7a) | `iocs` renamed to `indicators`; computed state (active, expired, revoked, allowlisted) from `valid_until` by type and `revoked_at`; analyst FP revokes, TP restores; TLP/PAP markings. The `sources` table (reliability as FK) and the feed side are not started (P7b, see `docs/superpowers/specs/2026-10-28-p7a-indicator-lifecycle-design.md` section 0). Feed dates (0.8.3) are a prerequisite already in place. |
 | 3. Extractors and claims | Not started | Software masking and longest-name matching for actors (0.8.3) are a first piece. |
 | 4-5 | Not started | |
 | 6. Relevance model + Admiralty | **Partly done**: relevance model in 0.8.9 (P5), Admiralty and priority built for 0.8.10 (P6) | Local relevance model gates the LLM classify. Every article has a source reliability grade, a computed credibility (corroboration, primary source, artefacts) and a stored, uncapped priority score; `sort=priority` ranks one article per story; a "Needs review" queue suggests source grades from data. Still open: alerts driven by priority, story-level credibility/priority, PIR and exposure in priority (P7). |

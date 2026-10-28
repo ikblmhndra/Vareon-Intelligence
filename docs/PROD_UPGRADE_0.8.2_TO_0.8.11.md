@@ -1,7 +1,7 @@
-# Prod upgrade runbook: 0.8.2 → 0.8.10
+# Prod upgrade runbook: 0.8.2 → 0.8.11
 
 Prod (`privy-admin@10.8.20.78`, compose project `niskala-intelligence`, repo `/home/privy-admin/Niskala-Intelligence`) runs
-**0.8.2**. One `make deploy` takes it to 0.8.10: it backs up Postgres, runs every migration below in order (`migrate` runs
+**0.8.2**. One `make deploy` takes it to 0.8.11: it backs up Postgres, runs every migration below in order (`migrate` runs
 first), then waits for health. The Deploy workflow is off, so this is a manual run by the user.
 
 The per-release sections below are kept in `docs/prod-upgrade/<version>.md` and concatenated here. Read-only SQL runs in a
@@ -12,9 +12,11 @@ Compose commands differ slightly between sections: use the same compose invocati
 
 1. **Before deploy (all read-only):** run every "Before deploy" block below (0.8.4 custom roles, 0.8.5 migration head and
    replay backlog, 0.8.6 baselines and overrides count, 0.8.7 article counts, 0.8.8 ATT&CK dictionary counts, 0.8.9 model
-   download reachability, `.env` keys and disk space, 0.8.10 confidence baseline). Write the results down: several
-   "After deploy" checks compare against them.
-2. **`.env`:** no new required key in any of these releases. Do **not** copy dev's `RELEVANCE__GATE_MIN_AGREEMENT=0.94` or
+   download reachability, `.env` keys and disk space, 0.8.10 confidence baseline, 0.8.11 IOC baseline and role check). Write the results down: several
+   "After deploy" checks compare against them. These run on 0.8.2, where the IOC tables are still `iocs` and `ioc_sources`;
+   after the deploy the same data lives in `indicators` and `indicator_sources` (0.8.11), so the After-deploy queries use
+   the new names.
+2. **`.env`:** no new required key in any of these releases (0.8.11 adds four optional `INDICATOR__TTL_*_DAYS` keys with defaults; leave them unset). Do **not** copy dev's `RELEVANCE__GATE_MIN_AGREEMENT=0.94` or
    `STORY__EMBEDDING_SIMILARITY=0.8`; leave `RELEVANCE__*` and `STORY__*` unset for the first deploy (see 0.8.7 and 0.8.9).
 3. **Make sure the prod LLM gateway works** (model name and credits). Dev's OpenRouter free quota ran out; with a dead
    gateway 0.8.5's auto-replay stays on one canary per 10 minutes and 0.8.9's first model may be rejected.
@@ -29,7 +31,9 @@ Compose commands differ slightly between sections: use the same compose invocati
    2. 0.8.8 Tier 1 backfill (`cti_enrich.backfill_tier1`, ~3 s/article; never during a deploy).
    3. 0.8.8 actor-name canonicalisation (`cti_enrich.canonicalise_actors --apply`).
 
-   0.8.9 needs nothing: the first model trains itself within an hour. 0.8.10 needs nothing either: each API process enqueues
+   0.8.9 needs nothing: the first model trains itself within an hour. 0.8.11 needs nothing either: the first API start
+   enqueues `indicator.reconcile_validity` once (backfills `valid_until`; check `job_state['indicator.ttl_fingerprint']`).
+   0.8.10 needs nothing either: each API process enqueues
    `confidence.recompute_all` once at start (one or two runs with `WEB_CONCURRENCY=2`; idempotent; P6 scoring for every
    article, overrides kept); check that `credibility is null` reaches 0.
 7. **Later, separately:** turn on `STORY__EMBEDDING_SIMILARITY=0.8` only after story dedup is checked on prod (0.8.9).
@@ -48,8 +52,9 @@ Compose commands differ slightly between sections: use the same compose invocati
 | 0.8.8 | `b8e2c4a6d1f3` Tier 1 sources + article_malware | `a7d3f1c9e5b2` | yes (source labels lost) |
 | 0.8.9 | `c4f1a9d27e6b` relevance_models | `b8e2c4a6d1f3` | yes |
 | 0.8.10 | `d7a3e1b94c52` article assessment columns + source content_kind | `c4f1a9d27e6b` | yes (computed scores lost; old confidence values only from the backup) |
+| 0.8.11 | `a9e4c7b1d3f6` `iocs` → `indicators` (+ child tables), lifecycle/marking columns, compatibility views | `d7a3e1b94c52` | yes (views, new columns dropped; tables renamed back; revocations and TLP/PAP lost) |
 
-Expected `alembic_version` after the deploy: **`d7a3e1b94c52`**. The only way back past `e7b2d4a9c6f1` is the Postgres
+Expected `alembic_version` after the deploy: **`a9e4c7b1d3f6`**. The only way back past `e7b2d4a9c6f1` is the Postgres
 backup `make deploy` writes before migrating.
 
 ---
@@ -194,13 +199,13 @@ Image rollback + `alembic downgrade b7e4c1a9d256` is possible. To stop replays w
 None.
 
 ### Before deploy
-1. Baseline to compare after deploy:
+1. Baseline to compare after deploy (run on 0.8.2, where the tables are still `iocs` and `ioc_sources`):
    ```sql
    SELECT count(distinct (s.article_id, upper(i.value))) FROM iocs i JOIN ioc_sources s ON s.ioc_id=i.id
     WHERE i.type='cve' AND s.article_id IS NOT NULL;                          -- = article_cves rows after deploy
    SELECT type, count(*) FROM iocs GROUP BY 1 ORDER BY 1;
    ```
-2. Nested defang values make `canonical()` need several passes (handled, up to 5); expect 0:
+2. Nested defang values make `canonical()` need several passes (handled, up to 5); expect 0 (on 0.8.2):
    ```sql
    SELECT count(*) FROM iocs WHERE value ~ '\[\[|\(\(|\{\{|\]\]|\)\)';
    ```
@@ -214,11 +219,11 @@ None.
    ```
 
 ### After deploy
-- `SELECT version_num FROM alembic_version;` shows the final head of the deploy (0.8.10 chain), and these return:
+- `SELECT version_num FROM alembic_version;` shows the final head of the deploy (0.8.11 chain; `iocs` is now `indicators`, so these queries use the new name), and these return:
   ```sql
-  SELECT count(*) FROM iocs WHERE type='cve';                      -- 0 (else: DELETE FROM iocs WHERE type = 'cve';)
+  SELECT count(*) FROM indicators WHERE type='cve';                -- 0 (else: DELETE FROM indicators WHERE type = 'cve';)
   SELECT count(*) FROM article_cves;                               -- = Before-deploy query 1
-  SELECT count(*) FROM iocs WHERE value ~* '\[\.\]|\(\.\)|\[dot\]|^hxxp|\[@\]|\[:\]';   -- 0
+  SELECT count(*) FROM indicators WHERE value ~* '\[\.\]|\(\.\)|\[dot\]|^hxxp|\[@\]|\[:\]';   -- 0
   SELECT count(*) FROM ioc_allowlist_entries WHERE added_by='seed';                    -- 124
   SELECT origin, count(*) FROM source_reliability_entries GROUP BY 1;                  -- ~100 default + existing analyst
   ```
@@ -388,7 +393,7 @@ select threat_actor, count(*) from article_threat_actors group by 1 order by 2 d
 ### After deploy (checks with expected results: SQL, logs, UI pages)
 
 ```sql
--- Objects exist (alembic head will be the 0.8.10 revision, so check objects, not alembic_version).
+-- Objects exist (alembic head will be the 0.8.11 revision, so check objects, not alembic_version).
 select table_name, column_name, column_default from information_schema.columns
  where table_name in ('article_ttps','article_threat_actors','article_industries') and column_name in ('source','evidence');
 -- expect 4 rows; defaults 'llm', 'dictionary', 'llm'; evidence has none
@@ -409,7 +414,7 @@ select t.source, count(*) from article_ttps t join articles a on a.id = t.articl
 
 ### One-off commands (backfills etc.: exact command, `--dry-run` first, expected numbers from dev, how long; mark each as needing the user's approval)
 
-Run AFTER the full 0.8.10 deploy is healthy, never during a deploy (a deploy restarts `worker-browser` and kills the run; re-running is safe). Use `worker-browser` for the backfill (Chromium for the `fetch_text` fallback).
+Run AFTER the full 0.8.11 deploy is healthy, never during a deploy (a deploy restarts `worker-browser` and kills the run; re-running is safe). Use `worker-browser` for the backfill (Chromium for the `fetch_text` fallback).
 
 1. **Tier 1 backfill — WRITE, needs the user's approval.** Add-only: adds explicit/keyword TTPs whose ID is missing, actors/malware not yet present (skips an actor whose alias form already exists), and keyword industries only when the article's sole industry is "General". Never touches LLM rows, overrides, `news_type`, confidence or alerts. No LLM calls.
 
@@ -447,7 +452,7 @@ Run AFTER the full 0.8.10 deploy is healthy, never during a deploy (a deploy res
 - Precision (silver standard: 2 LLM labellers, 92% agreement, no human labels): actor dictionary 71% vs LLM-era 70%; TTP explicit 99%, keyword 70% vs LLM 35%; industry keyword 5/5 vs LLM 39%; malware/tool 47% (weakest: generic OS tools, incidental mentions). Expect some "mentioned but not involved" actor/malware tags.
 - Leaderboards/PIR/watchlist show a split actor series until `canonicalise_actors --apply` runs; watchlist/profiles added later with alias names still will not match canonical article names.
 - Fetch failures (~22% on dev, mostly 403/bot-blocked sites): those articles get Tier 1 on title/summary only.
-- Interactions in the 0.8.2 -> 0.8.10 chain: 0.8.6 (P2) confidence recompute now counts only `explicit` + `llm` TTPs (in 0.8.10 they count as priority points, and explicit TTPs as an artefact for credibility); 0.8.7 (P3) story follow-ups skip LLM TTP but still get Tier 1; 0.8.9 (P5) depends on Tier 1: for gate-accepted articles (LLM classify skipped, `industries_impacted=[]`) industries come only from the Tier 1 keyword taxonomy and `confirmed_incident`/victim only from the Tier 1 incident rule, whose precision was measured on few cases (rule 2/2 vs LLM 9/24 on dev); expect fewer industries and confirmed incidents on gated articles.
+- Interactions in the 0.8.2 -> 0.8.11 chain: 0.8.6 (P2) confidence recompute now counts only `explicit` + `llm` TTPs (in 0.8.10 they count as priority points, and explicit TTPs as an artefact for credibility); 0.8.7 (P3) story follow-ups skip LLM TTP but still get Tier 1; 0.8.9 (P5) depends on Tier 1: for gate-accepted articles (LLM classify skipped, `industries_impacted=[]`) industries come only from the Tier 1 keyword taxonomy and `confirmed_incident`/victim only from the Tier 1 incident rule, whose precision was measured on few cases (rule 2/2 vs LLM 9/24 on dev); expect fewer industries and confirmed incidents on gated articles.
 - Article modal at a true 375 px viewport is untested.
 
 ---
@@ -885,3 +890,243 @@ articles (pages of 500, one facts query per page).
   the deploy.
 - **Follow-ups:** record the live distribution (After deploy checks 4-5) in `docs/LLM_ASSIST_REDESIGN.md`; review the
   "Needs review" suggestions with an analyst.
+
+---
+
+## 0.8.11 — P7a indicator lifecycle and TLP/PAP (`iocs` becomes `indicators`)
+
+Release: not yet tagged (branch `nameless/p7-cti-model-165075`, merge to `origin/Dev` for the dev test, then PR to `main`).
+Spec: `docs/superpowers/specs/2026-10-28-p7a-indicator-lifecycle-design.md`. Progress record:
+`docs/LLM_ASSIST_REDESIGN.md` ("Built for 0.8.11").
+
+**Dev verification is pending.** P7a has not been deployed to the dev instance yet, so there are no dev runtime numbers
+(migration time, reconcile time, live state distribution). What is verified: the migration chain ran from an empty
+database to `a9e4c7b1d3f6` locally, and the migration up/down tests and the full test suite pass. The dev baseline below
+(read-only, 2026-10-28, dev on 0.8.9/0.8.10 data) predates this release. The dev result will be filled in after the dev
+test. Anything not measured is marked **projection**.
+
+### What changes in prod
+
+- **Table rename (instant, ids and rows kept).** `iocs` → `indicators`; `ioc_sources`, `ioc_tags`, `ioc_threat_actors`,
+  `ioc_feedback` → `indicator_sources`, `indicator_tags`, `indicator_threat_actors`, `indicator_feedback`; their `ioc_id`
+  column → `indicator_id`. Sequences, constraints and indexes are renamed with them. `ioc_allowlist_entries` keeps its name.
+  The `/api/iocs` routes do not change.
+- **Compatibility views.** The migration creates five views with the old names (`iocs`, `ioc_sources`, `ioc_tags`,
+  `ioc_threat_actors`, `ioc_feedback`; `indicator_id AS ioc_id`) so old read-only SQL keeps working. They are read-only by
+  convention and **deprecated since 0.8.11**; a later release drops them. Do not write through them and do not point
+  new queries at them.
+- **Lifecycle columns on `indicators`.** `valid_from` (NOT NULL, backfilled from `first_seen_at`, server default `now()`),
+  `valid_until`, `revoked_at`, `revoked_by`, `tlp`, `pap` (both with CHECK constraints), plus an index on `valid_until`.
+  **State is computed, never stored**: revoked (`revoked_at` set), allowlisted (`auto_suppressed`), expired
+  (`valid_until` in the past) or active.
+- **Expiry by type.** IP 30 days, domain 90, URL 90, email 90, hashes never expire. Set on ingest; existing rows get their
+  `valid_until` from the reconcile task (next bullet), so right after the migration non-hash indicators read as
+  non-expiring until it has run.
+- **Reconcile task.** New Celery task `indicator.reconcile_validity` (`maintenance` queue, picked up by `worker`) and beat
+  entry `indicator-reconcile-validity` (daily 04:15; beat restarts on deploy). The API `lifespan` enqueues it only when
+  `job_state['indicator.ttl_fingerprint']` is missing or differs from the current TTL settings, so it runs **once right
+  after the first 0.8.11 start** (which backfills `valid_until`) and again whenever a TTL setting changes. It is
+  idempotent; with `WEB_CONCURRENCY=2` it can be enqueued twice and the second run is a no-op.
+- **Behaviour users will notice.**
+  - `POST /api/iocs/{id}/feedback` now needs `manage_ioc`. The built-in `analyst` role loses the TP/FP buttons; `admin`
+    and `superadmin` keep them. The web hides the buttons through `useCan("manage_ioc")`.
+  - **FP revokes** the indicator: it leaves the STIX export, IOC stats, dashboard counts, campaigns, recap counts and the
+    provider-enrichment queue, and it no longer counts as IOC/artefact evidence in the P6 assessment credibility and the
+    source review (the P6 effect lands on the next recompute of the affected articles). **TP restores** it.
+  - New `PATCH /api/iocs/{id}/marking` sets TLP/PAP.
+  - The IOC page shows the indicator state and TLP/PAP.
+  - The STIX IOC export carries `valid_until` and TLP 2.0 marking definitions, and leaves revoked indicators out.
+- **Backups.** `tools/ops/pg_backup.py` verifies `KEY_TABLES` containing both `iocs` and `indicators`; a table that does
+  not exist yet is skipped, so the pre-migration backup (taken by `make deploy`) checks `iocs` and later ones check
+  `indicators`.
+
+### Migrations (revision ids, reversible or not, rough duration/row counts seen on dev)
+
+| Revision | Down revision | What | Reversible | Dev |
+|---|---|---|---|---|
+| `a9e4c7b1d3f6` (`iocs_to_indicators`) | `d7a3e1b94c52` (0.8.10 head) | Renames the five tables, `ioc_id` → `indicator_id`, sequences, constraints and indexes; adds `valid_from` (NOT NULL, backfilled from `first_seen_at`, default `now()`), `valid_until`, `revoked_at`, `revoked_by`, `tlp`, `pap` (CHECKs `ck_indicators_tlp`, `ck_indicators_pap`) and index `ix_indicators_valid_until`; creates the five compatibility views | yes: `downgrade` drops the views, drops the new columns, then reverses the renames. The migration up/down tests cover it (ids and child rows identical; `iocs` is a table again) | not run on dev yet. On a fresh DB the full chain to `a9e4c7b1d3f6` ran locally. **Projection:** seconds; renames are metadata-only, the `valid_from` backfill and the new index scan `indicators` once (about 5,500 rows on dev) |
+
+This must be the last revision in the chain. After the deploy, `alembic_version` should read `a9e4c7b1d3f6`. The prod jump
+is 0.8.2 → 0.8.11 in one `make deploy`, so this runs right after `d7a3e1b94c52` in the same `migrate` step.
+
+### Settings / .env (new keys, recommended PROD values, defaults)
+
+Four **optional** keys. All have defaults, so **prod needs no `.env` change** and the app starts without them:
+
+| Key | Default | Meaning |
+|---|---|---|
+| `INDICATOR__TTL_IP_DAYS` | `30` | IP indicator lifetime |
+| `INDICATOR__TTL_DOMAIN_DAYS` | `90` | Domain lifetime |
+| `INDICATOR__TTL_URL_DAYS` | `90` | URL lifetime |
+| `INDICATOR__TTL_EMAIL_DAYS` | `90` | Email lifetime |
+
+Leave them unset for the first deploy. Changing one later takes effect after the API restarts (the fingerprint changes,
+which enqueues the reconcile task) and needs the worker restarted too, since settings are read at start.
+`.env.example` and `.env.prod.template` already list the keys.
+
+### Before deploy (read-only checks with expected results)
+
+Open the read-only session:
+
+```bash
+ssh privy-admin@10.8.20.78
+docker exec -it -e "PGOPTIONS=-c default_transaction_read_only=on" niskala-intelligence-postgres-1 sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+```
+
+1. **Baseline of the IOC table (on 0.8.2: the table is still `iocs`).** Write the numbers down; After deploy compares
+   against them. The prod baseline is **unknown**: read it now.
+
+   ```sql
+   SELECT count(*) AS iocs_total,
+          count(*) FILTER (WHERE auto_suppressed) AS allowlisted
+   FROM iocs;
+   ```
+
+   After deploy, `indicators` must have the same total, and `allowlisted` must match.
+   For reference, dev (0.8.9/0.8.10 data, read-only, 2026-10-28): 5,281 active / 157 expired / 29 allowlisted / 0 revoked
+   (plus IOCs added since). "Expired" there is a projection of the TTL rule on `last_seen_at`; prod will show 0 expired
+   until the reconcile task has run.
+
+2. **Who loses the TP/FP buttons.** The built-in `analyst` role loses them; `admin` and `superadmin` keep them. Roles are
+   stored in `roles.permissions` (JSONB list), so list the roles that can see IOCs but not manage them, and the users on
+   them, so you can tell those users (or grant `manage_ioc` to the role):
+
+   ```sql
+   SELECT r.name, r.is_system, count(u.id) AS users
+   FROM roles r LEFT JOIN users u ON u.role_name = r.name
+   WHERE r.permissions ? 'view_ioc' AND NOT r.permissions ? 'manage_ioc'
+   GROUP BY 1, 2 ORDER BY 1;
+   ```
+
+3. **External readers of `iocs`.** Anything outside the app that names `iocs` (hand-run SQL, a BI dashboard, a Splunk DB
+   Connect input) keeps working through the compatibility views but should be moved to `indicators` before the views are
+   dropped. List them now.
+
+### After deploy (checks with expected results: SQL, logs, UI pages)
+
+Run SQL in the read-only `psql` session shown above.
+
+1. **Version and migration head.**
+   - `GET /healthz` returns `"version": "0.8.11"`.
+   - `select version_num from alembic_version;` returns `a9e4c7b1d3f6`.
+2. **The reconcile task ran.**
+
+   ```bash
+   cd /home/privy-admin/Niskala-Intelligence && docker compose -p niskala-intelligence logs api --since 30m | grep -E "reconcile_validity_enqueue_failed|api_startup_done"
+   cd /home/privy-admin/Niskala-Intelligence && docker compose -p niskala-intelligence logs worker --since 30m | grep -E "indicator_validity_reconciled|indicator\.reconcile_validity"
+   ```
+
+   Expected: `api_startup_done` and **no** `reconcile_validity_enqueue_failed`; one `indicator_validity_reconciled` line
+   in the worker log (a second, from the second API process, is normal).
+3. **The TTL fingerprint is stored.** Expected: one non-empty row.
+
+   ```sql
+   SELECT value FROM job_state WHERE key = 'indicator.ttl_fingerprint';
+   ```
+
+4. **State distribution.** Expected: totals equal Before deploy check 1; `revoked` is 0; `allowlisted` equals the
+   Before-deploy `allowlisted` count; `expired` is above 0 only after the reconcile task finished (**projection**: the
+   share of IP indicators not seen for 30 days and domains/URLs/emails not seen for 90 days, similar to dev's 157 of
+   about 5,500).
+
+   ```sql
+   SELECT CASE WHEN revoked_at IS NOT NULL THEN 'revoked'
+               WHEN auto_suppressed THEN 'allowlisted'
+               WHEN valid_until < now() THEN 'expired'
+               ELSE 'active' END AS state,
+          count(*)
+   FROM indicators GROUP BY 1;
+   ```
+
+5. **Compatibility view works and equals the table.** Expected: both numbers equal.
+
+   ```sql
+   SELECT count(*) FROM iocs;
+   SELECT count(*) FROM indicators;
+   SELECT count(*) FROM ioc_sources;   -- equals indicator_sources
+   SELECT count(*) FROM indicator_sources;
+   ```
+
+6. **Every row has a start, and non-hash rows an end.** Expected: `no_valid_from = 0`; `no_valid_until` is 0 for IP,
+   domain, URL and email after the reconcile task, and nonzero only for hashes.
+
+   ```sql
+   SELECT count(*) FILTER (WHERE valid_from IS NULL) AS no_valid_from,
+          count(*) FILTER (WHERE valid_until IS NULL AND type IN ('ip', 'domain', 'url', 'email')) AS no_valid_until
+   FROM indicators;
+   ```
+
+7. **IOC page smoke check** (light and dark):
+   - IOC Management loads, rows show a state badge and TLP/PAP.
+   - Open an indicator: TLP/PAP can be changed by a `manage_ioc` user (`PATCH /api/iocs/{id}/marking`).
+   - As `admin`/`superadmin`, the TP and FP buttons are visible; as `analyst`, they are not.
+   - Marking a test indicator FP revokes it (state `revoked`, out of the default list and stats); TP restores it. Use a
+     throwaway indicator and restore it, since this writes.
+   - `GET /api/stix/iocs` contains `valid_until` and a TLP marking-definition reference, and no revoked indicator.
+8. **Nothing else broke.** The Data health page and the `ioc.enrich_pending` log (every 15 minutes) show no
+   `relation "iocs" does not exist` or `column "ioc_id"` errors:
+
+   ```bash
+   cd /home/privy-admin/Niskala-Intelligence && docker compose -p niskala-intelligence logs api worker --since 30m | grep -Ei 'relation "iocs|ioc_id|UndefinedTable'
+   ```
+
+   Expected: no output.
+
+### One-off commands (recompute/backfills: exact command, `--dry-run` first, expected numbers from dev, how long; mark each as needing the user's approval)
+
+Normally **nothing to run**: the first API start enqueues `indicator.reconcile_validity` by itself. Run the command below
+only if After deploy check 2 shows `reconcile_validity_enqueue_failed` or check 3 returns no row.
+
+There is **no `--dry-run`** (the task is idempotent and only fills `valid_until`; it never touches revoked rows). Read-only
+preview: After deploy check 6.
+
+**Manual reconcile (NEEDS USER APPROVAL; WRITE: sets `valid_until` on non-hash indicators).** It enqueues the same task
+the bootstrap sends; the `worker` runs it.
+
+```bash
+cd /home/privy-admin/Niskala-Intelligence
+docker compose -p niskala-intelligence exec -T api python -c "from cti_core.celery_client import send_reconcile_validity; send_reconcile_validity()"
+```
+
+Expected: `indicator_validity_reconciled` in the `worker` log and check 6 clean. Duration: not measured on dev.
+**Projection:** seconds for about 5,500 rows.
+
+### Rollback / if it goes wrong
+
+- **Code rollback.** `deploy.sh` restores the `:prev` images on failure and never downgrades the DB. **0.8.10 code reads the
+  old table names, so a code rollback with the migration applied breaks the IOC pages and ingest** (the compatibility
+  views are read-only and the old code writes to `iocs`). If the app is rolled back to 0.8.10, also run the DB downgrade
+  below. If only the 0.8.11 *deploy* failed before `migrate` ran, nothing needs undoing.
+- **DB downgrade** (WRITE, needs approval, only after the app is stopped or back on 0.8.10): `alembic downgrade d7a3e1b94c52`.
+  It drops the five views, drops the new columns and index, then renames the tables back, so `iocs` is a table again with
+  the same ids. Revocations (`revoked_at`) and TLP/PAP set in 0.8.11 are lost; `valid_until` is recomputed after the next
+  upgrade.
+- **Reconcile stuck or failing:** check the `worker` log for `indicator`; fix the cause and re-run the manual reconcile
+  above (idempotent).
+- **A hand-run query fails with `relation "iocs" does not exist`:** it ran after a downgrade-and-upgrade cycle that dropped
+  the views, or on a database that never got the migration; use `indicators`.
+
+### Known risks and follow-ups
+
+- **R1: SQL outside the app that names `iocs`.** Covered by the compatibility views and by rewriting this runbook's
+  post-0.8.11 queries to `indicators`; queries that run before the deploy (on 0.8.2) keep `iocs`. The views are
+  **deprecated and will be dropped in a later release**; that release's runbook must say so and list the external readers
+  found in Before deploy check 3. `test_migrations_match_models` stays green with the views present.
+- **R2: `pg_backup.py` verification.** `KEY_TABLES` lists both names and skips the one that does not exist. A backup taken
+  after the migration verifies `indicators`; if someone later removes `iocs` from the list, keep `indicators`.
+- **R3: merge conflicts with unmerged IOC branches** (`feat/ioc-enrichment-abuseipdb`,
+  `feat/ioc-enrichment-virustotal-otx`, `claude/react-retheme-ui-ux-pro-max-00bc1b`). The rename is the first commit and
+  purely mechanical, so a rebase conflict is a name substitution. Ask whether those branches are still to land.
+- **R4: `valid_until` is NULL between the migration and the first reconcile run.** Non-hash indicators read as
+  non-expiring for the minutes between `migrate` and the first API start. No feed exists before P7b, so nothing downstream
+  consumes expiry yet. After deploy checks 3 and 6 prove the backfill.
+- **R5: `manage_ioc` is now required for TP/FP.** A user with only `view_ioc` loses the buttons (the built-in `analyst`
+  role). All dev users are superadmin today, so dev will not show it; tell prod analysts before the deploy or grant
+  `manage_ioc` to the role.
+- **R6: downgrade and the compatibility views.** The views occupy the old table names, so the downgrade drops them first.
+  This is covered by the migration up/down test.
+- **P6 recompute after FP.** A revoked indicator stops counting as IOC/artefact evidence only when the article is next
+  assessed (`confidence.refresh_stories`, the daily `confidence.recompute_all` at 03:20, or a manual recompute).
+- **Follow-ups:** fill the dev result (state distribution, reconcile duration) after the dev test; record the prod baseline
+  and After-deploy numbers; drop the compatibility views in a later release; P7b (scoped API tokens, `/api/v2/indicators`,
+  TAXII 2.1) builds on this release.
