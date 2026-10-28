@@ -220,3 +220,10 @@ def test_secrets_llm_url_allowed_hosts_reads_its_env_as_is(
     s = _settings(monkeypatch, SECRETS_LLM_URL_ALLOWED_HOSTS=hosts)
 
     assert s.secrets_llm_url_allowed_hosts == hosts
+
+
+def test_indicator_ttl_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    """P7a: TTL indikator punya default, jadi tidak ada key `.env` baru yang wajib."""
+    s = _settings(monkeypatch)
+    assert s.indicator.ttl_ip_days == 30
+    assert s.indicator.ttl_domain_days == 90

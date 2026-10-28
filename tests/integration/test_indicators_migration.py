@@ -14,6 +14,7 @@ import pytest
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 _VERSIONS = pathlib.Path(__file__).resolve().parents[2] / "alembic" / "versions"
@@ -132,3 +133,32 @@ def test_downgrade_restores_iocs(old_schema: Session) -> None:
     assert old_schema.execute(text("SELECT id FROM iocs ORDER BY id")).scalars().all() == ids
     for table in ("ioc_sources", "ioc_tags", "ioc_threat_actors", "ioc_feedback"):
         assert old_schema.execute(text(f"SELECT ioc_id FROM {table}")).scalars().all() == [ids[0]]
+
+
+def test_new_columns_backfill(old_schema: Session) -> None:
+    _run(old_schema, "upgrade")
+
+    rows = old_schema.execute(
+        text(
+            "SELECT valid_from = first_seen_at, valid_until IS NULL, tlp, pap, revoked_at IS NULL"
+            " FROM indicators"
+        )
+    ).all()
+    assert rows == [(True, True, "clear", "clear", True)] * 2
+    # view kompatibilitas dibuat sesudah kolom baru, jadi ikut membawanya
+    assert old_schema.execute(text("SELECT tlp FROM iocs LIMIT 1")).scalar_one() == "clear"
+
+    with pytest.raises(IntegrityError), old_schema.begin_nested():
+        old_schema.execute(text("UPDATE indicators SET tlp = 'purple'"))
+    with pytest.raises(IntegrityError), old_schema.begin_nested():
+        old_schema.execute(text("UPDATE indicators SET pap = 'purple'"))
+
+    _run(old_schema, "downgrade")
+    cols = (
+        old_schema.execute(
+            text("SELECT column_name FROM information_schema.columns WHERE table_name = 'iocs'")
+        )
+        .scalars()
+        .all()
+    )
+    assert "valid_from" not in cols

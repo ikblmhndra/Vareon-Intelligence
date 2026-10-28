@@ -12,6 +12,7 @@ from typing import Any
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Integer,
@@ -19,9 +20,12 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    and_,
+    case,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from cti_core.db.base import Base, TimestampMixin
@@ -29,7 +33,11 @@ from cti_core.db.base import Base, TimestampMixin
 
 class Indicator(TimestampMixin, Base):
     __tablename__ = "indicators"
-    __table_args__ = (UniqueConstraint("type", "value", name="uq_indicators_type_value"),)
+    __table_args__ = (
+        UniqueConstraint("type", "value", name="uq_indicators_type_value"),
+        CheckConstraint("tlp IN ('clear', 'green', 'amber', 'amber+strict', 'red')", name="tlp"),
+        CheckConstraint("pap IN ('clear', 'green', 'amber', 'red')", name="pap"),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
 
@@ -64,9 +72,57 @@ class Indicator(TimestampMixin, Base):
     auto_suppressed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     suppression_reason: Mapped[str | None] = mapped_column(Text)
 
+    valid_from: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    """Awal masa berlaku; diisi dari `first_seen_at` oleh migrasi dan tidak berubah sesudahnya."""
+    valid_until: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
+    """`last_seen_at` + TTL tipe (cti_core.indicator.validity); `NULL` = tidak kedaluwarsa."""
+    revoked_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    """Diisi saat analis menandai FP; final, tidak dihapus oleh ingest."""
+    revoked_by: Mapped[str | None] = mapped_column(String(200))
+    tlp: Mapped[str] = mapped_column(String(12), nullable=False, server_default="clear")
+    """TLP 2.0: clear | green | amber | amber+strict | red."""
+    pap: Mapped[str] = mapped_column(String(8), nullable=False, server_default="clear")
+    """PAP: clear | green | amber | red."""
+
     enrichment: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     """Payload enrichment provider (mis. hasil lookup OTX/AbuseIPDB) --
     lihat enrichmentTemplate.py di repo lama. Cair, gak dinormalisasi."""
+
+    @hybrid_property
+    def state(self) -> str:
+        """revoked > allowlisted > expired > active. Dihitung, bukan disimpan: kedaluwarsa terjadi
+        karena waktu berlalu, jadi kolom tersimpan butuh sweep dan bisa basi."""
+        if self.revoked_at is not None:
+            return "revoked"
+        if self.auto_suppressed:
+            return "allowlisted"
+        if self.valid_until is not None and self.valid_until < datetime.datetime.now(datetime.UTC):
+            return "expired"
+        return "active"
+
+    @state.inplace.expression
+    @classmethod
+    def _state_expression(cls) -> Any:
+        return case(
+            (cls.revoked_at.is_not(None), "revoked"),
+            (cls.auto_suppressed.is_(True), "allowlisted"),
+            (cls.valid_until < func.now(), "expired"),  # NULL < now() bukan true: tak kedaluwarsa
+            else_="active",
+        )
+
+    @hybrid_property
+    def usable(self) -> bool:
+        """Dipakai konsumen bila tidak di-allowlist dan tidak dicabut; kedaluwarsa tetap boleh."""
+        return not self.auto_suppressed and self.revoked_at is None
+
+    @usable.inplace.expression
+    @classmethod
+    def _usable_expression(cls) -> Any:
+        return and_(cls.auto_suppressed.is_(False), cls.revoked_at.is_(None))
 
     sources: Mapped[list[IndicatorSource]] = relationship(
         back_populates="indicator", cascade="all, delete-orphan", lazy="selectin"

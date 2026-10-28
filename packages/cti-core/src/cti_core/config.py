@@ -235,6 +235,21 @@ class StorySettings(_StrictModel):
     story yang tidak terkait."""
 
 
+class IndicatorSettings(_StrictModel):
+    """Masa berlaku indikator per tipe (P7a, spec 3.1): `valid_until = last_seen_at + TTL`. Hash
+    tidak punya TTL. Semua field punya default, jadi tidak ada key `.env` baru yang wajib; ganti
+    nilai butuh restart worker dan dihitung ulang oleh task reconcile."""
+
+    ttl_ip_days: int = Field(default=30, ge=1)
+    """TTL IP: alamat cepat berpindah tangan, jadi paling pendek."""
+    ttl_domain_days: int = Field(default=90, ge=1)
+    """TTL domain."""
+    ttl_url_days: int = Field(default=90, ge=1)
+    """TTL URL (juga `url_with_path`)."""
+    ttl_email_days: int = Field(default=90, ge=1)
+    """TTL alamat email."""
+
+
 class RelevanceSettings(_StrictModel):
     """Model relevansi lokal (P5, spec 5 dan 8): classifier ringan di atas embedding yang
     menggantikan sebagian panggilan LLM classify. Semua field punya default, jadi tidak ada key
@@ -411,6 +426,7 @@ class Settings(BaseSettings):
     worker: WorkerSettings = Field(default_factory=WorkerSettings)
     cve_mirror: CveMirrorSettings = Field(default_factory=CveMirrorSettings)
     story: StorySettings = Field(default_factory=StorySettings)
+    indicator: IndicatorSettings = Field(default_factory=IndicatorSettings)
     relevance: RelevanceSettings = Field(default_factory=RelevanceSettings)
 
     cors_origins: str = "http://localhost:3000"

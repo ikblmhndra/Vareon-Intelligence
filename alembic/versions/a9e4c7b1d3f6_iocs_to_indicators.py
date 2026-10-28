@@ -20,6 +20,8 @@ Create Date: 2026-10-29 09:00:00.000000
 
 from collections.abc import Sequence
 
+import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "a9e4c7b1d3f6"
@@ -95,6 +97,32 @@ def upgrade() -> None:
     for old, new in _INDEXES:
         op.execute(f"ALTER INDEX {old} RENAME TO {new}")
 
+    # --- Kolom siklus hidup (P7a). `valid_until` sengaja tidak diisi di sini: task reconcile yang
+    # mengisinya supaya nilai TTL hanya hidup di satu tempat (cti_core.indicator.validity). ---
+    op.add_column("indicators", sa.Column("valid_from", sa.DateTime(timezone=True), nullable=True))
+    op.execute("UPDATE indicators SET valid_from = first_seen_at")
+    op.alter_column("indicators", "valid_from", nullable=False, server_default=sa.text("now()"))
+    op.add_column("indicators", sa.Column("valid_until", sa.DateTime(timezone=True)))
+    op.add_column("indicators", sa.Column("revoked_at", sa.DateTime(timezone=True)))
+    op.add_column("indicators", sa.Column("revoked_by", sa.String(200)))
+    op.add_column(
+        "indicators",
+        sa.Column("tlp", sa.String(12), nullable=False, server_default="clear"),
+    )
+    op.add_column(
+        "indicators",
+        sa.Column("pap", sa.String(8), nullable=False, server_default="clear"),
+    )
+    op.create_check_constraint(
+        op.f("ck_indicators_tlp"),
+        "indicators",
+        "tlp IN ('clear', 'green', 'amber', 'amber+strict', 'red')",
+    )
+    op.create_check_constraint(
+        op.f("ck_indicators_pap"), "indicators", "pap IN ('clear', 'green', 'amber', 'red')"
+    )
+    op.create_index("ix_indicators_valid_until", "indicators", ["valid_until"])
+
     # --- View kompatibilitas: SELALU terakhir (kolom baru ditambahkan sebelum blok ini) ---
     op.execute("CREATE VIEW iocs AS SELECT * FROM indicators")
     op.execute(f"COMMENT ON VIEW iocs IS '{_VIEW_COMMENT}'")
@@ -111,6 +139,13 @@ def downgrade() -> None:
     for child in _CHILDREN:
         op.execute(f"DROP VIEW {child}")
     op.execute("DROP VIEW iocs")
+
+    # Kolom siklus hidup dibuang sesudah view (view `SELECT *` bergantung padanya), sebelum rename.
+    op.drop_index("ix_indicators_valid_until", table_name="indicators")
+    op.drop_constraint(op.f("ck_indicators_pap"), "indicators", type_="check")
+    op.drop_constraint(op.f("ck_indicators_tlp"), "indicators", type_="check")
+    for column in ("pap", "tlp", "revoked_by", "revoked_at", "valid_until", "valid_from"):
+        op.drop_column("indicators", column)
 
     for old, new in _INDEXES:
         op.execute(f"ALTER INDEX {new} RENAME TO {old}")
