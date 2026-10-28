@@ -22,6 +22,9 @@ log = structlog.get_logger()
 WATERMARK_KEY = "cti:confidence:refresh_stories:watermark"
 """Kunci Redis: ISO timestamp UTC awal run sukses terakhir `confidence.refresh_stories`."""
 _DEFAULT_LOOKBACK = datetime.timedelta(hours=24)
+# `stories.updated_at = now()` = waktu MULAI transaksi enrich (terbuka selama panggilan LLM, tanpa
+# time_limit Celery), jadi query mundur 15 menit agar commit yang telat tidak terlewat.
+_WATERMARK_OVERLAP = datetime.timedelta(minutes=15)
 
 
 @app.task(name="confidence.recompute_source", queue=QUEUE_MAINTENANCE)
@@ -79,7 +82,7 @@ async def refresh_stories(
     else:
         since = now - _DEFAULT_LOOKBACK
 
-    story_ids = await AsyncStoryRepo(session).updated_since(since)
+    story_ids = await AsyncStoryRepo(session).updated_since(since - _WATERMARK_OVERLAP)
     updated = 0
     if story_ids:
         result = await recompute_all_confidence(

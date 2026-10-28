@@ -141,3 +141,28 @@ async def test_refresh_redis_down_raises_without_updates(async_db_session: Async
         await _task().refresh_stories(s, DownRedis(), datetime.datetime.now(datetime.UTC))
 
     assert await _credibility(s, art_id) is None
+
+
+async def test_refresh_overlaps_watermark_for_late_commits(async_db_session: AsyncSession) -> None:
+    """`updated_at = now()` = waktu MULAI transaksi enrich; commit yang telat (sesudah query
+    run sebelumnya) punya `updated_at` < watermark tapi tetap harus terambil."""
+    s = async_db_session
+    now = datetime.datetime.now(datetime.UTC)
+    watermark = now - datetime.timedelta(minutes=10)
+    story = await _story(s)
+    art = await AsyncArticleRepo(s).upsert(
+        url="https://example.com/late", title="L", source="S", story_id=story.id
+    )
+    art_id = art.id
+    await s.execute(
+        update(Story)
+        .where(Story.id == story.id)
+        .values(updated_at=watermark - datetime.timedelta(minutes=2))
+    )
+    await s.commit()
+    redis_client = FakeRedis()
+    redis_client.set(_task().WATERMARK_KEY, watermark.isoformat())
+
+    await _task().refresh_stories(s, redis_client, now)
+
+    assert await _credibility(s, art_id) is not None
