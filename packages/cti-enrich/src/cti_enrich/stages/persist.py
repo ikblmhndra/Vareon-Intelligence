@@ -166,6 +166,8 @@ def persist(
     merged_ttps: Sequence[NormalizedTTP] | None = None,
     industries: tuple[list[str], str] | None = None,
     relevance: RelevanceResult | None = None,
+    tlp: str = "clear",
+    pap: str = "clear",
 ) -> Article:
     """`story` (P3) menempelkan artikel ke story-nya di transaksi yang sama: `story_id`/
     `story_match` ikut di-upsert (di-flush), BARU `StoryRepo.attach` -- `source_count` dihitung
@@ -175,7 +177,9 @@ def persist(
     `merge_ttps`, bawa `source`/`evidence`) menggantikan TTP dari `ttp_result`; `industries` =
     `(list, sumber)` dari `merge_industries`. Tanpa argumen ini perilakunya sama seperti dulu.
 
-    Relevansi (P5): `relevance` -> `raw_enrichment["relevance"]` (model, probabilitas)."""
+    Relevansi (P5): `relevance` -> `raw_enrichment["relevance"]` (model, probabilitas).
+
+    Marking (P7a): `tlp`/`pap` bawaan sumber diteruskan ke tiap upsert indikator."""
     article_repo = ArticleRepo(session)
     story_fields = {"story_id": story.story_id, "story_match": story.rule} if story else {}
     article = article_repo.upsert(
@@ -245,6 +249,8 @@ def persist(
                 source_name=source,
                 article_id=article.id,
                 suppression_reason=allowlist_match(ioc_type, canon, allowlist),
+                tlp=tlp,
+                pap=pap,
             )
 
     # CVE bukan IOC: relasi artikel -> CVE ada di `article_cves` (insert-ignore, idempotent).

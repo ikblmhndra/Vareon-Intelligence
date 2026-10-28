@@ -1,5 +1,6 @@
 """Sumber terstruktur (`default_relevance="always"`) melewati classify + TTP di `run_pipeline`;
-`_relevance_for` di task `enrich.article` menerjemahkan `scraper_id` ke (kind, relevance)."""
+`_relevance_for` di task `enrich.article` menerjemahkan `scraper_id` ke
+(kind, relevance, tlp, pap)."""
 
 from __future__ import annotations
 
@@ -95,6 +96,6 @@ def enrich(monkeypatch: pytest.MonkeyPatch) -> Any:
 
 
 def test_relevance_for_unknown_or_none(enrich: Any) -> None:
-    assert enrich._relevance_for(None) == (None, "classify")
-    assert enrich._relevance_for("no_such_scraper") == (None, "classify")
-    assert enrich._relevance_for("cisa_kev") == ("kev", "always")
+    assert enrich._relevance_for(None) == (None, "classify", "clear", "clear")
+    assert enrich._relevance_for("no_such_scraper") == (None, "classify", "clear", "clear")
+    assert enrich._relevance_for("cisa_kev") == ("kev", "always", "clear", "clear")

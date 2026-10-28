@@ -9,7 +9,7 @@ from types import ModuleType
 import pytest
 from cti_api.services import campaign as campaign_service
 from cti_core.db.models.article_cve import ArticleCve
-from cti_core.db.models.indicator import Indicator
+from cti_core.db.models.indicator import Indicator, IndicatorSource
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.article_cve import AsyncArticleCveRepo
 from cti_core.db.repositories.auth import AsyncClientRepo
@@ -102,14 +102,13 @@ async def test_migration_moves_cve_iocs(async_db_session: AsyncSession) -> None:
     )
     second = await articles.upsert(url="https://example.com/m2", title="Other", source="s")
     iocs = AsyncIndicatorRepo(async_db_session)
+    # Baris legacy bertipe `cve` dibuat langsung: `upsert` menolak tipe tanpa TTL (P7a), dan
+    # baris seperti ini hanya ada dari sebelum migrasi.
+    legacy = Indicator(type="cve", value="CVE-2026-5555")
     for article in (first, second, first):  # tautan kedua ke artikel pertama = duplikat
-        await iocs.upsert(
-            type="cve",
-            value="CVE-2026-5555",
-            source_url="u",
-            source_name="s",
-            article_id=article.id,
-        )
+        legacy.sources.append(IndicatorSource(url="u", source_name="s", article_id=article.id))
+    async_db_session.add(legacy)
+    await async_db_session.flush()
     await iocs.upsert(type="ip", value="203.0.113.9", source_url="u", source_name="s")
 
     await async_db_session.execute(text(migration.COPY_CVE_SQL))

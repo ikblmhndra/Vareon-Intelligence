@@ -71,3 +71,14 @@ def test_every_scraper_declares_content_kind() -> None:
             missing.append(sid)
 
     assert missing == []
+
+
+def test_scraper_markings_default_clear() -> None:
+    """Hari ini semua sumber publik; sumber berbayar/partner mengubah test ini dengan sengaja."""
+    bad = {
+        sid: (cls.meta.tlp, cls.meta.pap)
+        for sid, cls in _real_scrapers().items()
+        if (cls.meta.tlp, cls.meta.pap) != ("clear", "clear")
+    }
+
+    assert bad == {}

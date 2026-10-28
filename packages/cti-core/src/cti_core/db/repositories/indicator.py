@@ -13,6 +13,7 @@ from sqlalchemy import DateTime, bindparam, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
+from cti_core.config import get_settings
 from cti_core.db.models.indicator import (
     Indicator,
     IndicatorFeedback,
@@ -20,9 +21,68 @@ from cti_core.db.models.indicator import (
     IndicatorTag,
     IndicatorThreatActor,
 )
+from cti_core.indicator.marking import stricter_pap, stricter_tlp
+from cti_core.indicator.validity import extend
 
 _VALID_VERDICTS = frozenset({"tp", "fp"})
 _VALID_TYPES = frozenset({"ip", "url", "domain", "email", "sha256", "sha1", "md5"})
+
+
+def _apply_upsert(
+    session: Any,
+    existing: Indicator | None,
+    *,
+    type: str,
+    value: str,
+    source_url: str,
+    source_name: str,
+    context: str | None,
+    article_id: int | None,
+    suppression_reason: str | None,
+    tlp: str,
+    pap: str,
+) -> Indicator:
+    """Aturan ingest P7a (spec 3.2) untuk jalur sync dan async: satu implementasi supaya tidak
+    melenceng. Terlihat lagi memperpanjang `valid_until` (indikator kedaluwarsa jadi aktif lagi),
+    `valid_from` dan `revoked_at` tidak disentuh (FP analis final; sumber barunya tetap dicatat),
+    marking hanya naik ke yang lebih ketat."""
+    now = datetime.datetime.now(datetime.UTC)
+    cfg = get_settings().indicator
+    if existing is None:
+        indicator = Indicator(
+            type=type,
+            value=value,
+            first_seen_at=now,
+            last_seen_at=now,
+            seen_count=1,
+            valid_from=now,
+            valid_until=extend(None, type, now, cfg),
+            tlp=tlp,
+            pap=pap,
+        )
+        session.add(indicator)
+    else:
+        indicator = existing
+        indicator.last_seen_at = now
+        indicator.seen_count += 1
+        indicator.valid_until = extend(indicator.valid_until, type, now, cfg)
+        indicator.tlp = stricter_tlp(indicator.tlp, tlp)
+        indicator.pap = stricter_pap(indicator.pap, pap)
+    # Baris yang SUDAH tersuppress tidak ditimpa alasannya (jejak pertama dipertahankan).
+    if suppression_reason is not None and not indicator.auto_suppressed:
+        indicator.auto_suppressed = True
+        indicator.suppression_reason = suppression_reason
+
+    indicator.sources.append(
+        IndicatorSource(
+            url=source_url,
+            source_name=source_name,
+            context=context,
+            article_id=article_id,
+            first_seen_at=now,
+        )
+    )
+    return indicator
 
 
 class IndicatorRepo:
@@ -39,34 +99,24 @@ class IndicatorRepo:
         context: str | None = None,
         article_id: int | None = None,
         suppression_reason: str | None = None,
+        tlp: str = "clear",
+        pap: str = "clear",
     ) -> Indicator:
         existing = self.session.execute(
             select(Indicator).where(Indicator.type == type, Indicator.value == value)
         ).scalar_one_or_none()
-        now = datetime.datetime.now(datetime.UTC)
-
-        if existing is None:
-            indicator = Indicator(
-                type=type, value=value, first_seen_at=now, last_seen_at=now, seen_count=1
-            )
-            self.session.add(indicator)
-        else:
-            indicator = existing
-            indicator.last_seen_at = now
-            indicator.seen_count += 1
-        # Baris yang SUDAH tersuppress tidak ditimpa alasannya (jejak pertama dipertahankan).
-        if suppression_reason is not None and not indicator.auto_suppressed:
-            indicator.auto_suppressed = True
-            indicator.suppression_reason = suppression_reason
-
-        indicator.sources.append(
-            IndicatorSource(
-                url=source_url,
-                source_name=source_name,
-                context=context,
-                article_id=article_id,
-                first_seen_at=now,
-            )
+        indicator = _apply_upsert(
+            self.session,
+            existing,
+            type=type,
+            value=value,
+            source_url=source_url,
+            source_name=source_name,
+            context=context,
+            article_id=article_id,
+            suppression_reason=suppression_reason,
+            tlp=tlp,
+            pap=pap,
         )
         self.session.flush()
         return indicator
@@ -106,35 +156,25 @@ class AsyncIndicatorRepo:
         context: str | None = None,
         article_id: int | None = None,
         suppression_reason: str | None = None,
+        tlp: str = "clear",
+        pap: str = "clear",
     ) -> Indicator:
         result = await self.session.execute(
             select(Indicator).where(Indicator.type == type, Indicator.value == value)
         )
         existing = result.scalar_one_or_none()
-        now = datetime.datetime.now(datetime.UTC)
-
-        if existing is None:
-            indicator = Indicator(
-                type=type, value=value, first_seen_at=now, last_seen_at=now, seen_count=1
-            )
-            self.session.add(indicator)
-        else:
-            indicator = existing
-            indicator.last_seen_at = now
-            indicator.seen_count += 1
-        # Baris yang SUDAH tersuppress tidak ditimpa alasannya (jejak pertama dipertahankan).
-        if suppression_reason is not None and not indicator.auto_suppressed:
-            indicator.auto_suppressed = True
-            indicator.suppression_reason = suppression_reason
-
-        indicator.sources.append(
-            IndicatorSource(
-                url=source_url,
-                source_name=source_name,
-                context=context,
-                article_id=article_id,
-                first_seen_at=now,
-            )
+        indicator = _apply_upsert(
+            self.session,
+            existing,
+            type=type,
+            value=value,
+            source_url=source_url,
+            source_name=source_name,
+            context=context,
+            article_id=article_id,
+            suppression_reason=suppression_reason,
+            tlp=tlp,
+            pap=pap,
         )
         await self.session.flush()
         return indicator
