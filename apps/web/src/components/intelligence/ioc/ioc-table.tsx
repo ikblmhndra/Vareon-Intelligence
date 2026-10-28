@@ -2,6 +2,7 @@
 
 import { ThumbsDownIcon, ThumbsUpIcon } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/lib/api/client";
@@ -90,6 +91,10 @@ export function IocTable({ onSelect }: { onSelect: (target: IocTarget) => void }
       });
       if (error) throw new Error(JSON.stringify(error));
       await queryClient.invalidateQueries({ queryKey: ["intelligence", "ioc-list"] });
+      void queryClient.invalidateQueries({ queryKey: ["intelligence", "ioc-stats"] });
+      void queryClient.invalidateQueries({ queryKey: ["intelligence", "ioc-detail"] });
+    } catch (e) {
+      toast.error(`Feedback failed: ${(e as Error).message}`);
     } finally {
       setFeedbackPending(null);
     }
@@ -341,6 +346,7 @@ export function IocTable({ onSelect }: { onSelect: (target: IocTarget) => void }
                         disabled={feedbackPending === ioc.id}
                         onClick={() => void submitFeedback(ioc.id, "tp")}
                         title="TP / restore"
+                        aria-label="TP / restore"
                         className={cn("rounded-full border border-success/35 bg-success/10 px-1.5 py-0.5 text-xs text-success-text", feedbackPending === ioc.id && "opacity-50")}
                       >
                         <ThumbsUpIcon aria-hidden />
@@ -350,6 +356,7 @@ export function IocTable({ onSelect }: { onSelect: (target: IocTarget) => void }
                         disabled={feedbackPending === ioc.id}
                         onClick={() => void submitFeedback(ioc.id, "fp")}
                         title="FP: remove from feeds"
+                        aria-label="FP: remove from feeds"
                         className={cn("ml-1 rounded-full border border-destructive/35 bg-destructive/10 px-1.5 py-0.5 text-xs text-destructive-text", feedbackPending === ioc.id && "opacity-50")}
                       >
                         <ThumbsDownIcon aria-hidden />
