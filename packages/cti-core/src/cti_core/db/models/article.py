@@ -28,6 +28,7 @@ from typing import Any
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     ForeignKey,
@@ -38,6 +39,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -47,6 +49,10 @@ from cti_core.db.base import Base, TimestampMixin
 
 class Article(TimestampMixin, Base):
     __tablename__ = "articles"
+    __table_args__ = (
+        CheckConstraint("credibility BETWEEN 1 AND 6", name="credibility_range"),
+        Index("ix_articles_priority_score", text("priority_score DESC NULLS LAST")),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
 
@@ -69,6 +75,17 @@ class Article(TimestampMixin, Base):
 
     confidence_score: Mapped[int | None] = mapped_column(SmallInteger)
     """0-100. SATU kolom -- lihat docstring modul."""
+    reliability_grade: Mapped[str | None] = mapped_column(String(1))
+    """Snapshot grade sumber (A-F) saat artikel dinilai (P6 spec 3.1)."""
+    credibility: Mapped[int | None] = mapped_column(SmallInteger)
+    """1-6 hasil tangga aturan `cti_core.confidence.assess`. NULL = belum dinilai (spec 3.1)."""
+    priority_score: Mapped[int | None] = mapped_column(SmallInteger)
+    """Skor prioritas untuk ranking: `confidence_score` + poin dampak (maks 76), jadi TIDAK
+    dibatasi 100 (indeks `priority_score DESC NULLS LAST`)."""
+    score_reasons: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
+    """Alasan penilaian: `{"credibility": [kode...], "priority": [{"code", "points"}...]}`."""
     confirmed_incident: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     incident_confidence: Mapped[int | None] = mapped_column(SmallInteger)
     victim_name: Mapped[str | None] = mapped_column(String(300))

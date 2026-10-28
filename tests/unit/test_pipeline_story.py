@@ -238,7 +238,7 @@ def real_persist(monkeypatch: pytest.MonkeyPatch, rec: dict[str, Any]) -> list[d
     monkeypatch.setattr(persist_mod, "IOCRepo", MagicMock())
     monkeypatch.setattr(persist_mod, "ArticleCveRepo", MagicMock())
     monkeypatch.setattr(persist_mod, "_get_allowlist", lambda session: [])
-    monkeypatch.setattr(persist_mod, "_confidence_score", lambda *a: 0)
+    monkeypatch.setattr(persist_mod, "apply_assessments", lambda session, ids: {})
     monkeypatch.setattr(pipeline, "persist", persist_mod.persist)
     rec["upserts"] = upserts
     return attached

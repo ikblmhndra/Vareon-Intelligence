@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class TTP(BaseModel):
@@ -48,6 +48,25 @@ class StoryRef(BaseModel):
     source_count: int
 
 
+class PriorityReason(BaseModel):
+    code: str
+    points: int
+
+
+class ScoreReasons(BaseModel):
+    """Alasan penilaian artikel (P6 3.1): kode kredibilitas + rincian poin prioritas."""
+
+    credibility: list[str] = []
+    priority: list[PriorityReason] = []
+
+
+class CredibilityOverrideIn(BaseModel):
+    """`credibility=None` menghapus override (kembali ke hasil hitung)."""
+
+    credibility: int | None = Field(None, ge=1, le=6)
+    note: str = Field("", max_length=500)
+
+
 class ArticleOut(BaseModel):
     id: int
     year: int = 0
@@ -68,10 +87,14 @@ class ArticleOut(BaseModel):
     """Asal industri (dari baris industri pertama); `None` kalau tidak ada baris."""
     news_type: str = ""
     confidence_score: int | None = None
-    # Grade source (Task 9): kode Admiralty (mis. "B2") + asal baris rating; `None` = source
-    # belum punya baris rating.
+    # P6: `admiralty_code` = kode ARTIKEL (`reliability_grade` + `credibility`, mis. "B2");
+    # `None` = belum dinilai. `grade_origin` tetap asal grade SOURCE (baris rating).
     admiralty_code: str | None = None
     grade_origin: Literal["default", "analyst"] | None = None
+    reliability_grade: str | None = None
+    credibility: int | None = None
+    priority_score: int | None = None
+    score_reasons: ScoreReasons = ScoreReasons()
     iocs: dict[str, object] = {}
     confirmed_incident: bool = False
     story: StoryRef | None = None

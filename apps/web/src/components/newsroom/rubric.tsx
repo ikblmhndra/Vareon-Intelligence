@@ -3,6 +3,7 @@
 import type { components } from "@/lib/api/schema";
 import type { NewsroomFilters } from "@/lib/newsroom/filters";
 import { Skeleton } from "@/components/ui/skeleton";
+import { GradeChip } from "@/components/newsroom/grade-chip";
 import { useRubric, type RubricItem, type RubricKey } from "@/components/newsroom/rubric-queries";
 
 type Article = components["schemas"]["ArticleOut"];
@@ -14,7 +15,10 @@ function ItemBody({ item }: { item: RubricItem }) {
   return (
     <>
       <span className="block text-[13.5px] leading-snug font-semibold text-foreground">{item.title}</span>
-      <span className="mt-0.5 block text-[11.5px] text-muted-foreground">{item.meta}</span>
+      <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11.5px] text-muted-foreground">
+        {item.meta}
+        {item.article && <GradeChip a={item.article} />}
+      </span>
     </>
   );
 }

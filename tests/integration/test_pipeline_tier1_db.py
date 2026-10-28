@@ -140,5 +140,8 @@ def test_pipeline_writes_sources(session: Session) -> None:
     assert set(article.raw_enrichment) >= {"classify", "tier1"}
     assert article.raw_enrichment["classify"] == {"model": "stub"}
     assert any(h["canonical"] == "Cobalt Strike" for h in article.raw_enrichment["tier1"]["hits"])
-    # Sumber tanpa rating: dasar 50; bonus TTP hanya explicit + llm (2 x 5), keyword tidak.
-    assert article.confidence_score == 60
+    # Sumber tanpa rating: F6 = 50. Poin TTP prioritas hanya explicit + llm (2 x 3), keyword
+    # tidak (P4).
+    assert article.confidence_score == 50
+    assert article.score_reasons is not None
+    assert {"code": "ttps", "points": 6} in article.score_reasons["priority"]

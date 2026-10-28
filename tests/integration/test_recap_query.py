@@ -603,26 +603,29 @@ async def test_list_top_articles_between_ranks_in_sql_limits_and_is_inclusive_of
 ) -> None:
     d = datetime.timedelta
     repo = AsyncArticleRepo(async_db_session)
+    # P6 5.2: urut `priority_score` (NULL terakhir); insiden terkonfirmasi tidak lagi didahulukan
+    # sendiri (sudah +25 di dalam priority), dan `confidence_score` tidak dipakai lagi.
     rows = [
-        ("a-out-before", WEEK_START - d(days=1), 99, True),
+        ("a-out-before", WEEK_START - d(days=1), 140, True),
         ("b-first-day", WEEK_START, 40, False),
         ("c-confirmed", WEEK_START + d(days=2), 20, True),
         ("d-high", WEEK_START + d(days=3), 90, False),
         ("e-last-day", WEEK_END, 70, False),
         ("f-no-score", WEEK_END, None, False),
-        ("g-out-after", WEEK_END + d(days=1), 99, True),
+        ("g-out-after", WEEK_END + d(days=1), 140, True),
     ]
-    for slug, posted, score, confirmed in rows:
+    for slug, posted, priority, confirmed in rows:
         await repo.upsert(
             url=f"https://x.com/{slug}",
             title=slug,
             source="CISA",
             posted_on=posted,
-            confidence_score=score,
+            priority_score=priority,
+            confidence_score=100 - (priority or 0) // 2,
             confirmed_incident=confirmed,
         )
 
     articles, total = await repo.list_top_between(WEEK_START, WEEK_END, limit=4)
 
     assert total == 5
-    assert [a.title for a in articles] == ["c-confirmed", "d-high", "e-last-day", "b-first-day"]
+    assert [a.title for a in articles] == ["d-high", "e-last-day", "b-first-day", "c-confirmed"]

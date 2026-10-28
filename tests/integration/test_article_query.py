@@ -6,6 +6,7 @@ from __future__ import annotations
 import datetime
 
 import pytest
+from cti_core.db.models.story import Story
 from cti_core.db.repositories.article import AsyncArticleRepo
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -334,14 +335,15 @@ async def test_get_by_ids_empty_list_returns_empty_dict(async_db_session: AsyncS
 
 
 async def test_list_filtered_priority_sort(async_db_session: AsyncSession) -> None:
-    """Urutan prioritas: terkonfirmasi, confidence (NULL terakhir), seen_count, terbaru."""
+    """P6 5.2: urutan prioritas = `priority_score` (NULL terakhir), lalu terbaru, lalu id.
+    `confirmed_incident` bukan kunci pertama lagi (sudah +25 di dalam priority)."""
     repo = AsyncArticleRepo(async_db_session)
     day = datetime.date(2026, 9, 20)
     specs = {
-        "a": dict(confirmed_incident=False, confidence_score=90, seen=1),
-        "b": dict(confirmed_incident=True, confidence_score=50, seen=1),
-        "c": dict(confirmed_incident=True, confidence_score=50, seen=4),
-        "d": dict(confirmed_incident=True, confidence_score=None, seen=1),
+        "a": dict(confirmed_incident=False, priority_score=130),
+        "b": dict(confirmed_incident=True, priority_score=80),
+        "c": dict(confirmed_incident=True, priority_score=None),
+        "d": dict(confirmed_incident=False, priority_score=80),
     }
     ids: dict[str, int] = {}
     for i, (key, s) in enumerate(specs.items()):
@@ -350,18 +352,116 @@ async def test_list_filtered_priority_sort(async_db_session: AsyncSession) -> No
             title=f"prio {key}",
             source="S",
             posted_on=day - datetime.timedelta(days=i),
-            confirmed_incident=s["confirmed_incident"],
-            confidence_score=s["confidence_score"],
+            **s,
         )
-        art.seen_count = s["seen"]
         ids[key] = art.id
-    await async_db_session.flush()
 
     prio, _ = await repo.list_filtered(sort="priority")
-    assert [a.id for a in prio] == [ids["c"], ids["b"], ids["d"], ids["a"]]
+    # b dan d seri di 80: b lebih baru.
+    assert [a.id for a in prio] == [ids["a"], ids["b"], ids["d"], ids["c"]]
     recent, _ = await repo.list_filtered()
     assert [a.id for a in recent] == [ids["a"], ids["b"], ids["c"], ids["d"]]
 
     confirmed, total = await repo.list_filtered(confirmed_only=True)
-    assert total == 3
+    assert total == 2
     assert ids["a"] not in [a.id for a in confirmed]
+
+
+async def _seed_story_priority(repo: AsyncArticleRepo, session: AsyncSession) -> dict[str, int]:
+    """Satu story berisi tiga anggota (prioritas 90/120/60) plus dua artikel lepas (100/50).
+    Tiap artikel punya dua baris industri yang sama-sama cocok dengan filter, supaya jalur
+    `has_join` + `.distinct()` ikut teruji."""
+    now = datetime.datetime(2026, 9, 20, tzinfo=datetime.UTC)
+    story = Story(title="story", lead_source="S", first_seen_at=now, last_seen_at=now)
+    session.add(story)
+    await session.flush()
+    specs = {
+        "m90": (90, story.id),
+        "m120": (120, story.id),
+        "m60": (60, story.id),
+        "s100": (100, None),
+        "s50": (50, None),
+    }
+    ids: dict[str, int] = {}
+    for i, (key, (prio, story_id)) in enumerate(specs.items()):
+        art = await repo.upsert(
+            url=f"https://example.com/story-prio-{key}",
+            title=f"story prio {key}",
+            source="S",
+            posted_on=datetime.date(2026, 9, 20) - datetime.timedelta(days=i),
+            priority_score=prio,
+            story_id=story_id,
+        )
+        await repo.set_enrichment(art, industries=["Finance & Insurance", "General"])
+        ids[key] = art.id
+    return ids
+
+
+async def test_list_filtered_priority_keeps_one_article_per_story(
+    async_db_session: AsyncSession,
+) -> None:
+    repo = AsyncArticleRepo(async_db_session)
+    ids = await _seed_story_priority(repo, async_db_session)
+
+    prio, total = await repo.list_filtered(sort="priority")
+
+    assert [a.id for a in prio] == [ids["m120"], ids["s100"], ids["s50"]]
+    assert total == 3
+
+
+async def test_list_filtered_priority_collapse_with_join_filter_has_no_duplicates(
+    async_db_session: AsyncSession,
+) -> None:
+    repo = AsyncArticleRepo(async_db_session)
+    ids = await _seed_story_priority(repo, async_db_session)
+
+    prio, total = await repo.list_filtered(
+        sort="priority", industries=["Finance & Insurance", "General"]
+    )
+
+    assert [a.id for a in prio] == [ids["m120"], ids["s100"], ids["s50"]]
+    assert total == 3
+
+
+async def test_list_filtered_priority_collapse_paginates_collapsed_rows(
+    async_db_session: AsyncSession,
+) -> None:
+    repo = AsyncArticleRepo(async_db_session)
+    ids = await _seed_story_priority(repo, async_db_session)
+
+    page2, total = await repo.list_filtered(sort="priority", page=2, page_size=2)
+
+    assert [a.id for a in page2] == [ids["s50"]]
+    assert total == 3
+
+
+async def test_list_filtered_recent_does_not_collapse_stories(
+    async_db_session: AsyncSession,
+) -> None:
+    repo = AsyncArticleRepo(async_db_session)
+    ids = await _seed_story_priority(repo, async_db_session)
+
+    recent, total = await repo.list_filtered()
+
+    assert [a.id for a in recent] == list(ids.values())
+    assert total == 5
+
+
+async def test_list_top_between_orders_by_priority_without_collapse(
+    async_db_session: AsyncSession,
+) -> None:
+    repo = AsyncArticleRepo(async_db_session)
+    ids = await _seed_story_priority(repo, async_db_session)
+
+    top, total = await repo.list_top_between(
+        datetime.date(2026, 9, 1), datetime.date(2026, 9, 30), limit=10
+    )
+
+    assert total == 5
+    assert [a.id for a in top] == [
+        ids["m120"],
+        ids["s100"],
+        ids["m90"],
+        ids["m60"],
+        ids["s50"],
+    ]

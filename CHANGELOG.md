@@ -6,6 +6,36 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
+## [0.8.10] - 2026-10-28
+
+**Confidence artikel kini Admiralty murni per artikel: reliability A-F dari grade sumber, credibility 1-6 dihitung per artikel dari jumlah sumber di story, sumber primer vs agregator, dan artefak teknis (CVE, IOC tidak disuppress, TTP explicit). Skor terpisah, `priority_score`, menambahkan sinyal (insiden terkonfirmasi, KEV/PoC, TTP, aktor, korroborasi) tanpa batas atas dan dipakai untuk urutan "Perlu dibaca" dengan satu artikel per story.**
+Satu migrasi aditif (`d7a3e1b94c52`), **tanpa kunci `.env` baru.** Replay 1.546 artikel dev: nilai priority terbanyak memegang 16,9% artikel (sebelumnya 245 artikel tepat di 100), 10% teratas tersebar di 33 nilai berbeda (sebelumnya 95-100), dan muncul 11 kode Admiralty berbeda.
+
+**Saat upgrade dari 0.8.9:** `make deploy` (migrasi jalan otomatis; kolom baru nullable, migrasi tidak mengisi data). Setelah API naik, bootstrap mengantrekan `confidence.recompute_all` sekali selama masih ada artikel yang belum dinilai (`credibility` NULL), jadi setiap artikel dinilai ulang sekali tanpa langkah manual. **Arti angka confidence berubah dan umumnya turun**: kini selalu 10-90 (skala STIX 2.1, A/1 = 90, B/2 = 70, C/3 = 50, D/4 = 30, E/5 = 10, F/6 = 50), bukan lagi grade sumber plus bonus. Override confidence analis (P2) tetap berlaku. Dashboard "Perlu dibaca" dan bagian depan Newsroom kini menampilkan satu artikel per story (badge "+N sumber" menunjukkan sisanya), sehingga gelombang seperti PHP2Shell tidak lagi memenuhi 10 teratas.
+
+### Ditambah
+- Fungsi murni `cti_core.confidence.assess`: satu rumus untuk persist dan semua recompute. Credibility: 1 untuk sumber KEV atau 3+ sumber dengan artefak, 2 untuk 2 sumber atau sumber primer (`kev`, `advisory`, `vendor_research`, `exploit`) dengan artefak, 3 untuk primer atau artefak atau 2 sumber, 4 untuk satu agregator tanpa artefak, 6 bila sumber belum punya grade (reliability `F`); 5 hanya lewat override analis. TTP LLM dan keyword tidak dihitung sebagai artefak.
+- Kolom `articles.reliability_grade`, `credibility`, `priority_score` (indeks) dan `score_reasons` (alasan credibility dan rincian poin priority), serta `source_reliability_entries.content_kind` yang diisi dari registry scraper setiap API start.
+- Poin priority: insiden terkonfirmasi +25, KEV +15 (atau PoC +8), +3 per TTP explicit/LLM (maks 12), aktor +8, +4 per sumber tambahan di story (maks 16).
+- Tugas `confidence.refresh_stories` (tiap 10 menit, antrean `maintenance`): menilai ulang anggota story yang berubah sejak run sukses terakhir (watermark di Redis), karena credibility anggota lama naik saat sumber baru bergabung. `confidence.recompute_all` kini juga terjadwal harian (03:20) untuk menangkap perubahan KEV/PoC, suppress IOC dan `content_kind`.
+- `ArticleOut`: `reliability_grade`, `credibility`, `priority_score`, `score_reasons`; `admiralty_code` kini kode **artikel**, bukan kode sumber.
+- `PUT /api/articles/{id}/credibility` (`manage_intel`): set atau hapus override credibility (1-6) dengan catatan, tercatat di audit log.
+- `GET /api/sr/review` dan `POST /api/sr/entries/{id}/confirm` (`manage_sources`): setiap grade `default` dengan statistik 30 hari (artikel, persentase ditolak, persentase berartefak, story multi-sumber yang dipimpin, persentase FP IOC) dan saran grade (tidak pernah A; kosong bila kurang dari 10 artikel); konfirmasi menjadikannya grade analis dan menghitung ulang artikel bila grade berubah.
+- Tab "Needs review" di halaman Source reliability, dengan tombol Confirm (grade sekarang atau saran) dan Edit.
+- Chip grade `C1 · P131` (warna dari reliability, alasan di tooltip) kini juga muncul di baris daftar Newsroom dan modal artikel; modal artikel punya bagian "Why this grade" dan pilihan override credibility untuk pengguna `manage_intel`.
+- Fixture replay `tests/fixtures/confidence_replay/dev_2026-10.csv` (fakta per artikel dev, tanpa judul/URL) dan test yang menjaga target sebaran skor.
+
+### Diubah
+- Confidence artikel tidak lagi grade sumber plus bonus TTP/aktor (`compute_score` dibuang); bonus pindah ke `priority_score`.
+- `sort=priority` mengurutkan `priority_score desc`, satu artikel per story (`total` menghitung baris yang sudah digabung); `confirmed_incident` bukan lagi kunci pertama (masuk sebagai +25). `sort=recent` dan daftar lain tidak berubah.
+- Kandidat recap mingguan diurutkan berdasarkan `priority_score`, tanpa penggabungan story.
+- Form entri Source reliability tidak lagi menanyakan credibility; `credibility_code` dan `admiralty_code` sumber tetap disimpan untuk pembaca lama tetapi tidak dipakai untuk skor.
+
+### Catatan perilaku
+- Ranking newsletter memberi poin hanya di atas confidence 50, jadi lebih sedikit artikel yang mendapatkannya; ini disengaja.
+- Anggota lama sebuah story paling lama 10 menit tertinggal sebelum credibility dan priority-nya ikut naik.
+- Lookup KEV yang gagal saat persist dianggap `kev = poc = false`; recompute harian membetulkannya.
+
 ## [0.8.9] - 2026-10-26
 
 **Model lokal kini menilai relevansi tiap artikel dari judulnya: artikel yang jelas berita ancaman (p >= 0,85) melewati panggilan LLM classify, sisanya tetap ke LLM. Model berlatih sendiri tiap minggu dari label instance itu, mulai dari mode shadow, dan gate menyala/mati otomatis dari kesepakatan terukur dengan LLM.**

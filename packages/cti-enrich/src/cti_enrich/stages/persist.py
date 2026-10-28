@@ -33,12 +33,11 @@ import datetime
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
-from cti_core.confidence import compute_score
 from cti_core.db.models.article import RejectedArticle
 from cti_core.db.repositories.article import ArticleRepo, RejectedArticleRepo
 from cti_core.db.repositories.article_cve import ArticleCveRepo
+from cti_core.db.repositories.assessment import apply_assessments
 from cti_core.db.repositories.ioc import IOCRepo
-from cti_core.db.repositories.source_reliability import SourceReliabilityRepo
 from cti_core.db.repositories.story import StoryRepo
 from cti_core.ioc.allowlist import allowlist_match
 from cti_core.ioc.canonical import canonical
@@ -49,7 +48,6 @@ from cti_enrich.stages.classify import resolve_industries
 from cti_enrich.stages.extract_iocs import _get_allowlist
 from cti_enrich.stages.extract_ttps import as_normalized
 from cti_enrich.story.attach import classify_to_story
-from cti_enrich.tier1.merge import confidence_ttp_count
 
 if TYPE_CHECKING:
     from cti_core.attack_ttp import NormalizedTTP
@@ -63,6 +61,14 @@ if TYPE_CHECKING:
     from cti_enrich.stages.score import ScoreResult
     from cti_enrich.stages.tier1 import Tier1Result
     from cti_enrich.story.attach import StoryLink
+
+_ASSESSMENT_COLUMNS = (
+    "reliability_grade",
+    "credibility",
+    "confidence_score",
+    "priority_score",
+    "score_reasons",
+)
 
 _IOC_TYPE_MAP = {
     "ips": "ip",
@@ -131,29 +137,6 @@ def _with_tier1(
     return {"raw_enrichment": {**audit.get("raw_enrichment", {}), "tier1": tier1.audit()}}
 
 
-def _confidence_score(
-    session: Session,
-    source: str,
-    ttp_result: TtpResult | None,
-    routing_result: RoutingResult,
-    merged_ttps: Sequence[NormalizedTTP] | None = None,
-) -> int:
-    """Skor deterministik: grade sumber (Admiralty, case-insensitive) + bonus TTP/aktor. Nilai
-    self-rating LLM tetap di `raw_enrichment["classify"]`, tidak dipakai di sini. Dengan TTP
-    gabungan Tier 1, hanya `explicit` + `llm` yang dapat bonus: presisi `keyword` belum diukur."""
-    rating = SourceReliabilityRepo(session).get_by_name_ci(source) if source else None
-    if merged_ttps is not None:
-        ttp_count = confidence_ttp_count(merged_ttps)
-    else:
-        ttp_count = len(ttp_result.techniques) if ttp_result else 0
-    return compute_score(
-        rating.reliability_grade if rating else None,
-        rating.credibility_code if rating else None,
-        ttp_count,
-        len(routing_result.threat_actors),
-    )
-
-
 def _story_classify(classify_result: ClassifyResult) -> dict[str, object] | None:
     """Isi `stories.classify` hanya dari classify LLM. Warisan (sudah dari story) dan Tier 0
     (`default_relevance="always"`, classify sintetis tanpa industri/korban) tidak pernah
@@ -202,9 +185,6 @@ def persist(
         scraper_id=scraper_id,
         posted_on=posted_on,
         news_type=routing_result.news_type,
-        confidence_score=_confidence_score(
-            session, source, ttp_result, routing_result, merged_ttps
-        ),
         confirmed_incident=bool(classify_result.confirmed_incident),
         incident_confidence=(
             round(classify_result.incident_confidence * 100)
@@ -269,6 +249,14 @@ def persist(
 
     # CVE bukan IOC: relasi artikel -> CVE ada di `article_cves` (insert-ignore, idempotent).
     ArticleCveRepo(session).add_many(article.id, ioc_data.get("cves", []), title)
+
+    # P6: penilaian Admiralty dihitung dari fakta yang BARU ditulis di atas (story sudah
+    # di-attach, TTP/aktor/IOC/CVE sudah ada), lewat loader yang sama dengan recompute API supaya
+    # skornya tidak beda antar jalur. Bulk UPDATE-nya tidak menyegarkan objek `article`, jadi
+    # kolom penilaiannya di-refresh sebelum objek dikembalikan.
+    session.flush()
+    apply_assessments(session, [article.id])
+    session.refresh(article, attribute_names=list(_ASSESSMENT_COLUMNS))
 
     # Artikel ini sekarang DITERIMA -- buang catatan "ditolak"/"gagal di-enrich"
     # (`rejected_articles`) untuk URL yang sama kalau ada. Tanpa ini artikel yang

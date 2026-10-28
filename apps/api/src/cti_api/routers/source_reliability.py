@@ -12,7 +12,10 @@ sekarang wajib login (`require_auth`).
 
 from __future__ import annotations
 
+import datetime
+
 from cti_core.celery_client import send_recompute_source
+from cti_core.confidence import suggest_grade
 from cti_core.db.models.source_reliability import SourceReliabilityEntry
 from cti_core.db.repositories.auth import AsyncAuditLogRepo
 from cti_core.db.repositories.source_reliability import (
@@ -21,15 +24,18 @@ from cti_core.db.repositories.source_reliability import (
     AsyncSourceReliabilityRepo,
 )
 from cti_core.logging import get_logger
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_api.deps import AuthedUser, get_db, request_ip, require_auth, require_permission
 from cti_api.schemas.source_reliability import (
+    SRConfirmIn,
     SREntryAdd,
     SREntryListResponse,
     SREntryOut,
     SREntryUpdate,
+    SRReviewItem,
+    SRReviewResponse,
 )
 
 log = get_logger()
@@ -39,6 +45,9 @@ router = APIRouter(
     tags=["source-reliability"],
     dependencies=[Depends(require_permission("view_intel")), Depends(require_auth)],
 )
+
+REVIEW_WINDOW_DAYS = 30
+"""Jendela statistik antrean review grade sumber (P6 spec 5.3)."""
 
 
 def _enqueue_recompute(source_name: str) -> None:
@@ -62,6 +71,7 @@ def _serialize(e: SourceReliabilityEntry) -> SREntryOut:
         added_date=e.added_date.isoformat(),
         last_updated=e.last_updated.isoformat(),
         origin=e.origin,  # type: ignore[arg-type]
+        content_kind=e.content_kind,
     )
 
 
@@ -125,12 +135,77 @@ async def add_sr_entry(
         username=user["username"],
         action="add_source_rating",
         target_id=body.source_name,
-        detail={"grade": body.reliability_grade, "code": body.credibility_code},
+        detail={"grade": body.reliability_grade, "code": entry.credibility_code},
         ip_address=request_ip(request),
     )
     await session.commit()
     _enqueue_recompute(entry.source_name)
     return {"success": True, "entry": _serialize(entry).model_dump()}
+
+
+@router.get(
+    "/review",
+    response_model=SRReviewResponse,
+    dependencies=[Depends(require_permission("manage_sources"))],
+)
+async def review_sources(session: AsyncSession = Depends(get_db)) -> SRReviewResponse:
+    """Antrean review: tiap baris grade bawaan (`origin='default'`) dengan statistik 30 hari dan
+    saran grade dari `suggest_grade`. Baris analis tidak ikut: grade-nya sudah keputusan manusia."""
+    since = datetime.date.today() - datetime.timedelta(days=REVIEW_WINDOW_DAYS)
+    rows = await AsyncSourceReliabilityRepo(session).review_stats(since=since)
+    items: list[SRReviewItem] = []
+    for entry, stats in rows:
+        suggestion = suggest_grade(entry.reliability_grade, stats)
+        items.append(
+            SRReviewItem(
+                entry=_serialize(entry),
+                articles=stats.articles,
+                rejected=stats.rejected,
+                artefact_articles=stats.artefact_articles,
+                multi_source_stories=stats.multi_source_stories,
+                lead_count=stats.lead_count,
+                ioc_verdicts=stats.ioc_verdicts,
+                ioc_fp=stats.ioc_fp,
+                rejected_pct=stats.rejected_pct,
+                artefact_pct=stats.artefact_pct,
+                ioc_fp_pct=stats.ioc_fp_pct,
+                suggested_grade=suggestion.grade if suggestion else None,
+                suggestion_reasons=suggestion.reasons if suggestion else [],
+            )
+        )
+    return SRReviewResponse(items=items)
+
+
+@router.post(
+    "/entries/{entry_id}/confirm",
+    response_model=SREntryOut,
+    dependencies=[Depends(require_permission("manage_sources"))],
+)
+async def confirm_sr_entry(
+    entry_id: int,
+    body: SRConfirmIn,
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+    user: AuthedUser = Depends(require_auth),
+) -> SREntryOut:
+    """Analis mengambil alih baris (origin jadi `analyst`, `analyst_name` = user login), opsional
+    dengan grade baru. Recompute skor artikel hanya kalau grade benar-benar berubah."""
+    entry, changed = await AsyncSourceReliabilityRepo(session).confirm(
+        entry_id, analyst_name=user["username"], reliability_grade=body.reliability_grade
+    )
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    await AsyncAuditLogRepo(session).write(
+        username=user["username"],
+        action="confirm_source_rating",
+        target_id=entry.source_name,
+        detail={"grade": entry.reliability_grade, "grade_changed": changed},
+        ip_address=request_ip(request),
+    )
+    await session.commit()
+    if changed:
+        _enqueue_recompute(entry.source_name)
+    return _serialize(entry)
 
 
 @router.put("/entries/{entry_id}", dependencies=[Depends(require_permission("manage_sources"))])

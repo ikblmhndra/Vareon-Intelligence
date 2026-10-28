@@ -238,7 +238,9 @@ reliability; steps 4-7 move pages one at a time.
 | 2. Sources and indicators, cheap wins | **Done in 0.8.6** | Structured sources skip LLM classify/TTP (`content_kind`); canonical IOC values (refang, lowercase); CVEs moved from IOCs to `article_cves`; allowlist flags instead of dropping, 124-domain seed; suppressed IOCs leave STIX, stats, campaigns, recap counts; default Admiralty grades per `content_kind` and article confidence from the source grade. Out of scope, still open: CVEs in `ArticleOut`, story dedup, deterministic extractors, local relevance model, credibility from corroboration. |
 | 2. Sources and indicators, remaining | Not started | Feed dates (0.8.3) are a prerequisite already in place. |
 | 3. Extractors and claims | Not started | Software masking and longest-name matching for actors (0.8.3) are a first piece. |
-| 4-7 | Not started | |
+| 4-5 | Not started | |
+| 6. Relevance model + Admiralty | **Partly done**: relevance model in 0.8.9 (P5), Admiralty and priority built for 0.8.10 (P6) | Local relevance model gates the LLM classify. Every article has a source reliability grade, a computed credibility (corroboration, primary source, artefacts) and a stored, uncapped priority score; `sort=priority` ranks one article per story; a "Needs review" queue suggests source grades from data. Still open: alerts driven by priority, story-level credibility/priority, PIR and exposure in priority (P7). |
+| 7 | Not started | |
 
 ## 8. Open decisions
 

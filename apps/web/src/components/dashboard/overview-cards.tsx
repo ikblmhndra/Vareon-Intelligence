@@ -120,7 +120,7 @@ export function MustReadCard({ days, className }: { days: number | null; classNa
                   {a.threat_actors[0] && <Badge variant="outline">{a.threat_actors[0]}</Badge>}
                 </div>
                 {/* "Why it matters" (spec 4.1): insiden, confidence, cocok watchlist/tech stack. */}
-                {(a.confirmed_incident || a.confidence_score != null || m.watchlist || m.techstack) && (
+                {(a.confirmed_incident || a.admiralty_code != null || m.watchlist || m.techstack) && (
                   <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                     {a.confirmed_incident && <Badge variant="destructive">Insiden</Badge>}
                     {m.watchlist && <Badge variant="outline">Watchlist</Badge>}

@@ -1,12 +1,13 @@
 """Port `ScraperNewsWeb/app/services/confidence_service.py`. Fase 7.4
 Grup D (survei 2026-09-19). Dua skor beda tapi satu file (sama kayak
-`cve_lookup.py`, Grup B) -- confidence artikel (grading Admiralty +
-bonus TTP/TA) dan confidence+actionability IOC (recency+corroborasi+
+`cve_lookup.py`, Grup B) -- confidence artikel (grading Admiralty per
+artikel + prioritas, P6) dan confidence+actionability IOC (recency+corroborasi+
 peluruhan waktu), dua-duanya dipanggil dari router `articles`/`iocs`.
 
 Sejak 0.8.6 confidence artikel ditulis LANGSUNG ke kolom `confidence_score` (sebelumnya lewat
-`overrides`), karena persist enrichment juga menulis kolom itu dengan rumus yang sama. Artikel
-yang `overrides`-nya sudah membawa `confidence_score` (koreksi analis) dilewati: analis menang.
+`overrides`). Sejak P6 semua jalur (persist enrichment, endpoint, recompute) memakai
+`cti_core.confidence.assess` lewat `repositories.assessment`: kredibilitas dihitung per artikel
+dan override analis dihormati di `assess`, bukan dengan melewati artikelnya.
 
 `compute_ioc_actionability`'s `campaign_score` SELALU 0 -- butuh
 `CLUSTERS_COLLECTION` (mesin cluster, Grup A, BELUM diport, lihat plan
@@ -16,99 +17,78 @@ gagal; di sini permanen 0 sampai Grup A ada, pola fallback yang sama."""
 from __future__ import annotations
 
 import datetime
+from collections.abc import Sequence
 from typing import Any
 
-from cti_core.confidence import bonus_ttp_count, compute_score
+from cti_core.confidence import Assessment, assess
 from cti_core.db.models.article import Article
 from cti_core.db.models.ioc import IOC
-from cti_core.db.repositories.article import AsyncArticleRepo
+from cti_core.db.repositories.assessment import (
+    apply_assessments_async,
+    facts_from_row,
+    facts_stmt,
+)
 from cti_core.db.repositories.ioc import AsyncIOCRepo
-from cti_core.db.repositories.source_reliability import AsyncSourceReliabilityRepo
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ── Confidence artikel ───────────────────────────────────────────────────────
 
-__all__ = ["compute_score"]  # re-export: rumusnya pindah ke `cti_core.confidence` (0.8.6)
+_MAX_BATCH = 500
+"""Batas id per panggilan loader fakta (`facts_stmt` satu statement untuk semua id)."""
 
 
-async def compute_article_confidence(session: AsyncSession, article: Article) -> int:
-    rating = (
-        await AsyncSourceReliabilityRepo(session).get_by_name_ci(article.source)
-        if article.source
-        else None
-    )
-    reliability_grade = rating.reliability_grade if rating else None
-    credibility_code = rating.credibility_code if rating else None
-    return compute_score(
-        reliability_grade,
-        credibility_code,
-        bonus_ttp_count(t.source for t in article.ttps),  # P4: TTP keyword tanpa bonus
-        len(article.threat_actors),
-    )
+async def compute_article_confidence(session: AsyncSession, article: Article) -> Assessment:
+    """Nilai satu artikel TANPA menulis apa pun (pratinjau). Fakta dibaca dari DB lewat loader
+    yang sama dengan persist/recompute, jadi child row yang belum di-flush tidak terhitung."""
+    row = (await session.execute(facts_stmt([article.id]))).mappings().one()
+    return assess(facts_from_row(row))
 
 
 async def compute_and_store_article_confidence(
     session: AsyncSession, article_id: int
-) -> int | None:
-    """Port `compute_and_store()`. `None` kalau artikel gak ketemu. Ditulis ke kolom
-    `confidence_score`; kalau analis sudah menimpa lewat `overrides`, nilai itu yang dikembalikan
-    dan kolom tidak disentuh."""
-    article = await AsyncArticleRepo(session).get_by_id(article_id)
-    if article is None:
-        return None
-    if "confidence_score" in article.overrides:
-        return int(article.overrides["confidence_score"])
-    score = await compute_article_confidence(session, article)
-    article.confidence_score = score
-    await session.flush()
-    return score
+) -> Assessment | None:
+    """Port `compute_and_store()`. `None` kalau artikel gak ketemu. Menulis kolom penilaian P6
+    (`reliability_grade`, `credibility`, `confidence_score`, `priority_score`, `score_reasons`);
+    override analis (`overrides["credibility"]`/`["confidence_score"]`) dipakai `assess`, tidak
+    lagi membuat artikel dilewati. Objek `Article` yang sudah dimuat sesi tidak ikut segar
+    (bulk UPDATE): pemanggil yang membacanya harus refresh."""
+    return (await apply_assessments_async(session, [article_id])).get(article_id)
 
 
 async def recompute_all_confidence(
     session: AsyncSession,
     *,
-    batch_size: int = 500,
+    batch_size: int = _MAX_BATCH,
     source_name: str | None = None,
     commit_each_batch: bool = False,
+    story_ids: Sequence[int] | None = None,
 ) -> dict[str, int]:
-    """Port `recompute_all_confidence()`. Preload semua rating source dulu (hindari N+1 query per
-    artikel), lalu paging per `id`. `source_name` (case-insensitive) membatasi ke satu sumber
-    (task `confidence.recompute_source`). Menulis kolom `confidence_score`, melewati artikel yang
-    `overrides`-nya membawa `confidence_score`. `commit_each_batch=True` (task worker) commit
-    tiap batch, supaya recompute penuh di tabel besar tidak memegang lock baris sepanjang run;
-    default-nya hanya flush (pemanggil yang commit)."""
-    ratings = {
-        name: (e.reliability_grade, e.credibility_code)
-        for name, e in (await AsyncSourceReliabilityRepo(session).get_all_ratings()).items()
-    }
-
+    """Port `recompute_all_confidence()`. Paging per `id` (yang dimuat cuma id, bukan objek
+    `Article`), tiap halaman dinilai ulang dalam satu query fakta lewat `apply_assessments_async`;
+    `batch_size` dipotong ke 500 karena itu batas loader fakta. `source_name`
+    (case-insensitive) membatasi ke satu sumber (task `confidence.recompute_source`);
+    `story_ids` membatasi ke anggota story tersebut (task `confidence.refresh_stories`, P6 4.2).
+    Artikel ber-override ikut dinilai: `assess` yang memakai override-nya (P6 4.5).
+    `commit_each_batch=True` (task worker) commit tiap batch, supaya recompute penuh di tabel
+    besar tidak memegang lock baris sepanjang run; default-nya hanya flush (pemanggil yang
+    commit)."""
+    limit = max(1, min(batch_size, _MAX_BATCH))
     updated = 0
     last_id = 0
     while True:
-        stmt = select(Article).where(Article.id > last_id).order_by(Article.id).limit(batch_size)
+        stmt = select(Article.id).where(Article.id > last_id).order_by(Article.id).limit(limit)
         if source_name is not None:
             stmt = stmt.where(func.lower(Article.source) == source_name.lower())
-        articles = list((await session.execute(stmt)).scalars().all())
-        if not articles:
+        if story_ids is not None:
+            stmt = stmt.where(Article.story_id.in_(story_ids))
+        ids = list((await session.execute(stmt)).scalars().all())
+        if not ids:
             break
-        for article in articles:
-            last_id = article.id
-            if "confidence_score" in article.overrides:
-                continue
-            grade, code = ratings.get((article.source or "").lower(), (None, None))
-            article.confidence_score = compute_score(
-                reliability_grade=grade,
-                credibility_code=code,
-                ttp_count=bonus_ttp_count(t.source for t in article.ttps),
-                ta_count=len(article.threat_actors),
-            )
-            updated += 1
-        await session.flush()
+        last_id = ids[-1]
+        updated += len(await apply_assessments_async(session, ids))
         if commit_each_batch:
             await session.commit()
-        for article in articles:  # jaga identity map tetap kecil di recompute besar
-            session.expunge(article)
 
     return {"updated": updated}
 

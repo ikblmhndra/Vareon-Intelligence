@@ -174,9 +174,8 @@ export function SrTable() {
               <TableRow>
                 {sortHeader("source_name", "Source")}
                 {sortHeader("analyst_name", "Analyst")}
-                <TableHead>Admiralty</TableHead>
                 {sortHeader("reliability_grade", "Grade")}
-                <TableHead>Credibility</TableHead>
+                <TableHead>Kind</TableHead>
                 <TableHead>Notes</TableHead>
                 {sortHeader("last_updated", "Last Updated")}
                 <TableHead />
@@ -185,7 +184,7 @@ export function SrTable() {
             <TableBody>
               {listQuery.data.entries.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-8 text-center text-xs text-muted-foreground">
+                  <TableCell colSpan={7} className="py-8 text-center text-xs text-muted-foreground">
                     No entries found
                   </TableCell>
                 </TableRow>
@@ -202,16 +201,11 @@ export function SrTable() {
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">{e.analyst_name}</TableCell>
                   <TableCell>
-                    <Badge variant="outline" className={cn("font-mono text-xs", GRADE_BADGE_CLASS[e.reliability_grade])} title={e.admiralty_code}>
-                      {e.admiralty_code}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
                     <Badge variant="outline" className={cn("text-xs", GRADE_BADGE_CLASS[e.reliability_grade])}>
                       {e.reliability_grade}
                     </Badge>
                   </TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground">{e.credibility_code}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{e.content_kind ?? "—"}</TableCell>
                   <TableCell className="max-w-[200px] truncate text-xs text-muted-foreground" title={e.notes}>
                     {e.notes || "—"}
                   </TableCell>

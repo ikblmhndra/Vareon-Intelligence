@@ -196,3 +196,26 @@ async def test_restore_article(
     )
     assert resp.status_code == 200
     assert resp.json() == snapshot
+
+
+async def test_restore_article_is_assessed(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+) -> None:
+    """Artikel hasil restore langsung punya penilaian Admiralty: tanpa itu chip-nya kosong dan
+    tiap start API melihat `credibility IS NULL` lalu enqueue recompute_all penuh."""
+    from cti_core.db.models.article import Article
+    from sqlalchemy import select
+
+    await _seed_rejected(api_session)
+    rows, _ = await AsyncRejectedArticleRepo(api_session).list_filtered(page=1, page_size=10)
+    resp = await api_client.post(
+        f"/api/filtered-articles/{rows[0].id}/restore", headers=auth_header()
+    )
+    assert resp.status_code == 200
+
+    credibility = (
+        await api_session.execute(select(Article.credibility).where(Article.url == _URL))
+    ).scalar_one()
+    assert credibility is not None

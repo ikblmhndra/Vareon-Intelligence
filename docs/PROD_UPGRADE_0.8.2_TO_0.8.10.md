@@ -1,7 +1,7 @@
-# Prod upgrade runbook: 0.8.2 → 0.8.9
+# Prod upgrade runbook: 0.8.2 → 0.8.10
 
 Prod (`privy-admin@10.8.20.78`, compose project `niskala-intelligence`, repo `/home/privy-admin/Niskala-Intelligence`) runs
-**0.8.2**. One `make deploy` takes it to 0.8.9: it backs up Postgres, runs every migration below in order (`migrate` runs
+**0.8.2**. One `make deploy` takes it to 0.8.10: it backs up Postgres, runs every migration below in order (`migrate` runs
 first), then waits for health. The Deploy workflow is off, so this is a manual run by the user.
 
 The per-release sections below are kept in `docs/prod-upgrade/<version>.md` and concatenated here. Read-only SQL runs in a
@@ -12,8 +12,8 @@ Compose commands differ slightly between sections: use the same compose invocati
 
 1. **Before deploy (all read-only):** run every "Before deploy" block below (0.8.4 custom roles, 0.8.5 migration head and
    replay backlog, 0.8.6 baselines and overrides count, 0.8.7 article counts, 0.8.8 ATT&CK dictionary counts, 0.8.9 model
-   download reachability, `.env` keys and disk space). Write the results down: several "After deploy" checks compare
-   against them.
+   download reachability, `.env` keys and disk space, 0.8.10 confidence baseline). Write the results down: several
+   "After deploy" checks compare against them.
 2. **`.env`:** no new required key in any of these releases. Do **not** copy dev's `RELEVANCE__GATE_MIN_AGREEMENT=0.94` or
    `STORY__EMBEDDING_SIMILARITY=0.8`; leave `RELEVANCE__*` and `STORY__*` unset for the first deploy (see 0.8.7 and 0.8.9).
 3. **Make sure the prod LLM gateway works** (model name and credits). Dev's OpenRouter free quota ran out; with a dead
@@ -22,13 +22,16 @@ Compose commands differ slightly between sections: use the same compose invocati
    the deploy aborts before any container changes.
 5. **After deploy:** run the "After deploy" blocks in release order. Admin task from 0.8.4: add `manage_cve`/`view_ops` to
    custom roles. Remedy from 0.8.6 (only now, never before): clear machine-written `overrides.confidence_score` if the
-   before-count was > 0.
+   before-count was > 0. For its follow-up recompute, the 0.8.10 section recommends the Celery enqueue over the inline
+   `POST /api/articles/confidence/recompute`, which can hit the proxy timeout.
 6. **One-off WRITE commands, in this order, after the deploy is healthy (each needs approval, dry-run first):**
    1. 0.8.7 story backfill (`cti_enrich.story_backfill`), bounded with `--since`.
    2. 0.8.8 Tier 1 backfill (`cti_enrich.backfill_tier1`, ~3 s/article; never during a deploy).
    3. 0.8.8 actor-name canonicalisation (`cti_enrich.canonicalise_actors --apply`).
 
-   0.8.9 needs nothing: the first model trains itself within an hour.
+   0.8.9 needs nothing: the first model trains itself within an hour. 0.8.10 needs nothing either: each API process enqueues
+   `confidence.recompute_all` once at start (one or two runs with `WEB_CONCURRENCY=2`; idempotent; P6 scoring for every
+   article, overrides kept); check that `credibility is null` reaches 0.
 7. **Later, separately:** turn on `STORY__EMBEDDING_SIMILARITY=0.8` only after story dedup is checked on prod (0.8.9).
 
 ## Migration chain
@@ -44,8 +47,9 @@ Compose commands differ slightly between sections: use the same compose invocati
 | 0.8.7 | `a7d3f1c9e5b2` stories | `f3c9e1b5a7d2` | yes (story data lost) |
 | 0.8.8 | `b8e2c4a6d1f3` Tier 1 sources + article_malware | `a7d3f1c9e5b2` | yes (source labels lost) |
 | 0.8.9 | `c4f1a9d27e6b` relevance_models | `b8e2c4a6d1f3` | yes |
+| 0.8.10 | `d7a3e1b94c52` article assessment columns + source content_kind | `c4f1a9d27e6b` | yes (computed scores lost; old confidence values only from the backup) |
 
-Expected `alembic_version` after the deploy: **`c4f1a9d27e6b`**. The only way back past `e7b2d4a9c6f1` is the Postgres
+Expected `alembic_version` after the deploy: **`d7a3e1b94c52`**. The only way back past `e7b2d4a9c6f1` is the Postgres
 backup `make deploy` writes before migrating.
 
 ---
@@ -177,7 +181,7 @@ Image rollback + `alembic downgrade b7e4c1a9d256` is possible. To stop replays w
 - IOC values are stored canonical (refanged, lowercase; URL path/query kept); the web shows them defanged.
 - The allowlist flags matching IOCs (`auto_suppressed`, reason `allowlist:<type>:<entry> (infrastructure-abuse)`) instead of dropping them; curated seed of 124 domains. Suppressed IOCs leave STIX export, stats, campaigns, recap counts and the FP queue.
 - CVEs move from `iocs` (type `cve`) to the new `article_cves` table.
-- Article confidence = source Admiralty grade + TTP/actor bonus (no longer the LLM self-rating). Every scraper source gets a `default` grade per `content_kind`; existing grades become `analyst`. Web chip "B2 · 72".
+- Article confidence = source Admiralty grade + TTP/actor bonus (no longer the LLM self-rating). Every scraper source gets a `default` grade per `content_kind`; existing grades become `analyst`. Web chip "B2 · 72". **In a jump to 0.8.10 this formula never runs:** 0.8.10 (P6) replaces it, see that section.
 
 ### Migrations
 - `d1a5c8e3f2b7`: creates `article_cves`, copies every article↔CVE link from `ioc_sources`, deletes `type='cve'` IOCs. Downgrade only drops the table (CVE IOCs are not restored).
@@ -210,7 +214,7 @@ None.
    ```
 
 ### After deploy
-- `SELECT version_num FROM alembic_version;` shows the final head of the deploy (0.8.9 chain), and these return:
+- `SELECT version_num FROM alembic_version;` shows the final head of the deploy (0.8.10 chain), and these return:
   ```sql
   SELECT count(*) FROM iocs WHERE type='cve';                      -- 0 (else: DELETE FROM iocs WHERE type = 'cve';)
   SELECT count(*) FROM article_cves;                               -- = Before-deploy query 1
@@ -218,9 +222,9 @@ None.
   SELECT count(*) FROM ioc_allowlist_entries WHERE added_by='seed';                    -- 124
   SELECT origin, count(*) FROM source_reliability_entries GROUP BY 1;                  -- ~100 default + existing analyst
   ```
-- Worker log has `confidence_recompute_all updated=<n>` once after the first API start; if not, run `POST /api/articles/confidence/recompute` (admin).
+- Worker log has `confidence_recompute_all updated=<n>` once after the first API start (with 0.8.10 the same task runs the P6 scoring, and with `WEB_CONCURRENCY=2` it may appear twice); if not, run `POST /api/articles/confidence/recompute` (admin).
 - If Before-deploy query 3 was > 0, only now (0.8.6+ live): `UPDATE articles SET overrides = overrides - 'confidence_score' WHERE overrides ? 'confidence_score';` then `POST /api/articles/confidence/recompute`. On 0.8.5 or older that POST writes an override for every article, so never run it before the upgrade.
-- UI: IOC Management shows defanged values and the "Include suppressed" toggle; searching `gofile[.]io` finds `gofile.io` (flagged Suppressed). Dashboard "Perlu dibaca" shows chips like `A1 · 100` / `B2 · 86`. Source reliability lists all sources with `default` labels.
+- UI: IOC Management shows defanged values and the "Include suppressed" toggle; searching `gofile[.]io` finds `gofile.io` (flagged Suppressed). Dashboard "Perlu dibaca" shows chips like `A1 · 100` / `B2 · 86` (with 0.8.10: `C1 · P131`, see that section). Source reliability lists all sources with `default` labels.
 - New `cisa_kev`/`exploitdb`/`cis` articles have `raw_enrichment->'classify'->>'skipped' = 'default_relevance=always'`.
 
 ### One-off commands
@@ -251,7 +255,7 @@ Restore the pre-deploy Postgres backup (the IOC merge and CVE IOC deletion canno
 
 - `a7d3f1c9e5b2_stories` (down_revision `f3c9e1b5a7d2`, the 0.8.6 head): creates `stories` (GIN index on `cve_ids`, btree on `last_seen_at`), adds `articles.story_id` (FK `ON DELETE SET NULL`, indexed) and `articles.story_match` (varchar 20). No data copy.
 - Dev: ran inside the normal `migrate` step; not timed separately, the whole deploy (build + migrate + health) took about 3 minutes with ~1,470 articles. Expect seconds on prod (DDL plus one index on `articles`).
-- Reversible: downgrade drops the two columns and the table (story data is lost). **Chain:** 0.8.8's migration `b8e2c4a6d1f3` has `down_revision = "a7d3f1c9e5b2"`, so in the 0.8.2 → 0.8.9 jump this one must run after 0.8.6's `f3c9e1b5a7d2` and before 0.8.8; downgrading it requires downgrading 0.8.8 first. Do not downgrade; use the setting below.
+- Reversible: downgrade drops the two columns and the table (story data is lost). **Chain:** 0.8.8's migration `b8e2c4a6d1f3` has `down_revision = "a7d3f1c9e5b2"`, so in the 0.8.2 → 0.8.10 jump this one must run after 0.8.6's `f3c9e1b5a7d2` and before 0.8.8; downgrading it requires downgrading 0.8.8 first. Do not downgrade; use the setting below.
 
 ### Settings / .env (new keys, recommended PROD values, defaults)
 
@@ -350,7 +354,7 @@ docker compose -p niskala-intelligence exec -T worker-nlp python -m cti_enrich.s
 
 ### Migrations (revision ids, reversible or not, rough duration/row counts seen on dev)
 
-- `b8e2c4a6d1f3_tier1_sources_article_malware`, `down_revision = a7d3f1c9e5b2` (0.8.7 / P3 `stories`). Next in chain: `c4f1a9d27e6b` (0.8.9 / P5 `relevance_models`). In a 0.8.2 -> 0.8.9 jump all of them run in order in one `migrate`.
+- `b8e2c4a6d1f3_tier1_sources_article_malware`, `down_revision = a7d3f1c9e5b2` (0.8.7 / P3 `stories`). Next in chain: `c4f1a9d27e6b` (0.8.9 / P5 `relevance_models`), then `d7a3e1b94c52` (0.8.10 / P6). In a 0.8.2 -> 0.8.10 jump all of them run in order in one `migrate`.
 - Adds `source varchar(10) NOT NULL DEFAULT` to `article_ttps` (`'llm'`), `article_threat_actors` (`'dictionary'`), `article_industries` (`'llm'`); `evidence text NULL` to `article_ttps`; table `article_malware` (FK `articles.id ON DELETE CASCADE`, unique `(article_id, name)`, index on `name`).
 - Postgres 16 (`postgres:16-alpine`): `ADD COLUMN ... DEFAULT <constant>` is metadata-only (no table rewrite); brief ACCESS EXCLUSIVE lock per table.
 - Dev: ~1,470 articles, ~2,300 TTP rows; the step was not measurable inside the ~2 min deploy (seconds).
@@ -384,7 +388,7 @@ select threat_actor, count(*) from article_threat_actors group by 1 order by 2 d
 ### After deploy (checks with expected results: SQL, logs, UI pages)
 
 ```sql
--- Objects exist (alembic head will be the 0.8.9 revision, so check objects, not alembic_version).
+-- Objects exist (alembic head will be the 0.8.10 revision, so check objects, not alembic_version).
 select table_name, column_name, column_default from information_schema.columns
  where table_name in ('article_ttps','article_threat_actors','article_industries') and column_name in ('source','evidence');
 -- expect 4 rows; defaults 'llm', 'dictionary', 'llm'; evidence has none
@@ -405,7 +409,7 @@ select t.source, count(*) from article_ttps t join articles a on a.id = t.articl
 
 ### One-off commands (backfills etc.: exact command, `--dry-run` first, expected numbers from dev, how long; mark each as needing the user's approval)
 
-Run AFTER the full 0.8.9 deploy is healthy, never during a deploy (a deploy restarts `worker-browser` and kills the run; re-running is safe). Use `worker-browser` for the backfill (Chromium for the `fetch_text` fallback).
+Run AFTER the full 0.8.10 deploy is healthy, never during a deploy (a deploy restarts `worker-browser` and kills the run; re-running is safe). Use `worker-browser` for the backfill (Chromium for the `fetch_text` fallback).
 
 1. **Tier 1 backfill — WRITE, needs the user's approval.** Add-only: adds explicit/keyword TTPs whose ID is missing, actors/malware not yet present (skips an actor whose alias form already exists), and keyword industries only when the article's sole industry is "General". Never touches LLM rows, overrides, `news_type`, confidence or alerts. No LLM calls.
 
@@ -443,7 +447,7 @@ Run AFTER the full 0.8.9 deploy is healthy, never during a deploy (a deploy rest
 - Precision (silver standard: 2 LLM labellers, 92% agreement, no human labels): actor dictionary 71% vs LLM-era 70%; TTP explicit 99%, keyword 70% vs LLM 35%; industry keyword 5/5 vs LLM 39%; malware/tool 47% (weakest: generic OS tools, incidental mentions). Expect some "mentioned but not involved" actor/malware tags.
 - Leaderboards/PIR/watchlist show a split actor series until `canonicalise_actors --apply` runs; watchlist/profiles added later with alias names still will not match canonical article names.
 - Fetch failures (~22% on dev, mostly 403/bot-blocked sites): those articles get Tier 1 on title/summary only.
-- Interactions in the 0.8.2 -> 0.8.9 chain: 0.8.6 (P2) confidence recompute now counts only `explicit` + `llm` TTPs; 0.8.7 (P3) story follow-ups skip LLM TTP but still get Tier 1; 0.8.9 (P5) depends on Tier 1: for gate-accepted articles (LLM classify skipped, `industries_impacted=[]`) industries come only from the Tier 1 keyword taxonomy and `confirmed_incident`/victim only from the Tier 1 incident rule, whose precision was measured on few cases (rule 2/2 vs LLM 9/24 on dev); expect fewer industries and confirmed incidents on gated articles.
+- Interactions in the 0.8.2 -> 0.8.10 chain: 0.8.6 (P2) confidence recompute now counts only `explicit` + `llm` TTPs (in 0.8.10 they count as priority points, and explicit TTPs as an artefact for credibility); 0.8.7 (P3) story follow-ups skip LLM TTP but still get Tier 1; 0.8.9 (P5) depends on Tier 1: for gate-accepted articles (LLM classify skipped, `industries_impacted=[]`) industries come only from the Tier 1 keyword taxonomy and `confirmed_incident`/victim only from the Tier 1 incident rule, whose precision was measured on few cases (rule 2/2 vs LLM 9/24 on dev); expect fewer industries and confirmed incidents on gated articles.
 - Article modal at a true 375 px viewport is untested.
 
 ---
@@ -688,3 +692,196 @@ reason. Dev: `"status": "active"` once run with the dev-only 0.94.
     blocks the upgrade.
 
 ---
+
+## 0.8.10 — P6 Admiralty confidence and priority per article
+
+Release: not yet tagged (branch `claude/p6-admiralty-confidence-9bbec2`, PR to `main` pending). Spec:
+`docs/superpowers/specs/2026-10-26-p6-admiralty-confidence-design.md`. Dev evidence: `docs/LLM_ASSIST_REDESIGN.md`
+("Built for 0.8.10").
+
+**Not yet run on dev.** P6 has not been deployed to the dev instance, so there are no dev runtime numbers (migration
+time, recompute time, live distributions). The numbers below come from the dev snapshot replay
+(`tests/fixtures/confidence_replay/dev_2026-10.csv`, 1,546 dev articles, exported 2026-10-26). Anything else is marked
+**projection**.
+
+### What changes in prod
+
+- **Article confidence becomes pure Admiralty**, computed per article by `cti_core.confidence.assess`:
+  - Reliability A-F is the source grade (`F` if the source has no `source_reliability_entries` row).
+  - Credibility 1-6 comes from story corroboration, primary vs aggregator source (`content_kind`) and artefacts (CVE,
+    non-suppressed IOC, explicit TTP).
+  - `confidence_score` uses the STIX 2.1 Admiralty scale averaged over both halves, so it is always **10-90**. Before:
+    the LLM self-rating on 0.8.2, the source grade + bonus on 0.8.6-0.8.9 (many at 100).
+- **New stored `priority_score`** (confidence + incident/KEV/PoC/TTP/actor/corroboration points, uncapped) drives
+  `sort=priority`. The dashboard "Perlu dibaca" and the Newsroom front section show **one article per story**.
+- **Interaction with 0.8.6 in the 0.8.2 jump.** The 0.8.6 source-grade + bonus formula never runs on prod. Each API process
+  enqueues `confidence.recompute_all` once at start (condition: new default grades inserted **or** any article with
+  `credibility IS NULL`), and that task now runs `assess`. `lifespan` runs in every uvicorn process and the API image
+  sets `WEB_CONCURRENCY=2`, so a normal deploy may enqueue it twice. The task is idempotent: the second pass is extra load,
+  not a fault.
+- **Overrides.** An article whose `overrides` has `confidence_score` keeps that confidence, and its credibility and
+  priority are still computed. `overrides.credibility` is new (`PUT /api/articles/{id}/credibility`, `manage_intel`).
+- **New beat entries**, both on the `maintenance` queue (`worker`); beat restarts on deploy:
+  - `confidence-refresh-stories`: every 10 minutes.
+  - `confidence-recompute-all`: daily 03:20.
+- **New API:** `GET /api/sr/review`, `POST /api/sr/entries/{id}/confirm` (`manage_sources`). `ArticleOut.admiralty_code`
+  is now the article's code, plus `reliability_grade`, `credibility`, `priority_score` and `score_reasons`.
+- **Web:** chip `C1 · P131` on the dashboard, the Newsroom front section and list, and the article modal ("Why this
+  grade", credibility override). Source reliability gets a "Needs review" tab.
+
+### Migrations (revision ids, reversible or not, rough duration/row counts seen on dev)
+
+| Revision | Down revision | What | Reversible | Dev |
+|---|---|---|---|---|
+| `d7a3e1b94c52` | `c4f1a9d27e6b` (0.8.9 head) | `articles`: nullable `reliability_grade varchar(1)`, `credibility smallint`, `priority_score smallint`; `score_reasons jsonb NOT NULL DEFAULT '{}'`; check `ck_articles_credibility_range` (1-6); index `ix_articles_priority_score (priority_score DESC NULLS LAST)`. `source_reliability_entries.content_kind varchar(20)` nullable. No data backfill. | yes (`downgrade` drops all of it; computed scores are lost and recomputed on the next upgrade) | not run yet. **Projection:** seconds; nullable `ADD COLUMN` and a constant-default jsonb column are metadata-only, the index and the check constraint scan `articles` once |
+
+This must be the last revision in the chain. After the deploy, `alembic_version` should read `d7a3e1b94c52`.
+
+### Settings / .env (new keys, recommended PROD values, defaults)
+
+None. `git diff origin/main -- .env.example .env.prod.template packages/cti-core/src/cti_core/config.py` is empty for
+this release. Nothing to set on the prod host.
+
+### Before deploy (read-only checks with expected results)
+
+Open the read-only session:
+
+```bash
+ssh privy-admin@10.8.20.78
+docker exec -it -e "PGOPTIONS=-c default_transaction_read_only=on" niskala-intelligence-postgres-1 sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+```
+
+1. **P6 columns do not exist yet.** Expected: 0 rows.
+
+   ```sql
+   select column_name from information_schema.columns
+   where table_name = 'articles'
+     and column_name in ('reliability_grade', 'credibility', 'priority_score', 'score_reasons');
+   ```
+
+2. **Baseline** (write the numbers down; After deploy compares against them).
+
+   ```sql
+   select count(*) articles,
+          count(*) filter (where confidence_score = 100) at_100,
+          count(*) filter (where overrides ? 'confidence_score') analyst_confidence
+   from articles;
+   ```
+
+   `analyst_confidence` is the number of articles that keep their confidence after the recompute (it equals 0.8.6's
+   Before-deploy query 3). If the 0.8.6 remedy clears those overrides after deploy, its follow-up recompute gives them
+   the computed confidence too. For reference, pre-P6 dev had 245 articles at exactly 100.
+
+### After deploy (checks with expected results: SQL, logs, UI pages)
+
+Run SQL in the read-only `psql` session shown above.
+
+1. **Version and migration head.**
+   - `GET /healthz` returns `"version": "0.8.10"`.
+   - `select version_num from alembic_version;` returns `d7a3e1b94c52`.
+2. **The bootstrap enqueued the recompute and a worker ran it.**
+
+   ```bash
+   cd /home/privy-admin/Niskala-Intelligence && docker compose -p niskala-intelligence logs api --since 30m | grep -E "recompute_all_enqueue_failed|api_startup_done"
+   cd /home/privy-admin/Niskala-Intelligence && docker compose -p niskala-intelligence logs worker --since 30m | grep -E "confidence_recompute_all|confidence\.recompute_all"
+   ```
+
+   Expected: `api_startup_done` (one per API process) and **no** `recompute_all_enqueue_failed`; one or two
+   `confidence_recompute_all` lines in the worker log (one enqueue per API process, `WEB_CONCURRENCY=2`) once the tasks
+   finish. Two lines are normal: the task is idempotent.
+3. **Every article assessed.** Expected: `unassessed = 0` once the task finished.
+
+   ```sql
+   select count(*) filter (where credibility is null) unassessed, count(*) total from articles;
+   ```
+
+4. **Code distribution.** Expected (**projection** from the dev replay): several codes (11 on dev), none dominant. `F6`
+   appears only for sources with no grade row.
+
+   ```sql
+   select reliability_grade || credibility code, count(*) from articles group by 1 order by 2 desc;
+   ```
+
+5. **Priority spread and confidence range.** Expected (**projection** from the dev replay): the most common
+   `priority_score` holds at most ~20% of articles (16.9% on dev); without an analyst override, confidence is between
+   10 and 90 and nothing is at 100.
+
+   ```sql
+   select priority_score, count(*), round(100.0 * count(*) / sum(count(*)) over (), 1) pct
+   from articles group by 1 order by 2 desc limit 5;
+
+   select min(confidence_score), max(confidence_score),
+          count(*) filter (where confidence_score = 100) at_100
+   from articles where not overrides ? 'confidence_score';
+   ```
+
+6. **`content_kind` filled from the scraper registry.** Expected: most rows non-NULL; NULL only for non-scraper sources
+   (for example CYFIRMA).
+
+   ```sql
+   select content_kind, count(*) from source_reliability_entries group by 1 order by 2 desc;
+   ```
+
+7. **Story refresh is running** (after 10+ minutes). Expected: a `confidence_refresh_stories` line every 10 minutes, no
+   errors.
+
+   ```bash
+   cd /home/privy-admin/Niskala-Intelligence && docker compose -p niskala-intelligence logs worker --since 30m | grep -i refresh_stories
+   ```
+
+8. **UI** (light and dark):
+   - Dashboard "Perlu dibaca": one article per story, chips like `C1 · P131`, reasons in the tooltip.
+   - Newsroom front section and list rows: same chip.
+   - Article modal: "Why this grade" section; credibility override select for `manage_intel` users.
+   - Intelligence > Source reliability > "Needs review" (`manage_sources`): default grades with 30-day statistics and a
+     suggested grade.
+
+### One-off commands (recompute/backfills: exact command, `--dry-run` first, expected numbers from dev, how long; mark each as needing the user's approval)
+
+Normally **nothing to run**: the API start enqueues `confidence.recompute_all` by itself. Run the command below only if
+After deploy check 2 shows `recompute_all_enqueue_failed` or check 3 stays above 0.
+
+There is **no `--dry-run`** for the recompute (it is idempotent and respects analyst overrides). Read-only preview: After
+deploy check 3.
+
+**Manual recompute (NEEDS USER APPROVAL; WRITE: rewrites confidence/credibility/priority on every article).** It
+enqueues the same task the bootstrap sends; a `worker` runs it, committing per batch of 500.
+
+```bash
+cd /home/privy-admin/Niskala-Intelligence
+docker compose -p niskala-intelligence exec -T api python -c "from cti_core.celery_client import send_recompute_all; send_recompute_all()"
+```
+
+Alternative: `POST /api/articles/confidence/recompute` as a `manage_intel` user (audit-logged). It runs **inside the API
+request**, so on a large table it can hit the proxy timeout; prefer the task.
+
+Expected: `unassessed` goes to 0. Duration: not measured on dev. **Projection:** a few minutes for a few thousand
+articles (pages of 500, one facts query per page).
+
+### Rollback / if it goes wrong
+
+- **Code rollback.** `deploy.sh` restores the `:prev` images on failure and never downgrades the DB. 0.8.9 code ignores
+  the new columns (nullable or defaulted), so **no DB downgrade is needed**.
+- **DB downgrade** (WRITE, needs approval, only after the app is back on 0.8.9): `alembic downgrade c4f1a9d27e6b`. It
+  drops the P6 columns, the index and `content_kind`.
+- **Old confidence values are not restored** by any rollback: the recompute rewrote them. If needed, take them from the
+  Postgres backup `make deploy` writes before migrating.
+- **Recompute stuck or failing:** check the `worker` log for `confidence`; re-run the manual recompute once the cause is
+  fixed (idempotent).
+
+### Known risks and follow-ups
+
+- **Priority query cost.** `sort=priority` collapses per story with `row_number()` over the filtered set. It was not
+  measured on prod-sized data; if "Perlu dibaca" feels slow, run `EXPLAIN (ANALYZE, BUFFERS)` on the dashboard query in
+  the read-only session.
+- **Refresh watermark edge.** `confidence.refresh_stories` advances its Redis watermark
+  (`cti:confidence:refresh_stories:watermark`) only after a successful run, using the timestamp taken before the query. A
+  story commit in flight across that boundary can be missed; the daily `recompute_all` (03:20) catches it. Older story
+  members can be up to 10 minutes stale.
+- **API start scan.** Every API start runs `exists (... credibility is null)` on `articles`. It is cheap once every row
+  is assessed (the first match ends it), but scans the table while rows stay NULL.
+- **Lower confidence downstream.** Values drop to 10-90. The newsletter ranking awards confidence points only above 50
+  (fewer articles get them, intended), and Splunk/STIX consumers see lower `confidence` values. Tell consumers before
+  the deploy.
+- **Follow-ups:** record the live distribution (After deploy checks 4-5) in `docs/LLM_ASSIST_REDESIGN.md`; review the
+  "Needs review" suggestions with an analyst.

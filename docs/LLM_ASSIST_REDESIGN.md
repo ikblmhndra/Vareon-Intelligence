@@ -1,8 +1,8 @@
 # LLM as an assistant: enrichment redesign and CTI gaps
 
-Status: **in progress** (updated 2026-10-26). Building blocks shipped in 0.8.3 and 0.8.4, and
-P0 and P1 shipped in 0.8.5, P2 in 0.8.6 and P3 in 0.8.7 (PR #76 open; see Progress below). P4 is
-implemented for 0.8.8 and P5 for 0.8.9 (branches not yet merged to `main`); P6-P7 have not started.
+Status: **in progress** (updated 2026-10-28). Building blocks shipped in 0.8.3 and 0.8.4, and
+P0 and P1 shipped in 0.8.5, P2 in 0.8.6, P3 in 0.8.7, P4 in 0.8.8 and P5 in 0.8.9 (see Progress
+below). P6 is built for 0.8.10 (branch not yet merged to `main`); P7 has not started.
 
 Goal: turn Vareon from "every article goes through an LLM" into a CTI platform where
 deterministic code, curated reference data and analyst feedback do the bulk of the work, and
@@ -184,7 +184,38 @@ Measured avoided calls on dev and prod are still to be read from Data health aft
 - **Revisit** when dev has a week of shadow data: if the shadow agreement on dev stays >= 95%, remove the 0.94 line so
   dev and prod use the same threshold.
 
-Not started: P6 and P7 (CTI model; persist-first
+Built for **0.8.10** (P6 Admiralty confidence and priority, branch `claude/p6-admiralty-confidence-9bbec2`, not yet
+merged; spec `docs/superpowers/specs/2026-10-26-p6-admiralty-confidence-design.md`):
+
+- **Scoring model.** One pure function, `cti_core.confidence.assess`, used by enrich persist and by every recompute.
+  Reliability A-F is the source grade (`F` when the source has no row). Credibility 1-6 is computed **per article** from a
+  rule ladder: 1 for a KEV source or 3+ story sources with an artefact, 2 for 2 sources or a primary source
+  (`kev`, `advisory`, `vendor_research`, `exploit`) with an artefact, 3 for primary or artefact or 2 sources, 4 for a
+  single aggregator without artefact, 6 for an ungraded source; 5 only by analyst override. Artefacts are a CVE, a
+  non-suppressed IOC or an explicit TTP (LLM and keyword TTPs do not count). Confidence is the STIX 2.1 Admiralty scale
+  averaged over both halves (A/1 = 90 ... E/5 = 10, F/6 = 50), so always 10-90; the P2 analyst confidence override still wins.
+- **Priority.** `priority_score` = confidence + confirmed incident 25, KEV 15 (or PoC 8), 3 per explicit/LLM TTP (max 12),
+  actor 8, 4 per extra story source (max 16), uncapped. Stored with `reliability_grade`, `credibility` and `score_reasons`
+  (one additive migration, `d7a3e1b94c52`; `source_reliability_entries.content_kind` is filled from the scraper registry at
+  API start).
+- **When it runs.** At persist; `confidence.refresh_stories` (every 10 minutes) re-assesses members of stories that
+  changed since the last successful run; `confidence.recompute_all` daily and once after deploy while any article is
+  unassessed; `confidence.recompute_source` after a grade change.
+- **Ranking.** `sort=priority` (dashboard "Perlu dibaca", Newsroom front section) orders by priority and keeps one article
+  per story (`total` counts collapsed rows); the weekly recap candidates order by priority without collapsing.
+- **API and UI.** `ArticleOut.admiralty_code` is now the article's code, plus `reliability_grade`, `credibility`,
+  `priority_score`, `score_reasons`. `PUT /api/articles/{id}/credibility` sets or clears an analyst credibility override.
+  The grade chip (`C1 · P131`, reasons in the tooltip) shows on the dashboard, Newsroom front section and list rows and the
+  article modal, which also has a "Why this grade" section and the override control.
+- **Source review.** `GET /api/sr/review` lists every `default` grade with 30-day statistics (articles, rejected share,
+  artefact share, multi-source stories led, IOC FP share) and a suggested grade (never A; `null` under 10 articles);
+  `POST /api/sr/entries/{id}/confirm` makes it an analyst grade in one click. The Source reliability page has a
+  "Needs review" tab, and the entry dialog no longer asks for credibility.
+- **Replay** (`tests/fixtures/confidence_replay/dev_2026-10.csv`, 1,546 dev articles, `tests/unit/test_confidence_replay.py`):
+  the most common priority value holds 16.9% of articles (target <= 20%), the top decile spans 33 distinct values
+  (target >= 20; before P6 it sat on 95-100), and 11 distinct Admiralty codes occur (target >= 8).
+
+Not started: P7 (CTI model; persist-first
 enrichment). Cost measurement over a week of real data is now possible
 on dev.
 
@@ -358,7 +389,7 @@ testing first. Phases 1-3 can start without schema redesign.
 | P3 Story dedup at ingest (**done in 0.8.7**) | Clustering in `cti_core`, `story_sources`, skip Tier 3 for known stories | "PHP2Shell"-type waves enriched once per story |
 | P4 Deterministic extractors (**built for 0.8.8**) | Actor/malware dictionary matcher, explicit + inferred ATT&CK, industry taxonomy, incident rule | Coverage (E9) measured before/after on the same article set; equal or better than LLM for actor and TTP precision on a 100-article hand-labelled sample. Measured 2026-10-25 on silver labels: met for actor (71% vs 70%) and TTP (keyword 70%, explicit 99% vs LLM 35%) precision and for coverage; malware precision 47% is the weakest field |
 | P5 Local relevance model (**built for 0.8.9**) | Train on audit trail, shadow mode, then gate | Agreement with LLM >= 95% on the confident bands; LLM classify calls down by the measured share. Measured 2026-10-26 on prod labels at 0.85: holdout 98.1% agreement over 54.5% of titles, 5-fold CV 97.6% over 52.2%; the share of calls actually avoided is read from Data health after deploy |
-| P6 Confidence | Grade all sources, Admiralty score in API/UI | Every article shows A-F/1-6 |
+| P6 Confidence (**built for 0.8.10**) | Grade all sources, Admiralty score in API/UI | Every article shows A-F/1-6. Replay of 1,546 dev articles: top priority value 16.9% of articles, 33 distinct values in the top decile, 11 Admiralty codes |
 | P7+ CTI model | Entity + relationship tables, TLP, TAXII, Splunk export, sightings, PIR at ingest, hunting packs | Per item in section 4 |
 
 Success metrics tracked from P0: LLM tokens per accepted article, LLM calls per day by call
