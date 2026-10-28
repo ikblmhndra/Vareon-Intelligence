@@ -13,7 +13,7 @@ from sqlalchemy import DateTime, bindparam, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from cti_core.config import get_settings
+from cti_core.config import IndicatorSettings, get_settings
 from cti_core.db.models.indicator import (
     Indicator,
     IndicatorFeedback,
@@ -22,10 +22,11 @@ from cti_core.db.models.indicator import (
     IndicatorThreatActor,
 )
 from cti_core.indicator.marking import stricter_pap, stricter_tlp
-from cti_core.indicator.validity import extend
+from cti_core.indicator.validity import HASH_TYPES, extend, ttl_days, ttl_fingerprint
 
 _VALID_VERDICTS = frozenset({"tp", "fp"})
 _VALID_TYPES = frozenset({"ip", "url", "domain", "email", "sha256", "sha1", "md5"})
+_TTL_FINGERPRINT_KEY = "indicator.ttl_fingerprint"
 
 
 def _apply_upsert(
@@ -135,6 +136,43 @@ class IndicatorRepo:
             indicator.fp_count += 1
         self.session.flush()
         return indicator
+
+    def reconcile_validity(self, cfg: IndicatorSettings) -> dict[str, int]:
+        """Isi/sinkronkan `valid_until = last_seen_at + TTL` untuk semua indikator tak-dicabut
+        (spec P7a 3.3). Dilewati bila sidik jari TTL tersimpan sama dengan yang sekarang, jadi
+        run harian murah. Indikator yang dicabut tidak disentuh; hash selalu NULL."""
+        from cti_core.db.repositories.report_state import JobStateRepo
+
+        states = JobStateRepo(self.session)
+        fingerprint = ttl_fingerprint(cfg)
+        if states.get(_TTL_FINGERPRINT_KEY) == fingerprint:
+            return {"updated": 0, "skipped": 1}
+        by_days: dict[int, list[str]] = {}
+        for t in sorted(_VALID_TYPES - HASH_TYPES):
+            days = ttl_days(t, cfg)
+            assert days is not None
+            by_days.setdefault(days, []).append(t)
+        updated = 0
+        for days, types in by_days.items():
+            res = self.session.execute(
+                text(
+                    "UPDATE indicators SET valid_until = last_seen_at + make_interval(days => :d)"
+                    " WHERE type = ANY(:types) AND revoked_at IS NULL"
+                    " AND valid_until IS DISTINCT FROM last_seen_at + make_interval(days => :d)"
+                ),
+                {"d": days, "types": types},
+            )
+            updated += res.rowcount  # type: ignore[attr-defined]
+        res = self.session.execute(
+            text(
+                "UPDATE indicators SET valid_until = NULL WHERE type = ANY(:types)"
+                " AND revoked_at IS NULL AND valid_until IS NOT NULL"
+            ),
+            {"types": sorted(HASH_TYPES)},
+        )
+        updated += res.rowcount  # type: ignore[attr-defined]
+        states.set(_TTL_FINGERPRINT_KEY, fingerprint)
+        return {"updated": updated, "skipped": 0}
 
     def get(self, *, type: str, value: str) -> Indicator | None:
         return self.session.execute(

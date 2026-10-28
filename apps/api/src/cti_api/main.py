@@ -14,12 +14,14 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from cti_core.celery_client import send_recompute_all
+from cti_core.celery_client import send_recompute_all, send_reconcile_validity
 from cti_core.config import get_settings
 from cti_core.db.engine import async_session
 from cti_core.db.models.article import Article
+from cti_core.db.models.report_state import JobState
 from cti_core.db.repositories.auth import AsyncClientRepo
 from cti_core.db.repositories.source_reliability import AsyncSourceReliabilityRepo
+from cti_core.indicator.validity import ttl_fingerprint
 from cti_core.logging import configure_logging, get_logger
 from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
@@ -124,6 +126,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         unassessed = bool(
             await session.scalar(select(exists().where(Article.credibility.is_(None))))
         )
+        # P7a: TTL indikator berubah (atau belum pernah dihitung) -> reconcile `valid_until`.
+        stored_ttl = await session.scalar(
+            select(JobState.value).where(JobState.key == "indicator.ttl_fingerprint")
+        )
+        ttl_changed = stored_ttl != ttl_fingerprint(settings.indicator)
     if new_sources or unassessed:
         # SATU task untuk semua artikel (bukan satu per sumber): skala skor lama (self-rating LLM)
         # dan baru tidak boleh bercampur, dan satu panggilan broker tidak menahan startup.
@@ -136,6 +143,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 unassessed_articles=unassessed,
                 remedy="POST /api/articles/confidence/recompute (atau kirim task "
                 "confidence.recompute_all) secara manual",
+                exc_info=True,
+            )
+    if ttl_changed:
+        # Bersyarat (bukan tiap start): beberapa proses uvicorn + start tanpa broker akan mengirim
+        # berlebihan; beat harian tetap menangkap yang terlewat.
+        try:
+            send_reconcile_validity()
+        except Exception:
+            log.error(
+                "reconcile_validity_enqueue_failed",
+                remedy="send task indicator.reconcile_validity manually",
                 exc_info=True,
             )
     log.info("api_startup_done", version=__version__)

@@ -92,6 +92,7 @@ from cti_worker.tasks import (  # noqa: E402,F401  -- registrasi task, harus set
     confidence,
     cve_mirror,
     enrich,
+    indicator,
     llm_maintenance,
     periodic,
     relevance,

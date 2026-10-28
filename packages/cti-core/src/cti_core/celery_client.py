@@ -72,3 +72,9 @@ def send_recompute_all() -> None:
     """Minta worker menghitung ulang `confidence_score` SEMUA artikel (pertama kali grade bawaan
     dibuat saat API start, rilis 0.8.6). Satu pesan, antrian `maintenance`."""
     get_celery_client().send_task("confidence.recompute_all", queue="maintenance")
+
+
+def send_reconcile_validity() -> None:
+    """Minta worker mengisi/menyinkronkan `indicators.valid_until` dari TTL settings (API start
+    dengan sidik jari TTL berubah, P7a). Satu pesan, antrian `maintenance`."""
+    get_celery_client().send_task("indicator.reconcile_validity", queue="maintenance")
