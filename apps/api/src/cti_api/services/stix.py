@@ -31,7 +31,7 @@ from typing import Any
 from cti_core.config import platform_name
 from cti_core.db.models.pir import PIRRequirement
 from cti_core.db.repositories.article import AsyncArticleRepo, all_country_codes
-from cti_core.db.repositories.ioc import AsyncIOCRepo
+from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from cti_core.db.repositories.pir import AsyncPIRRepo
 from cti_core.db.repositories.ta import AsyncTAProfileRepo
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -474,7 +474,7 @@ async def build_ioc_stix_bundle(
     objects.append(identity)
 
     # Export tidak pernah memuat IOC `auto_suppressed` (bukan indikator), apa pun parameternya.
-    iocs, _total = await AsyncIOCRepo(session).list_filtered(
+    iocs, _total = await AsyncIndicatorRepo(session).list_filtered(
         page=1, page_size=min(limit, 1000), ioc_type=ioc_type, include_suppressed=False
     )
 

@@ -9,7 +9,7 @@ import pytest
 from cti_api.services import newsletter as newsletter_service
 from cti_core.db.models.article_cve import ArticleCve
 from cti_core.db.models.cve import CveNewsletterMention, CveTracker
-from cti_core.db.models.ioc import IOC
+from cti_core.db.models.indicator import Indicator
 from cti_core.db.repositories.cve import AsyncCveFalsePositiveRepo
 from cti_core.db.repositories.newsletter import AsyncNewsletterRepo
 from sqlalchemy import func, select
@@ -83,7 +83,7 @@ async def test_draft_step_writes_the_cached_iocs_and_cve_mentions_without_any_fe
 
         # Membangun konteks tidak menulis apa pun ke catatan.
         assert context["highlight"]["cve_mentions"] == [FP_IN_DEFAULT_ONLY]
-        assert await _count(async_db_session, IOC) == 0
+        assert await _count(async_db_session, Indicator) == 0
         assert await _count(async_db_session, CveNewsletterMention) == 0
 
         await newsletter_service.save_newsletter(async_db_session, context, "<html/>", "tester")
@@ -91,7 +91,9 @@ async def test_draft_step_writes_the_cached_iocs_and_cve_mentions_without_any_fe
 
         assert pipeline.calls == (0, 0)  # menulis temuan pun tanpa fetch
 
-    iocs = {(i.type, i.value): i for i in (await async_db_session.execute(select(IOC))).scalars()}
+    iocs = {
+        (i.type, i.value): i for i in (await async_db_session.execute(select(Indicator))).scalars()
+    }
     assert set(iocs) == {("ip", IOC_IP)}  # CVE tidak lagi jadi IOC
     cves = (await async_db_session.execute(select(ArticleCve.cve_id))).scalars().all()
     assert sorted(cves) == sorted([FP_IN_DEFAULT_ONLY, FP_IN_BOTH])

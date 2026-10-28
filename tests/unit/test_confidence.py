@@ -7,7 +7,7 @@ from __future__ import annotations
 import datetime
 
 from cti_api.services import confidence as svc
-from cti_core.db.models.ioc import IOC, IOCSource
+from cti_core.db.models.indicator import Indicator, IndicatorSource
 
 
 def _now() -> datetime.datetime:
@@ -21,9 +21,9 @@ def _ioc(
     seen_count: int = 1,
     tp_count: int = 0,
     fp_count: int = 0,
-    sources: list[IOCSource] | None = None,
-) -> IOC:
-    ioc = IOC(
+    sources: list[IndicatorSource] | None = None,
+) -> Indicator:
+    ioc = Indicator(
         type=ioc_type,
         value="1.2.3.4",
         last_seen_at=last_seen_at or _now(),
@@ -44,7 +44,7 @@ def test_compute_ioc_confidence_fresh_high_tp_high_source_count() -> None:
         last_seen_at=now,
         tp_count=10,
         fp_count=0,
-        sources=[IOCSource(url="https://a.com", source_name="a", first_seen_at=now)] * 3,
+        sources=[IndicatorSource(url="https://a.com", source_name="a", first_seen_at=now)] * 3,
     )
     score = svc.compute_ioc_confidence(ioc, now)
     # base 50 + recency 30 + source_bonus min(3*10,30)=30 + verdict_bonus

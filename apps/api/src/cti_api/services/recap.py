@@ -94,7 +94,7 @@ from typing import Any
 import structlog
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.cve import AsyncCveTrackerRepo
-from cti_core.db.repositories.ioc import AsyncIOCRepo
+from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from cti_core.db.repositories.recap import AsyncRecapRepo
 from cti_core.db.repositories.ta import AsyncTARepo
 from cti_core.db.repositories.tweet import AsyncTweetRepo
@@ -180,7 +180,7 @@ async def _collect_tweets(session: AsyncSession, day: datetime.date) -> list[Any
 
 
 async def _collect_iocs(session: AsyncSession, day: datetime.date) -> list[Any]:
-    return await AsyncIOCRepo(session).list_first_seen_on(day, limit=200)
+    return await AsyncIndicatorRepo(session).list_first_seen_on(day, limit=200)
 
 
 async def _collect_cves(session: AsyncSession, day: datetime.date) -> list[Any]:
@@ -687,7 +687,7 @@ async def _collect_weekly(
     cves = await cve_repo.list_registered_between(start, end, limit=_WEEKLY_MAX_CVES)
     cves_total = await cve_repo.count_registered_between(start, end)
 
-    ioc_by_type = await AsyncIOCRepo(session).count_first_seen_by_type_between(start, end)
+    ioc_by_type = await AsyncIndicatorRepo(session).count_first_seen_by_type_between(start, end)
     new_tas, new_tas_total = await AsyncTARepo(session).list_added_between(
         start, end, limit=_WEEKLY_MAX_NEW_TAS
     )

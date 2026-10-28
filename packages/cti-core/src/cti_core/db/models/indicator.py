@@ -1,7 +1,7 @@
-"""IOC -- gantiin `news_db.iocs`. Ditulis DUA sisi di sistem lama (scraper
+"""Indicator (dulu IOC) -- gantiin `news_db.iocs`. Ditulis DUA sisi di sistem lama (scraper
 lewat `dbMongo.upsert_ioc_from_feed`, web lewat `ioc_service.upsert_ioc`)
 tanpa koordinasi -- lihat plan §1 tabel kolaborasi. Di sini cuma ada SATU
-tabel, SATU cara nulis (lewat IOCRepo, Fase 2.8).
+tabel, SATU cara nulis (lewat IndicatorRepo, Fase 2.8).
 """
 
 from __future__ import annotations
@@ -27,9 +27,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from cti_core.db.base import Base, TimestampMixin
 
 
-class IOC(TimestampMixin, Base):
-    __tablename__ = "iocs"
-    __table_args__ = (UniqueConstraint("type", "value", name="uq_iocs_type_value"),)
+class Indicator(TimestampMixin, Base):
+    __tablename__ = "indicators"
+    __table_args__ = (UniqueConstraint("type", "value", name="uq_indicators_type_value"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
 
@@ -68,27 +68,29 @@ class IOC(TimestampMixin, Base):
     """Payload enrichment provider (mis. hasil lookup OTX/AbuseIPDB) --
     lihat enrichmentTemplate.py di repo lama. Cair, gak dinormalisasi."""
 
-    sources: Mapped[list[IOCSource]] = relationship(
-        back_populates="ioc", cascade="all, delete-orphan", lazy="selectin"
+    sources: Mapped[list[IndicatorSource]] = relationship(
+        back_populates="indicator", cascade="all, delete-orphan", lazy="selectin"
     )
-    tags: Mapped[list[IOCTag]] = relationship(
-        back_populates="ioc", cascade="all, delete-orphan", lazy="selectin"
+    tags: Mapped[list[IndicatorTag]] = relationship(
+        back_populates="indicator", cascade="all, delete-orphan", lazy="selectin"
     )
-    threat_actors: Mapped[list[IOCThreatActor]] = relationship(
-        back_populates="ioc", cascade="all, delete-orphan", lazy="selectin"
+    threat_actors: Mapped[list[IndicatorThreatActor]] = relationship(
+        back_populates="indicator", cascade="all, delete-orphan", lazy="selectin"
     )
-    feedback: Mapped[list[IOCFeedback]] = relationship(
-        back_populates="ioc", cascade="all, delete-orphan", lazy="selectin"
+    feedback: Mapped[list[IndicatorFeedback]] = relationship(
+        back_populates="indicator", cascade="all, delete-orphan", lazy="selectin"
     )
 
 
-class IOCSource(Base):
+class IndicatorSource(Base):
     """Ganti array `sources[]` -- di URL/artikel mana IOC ini kelihatan."""
 
-    __tablename__ = "ioc_sources"
+    __tablename__ = "indicator_sources"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    ioc_id: Mapped[int] = mapped_column(ForeignKey("iocs.id", ondelete="CASCADE"), nullable=False)
+    indicator_id: Mapped[int] = mapped_column(
+        ForeignKey("indicators.id", ondelete="CASCADE"), nullable=False
+    )
     article_id: Mapped[int | None] = mapped_column(ForeignKey("articles.id", ondelete="SET NULL"))
     url: Mapped[str] = mapped_column(Text, nullable=False)
     source_name: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -97,38 +99,46 @@ class IOCSource(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
-    ioc: Mapped[IOC] = relationship(back_populates="sources")
+    indicator: Mapped[Indicator] = relationship(back_populates="sources")
 
 
-class IOCTag(Base):
-    __tablename__ = "ioc_tags"
-    __table_args__ = (UniqueConstraint("ioc_id", "tag", name="uq_ioc_tag"),)
+class IndicatorTag(Base):
+    __tablename__ = "indicator_tags"
+    __table_args__ = (UniqueConstraint("indicator_id", "tag", name="uq_indicator_tag"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    ioc_id: Mapped[int] = mapped_column(ForeignKey("iocs.id", ondelete="CASCADE"), nullable=False)
+    indicator_id: Mapped[int] = mapped_column(
+        ForeignKey("indicators.id", ondelete="CASCADE"), nullable=False
+    )
     tag: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
 
-    ioc: Mapped[IOC] = relationship(back_populates="tags")
+    indicator: Mapped[Indicator] = relationship(back_populates="tags")
 
 
-class IOCThreatActor(Base):
-    __tablename__ = "ioc_threat_actors"
-    __table_args__ = (UniqueConstraint("ioc_id", "threat_actor", name="uq_ioc_threat_actor"),)
+class IndicatorThreatActor(Base):
+    __tablename__ = "indicator_threat_actors"
+    __table_args__ = (
+        UniqueConstraint("indicator_id", "threat_actor", name="uq_indicator_threat_actor"),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    ioc_id: Mapped[int] = mapped_column(ForeignKey("iocs.id", ondelete="CASCADE"), nullable=False)
+    indicator_id: Mapped[int] = mapped_column(
+        ForeignKey("indicators.id", ondelete="CASCADE"), nullable=False
+    )
     threat_actor: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
 
-    ioc: Mapped[IOC] = relationship(back_populates="threat_actors")
+    indicator: Mapped[Indicator] = relationship(back_populates="threat_actors")
 
 
-class IOCFeedback(Base):
+class IndicatorFeedback(Base):
     """Ganti array `feedback_log[]` -- riwayat TP/FP dari analis."""
 
-    __tablename__ = "ioc_feedback"
+    __tablename__ = "indicator_feedback"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    ioc_id: Mapped[int] = mapped_column(ForeignKey("iocs.id", ondelete="CASCADE"), nullable=False)
+    indicator_id: Mapped[int] = mapped_column(
+        ForeignKey("indicators.id", ondelete="CASCADE"), nullable=False
+    )
     verdict: Mapped[str] = mapped_column(String(2), nullable=False)
     """"tp" | "fp"."""
     submitted_by: Mapped[str] = mapped_column(String(200), nullable=False)
@@ -137,4 +147,4 @@ class IOCFeedback(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
-    ioc: Mapped[IOC] = relationship(back_populates="feedback")
+    indicator: Mapped[Indicator] = relationship(back_populates="feedback")

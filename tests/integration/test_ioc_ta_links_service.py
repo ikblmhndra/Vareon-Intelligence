@@ -10,7 +10,7 @@ from cti_api.services import ioc_ta_links as svc
 from cti_core.db.models.attack import AttackGroup
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.auth import AsyncClientRepo
-from cti_core.db.repositories.ioc import AsyncIOCRepo
+from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from cti_core.db.repositories.ta import AsyncTARepo
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,7 +23,7 @@ async def test_returns_none_for_missing_ioc(async_db_session: AsyncSession) -> N
 
 
 async def test_empty_threat_actors_when_no_links(async_db_session: AsyncSession) -> None:
-    repo = AsyncIOCRepo(async_db_session)
+    repo = AsyncIndicatorRepo(async_db_session)
     await repo.upsert(type="ip", value="1.2.3.4", source_url="https://a.com", source_name="a")
     result = await svc.get_ioc_ta_links(async_db_session, "ip", "1.2.3.4")
     assert result == {"threat_actors": []}
@@ -36,7 +36,7 @@ async def test_manual_tag_and_article_mention_combined(async_db_session: AsyncSe
     )
     await article_repo.set_enrichment(article, threat_actors=["Apt41", "Lazarus"])
 
-    ioc_repo = AsyncIOCRepo(async_db_session)
+    ioc_repo = AsyncIndicatorRepo(async_db_session)
     created = await ioc_repo.upsert(
         type="domain",
         value="evil.example",
@@ -67,7 +67,7 @@ async def test_manual_and_article_overlap_is_source_both(async_db_session: Async
     )
     await article_repo.set_enrichment(article, threat_actors=["Apt41"])
 
-    ioc_repo = AsyncIOCRepo(async_db_session)
+    ioc_repo = AsyncIndicatorRepo(async_db_session)
     created = await ioc_repo.upsert(
         type="domain",
         value="both.example",
@@ -95,7 +95,7 @@ async def test_watchlist_is_unscoped_across_clients(async_db_session: AsyncSessi
     article = await article_repo.upsert(url="https://example.com/a3", title="A3", source="X")
     await article_repo.set_enrichment(article, threat_actors=["Apt41"])
 
-    ioc_repo = AsyncIOCRepo(async_db_session)
+    ioc_repo = AsyncIndicatorRepo(async_db_session)
     await ioc_repo.upsert(
         type="domain",
         value="watched.example",
@@ -129,7 +129,7 @@ async def test_matches_attack_group_by_alias_case_insensitive(
     article = await article_repo.upsert(url="https://example.com/a4", title="A4", source="X")
     await article_repo.set_enrichment(article, threat_actors=["wicked panda"])
 
-    ioc_repo = AsyncIOCRepo(async_db_session)
+    ioc_repo = AsyncIndicatorRepo(async_db_session)
     await ioc_repo.upsert(
         type="domain",
         value="matched.example",

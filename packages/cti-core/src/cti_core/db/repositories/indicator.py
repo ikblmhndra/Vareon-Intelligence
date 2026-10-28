@@ -1,4 +1,4 @@
-"""IOCRepo -- satu-satunya jalur tulis `iocs`. Gantiin dua jalur nulis
+"""IndicatorRepo -- satu-satunya jalur tulis `indicators`. Gantiin dua jalur nulis
 terpisah di sistem lama (`dbMongo.upsert_ioc_from_feed` sync vs
 `ioc_service.upsert_ioc` async, beda kekayaan data) -- lihat plan §6.
 """
@@ -13,13 +13,19 @@ from sqlalchemy import DateTime, bindparam, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from cti_core.db.models.ioc import IOC, IOCFeedback, IOCSource, IOCTag, IOCThreatActor
+from cti_core.db.models.indicator import (
+    Indicator,
+    IndicatorFeedback,
+    IndicatorSource,
+    IndicatorTag,
+    IndicatorThreatActor,
+)
 
 _VALID_VERDICTS = frozenset({"tp", "fp"})
 _VALID_TYPES = frozenset({"ip", "url", "domain", "email", "sha256", "sha1", "md5"})
 
 
-class IOCRepo:
+class IndicatorRepo:
     def __init__(self, session: Session) -> None:
         self.session = session
 
@@ -33,26 +39,28 @@ class IOCRepo:
         context: str | None = None,
         article_id: int | None = None,
         suppression_reason: str | None = None,
-    ) -> IOC:
+    ) -> Indicator:
         existing = self.session.execute(
-            select(IOC).where(IOC.type == type, IOC.value == value)
+            select(Indicator).where(Indicator.type == type, Indicator.value == value)
         ).scalar_one_or_none()
         now = datetime.datetime.now(datetime.UTC)
 
         if existing is None:
-            ioc = IOC(type=type, value=value, first_seen_at=now, last_seen_at=now, seen_count=1)
-            self.session.add(ioc)
+            indicator = Indicator(
+                type=type, value=value, first_seen_at=now, last_seen_at=now, seen_count=1
+            )
+            self.session.add(indicator)
         else:
-            ioc = existing
-            ioc.last_seen_at = now
-            ioc.seen_count += 1
+            indicator = existing
+            indicator.last_seen_at = now
+            indicator.seen_count += 1
         # Baris yang SUDAH tersuppress tidak ditimpa alasannya (jejak pertama dipertahankan).
-        if suppression_reason is not None and not ioc.auto_suppressed:
-            ioc.auto_suppressed = True
-            ioc.suppression_reason = suppression_reason
+        if suppression_reason is not None and not indicator.auto_suppressed:
+            indicator.auto_suppressed = True
+            indicator.suppression_reason = suppression_reason
 
-        ioc.sources.append(
-            IOCSource(
+        indicator.sources.append(
+            IndicatorSource(
                 url=source_url,
                 source_name=source_name,
                 context=context,
@@ -61,28 +69,30 @@ class IOCRepo:
             )
         )
         self.session.flush()
-        return ioc
+        return indicator
 
     def add_feedback(
-        self, ioc: IOC, *, verdict: str, submitted_by: str, note: str | None = None
-    ) -> IOC:
+        self, indicator: Indicator, *, verdict: str, submitted_by: str, note: str | None = None
+    ) -> Indicator:
         if verdict not in _VALID_VERDICTS:
             raise ValueError(f"verdict '{verdict}' harus salah satu dari {_VALID_VERDICTS}")
-        ioc.feedback.append(IOCFeedback(verdict=verdict, submitted_by=submitted_by, note=note))
+        indicator.feedback.append(
+            IndicatorFeedback(verdict=verdict, submitted_by=submitted_by, note=note)
+        )
         if verdict == "tp":
-            ioc.tp_count += 1
+            indicator.tp_count += 1
         else:
-            ioc.fp_count += 1
+            indicator.fp_count += 1
         self.session.flush()
-        return ioc
+        return indicator
 
-    def get(self, *, type: str, value: str) -> IOC | None:
+    def get(self, *, type: str, value: str) -> Indicator | None:
         return self.session.execute(
-            select(IOC).where(IOC.type == type, IOC.value == value)
+            select(Indicator).where(Indicator.type == type, Indicator.value == value)
         ).scalar_one_or_none()
 
 
-class AsyncIOCRepo:
+class AsyncIndicatorRepo:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
@@ -96,25 +106,29 @@ class AsyncIOCRepo:
         context: str | None = None,
         article_id: int | None = None,
         suppression_reason: str | None = None,
-    ) -> IOC:
-        result = await self.session.execute(select(IOC).where(IOC.type == type, IOC.value == value))
+    ) -> Indicator:
+        result = await self.session.execute(
+            select(Indicator).where(Indicator.type == type, Indicator.value == value)
+        )
         existing = result.scalar_one_or_none()
         now = datetime.datetime.now(datetime.UTC)
 
         if existing is None:
-            ioc = IOC(type=type, value=value, first_seen_at=now, last_seen_at=now, seen_count=1)
-            self.session.add(ioc)
+            indicator = Indicator(
+                type=type, value=value, first_seen_at=now, last_seen_at=now, seen_count=1
+            )
+            self.session.add(indicator)
         else:
-            ioc = existing
-            ioc.last_seen_at = now
-            ioc.seen_count += 1
+            indicator = existing
+            indicator.last_seen_at = now
+            indicator.seen_count += 1
         # Baris yang SUDAH tersuppress tidak ditimpa alasannya (jejak pertama dipertahankan).
-        if suppression_reason is not None and not ioc.auto_suppressed:
-            ioc.auto_suppressed = True
-            ioc.suppression_reason = suppression_reason
+        if suppression_reason is not None and not indicator.auto_suppressed:
+            indicator.auto_suppressed = True
+            indicator.suppression_reason = suppression_reason
 
-        ioc.sources.append(
-            IOCSource(
+        indicator.sources.append(
+            IndicatorSource(
                 url=source_url,
                 source_name=source_name,
                 context=context,
@@ -123,64 +137,70 @@ class AsyncIOCRepo:
             )
         )
         await self.session.flush()
-        return ioc
+        return indicator
 
     async def add_feedback(
-        self, ioc: IOC, *, verdict: str, submitted_by: str, note: str | None = None
-    ) -> IOC:
+        self, indicator: Indicator, *, verdict: str, submitted_by: str, note: str | None = None
+    ) -> Indicator:
         if verdict not in _VALID_VERDICTS:
             raise ValueError(f"verdict '{verdict}' harus salah satu dari {_VALID_VERDICTS}")
-        ioc.feedback.append(IOCFeedback(verdict=verdict, submitted_by=submitted_by, note=note))
+        indicator.feedback.append(
+            IndicatorFeedback(verdict=verdict, submitted_by=submitted_by, note=note)
+        )
         if verdict == "tp":
-            ioc.tp_count += 1
+            indicator.tp_count += 1
         else:
-            ioc.fp_count += 1
+            indicator.fp_count += 1
         await self.session.flush()
-        return ioc
+        return indicator
 
     async def apply_confidence_and_actionability(
         self,
-        ioc: IOC,
+        indicator: Indicator,
         *,
         confidence_score: int,
         actionability_score: int,
         actionability_label: str,
         recommended_action: str,
         decayed_at: datetime.datetime,
-    ) -> IOC:
+    ) -> Indicator:
         """Port bagian akhir `ioc_service.submit_feedback()` (Fase 7.4 Grup
         D) -- recompute confidence+actionability abis feedback baru masuk."""
-        ioc.confidence_score = confidence_score
-        ioc.confidence_decayed_at = decayed_at
-        ioc.actionability_score = actionability_score
-        ioc.actionability_label = actionability_label
-        ioc.recommended_action = recommended_action
+        indicator.confidence_score = confidence_score
+        indicator.confidence_decayed_at = decayed_at
+        indicator.actionability_score = actionability_score
+        indicator.actionability_label = actionability_label
+        indicator.recommended_action = recommended_action
         await self.session.flush()
-        return ioc
+        return indicator
 
-    async def get(self, *, type: str, value: str) -> IOC | None:
-        result = await self.session.execute(select(IOC).where(IOC.type == type, IOC.value == value))
+    async def get(self, *, type: str, value: str) -> Indicator | None:
+        result = await self.session.execute(
+            select(Indicator).where(Indicator.type == type, Indicator.value == value)
+        )
         return result.scalar_one_or_none()
 
-    async def get_by_id(self, ioc_id: int) -> IOC | None:
-        result = await self.session.execute(select(IOC).where(IOC.id == ioc_id))
+    async def get_by_id(self, indicator_id: int) -> Indicator | None:
+        result = await self.session.execute(select(Indicator).where(Indicator.id == indicator_id))
         return result.scalar_one_or_none()
 
-    async def list_by_ids(self, ioc_ids: Sequence[int]) -> list[IOC]:
+    async def list_by_ids(self, indicator_ids: Sequence[int]) -> list[Indicator]:
         """Batch get -- port `_ioc_confidence_factor()`'s `$in` lookup
         (`campaign_scoring_service.py`, Fase 7.4 Grup A)."""
-        if not ioc_ids:
+        if not indicator_ids:
             return []
-        result = await self.session.execute(select(IOC).where(IOC.id.in_(ioc_ids)))
+        result = await self.session.execute(
+            select(Indicator).where(Indicator.id.in_(indicator_ids))
+        )
         return list(result.scalars().all())
 
-    async def list_first_seen_on(self, day: datetime.date, *, limit: int = 200) -> list[IOC]:
+    async def list_first_seen_on(self, day: datetime.date, *, limit: int = 200) -> list[Indicator]:
         """Port `_collect_iocs()` (`recap_service.py`, Fase 7.3 router
         `recap`, Bagian 5) -- IOC yang PERTAMA ketemu tanggal ini."""
         result = await self.session.execute(
-            select(IOC)
-            .where(func.date(IOC.first_seen_at) == day, IOC.auto_suppressed.is_(False))
-            .order_by(IOC.first_seen_at)
+            select(Indicator)
+            .where(func.date(Indicator.first_seen_at) == day, Indicator.auto_suppressed.is_(False))
+            .order_by(Indicator.first_seen_at)
             .limit(limit)
         )
         return list(result.scalars().all())
@@ -193,13 +213,18 @@ class AsyncIOCRepo:
         (seminggu bisa ribuan). Tanggalnya `func.date(timestamptz)`, jadi mengikuti timezone sesi
         DB seperti `list_first_seen_on`."""
         result = await self.session.execute(
-            select(IOC.type, func.count())
-            .where(func.date(IOC.first_seen_at).between(start, end), IOC.auto_suppressed.is_(False))
-            .group_by(IOC.type)
+            select(Indicator.type, func.count())
+            .where(
+                func.date(Indicator.first_seen_at).between(start, end),
+                Indicator.auto_suppressed.is_(False),
+            )
+            .group_by(Indicator.type)
         )
         return {ioc_type: n for ioc_type, n in result.all()}
 
-    async def list_needing_decay(self, cutoff: datetime.datetime, *, limit: int = 500) -> list[IOC]:
+    async def list_needing_decay(
+        self, cutoff: datetime.datetime, *, limit: int = 500
+    ) -> list[Indicator]:
         """Port query `decay_sweep()` (`ioc_service.py` lama) -- IOC yang
         confidence-nya belum PERNAH dihitung ulang (`confidence_decayed_at`
         NULL) ATAU udah lebih lama dari `cutoff` (24 jam lalu, port apa
@@ -208,9 +233,14 @@ class AsyncIOCRepo:
         bisa gede, satu UPDATE per-IOC lewat ORM -- lihat docstring
         `ioc_decay.decay_sweep`)."""
         result = await self.session.execute(
-            select(IOC)
-            .where(or_(IOC.confidence_decayed_at.is_(None), IOC.confidence_decayed_at < cutoff))
-            .order_by(IOC.id)
+            select(Indicator)
+            .where(
+                or_(
+                    Indicator.confidence_decayed_at.is_(None),
+                    Indicator.confidence_decayed_at < cutoff,
+                )
+            )
+            .order_by(Indicator.id)
             .limit(limit)
         )
         return list(result.scalars().all())
@@ -222,7 +252,7 @@ class AsyncIOCRepo:
         types: Sequence[str],
         checked_before: datetime.datetime,
         limit: int,
-    ) -> list[IOC]:
+    ) -> list[Indicator]:
         """IOC bertipe `types` (bukan yang `auto_suppressed`) yang BELUM punya kartu `provider` di
         `enrichment.providers`, atau yang kartunya dicek sebelum `checked_before`. Terbaru dilihat
         dulu (`last_seen_at`), supaya jatah provider dipakai untuk IOC yang paling relevan.
@@ -231,7 +261,7 @@ class AsyncIOCRepo:
         `providers`, jadi `COALESCE` ke array kosong dan IOC-nya terhitung belum dicek."""
         fresh_card = text(
             "NOT EXISTS (SELECT 1 FROM jsonb_array_elements("
-            "COALESCE(iocs.enrichment -> 'providers', '[]'::jsonb)) AS card "
+            "COALESCE(indicators.enrichment -> 'providers', '[]'::jsonb)) AS card "
             "WHERE card ->> 'key' = :provider "
             "AND (card ->> 'checked_at')::timestamptz > :checked_before)"
         ).bindparams(
@@ -239,26 +269,26 @@ class AsyncIOCRepo:
             bindparam("checked_before", checked_before, type_=DateTime(timezone=True)),
         )
         stmt = (
-            select(IOC)
-            .where(IOC.type.in_(types), IOC.auto_suppressed.is_(False), fresh_card)
-            .order_by(IOC.last_seen_at.desc(), IOC.id)
+            select(Indicator)
+            .where(Indicator.type.in_(types), Indicator.auto_suppressed.is_(False), fresh_card)
+            .order_by(Indicator.last_seen_at.desc(), Indicator.id)
             .limit(limit)
         )
         return list((await self.session.execute(stmt)).scalars().all())
 
     async def set_enrichment_provider(
-        self, ioc: IOC, card: dict[str, Any], *, now: datetime.datetime
+        self, indicator: Indicator, card: dict[str, Any], *, now: datetime.datetime
     ) -> None:
         """Tulis kartu SATU provider ke `enrichment.providers` (mengganti kartu `key` yang sama,
         kartu provider lain tidak disentuh) dan perbarui `updated_at`. Kolom JSONB diganti dengan
         dict BARU, bukan dimutasi di tempat, supaya perubahannya terdeteksi."""
-        current = dict(ioc.enrichment or {})
+        current = dict(indicator.enrichment or {})
         cards = [c for c in current.get("providers", []) if c.get("key") != card["key"]]
         cards.append(card)
         cards.sort(key=lambda c: str(c.get("key", "")))
         current["providers"] = cards
         current["updated_at"] = now.strftime("%Y-%m-%d %H:%M UTC")
-        ioc.enrichment = current
+        indicator.enrichment = current
         await self.session.flush()
 
     async def list_filtered(
@@ -272,42 +302,44 @@ class AsyncIOCRepo:
         sort_by: str | None = None,
         actionability: str | None = None,
         include_suppressed: bool = False,
-    ) -> tuple[list[IOC], int]:
+    ) -> tuple[list[Indicator], int]:
         """Port `ioc_service.get_iocs()`. `actionability` (filter lama)
         gak diport pas Fase 7.3 -- waktu itu kolomnya emang belum ada.
         Fase 7.4 Grup D nambahin `actionability_label` ke skema (lihat
         `IOC.actionability_label`), jadi filter ini SEKARANG bisa
         diwire -- ditambahin di sini pas Grup G4 (`/intelligence/
         ioc-management`) baru butuh beneran dari frontend."""
-        stmt = select(IOC)
+        stmt = select(Indicator)
         if not include_suppressed:
             # IOC `auto_suppressed` (cocok allowlist) disembunyikan kecuali diminta eksplisit.
-            stmt = stmt.where(IOC.auto_suppressed.is_(False))
+            stmt = stmt.where(Indicator.auto_suppressed.is_(False))
         if ioc_type and ioc_type in _VALID_TYPES:
-            stmt = stmt.where(IOC.type == ioc_type)
+            stmt = stmt.where(Indicator.type == ioc_type)
         if search:
-            stmt = stmt.where(IOC.value.ilike(f"%{search}%"))
+            stmt = stmt.where(Indicator.value.ilike(f"%{search}%"))
         if tags:
-            stmt = stmt.join(IOC.tags).where(IOCTag.tag.in_(tags)).distinct()
+            stmt = stmt.join(Indicator.tags).where(IndicatorTag.tag.in_(tags)).distinct()
         if actionability:
-            stmt = stmt.where(IOC.actionability_label == actionability)
+            stmt = stmt.where(Indicator.actionability_label == actionability)
 
         count_stmt = select(func.count()).select_from(stmt.subquery())
         total = (await self.session.execute(count_stmt)).scalar_one()
 
-        order_col = IOC.confidence_score if sort_by == "confidence" else IOC.last_seen_at
+        order_col = (
+            Indicator.confidence_score if sort_by == "confidence" else Indicator.last_seen_at
+        )
         list_stmt = stmt.order_by(order_col.desc()).offset((page - 1) * page_size).limit(page_size)
         result = await self.session.execute(list_stmt)
         return list(result.scalars().unique().all()), total
 
-    async def list_with_feedback(self) -> list[IOC]:
+    async def list_with_feedback(self) -> list[Indicator]:
         """IOC yang punya minimal satu feedback (tp/fp) -- port filter
         `{"feedback_log": {"$exists": True, "$ne": []}}`
         (`fp_analytics_service.get_fp_analytics()`, Fase 7.4 Grup D)."""
-        result = await self.session.execute(select(IOC).where(IOC.feedback.any()))
+        result = await self.session.execute(select(Indicator).where(Indicator.feedback.any()))
         return list(result.scalars().all())
 
-    async def list_by_article_ids(self, article_ids: Sequence[int]) -> list[IOC]:
+    async def list_by_article_ids(self, article_ids: Sequence[int]) -> list[Indicator]:
         """IOC yang nyantol ke salah satu `article_ids` lewat `IOCSource` -- port
         `cluster_service.py`'s `ioc_map` building (Fase 7.4 Grup A,
         `get_recent_campaigns()`). CVE tidak termasuk: relasinya ada di `article_cves`
@@ -315,9 +347,11 @@ class AsyncIOCRepo:
         if not article_ids:
             return []
         result = await self.session.execute(
-            select(IOC)
-            .join(IOC.sources)
-            .where(IOCSource.article_id.in_(article_ids), IOC.auto_suppressed.is_(False))
+            select(Indicator)
+            .join(Indicator.sources)
+            .where(
+                IndicatorSource.article_id.in_(article_ids), Indicator.auto_suppressed.is_(False)
+            )
             .distinct()
         )
         return list(result.scalars().unique().all())
@@ -325,14 +359,16 @@ class AsyncIOCRepo:
     async def get_stats(self) -> dict[str, object]:
         total = (
             await self.session.execute(
-                select(func.count()).select_from(IOC).where(IOC.auto_suppressed.is_(False))
+                select(func.count())
+                .select_from(Indicator)
+                .where(Indicator.auto_suppressed.is_(False))
             )
         ).scalar_one()
         by_type_stmt = (
-            select(IOC.type, func.count())
-            .where(IOC.auto_suppressed.is_(False))
-            .group_by(IOC.type)
-            .order_by(func.count().desc(), IOC.type)  # tie-break: urutan deterministik
+            select(Indicator.type, func.count())
+            .where(Indicator.auto_suppressed.is_(False))
+            .group_by(Indicator.type)
+            .order_by(func.count().desc(), Indicator.type)  # tie-break: urutan deterministik
         )
         by_type = (await self.session.execute(by_type_stmt)).all()
         return {
@@ -340,49 +376,51 @@ class AsyncIOCRepo:
             "by_type": [{"type": t, "count": c} for t, c in by_type],
         }
 
-    async def add_tags(self, ioc: IOC, tags: Sequence[str]) -> IOC:
-        existing = {t.tag for t in ioc.tags}
+    async def add_tags(self, indicator: Indicator, tags: Sequence[str]) -> Indicator:
+        existing = {t.tag for t in indicator.tags}
         for tag in tags:
             if tag not in existing:
-                ioc.tags.append(IOCTag(tag=tag))
+                indicator.tags.append(IndicatorTag(tag=tag))
                 existing.add(tag)
         await self.session.flush()
-        return ioc
+        return indicator
 
-    async def add_threat_actors(self, ioc: IOC, threat_actors: Sequence[str]) -> IOC:
-        existing = {t.threat_actor for t in ioc.threat_actors}
+    async def add_threat_actors(
+        self, indicator: Indicator, threat_actors: Sequence[str]
+    ) -> Indicator:
+        existing = {t.threat_actor for t in indicator.threat_actors}
         for actor in threat_actors:
             if actor not in existing:
-                ioc.threat_actors.append(IOCThreatActor(threat_actor=actor))
+                indicator.threat_actors.append(IndicatorThreatActor(threat_actor=actor))
                 existing.add(actor)
         await self.session.flush()
-        return ioc
+        return indicator
 
-    async def remove_threat_actor(self, ioc: IOC, actor: str) -> bool:
-        match = next((t for t in ioc.threat_actors if t.threat_actor == actor), None)
+    async def remove_threat_actor(self, indicator: Indicator, actor: str) -> bool:
+        match = next((t for t in indicator.threat_actors if t.threat_actor == actor), None)
         if match is None:
             return False
         # `.remove()` dari koleksi (bukan `session.delete()` langsung) --
         # `cascade="all, delete-orphan"` (model) yang urus DELETE pas
-        # flush, DAN koleksi in-memory `ioc.threat_actors` langsung
+        # flush, DAN koleksi in-memory `indicator.threat_actors` langsung
         # ke-update tanpa staleness (lihat bug `update_client_ids`,
         # `AsyncUserRepo`, Fase 7.2 -- `session.delete()` langsung pada
         # child gak nyabut dia dari koleksi parent yang udah ke-load).
-        ioc.threat_actors.remove(match)
+        indicator.threat_actors.remove(match)
         await self.session.flush()
         return True
 
-    async def delete(self, ioc_id: int) -> bool:
-        ioc = await self.get_by_id(ioc_id)
-        if ioc is None:
+    async def delete(self, indicator_id: int) -> bool:
+        indicator = await self.get_by_id(indicator_id)
+        if indicator is None:
             return False
-        await self.session.delete(ioc)
+        await self.session.delete(indicator)
         await self.session.flush()
         return True
 
-    async def bulk_delete(self, ioc_ids: Sequence[int]) -> int:
+    async def bulk_delete(self, indicator_ids: Sequence[int]) -> int:
         count = 0
-        for ioc_id in ioc_ids:
-            if await self.delete(ioc_id):
+        for indicator_id in indicator_ids:
+            if await self.delete(indicator_id):
                 count += 1
         return count

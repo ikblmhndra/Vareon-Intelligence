@@ -36,7 +36,7 @@ from cti_core.db.models.article import (
     ArticleTTP,
 )
 from cti_core.db.models.cve import CveTicket, CveTracker
-from cti_core.db.models.ioc import IOC
+from cti_core.db.models.indicator import Indicator
 from cti_core.db.models.ta import TAWatchlistEntry
 from cti_core.db.repositories.cve import is_false_positive_row
 from cti_core.db.repositories.ttp_catalog import canonical_ttp_name
@@ -837,15 +837,15 @@ class AsyncDashboardRepo:
 
     # ── IOC (global, gak ada client_id -- lihat docstring modul) ────────────
 
-    async def pending_fp_queue(self, *, limit: int = 20) -> list[IOC]:
+    async def pending_fp_queue(self, *, limit: int = 20) -> list[Indicator]:
         stmt = (
-            select(IOC)
+            select(Indicator)
             .where(
-                IOC.confidence_score >= 40,
-                IOC.confidence_score < 75,
-                IOC.auto_suppressed.is_(False),
+                Indicator.confidence_score >= 40,
+                Indicator.confidence_score < 75,
+                Indicator.auto_suppressed.is_(False),
             )
-            .order_by(IOC.last_seen_at.desc())
+            .order_by(Indicator.last_seen_at.desc())
             .limit(limit)
         )
         return list((await self.session.execute(stmt)).scalars().all())
@@ -855,11 +855,11 @@ class AsyncDashboardRepo:
         menampilkan 20 baris teratas, jadi tanpa angka ini kedalaman antrean tidak kelihatan."""
         stmt = (
             select(func.count())
-            .select_from(IOC)
+            .select_from(Indicator)
             .where(
-                IOC.confidence_score >= 40,
-                IOC.confidence_score < 75,
-                IOC.auto_suppressed.is_(False),
+                Indicator.confidence_score >= 40,
+                Indicator.confidence_score < 75,
+                Indicator.auto_suppressed.is_(False),
             )
         )
         return int((await self.session.execute(stmt)).scalar_one())

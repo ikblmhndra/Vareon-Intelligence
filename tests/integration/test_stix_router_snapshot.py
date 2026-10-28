@@ -17,7 +17,7 @@ from collections.abc import Callable
 import pytest
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.auth import AsyncClientRepo
-from cti_core.db.repositories.ioc import AsyncIOCRepo
+from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 from syrupy.assertion import SnapshotAssertion
@@ -87,7 +87,7 @@ async def test_export_ioc_stix(
     snapshot: SnapshotAssertion,
     auth_header: Callable[..., dict[str, str]],
 ) -> None:
-    await AsyncIOCRepo(api_session).upsert(
+    await AsyncIndicatorRepo(api_session).upsert(
         type="domain", value="evil.example", source_url="https://a.example", source_name="A"
     )
     resp = await api_client.get("/api/stix/iocs", headers=auth_header())

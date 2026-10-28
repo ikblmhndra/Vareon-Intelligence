@@ -23,9 +23,9 @@ from __future__ import annotations
 import datetime
 from typing import Literal
 
-from cti_core.db.models.ioc import IOC
+from cti_core.db.models.indicator import Indicator
 from cti_core.db.repositories.auth import AsyncAuditLogRepo
-from cti_core.db.repositories.ioc import AsyncIOCRepo
+from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from cti_core.db.repositories.ioc_reference import AsyncIocAllowlistRepo
 from cti_core.ioc.canonical import canonical
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -69,7 +69,7 @@ class AllowlistBody(BaseModel):
     value: str
 
 
-def _serialize_summary(ioc: IOC) -> dict[str, object]:
+def _serialize_summary(ioc: Indicator) -> dict[str, object]:
     return {
         "id": ioc.id,
         "type": ioc.type,
@@ -90,7 +90,7 @@ def _serialize_summary(ioc: IOC) -> dict[str, object]:
     }
 
 
-def _serialize_detail(ioc: IOC) -> dict[str, object]:
+def _serialize_detail(ioc: Indicator) -> dict[str, object]:
     return {
         **_serialize_summary(ioc),
         "enrichment": ioc.enrichment or None,
@@ -119,7 +119,7 @@ async def list_iocs(
     session: AsyncSession = Depends(get_db),
     _user: AuthedUser = Depends(require_auth),
 ) -> dict[str, object]:
-    iocs, total = await AsyncIOCRepo(session).list_filtered(
+    iocs, total = await AsyncIndicatorRepo(session).list_filtered(
         page=page,
         page_size=page_size,
         ioc_type=ioc_type,
@@ -142,7 +142,7 @@ async def list_iocs(
 async def ioc_stats(
     session: AsyncSession = Depends(get_db), _user: AuthedUser = Depends(require_auth)
 ) -> dict[str, object]:
-    return await AsyncIOCRepo(session).get_stats()
+    return await AsyncIndicatorRepo(session).get_stats()
 
 
 @router.get("/fp-analytics")
@@ -267,7 +267,7 @@ async def add_ioc_threat_actors(
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),
 ) -> dict[str, bool]:
-    repo = AsyncIOCRepo(session)
+    repo = AsyncIndicatorRepo(session)
     ioc = await repo.get(type=ioc_type, value=canonical(ioc_type, value))
     if ioc is None:
         raise HTTPException(status_code=404, detail="IOC not found")
@@ -295,7 +295,7 @@ async def remove_ioc_threat_actor(
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),
 ) -> dict[str, bool]:
-    repo = AsyncIOCRepo(session)
+    repo = AsyncIndicatorRepo(session)
     ioc = await repo.get(type=ioc_type, value=canonical(ioc_type, value))
     if ioc is None:
         raise HTTPException(status_code=404, detail="IOC not found")
@@ -322,7 +322,7 @@ async def bulk_delete(
 ) -> dict[str, int]:
     if not body.ids:
         raise HTTPException(status_code=400, detail="ids required")
-    count = await AsyncIOCRepo(session).bulk_delete(body.ids)
+    count = await AsyncIndicatorRepo(session).bulk_delete(body.ids)
     await AsyncAuditLogRepo(session).write(
         username=user["username"],
         action="bulk_delete_iocs",
@@ -340,7 +340,7 @@ async def delete_ioc_by_id(
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_permission("manage_ioc")),
 ) -> dict[str, bool]:
-    ok = await AsyncIOCRepo(session).delete(ioc_id)
+    ok = await AsyncIndicatorRepo(session).delete(ioc_id)
     if not ok:
         raise HTTPException(status_code=404, detail="IOC not found")
     await AsyncAuditLogRepo(session).write(
@@ -363,7 +363,7 @@ async def ioc_feedback(
     """Port `submit_feedback()` -- feedback + recompute confidence+
     actionability + peringatan FP-rate sumber, SATU alur (Fase 7.4 Grup D
     ngelengkapin ini; sebelumnya cuma `add_feedback()` doang)."""
-    repo = AsyncIOCRepo(session)
+    repo = AsyncIndicatorRepo(session)
     ioc = await repo.get_by_id(ioc_id)
     if ioc is None:
         raise HTTPException(status_code=404, detail="IOC not found")
@@ -421,7 +421,7 @@ async def ioc_detail(
     session: AsyncSession = Depends(get_db),
     _user: AuthedUser = Depends(require_auth),
 ) -> dict[str, object]:
-    ioc = await AsyncIOCRepo(session).get(type=ioc_type, value=canonical(ioc_type, value))
+    ioc = await AsyncIndicatorRepo(session).get(type=ioc_type, value=canonical(ioc_type, value))
     if ioc is None:
         raise HTTPException(status_code=404, detail="IOC not found")
     return _serialize_detail(ioc)
@@ -438,7 +438,7 @@ async def add_ioc_tags(
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),
 ) -> dict[str, bool]:
-    repo = AsyncIOCRepo(session)
+    repo = AsyncIndicatorRepo(session)
     ioc = await repo.get(type=ioc_type, value=canonical(ioc_type, value))
     if ioc is None:
         raise HTTPException(status_code=404, detail="IOC not found")

@@ -12,7 +12,7 @@ import pytest
 from cti_core.db.models.article import Article, RejectedArticle
 from cti_core.db.models.article_cve import ArticleCve
 from cti_core.db.models.auth import AuditLogEntry
-from cti_core.db.models.ioc import IOC, IOCFeedback, IOCSource
+from cti_core.db.models.indicator import Indicator, IndicatorFeedback, IndicatorSource
 from cti_core.db.models.source_reliability import SourceReliabilityEntry
 from cti_core.db.models.story import Story
 from httpx import AsyncClient
@@ -104,18 +104,24 @@ async def _seed(s: AsyncSession) -> dict[str, SourceReliabilityEntry]:
 
     # IOC: dilaporkan pertama oleh RvLowSrc (1 FP + 1 TP); IOC lain pertama oleh RvOtherSrc
     # (verdict-nya tidak dihitung ke RvLowSrc walau RvLowSrc ikut melaporkan belakangan).
-    ioc_a = IOC(type="ip", value="10.9.0.1")
-    ioc_b = IOC(type="ip", value="10.9.0.2")
+    ioc_a = Indicator(type="ip", value="10.9.0.1")
+    ioc_b = Indicator(type="ip", value="10.9.0.2")
     s.add_all([ioc_a, ioc_b])
     await s.flush()
     s.add_all(
         [
-            IOCSource(ioc_id=ioc_a.id, url="u", source_name="RvLowSrc", first_seen_at=_OLD),
-            IOCSource(ioc_id=ioc_b.id, url="u", source_name="RvOtherSrc", first_seen_at=_OLD),
-            IOCSource(ioc_id=ioc_b.id, url="u", source_name="RvLowSrc", first_seen_at=_NOW),
-            IOCFeedback(ioc_id=ioc_a.id, verdict="fp", submitted_by="a"),
-            IOCFeedback(ioc_id=ioc_a.id, verdict="tp", submitted_by="a"),
-            IOCFeedback(ioc_id=ioc_b.id, verdict="fp", submitted_by="a"),
+            IndicatorSource(
+                indicator_id=ioc_a.id, url="u", source_name="RvLowSrc", first_seen_at=_OLD
+            ),
+            IndicatorSource(
+                indicator_id=ioc_b.id, url="u", source_name="RvOtherSrc", first_seen_at=_OLD
+            ),
+            IndicatorSource(
+                indicator_id=ioc_b.id, url="u", source_name="RvLowSrc", first_seen_at=_NOW
+            ),
+            IndicatorFeedback(indicator_id=ioc_a.id, verdict="fp", submitted_by="a"),
+            IndicatorFeedback(indicator_id=ioc_a.id, verdict="tp", submitted_by="a"),
+            IndicatorFeedback(indicator_id=ioc_b.id, verdict="fp", submitted_by="a"),
         ]
     )
     await s.flush()

@@ -22,7 +22,7 @@ from __future__ import annotations
 import datetime
 from typing import Any
 
-from cti_core.db.repositories.ioc import AsyncIOCRepo
+from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_api.services import confidence
@@ -34,7 +34,7 @@ _BATCH_SIZE = 500
 async def decay_sweep(session: AsyncSession) -> dict[str, Any]:
     now = datetime.datetime.now(datetime.UTC)
     cutoff = now - _DECAY_AFTER
-    repo = AsyncIOCRepo(session)
+    repo = AsyncIndicatorRepo(session)
 
     scanned = 0
     updated = 0

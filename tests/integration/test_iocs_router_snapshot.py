@@ -14,7 +14,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 import pytest
-from cti_core.db.repositories.ioc import AsyncIOCRepo
+from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from httpx import AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,7 +37,7 @@ _NORMALIZE = path_type(
 
 
 async def _seed_two_iocs(session: AsyncSession) -> None:
-    repo = AsyncIOCRepo(session)
+    repo = AsyncIndicatorRepo(session)
     await repo.upsert(
         type="ip", value="45.33.32.156", source_url="https://a.example/report", source_name="A"
     )
@@ -187,7 +187,7 @@ async def test_bulk_delete_iocs(
     snapshot: SnapshotAssertion,
 ) -> None:
     await _seed_two_iocs(api_session)
-    iocs, _ = await AsyncIOCRepo(api_session).list_filtered(page=1, page_size=10)
+    iocs, _ = await AsyncIndicatorRepo(api_session).list_filtered(page=1, page_size=10)
     ids = [i.id for i in iocs]
     resp = await api_client.post(
         "/api/iocs/bulk-delete", headers=auth_header(role="admin"), json={"ids": ids}
@@ -203,7 +203,7 @@ async def test_delete_ioc_by_id(
     snapshot: SnapshotAssertion,
 ) -> None:
     await _seed_two_iocs(api_session)
-    iocs, _ = await AsyncIOCRepo(api_session).list_filtered(page=1, page_size=10)
+    iocs, _ = await AsyncIndicatorRepo(api_session).list_filtered(page=1, page_size=10)
     resp = await api_client.delete(f"/api/iocs/{iocs[0].id}", headers=auth_header(role="admin"))
     assert resp.status_code == 200
     assert resp.json() == snapshot
@@ -216,7 +216,9 @@ async def test_ioc_feedback(
     snapshot: SnapshotAssertion,
 ) -> None:
     await _seed_two_iocs(api_session)
-    iocs, _ = await AsyncIOCRepo(api_session).list_filtered(ioc_type="ip", page=1, page_size=10)
+    iocs, _ = await AsyncIndicatorRepo(api_session).list_filtered(
+        ioc_type="ip", page=1, page_size=10
+    )
     resp = await api_client.post(
         f"/api/iocs/{iocs[0].id}/feedback",
         headers=auth_header(),

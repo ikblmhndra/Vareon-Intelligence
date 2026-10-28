@@ -20,7 +20,7 @@ from cti_core.db.models import (  # noqa: F401
     catalog,
     cve,
     cve_mirror,
-    ioc,
+    indicator,
     mindmap,
     newsletter,
     package,

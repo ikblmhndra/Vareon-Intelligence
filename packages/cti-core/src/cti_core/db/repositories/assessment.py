@@ -24,7 +24,7 @@ from cti_core.confidence import BONUS_TTP_SOURCES, ArticleFacts, Assessment, ass
 from cti_core.db.models.article import Article, ArticleThreatActor, ArticleTTP
 from cti_core.db.models.article_cve import ArticleCve
 from cti_core.db.models.cve import CveTracker
-from cti_core.db.models.ioc import IOC, IOCSource
+from cti_core.db.models.indicator import Indicator, IndicatorSource
 from cti_core.db.models.source_reliability import SourceReliabilityEntry
 from cti_core.db.models.story import Story
 from cti_core.db.repositories.cve import is_false_positive_row
@@ -48,9 +48,9 @@ def facts_stmt(article_ids: Sequence[int]) -> Select[Any]:
 
     has_cve = select(ArticleCve.article_id).where(ArticleCve.article_id == Article.id).exists()
     has_ioc = (
-        select(IOCSource.id)
-        .join(IOC, IOC.id == IOCSource.ioc_id)
-        .where(IOCSource.article_id == Article.id, IOC.auto_suppressed.is_(False))
+        select(IndicatorSource.id)
+        .join(Indicator, Indicator.id == IndicatorSource.indicator_id)
+        .where(IndicatorSource.article_id == Article.id, Indicator.auto_suppressed.is_(False))
         .exists()
     )
     has_actor = (

@@ -12,7 +12,7 @@ from cti_api.services import confidence as svc
 from cti_core.db.models.article import Article
 from cti_core.db.models.story import Story
 from cti_core.db.repositories.article import AsyncArticleRepo
-from cti_core.db.repositories.ioc import AsyncIOCRepo
+from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from cti_core.db.repositories.source_reliability import AsyncSourceReliabilityRepo
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -261,7 +261,7 @@ async def test_recompute_ignores_keyword_ttps_like_persist(
 async def test_recompute_ioc_confidence_and_actionability_persists_all_fields(
     async_db_session: AsyncSession,
 ) -> None:
-    ioc_repo = AsyncIOCRepo(async_db_session)
+    ioc_repo = AsyncIndicatorRepo(async_db_session)
     created = await ioc_repo.upsert(
         type="sha256",
         value="a" * 64,

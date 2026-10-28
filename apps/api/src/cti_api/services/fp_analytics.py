@@ -16,7 +16,7 @@ import ipaddress
 import time
 from typing import Any
 
-from cti_core.db.repositories.ioc import AsyncIOCRepo
+from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from sqlalchemy.ext.asyncio import AsyncSession
 
 _BENIGN_DOMAINS: frozenset[str] = frozenset(
@@ -143,7 +143,7 @@ async def get_fp_analytics(session: AsyncSession, *, force: bool = False) -> dic
     fp_by_day: dict[str, dict[str, int]] = {}
     suggested_map: dict[str, dict[str, Any]] = {}
 
-    iocs = await AsyncIOCRepo(session).list_with_feedback()
+    iocs = await AsyncIndicatorRepo(session).list_with_feedback()
     for ioc in iocs:
         tp, fp = ioc.tp_count, ioc.fp_count
 

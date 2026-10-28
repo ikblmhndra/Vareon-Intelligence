@@ -21,7 +21,7 @@ from cti_core.db.models.pir import PIRRequirement
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.article_cve import AsyncArticleCveRepo
 from cti_core.db.repositories.auth import AsyncClientRepo
-from cti_core.db.repositories.ioc import AsyncIOCRepo
+from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from cti_core.db.repositories.ta import AsyncTAProfileRepo
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -61,7 +61,7 @@ async def _seed_campaign_articles(session: AsyncSession) -> list[int]:
 
 
 async def _attach_iocs(session: AsyncSession, article_ids: list[int]) -> None:
-    ioc_repo = AsyncIOCRepo(session)
+    ioc_repo = AsyncIndicatorRepo(session)
     await ioc_repo.upsert(
         type="domain",
         value="evil-apt41.example",

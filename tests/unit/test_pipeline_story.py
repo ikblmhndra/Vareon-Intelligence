@@ -235,7 +235,7 @@ def real_persist(monkeypatch: pytest.MonkeyPatch, rec: dict[str, Any]) -> list[d
 
     monkeypatch.setattr(persist_mod, "ArticleRepo", FakeArticleRepo)
     monkeypatch.setattr(persist_mod, "StoryRepo", FakeStoryRepo)
-    monkeypatch.setattr(persist_mod, "IOCRepo", MagicMock())
+    monkeypatch.setattr(persist_mod, "IndicatorRepo", MagicMock())
     monkeypatch.setattr(persist_mod, "ArticleCveRepo", MagicMock())
     monkeypatch.setattr(persist_mod, "_get_allowlist", lambda session: [])
     monkeypatch.setattr(persist_mod, "apply_assessments", lambda session, ids: {})
