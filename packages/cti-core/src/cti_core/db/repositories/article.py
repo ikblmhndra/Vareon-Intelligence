@@ -596,9 +596,16 @@ class AsyncArticleRepo:
         `created_at_start` (Fase 7.8, `pir_alert`) -- lihat docstring
         `_apply_list_filters`.
 
-        `sort="priority"` (newsroom/dashboard "Perlu dibaca"): insiden terkonfirmasi dulu,
-        lalu `confidence_score` (NULL terakhir), `seen_count` (makin sering terlihat makin
-        penting), baru terbaru. Default "recent" = urutan lama. `confirmed_only` membatasi ke
+        `sort="priority"` (newsroom/dashboard "Perlu dibaca", P6 spec 5.2): urut
+        `priority_score` (NULL terakhir), lalu terbaru, lalu id; `confirmed_incident` bukan kunci
+        pertama lagi karena sudah +25 di dalam priority. SATU artikel per story (kunci
+        `coalesce(story_id, -id)`, artikel tanpa story jadi grupnya sendiri): anggota dengan
+        priority tertinggi yang tampil, sisanya diwakili badge "+N sources" (P3). Tanpa ini
+        top 10 minggu 19-26 Okt di dev isinya PHP2Shell semua. `total` menghitung baris yang
+        sudah diciutkan, biar paginasi cocok. Diciutkan lewat `row_number()` atas himpunan id
+        yang sudah difilter (`IN (subquery)`), bukan `DISTINCT ON`: `DISTINCT ON` bentrok
+        dengan `.distinct()` jalur join dan memaksa ORDER BY diawali kunci grup.
+        Default "recent" = urutan lama, tanpa penciutan. `confirmed_only` membatasi ke
         insiden terkonfirmasi."""
         base = _apply_list_filters(
             select(Article),
@@ -629,23 +636,37 @@ class AsyncArticleRepo:
             or ttp_sources
         )
 
-        count_stmt = select(func.count()).select_from(base.distinct().subquery())
-        total = (await self.session.execute(count_stmt)).scalar_one()
-
-        order: tuple[Any, ...]
         if sort == "priority":
             order = (
-                Article.confirmed_incident.desc(),
-                Article.confidence_score.desc().nulls_last(),
-                Article.seen_count.desc(),
+                Article.priority_score.desc().nulls_last(),
                 Article.posted_on.desc().nulls_last(),
                 Article.id.desc(),
             )
+            # Filter (termasuk join) cukup lewat `IN`: duplikat dari join one-to-many hilang
+            # sendiri, jadi tidak perlu `.distinct()` di sini.
+            rank = (
+                select(
+                    Article.id,
+                    func.row_number()
+                    .over(
+                        partition_by=func.coalesce(Article.story_id, -Article.id),
+                        order_by=order,
+                    )
+                    .label("rn"),
+                )
+                .where(Article.id.in_(base.with_only_columns(Article.id)))
+                .subquery()
+            )
+            kept_ids = select(rank.c.id).where(rank.c.rn == 1)
+            count_stmt = select(func.count()).select_from(kept_ids.subquery())
+            total = (await self.session.execute(count_stmt)).scalar_one()
+            list_stmt = select(Article).where(Article.id.in_(kept_ids)).order_by(*order)
         else:
-            order = (Article.posted_on.desc().nulls_last(), Article.id.desc())
-        list_stmt = base.order_by(*order)
-        if has_join:
-            list_stmt = list_stmt.distinct()
+            count_stmt = select(func.count()).select_from(base.distinct().subquery())
+            total = (await self.session.execute(count_stmt)).scalar_one()
+            list_stmt = base.order_by(Article.posted_on.desc().nulls_last(), Article.id.desc())
+            if has_join:
+                list_stmt = list_stmt.distinct()
         list_stmt = list_stmt.offset((page - 1) * page_size).limit(page_size)
         result = await self.session.execute(list_stmt)
         articles = list(result.scalars().unique().all())
@@ -657,9 +678,10 @@ class AsyncArticleRepo:
         """`(artikel terkuat dengan posted_on di [start, end], maksimal `limit`, total sebenarnya)`.
 
         Dipakai recap mingguan: yang masuk prompt dipilih DI SQL (`LIMIT`), bukan dimuat semua
-        (seminggu bisa ribuan artikel, tiap baris menarik empat tabel anak lewat selectin). Urutan
-        sinyal yang ada di kolom: insiden terkonfirmasi, lalu `confidence_score` (NULL terakhir),
-        lalu terbaru. Sinyal yang tidak ada di kolom (keandalan sumber, ukuran klaster) dipakai
+        (seminggu bisa ribuan artikel, tiap baris menarik empat tabel anak lewat selectin).
+        Urutan: `priority_score` (NULL terakhir; P6 spec 5.2, insiden terkonfirmasi sudah +25 di
+        dalamnya), lalu terbaru. Tanpa penciutan per story: recap sudah mengelompokkan sendiri.
+        Sinyal yang tidak ada di kolom (keandalan sumber, ukuran klaster) dipakai
         pemanggil untuk menyusun ulang kumpulan kandidat ini."""
         window = select(Article).where(Article.posted_on >= start, Article.posted_on <= end)
         total = (
@@ -667,8 +689,7 @@ class AsyncArticleRepo:
         ).scalar_one()
         result = await self.session.execute(
             window.order_by(
-                Article.confirmed_incident.desc(),
-                Article.confidence_score.desc().nulls_last(),
+                Article.priority_score.desc().nulls_last(),
                 Article.posted_on.desc(),
                 Article.id.desc(),
             ).limit(limit)

@@ -299,6 +299,20 @@ def test_llm_maintenance_entries_run_on_the_maintenance_queue(monkeypatch) -> No
     assert purge["options"] == {"queue": "maintenance"}
 
 
+def test_confidence_entries_run_on_the_maintenance_queue(monkeypatch) -> None:
+    monkeypatch.setattr(beat, "_scraper_configs", lambda: {})
+    schedule = beat.build_beat_schedule()
+
+    refresh = schedule["confidence-refresh-stories"]
+    assert refresh["task"] == "confidence.refresh_stories"
+    assert refresh["schedule"] == beat.crontab(minute="*/10")
+    assert refresh["options"] == {"queue": "maintenance"}
+    daily = schedule["confidence-recompute-all"]
+    assert daily["task"] == "confidence.recompute_all"
+    assert (daily["schedule"].hour, daily["schedule"].minute) == ({3}, {20})
+    assert daily["options"] == {"queue": "maintenance"}
+
+
 def test_story_purge_empty_runs_daily_on_the_maintenance_queue(monkeypatch) -> None:
     monkeypatch.setattr(beat, "_scraper_configs", lambda: {})
 

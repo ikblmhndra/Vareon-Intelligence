@@ -12,7 +12,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { GRADE_BADGE_CLASS } from "@/lib/intelligence/format";
 import type { components } from "@/lib/api/schema";
 import type { SrActionResult } from "@/lib/api/loose-types";
 
@@ -43,7 +42,6 @@ export function SrEntryDialog({ mode, entry, open, onClose, onSaved }: SrEntryDi
   const [activeIdx, setActiveIdx] = useState(-1);
   const [analyst, setAnalyst] = useState(entry?.analyst_name ?? user?.username ?? "");
   const [grade, setGrade] = useState(entry?.reliability_grade ?? "");
-  const [code, setCode] = useState(entry?.credibility_code ?? "");
   const [notes, setNotes] = useState(entry?.notes ?? "");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -54,7 +52,7 @@ export function SrEntryDialog({ mode, entry, open, onClose, onSaved }: SrEntryDi
     queryFn: async () => {
       const { data, error } = await api.GET("/api/sr/labels");
       if (error) throw error;
-      return data as { reliability: Record<string, string>; credibility: Record<string, string> };
+      return data as { reliability: Record<string, string> };
     },
   });
 
@@ -93,7 +91,7 @@ export function SrEntryDialog({ mode, entry, open, onClose, onSaved }: SrEntryDi
 
   async function submit() {
     setErr("");
-    if (!analyst.trim() || !grade || !code || (mode === "add" && !source.trim())) {
+    if (!analyst.trim() || !grade || (mode === "add" && !source.trim())) {
       setErr("All required fields must be filled.");
       return;
     }
@@ -102,7 +100,7 @@ export function SrEntryDialog({ mode, entry, open, onClose, onSaved }: SrEntryDi
       if (mode === "edit" && entry) {
         const { data, error } = await api.PUT("/api/sr/entries/{entry_id}", {
           params: { path: { entry_id: entry.id } },
-          body: { analyst_name: analyst.trim(), reliability_grade: grade, credibility_code: code, notes: notes.trim() },
+          body: { analyst_name: analyst.trim(), reliability_grade: grade, notes: notes.trim() },
         });
         if (error) throw new Error(JSON.stringify(error));
         const d = data as unknown as { success: boolean };
@@ -117,7 +115,6 @@ export function SrEntryDialog({ mode, entry, open, onClose, onSaved }: SrEntryDi
             source_name: source.trim(),
             analyst_name: analyst.trim(),
             reliability_grade: grade,
-            credibility_code: code,
             notes: notes.trim(),
           },
         });
@@ -139,7 +136,6 @@ export function SrEntryDialog({ mode, entry, open, onClose, onSaved }: SrEntryDi
   }
 
   const reliabilityLabels = labelsQuery.data?.reliability ?? {};
-  const credibilityLabels = labelsQuery.data?.credibility ?? {};
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -195,42 +191,19 @@ export function SrEntryDialog({ mode, entry, open, onClose, onSaved }: SrEntryDi
             <Input value={analyst} onChange={(e) => setAnalyst(e.target.value)} className="text-xs" />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1">
-              <Label className="text-sm font-medium text-muted-foreground">Reliability Grade</Label>
-              <select value={grade} onChange={(e) => setGrade(e.target.value)} className={nativeSelectClass()}>
-                <option value="">— Select —</option>
-                {Object.entries(reliabilityLabels).map(([g, label]) => (
-                  <option key={g} value={g}>
-                    {g} — {label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label className="text-sm font-medium text-muted-foreground">Credibility Code</Label>
-              <select value={code} onChange={(e) => setCode(e.target.value)} className={nativeSelectClass()}>
-                <option value="">— Select —</option>
-                {Object.entries(credibilityLabels).map(([c, label]) => (
-                  <option key={c} value={c}>
-                    {c} — {label}
-                  </option>
-                ))}
-              </select>
-            </div>
+          {/* Kredibilitas tidak lagi ditanyakan: sejak P6 dihitung per artikel dari bukti (spec 2.2),
+              bukan sifat sumber. */}
+          <div className="flex flex-col gap-1">
+            <Label className="text-sm font-medium text-muted-foreground">Reliability Grade</Label>
+            <select value={grade} onChange={(e) => setGrade(e.target.value)} className={nativeSelectClass()}>
+              <option value="">— Select —</option>
+              {Object.entries(reliabilityLabels).map(([g, label]) => (
+                <option key={g} value={g}>
+                  {g} — {label}
+                </option>
+              ))}
+            </select>
           </div>
-
-          {grade && code && (
-            <div
-              className={cn(
-                "w-fit rounded px-2.5 py-1 font-mono text-lg font-bold",
-                GRADE_BADGE_CLASS[grade],
-              )}
-            >
-              {grade}
-              {code}
-            </div>
-          )}
 
           <div className="flex flex-col gap-1">
             <Label className="text-sm font-medium text-muted-foreground">Notes</Label>

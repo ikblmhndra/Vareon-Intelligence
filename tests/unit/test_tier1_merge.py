@@ -1,6 +1,6 @@
 from cti_core.attack_ttp import NormalizedTTP
 from cti_enrich.stages.extract_ttps import Technique, TtpResult
-from cti_enrich.tier1.merge import confidence_ttp_count, merge_industries, merge_ttps
+from cti_enrich.tier1.merge import merge_industries, merge_ttps
 from cti_enrich.tier1.ttps import SourcedTechnique
 
 
@@ -46,15 +46,6 @@ def test_general_replaced_only_when_tier1_found() -> None:
     hc = "Healthcare & Life Sciences"
     assert merge_industries([hc], [fin]) == ([hc], "llm")
     assert merge_industries([], ["Energy & Utilities"]) == (["Energy & Utilities"], "keyword")
-
-
-def test_confidence_counts_only_explicit_and_llm() -> None:
-    ttps = [
-        NormalizedTTP("T1", "a", source="explicit"),
-        NormalizedTTP("T2", "b"),
-        NormalizedTTP("T3", "c", source="keyword"),
-    ]
-    assert confidence_ttp_count(ttps) == 2
 
 
 def test_normalized_ttp_backward_compatible() -> None:

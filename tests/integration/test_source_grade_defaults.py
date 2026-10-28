@@ -54,7 +54,14 @@ async def test_ensure_defaults_respects_analyst_rows(async_db_session: AsyncSess
     assert await repo.ensure_defaults({"BLEEPINGCOMPUTER": "social"}) == []
 
 
-def _persist(session: Session, url: str, source: str, ttps: int, actors: list[str]) -> Article:
+def _persist(
+    session: Session,
+    url: str,
+    source: str,
+    ttps: int,
+    actors: list[str],
+    ioc_data: dict[str, list[str]] | None = None,
+) -> Article:
     return persist(
         session=session,
         url=url,
@@ -71,34 +78,62 @@ def _persist(session: Session, url: str, source: str, ttps: int, actors: list[st
             has_techniques=bool(ttps),
             techniques=[Technique(f"T{1000 + i}", f"Tech {i}") for i in range(ttps)],
         ),
-        ioc_data={},
+        ioc_data=ioc_data or {},
         c2_indicator=False,
     )
 
 
-def test_persist_confidence_from_grade(db_session: Session) -> None:
+def _sr_row(name: str, grade: str, code: str, kind: str | None = None) -> SourceReliabilityEntry:
     today = datetime.date.today()
-    db_session.add(
-        SourceReliabilityEntry(
-            source_name="Graded Src",
-            analyst_name="a",
-            reliability_grade="B",
-            credibility_code="2",
-            admiralty_code="B2",
-            notes="",
-            added_date=today,
-            last_updated=today,
-            origin="analyst",
-        )
+    return SourceReliabilityEntry(
+        source_name=name,
+        analyst_name="a",
+        reliability_grade=grade,
+        credibility_code=code,
+        admiralty_code=f"{grade}{code}",
+        notes="",
+        added_date=today,
+        last_updated=today,
+        origin="analyst",
+        content_kind=kind,
     )
+
+
+def test_persist_confidence_from_grade(db_session: Session) -> None:
+    db_session.add(_sr_row("Graded Src", "B", "2"))
     db_session.flush()
 
     graded = _persist(db_session, "https://n.example/graded", "graded src", 1, [])
     ungraded = _persist(db_session, "https://n.example/ungraded", "Nobody", 0, [])
 
-    # B2: base 80 + 1 TTP * 5 = 85 (self-rating LLM 0.99 tidak dipakai); tanpa grade: 50
-    assert graded.confidence_score == 85
-    assert ungraded.confidence_score == 50
+    # P6: kode kredibilitas sumber ("2") tidak dipakai lagi; kredibilitas dihitung per artikel.
+    # B, satu sumber, TTP llm (bukan eksplisit) -> B4: confidence (70+30)/2 = 50, prioritas
+    # 50 + 1 TTP * 3. Tanpa grade: F6 = 50. Self-rating LLM 0.99 tidak dipakai.
+    assert (graded.reliability_grade, graded.credibility) == ("B", 4)
+    assert (graded.confidence_score, graded.priority_score) == (50, 53)
+    assert (ungraded.reliability_grade, ungraded.credibility) == ("F", 6)
+    assert (ungraded.confidence_score, ungraded.priority_score) == (50, 50)
+
+
+def test_persist_news_source_with_ioc_is_credibility_3(db_session: Session) -> None:
+    # Spec P6 4.1: persist menilai artikel dengan IOC yang baru saja ia tulis (IOC tidak
+    # disuppress = artefak) -> C/news satu sumber + IOC = C3.
+    db_session.add(_sr_row("News Src", "C", "3", kind="news"))
+    db_session.flush()
+
+    article = _persist(
+        db_session,
+        "https://n.example/ioc",
+        "News Src",
+        0,
+        [],
+        ioc_data={"sha256": ["a" * 64]},
+    )
+
+    assert (article.reliability_grade, article.credibility) == ("C", 3)
+    assert article.priority_score is not None
+    assert article.score_reasons is not None
+    assert article.score_reasons["credibility"] == ["ioc"]
 
 
 @pytest.mark.asyncio
@@ -115,16 +150,18 @@ async def test_recompute_source_writes_column_not_overrides(
     plain_id, pinned_id, other_id = plain.id, pinned.id, other.id
 
     result = await svc.recompute_all_confidence(async_db_session, source_name="Src One")
-    assert result == {"updated": 1}
+    # P6 spec 4.5: artikel ber-override ikut dinilai (assess memakai override-nya)
+    assert result == {"updated": 2}
 
     async_db_session.expire_all()
     plain_row = await repo.get_by_id(plain_id)
     pinned_row = await repo.get_by_id(pinned_id)
     other_row = await repo.get_by_id(other_id)
     assert plain_row is not None and pinned_row is not None and other_row is not None
-    assert plain_row.confidence_score == 100  # A1
+    assert plain_row.confidence_score == 90  # kev -> A1
     assert "confidence_score" not in plain_row.overrides
-    assert pinned_row.confidence_score is None  # override analis menang, kolom tidak disentuh
+    assert pinned_row.confidence_score == 7  # override analis menang, ditulis ke kolom
+    assert pinned_row.credibility == 1  # kredibilitas tetap dihitung
     assert pinned_row.overrides["confidence_score"] == 7
     assert other_row.confidence_score is None  # sumber lain tidak ikut
 

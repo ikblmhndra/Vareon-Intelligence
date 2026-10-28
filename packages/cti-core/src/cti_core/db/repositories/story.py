@@ -202,6 +202,15 @@ class AsyncStoryRepo:
         )
         return {sid: (ac, sc) for sid, ac, sc in result.all()}
 
+    async def updated_since(self, since: datetime.datetime) -> list[int]:
+        """Id story yang `updated_at`-nya >= `since` (anggota baru menempel lewat `attach`).
+        Dipakai task `confidence.refresh_stories`: kredibilitas anggota lama berubah saat
+        sumber independen baru bergabung, jadi story yang tersentuh perlu dinilai ulang."""
+        result = await self.session.execute(
+            select(Story.id).where(Story.updated_at >= since).order_by(Story.id)
+        )
+        return list(result.scalars().all())
+
     async def stats_since(self, since: datetime.datetime) -> StoryStats:
         """Story baru, follow-up (artikel yang menempel ke story lewat cve/judul), dan berapa
         follow-up yang mewarisi classify. Story baru = `first_seen_at` dalam jendela DAN sudah

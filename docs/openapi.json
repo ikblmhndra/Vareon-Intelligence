@@ -126,6 +126,17 @@
             "title": "Confirmed Incident",
             "type": "boolean"
           },
+          "credibility": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credibility"
+          },
           "grade_origin": {
             "anyOf": [
               {
@@ -204,6 +215,35 @@
             "default": "",
             "title": "Posted On",
             "type": "string"
+          },
+          "priority_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Priority Score"
+          },
+          "reliability_grade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reliability Grade"
+          },
+          "score_reasons": {
+            "$ref": "#/components/schemas/ScoreReasons",
+            "default": {
+              "credibility": [],
+              "priority": []
+            }
           },
           "source": {
             "default": "",
@@ -743,6 +783,32 @@
           "name"
         ],
         "title": "ClientUpdate",
+        "type": "object"
+      },
+      "CredibilityOverrideIn": {
+        "description": "`credibility=None` menghapus override (kembali ke hasil hitung).",
+        "properties": {
+          "credibility": {
+            "anyOf": [
+              {
+                "maximum": 6.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credibility"
+          },
+          "note": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "title": "CredibilityOverrideIn",
         "type": "object"
       },
       "CveCheckSource": {
@@ -4549,6 +4615,24 @@
         "title": "PolicySettings",
         "type": "object"
       },
+      "PriorityReason": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "points": {
+            "title": "Points",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "code",
+          "points"
+        ],
+        "title": "PriorityReason",
+        "type": "object"
+      },
       "PurgeOrphanedBody": {
         "properties": {
           "dry_run": {
@@ -5120,6 +5204,24 @@
         "title": "RoleCreate",
         "type": "object"
       },
+      "SRConfirmIn": {
+        "properties": {
+          "reliability_grade": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Fa-f]$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reliability Grade"
+          }
+        },
+        "title": "SRConfirmIn",
+        "type": "object"
+      },
       "SREntryAdd": {
         "properties": {
           "analyst_name": {
@@ -5129,9 +5231,16 @@
             "type": "string"
           },
           "credibility_code": {
-            "pattern": "^[1-6]$",
-            "title": "Credibility Code",
-            "type": "string"
+            "anyOf": [
+              {
+                "pattern": "^[1-6]$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credibility Code"
           },
           "notes": {
             "default": "",
@@ -5154,8 +5263,7 @@
         "required": [
           "source_name",
           "analyst_name",
-          "reliability_grade",
-          "credibility_code"
+          "reliability_grade"
         ],
         "title": "SREntryAdd",
         "type": "object"
@@ -5204,6 +5312,17 @@
           "analyst_name": {
             "title": "Analyst Name",
             "type": "string"
+          },
+          "content_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Kind"
           },
           "credibility_code": {
             "title": "Credibility Code",
@@ -5262,9 +5381,16 @@
             "type": "string"
           },
           "credibility_code": {
-            "pattern": "^[1-6]$",
-            "title": "Credibility Code",
-            "type": "string"
+            "anyOf": [
+              {
+                "pattern": "^[1-6]$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credibility Code"
           },
           "notes": {
             "default": "",
@@ -5280,10 +5406,108 @@
         },
         "required": [
           "analyst_name",
-          "reliability_grade",
-          "credibility_code"
+          "reliability_grade"
         ],
         "title": "SREntryUpdate",
+        "type": "object"
+      },
+      "SRReviewItem": {
+        "description": "Satu baris antrean review grade sumber (P6 spec 5.3), statistik 30 hari.",
+        "properties": {
+          "artefact_articles": {
+            "title": "Artefact Articles",
+            "type": "integer"
+          },
+          "artefact_pct": {
+            "title": "Artefact Pct",
+            "type": "number"
+          },
+          "articles": {
+            "title": "Articles",
+            "type": "integer"
+          },
+          "entry": {
+            "$ref": "#/components/schemas/SREntryOut"
+          },
+          "ioc_fp": {
+            "title": "Ioc Fp",
+            "type": "integer"
+          },
+          "ioc_fp_pct": {
+            "title": "Ioc Fp Pct",
+            "type": "number"
+          },
+          "ioc_verdicts": {
+            "title": "Ioc Verdicts",
+            "type": "integer"
+          },
+          "lead_count": {
+            "title": "Lead Count",
+            "type": "integer"
+          },
+          "multi_source_stories": {
+            "title": "Multi Source Stories",
+            "type": "integer"
+          },
+          "rejected": {
+            "title": "Rejected",
+            "type": "integer"
+          },
+          "rejected_pct": {
+            "title": "Rejected Pct",
+            "type": "number"
+          },
+          "suggested_grade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Grade"
+          },
+          "suggestion_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Suggestion Reasons",
+            "type": "array"
+          }
+        },
+        "required": [
+          "entry",
+          "articles",
+          "rejected",
+          "artefact_articles",
+          "multi_source_stories",
+          "lead_count",
+          "ioc_verdicts",
+          "ioc_fp",
+          "rejected_pct",
+          "artefact_pct",
+          "ioc_fp_pct",
+          "suggested_grade",
+          "suggestion_reasons"
+        ],
+        "title": "SRReviewItem",
+        "type": "object"
+      },
+      "SRReviewResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SRReviewItem"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "SRReviewResponse",
         "type": "object"
       },
       "SaveSyntaxRequest": {
@@ -5352,6 +5576,29 @@
           "stale_after_s"
         ],
         "title": "SchedulerStatusOut",
+        "type": "object"
+      },
+      "ScoreReasons": {
+        "description": "Alasan penilaian artikel (P6 3.1): kode kredibilitas + rincian poin prioritas.",
+        "properties": {
+          "credibility": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Credibility",
+            "type": "array"
+          },
+          "priority": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PriorityReason"
+            },
+            "title": "Priority",
+            "type": "array"
+          }
+        },
+        "title": "ScoreReasons",
         "type": "object"
       },
       "ScorecardOverrideIn": {
@@ -8170,7 +8417,7 @@
   },
   "info": {
     "title": "Vareon Intelligence API",
-    "version": "0.8.9"
+    "version": "0.8.10"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -8806,6 +9053,75 @@
           }
         },
         "summary": "Compute Article Confidence",
+        "tags": [
+          "articles"
+        ]
+      }
+    },
+    "/api/articles/{article_id}/credibility": {
+      "put": {
+        "description": "Override kredibilitas (1-6) oleh analis, atau hapus (`null`); artikel dinilai ulang di\ntempat dan recompute massal menghormati override ini (P6 5.1).",
+        "operationId": "set_article_credibility_api_articles__article_id__credibility_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "article_id",
+            "required": true,
+            "schema": {
+              "title": "Article Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CredibilityOverrideIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArticleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Article Credibility",
         "tags": [
           "articles"
         ]
@@ -22774,6 +23090,75 @@
         ]
       }
     },
+    "/api/sr/entries/{entry_id}/confirm": {
+      "post": {
+        "description": "Analis mengambil alih baris (origin jadi `analyst`, `analyst_name` = user login), opsional\ndengan grade baru. Recompute skor artikel hanya kalau grade benar-benar berubah.",
+        "operationId": "confirm_sr_entry_api_sr_entries__entry_id__confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "entry_id",
+            "required": true,
+            "schema": {
+              "title": "Entry Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SRConfirmIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SREntryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm Sr Entry",
+        "tags": [
+          "source-reliability"
+        ]
+      }
+    },
     "/api/sr/labels": {
       "get": {
         "operationId": "sr_labels_api_sr_labels_get",
@@ -22825,6 +23210,56 @@
           }
         },
         "summary": "Sr Labels",
+        "tags": [
+          "source-reliability"
+        ]
+      }
+    },
+    "/api/sr/review": {
+      "get": {
+        "description": "Antrean review: tiap baris grade bawaan (`origin='default'`) dengan statistik 30 hari dan\nsaran grade dari `suggest_grade`. Baris analis tidak ikut: grade-nya sudah keputusan manusia.",
+        "operationId": "review_sources_api_sr_review_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SRReviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Sources",
         "tags": [
           "source-reliability"
         ]

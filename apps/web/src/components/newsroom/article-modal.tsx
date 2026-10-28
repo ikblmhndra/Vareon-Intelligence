@@ -23,6 +23,10 @@ import {
 import type { components } from "@/lib/api/schema";
 import { D3fendToggle } from "@/components/newsroom/d3fend-toggle";
 import { InferredTtpsSection } from "@/components/newsroom/inferred-ttps-section";
+import { CredibilityOverride } from "@/components/newsroom/credibility-override";
+import { GradeChip } from "@/components/newsroom/grade-chip";
+import { gradeLines } from "@/components/newsroom/score-reasons";
+import { useCan } from "@/lib/auth/permissions";
 import { addToQueue } from "@/lib/newsletter/queue";
 
 type Article = components["schemas"]["ArticleOut"];
@@ -117,17 +121,22 @@ function exportIocsCsv(a: Article) {
 }
 
 /**
- * Port `openModal()` (`modal.js`). Admiralty/source-reliability badge di
- * meta bar SENGAJA belum diport (Source Reliability punya `/intelligence`,
- * Grup G). IOC section terstruktur tapi PASTI kosong sekarang --
+ * Port `openModal()` (`modal.js`). Kode Admiralty + prioritas artikel tampil
+ * di meta bar, alasannya di "Why this grade", plus override kredibilitas
+ * untuk `manage_intel` (P6 bagian 6). IOC section terstruktur tapi PASTI kosong sekarang --
  * `ArticleOut.iocs` SELALU `{}` (linkage artikel<->IOC belum diport,
  * placeholder yang udah didokumentasikan sejak schema Fase 7.3), bukan
  * bug di sini.
  */
-export function ArticleModal({ article: a, onOpenChange }: { article: Article | null; onOpenChange: (open: boolean) => void }) {
+export function ArticleModal({ article, onOpenChange }: { article: Article | null; onOpenChange: (open: boolean) => void }) {
   const [queueLabel, setQueueLabel] = useState("+ Newsletter");
+  const can = useCan();
+  // Hasil override kredibilitas: `article` dipegang state induk dan tidak ikut refetch, jadi
+  // versi terbaru dari API disimpan di sini selama artikel yang sama masih dibuka.
+  const [updated, setUpdated] = useState<Article | null>(null);
 
-  if (!a) return null;
+  if (!article) return null;
+  const a = updated?.id === article.id ? updated : article;
 
   const dotColor = TYPE_COLORS[a.news_type] ?? "var(--muted-foreground)";
   const victimCountries = a.victim_countries ?? [];
@@ -146,7 +155,7 @@ export function ArticleModal({ article: a, onOpenChange }: { article: Article | 
   ) as [string, string[]][];
 
   function handleQueue() {
-    const result = addToQueue(a!);
+    const result = addToQueue(a);
     setQueueLabel(result === "already" ? "Already queued" : "Queued");
     setTimeout(() => setQueueLabel("+ Newsletter"), 1500);
   }
@@ -177,6 +186,12 @@ export function ArticleModal({ article: a, onOpenChange }: { article: Article | 
             <span className="text-muted-foreground">Type </span>
             <span className="text-foreground">{a.news_type}</span>
           </div>
+          {a.admiralty_code && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-muted-foreground">Grade </span>
+              <GradeChip a={a} />
+            </div>
+          )}
         </div>
 
         {a.classify_inherited_from != null && (
@@ -184,6 +199,17 @@ export function ArticleModal({ article: a, onOpenChange }: { article: Article | 
         )}
 
         <div className="space-y-4">
+          {a.admiralty_code && (
+            <Section title="Why this grade">
+              <ul className="list-disc space-y-0.5 pl-4 text-xs text-foreground">
+                {gradeLines(a).map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+              {can("manage_intel") && <CredibilityOverride key={a.id} article={a} onSaved={setUpdated} />}
+            </Section>
+          )}
+
           <Section title="Impacted Industries">
             <Tags
               items={(a.impacted_industries ?? []).map((i) => ({ label: i }))}
