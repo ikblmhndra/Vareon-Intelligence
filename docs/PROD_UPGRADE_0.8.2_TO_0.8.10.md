@@ -222,7 +222,7 @@ None.
   SELECT count(*) FROM ioc_allowlist_entries WHERE added_by='seed';                    -- 124
   SELECT origin, count(*) FROM source_reliability_entries GROUP BY 1;                  -- ~100 default + existing analyst
   ```
-- Worker log has `confidence_recompute_all updated=<n>` once after the first API start (with 0.8.10 the same task runs the P6 scoring); if not, run `POST /api/articles/confidence/recompute` (admin).
+- Worker log has `confidence_recompute_all updated=<n>` once after the first API start (with 0.8.10 the same task runs the P6 scoring, and with `WEB_CONCURRENCY=2` it may appear twice); if not, run `POST /api/articles/confidence/recompute` (admin).
 - If Before-deploy query 3 was > 0, only now (0.8.6+ live): `UPDATE articles SET overrides = overrides - 'confidence_score' WHERE overrides ? 'confidence_score';` then `POST /api/articles/confidence/recompute`. On 0.8.5 or older that POST writes an override for every article, so never run it before the upgrade.
 - UI: IOC Management shows defanged values and the "Include suppressed" toggle; searching `gofile[.]io` finds `gofile.io` (flagged Suppressed). Dashboard "Perlu dibaca" shows chips like `A1 · 100` / `B2 · 86` (with 0.8.10: `C1 · P131`, see that section). Source reliability lists all sources with `default` labels.
 - New `cisa_kev`/`exploitdb`/`cis` articles have `raw_enrichment->'classify'->>'skipped' = 'default_relevance=always'`.
@@ -717,7 +717,7 @@ time, recompute time, live distributions). The numbers below come from the dev s
 - **Interaction with 0.8.6 in the 0.8.2 jump.** The 0.8.6 source-grade + bonus formula never runs on prod. Each API process
   enqueues `confidence.recompute_all` once at start (condition: new default grades inserted **or** any article with
   `credibility IS NULL`), and that task now runs `assess`. `lifespan` runs in every uvicorn process and the API image
-  sets `WEB_CONCURRENCY=2`, so a normal deploy enqueues it twice. The task is idempotent: the second pass is extra load,
+  sets `WEB_CONCURRENCY=2`, so a normal deploy may enqueue it twice. The task is idempotent: the second pass is extra load,
   not a fault.
 - **Overrides.** An article whose `overrides` has `confidence_score` keeps that confidence, and its credibility and
   priority are still computed. `overrides.credibility` is new (`PUT /api/articles/{id}/credibility`, `manage_intel`).
