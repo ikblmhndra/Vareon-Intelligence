@@ -52,14 +52,21 @@ export function SrReviewTable() {
 
   async function confirm(entry: SREntry, grade: string | null) {
     setBusyId(entry.id);
-    const { error } = await api.POST("/api/sr/entries/{entry_id}/confirm", {
-      params: { path: { entry_id: entry.id } },
-      body: { reliability_grade: grade },
-    });
-    setBusyId(null);
-    if (error) {
+    // finally: error jaringan (fetch melempar) tidak boleh membuat baris terkunci "busy" selamanya.
+    try {
+      const { error } = await api.POST("/api/sr/entries/{entry_id}/confirm", {
+        params: { path: { entry_id: entry.id } },
+        body: { reliability_grade: grade },
+      });
+      if (error) {
+        toast.error("Confirm failed.");
+        return;
+      }
+    } catch {
       toast.error("Confirm failed.");
       return;
+    } finally {
+      setBusyId(null);
     }
     toast.success(`${entry.source_name}: grade ${grade ?? entry.reliability_grade} confirmed.`);
     invalidate();

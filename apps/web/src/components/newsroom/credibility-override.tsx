@@ -26,8 +26,11 @@ const ITEMS: Record<string, string> = { [COMPUTED]: "Computed", ...Object.fromEn
 export function CredibilityOverride({ article, onSaved }: { article: Article; onSaved: (a: Article) => void }) {
   const queryClient = useQueryClient();
   const isOverride = article.score_reasons.credibility.includes("analyst");
-  const [value, setValue] = useState(isOverride && article.credibility != null ? String(article.credibility) : COMPUTED);
+  const current = isOverride && article.credibility != null ? String(article.credibility) : COMPUTED;
+  const [value, setValue] = useState(current);
   const [note, setNote] = useState("");
+  // pilihan sama dengan keadaan sekarang tanpa catatan = PUT no-op + baris audit palsu
+  const unchanged = value === current && note.trim() === "";
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -73,7 +76,7 @@ export function CredibilityOverride({ article, onSaved }: { article: Article; on
         onChange={(e) => setNote(e.target.value)}
         className="h-9 w-56 text-xs"
       />
-      <Button size="sm" variant="outline" disabled={mutation.isPending} onClick={() => mutation.mutate()}>
+      <Button size="sm" variant="outline" disabled={mutation.isPending || unchanged} onClick={() => mutation.mutate()}>
         {mutation.isPending ? "Saving…" : "Save"}
       </Button>
     </div>

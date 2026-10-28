@@ -54,7 +54,7 @@ export type GradeFields = Pick<
 export function gradeLines(a: GradeFields): string[] {
   const lines: string[] = [];
   if (a.reliability_grade) {
-    lines.push(`Source reliability ${a.reliability_grade} (${a.grade_origin ?? "default"})`);
+    lines.push(`Source reliability ${a.reliability_grade} (${a.grade_origin ?? "ungraded"})`);
   }
   if (a.credibility != null) {
     const why = describeCredibility(a.score_reasons.credibility);
