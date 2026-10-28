@@ -50,6 +50,9 @@ SSH needs to be opened.
 
 ## What `deploy.sh` does (also runnable by hand: `make deploy`)
 
+Before upgrading prod across several releases, follow `docs/PROD_UPGRADE_0.8.2_TO_0.8.9.md` (per-release checks in
+`docs/prod-upgrade/<version>.md`).
+
 | Step | On failure -> |
 |---|---|
 | back up Postgres (`/var/backups/cti`, change with `CTI_BACKUP_DIR`) | deploy aborted, nothing has changed yet |
