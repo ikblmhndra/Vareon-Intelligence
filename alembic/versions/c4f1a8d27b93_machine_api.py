@@ -20,6 +20,8 @@ Create Date: 2026-10-29 14:00:00.000000
 from collections.abc import Sequence
 
 import sqlalchemy as sa
+
+# Backfill bergantung pada rumus ini; mengubahnya kelak butuh migrasi data.
 from cti_core.indicator.stix_id import indicator_uuid
 from sqlalchemy.dialects import postgresql
 

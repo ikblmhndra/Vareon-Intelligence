@@ -66,6 +66,8 @@ def _apply_upsert(
         session.add(indicator)
     else:
         indicator = existing
+        if indicator.stix_id is None:  # baris dari kode lama hasil rollback
+            indicator.stix_id = indicator_uuid(type, value)
         indicator.last_seen_at = now
         indicator.seen_count += 1
         indicator.valid_until = extend(indicator.valid_until, type, now, cfg)

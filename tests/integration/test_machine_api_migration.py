@@ -239,3 +239,33 @@ def test_downgrade_removes_everything(db_session: Session) -> None:
         ).scalar_one()
         == 0
     )
+
+
+def test_case_variants_get_distinct_stix_ids(db_session: Session) -> None:
+    repo = IndicatorRepo(db_session)
+    kw = {"source_url": "https://s/1", "source_name": "s"}
+    a = repo.upsert(type="url", value="http://a/B", **kw)
+    b = repo.upsert(type="url", value="http://a/b", **kw)
+    assert a.stix_id != b.stix_id
+
+
+def test_backfill_case_variants_distinct(db_session: Session) -> None:
+    _run(db_session, "downgrade")
+    db_session.execute(
+        text(
+            f"INSERT INTO indicators (type, value, {_BASE}) VALUES"
+            f" ('url', 'http://a/B', {_BASE_VALUES}), ('url', 'http://a/b', {_BASE_VALUES})"
+        )
+    )
+    _run(db_session, "upgrade")
+    ids = db_session.execute(text("SELECT stix_id FROM indicators")).scalars().all()
+    assert len(ids) == 2 and len(set(ids)) == 2
+
+
+def test_upsert_fills_null_stix_id_on_existing(db_session: Session) -> None:
+    ind_id = _insert(db_session, "legacy.example")
+    ind = IndicatorRepo(db_session).upsert(
+        type="domain", value="legacy.example", source_url="https://s/1", source_name="s"
+    )
+    assert ind.id == ind_id
+    assert ind.stix_id == indicator_uuid("domain", "legacy.example")
