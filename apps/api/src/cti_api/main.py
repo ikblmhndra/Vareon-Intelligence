@@ -33,6 +33,7 @@ from sqlalchemy import exists, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_api import __version__
+from cti_api.routers import api_tokens as api_tokens_router
 from cti_api.routers import articles as articles_router
 from cti_api.routers import attack as attack_router
 from cti_api.routers import auth as auth_router
@@ -191,6 +192,7 @@ def create_app() -> FastAPI:
     app.include_router(clients_router.router)
     app.include_router(roles_router.router)
     app.include_router(secrets_router.router)
+    app.include_router(api_tokens_router.router)
     app.include_router(articles_router.router)
     app.include_router(newsroom_router.router)
     app.include_router(iocs_router.router)

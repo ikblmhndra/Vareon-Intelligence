@@ -124,6 +124,10 @@
       'description': 'Edit changelog entries',
       'key': 'manage_changelog',
     }),
+    dict({
+      'description': 'Create and revoke machine API tokens',
+      'key': 'manage_api_tokens',
+    }),
   ])
 # ---
 # name: test_get_roles
@@ -161,6 +165,7 @@
         'manage_scraper',
         'manage_sources',
         'manage_changelog',
+        'manage_api_tokens',
       ]),
     }),
     dict({
@@ -222,6 +227,7 @@
         'manage_scraper',
         'manage_sources',
         'manage_changelog',
+        'manage_api_tokens',
       ]),
     }),
   ])

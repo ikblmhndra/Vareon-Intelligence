@@ -4,6 +4,41 @@
  */
 
 export interface paths {
+    "/api/api-tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Api Tokens */
+        get: operations["list_api_tokens_api_api_tokens_get"];
+        put?: never;
+        /** Create Api Token */
+        post: operations["create_api_token_api_api_tokens_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/api-tokens/{token_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Revoke Api Token */
+        delete: operations["revoke_api_token_api_api_tokens__token_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/articles": {
         parameters: {
             query?: never;
@@ -3657,6 +3692,84 @@ export interface components {
             /** Value */
             value: string;
         };
+        /** ApiTokenCreate */
+        ApiTokenCreate: {
+            /**
+             * Expires In Days
+             * @default 365
+             */
+            expires_in_days: number | null;
+            /**
+             * Max Tlp
+             * @default clear
+             * @enum {string}
+             */
+            max_tlp: "clear" | "green" | "amber" | "amber+strict" | "red";
+            /** Name */
+            name: string;
+        };
+        /** ApiTokenCreated */
+        ApiTokenCreated: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string;
+            /** Expires At */
+            expires_at: string | null;
+            /** Id */
+            id: number;
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Max Tlp */
+            max_tlp: string;
+            /** Name */
+            name: string;
+            /** Revoked At */
+            revoked_at: string | null;
+            /** Revoked By */
+            revoked_by: string | null;
+            /** Scopes */
+            scopes: string[];
+            /** Status */
+            status: string;
+            /** Token */
+            token: string;
+            /** Token Prefix */
+            token_prefix: string;
+        };
+        /** ApiTokenOut */
+        ApiTokenOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Created By */
+            created_by: string;
+            /** Expires At */
+            expires_at: string | null;
+            /** Id */
+            id: number;
+            /** Last Used At */
+            last_used_at: string | null;
+            /** Max Tlp */
+            max_tlp: string;
+            /** Name */
+            name: string;
+            /** Revoked At */
+            revoked_at: string | null;
+            /** Revoked By */
+            revoked_by: string | null;
+            /** Scopes */
+            scopes: string[];
+            /** Status */
+            status: string;
+            /** Token Prefix */
+            token_prefix: string;
+        };
         /** ArticleListResponse */
         ArticleListResponse: {
             /** Articles */
@@ -7031,6 +7144,105 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_api_tokens_api_api_tokens_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiTokenOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_api_token_api_api_tokens_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApiTokenCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiTokenCreated"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_api_token_api_api_tokens__token_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                token_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiTokenOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_articles_api_articles_get: {
         parameters: {
             query?: {
