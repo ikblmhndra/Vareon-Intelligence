@@ -17,8 +17,10 @@ import datetime
 from typing import Any
 
 from sqlalchemy import (
+    CHAR,
     BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     String,
@@ -26,7 +28,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from cti_core.db.base import Base, TimestampMixin
@@ -142,3 +144,30 @@ class PasswordPolicy(Base):
     updated_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
+
+
+class ApiToken(Base):
+    """Token mesin (P7b) untuk feed REST/TAXII. Hanya sha256 token yang disimpan (token acak 256
+    bit, jadi tanpa stretching); baris dicabut tetap disimpan untuk audit."""
+
+    __tablename__ = "api_tokens"
+    __table_args__ = (
+        CheckConstraint(
+            "max_tlp IN ('clear', 'green', 'amber', 'amber+strict', 'red')", name="max_tlp"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    token_prefix: Mapped[str] = mapped_column(String(12), nullable=False)
+    token_hash: Mapped[str] = mapped_column(CHAR(64), nullable=False, unique=True)
+    scopes: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False)
+    max_tlp: Mapped[str] = mapped_column(String(12), nullable=False, server_default="clear")
+    created_by: Mapped[str] = mapped_column(String(200), nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    expires_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_by: Mapped[str | None] = mapped_column(String(200))

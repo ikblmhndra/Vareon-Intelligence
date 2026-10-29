@@ -22,7 +22,15 @@ from cti_core.db.models.attack import (
     AttackTechnique,
     AttackTechniqueAlias,
 )
-from cti_core.db.models.auth import AuditLogEntry, Client, ClientCountry, Role, User, UserClient
+from cti_core.db.models.auth import (
+    ApiToken,
+    AuditLogEntry,
+    Client,
+    ClientCountry,
+    Role,
+    User,
+    UserClient,
+)
 from cti_core.db.models.catalog import CatalogFamily, CatalogFamilyAlias, CatalogVendor
 from cti_core.db.models.cluster import Cluster
 from cti_core.db.models.cve import (
@@ -71,6 +79,7 @@ from cti_core.db.models.threat_reference import MonitoredPerson, ThreatActorGrou
 from cti_core.db.models.tweet import MonitoredAccount, Tweet
 
 __all__ = [
+    "ApiToken",
     "Article",
     "ArticleCountry",
     "ArticleCve",

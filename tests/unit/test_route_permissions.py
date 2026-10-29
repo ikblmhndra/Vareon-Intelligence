@@ -30,7 +30,7 @@ EXEMPT: dict[tuple[str, str], str] = {
 }
 
 
-def _app_routes(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
+def _app_routes(monkeypatch: pytest.MonkeyPatch, prefix: str = "/api") -> list[Any]:
     from cti_core.config import get_settings
 
     for key, value in {
@@ -53,7 +53,7 @@ def _app_routes(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
                 out.append(r)
         return out
 
-    return [r for r in flat(create_app().routes) if r.path.startswith("/api")]
+    return [r for r in flat(create_app().routes) if r.path.startswith(prefix)]
 
 
 def _permissions(dependant: Any) -> set[str]:
@@ -70,6 +70,8 @@ def test_every_api_route_requires_a_permission(monkeypatch: pytest.MonkeyPatch) 
     missing: list[str] = []
     seen: set[tuple[str, str]] = set()
     for route in _app_routes(monkeypatch):
+        if route.path.startswith("/api/v2/"):
+            continue  # feed mesin: token berscope, dicek test di bawah
         perms = _permissions(route.dependant)
         for method in route.methods:
             key = (method, route.path)
@@ -79,6 +81,27 @@ def test_every_api_route_requires_a_permission(monkeypatch: pytest.MonkeyPatch) 
     assert missing == [], "routes without require_permission:\n" + "\n".join(sorted(missing))
     stale = sorted(f"{m} {p}" for m, p in EXEMPT if (m, p) not in seen)
     assert stale == [], f"EXEMPT lists routes that no longer exist: {stale}"
+
+
+def _scopes(dependant: Any) -> set[str]:
+    found: set[str] = set()
+    for sub in dependant.dependencies:
+        scope = getattr(sub.call, "scope", None)
+        if scope:
+            found.add(scope)
+        found |= _scopes(sub)
+    return found
+
+
+def test_every_machine_route_requires_a_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    routes = [
+        r
+        for r in _app_routes(monkeypatch, prefix="/")
+        if r.path.startswith(("/api/v2/", "/taxii2/"))
+    ]
+    assert routes, "no machine routes found"
+    bad = [f"{r.path}" for r in routes if not _scopes(r.dependant) or _permissions(r.dependant)]
+    assert bad == [], f"machine routes must use require_token only: {bad}"
 
 
 def test_system_roles_only_use_known_permissions() -> None:
@@ -91,3 +114,8 @@ def test_analyst_keeps_cve_triage_and_ops_views() -> None:
     analyst = set(SYSTEM_ROLES["analyst"]["permissions"])  # type: ignore[arg-type]
     assert {"manage_cve", "view_ops", "manage_pir", "manage_rfi", "manage_ioc"} <= analyst
     assert not {"manage_newsletter", "send_cve_email", "manage_intel"} & analyst
+    assert "manage_api_tokens" not in analyst
+
+
+def test_admin_has_manage_api_tokens() -> None:
+    assert "manage_api_tokens" in SYSTEM_ROLES["admin"]["permissions"]

@@ -48,9 +48,21 @@ def _relkind(session: Session, name: str) -> str | None:
     ).scalar_one_or_none()
 
 
+def _machine_api_downgrade(session: Session) -> None:
+    """Migrasi P7b ada di atas P7a (trigger-nya menunjuk `indicators`); lepas dulu."""
+    path = next(_VERSIONS.glob("*_machine_api.py"))
+    spec = importlib.util.spec_from_file_location("machine_api_migration", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    with Operations.context(MigrationContext.configure(session.connection())):
+        module.downgrade()
+
+
 @pytest.fixture
 def old_schema(db_session: Session) -> Iterator[Session]:
     """Skema pra-0.8.11 dengan 2 `iocs` dan satu baris di tiap tabel anak."""
+    _machine_api_downgrade(db_session)
     _run(db_session, "downgrade")
     ids = [
         db_session.execute(

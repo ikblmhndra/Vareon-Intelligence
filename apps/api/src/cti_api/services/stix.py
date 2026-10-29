@@ -29,11 +29,13 @@ from datetime import UTC, datetime
 from typing import Any
 
 from cti_core.config import platform_name
+from cti_core.db.models.indicator import Indicator
 from cti_core.db.models.pir import PIRRequirement
 from cti_core.db.repositories.article import AsyncArticleRepo, all_country_codes
 from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from cti_core.db.repositories.pir import AsyncPIRRepo
 from cti_core.db.repositories.ta import AsyncTAProfileRepo
+from cti_core.indicator.stix_id import indicator_uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # ── Constants ────────────────────────────────────────────────────────────────
@@ -116,6 +118,7 @@ _IOC_PATTERN_MAP = {
     "ip": "[ipv4-addr:value = '{value}']",
     "domain": "[domain-name:value = '{value}']",
     "url": "[url:value = '{value}']",
+    "url_with_path": "[url:value = '{value}']",
     "sha256": "[file:hashes.'SHA-256' = '{value}']",
     "sha1": "[file:hashes.'SHA-1' = '{value}']",
     "md5": "[file:hashes.MD5 = '{value}']",
@@ -127,7 +130,8 @@ def _ioc_pattern(ioc_type: str, value: str) -> str | None:
     tmpl = _IOC_PATTERN_MAP.get(ioc_type)
     if tmpl is None:
         return None
-    safe_value = value.replace("'", "\\'")
+    # Backslash dulu, baru kutip: urutan terbalik akan menggandakan backslash dari escape kutip.
+    safe_value = value.replace("\\", "\\\\").replace("'", "\\'")
     return tmpl.format(value=safe_value)
 
 
@@ -159,6 +163,9 @@ def _build_indicator(
     valid_until: str | None = None,
     # Default None: bundle threat-actor tanpa marking; bundle IOC selalu mengisi TLP indikator.
     tlp: str | None = None,
+    created: str | None = None,
+    modified: str | None = None,
+    revoked: bool = False,
 ) -> dict[str, Any] | None:
     """Build a STIX 2.1 indicator. `first_seen`/`last_seen` kalau dikasih
     HARUS string tanggal `YYYY-MM-DD` (lihat pemanggil); `valid_until` RFC 3339 dengan `Z`."""
@@ -170,14 +177,16 @@ def _build_indicator(
     # valid_from harus RFC 3339 / ISO 8601 dengan timezone
     valid_from = f"{first_seen}T00:00:00Z" if len(first_seen) == 10 else first_seen
 
-    indicator_id = f"indicator--{_uuid5(f'{ioc_type}:{value}')}"
+    # Rumus yang sama dengan kolom `indicators.stix_id` (peka huruf besar), BUKAN `_uuid5`:
+    # `_uuid5` melipat huruf sehingga nilai yang hanya beda kapitalisasi bertabrakan.
+    indicator_id = f"indicator--{indicator_uuid(ioc_type, value)}"
 
     obj: dict[str, Any] = {
         "type": "indicator",
         "id": indicator_id,
         "spec_version": _SPEC,
-        "created": ts,
-        "modified": ts,
+        "created": created or ts,
+        "modified": modified or ts,
         "name": f"{ioc_type}: {value}",
         "pattern": pattern,
         "pattern_type": "stix",
@@ -187,6 +196,8 @@ def _build_indicator(
 
     if valid_until:
         obj["valid_until"] = valid_until
+    if revoked:
+        obj["revoked"] = True
     if tlp:
         obj["object_marking_refs"] = [TLP_MARKING_IDS[tlp]]
     if tags:
@@ -196,6 +207,35 @@ def _build_indicator(
     if last_seen:
         obj["x_last_seen"] = last_seen
 
+    return obj
+
+
+def stix_ts(dt: datetime) -> str:
+    """RFC 3339 UTC dengan presisi milidetik dan `Z`, bentuk yang dipakai TAXII."""
+    return dt.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%S.") + f"{dt.microsecond // 1000:03d}Z"
+
+
+def indicator_to_stix(ind: Indicator) -> dict[str, Any] | None:
+    """Satu baris `Indicator` -> objek STIX. Waktu dan id berasal dari baris (bukan `now()`),
+    jadi dua pemanggilan menghasilkan objek identik: syarat polling TAXII. `revoked: true` untuk
+    revoked DAN allowlisted supaya pelanggan menghapusnya. Tanpa `confidence` (berubah harian)."""
+    stix_id = ind.stix_id or indicator_uuid(ind.type, ind.value)
+    obj = _build_indicator(
+        ind.type,
+        ind.value,
+        stix_ts(ind.created_at),
+        first_seen=stix_ts(ind.valid_from),
+        tags=sorted(t.tag for t in ind.tags) or None,
+        seen_count=ind.seen_count,
+        last_seen=ind.last_seen_at.date().isoformat(),
+        valid_until=stix_ts(ind.valid_until) if ind.valid_until else None,
+        tlp=ind.tlp,
+        created=stix_ts(ind.created_at),
+        modified=stix_ts(ind.feed_changed_at),
+        revoked=ind.state in ("revoked", "allowlisted"),
+    )
+    if obj is not None:
+        obj["id"] = f"indicator--{stix_id}"
     return obj
 
 
@@ -500,7 +540,6 @@ async def build_ioc_stix_bundle(
 ) -> dict[str, Any]:
     """Ambil IOC dari `AsyncIOCRepo` dan ubah jadi objek indicator STIX
     2.1 di dalam satu bundle."""
-    ts = _now()
     objects: list[dict[str, Any]] = []
 
     identity = _identity_object()
@@ -516,22 +555,7 @@ async def build_ioc_stix_bundle(
     )
 
     for ioc in iocs:
-        ind_obj = _build_indicator(
-            ioc.type,
-            ioc.value,
-            ts,
-            first_seen=ioc.first_seen_at.date().isoformat(),
-            tags=[t.tag for t in ioc.tags] or None,
-            seen_count=ioc.seen_count,
-            last_seen=ioc.last_seen_at.date().isoformat(),
-            # Hash tidak kedaluwarsa (`valid_until` NULL): kuncinya sengaja tidak ditulis.
-            valid_until=(
-                ioc.valid_until.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-                if ioc.valid_until
-                else None
-            ),
-            tlp=ioc.tlp,
-        )
+        ind_obj = indicator_to_stix(ioc)
         if ind_obj:
             objects.append(ind_obj)
 
