@@ -2,8 +2,10 @@
 # HANYA ${NGINX_*} yang diganti (lihat NGINX_ENVSUBST_FILTER di docker/nginx.Dockerfile);
 # semua $variabel lain di bawah adalah variabel nginx.
 #
-# Cuma WEB (Next.js BFF) yang di-proxy. API TIDAK lewat sini: browser tidak pernah memanggil cti-api
-# langsung, semua lewat /api/proxy/* di web.
+# Cuma WEB (Next.js BFF) yang di-proxy, dengan DUA pengecualian ke cti-api untuk klien mesin (P7b):
+# `/taxii2/` (server TAXII 2.1) dan `/api/v2/` (feed REST). Keduanya hanya menerima token API
+# (tanpa JWT web) dan hanya baca. Browser tetap tidak memanggil cti-api langsung: UI lewat /api/proxy/*
+# di web. Jalur API lain TIDAK dibuka; tes tests/unit/test_nginx_template.py menjaga daftar ini.
 #
 # WAJIB: `X-Forwarded-For $proxy_add_x_forwarded_for`. Rate limit login memakai IP klien dari header
 # ini (`TRUSTED_PROXY_HOPS=1` = SATU proxy tepercaya, yaitu nginx ini; lihat
@@ -63,6 +65,38 @@ server {
         access_log off;
         default_type text/plain;
         return 200 "ok\n";
+    }
+
+    # Klien mesin (SIEM/TIP) -> cti-api. Uri asli diteruskan apa adanya (proxy_pass dengan variabel
+    # tanpa URI); `api` di-resolve ulang seperti `web`. Header sama dengan `location /` supaya URL
+    # absolut di discovery TAXII memakai Host/port/skema publik (uvicorn jalan dengan --proxy-headers).
+
+    location /taxii2/ {
+        set $cti_api http://api:8000;
+        proxy_pass $cti_api;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;   # <- WAJIB, lihat atas
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+
+    location /api/v2/ {
+        set $cti_api http://api:8000;
+        proxy_pass $cti_api;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;   # <- WAJIB, lihat atas
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
     }
 
     location / {

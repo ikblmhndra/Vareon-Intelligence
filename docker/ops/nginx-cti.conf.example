@@ -14,6 +14,16 @@
 # memanggil cti-api langsung, semua lewat /api/proxy/* di web. Port API (127.0.0.1:${API_PORT})
 # untuk debug dari host saja.
 
+# Mesin (P7b): /taxii2/ dan /api/v2/ harus ke API, bukan web. Di bawah dipakai upstream cti_api ke
+# 127.0.0.1:${API_PORT} (default 8000, hanya terikat loopback oleh compose); bila nginx host ini tidak
+# berada di host yang sama dengan compose, buka API_PORT ke host nginx via BIND_ADDR di stack.env.
+# Jalur API lain TIDAK boleh ditambahkan di sini (tes tests/unit/test_nginx_template.py menjaga
+# template bawaan).
+upstream cti_api {
+    server 127.0.0.1:8000;          # = API_PORT di docker/stack.env
+    keepalive 16;
+}
+
 upstream cti_web {
     server 127.0.0.1:3000;          # = WEB_PORT di docker/stack.env
     keepalive 16;
@@ -34,6 +44,19 @@ server {
     ssl_certificate_key /etc/nginx/tls/cti.key;
 
     client_max_body_size 20m;       # upload (mis. impor STIX/CSV); sesuaikan bila perlu
+
+    # Klien mesin: token API saja, hanya baca. Header sama dengan `location /` (XFF wajib).
+    location ~ ^/(taxii2|api/v2)/ {
+        proxy_pass http://cti_api;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_read_timeout 300s;
+    }
 
     location / {
         proxy_pass http://cti_web;

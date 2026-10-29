@@ -9,7 +9,7 @@ router `changelog.py`) -- parser-nya expect header persis
 ## [0.8.11] - 2026-10-29
 
 **Indikator (IOC) kini punya siklus hidup: tabel `iocs` berganti nama menjadi `indicators`, tiap indikator punya masa berlaku (`valid_until`) menurut tipe, bisa dicabut (revoked) lewat feedback FP, dan membawa penanda TLP/PAP. Status dihitung, tidak disimpan: active, expired, revoked, atau allowlisted.**
-Satu migrasi (`a9e4c7b1d3f6`), **tanpa kunci `.env` wajib.** Empat kunci opsional baru dengan default (`INDICATOR__TTL_IP_DAYS=30`, `INDICATOR__TTL_DOMAIN_DAYS=90`, `INDICATOR__TTL_URL_DAYS=90`, `INDICATOR__TTL_EMAIL_DAYS=90`). Verifikasi di dev belum dilakukan saat entri ini ditulis.
+Dua migrasi (`a9e4c7b1d3f6`, `c4f1a8d27b93`), **tanpa kunci `.env` wajib.** Empat kunci opsional baru dengan default (`INDICATOR__TTL_IP_DAYS=30`, `INDICATOR__TTL_DOMAIN_DAYS=90`, `INDICATOR__TTL_URL_DAYS=90`, `INDICATOR__TTL_EMAIL_DAYS=90`). Verifikasi di dev belum dilakukan saat entri ini ditulis.
 
 **Saat upgrade dari 0.8.10:** `make deploy` (migrasi jalan otomatis; rename tabel instan, id dan baris tetap). Sesudah API naik, bootstrap mengantrekan `indicator.reconcile_validity` sekali (selama sidik jari TTL di `job_state` belum ada atau berubah) untuk mengisi `valid_until`; sampai tugas itu selesai, indikator non-hash terbaca tidak kedaluwarsa. **Query SQL di luar aplikasi yang menyebut `iocs`, `ioc_sources`, `ioc_tags`, `ioc_threat_actors`, atau `ioc_feedback` tetap bisa dibaca lewat view kompatibilitas** (view kompatibilitas deprecated yang bisa ditulis; jangan dipakai di kode baru, akan dihapus di rilis berikutnya); pindahkan ke nama baru. Rute `/api/iocs` tidak berubah.
 
@@ -21,14 +21,18 @@ Satu migrasi (`a9e4c7b1d3f6`), **tanpa kunci `.env` wajib.** Empat kunci opsiona
 - Halaman IOC menampilkan status indikator (active, expired, revoked, allowlisted) dan TLP/PAP, dan tombol TP/FP (FP mencabut, TP memulihkan).
 - Ekspor STIX IOC membawa `valid_until` dan marking definition TLP 2.0.
 
+- **API mesin (P7b):** token API bercakupan (`indicators:read`, kedaluwarsa opsional, batas TLP, hash disimpan, ditampilkan sekali) yang dikelola admin di halaman Admin (izin baru `manage_api_tokens`); feed REST `GET /api/v2/indicators`; server TAXII 2.1 di `/taxii2/` (satu koleksi, `6f0e1a52-6a43-4f0b-9b8e-2a7c1d9e4b10`). Indikator yang dicabut atau di-allowlist tetap dipublikasikan dengan `revoked: true`. Satu migrasi lagi (`c4f1a8d27b93`: tabel `api_tokens`, kolom `indicators.feed_changed_at` dan `stix_id`, dua trigger yang menjaga jam feed), tanpa kunci `.env` baru.
+- nginx membuka `/taxii2/` dan `/api/v2/` ke API (hanya dua jalur itu; jalur API lain tetap di belakang web). Image `nginx` harus dibangun ulang: `make deploy` melakukannya.
+
 ### Diubah
+- Id STIX indikator kini `uuid5(NAMESPACE_DNS, "tipe:nilai")` tanpa lowercase dan dipakai juga oleh ekspor STIX snapshot dan bundle threat actor, jadi id berubah sekali untuk nilai dengan huruf besar atau spasi di tepi (belum ada pelanggan TAXII). `created`/`modified` STIX kini stabil.
 - Feedback FP kini **mencabut** indikator: keluar dari ekspor STIX, statistik IOC, hitungan dashboard, kampanye, hitungan recap, dan antrean enrichment provider, serta tidak lagi dihitung sebagai bukti IOC/artefak pada credibility asesmen P6 dan review sumber (berlaku pada recompute artikel berikutnya). Feedback TP memulihkannya.
 - `POST /api/iocs/{id}/feedback` kini butuh izin `manage_ioc`. Peran bawaan `analyst` kini mendapat `manage_ioc` (diperbarui otomatis saat API start), jadi analyst tetap bisa TP/FP, dan juga bisa menghapus IOC serta mengubah allowlist, tag, dan tautan threat actor. Hanya peran kustom tanpa `manage_ioc` yang kehilangan tombol TP/FP.
 - `tools/ops/pg_backup.py` memverifikasi tabel `indicators` di samping `iocs` (yang tidak ada dilewati).
 
 ### Catatan perilaku
 - Antara migrasi dan run pertama tugas reconcile (beberapa menit sesudah start API), indikator non-hash terbaca tidak kedaluwarsa. Belum ada konsumen yang memakai masa berlaku sebelum P7b.
-- Rollback kode tidak memerlukan downgrade DB: kode 0.8.10 dan 0.8.2 sama-sama terbukti jalan terhadap skema 0.8.11 lewat view kompatibilitas (target auto-rollback prod adalah 0.8.2); revoke dan TLP/PAP yang diset sesudah upgrade tidak dihormati kode lama. Baris `valid_until` NULL dari kode lama diisi reconcile harian (04:15) atau reconcile manual.
+- Rollback kode tidak memerlukan downgrade DB (trigger feed dan tabel `api_tokens` tidak dibaca kode lama, tidak berbahaya): kode 0.8.10 dan 0.8.2 sama-sama terbukti jalan terhadap skema 0.8.11 lewat view kompatibilitas (target auto-rollback prod adalah 0.8.2); revoke dan TLP/PAP yang diset sesudah upgrade tidak dihormati kode lama. Baris `valid_until` NULL dari kode lama diisi reconcile harian (04:15) atau reconcile manual.
 - Panel antrean FP di dashboard Exec: tombol TP/FP hanya tampil bagi pemegang `manage_ioc` (analyst, admin, superadmin); FP di sana kini mencabut indikator.
 - Downgrade menghapus view dan kolom baru lalu mengembalikan nama tabel; revoke dan penanda TLP/PAP hilang.
 

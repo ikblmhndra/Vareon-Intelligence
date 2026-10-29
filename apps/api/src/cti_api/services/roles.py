@@ -43,6 +43,7 @@ ALL_PERMISSIONS: dict[str, str] = {
     "manage_scraper": "Configure scraper health settings",
     "manage_sources": "Add and edit news sources",
     "manage_changelog": "Edit changelog entries",
+    "manage_api_tokens": "Create and revoke machine API tokens",
 }
 
 _ALL = list(ALL_PERMISSIONS.keys())

@@ -23,6 +23,7 @@ dev = [
     "respx>=0.21",
     "testcontainers[postgres]>=4.5",
     "syrupy>=4.7",
+    "taxii2-client>=2.3",
 ]
 
 [tool.uv]
@@ -100,6 +101,7 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 # injection dibaca lewat introspeksi signature) -- sama alasan kayak
 # ignore `typer.Option()` di atas, bukan bug B008 biasa.
 "apps/api/src/cti_api/deps.py" = ["B008"]
+"apps/api/src/cti_api/machine_auth.py" = ["B008"]
 "apps/api/src/cti_api/routers/*.py" = ["B008"]
 
 [tool.mypy]

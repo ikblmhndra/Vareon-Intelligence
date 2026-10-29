@@ -9,7 +9,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     <>
       <PageHeader
         title="Admin"
-        description="Users, roles, password policy, audit log, clients and third-party keys."
+        description="Users, roles, password policy, audit log, clients, API tokens and third-party keys."
       />
       {children}
     </>

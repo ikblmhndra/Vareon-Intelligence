@@ -100,7 +100,7 @@ async def test_stix_ioc_bundle(async_db_session: AsyncSession) -> None:
     active = inds["domain: active.example.com"]
     clear_id = stix_service.TLP_MARKING_IDS["clear"]
     assert active["valid_until"].endswith("Z")
-    datetime.datetime.strptime(active["valid_until"], "%Y-%m-%dT%H:%M:%SZ")
+    datetime.datetime.strptime(active["valid_until"], "%Y-%m-%dT%H:%M:%S.%fZ")
     assert active["object_marking_refs"] == [clear_id]
     assert active["valid_from"].endswith("Z")
 

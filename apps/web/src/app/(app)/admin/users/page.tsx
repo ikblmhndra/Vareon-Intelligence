@@ -8,6 +8,7 @@ import { RolesSection } from "@/components/admin/roles-section";
 import { PasswordPolicySection } from "@/components/admin/password-policy-section";
 import { AuditLogSection } from "@/components/admin/audit-log-section";
 import { ClientsSection } from "@/components/admin/clients-section";
+import { ApiTokensSection } from "@/components/admin/api-tokens-section";
 import { SecretsSection } from "@/components/admin/secrets-section";
 
 /**
@@ -19,7 +20,7 @@ import { SecretsSection } from "@/components/admin/secrets-section";
 export default function AdminUsersPage() {
   const { user } = useAuth();
   const can = useCan();
-  const adminPermissions = ["manage_users", "manage_roles", "manage_policy", "view_audit_log", "manage_clients"];
+  const adminPermissions = ["manage_users", "manage_roles", "manage_policy", "view_audit_log", "manage_clients", "manage_api_tokens"];
 
   if (!adminPermissions.some(can)) {
     return (
@@ -41,6 +42,7 @@ export default function AdminUsersPage() {
       {can("manage_policy") && <PasswordPolicySection />}
       {can("view_audit_log") && <AuditLogSection />}
       {can("manage_clients") && <ClientsSection />}
+      {can("manage_api_tokens") && <ApiTokensSection />}
       {/* Secrets tidak punya permission sendiri: API-nya `require_superadmin`. */}
       {user?.role === "superadmin" && <SecretsSection />}
     </div>
