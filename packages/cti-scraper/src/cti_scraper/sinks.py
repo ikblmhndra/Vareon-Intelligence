@@ -312,6 +312,8 @@ def _ioc_feed_sink(item: IocFeedItem, meta: ScraperMeta, session: Session) -> No
             source_name="deepdarkCTI",
             context=entry["category"],
             suppression_reason=allowlist_match(entry["type"], value, allowlist),
+            tlp=meta.tlp,
+            pap=meta.pap,
         )
         if ioc.seen_count == 1:
             new_count += 1

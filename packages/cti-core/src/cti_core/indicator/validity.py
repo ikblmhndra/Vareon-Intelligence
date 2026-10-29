@@ -10,6 +10,8 @@ import json
 from cti_core.config import IndicatorSettings
 
 HASH_TYPES = frozenset({"md5", "sha1", "sha256"})
+# Semua tipe non-hash yang diterima `ttl_days` (sumber reconcile; termasuk url_with_path).
+TTL_TYPES = ("ip", "domain", "url", "url_with_path", "email")
 
 
 def ttl_days(ioc_type: str, cfg: IndicatorSettings) -> int | None:

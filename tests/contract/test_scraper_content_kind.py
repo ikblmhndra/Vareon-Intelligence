@@ -10,6 +10,7 @@ import ast
 import inspect
 from pathlib import Path
 
+from cti_core.indicator.marking import PAP_LEVELS, TLP_LEVELS
 from cti_scraper import registry
 
 
@@ -35,6 +36,9 @@ def test_always_only_for_structured_kinds() -> None:
     }
 
     assert bad == {}
+    for sid, cls in _real_scrapers().items():
+        assert cls.meta.tlp in TLP_LEVELS, sid
+        assert cls.meta.pap in PAP_LEVELS, sid
 
 
 def test_always_set_exactly_on_structured_sources() -> None:
@@ -82,3 +86,6 @@ def test_scraper_markings_default_clear() -> None:
     }
 
     assert bad == {}
+    for sid, cls in _real_scrapers().items():
+        assert cls.meta.tlp in TLP_LEVELS, sid
+        assert cls.meta.pap in PAP_LEVELS, sid

@@ -22,7 +22,7 @@ from cti_core.db.models.indicator import (
     IndicatorThreatActor,
 )
 from cti_core.indicator.marking import stricter_pap, stricter_tlp
-from cti_core.indicator.validity import HASH_TYPES, extend, ttl_days, ttl_fingerprint
+from cti_core.indicator.validity import HASH_TYPES, TTL_TYPES, extend, ttl_days, ttl_fingerprint
 
 _VALID_VERDICTS = frozenset({"tp", "fp"})
 _VALID_TYPES = frozenset({"ip", "url", "domain", "email", "sha256", "sha1", "md5"})
@@ -148,31 +148,38 @@ class IndicatorRepo:
         return indicator
 
     def reconcile_validity(self, cfg: IndicatorSettings) -> dict[str, int]:
-        """Isi/sinkronkan `valid_until = last_seen_at + TTL` untuk semua indikator tak-dicabut
-        (spec P7a 3.3). Dilewati bila sidik jari TTL tersimpan sama dengan yang sekarang, jadi
-        run harian murah. Indikator yang dicabut tidak disentuh; hash selalu NULL."""
+        """Isi/sinkronkan `valid_until = last_seen_at + TTL` untuk indikator tak-dicabut
+        (spec P7a 3.3). Selalu menjalankan langkah murah "isi yang NULL" (baris yang masuk dari
+        kode lama hasil rollback, atau sebelum reconcile pertama, tidak boleh aktif selamanya).
+        Re-sync penuh (timpa semua nilai) hanya bila sidik jari TTL berubah/belum tersimpan;
+        `skipped` = 1 bila re-sync penuh dilewati. Dicabut tidak disentuh; hash selalu NULL."""
         from cti_core.db.repositories.report_state import JobStateRepo
 
         states = JobStateRepo(self.session)
         fingerprint = ttl_fingerprint(cfg)
-        if states.get(_TTL_FINGERPRINT_KEY) == fingerprint:
-            return {"updated": 0, "skipped": 1}
+        full = states.get(_TTL_FINGERPRINT_KEY) != fingerprint
         by_days: dict[int, list[str]] = {}
-        for t in sorted(_VALID_TYPES - HASH_TYPES):
+        for t in TTL_TYPES:
             days = ttl_days(t, cfg)
             assert days is not None
             by_days.setdefault(days, []).append(t)
+        guard = (
+            " AND valid_until IS DISTINCT FROM last_seen_at + make_interval(days => :d)"
+            if full
+            else " AND valid_until IS NULL"
+        )
         updated = 0
         for days, types in by_days.items():
             res = self.session.execute(
                 text(
                     "UPDATE indicators SET valid_until = last_seen_at + make_interval(days => :d)"
-                    " WHERE type = ANY(:types) AND revoked_at IS NULL"
-                    " AND valid_until IS DISTINCT FROM last_seen_at + make_interval(days => :d)"
+                    " WHERE type = ANY(:types) AND revoked_at IS NULL" + guard
                 ),
                 {"d": days, "types": types},
             )
             updated += res.rowcount  # type: ignore[attr-defined]
+        if not full:
+            return {"updated": updated, "skipped": 1}
         res = self.session.execute(
             text(
                 "UPDATE indicators SET valid_until = NULL WHERE type = ANY(:types)"

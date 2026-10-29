@@ -75,3 +75,36 @@ def test_revoked_rows_untouched(db_session: Session) -> None:
     IndicatorRepo(db_session).reconcile_validity(IndicatorSettings())
     db_session.refresh(row)
     assert row.valid_until == keep
+
+
+def test_matching_fingerprint_fills_null_rows(db_session: Session) -> None:
+    rows = _seed(db_session)
+    revoked = Indicator(
+        type="ip", value="rec-null-revoked", last_seen_at=_SEEN, valid_until=None, revoked_at=_SEEN
+    )
+    db_session.add(revoked)
+    repo = IndicatorRepo(db_session)
+    cfg = IndicatorSettings()
+    repo.reconcile_validity(cfg)
+    # Simulasi kode lama (rollback) yang menyisipkan baris NULL setelah fingerprint tersimpan.
+    db_session.refresh(rows["ip"])  # ORM masih menyimpan None lama; tanpa refresh flush tak menulis
+    rows["ip"].valid_until = None
+    db_session.flush()
+    out = repo.reconcile_validity(cfg)
+    assert out == {"updated": 1, "skipped": 1}
+    for r in (*rows.values(), revoked):
+        db_session.refresh(r)
+    assert rows["ip"].valid_until == _SEEN + datetime.timedelta(days=30)
+    assert revoked.valid_until is None
+    assert rows["sha256"].valid_until is None
+
+
+def test_url_with_path_gets_url_ttl(db_session: Session) -> None:
+    _seed(db_session)
+    row = Indicator(type="url_with_path", value="rec-uwp", last_seen_at=_SEEN, valid_until=None)
+    db_session.add(row)
+    db_session.flush()
+    cfg = IndicatorSettings()
+    IndicatorRepo(db_session).reconcile_validity(cfg)
+    db_session.refresh(row)
+    assert row.valid_until == _SEEN + datetime.timedelta(days=cfg.ttl_url_days)
