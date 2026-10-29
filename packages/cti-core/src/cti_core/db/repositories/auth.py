@@ -17,12 +17,13 @@ from __future__ import annotations
 import datetime
 from typing import Any, cast
 
-from sqlalchemy import select, update
+from sqlalchemy import func, or_, select, text, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from cti_core.db.models.auth import (
+    ApiToken,
     AuditLogEntry,
     Client,
     ClientCountry,
@@ -340,3 +341,71 @@ class AsyncPasswordPolicyRepo:
                 setattr(row, key, value)
         await self.session.flush()
         return policy
+
+
+class AsyncApiTokenRepo:
+    """Token mesin P7b. Nilai token tidak pernah lewat sini, hanya sha256-nya."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def create(
+        self,
+        *,
+        name: str,
+        token_prefix: str,
+        token_hash: str,
+        scopes: list[str],
+        max_tlp: str,
+        created_by: str,
+        expires_at: datetime.datetime | None,
+    ) -> ApiToken:
+        row = ApiToken(
+            name=name,
+            token_prefix=token_prefix,
+            token_hash=token_hash,
+            scopes=scopes,
+            max_tlp=max_tlp,
+            created_by=created_by,
+            expires_at=expires_at,
+        )
+        self.session.add(row)
+        await self.session.flush()
+        return row
+
+    async def list_all(self) -> list[ApiToken]:
+        result = await self.session.execute(
+            select(ApiToken).order_by(ApiToken.created_at.desc(), ApiToken.id.desc())
+        )
+        return list(result.scalars().all())
+
+    async def get(self, token_id: int) -> ApiToken | None:
+        return await self.session.get(ApiToken, token_id)
+
+    async def get_by_hash(self, token_hash: str) -> ApiToken | None:
+        result = await self.session.execute(
+            select(ApiToken).where(ApiToken.token_hash == token_hash)
+        )
+        return result.scalar_one_or_none()
+
+    async def revoke(self, token: ApiToken, *, by: str) -> ApiToken:
+        """Mencabut token; `revoked_at` pertama dipertahankan kalau sudah dicabut."""
+        if token.revoked_at is None:
+            token.revoked_at = datetime.datetime.now(datetime.UTC)
+            token.revoked_by = by
+            await self.session.flush()
+        return token
+
+    async def touch_last_used(self, token_id: int) -> None:
+        """Satu UPDATE bersyarat: hanya menulis kalau nilai lama lebih tua dari 60 detik."""
+        await self.session.execute(
+            update(ApiToken)
+            .where(
+                ApiToken.id == token_id,
+                or_(
+                    ApiToken.last_used_at.is_(None),
+                    ApiToken.last_used_at < func.now() - text("interval '60 seconds'"),
+                ),
+            )
+            .values(last_used_at=func.now())
+        )
