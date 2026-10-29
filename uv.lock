@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.15'",
@@ -1031,6 +1031,7 @@ dev = [
     { name = "respx" },
     { name = "ruff" },
     { name = "syrupy" },
+    { name = "taxii2-client" },
     { name = "testcontainers" },
 ]
 
@@ -1050,6 +1051,7 @@ requires-dist = [
     { name = "respx", marker = "extra == 'dev'", specifier = ">=0.21" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.5" },
     { name = "syrupy", marker = "extra == 'dev'", specifier = ">=4.7" },
+    { name = "taxii2-client", marker = "extra == 'dev'", specifier = ">=2.3" },
     { name = "testcontainers", extras = ["postgres"], marker = "extra == 'dev'", specifier = ">=4.5" },
 ]
 provides-extras = ["dev"]
@@ -3709,6 +3711,20 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/74/2c/8ffc1414d1951895d0d5b7dc83c0b079ebc48c3bf27ffbb0064646367500/syrupy-6.1.1.tar.gz", hash = "sha256:7e584a8df4ede6dd3c1c44a77f9edc46186b6767a73dea6f0083044946839a59", size = 109705, upload-time = "2026-09-13T20:25:21.599Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/2c/b5/bf2a8a335a6a813869dd482cedbcde252f582b5afbfe50eb78ec09962800/syrupy-6.1.1-py3-none-any.whl", hash = "sha256:6ac9ac6a42d70ae44156f5f157a9563b9bb8cc96dcf9364327f330463bff889a", size = 63436, upload-time = "2026-09-13T20:25:20.294Z" },
+]
+
+[[package]]
+name = "taxii2-client"
+version = "2.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pytz" },
+    { name = "requests" },
+    { name = "six" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/75/0f/e556615441432c8a7e07db7695931dbb338e1e177a5faf428cd0eeaace64/taxii2-client-2.3.0.tar.gz", hash = "sha256:fb3bf895e2eaff3cd08bb7aad75c9d30682ffc00b9f3add77de3a67dc6b895a3", size = 23649, upload-time = "2021-03-12T21:19:08.516Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/36/0b/7d9cf9f11f0299072399a237d06bc7c433d06e735c923e8b7a656858d27d/taxii2_client-2.3.0-py2.py3-none-any.whl", hash = "sha256:b4212b8a8bab170cd5dc386ca3ea36bc44b53932f1da30db150abeef00bce7b9", size = 24943, upload-time = "2021-03-12T21:19:06.99Z" },
 ]
 
 [[package]]

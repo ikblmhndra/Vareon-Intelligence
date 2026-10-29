@@ -67,6 +67,7 @@ from cti_api.routers import secrets as secrets_router
 from cti_api.routers import source_reliability as source_reliability_router
 from cti_api.routers import stix as stix_router
 from cti_api.routers import ta_groups as ta_groups_router
+from cti_api.routers import taxii as taxii_router
 from cti_api.routers import techstack as techstack_router
 from cti_api.routers import tweets as tweets_router
 from cti_api.routers import v2_indicators as v2_indicators_router
@@ -229,6 +230,7 @@ def create_app() -> FastAPI:
     app.include_router(scraper_router.router)
     app.include_router(data_health_router.router)
     app.include_router(v2_indicators_router.router)
+    app.include_router(taxii_router.router)
     return app
 
 
