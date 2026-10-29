@@ -7,6 +7,7 @@ tabel, SATU cara nulis (lewat IndicatorRepo, Fase 2.8).
 from __future__ import annotations
 
 import datetime
+import uuid
 from typing import Any
 
 from sqlalchemy import (
@@ -15,6 +16,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     SmallInteger,
     String,
@@ -24,7 +26,7 @@ from sqlalchemy import (
     case,
     func,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -35,6 +37,7 @@ class Indicator(TimestampMixin, Base):
     __tablename__ = "indicators"
     __table_args__ = (
         UniqueConstraint("type", "value", name="uq_indicators_type_value"),
+        Index("ix_indicators_feed_changed_at_id", "feed_changed_at", "id"),
         CheckConstraint("tlp IN ('clear', 'green', 'amber', 'amber+strict', 'red')", name="tlp"),
         CheckConstraint("pap IN ('clear', 'green', 'amber', 'red')", name="pap"),
     )
@@ -87,6 +90,17 @@ class Indicator(TimestampMixin, Base):
     """TLP 2.0: clear | green | amber | amber+strict | red."""
     pap: Mapped[str] = mapped_column(String(8), nullable=False, server_default="clear")
     """PAP: clear | green | amber | red."""
+
+    feed_changed_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    """Jam feed mesin (REST/TAXII). Dijaga TRIGGER Postgres `indicators_feed_bump` dan
+    `indicator_tags_feed_bump` yang dibuat migrasi `c4f1a8d27b93_machine_api` (autogenerate tidak
+    membandingkan trigger): naik saat type/value/validitas/revoked/suppressed/tlp/pap/seen_count/
+    last_seen_at atau tag berubah. Jangan di-assign dari kode aplikasi."""
+    stix_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), unique=True)
+    """`cti_core.indicator.stix_id.indicator_uuid(type, value)`; NULL sementara untuk baris yang
+    masuk dari kode lama, diisi `reconcile_validity`."""
 
     enrichment: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     """Payload enrichment provider (mis. hasil lookup OTX/AbuseIPDB) --

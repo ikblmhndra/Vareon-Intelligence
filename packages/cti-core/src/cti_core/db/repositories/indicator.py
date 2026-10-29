@@ -22,6 +22,7 @@ from cti_core.db.models.indicator import (
     IndicatorThreatActor,
 )
 from cti_core.indicator.marking import stricter_pap, stricter_tlp
+from cti_core.indicator.stix_id import indicator_uuid
 from cti_core.indicator.validity import HASH_TYPES, TTL_TYPES, extend, ttl_days, ttl_fingerprint
 
 _VALID_VERDICTS = frozenset({"tp", "fp"})
@@ -56,6 +57,7 @@ def _apply_upsert(
             first_seen_at=now,
             last_seen_at=now,
             seen_count=1,
+            stix_id=indicator_uuid(type, value),
             valid_from=now,
             valid_until=extend(None, type, now, cfg),
             tlp=tlp,
@@ -163,6 +165,7 @@ class IndicatorRepo:
             days = ttl_days(t, cfg)
             assert days is not None
             by_days.setdefault(days, []).append(t)
+        self._fill_stix_ids()
         guard = (
             " AND valid_until IS DISTINCT FROM last_seen_at + make_interval(days => :d)"
             if full
@@ -190,6 +193,17 @@ class IndicatorRepo:
         updated += res.rowcount  # type: ignore[attr-defined]
         states.set(_TTL_FINGERPRINT_KEY, fingerprint)
         return {"updated": updated, "skipped": 0}
+
+    def _fill_stix_ids(self) -> None:
+        """Baris dari kode lama (rollback) lahir tanpa `stix_id`; diisi di langkah tetap."""
+        rows = self.session.execute(
+            text("SELECT id, type, value FROM indicators WHERE stix_id IS NULL")
+        ).all()
+        if rows:
+            self.session.execute(
+                text("UPDATE indicators SET stix_id = :s WHERE id = :i"),
+                [{"s": indicator_uuid(r.type, r.value), "i": r.id} for r in rows],
+            )
 
     def get(self, *, type: str, value: str) -> Indicator | None:
         return self.session.execute(
