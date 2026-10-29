@@ -61,6 +61,7 @@ def test_parse_match_version_timestamp() -> None:
         {"match[id]": "indicator--bad"},
         {"match[id]": U1},
         {"match[version]": "newest"},
+        {"match[version]": "0001-01-01T00:00:00+01:00"},
     ],
 )
 def test_parse_match_malformed(query: dict[str, str]) -> None:
@@ -75,7 +76,16 @@ def test_parse_added_after() -> None:
     )
 
 
-@pytest.mark.parametrize("value", ["2026-10-29T10:00:00", "garbage", ""])
+@pytest.mark.parametrize(
+    "value",
+    [
+        "2026-10-29T10:00:00",
+        "garbage",
+        "",
+        "0001-01-01T00:00:00+01:00",
+        "9999-12-31T23:59:59-01:00",
+    ],
+)
 def test_parse_added_after_invalid(value: str) -> None:
     with pytest.raises(ValueError):
         parse_added_after(value)

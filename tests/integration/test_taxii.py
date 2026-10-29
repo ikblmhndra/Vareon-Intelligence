@@ -248,7 +248,16 @@ async def test_bad_next_400_taxii_error(
     api_client: httpx.AsyncClient, api_session: AsyncSession
 ) -> None:
     h = await _hdr(api_session)
-    for qs in ("next=garbage", "added_after=yesterday", "match[id]=indicator--bad"):
+    huge_next = base64.urlsafe_b64encode(b"2026-10-29T00:00:00+00:00|99999999999999999999999")
+    for qs in (
+        "next=garbage",
+        f"next={huge_next.decode()}",
+        "added_after=yesterday",
+        "added_after=0001-01-01T00:00:00%2B01:00",
+        "added_after=9999-12-31T23:59:59-01:00",
+        "match[version]=0001-01-01T00:00:00%2B01:00",
+        "match[id]=indicator--bad",
+    ):
         r = await api_client.get(COL + f"/objects/?{qs}", headers=h)
         assert r.status_code == 400, qs
         assert _ct(r) == TAXII_MEDIA

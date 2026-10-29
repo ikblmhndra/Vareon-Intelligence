@@ -58,7 +58,10 @@ def parse_added_after(value: str | None) -> datetime | None:
     ts = datetime.fromisoformat(value.replace("Z", "+00:00").replace("z", "+00:00"))
     if ts.tzinfo is None:
         raise ValueError("timestamp tanpa zona")
-    return ts.astimezone(UTC)
+    try:
+        return ts.astimezone(UTC)
+    except OverflowError as exc:  # mis. 0001-01-01T00:00:00+01:00
+        raise ValueError("timestamp di luar rentang") from exc
 
 
 def _csv(value: str) -> set[str]:

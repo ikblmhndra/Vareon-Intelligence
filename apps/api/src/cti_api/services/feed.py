@@ -39,6 +39,12 @@ def decode_cursor(cursor: str) -> tuple[datetime, int]:
         raise ValueError("kursor tidak valid") from exc
     if changed_at.tzinfo is None:
         raise ValueError("kursor tidak valid: waktu tanpa zona")
+    if not 1 <= indicator_id <= 2**63 - 1:  # di luar bigint Postgres -> 500 di query
+        raise ValueError("kursor tidak valid: id di luar rentang")
+    try:
+        changed_at = changed_at.astimezone(UTC)  # nilai ekstrem (0001-01-01+01:00) meluap
+    except OverflowError as exc:
+        raise ValueError("kursor tidak valid: waktu di luar rentang") from exc
     return changed_at, indicator_id
 
 

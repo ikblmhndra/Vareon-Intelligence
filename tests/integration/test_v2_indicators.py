@@ -201,3 +201,20 @@ async def test_taxii_unknown_path_uses_taxii_shape(api_client: httpx.AsyncClient
     assert resp.headers["content-type"] == "application/taxii+json;version=2.1"
     body = resp.json()
     assert body["http_status"] == 404 and body["title"] and "description" in body
+
+
+async def test_overflow_cursor_and_changed_after_400(
+    api_client: httpx.AsyncClient, api_session: AsyncSession
+) -> None:
+    import base64
+
+    h = await _token(api_session)
+    huge = base64.urlsafe_b64encode(b"2026-10-29T00:00:00+00:00|99999999999999999999999").decode()
+    for qs in (
+        f"cursor={huge}",
+        "changed_after=0001-01-01T00:00:00%2B01:00",
+        "changed_after=9999-12-31T23:59:59-01:00",
+    ):
+        resp = await api_client.get(f"/api/v2/indicators?{qs}", headers=h)
+        assert resp.status_code == 400, qs
+        assert resp.json()["error"]["code"] == "bad_request"

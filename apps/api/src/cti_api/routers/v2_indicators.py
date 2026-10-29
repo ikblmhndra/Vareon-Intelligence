@@ -79,6 +79,11 @@ async def list_indicators(
         raise HTTPException(400, f"Unknown state: {', '.join(bad)}")
     if changed_after is not None and changed_after.tzinfo is None:
         raise HTTPException(400, "changed_after must include a timezone offset")
+    if changed_after is not None:
+        try:
+            changed_after.astimezone(datetime.UTC)
+        except OverflowError:
+            raise HTTPException(400, "changed_after is out of range") from None
     after = None
     if cursor is not None:
         try:
