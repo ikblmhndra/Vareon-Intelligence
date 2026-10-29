@@ -6,8 +6,10 @@ import datetime
 from collections.abc import Callable
 
 import pytest
+from cti_api.services.roles import ensure_system_roles
 from cti_core.db.models.auth import AuditLogEntry
 from cti_core.db.models.indicator import Indicator
+from cti_core.db.repositories.auth import AsyncRoleRepo
 from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from httpx import AsyncClient
 from sqlalchemy import select, update
@@ -24,6 +26,16 @@ async def _ioc(session: AsyncSession, value: str = "45.33.32.156", type: str = "
     )
     await session.commit()
     return ind
+
+
+async def _ioc_reader(session: AsyncSession) -> str:
+    """Role uji yang hanya boleh melihat IOC (sejak 0.8.11 role sistem `analyst` punya
+    `manage_ioc`, jadi tidak bisa lagi dipakai sebagai contoh user tanpa izin itu)."""
+    await AsyncRoleRepo(session).create(
+        name="ioc-reader", display_name="IOC reader", permissions=["view_ioc"], created_by="test"
+    )
+    await session.commit()
+    return "ioc-reader"
 
 
 async def _fb(client, headers, ioc_id, verdict):
@@ -64,8 +76,19 @@ async def test_feedback_requires_manage_ioc(
     api_client: AsyncClient, api_session: AsyncSession, auth_header: Callable[..., dict[str, str]]
 ) -> None:
     ind = await _ioc(api_session)
-    r = await _fb(api_client, auth_header(username="alice", role="analyst"), ind.id, "fp")
+    role = await _ioc_reader(api_session)
+    r = await _fb(api_client, auth_header(username="alice", role=role), ind.id, "fp")
     assert r.status_code == 403
+
+
+async def test_analyst_can_revoke(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Callable[..., dict[str, str]]
+) -> None:
+    await ensure_system_roles(api_session)
+    ind = await _ioc(api_session)
+    r = await _fb(api_client, auth_header(username="alice", role="analyst"), ind.id, "fp")
+    assert r.status_code == 200, r.text
+    assert r.json()["state"] == "revoked"
 
 
 async def test_patch_marking(
@@ -89,8 +112,9 @@ async def test_patch_marking(
     assert len(rows) == 1
     bad = await api_client.patch(url, headers=auth_header(), json={"tlp": "purple"})
     assert bad.status_code == 422
+    role = await _ioc_reader(api_session)
     denied = await api_client.patch(
-        url, headers=auth_header(username="alice", role="analyst"), json={"tlp": "red"}
+        url, headers=auth_header(username="alice", role=role), json={"tlp": "red"}
     )
     assert denied.status_code == 403
     missing = await api_client.patch(

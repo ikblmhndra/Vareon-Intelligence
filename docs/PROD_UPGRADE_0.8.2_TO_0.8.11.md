@@ -687,10 +687,11 @@ reason. Dev: `"status": "active"` once run with the dev-only 0.94.
 - **R4: `valid_until` is NULL between the migration and the first reconcile run.** Non-hash indicators read as
   non-expiring for the minutes between `migrate` and the first API start. No feed exists before P7b, so nothing downstream
   consumes expiry yet. After deploy checks 3 and 6 prove the backfill.
-- **R5: `manage_ioc` is now required for TP/FP.** A user with only `view_ioc` loses the buttons (the built-in `analyst`
-  role). All dev users are superadmin today, so dev will not show it; tell prod analysts before the deploy or grant
-  `manage_ioc` to the role. The same applies to the FP queue panel on the Exec dashboard (shown to `analyst`): its TP/FP
-  buttons are now hidden without `manage_ioc` (previously every click got 403), and for admins FP there revokes the indicator.
+- **R5: `manage_ioc` is now required for TP/FP.** The built-in `analyst` role is granted `manage_ioc` in 0.8.11 (user
+  decision 2026-10-29), so analysts keep TP/FP; the system role is updated automatically when `api` starts. The grant is
+  broad: analysts can now also delete IOCs (single and bulk), edit the allowlist, tags and threat-actor links. Only custom
+  roles with `view_ioc` and without `manage_ioc` lose the buttons (Before deploy check 2 lists them). The FP queue panel
+  on the Exec dashboard follows the same rule, and FP there now revokes the indicator.
 - **R6: downgrade and the compatibility views.** The views occupy the old table names, so the downgrade drops them first.
   This is covered by the migration up/down test.
 - **P6 recompute after FP.** A revoked indicator stops counting as IOC/artefact evidence only when the article is next
