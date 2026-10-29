@@ -61,7 +61,8 @@ function daysLeft(t: ApiToken): number | null {
 }
 
 /** Kelola token API mesin (`/api/api-tokens`, permission `manage_api_tokens`).
- * Token mentah hanya ada di state dialog hasil -- tidak masuk query cache. */
+ * Token mentah hanya ada di state dialog hasil -- tidak masuk query cache,
+ * dan mutation pembuatnya `gcTime: 0`. */
 export function ApiTokensSection() {
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
@@ -208,11 +209,13 @@ function CreateForm({
   onCreated: (token: string) => void;
 }) {
   const [name, setName] = useState("");
-  const [maxTlp, setMaxTlp] = useState<Tlp>("amber");
+  const [maxTlp, setMaxTlp] = useState<Tlp>("clear");
   const [expiry, setExpiry] = useState("365");
   const [error, setError] = useState<string | null>(null);
 
+  // gcTime 0: token mentah tidak boleh tinggal di MutationCache setelah form unmount.
   const mutation = useMutation({
+    gcTime: 0,
     mutationFn: async () => {
       const { data, response } = await api.POST("/api/api-tokens", {
         body: {
