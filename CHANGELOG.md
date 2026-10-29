@@ -11,7 +11,7 @@ router `changelog.py`) -- parser-nya expect header persis
 **Indikator (IOC) kini punya siklus hidup: tabel `iocs` berganti nama menjadi `indicators`, tiap indikator punya masa berlaku (`valid_until`) menurut tipe, bisa dicabut (revoked) lewat feedback FP, dan membawa penanda TLP/PAP. Status dihitung, tidak disimpan: active, expired, revoked, atau allowlisted.**
 Satu migrasi (`a9e4c7b1d3f6`), **tanpa kunci `.env` wajib.** Empat kunci opsional baru dengan default (`INDICATOR__TTL_IP_DAYS=30`, `INDICATOR__TTL_DOMAIN_DAYS=90`, `INDICATOR__TTL_URL_DAYS=90`, `INDICATOR__TTL_EMAIL_DAYS=90`). Verifikasi di dev belum dilakukan saat entri ini ditulis.
 
-**Saat upgrade dari 0.8.10:** `make deploy` (migrasi jalan otomatis; rename tabel instan, id dan baris tetap). Sesudah API naik, bootstrap mengantrekan `indicator.reconcile_validity` sekali (selama sidik jari TTL di `job_state` belum ada atau berubah) untuk mengisi `valid_until`; sampai tugas itu selesai, indikator non-hash terbaca tidak kedaluwarsa. **Query SQL di luar aplikasi yang menyebut `iocs`, `ioc_sources`, `ioc_tags`, `ioc_threat_actors`, atau `ioc_feedback` tetap bisa dibaca lewat view kompatibilitas** (read-only, ditandai deprecated, akan dihapus di rilis berikutnya); pindahkan ke nama baru. Rute `/api/iocs` tidak berubah.
+**Saat upgrade dari 0.8.10:** `make deploy` (migrasi jalan otomatis; rename tabel instan, id dan baris tetap). Sesudah API naik, bootstrap mengantrekan `indicator.reconcile_validity` sekali (selama sidik jari TTL di `job_state` belum ada atau berubah) untuk mengisi `valid_until`; sampai tugas itu selesai, indikator non-hash terbaca tidak kedaluwarsa. **Query SQL di luar aplikasi yang menyebut `iocs`, `ioc_sources`, `ioc_tags`, `ioc_threat_actors`, atau `ioc_feedback` tetap bisa dibaca lewat view kompatibilitas** (view kompatibilitas deprecated yang bisa ditulis; jangan dipakai di kode baru, akan dihapus di rilis berikutnya); pindahkan ke nama baru. Rute `/api/iocs` tidak berubah.
 
 ### Ditambah
 - Tabel `indicators`, `indicator_sources`, `indicator_tags`, `indicator_threat_actors`, `indicator_feedback` (kolom `ioc_id` menjadi `indicator_id`), plus lima view kompatibilitas dengan nama lama.
@@ -28,7 +28,8 @@ Satu migrasi (`a9e4c7b1d3f6`), **tanpa kunci `.env` wajib.** Empat kunci opsiona
 
 ### Catatan perilaku
 - Antara migrasi dan run pertama tugas reconcile (beberapa menit sesudah start API), indikator non-hash terbaca tidak kedaluwarsa. Belum ada konsumen yang memakai masa berlaku sebelum P7b.
-- Rollback kode ke 0.8.10 tidak memerlukan downgrade DB (0.8.10 tetap jalan lewat view kompatibilitas); revoke dan TLP/PAP yang diset sesudah upgrade tidak dihormati oleh 0.8.10.
+- Rollback kode tidak memerlukan downgrade DB: kode 0.8.10 dan 0.8.2 sama-sama terbukti jalan terhadap skema 0.8.11 lewat view kompatibilitas (target auto-rollback prod adalah 0.8.2); revoke dan TLP/PAP yang diset sesudah upgrade tidak dihormati kode lama. Baris `valid_until` NULL dari kode lama diisi reconcile harian (04:15) atau reconcile manual.
+- Panel antrean FP di dashboard Exec (peran `analyst`): tombol TP/FP kini hanya tampil bagi pemegang `manage_ioc` (sebelumnya setiap klik 403); bagi admin, FP di sana kini mencabut indikator.
 - Downgrade menghapus view dan kolom baru lalu mengembalikan nama tabel; revoke dan penanda TLP/PAP hilang.
 
 ## [0.8.10] - 2026-10-28
