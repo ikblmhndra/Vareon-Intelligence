@@ -2,10 +2,12 @@
 
 Satu-satunya jalur baca feed mesin, supaya TLP, settle lag, dan keyset paging benar di satu tempat.
 
-Settle lag: `feed_changed_at` diisi `now()` = awal transaksi, bukan waktu commit. Transaksi yang
-commit terlambat bisa membawa cap waktu lebih lama dari baris yang sudah dilewati klien, jadi baris
-yang lebih baru dari `FEED_SETTLE_SECONDS` tidak pernah dikembalikan. Transaksi penulis indikator
-pendek (tahap persist, feedback); jika kelak ada yang panjang, naikkan konstanta ini."""
+Settle lag: `feed_changed_at` diisi `clock_timestamp()` = waktu statement tulis, bukan waktu commit
+(dan bukan awal transaksi, yang bisa berumur menit di pipeline enrich). Selisih tulis -> commit
+bisa membuat baris muncul terlambat di bawah kursor klien, jadi baris yang lebih baru dari
+`FEED_SETTLE_SECONDS` tidak dikembalikan. Persist adalah langkah terakhir sebelum commit, jadi 60 s
+cukup; jika kelak ada penulis indikator yang menunda commit lebih lama, naikkan konstanta ini.
+Lookup per id (`stix_ids`) tidak dikenai settle lag."""
 
 from __future__ import annotations
 
@@ -20,6 +22,7 @@ from cti_core.db.models.indicator import Indicator
 from cti_core.indicator.marking import tlp_allowed
 from sqlalchemy import func, literal, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import noload, selectinload
 
 FEED_SETTLE_SECONDS = 60
 
@@ -71,8 +74,13 @@ async def feed_page(
         select(Indicator)
         .where(
             Indicator.tlp.in_(tlp_allowed(max_tlp)),
-            Indicator.feed_changed_at
-            <= func.now() - func.make_interval(0, 0, 0, 0, 0, 0, FEED_SETTLE_SECONDS),
+        )
+        # Pemanggil (serializer REST v2, indicator_to_stix) hanya memakai `tags`.
+        .options(
+            selectinload(Indicator.tags),
+            noload(Indicator.sources),
+            noload(Indicator.threat_actors),
+            noload(Indicator.feedback),
         )
         .order_by(Indicator.feed_changed_at, Indicator.id)
         .limit(limit + 1)
@@ -90,6 +98,11 @@ async def feed_page(
         )
     if stix_ids is not None:
         stmt = stmt.where(Indicator.stix_id.in_(list(stix_ids)))
+    else:  # lookup per id tidak dikenai settle lag
+        stmt = stmt.where(
+            Indicator.feed_changed_at
+            <= func.now() - func.make_interval(0, 0, 0, 0, 0, 0, FEED_SETTLE_SECONDS)
+        )
 
     rows = list((await session.execute(stmt)).scalars().all())
     has_more = len(rows) > limit

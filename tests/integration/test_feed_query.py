@@ -41,12 +41,17 @@ def _no_lag(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 async def test_tlp_filter(async_db_session: AsyncSession) -> None:
-    for tlp in ("clear", "green", "amber"):
-        await _add(async_db_session, f"{tlp}.example.com", tlp=tlp)
-    clear = await feed.feed_page(async_db_session, max_tlp="clear", limit=10)
-    assert {i.tlp for i in clear.items} == {"clear"}
-    amber = await feed.feed_page(async_db_session, max_tlp="amber", limit=10)
-    assert {i.tlp for i in amber.items} == {"clear", "green", "amber"}
+    levels = ("clear", "green", "amber", "amber+strict", "red")
+    for n, tlp in enumerate(levels):
+        await _add(async_db_session, f"t{n}.example.com", tlp=tlp)
+    for max_tlp, expected in [
+        ("clear", {"clear"}),
+        ("amber", {"clear", "green", "amber"}),
+        ("amber+strict", {"clear", "green", "amber", "amber+strict"}),
+        ("red", set(levels)),
+    ]:
+        page = await feed.feed_page(async_db_session, max_tlp=max_tlp, limit=10)
+        assert {i.tlp for i in page.items} == expected, max_tlp
 
 
 async def test_settle_lag_hides_fresh_rows(
@@ -109,3 +114,17 @@ async def test_stix_ids_filter(async_db_session: AsyncSession) -> None:
     assert a.stix_id is not None
     page = await feed.feed_page(async_db_session, max_tlp="red", limit=10, stix_ids=[a.stix_id])
     assert [i.id for i in page.items] == [a.id]
+
+
+async def test_stix_ids_lookup_skips_settle_lag(
+    async_db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(feed, "FEED_SETTLE_SECONDS", 60)
+    fresh = await _add(async_db_session, "fresh-by-id.example.com")
+    assert fresh.stix_id is not None
+    listing = await feed.feed_page(async_db_session, max_tlp="red", limit=10)
+    assert fresh.id not in {i.id for i in listing.items}
+    by_id = await feed.feed_page(
+        async_db_session, max_tlp="red", limit=10, stix_ids=[fresh.stix_id]
+    )
+    assert [i.id for i in by_id.items] == [fresh.id]
