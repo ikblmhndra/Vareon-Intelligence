@@ -24,7 +24,7 @@ COL = f"/taxii2/api/collections/{COLLECTION_ID}"
 
 @pytest.fixture(autouse=True)
 def _no_lag(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(feed, "FEED_SETTLE_SECONDS", 0)
+    monkeypatch.setattr(feed, "FEED_SETTLE_SECONDS", -5)  # clock_timestamp() > now() in test tx
 
 
 async def _hdr(session: AsyncSession, max_tlp: str = "red", basic: bool = False) -> dict[str, str]:

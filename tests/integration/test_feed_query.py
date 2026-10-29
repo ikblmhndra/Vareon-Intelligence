@@ -37,7 +37,7 @@ async def _back(session: AsyncSession, ind: Indicator, when: datetime.datetime) 
 
 @pytest.fixture(autouse=True)
 def _no_lag(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(feed, "FEED_SETTLE_SECONDS", 0)
+    monkeypatch.setattr(feed, "FEED_SETTLE_SECONDS", -5)  # clock_timestamp() > now() in test tx
 
 
 async def test_tlp_filter(async_db_session: AsyncSession) -> None:

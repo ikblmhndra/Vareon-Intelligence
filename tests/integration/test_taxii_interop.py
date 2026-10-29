@@ -64,7 +64,7 @@ def _read(url: str, token: str) -> tuple[list[str], list[str]]:
 async def test_taxii2_client_reads_collection(
     base_url: str, api_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(feed, "FEED_SETTLE_SECONDS", 0)
+    monkeypatch.setattr(feed, "FEED_SETTLE_SECONDS", -5)  # clock_timestamp() > now() in test tx
     base = datetime.datetime.now(datetime.UTC) - datetime.timedelta(hours=1)
     expected = []
     for i in range(5):
