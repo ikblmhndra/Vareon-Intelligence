@@ -4,7 +4,7 @@ Status: **in progress** (updated 2026-10-29). Building blocks shipped in 0.8.3 a
 P0 and P1 shipped in 0.8.5, P2 in 0.8.6, P3 in 0.8.7, P4 in 0.8.8, P5 in 0.8.9 and P6 in 0.8.10
 (see Progress below). P7 is split into sub-projects (decomposition in
 `docs/superpowers/specs/2026-10-28-p7a-indicator-lifecycle-design.md` section 0); P7a is built
-for 0.8.11 (not yet deployed to dev or merged to `main`); P7b onward has not started and P7d
+for 0.8.11 (deployed to dev 2026-10-29, not yet merged to `main`); P7b onward has not started and P7d
 (sightings) is deferred.
 
 Goal: turn Vareon from "every article goes through an LLM" into a CTI platform where
@@ -220,11 +220,13 @@ merged; spec `docs/superpowers/specs/2026-10-26-p6-admiralty-confidence-design.m
 
 Built for **0.8.11** (P7a indicator lifecycle and TLP/PAP; spec
 `docs/superpowers/specs/2026-10-28-p7a-indicator-lifecycle-design.md`, which also holds the P7
-decomposition in section 0; dev verification pending):
+decomposition in section 0; on dev since 2026-10-29: 5,283 active / 157 expired / 29 allowlisted, totals unchanged,
+see `docs/prod-upgrade/0.8.11.md`):
 
 - **Rename.** `iocs` -> `indicators`, `ioc_sources`/`ioc_tags`/`ioc_threat_actors`/`ioc_feedback` ->
-  `indicator_*` and `ioc_id` -> `indicator_id`, in one migration (`a9e4c7b1d3f6`, instant, ids kept). Five read-only
-  compatibility views keep the old names readable for hand-run SQL; they are deprecated and dropped in a later release.
+  `indicator_*` and `ioc_id` -> `indicator_id`, in one migration (`a9e4c7b1d3f6`, instant, ids kept). Five
+  compatibility views keep the old names working (writable, so older code still runs on the new schema); they are
+  deprecated, not for new code, and dropped in a later release.
   The `/api/iocs` routes are unchanged.
 - **Lifecycle.** New columns `valid_from`, `valid_until`, `revoked_at`, `revoked_by`, `tlp`, `pap`. State is computed, never
   stored: revoked, allowlisted, expired or active. `valid_until` follows the type (IP 30 d, domain/URL/email 90 d, hash none;
