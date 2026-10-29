@@ -14,9 +14,13 @@ from typing import Literal
 from cti_core.db.models import ApiToken
 from cti_core.db.repositories.auth import AsyncApiTokenRepo
 from fastapi import Depends, Header, HTTPException
+from fastapi.security import HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_api.deps import get_db
+
+# Hanya untuk dokumentasi OpenAPI (skema `apiToken`); token dibaca dari header `Authorization`.
+_openapi_scheme = HTTPBearer(scheme_name="apiToken", auto_error=False)
 
 API_TOKEN_SCOPES: tuple[str, ...] = ("indicators:read",)
 TOKEN_PREFIX = "vrn_"
@@ -88,6 +92,7 @@ def require_token(scope: str) -> Callable[..., Awaitable[MachinePrincipal]]:
     async def dependency(
         authorization: str | None = Header(default=None),
         session: AsyncSession = Depends(get_db),
+        _scheme: object = Depends(_openapi_scheme),
     ) -> MachinePrincipal:
         token = _extract_token(authorization)
         repo = AsyncApiTokenRepo(session)

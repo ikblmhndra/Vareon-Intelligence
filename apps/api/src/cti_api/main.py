@@ -31,8 +31,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy import exists, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from cti_api import __version__
+from cti_api.errors import http_error, validation_error_for_prefix
 from cti_api.routers import api_tokens as api_tokens_router
 from cti_api.routers import articles as articles_router
 from cti_api.routers import attack as attack_router
@@ -67,6 +69,7 @@ from cti_api.routers import stix as stix_router
 from cti_api.routers import ta_groups as ta_groups_router
 from cti_api.routers import techstack as techstack_router
 from cti_api.routers import tweets as tweets_router
+from cti_api.routers import v2_indicators as v2_indicators_router
 from cti_api.services.roles import ensure_system_roles
 
 log = get_logger()
@@ -179,6 +182,8 @@ def create_app() -> FastAPI:
         # Respons 422 bawaan FastAPI memantulkan `input` (SELURUH body) di tiap galat. Untuk
         # halaman Third-party Keys itu mengembalikan key yang baru diketik dan password konfirmasi
         # ke browser dan ke apa pun yang merekam respons. Di sana cukup `type`, `loc`, dan `msg`.
+        if (prefixed := validation_error_for_prefix(request, exc)) is not None:
+            return prefixed
         if request.url.path.startswith("/api/secrets"):
             errors = [
                 {k: v for k, v in e.items() if k not in ("input", "ctx", "url")}
@@ -186,6 +191,8 @@ def create_app() -> FastAPI:
             ]
             return JSONResponse(status_code=422, content={"detail": jsonable_encoder(errors)})
         return await request_validation_exception_handler(request, exc)
+
+    app.add_exception_handler(StarletteHTTPException, http_error)
 
     app.include_router(health_router.router)
     app.include_router(auth_router.router)
@@ -221,6 +228,7 @@ def create_app() -> FastAPI:
     app.include_router(exec_dashboard_router.router)
     app.include_router(scraper_router.router)
     app.include_router(data_health_router.router)
+    app.include_router(v2_indicators_router.router)
     return app
 
 

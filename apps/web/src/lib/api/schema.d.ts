@@ -3646,6 +3646,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/indicators": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Indicators */
+        get: operations["list_indicators_api_v2_indicators_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/healthz": {
         parameters: {
             query?: never;
@@ -4770,6 +4787,60 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** IndicatorFeedItem */
+        IndicatorFeedItem: {
+            /**
+             * Changed At
+             * Format: date-time
+             */
+            changed_at: string;
+            /** Confidence */
+            confidence: number;
+            /**
+             * First Seen
+             * Format: date-time
+             */
+            first_seen: string;
+            /** Id */
+            id: number;
+            /**
+             * Last Seen
+             * Format: date-time
+             */
+            last_seen: string;
+            /** Pap */
+            pap: string;
+            /** Revoked At */
+            revoked_at: string | null;
+            /** Seen Count */
+            seen_count: number;
+            /** State */
+            state: string;
+            /** Stix Id */
+            stix_id: string;
+            /** Tags */
+            tags: string[];
+            /** Tlp */
+            tlp: string;
+            /** Type */
+            type: string;
+            /**
+             * Valid From
+             * Format: date-time
+             */
+            valid_from: string;
+            /** Valid Until */
+            valid_until: string | null;
+            /** Value */
+            value: string;
+        };
+        /** IndicatorFeedPage */
+        IndicatorFeedPage: {
+            /** Items */
+            items: components["schemas"]["IndicatorFeedItem"][];
+            /** Next Cursor */
+            next_cursor: string | null;
         };
         /**
          * InferredEntity
@@ -15322,6 +15393,44 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_indicators_api_v2_indicators_get: {
+        parameters: {
+            query?: {
+                state?: string[];
+                type?: string[] | null;
+                changed_after?: string | null;
+                cursor?: string | null;
+                limit?: number;
+                format?: ("json" | "csv") | null;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndicatorFeedPage"];
                 };
             };
             /** @description Validation Error */
