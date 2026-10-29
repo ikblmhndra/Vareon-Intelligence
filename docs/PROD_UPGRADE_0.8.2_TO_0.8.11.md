@@ -12,7 +12,7 @@ Compose commands differ slightly between sections: use the same compose invocati
 
 1. **Before deploy (all read-only):** run every "Before deploy" block below (0.8.4 custom roles, 0.8.5 migration head and
    replay backlog, 0.8.6 baselines and overrides count, 0.8.7 article counts, 0.8.8 ATT&CK dictionary counts, 0.8.9 model
-   download reachability, `.env` keys and disk space, 0.8.10 confidence baseline, 0.8.11 IOC baseline and role check). Write the results down: several
+   download reachability, `.env` keys and disk space, 0.8.10 confidence baseline, 0.8.11 IOC baseline and role check; P7b adds no read-only check). Write the results down: several
    "After deploy" checks compare against them. These run on 0.8.2, where the IOC tables are still `iocs` and `ioc_sources`;
    after the deploy the same data lives in `indicators` and `indicator_sources` (0.8.11), so the After-deploy queries use
    the new names.
@@ -31,7 +31,7 @@ Compose commands differ slightly between sections: use the same compose invocati
    2. 0.8.8 Tier 1 backfill (`cti_enrich.backfill_tier1`, ~3 s/article; never during a deploy).
    3. 0.8.8 actor-name canonicalisation (`cti_enrich.canonicalise_actors --apply`).
 
-   0.8.9 needs nothing: the first model trains itself within an hour. 0.8.11 needs nothing either: the first API start
+   0.8.9 needs nothing: the first model trains itself within an hour. 0.8.11 (P7a and P7b) needs nothing either (P7b: only the After-deploy token round trip and the nginx check): the first API start
    enqueues `indicator.reconcile_validity` once (backfills `valid_until`; check `job_state['indicator.ttl_fingerprint']`).
    0.8.10 needs nothing either: each API process enqueues
    `confidence.recompute_all` once at start (one or two runs with `WEB_CONCURRENCY=2`; idempotent; P6 scoring for every
@@ -53,8 +53,9 @@ Compose commands differ slightly between sections: use the same compose invocati
 | 0.8.9 | `c4f1a9d27e6b` relevance_models | `b8e2c4a6d1f3` | yes |
 | 0.8.10 | `d7a3e1b94c52` article assessment columns + source content_kind | `c4f1a9d27e6b` | yes (computed scores lost; old confidence values only from the backup) |
 | 0.8.11 | `a9e4c7b1d3f6` `iocs` → `indicators` (+ child tables), lifecycle/marking columns, compatibility views | `d7a3e1b94c52` | yes (views, new columns dropped; tables renamed back; revocations and TLP/PAP lost) |
+| 0.8.11 (P7b) | `c4f1a8d27b93` machine_api: `api_tokens`, `indicators.feed_changed_at` + `stix_id`, two feed-clock triggers | `a9e4c7b1d3f6` | yes (tokens lost) |
 
-Expected `alembic_version` after the deploy: **`a9e4c7b1d3f6`**. The only way back past `e7b2d4a9c6f1` is the Postgres
+Expected `alembic_version` after the deploy: **`c4f1a8d27b93`**. The only way back past `e7b2d4a9c6f1` is the Postgres
 backup `make deploy` writes before migrating.
 
 ---
@@ -484,6 +485,31 @@ Release: tag `0.8.9` / Release `v0.8.9`, merge commit `3cedd1a` (PR #78). Spec:
 - **Image change.** `worker-nlp` now bakes the MiniLM model in at build time (see Known risks). The new wheels in the
   `nlp` extra are `fastembed` 0.15 MB, `onnxruntime` 23.8 MB and `tokenizers` 3.4 MB.
 
+- **P7b machine API (0.8.11, second part).** Read-only, token-only access for SIEM/TIP clients, vendor-neutral
+  (no Splunk-specific connector):
+  - **API tokens.** New table `api_tokens` (hashed, shown once at creation, optional expiry, `max_tlp`, scope
+    `indicators:read`). Admins manage them in the *API tokens* section of the Admin page (`/admin/users`), permission
+    `manage_api_tokens`; the admin routes are `/api/api-tokens` and stay behind the web proxy.
+  - **REST feed** `GET /api/v2/indicators` (cursor on a feed clock, filters, TLP capped per token).
+  - **TAXII 2.1 server** at `/taxii2/` (API root `/taxii2/api/`, one collection
+    `6f0e1a52-6a43-4f0b-9b8e-2a7c1d9e4b10`). Basic auth with any user name and the token as password, or Bearer. Malformed
+    parameters return 400. Revoked and allowlisted indicators stay in the feed with `revoked: true`.
+  - **Feed clock.** `indicators.feed_changed_at` (default `now()`, indexed with `id`) is maintained by two Postgres
+    triggers (`trg_indicators_feed_bump`, `trg_indicator_tags_feed_bump`), not by application code, so every write path
+    (including old code through the `iocs` compatibility view) moves it. Confidence, actionability, enrichment and
+    `updated_at` do not.
+  - **STIX ids.** `indicators.stix_id` (uuid, unique) stores `uuid5(NAMESPACE_DNS, "<type>:<value>")` with no
+    lowercasing. The snapshot export (`/api/stix/iocs`) and the threat-actor bundles now use the same ids, so the
+    `indicator--...` id **changes once** for values with uppercase letters or surrounding whitespace. `created` and
+    `modified` are now stable (row `created_at` / `feed_changed_at`, millisecond precision). No TAXII subscriber exists
+    yet, so nothing downstream sees the one-time change.
+  - **nginx.** The edge now forwards `/taxii2/` and `/api/v2/` to `api:8000` (the only two paths that skip `web`); every
+    other API path is still unreachable from outside. The image `cti-nginx:1` is built from
+    `docker/nginx.Dockerfile` with the template baked in, so a template change needs the image rebuilt: `make deploy`
+    does this (`dc build` then `dc up -d` recreates `nginx` because its image changed). If the deploy is run with a
+    stale image or nginx was not recreated, the paths answer from `web` (a 404 page), not from the API: see
+    After deploy check P7b-1.
+
 ### Migrations (revision ids, reversible or not, rough duration/row counts seen on dev)
 
 | Revision | Down revision | What | Reversible | Dev |
@@ -491,6 +517,14 @@ Release: tag `0.8.9` / Release `v0.8.9`, merge commit `3cedd1a` (PR #78). Spec:
 | `c4f1a9d27e6b` | `b8e2c4a6d1f3` (0.8.8 head) | `CREATE TABLE relevance_models` + partial unique index `uq_relevance_models_active` (`WHERE status='active'`) | yes (`downgrade` drops index + table; loses trained models only, which retrain) | new empty table, under 1 s; `migrate` exited 0 |
 
 This must be the last revision in the chain. After the deploy, `alembic_version` should read `c4f1a9d27e6b`.
+
+**P7b:** `c4f1a8d27b93` (`machine_api`), down revision `a9e4c7b1d3f6`. It creates `api_tokens` (unique `token_hash`,
+CHECK on `max_tlp`), adds `indicators.feed_changed_at` (backfilled from `greatest(created_at, revoked_at)`) and
+`indicators.stix_id` (backfilled in Python in batches of 1,000, then made unique), the index
+`ix_indicators_feed_changed_at_id`, and the two trigger functions (created after the backfill so it does not move the
+clock). Reversible: `downgrade` drops the triggers, functions, index, columns and table. Not run on prod yet.
+**Projection:** seconds (one pass over `indicators`, about 5,500 rows on dev). This is now the last revision in the chain:
+after the deploy `alembic_version` should read **`c4f1a8d27b93`** (the `a9e4c7b1d3f6` line above is the P7a step).
 
 ### Settings / .env (new keys, recommended PROD values, defaults)
 
@@ -511,6 +545,8 @@ Values are read at process start, so after changing them restart `worker-nlp` an
 
 Dev `.env` for reference (backup `~/Vareon-Intelligence/.env.bak-sebelum-0.8.9`): `RELEVANCE__MODE=auto`,
 `STORY__ENABLED=true`, `STORY__EMBEDDING_SIMILARITY=0.8`, `RELEVANCE__GATE_MIN_AGREEMENT=0.94` (dev-only).
+
+**P7b adds no `.env` key.** The token hash needs no secret; nothing to set on the prod host before merging.
 
 ### Before deploy (read-only checks with expected results)
 
@@ -554,6 +590,10 @@ Dev `.env` for reference (backup `~/Vareon-Intelligence/.env.bak-sebelum-0.8.9`)
    ```
 
    Expected: a few GB free.
+
+**P7b (read-only):** nothing to check beyond P7a check 1. Confirm the stack env is the prod one
+(`docker/stack.env`, `NGINX_HTTPS_PORT`): the machine API is reachable on the same HTTPS port as the UI. Decide who will
+consume the feed (host, TLS trust of the self-signed certificate, TLP ceiling) before creating tokens.
 
 ### After deploy (checks with expected results: SQL, logs, UI pages)
 
@@ -601,6 +641,43 @@ Run SQL in the read-only `psql` session shown above.
 6. **Telegram.** A "model rejected" alert means the first model failed its holdout. The absence of an alert says
    nothing; read the `relevance_models` table instead.
 
+**P7b checks.**
+
+- **P7b-1. nginx was recreated with the new template.** Expected: `2` (one match per location) and an `Up` nginx.
+
+  ```bash
+  cd /home/privy-admin/Niskala-Intelligence
+  docker compose --env-file docker/stack.env --profile app exec -T nginx grep -c 'proxy_pass \$cti_api' /etc/nginx/conf.d/cti.conf
+  ```
+
+  If it prints `0` or errors, nginx kept the old image. Recreate only the edge (NEEDS USER APPROVAL; brief edge blip):
+  `docker compose --env-file docker/stack.env --profile app up -d --build nginx`. App rollbacks do not touch nginx.
+- **P7b-2. Migration and shape.** `alembic_version` is `c4f1a8d27b93`. Expected: `count` equals `count(stix_id)`
+  (the migration backfills every existing row) and `min(feed_changed_at)` is not in the future.
+
+  ```sql
+  SELECT count(*), count(stix_id), min(feed_changed_at) FROM indicators;
+  SELECT tgname FROM pg_trigger WHERE tgname LIKE 'trg\_indicator%' AND NOT tgisinternal ORDER BY 1;
+  ```
+
+  The second query returns `trg_indicator_tags_feed_bump` and `trg_indicators_feed_bump`.
+- **P7b-3. Token round trip** (**WRITE**: creates and revokes a throwaway token; needs the user's approval). In the web UI,
+  Admin > API tokens, create `smoke-test` (scope `indicators:read`, TLP `clear`, expiry 1 day). Copy the token once, then
+  from a machine outside the host:
+
+  ```bash
+  curl -ks -u x:<token> -H 'Accept: application/taxii+json;version=2.1' https://<host>/taxii2/ -o /dev/null -w '%{http_code}\n'
+  curl -ks -u x:<token> -H 'Accept: application/taxii+json;version=2.1' \
+    'https://<host>/taxii2/api/collections/6f0e1a52-6a43-4f0b-9b8e-2a7c1d9e4b10/objects/?limit=5' | head -c 600
+  curl -ks -u x:<token> 'https://<host>/api/v2/indicators?limit=3' | head -c 600
+  ```
+
+  Expected: `200`, a STIX envelope with up to 5 `indicator` objects and a `more` flag, and a JSON page. The discovery
+  response lists absolute `https://<host>/taxii2/api/` URLs (checks `Host`/`X-Forwarded-*`). Then read
+  `SELECT name, last_used_at FROM api_tokens;` (read-only): `last_used_at` is set. Finally revoke the token in the UI and
+  repeat the first `curl`: **401**. Without a token the same URLs also answer 401, and `https://<host>/api/api-tokens`
+  must not answer from the API (it goes to `web`).
+
 ### One-off commands (training, backfills etc.: exact command, `--dry-run` first if any, expected numbers from dev, how long; mark each as needing the user's approval)
 
 No backfill is needed: old articles are not scored.
@@ -616,6 +693,10 @@ skipped or rejected and you want to retry now.
 
 ```bash
 cd /home/privy-admin/Niskala-Intelligence
+
+**P7b:** nothing to run. The migration backfills `stix_id` and `feed_changed_at` itself. Rows written by old code during a
+rollback window get their `stix_id` from the next `indicator.reconcile_validity` run (the manual command above).
+
 # read-only first: computes everything, writes nothing
 docker compose -p niskala-intelligence exec -T worker-nlp python -m cti_enrich.relevance.train --dry-run
 # then the real run (write)
@@ -673,6 +754,15 @@ reason. Dev: `"status": "active"` once run with the dev-only 0.94.
 - **A hand-run query fails with `relation "iocs" does not exist`:** before the 0.8.11 migration `iocs` is a table and after it a view, so this error means the session is on the
   wrong database or `search_path` (or the views were dropped by hand). Use `indicators` (the table) in new queries.
 
+- **P7b rollback.** Safe without a DB downgrade. 0.8.2 and 0.8.10 code ignore the `api_tokens` table and the two new
+  `indicators` columns; the triggers only maintain `feed_changed_at`, a column that code never reads, so they are harmless
+  and stay (this also covers prod's auto-rollback: `:prev` images, no DB downgrade). The `iocs` compatibility view keeps
+  `SELECT *` as of the P7a migration, so old INSERTs use the table defaults for the new columns. The API paths
+  `/taxii2/` and `/api/v2/` disappear with the code (nginx then answers 502 or 404 for them); consumers see errors until
+  the next deploy. nginx is not rolled back by `rollback.py` (own image tag); the extra locations are harmless without
+  the routes. An optional `alembic downgrade a9e4c7b1d3f6` (WRITE, app stopped, needs approval) drops the tokens table,
+  triggers and columns; tokens are lost.
+
 ### Known risks and follow-ups
 
 - **R1: SQL outside the app that names `iocs`.** Covered by the compatibility views and by rewriting this runbook's
@@ -699,3 +789,19 @@ reason. Dev: `"status": "active"` once run with the dev-only 0.94.
 - **Follow-ups:** fill the dev result (state distribution, reconcile duration) after the dev test; record the prod baseline
   and After-deploy numbers; drop the compatibility views in a later release; P7b (scoped API tokens, `/api/v2/indicators`,
   TAXII 2.1) builds on this release.
+
+- **P7b R1: TLP raised after publication.** A consumer below the new level stops receiving the indicator and never gets
+  a deletion (a tombstone would leak the value). Markings only rise through an analyst PATCH and everything is `clear`
+  today. Revisit when a non-public source exists.
+- **P7b R2: strict clients and `marking-definition` objects.** Interop was tested with `taxii2-client` (a dev-only
+  dependency used by tests). If a consumer needs the definitions inside the collection, add them with a fixed
+  `date_added` before all indicators.
+- **P7b R3: `/taxii2/` and `/api/v2/` are exposed on 443.** Token required on every route, read-only, one scope, hashed
+  tokens, revocation takes effect on the next request. No per-token rate limit yet (follow-up).
+- **P7b R4: discovery URLs behind the proxy.** Correct because nginx passes `Host`/`X-Forwarded-*` and uvicorn runs with
+  `--proxy-headers`; verified by After deploy check P7b-3 from outside the host.
+- **P7b R5: settle lag.** A transaction that commits changes older than the 60 s settle lag can be skipped by a client
+  already past that point; the next change to the row (any re-sighting) re-sends it. Indicator writes are short.
+- **P7b R6: triggers are invisible to the drift test.** Dedicated trigger tests cover them; the docstring of
+  `feed_changed_at` names the triggers and the migration.
+- **P7b follow-ups:** per-token rate limiting; sightings (P7d, deferred); entities and relationships (P7c).

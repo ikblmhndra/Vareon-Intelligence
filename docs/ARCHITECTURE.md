@@ -480,6 +480,19 @@ flowchart LR
 - **Scrub**: `overlay.scrub_candidates()` returns the `.env` values and the overridden ones (and the master keys), longest
   first; `_scrub_secrets` and `newsletter_summary._log_detail` use it.
 
+### 3.9 Machine API (P7b)
+
+SIEM/TIP clients read indicators without a web login. Two read-only surfaces in `cti-api`, both token-only: the REST feed
+`GET /api/v2/indicators` and the TAXII 2.1 server under `/taxii2/` (one collection, `indicators`). They share one
+service layer and build STIX objects at read time (no stored object table). Auth is a bearer or Basic-password token from
+`api_tokens` (sha256 hash, shown once, scope `indicators:read`, optional expiry, `max_tlp` filters what the token sees);
+admins manage tokens at `/api/api-tokens` through the web proxy (Admin page, permission `manage_api_tokens`).
+Pagination and TAXII `added_after` use a dedicated clock, `indicators.feed_changed_at`, kept by Postgres triggers on
+`indicators` and `indicator_tags` so every write path moves it, and not by confidence or enrichment updates. STIX ids are
+`uuid5(NAMESPACE_DNS, "<type>:<value>")`, stored in `indicators.stix_id` and shared with the snapshot export. nginx forwards
+only `/taxii2/` and `/api/v2/` to `api:8000`; the rest of the API stays behind the web BFF. Spec:
+`docs/superpowers/specs/2026-10-29-p7b-machine-api-design.md`.
+
 ## 4. Data stores and access patterns
 
 Postgres is reached through two drivers: **sync psycopg** in Celery and the CLI (`cti_core.db.engine.
