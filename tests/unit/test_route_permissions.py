@@ -89,5 +89,5 @@ def test_system_roles_only_use_known_permissions() -> None:
 
 def test_analyst_keeps_cve_triage_and_ops_views() -> None:
     analyst = set(SYSTEM_ROLES["analyst"]["permissions"])  # type: ignore[arg-type]
-    assert {"manage_cve", "view_ops", "manage_pir", "manage_rfi"} <= analyst
+    assert {"manage_cve", "view_ops", "manage_pir", "manage_rfi", "manage_ioc"} <= analyst
     assert not {"manage_newsletter", "send_cve_email", "manage_intel"} & analyst

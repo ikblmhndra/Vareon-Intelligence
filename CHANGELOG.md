@@ -23,13 +23,13 @@ Satu migrasi (`a9e4c7b1d3f6`), **tanpa kunci `.env` wajib.** Empat kunci opsiona
 
 ### Diubah
 - Feedback FP kini **mencabut** indikator: keluar dari ekspor STIX, statistik IOC, hitungan dashboard, kampanye, hitungan recap, dan antrean enrichment provider, serta tidak lagi dihitung sebagai bukti IOC/artefak pada credibility asesmen P6 dan review sumber (berlaku pada recompute artikel berikutnya). Feedback TP memulihkannya.
-- `POST /api/iocs/{id}/feedback` kini butuh izin `manage_ioc`. Peran bawaan `analyst` kehilangan tombol TP/FP; `admin` dan `superadmin` tetap punya.
+- `POST /api/iocs/{id}/feedback` kini butuh izin `manage_ioc`. Peran bawaan `analyst` kini mendapat `manage_ioc` (diperbarui otomatis saat API start), jadi analyst tetap bisa TP/FP, dan juga bisa menghapus IOC serta mengubah allowlist, tag, dan tautan threat actor. Hanya peran kustom tanpa `manage_ioc` yang kehilangan tombol TP/FP.
 - `tools/ops/pg_backup.py` memverifikasi tabel `indicators` di samping `iocs` (yang tidak ada dilewati).
 
 ### Catatan perilaku
 - Antara migrasi dan run pertama tugas reconcile (beberapa menit sesudah start API), indikator non-hash terbaca tidak kedaluwarsa. Belum ada konsumen yang memakai masa berlaku sebelum P7b.
 - Rollback kode tidak memerlukan downgrade DB: kode 0.8.10 dan 0.8.2 sama-sama terbukti jalan terhadap skema 0.8.11 lewat view kompatibilitas (target auto-rollback prod adalah 0.8.2); revoke dan TLP/PAP yang diset sesudah upgrade tidak dihormati kode lama. Baris `valid_until` NULL dari kode lama diisi reconcile harian (04:15) atau reconcile manual.
-- Panel antrean FP di dashboard Exec (peran `analyst`): tombol TP/FP kini hanya tampil bagi pemegang `manage_ioc` (sebelumnya setiap klik 403); bagi admin, FP di sana kini mencabut indikator.
+- Panel antrean FP di dashboard Exec: tombol TP/FP hanya tampil bagi pemegang `manage_ioc` (analyst, admin, superadmin); FP di sana kini mencabut indikator.
 - Downgrade menghapus view dan kolom baru lalu mengembalikan nama tabel; revoke dan penanda TLP/PAP hilang.
 
 ## [0.8.10] - 2026-10-28

@@ -66,6 +66,9 @@ SYSTEM_ROLES: dict[str, dict[str, object]] = {
             "view_intel",
             "view_ta",
             "view_ioc",
+            # Sejak 0.8.11 TP/FP me-revoke/memulihkan IOC dan butuh `manage_ioc`; analyst tetap
+            # memberi verdict (keputusan user 2026-10-29), termasuk hapus/allowlist/tag IOC.
+            "manage_ioc",
             "view_cve",
             "manage_cve",
             "view_ops",
