@@ -84,7 +84,7 @@ random with 256 bits of entropy (no password stretching needed). Model: `cti_cor
 
 ### 3.2 Column `indicators.feed_changed_at`
 
-`timestamptz not null default now()`, index `(feed_changed_at, id)`. It is the feed clock: TAXII
+`timestamptz not null default clock_timestamp()`, index `(feed_changed_at, id)`. It is the feed clock: TAXII
 `date_added` and STIX `modified`, and the REST cursor. Backfill in the migration:
 `greatest(created_at, coalesce(revoked_at, created_at))`.
 
@@ -92,12 +92,12 @@ It is maintained by **Postgres triggers**, not application code, so every write 
 both upserts, feedback, the marking PATCH, the raw `UPDATE` in `reconcile_validity`, and writes
 through the P7a compatibility views from rolled-back 0.8.2/0.8.10 code.
 
-- `BEFORE UPDATE ON indicators FOR EACH ROW`: set `NEW.feed_changed_at = now()` when any of
+- `BEFORE UPDATE ON indicators FOR EACH ROW`: set `NEW.feed_changed_at = clock_timestamp()` when any of
   `type`, `value`, `valid_from`, `valid_until`, `revoked_at`, `auto_suppressed`, `tlp`, `pap`,
   `seen_count`, `last_seen_at` is `DISTINCT FROM` the old value. Confidence, actionability,
   enrichment and `updated_at` do not count, so the decay sweep does not touch the clock.
 - `AFTER INSERT OR DELETE ON indicator_tags FOR EACH ROW`: `UPDATE indicators SET feed_changed_at =
-  now() WHERE id = <indicator_id>` (tags become STIX `labels`).
+  clock_timestamp() WHERE id = <indicator_id>` (tags become STIX `labels`).
 
 The model declares the column; the triggers live only in the migration (autogenerate does not
 compare triggers), so section 7 has a dedicated trigger test. Downgrade drops triggers, functions,
@@ -108,11 +108,13 @@ are re-sent, instead of all 5,469 if `updated_at` were used.
 
 ### 3.3 Settle lag (commit-order safety)
 
-`now()` is the transaction start time, not the commit time, so a transaction committing late can
-carry a timestamp older than rows a client has already paged past. The feed therefore never returns
-rows with `feed_changed_at > now() - 60 s` (`FEED_SETTLE_SECONDS = 60`, a code constant, not a
-setting). Changes become visible in the feed within about a minute. Transactions writing indicators
-are short (persist stage, feedback); the docstring says so, and the risk table keeps it.
+The clock is `clock_timestamp()`, the statement time of the write, not `now()` (transaction start): the
+enrich pipeline holds its transaction open across LLM calls, so a `now()` stamp could be minutes older than
+the commit. Even so, a row becomes visible only at commit, after its stamp, so a client that already paged past the
+stamp could skip it. The feed therefore never returns rows with `feed_changed_at > now() - 60 s`
+(`FEED_SETTLE_SECONDS = 60`, a code constant, not a setting); the lag only has to cover write -> commit
+(persist is the last step before commit). Changes become visible in the feed within about a minute. Lookups by
+STIX id (`object-by-id`, versions) skip the lag.
 
 ## 4. Auth and the REST feed
 
@@ -301,8 +303,11 @@ unexposed; the header comment ("API TIDAK lewat sini") is updated to name the tw
 | R2 | A strict client requires the `marking-definition` objects inside the collection. | Interop test with `taxii2-client`; if a consumer needs them, add the referenced definitions with a fixed `date_added` before all indicators. |
 | R3 | `/taxii2/` and `/api/v2/` are now exposed on 443. | Token required on every route, read-only, one scope, hashed tokens, revocation takes effect on the next request. Per-token rate limiting is a follow-up. |
 | R4 | Discovery returns wrong absolute URLs behind the proxy. | nginx passes `Host`, uvicorn runs with `--proxy-headers`; checked on dev from outside the host. |
-| R5 | A long transaction commits indicator changes older than the 60 s settle lag and a client skips them. | Indicator writes are short; the lag is one constant; the next change to the row (re-sighting) re-sends it. Documented. |
+| R5 | A write commits more than 60 s after its statement and a client already past that stamp skips it. | The clock is statement time, so only write -> commit must fit in the lag (persist is last); the lag is one constant; the next change to the row (re-sighting) re-sends it. Documented. |
 | R6 | Triggers are invisible to the drift test and to readers of the model. | Dedicated trigger tests; a docstring on `feed_changed_at` names the triggers and the migration. |
+| R7 | Hard delete (`DELETE /api/iocs/{id}`, bulk delete) removes an indicator from the feed without a retraction. | Known limitation: subscribers keep it until `valid_until`; analysts mark FP (revoke) to retract a published indicator. Documented in the runbook. |
+| R8 | A TP after an FP, or removing an allowlist entry, re-publishes the same `indicator--` id without `revoked`; STIX 2.1 treats revocation as permanent. | Known limitation: strict consumers may keep it deleted. Documented. |
+| R9 | Expiry is time-based and does not move the feed clock; REST `state` is a snapshot at sync time. | Consumers evaluate `valid_until` themselves. Documented. |
 
 ## 10. Out of scope
 

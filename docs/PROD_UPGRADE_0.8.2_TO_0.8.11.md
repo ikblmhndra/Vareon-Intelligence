@@ -12,7 +12,7 @@ Compose commands differ slightly between sections: use the same compose invocati
 
 1. **Before deploy (all read-only):** run every "Before deploy" block below (0.8.4 custom roles, 0.8.5 migration head and
    replay backlog, 0.8.6 baselines and overrides count, 0.8.7 article counts, 0.8.8 ATT&CK dictionary counts, 0.8.9 model
-   download reachability, `.env` keys and disk space, 0.8.10 confidence baseline, 0.8.11 IOC baseline and role check; P7b adds no read-only check). Write the results down: several
+   download reachability, `.env` keys and disk space, 0.8.10 confidence baseline, 0.8.11 IOC baseline and role check; P7b only needs a stack-env and consumer-planning check, see its read-only bullet). Write the results down: several
    "After deploy" checks compare against them. These run on 0.8.2, where the IOC tables are still `iocs` and `ioc_sources`;
    after the deploy the same data lives in `indicators` and `indicator_sources` (0.8.11), so the After-deploy queries use
    the new names.
@@ -494,7 +494,7 @@ Release: tag `0.8.9` / Release `v0.8.9`, merge commit `3cedd1a` (PR #78). Spec:
   - **TAXII 2.1 server** at `/taxii2/` (API root `/taxii2/api/`, one collection
     `6f0e1a52-6a43-4f0b-9b8e-2a7c1d9e4b10`). Basic auth with any user name and the token as password, or Bearer. Malformed
     parameters return 400. Revoked and allowlisted indicators stay in the feed with `revoked: true`.
-  - **Feed clock.** `indicators.feed_changed_at` (default `now()`, indexed with `id`) is maintained by two Postgres
+  - **Feed clock.** `indicators.feed_changed_at` (default `clock_timestamp()`, indexed with `id`) is maintained by two Postgres
     triggers (`trg_indicators_feed_bump`, `trg_indicator_tags_feed_bump`), not by application code, so every write path
     (including old code through the `iocs` compatibility view) moves it. Confidence, actionability, enrichment and
     `updated_at` do not.
@@ -591,7 +591,7 @@ Dev `.env` for reference (backup `~/Vareon-Intelligence/.env.bak-sebelum-0.8.9`)
 
    Expected: a few GB free.
 
-**P7b (read-only):** nothing to check beyond P7a check 1. Confirm the stack env is the prod one
+**P7b (read-only):** nothing to run against the database beyond P7a check 1. Confirm the stack env is the prod one
 (`docker/stack.env`, `NGINX_HTTPS_PORT`): the machine API is reachable on the same HTTPS port as the UI. Decide who will
 consume the feed (host, TLS trust of the self-signed certificate, TLP ceiling) before creating tokens.
 
@@ -800,8 +800,17 @@ reason. Dev: `"status": "active"` once run with the dev-only 0.94.
   tokens, revocation takes effect on the next request. No per-token rate limit yet (follow-up).
 - **P7b R4: discovery URLs behind the proxy.** Correct because nginx passes `Host`/`X-Forwarded-*` and uvicorn runs with
   `--proxy-headers`; verified by After deploy check P7b-3 from outside the host.
-- **P7b R5: settle lag.** A transaction that commits changes older than the 60 s settle lag can be skipped by a client
-  already past that point; the next change to the row (any re-sighting) re-sends it. Indicator writes are short.
+- **P7b R5: settle lag.** The feed clock is `clock_timestamp()` (the statement time of the write, not the transaction
+  start, which can be minutes old in the enrich pipeline). The 60 s settle lag only has to cover write -> commit
+  (persist is the last step before commit); a write that commits later than that can still be skipped by a client already
+  past that point, and the next change to the row (any re-sighting) re-sends it.
 - **P7b R6: triggers are invisible to the drift test.** Dedicated trigger tests cover them; the docstring of
   `feed_changed_at` names the triggers and the migration.
+- **P7b R7: hard delete is not a retraction.** `DELETE /api/iocs/{id}` and the bulk delete remove an indicator from
+  the feed without a revocation; subscribers keep it until its `valid_until`. To retract a published indicator, mark it
+  FP (revoke) instead of deleting it.
+- **P7b R8: un-revoking re-publishes the same id.** A TP after an FP, or removing an allowlist entry, publishes the same
+  `indicator--` id without `revoked`. STIX 2.1 treats revocation as permanent, so strict consumers may keep it deleted.
+- **P7b R9: expiry does not move the feed clock.** Expiry is time-based, so consumers must evaluate `valid_until`
+  themselves; the REST `state` field is a snapshot at the time of the request.
 - **P7b follow-ups:** per-token rate limiting; sightings (P7d, deferred); entities and relationships (P7c).

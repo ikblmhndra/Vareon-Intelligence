@@ -488,10 +488,13 @@ service layer and build STIX objects at read time (no stored object table). Auth
 `api_tokens` (sha256 hash, shown once, scope `indicators:read`, optional expiry, `max_tlp` filters what the token sees);
 admins manage tokens at `/api/api-tokens` through the web proxy (Admin page, permission `manage_api_tokens`).
 Pagination and TAXII `added_after` use a dedicated clock, `indicators.feed_changed_at`, kept by Postgres triggers on
-`indicators` and `indicator_tags` so every write path moves it, and not by confidence or enrichment updates. STIX ids are
+`indicators` and `indicator_tags` so every write path moves it, and not by confidence or enrichment updates. The clock is
+`clock_timestamp()` (statement time of the write), and a 60 s settle lag covers write -> commit. STIX ids are
 `uuid5(NAMESPACE_DNS, "<type>:<value>")`, stored in `indicators.stix_id` and shared with the snapshot export. nginx forwards
-only `/taxii2/` and `/api/v2/` to `api:8000`; the rest of the API stays behind the web BFF. Spec:
-`docs/superpowers/specs/2026-10-29-p7b-machine-api-design.md`.
+only `/taxii2/` and `/api/v2/` to `api:8000`; the rest of the API stays behind the web BFF. Known
+limitations (spec risks R7-R9): a hard delete is not a retraction (revoke via FP instead); un-revoking re-publishes the same
+`indicator--` id without `revoked`; expiry is time-based and does not move the clock, so consumers evaluate `valid_until`.
+Spec: `docs/superpowers/specs/2026-10-29-p7b-machine-api-design.md`.
 
 ## 4. Data stores and access patterns
 
