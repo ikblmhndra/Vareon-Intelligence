@@ -12,7 +12,7 @@ import pytest
 from cti_core.db.models.article import Article, RejectedArticle
 from cti_core.db.models.article_cve import ArticleCve
 from cti_core.db.models.auth import AuditLogEntry
-from cti_core.db.models.ioc import IOC, IOCFeedback, IOCSource
+from cti_core.db.models.indicator import Indicator, IndicatorFeedback, IndicatorSource
 from cti_core.db.models.source_reliability import SourceReliabilityEntry
 from cti_core.db.models.story import Story
 from httpx import AsyncClient
@@ -104,18 +104,24 @@ async def _seed(s: AsyncSession) -> dict[str, SourceReliabilityEntry]:
 
     # IOC: dilaporkan pertama oleh RvLowSrc (1 FP + 1 TP); IOC lain pertama oleh RvOtherSrc
     # (verdict-nya tidak dihitung ke RvLowSrc walau RvLowSrc ikut melaporkan belakangan).
-    ioc_a = IOC(type="ip", value="10.9.0.1")
-    ioc_b = IOC(type="ip", value="10.9.0.2")
+    ioc_a = Indicator(type="ip", value="10.9.0.1")
+    ioc_b = Indicator(type="ip", value="10.9.0.2")
     s.add_all([ioc_a, ioc_b])
     await s.flush()
     s.add_all(
         [
-            IOCSource(ioc_id=ioc_a.id, url="u", source_name="RvLowSrc", first_seen_at=_OLD),
-            IOCSource(ioc_id=ioc_b.id, url="u", source_name="RvOtherSrc", first_seen_at=_OLD),
-            IOCSource(ioc_id=ioc_b.id, url="u", source_name="RvLowSrc", first_seen_at=_NOW),
-            IOCFeedback(ioc_id=ioc_a.id, verdict="fp", submitted_by="a"),
-            IOCFeedback(ioc_id=ioc_a.id, verdict="tp", submitted_by="a"),
-            IOCFeedback(ioc_id=ioc_b.id, verdict="fp", submitted_by="a"),
+            IndicatorSource(
+                indicator_id=ioc_a.id, url="u", source_name="RvLowSrc", first_seen_at=_OLD
+            ),
+            IndicatorSource(
+                indicator_id=ioc_b.id, url="u", source_name="RvOtherSrc", first_seen_at=_OLD
+            ),
+            IndicatorSource(
+                indicator_id=ioc_b.id, url="u", source_name="RvLowSrc", first_seen_at=_NOW
+            ),
+            IndicatorFeedback(indicator_id=ioc_a.id, verdict="fp", submitted_by="a"),
+            IndicatorFeedback(indicator_id=ioc_a.id, verdict="tp", submitted_by="a"),
+            IndicatorFeedback(indicator_id=ioc_b.id, verdict="fp", submitted_by="a"),
         ]
     )
     await s.flush()
@@ -257,3 +263,26 @@ async def test_add_without_credibility_writes_6(
     assert resp.status_code == 200
     entry = resp.json()["entry"]
     assert (entry["credibility_code"], entry["admiralty_code"]) == ("6", "B6")
+
+
+async def test_review_artefact_ignores_revoked_ioc(async_db_session: AsyncSession) -> None:
+    """Artikel yang satu-satunya IOC-nya dicabut tidak terhitung artefak di antrean review."""
+    from cti_core.db.repositories.source_reliability import AsyncSourceReliabilityRepo
+
+    s = async_db_session
+    s.add(_sr("RvRevokedSrc", "B"))
+    art = _article("https://rv.example/revoked/1", "RvRevokedSrc")
+    ioc = Indicator(type="ip", value="10.9.9.9", revoked_at=_NOW)
+    s.add_all([art, ioc])
+    await s.flush()
+    s.add(
+        IndicatorSource(indicator_id=ioc.id, article_id=art.id, url="u", source_name="RvRevokedSrc")
+    )
+    await s.flush()
+
+    rows = await AsyncSourceReliabilityRepo(s).review_stats(
+        since=_TODAY - datetime.timedelta(days=30)
+    )
+    stats = next(st for e, st in rows if e.source_name == "RvRevokedSrc")
+    assert stats.articles == 1
+    assert stats.artefact_articles == 0

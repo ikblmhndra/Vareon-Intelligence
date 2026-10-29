@@ -13,7 +13,7 @@ from cti_api.services import stix as stix_service
 from cti_core.db.models.pir import PIRRequirement
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.auth import AsyncClientRepo
-from cti_core.db.repositories.ioc import AsyncIOCRepo
+from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from cti_core.db.repositories.pir import AsyncPIRRepo
 from cti_core.db.repositories.ta import AsyncTAProfileRepo
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -118,7 +118,7 @@ async def test_build_ta_stix_bundle_no_profile_returns_identity_only(
 
 
 async def test_build_ioc_stix_bundle(async_db_session: AsyncSession) -> None:
-    ioc_repo = AsyncIOCRepo(async_db_session)
+    ioc_repo = AsyncIndicatorRepo(async_db_session)
     await ioc_repo.upsert(
         type="ip", value="203.0.113.10", source_url="https://example.com/a", source_name="s"
     )

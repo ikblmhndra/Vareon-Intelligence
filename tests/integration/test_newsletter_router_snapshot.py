@@ -30,7 +30,7 @@ from cti_api.services import newsletter_edition
 from cti_core.db.models.article import Article
 from cti_core.db.models.auth import AuditLogEntry
 from cti_core.db.models.cve import CveNewsletterMention, CveTracker
-from cti_core.db.models.ioc import IOC
+from cti_core.db.models.indicator import Indicator
 from cti_core.db.models.newsletter import Newsletter, NewsletterArticleSummary, NewsletterSuggestion
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.auth import AsyncClientRepo
@@ -247,7 +247,7 @@ async def test_preview_twice_then_draft_leaves_one_row_and_repeats_no_fetch_or_l
 
         # Dua preview tidak meninggalkan apa pun di catatan; hanya kedua cache yang terisi.
         assert await _count(api_session, Newsletter) == 0
-        assert await _count(api_session, IOC) == 0
+        assert await _count(api_session, Indicator) == 0
         assert await _count(api_session, CveNewsletterMention) == 0
         assert await _count(api_session, NewsletterArticleSummary) == 2
 
@@ -263,7 +263,11 @@ async def test_preview_twice_then_draft_leaves_one_row_and_repeats_no_fetch_or_l
     assert draft.json()["newsletter_id"] == row.id
 
     # Temuan ditulis SEKALI oleh draft, dari cache (IOC dari body, sebutan CVE untuk true positive).
-    ips = (await api_session.execute(select(IOC.value).where(IOC.type == "ip"))).scalars().all()
+    ips = (
+        (await api_session.execute(select(Indicator.value).where(Indicator.type == "ip")))
+        .scalars()
+        .all()
+    )
     assert ips == ["203.0.113.77"]
     mention_urls = {
         m.url for m in (await api_session.execute(select(CveNewsletterMention))).scalars()
@@ -293,7 +297,7 @@ async def test_a_failing_graph_call_leaves_no_row_and_the_retry_reuses_the_cache
         await api_session.rollback()
         # Dulu barisnya sudah di-commit sebelum Graph dipanggil.
         assert await _count(api_session, Newsletter) == 0
-        assert await _count(api_session, IOC) == 0
+        assert await _count(api_session, Indicator) == 0
         assert await _count(api_session, CveNewsletterMention) == 0
         # Kerja fetch + LLM tidak hilang: cache sudah di-commit sebelum Graph.
         assert await _count(api_session, NewsletterArticleSummary) == 2

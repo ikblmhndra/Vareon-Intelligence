@@ -9,9 +9,10 @@ import { api } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { IocActionabilityChip, IocConfidenceChip, IocTypeBadge } from "@/components/intelligence/ioc/ioc-badges";
-import type { IocDetail, IocTaLink, IocTaLinksResponse } from "@/lib/api/loose-types";
+import { IocActionabilityChip, IocConfidenceChip, IocStateBadge, IocTypeBadge } from "@/components/intelligence/ioc/ioc-badges";
+import type { IocDetail, IocSummary, IocTaLink, IocTaLinksResponse } from "@/lib/api/loose-types";
 import { defang } from "@/lib/intelligence/defang";
 import { useCan } from "@/lib/auth/permissions";
 
@@ -25,6 +26,9 @@ interface IocDetailDialogProps {
   onClose: () => void;
   onDeleted: () => void;
 }
+
+const TLP_OPTIONS: IocSummary["tlp"][] = ["clear", "green", "amber", "amber+strict", "red"];
+const PAP_OPTIONS: IocSummary["pap"][] = ["clear", "green", "amber", "red"];
 
 function verdictColor(verdict: string | undefined) {
   switch ((verdict || "").toLowerCase()) {
@@ -112,6 +116,20 @@ export function IocDetailDialog({ target, onClose, onDeleted }: IocDetailDialogP
     }
   }
 
+  async function setMarking(body: { tlp?: IocSummary["tlp"]; pap?: IocSummary["pap"] }) {
+    if (!ioc) return;
+    try {
+      const { error } = await api.PATCH("/api/iocs/{ioc_id}/marking", {
+        params: { path: { ioc_id: ioc.id } },
+        body,
+      });
+      if (error) throw new Error(JSON.stringify(error));
+      invalidateAll();
+    } catch (e) {
+      toast.error(`Failed to update marking: ${(e as Error).message}`);
+    }
+  }
+
   async function doDelete() {
     if (!ioc) return;
     try {
@@ -146,6 +164,7 @@ export function IocDetailDialog({ target, onClose, onDeleted }: IocDetailDialogP
                 <span className="font-code text-xs break-all text-foreground">{defang(ioc.type, ioc.value)}</span>
                 <IocConfidenceChip score={ioc.confidence_score} />
                 <IocActionabilityChip label={ioc.actionability_label} />
+                <IocStateBadge state={ioc.state} />
                 {can("manage_ioc") && (
                   <Button
                     size="sm"
@@ -176,6 +195,22 @@ export function IocDetailDialog({ target, onClose, onDeleted }: IocDetailDialogP
                 <div className="rounded-xl border border-border bg-background p-2.5">
                   <div className="mb-1 text-sm font-semibold text-muted-foreground">Last Seen</div>
                   <div className="text-xs text-foreground">{ioc.last_seen || "—"}</div>
+                </div>
+              </div>
+
+              <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="rounded-xl border border-border bg-background p-2.5">
+                  <div className="mb-1 text-sm font-semibold text-muted-foreground">Valid Until</div>
+                  <div className="text-xs text-foreground">{ioc.valid_until ?? "never"}</div>
+                  {ioc.state === "revoked" && (
+                    <div className="mt-1 text-xs text-destructive-text">
+                      revoked by {ioc.revoked_by ?? "—"} at {ioc.revoked_at ?? "—"}
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-3 rounded-xl border border-border bg-background p-2.5">
+                  <MarkingSelect label="TLP" value={ioc.tlp} options={TLP_OPTIONS} disabled={!can("manage_ioc")} onChange={(v) => void setMarking({ tlp: v })} />
+                  <MarkingSelect label="PAP" value={ioc.pap} options={PAP_OPTIONS} disabled={!can("manage_ioc")} onChange={(v) => void setMarking({ pap: v })} />
                 </div>
               </div>
 
@@ -362,6 +397,38 @@ function IocTaLinksSection({
         </Button>
       </div>
       )}
+    </div>
+  );
+}
+
+function MarkingSelect<T extends string>({
+  label,
+  value,
+  options,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  value: T;
+  options: T[];
+  disabled: boolean;
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div className="flex flex-1 flex-col gap-1">
+      <div className="text-sm font-semibold text-muted-foreground">{label}</div>
+      <Select items={Object.fromEntries(options.map((o) => [o, o]))} value={value} disabled={disabled} onValueChange={(v) => v && onChange(v as T)}>
+        <SelectTrigger size="sm" className="w-full font-mono text-xs">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((o) => (
+            <SelectItem key={o} value={o} className="font-mono text-xs">
+              {o}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   );
 }

@@ -23,10 +23,11 @@ from __future__ import annotations
 import datetime
 from typing import Literal
 
-from cti_core.db.models.ioc import IOC
+from cti_core.db.models.indicator import Indicator
 from cti_core.db.repositories.auth import AsyncAuditLogRepo
-from cti_core.db.repositories.ioc import AsyncIOCRepo
+from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from cti_core.db.repositories.ioc_reference import AsyncIocAllowlistRepo
+from cti_core.indicator.marking import Pap, Tlp
 from cti_core.ioc.canonical import canonical
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
@@ -60,6 +61,11 @@ class FeedbackBody(BaseModel):
     note: str | None = None
 
 
+class MarkingBody(BaseModel):
+    tlp: Tlp | None = None
+    pap: Pap | None = None
+
+
 class BulkDeleteBody(BaseModel):
     ids: list[int]
 
@@ -69,7 +75,11 @@ class AllowlistBody(BaseModel):
     value: str
 
 
-def _serialize_summary(ioc: IOC) -> dict[str, object]:
+def _iso(dt: datetime.datetime | None) -> str | None:
+    return dt.isoformat() if dt else None
+
+
+def _serialize_summary(ioc: Indicator) -> dict[str, object]:
     return {
         "id": ioc.id,
         "type": ioc.type,
@@ -87,10 +97,17 @@ def _serialize_summary(ioc: IOC) -> dict[str, object]:
         "recommended_action": ioc.recommended_action,
         "auto_suppressed": ioc.auto_suppressed,
         "suppression_reason": ioc.suppression_reason,
+        "state": ioc.state,
+        "valid_from": _iso(ioc.valid_from),
+        "valid_until": _iso(ioc.valid_until),
+        "revoked_at": _iso(ioc.revoked_at),
+        "revoked_by": ioc.revoked_by,
+        "tlp": ioc.tlp,
+        "pap": ioc.pap,
     }
 
 
-def _serialize_detail(ioc: IOC) -> dict[str, object]:
+def _serialize_detail(ioc: Indicator) -> dict[str, object]:
     return {
         **_serialize_summary(ioc),
         "enrichment": ioc.enrichment or None,
@@ -116,10 +133,11 @@ async def list_iocs(
     sort_by: str | None = None,
     actionability: str | None = None,
     include_suppressed: bool = False,
+    state: Literal["active", "expired", "revoked", "allowlisted"] | None = None,
     session: AsyncSession = Depends(get_db),
     _user: AuthedUser = Depends(require_auth),
 ) -> dict[str, object]:
-    iocs, total = await AsyncIOCRepo(session).list_filtered(
+    iocs, total = await AsyncIndicatorRepo(session).list_filtered(
         page=page,
         page_size=page_size,
         ioc_type=ioc_type,
@@ -129,6 +147,7 @@ async def list_iocs(
         sort_by=sort_by,
         actionability=actionability,
         include_suppressed=include_suppressed,
+        state=state,
     )
     return {
         "iocs": [_serialize_summary(i) for i in iocs],
@@ -142,7 +161,7 @@ async def list_iocs(
 async def ioc_stats(
     session: AsyncSession = Depends(get_db), _user: AuthedUser = Depends(require_auth)
 ) -> dict[str, object]:
-    return await AsyncIOCRepo(session).get_stats()
+    return await AsyncIndicatorRepo(session).get_stats()
 
 
 @router.get("/fp-analytics")
@@ -267,7 +286,7 @@ async def add_ioc_threat_actors(
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),
 ) -> dict[str, bool]:
-    repo = AsyncIOCRepo(session)
+    repo = AsyncIndicatorRepo(session)
     ioc = await repo.get(type=ioc_type, value=canonical(ioc_type, value))
     if ioc is None:
         raise HTTPException(status_code=404, detail="IOC not found")
@@ -295,7 +314,7 @@ async def remove_ioc_threat_actor(
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),
 ) -> dict[str, bool]:
-    repo = AsyncIOCRepo(session)
+    repo = AsyncIndicatorRepo(session)
     ioc = await repo.get(type=ioc_type, value=canonical(ioc_type, value))
     if ioc is None:
         raise HTTPException(status_code=404, detail="IOC not found")
@@ -322,7 +341,7 @@ async def bulk_delete(
 ) -> dict[str, int]:
     if not body.ids:
         raise HTTPException(status_code=400, detail="ids required")
-    count = await AsyncIOCRepo(session).bulk_delete(body.ids)
+    count = await AsyncIndicatorRepo(session).bulk_delete(body.ids)
     await AsyncAuditLogRepo(session).write(
         username=user["username"],
         action="bulk_delete_iocs",
@@ -340,7 +359,7 @@ async def delete_ioc_by_id(
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_permission("manage_ioc")),
 ) -> dict[str, bool]:
-    ok = await AsyncIOCRepo(session).delete(ioc_id)
+    ok = await AsyncIndicatorRepo(session).delete(ioc_id)
     if not ok:
         raise HTTPException(status_code=404, detail="IOC not found")
     await AsyncAuditLogRepo(session).write(
@@ -358,12 +377,12 @@ async def ioc_feedback(
     ioc_id: int,
     body: FeedbackBody,
     session: AsyncSession = Depends(get_db),
-    user: AuthedUser = Depends(require_auth),
+    user: AuthedUser = Depends(require_permission("manage_ioc")),
 ) -> dict[str, object]:
     """Port `submit_feedback()` -- feedback + recompute confidence+
     actionability + peringatan FP-rate sumber, SATU alur (Fase 7.4 Grup D
     ngelengkapin ini; sebelumnya cuma `add_feedback()` doang)."""
-    repo = AsyncIOCRepo(session)
+    repo = AsyncIndicatorRepo(session)
     ioc = await repo.get_by_id(ioc_id)
     if ioc is None:
         raise HTTPException(status_code=404, detail="IOC not found")
@@ -399,6 +418,31 @@ async def ioc_feedback(
     return result
 
 
+@router.patch("/{ioc_id}/marking")
+async def set_ioc_marking(
+    ioc_id: int,
+    body: MarkingBody,
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+    user: AuthedUser = Depends(require_permission("manage_ioc")),
+) -> dict[str, object]:
+    """Koreksi TLP/PAP manual oleh analis; nilai yang tidak dikirim tidak diubah."""
+    repo = AsyncIndicatorRepo(session)
+    ioc = await repo.get_by_id(ioc_id)
+    if ioc is None:
+        raise HTTPException(status_code=404, detail="IOC not found")
+    ioc = await repo.set_marking(ioc, tlp=body.tlp, pap=body.pap)
+    await AsyncAuditLogRepo(session).write(
+        username=user["username"],
+        action="ioc_marking",
+        target_id=str(ioc_id),
+        detail={"tlp": body.tlp, "pap": body.pap},
+        ip_address=request_ip(request),
+    )
+    await session.commit()
+    return _serialize_detail(ioc)
+
+
 @router.get("/ta-links/{ioc_type}/{value:path}")
 async def ioc_ta_links(
     ioc_type: str,
@@ -421,7 +465,7 @@ async def ioc_detail(
     session: AsyncSession = Depends(get_db),
     _user: AuthedUser = Depends(require_auth),
 ) -> dict[str, object]:
-    ioc = await AsyncIOCRepo(session).get(type=ioc_type, value=canonical(ioc_type, value))
+    ioc = await AsyncIndicatorRepo(session).get(type=ioc_type, value=canonical(ioc_type, value))
     if ioc is None:
         raise HTTPException(status_code=404, detail="IOC not found")
     return _serialize_detail(ioc)
@@ -438,7 +482,7 @@ async def add_ioc_tags(
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),
 ) -> dict[str, bool]:
-    repo = AsyncIOCRepo(session)
+    repo = AsyncIndicatorRepo(session)
     ioc = await repo.get(type=ioc_type, value=canonical(ioc_type, value))
     if ioc is None:
         raise HTTPException(status_code=404, detail="IOC not found")

@@ -56,7 +56,10 @@
     'fp_count': 0,
     'id': int,
     'last_seen': str,
+    'pap': 'clear',
     'recommended_action': None,
+    'revoked_at': None,
+    'revoked_by': None,
     'seen_count': 1,
     'sources': list([
       dict({
@@ -67,13 +70,17 @@
         'url': 'https://a.example/report',
       }),
     ]),
+    'state': 'active',
     'suppression_reason': None,
     'tags': list([
     ]),
     'threat_actors': list([
     ]),
+    'tlp': 'clear',
     'tp_count': 0,
     'type': 'ip',
+    'valid_from': str,
+    'valid_until': str,
     'value': '45.33.32.156',
   })
 # ---
@@ -88,7 +95,10 @@
     'fp_count': 0,
     'id': int,
     'last_seen': str,
+    'pap': 'clear',
     'recommended_action': 'Verify in environment, check for matches in last 30 days',
+    'revoked_at': None,
+    'revoked_by': None,
     'seen_count': 1,
     'sources': list([
       dict({
@@ -99,13 +109,17 @@
         'url': 'https://a.example/report',
       }),
     ]),
+    'state': 'active',
     'suppression_reason': None,
     'tags': list([
     ]),
     'threat_actors': list([
     ]),
+    'tlp': 'clear',
     'tp_count': 1,
     'type': 'ip',
+    'valid_from': str,
+    'valid_until': str,
     'value': '45.33.32.156',
   })
 # ---
@@ -154,15 +168,22 @@
         'fp_count': 0,
         'id': int,
         'last_seen': str,
+        'pap': 'clear',
         'recommended_action': None,
+        'revoked_at': None,
+        'revoked_by': None,
         'seen_count': 1,
+        'state': 'active',
         'suppression_reason': None,
         'tags': list([
         ]),
         'threat_actors': list([
         ]),
+        'tlp': 'clear',
         'tp_count': 0,
         'type': 'domain',
+        'valid_from': str,
+        'valid_until': str,
         'value': 'evil.example',
       }),
       dict({
@@ -174,15 +195,22 @@
         'fp_count': 0,
         'id': int,
         'last_seen': str,
+        'pap': 'clear',
         'recommended_action': None,
+        'revoked_at': None,
+        'revoked_by': None,
         'seen_count': 1,
+        'state': 'active',
         'suppression_reason': None,
         'tags': list([
         ]),
         'threat_actors': list([
         ]),
+        'tlp': 'clear',
         'tp_count': 0,
         'type': 'ip',
+        'valid_from': str,
+        'valid_until': str,
         'value': '45.33.32.156',
       }),
     ]),

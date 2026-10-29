@@ -28,7 +28,7 @@ import re
 from typing import Any
 
 from cti_core.db.repositories.cve import AsyncCveTrackerRepo
-from cti_core.db.repositories.ioc import AsyncIOCRepo
+from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from cti_core.db.repositories.ta import AsyncTAProfileRepo
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -219,7 +219,7 @@ async def _ioc_confidence_factor(session: AsyncSession, iocs: list[dict[str, Any
     ioc_ids = [ioc["id"] for ioc in iocs if isinstance(ioc.get("id"), int)]
     if not ioc_ids:
         return 50.0
-    rows = await AsyncIOCRepo(session).list_by_ids(ioc_ids)
+    rows = await AsyncIndicatorRepo(session).list_by_ids(ioc_ids)
     scores = [r.confidence_score for r in rows if r.confidence_score is not None]
     return float(sum(scores) / len(scores)) if scores else 50.0
 

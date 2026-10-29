@@ -858,6 +858,14 @@ export interface IocSummary {
   recommended_action: string | null;
   auto_suppressed: boolean;
   suppression_reason: string | null;
+  /** P7a: siklus hidup indikator. `valid_until` null = tidak pernah kedaluwarsa. */
+  state: "active" | "expired" | "revoked" | "allowlisted";
+  valid_from: string | null;
+  valid_until: string | null;
+  revoked_at: string | null;
+  revoked_by: string | null;
+  tlp: "clear" | "green" | "amber" | "amber+strict" | "red";
+  pap: "clear" | "green" | "amber" | "red";
 }
 
 export interface IocEnrichmentProvider {

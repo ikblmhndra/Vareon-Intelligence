@@ -17,7 +17,7 @@ from typing import Any
 import httpx
 import pytest
 from cti_api.services.ioc_enrichment import ProviderSpec, build_specs, enrich_pending
-from cti_core.db.models.ioc import IOC
+from cti_core.db.models.indicator import Indicator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog.testing import capture_logs
@@ -85,9 +85,9 @@ def _allow_all(key: str, rate: str) -> bool:
     return True
 
 
-async def _ioc(session: AsyncSession, type_: str, value: str, **kw: Any) -> IOC:
+async def _ioc(session: AsyncSession, type_: str, value: str, **kw: Any) -> Indicator:
     kw.setdefault("last_seen_at", NOW)
-    ioc = IOC(type=type_, value=value, **kw)
+    ioc = Indicator(type=type_, value=value, **kw)
     session.add(ioc)
     await session.flush()
     return ioc
@@ -406,7 +406,9 @@ async def test_a_client_error_about_the_ioc_becomes_an_unknown_card_and_never_bl
         "stopped": None,
     }
     assert lookup.values == [_ip(0), _ip(1), _ip(2), _ip(10)]
-    rejected = (await api_session.execute(select(IOC).where(IOC.value == _ip(1)))).scalar_one()
+    rejected = (
+        await api_session.execute(select(Indicator).where(Indicator.value == _ip(1)))
+    ).scalar_one()
     (card,) = rejected.enrichment["providers"]
     assert card["verdict"] == "unknown" and "score" not in card
     assert card["raw"] == {"skipped": "rejected by provider (HTTP 400)"}
@@ -435,7 +437,7 @@ async def test_five_rejections_in_a_row_stop_the_provider_so_a_bad_request_canno
     assert summary["abuseipdb"]["rejected"] == 5
     assert summary["abuseipdb"]["stopped"] == "consecutive_rejections"
     untouched = (
-        await api_session.execute(select(IOC).where(IOC.value.in_([_ip(5), _ip(6)])))
+        await api_session.execute(select(Indicator).where(Indicator.value.in_([_ip(5), _ip(6)])))
     ).scalars()
     assert [i.enrichment for i in untouched] == [{}, {}]
 

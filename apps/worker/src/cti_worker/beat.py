@@ -151,6 +151,11 @@ def _periodic_schedule() -> dict[str, dict[str, object]]:
             "schedule": crontab(hour=4, minute=0),
             "options": {"queue": QUEUE_MAINTENANCE},
         },
+        "indicator-reconcile-validity": {
+            "task": "indicator.reconcile_validity",
+            "schedule": crontab(hour=4, minute=15),
+            "options": {"queue": QUEUE_MAINTENANCE},
+        },
         "ioc-enrich-pending": {
             "task": "ioc.enrich_pending",
             # Tiap 15 menit; jatah per jam (bukan jadwal ini) yang membatasi panggilan ke provider,

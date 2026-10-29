@@ -5,14 +5,14 @@ from __future__ import annotations
 
 import pytest
 from cti_api.services import fp_analytics as svc
-from cti_core.db.repositories.ioc import AsyncIOCRepo
+from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from sqlalchemy.ext.asyncio import AsyncSession
 
 pytestmark = pytest.mark.asyncio
 
 
 async def _seeded_ioc_with_feedback(
-    repo: AsyncIOCRepo, *, ioc_type: str, value: str, source_name: str, verdicts: list[str]
+    repo: AsyncIndicatorRepo, *, ioc_type: str, value: str, source_name: str, verdicts: list[str]
 ):
     created = await repo.upsert(
         type=ioc_type, value=value, source_url="https://x.com", source_name=source_name
@@ -32,7 +32,7 @@ async def test_get_fp_analytics_aggregates_by_source_and_type(
     async_db_session: AsyncSession,
 ) -> None:
     svc.invalidate_fp_cache()
-    repo = AsyncIOCRepo(async_db_session)
+    repo = AsyncIndicatorRepo(async_db_session)
     await _seeded_ioc_with_feedback(
         repo, ioc_type="ip", value="1.1.1.1", source_name="SourceA", verdicts=["fp", "fp"]
     )
@@ -51,7 +51,7 @@ async def test_get_fp_analytics_suggests_allowlist_for_fp_heavy_ioc(
     async_db_session: AsyncSession,
 ) -> None:
     svc.invalidate_fp_cache()
-    repo = AsyncIOCRepo(async_db_session)
+    repo = AsyncIndicatorRepo(async_db_session)
     await _seeded_ioc_with_feedback(
         repo,
         ioc_type="url",
@@ -71,7 +71,7 @@ async def test_get_fp_analytics_no_suggestion_when_tp_present(
     async_db_session: AsyncSession,
 ) -> None:
     svc.invalidate_fp_cache()
-    repo = AsyncIOCRepo(async_db_session)
+    repo = AsyncIndicatorRepo(async_db_session)
     await _seeded_ioc_with_feedback(
         repo,
         ioc_type="url",
@@ -88,7 +88,7 @@ async def test_get_fp_analytics_ignores_iocs_without_feedback(
     async_db_session: AsyncSession,
 ) -> None:
     svc.invalidate_fp_cache()
-    repo = AsyncIOCRepo(async_db_session)
+    repo = AsyncIndicatorRepo(async_db_session)
     await repo.upsert(type="ip", value="8.8.8.8", source_url="https://x.com", source_name="SourceD")
 
     result = await svc.get_fp_analytics(async_db_session, force=True)
@@ -98,7 +98,7 @@ async def test_get_fp_analytics_ignores_iocs_without_feedback(
 
 async def test_get_fp_analytics_caches_until_force(async_db_session: AsyncSession) -> None:
     svc.invalidate_fp_cache()
-    repo = AsyncIOCRepo(async_db_session)
+    repo = AsyncIndicatorRepo(async_db_session)
     await _seeded_ioc_with_feedback(
         repo, ioc_type="ip", value="2.2.2.2", source_name="SourceE", verdicts=["fp"]
     )
@@ -145,7 +145,7 @@ class TestAutoSuppressCheck:
 
     async def test_high_fp_rate_source_suppressed(self, async_db_session: AsyncSession) -> None:
         svc.invalidate_fp_cache()
-        repo = AsyncIOCRepo(async_db_session)
+        repo = AsyncIndicatorRepo(async_db_session)
         for i in range(10):
             await _seeded_ioc_with_feedback(
                 repo,

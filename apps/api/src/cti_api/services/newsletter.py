@@ -44,7 +44,7 @@ from cti_core.db.models.newsletter import NewsletterArticleSummary
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.article_cve import AsyncArticleCveRepo
 from cti_core.db.repositories.cve import AsyncCveTrackerRepo
-from cti_core.db.repositories.ioc import AsyncIOCRepo
+from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from cti_core.db.repositories.ioc_reference import AsyncIocAllowlistRepo
 from cti_core.db.repositories.newsletter import AsyncNewsletterRepo
 from cti_core.ioc.allowlist import allowlist_match
@@ -463,7 +463,7 @@ async def write_article_findings(session: AsyncSession, context: dict[str, Any])
     artikel sekali walau muncul dua kali di edisi. Baris compact tidak ikut: tanpa fetch tidak ada
     IOC, dan "ikut kalau kebetulan sudah di-cache" membuat hasilnya bergantung riwayat cache."""
     cve_repo = AsyncCveTrackerRepo(session)
-    ioc_repo = AsyncIOCRepo(session)
+    ioc_repo = AsyncIndicatorRepo(session)
     article_cve_repo = AsyncArticleCveRepo(session)
     allowlist = await _get_allowlist_sets(session)
     seen: set[Any] = set()

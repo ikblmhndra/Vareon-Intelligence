@@ -6,6 +6,32 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
+## [0.8.11] - 2026-10-29
+
+**Indikator (IOC) kini punya siklus hidup: tabel `iocs` berganti nama menjadi `indicators`, tiap indikator punya masa berlaku (`valid_until`) menurut tipe, bisa dicabut (revoked) lewat feedback FP, dan membawa penanda TLP/PAP. Status dihitung, tidak disimpan: active, expired, revoked, atau allowlisted.**
+Satu migrasi (`a9e4c7b1d3f6`), **tanpa kunci `.env` wajib.** Empat kunci opsional baru dengan default (`INDICATOR__TTL_IP_DAYS=30`, `INDICATOR__TTL_DOMAIN_DAYS=90`, `INDICATOR__TTL_URL_DAYS=90`, `INDICATOR__TTL_EMAIL_DAYS=90`). Verifikasi di dev belum dilakukan saat entri ini ditulis.
+
+**Saat upgrade dari 0.8.10:** `make deploy` (migrasi jalan otomatis; rename tabel instan, id dan baris tetap). Sesudah API naik, bootstrap mengantrekan `indicator.reconcile_validity` sekali (selama sidik jari TTL di `job_state` belum ada atau berubah) untuk mengisi `valid_until`; sampai tugas itu selesai, indikator non-hash terbaca tidak kedaluwarsa. **Query SQL di luar aplikasi yang menyebut `iocs`, `ioc_sources`, `ioc_tags`, `ioc_threat_actors`, atau `ioc_feedback` tetap bisa dibaca lewat view kompatibilitas** (view kompatibilitas deprecated yang bisa ditulis; jangan dipakai di kode baru, akan dihapus di rilis berikutnya); pindahkan ke nama baru. Rute `/api/iocs` tidak berubah.
+
+### Ditambah
+- Tabel `indicators`, `indicator_sources`, `indicator_tags`, `indicator_threat_actors`, `indicator_feedback` (kolom `ioc_id` menjadi `indicator_id`), plus lima view kompatibilitas dengan nama lama.
+- Kolom `valid_from` (diisi dari `first_seen_at`), `valid_until`, `revoked_at`, `revoked_by`, `tlp`, `pap` pada `indicators`, dengan CHECK untuk TLP/PAP dan indeks pada `valid_until`.
+- Masa berlaku menurut tipe: IP 30 hari, domain 90, URL 90, email 90, hash tanpa batas. Diisi saat ingest; tugas `indicator.reconcile_validity` (antrean `maintenance`, harian 04:15, dan sekali setelah start API pertama atau saat setting TTL berubah) menyinkronkan baris lama.
+- `PATCH /api/iocs/{id}/marking` (`manage_ioc`): atur TLP/PAP indikator. Penanda bawaan per sumber (`ScraperMeta.tlp` dan `.pap`, default `clear`) diturunkan saat ingest.
+- Halaman IOC menampilkan status indikator (active, expired, revoked, allowlisted) dan TLP/PAP, dan tombol TP/FP (FP mencabut, TP memulihkan).
+- Ekspor STIX IOC membawa `valid_until` dan marking definition TLP 2.0.
+
+### Diubah
+- Feedback FP kini **mencabut** indikator: keluar dari ekspor STIX, statistik IOC, hitungan dashboard, kampanye, hitungan recap, dan antrean enrichment provider, serta tidak lagi dihitung sebagai bukti IOC/artefak pada credibility asesmen P6 dan review sumber (berlaku pada recompute artikel berikutnya). Feedback TP memulihkannya.
+- `POST /api/iocs/{id}/feedback` kini butuh izin `manage_ioc`. Peran bawaan `analyst` kini mendapat `manage_ioc` (diperbarui otomatis saat API start), jadi analyst tetap bisa TP/FP, dan juga bisa menghapus IOC serta mengubah allowlist, tag, dan tautan threat actor. Hanya peran kustom tanpa `manage_ioc` yang kehilangan tombol TP/FP.
+- `tools/ops/pg_backup.py` memverifikasi tabel `indicators` di samping `iocs` (yang tidak ada dilewati).
+
+### Catatan perilaku
+- Antara migrasi dan run pertama tugas reconcile (beberapa menit sesudah start API), indikator non-hash terbaca tidak kedaluwarsa. Belum ada konsumen yang memakai masa berlaku sebelum P7b.
+- Rollback kode tidak memerlukan downgrade DB: kode 0.8.10 dan 0.8.2 sama-sama terbukti jalan terhadap skema 0.8.11 lewat view kompatibilitas (target auto-rollback prod adalah 0.8.2); revoke dan TLP/PAP yang diset sesudah upgrade tidak dihormati kode lama. Baris `valid_until` NULL dari kode lama diisi reconcile harian (04:15) atau reconcile manual.
+- Panel antrean FP di dashboard Exec: tombol TP/FP hanya tampil bagi pemegang `manage_ioc` (analyst, admin, superadmin); FP di sana kini mencabut indikator.
+- Downgrade menghapus view dan kolom baru lalu mengembalikan nama tabel; revoke dan penanda TLP/PAP hilang.
+
 ## [0.8.10] - 2026-10-28
 
 **Confidence artikel kini Admiralty murni per artikel: reliability A-F dari grade sumber, credibility 1-6 dihitung per artikel dari jumlah sumber di story, sumber primer vs agregator, dan artefak teknis (CVE, IOC tidak disuppress, TTP explicit). Skor terpisah, `priority_score`, menambahkan sinyal (insiden terkonfirmasi, KEV/PoC, TTP, aktor, korroborasi) tanpa batas atas dan dipakai untuk urutan "Perlu dibaca" dengan satu artikel per story.**

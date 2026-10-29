@@ -50,8 +50,18 @@ _UTC = datetime.timezone.utc  # noqa: UP017 -- jalan di python3 HOST (>= 3.9); `
 DEFAULT_PG_EXEC = "docker compose exec -T postgres"
 NAME_RE = re.compile(r"^cti-(\d{8}T\d{6}Z)\.dump$")
 SCRATCH_DB = "cti_restore_check"
-KEY_TABLES = ("articles", "iocs", "scraper_runs", "scraper_seen", "users", "monitored_accounts")
-"""Dibandingkan live vs hasil restore di `verify`. Tabel yang tak ada di skema dilewati."""
+KEY_TABLES = (
+    "articles",
+    "iocs",
+    "indicators",
+    "scraper_runs",
+    "scraper_seen",
+    "users",
+    "monitored_accounts",
+)
+"""Dibandingkan live vs hasil restore di `verify`. Tabel yang tak ada di skema dilewati.
+`iocs` (nama lama, kini view sejak 0.8.11) dan `indicators` (nama baru) sama-sama ada supaya
+backup pra-rename tetap bisa diverifikasi."""
 
 
 class BackupError(Exception):

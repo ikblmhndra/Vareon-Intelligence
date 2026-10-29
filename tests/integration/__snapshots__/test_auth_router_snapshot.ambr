@@ -84,6 +84,7 @@
       'view_intel',
       'view_ta',
       'view_ioc',
+      'manage_ioc',
       'view_cve',
       'manage_cve',
       'view_stix',

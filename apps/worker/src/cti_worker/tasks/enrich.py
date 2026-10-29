@@ -77,19 +77,20 @@ def _backoff_s(retries: int) -> float:
     return float(min(600, 30 * 2**retries)) * (1 + random.random() * 0.25)
 
 
-def _relevance_for(scraper_id: str | None) -> tuple[str | None, str]:
-    """`(content_kind, default_relevance)` dari `ScraperMeta`; `(None, "classify")` untuk
-    `scraper_id` kosong atau sudah tidak terdaftar (mis. replay baris lama) -- classify jalan
-    seperti biasa. Lookup di sini karena `cti_enrich` tidak boleh mengimpor `cti_scraper`."""
+def _relevance_for(scraper_id: str | None) -> tuple[str | None, str, str, str]:
+    """`(content_kind, default_relevance, tlp, pap)` dari `ScraperMeta`; `(None, "classify",
+    "clear", "clear")` untuk `scraper_id` kosong atau sudah tidak terdaftar (mis. replay baris
+    lama) -- classify jalan seperti biasa. Lookup di sini karena `cti_enrich` tidak boleh
+    mengimpor `cti_scraper`."""
     if not scraper_id:
-        return None, "classify"
+        return None, "classify", "clear", "clear"
     from cti_scraper import registry
 
     try:
         meta = registry.get(scraper_id).meta
     except KeyError:
-        return None, "classify"
-    return meta.content_kind, meta.default_relevance
+        return None, "classify", "clear", "clear"
+    return meta.content_kind, meta.default_relevance, meta.tlp, meta.pap
 
 
 def _scrub_secrets(text: str) -> str:
@@ -239,7 +240,7 @@ def enrich_article(
     from cti_enrich.pipeline import run_pipeline
 
     parsed_posted_on = datetime.date.fromisoformat(posted_on) if posted_on else None
-    content_kind, default_relevance = _relevance_for(scraper_id)
+    content_kind, default_relevance, tlp, pap = _relevance_for(scraper_id)
 
     try:
         with sync_session() as session:
@@ -255,6 +256,8 @@ def enrich_article(
                 alert=alert if alert is not None else not replay,
                 content_kind=content_kind,
                 default_relevance=default_relevance,
+                tlp=tlp,
+                pap=pap,
             )
     except json.JSONDecodeError as e:
         raise self.retry(

@@ -20,12 +20,12 @@ import structlog
 from cti_api.services import recap as recap_service
 from cti_core.db.engine import get_async_engine
 from cti_core.db.models.cve import CveTracker
-from cti_core.db.models.ioc import IOC
+from cti_core.db.models.indicator import Indicator
 from cti_core.db.models.threat_reference import ThreatActorGroup
 from cti_core.db.models.tweet import Tweet
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.auth import AsyncClientRepo
-from cti_core.db.repositories.ioc import AsyncIOCRepo
+from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from cti_core.db.repositories.recap import AsyncRecapRepo
 from cti_core.db.repositories.ta import AsyncTARepo
 from sqlalchemy import text
@@ -60,7 +60,7 @@ async def test_collect_articles_sorted_by_reliability(async_db_session: AsyncSes
 
 async def test_collect_iocs_and_cves_and_new_tas(async_db_session: AsyncSession) -> None:
     await _ensure_clients(async_db_session)
-    await AsyncIOCRepo(async_db_session).upsert(
+    await AsyncIndicatorRepo(async_db_session).upsert(
         type="ip", value="203.0.113.5", source_url="https://x.com/ioc", source_name="s"
     )
     async_db_session.add(
@@ -396,7 +396,7 @@ async def _seed_busy_week(session: AsyncSession) -> None:
         )
     session.add(CveTracker(cve_id="CVE-2026-0099", client_id="default", published=MONDAY_AFTER))
     for ioc_type, value in [("ip", "203.0.113.1"), ("ip", "203.0.113.2"), ("domain", "a.example")]:
-        session.add(IOC(type=ioc_type, value=value, first_seen_at=_on(FRIDAY)))
+        session.add(Indicator(type=ioc_type, value=value, first_seen_at=_on(FRIDAY)))
     for name in ("Apt41", "Lazarus"):
         session.add(ThreatActorGroup(name=name, created_at=_on(WEEK_END)))
     await session.flush()
@@ -513,7 +513,7 @@ async def test_a_week_without_articles_tweets_or_cves_makes_no_llm_call_and_stor
     _today(monkeypatch, MONDAY_AFTER)
     await _ensure_clients(async_db_session)
     # IOC dan threat actor baru saja bukan aktivitas yang layak dirangkum, tapi tetap terhitung.
-    async_db_session.add(IOC(type="ip", value="203.0.113.1", first_seen_at=_on(FRIDAY)))
+    async_db_session.add(Indicator(type="ip", value="203.0.113.1", first_seen_at=_on(FRIDAY)))
     async_db_session.add(ThreatActorGroup(name="Apt41", created_at=_on(FRIDAY)))
     await async_db_session.flush()
 

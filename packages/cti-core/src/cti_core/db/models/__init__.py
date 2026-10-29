@@ -37,7 +37,13 @@ from cti_core.db.models.cve import (
     CveTTP,
 )
 from cti_core.db.models.cve_mirror import CvePromotionShadow, CveRecord, CveRecordProduct
-from cti_core.db.models.ioc import IOC, IOCFeedback, IOCSource, IOCTag, IOCThreatActor
+from cti_core.db.models.indicator import (
+    Indicator,
+    IndicatorFeedback,
+    IndicatorSource,
+    IndicatorTag,
+    IndicatorThreatActor,
+)
 from cti_core.db.models.ioc_reference import IocAllowlistEntry, ThreatFeedEntry
 from cti_core.db.models.llm_call import LlmCall
 from cti_core.db.models.malware_trend import MalwareTrend
@@ -65,7 +71,6 @@ from cti_core.db.models.threat_reference import MonitoredPerson, ThreatActorGrou
 from cti_core.db.models.tweet import MonitoredAccount, Tweet
 
 __all__ = [
-    "IOC",
     "Article",
     "ArticleCountry",
     "ArticleCve",
@@ -102,10 +107,11 @@ __all__ = [
     "CveTicket",
     "CveTracker",
     "DailyRecap",
-    "IOCFeedback",
-    "IOCSource",
-    "IOCTag",
-    "IOCThreatActor",
+    "Indicator",
+    "IndicatorFeedback",
+    "IndicatorSource",
+    "IndicatorTag",
+    "IndicatorThreatActor",
     "IocAllowlistEntry",
     "JobState",
     "LlmCall",

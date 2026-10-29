@@ -20,6 +20,9 @@ def _keep_logging_config(monkeypatch: pytest.MonkeyPatch) -> None:
     test lain (mis. `tests/unit/test_newsletter_summary.py`) tidak menangkap apa pun saat seluruh
     `tests/` dijalankan sekaligus seperti di CI. Konfigurasi logging bukan yang diuji di sini."""
     monkeypatch.setattr("cti_api.main.configure_logging", lambda **_: None)
+    # Test tidak boleh menerbitkan pesan ke broker lokal developer; test yang memeriksa enqueue
+    # reconcile menimpa stub ini sendiri.
+    monkeypatch.setattr("cti_api.main.send_reconcile_validity", lambda: None)
 
 
 @pytest.fixture

@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from playwright.sync_api import Page
 
 import structlog
+from cti_core.indicator.marking import Pap, Tlp
 
 from cti_scraper.http import DEFAULT_USER_AGENT, ScraperHttpClient
 from cti_scraper.items import Item
@@ -153,6 +154,14 @@ class ScraperMeta:
     'always' = sumber terstruktur yang SELALU relevan: classify dan ekstraksi TTP dilewati
     (lihat spec P2 2.2). Hanya boleh dipasang bersama content_kind advisory/kev/exploit
     (dijaga contract test)."""
+
+    tlp: Tlp = "clear"
+    """Marking TLP bawaan sumber; indikator dari sumber ini diwarisi marking-nya (hanya naik ke
+    yang lebih ketat, tidak pernah turun). Hari ini semua sumber publik (`clear`); feed
+    berbayar/partner memasang `tlp="amber"` di berkasnya (spec P7a 3.4)."""
+
+    pap: Pap = "clear"
+    """Marking PAP bawaan sumber, aturan sama seperti `tlp`."""
 
     legacy_label: str | None = None
     """Label `push_job` lama, mis. "NEW ARTICLE FROM GBHACKER" -- kompat

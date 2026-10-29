@@ -29,7 +29,7 @@ import structlog
 from cti_core.db.models.article import Article
 from cti_core.db.repositories.article import AsyncArticleRepo, all_country_codes
 from cti_core.db.repositories.article_cve import AsyncArticleCveRepo
-from cti_core.db.repositories.ioc import AsyncIOCRepo
+from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from cti_core.db.repositories.pir import AsyncPIRRepo
 from cti_core.db.repositories.source_reliability import AsyncSourceReliabilityRepo
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -86,7 +86,7 @@ async def get_recent_campaigns(
     raw = _article_to_dict(articles, ratings)
 
     article_ids = [a["id"] for a in raw]
-    ioc_rows = await AsyncIOCRepo(session).list_by_article_ids(article_ids)
+    ioc_rows = await AsyncIndicatorRepo(session).list_by_article_ids(article_ids)
     ioc_map = _build_ioc_map(ioc_rows, set(article_ids))
 
     cve_map = await AsyncArticleCveRepo(session).cve_ids_by_article(article_ids)

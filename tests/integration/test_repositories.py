@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 from cti_core.db.repositories.article import ArticleRepo, AsyncArticleRepo
-from cti_core.db.repositories.ioc import IOCRepo
+from cti_core.db.repositories.indicator import IndicatorRepo
 from cti_core.db.repositories.scraper import ScraperRunRepo
 from cti_core.urlkit import url_hash
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -56,7 +56,7 @@ def test_article_upsert_rejects_unknown_field(db_session: Session) -> None:
 
 
 def test_ioc_upsert_accumulates_sources_and_seen_count(db_session: Session) -> None:
-    repo = IOCRepo(db_session)
+    repo = IndicatorRepo(db_session)
 
     ioc = repo.upsert(
         type="domain", value="evil.example", source_url="https://a.com/1", source_name="A"
@@ -73,7 +73,7 @@ def test_ioc_upsert_accumulates_sources_and_seen_count(db_session: Session) -> N
 
 
 def test_ioc_feedback_updates_tp_fp_counts(db_session: Session) -> None:
-    repo = IOCRepo(db_session)
+    repo = IndicatorRepo(db_session)
     ioc = repo.upsert(type="ip", value="1.2.3.4", source_url="https://a.com", source_name="A")
 
     repo.add_feedback(ioc, verdict="tp", submitted_by="analyst1")
