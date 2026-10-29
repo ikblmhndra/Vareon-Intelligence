@@ -3,7 +3,8 @@ Postgres REAL.
 
 Di dalam satu transaksi test `now()` konstan, jadi tiap test bump lebih dulu memundurkan
 `feed_changed_at` ke 2020-01-01 lewat UPDATE polos (tak ada kolom terpantau yang berubah, jadi
-trigger membiarkan nilai yang di-assign), baru mengubah field dan menegaskan `= now()`."""
+trigger membiarkan nilai yang di-assign), baru mengubah field dan menegaskan `>= now()` (trigger
+memakai `clock_timestamp()`, yang tak pernah lebih awal dari awal transaksi)."""
 
 from __future__ import annotations
 
@@ -66,7 +67,7 @@ def _age(session: Session, ind_id: int) -> None:
 
 def _bumped(session: Session, ind_id: int) -> bool:
     return session.execute(
-        text("SELECT feed_changed_at = now() FROM indicators WHERE id = :i"), {"i": ind_id}
+        text("SELECT feed_changed_at >= now() FROM indicators WHERE id = :i"), {"i": ind_id}
     ).scalar_one()
 
 
@@ -269,3 +270,21 @@ def test_upsert_fills_null_stix_id_on_existing(db_session: Session) -> None:
     )
     assert ind.id == ind_id
     assert ind.stix_id == indicator_uuid("domain", "legacy.example")
+
+
+def test_feed_clock_is_statement_time_not_transaction_start(db_session: Session) -> None:
+    """Transaksi panjang (enrich + LLM): cap harus waktu tulis, bukan awal transaksi."""
+    t0 = db_session.execute(text("SELECT now()")).scalar_one()
+    db_session.execute(text("SELECT pg_sleep(1.1)"))
+    inserted = _insert(db_session, "late-insert.example")
+    updated = _insert(db_session, "late-update.example")
+    _age(db_session, updated)
+    db_session.execute(text("UPDATE indicators SET seen_count = 9 WHERE id = :i"), {"i": updated})
+    late = db_session.execute(
+        text(
+            "SELECT count(*) FROM indicators WHERE id IN (:a, :b)"
+            " AND feed_changed_at > :t0 + interval '1 second'"
+        ),
+        {"a": inserted, "b": updated, "t0": t0},
+    ).scalar_one()
+    assert late == 2

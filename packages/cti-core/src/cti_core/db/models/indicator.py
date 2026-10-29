@@ -92,12 +92,14 @@ class Indicator(TimestampMixin, Base):
     """PAP: clear | green | amber | red."""
 
     feed_changed_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True), nullable=False, server_default=func.clock_timestamp()
     )
     """Jam feed mesin (REST/TAXII). Dijaga TRIGGER Postgres `indicators_feed_bump` dan
     `indicator_tags_feed_bump` yang dibuat migrasi `c4f1a8d27b93_machine_api` (autogenerate tidak
     membandingkan trigger): naik saat type/value/validitas/revoked/suppressed/tlp/pap/seen_count/
-    last_seen_at atau tag berubah. Jangan di-assign dari kode aplikasi."""
+    last_seen_at atau tag berubah. Jangan di-assign dari kode aplikasi. Memakai `clock_timestamp()`
+    (waktu statement tulis), bukan `now()` (awal transaksi) yang bisa berumur menit pada transaksi
+    enrich yang panjang."""
     stix_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), unique=True)
     """`cti_core.indicator.stix_id.indicator_uuid(type, value)`; NULL sementara untuk baris yang
     masuk dari kode lama, diisi `reconcile_validity`."""

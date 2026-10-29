@@ -11,6 +11,11 @@ identik dengan `cti_core.indicator.stix_id`; baris yang masuk dari kode lama dii
 `reconcile_validity`. View `iocs` (`SELECT *` dibekukan saat dibuat) tidak ikut membawa kolom baru,
 jadi INSERT lewat view memakai default tabel dasar.
 
+Jam memakai `clock_timestamp()` (waktu eksekusi statement), BUKAN `now()` (awal transaksi):
+pipeline enrich menahan transaksi terbuka sepanjang panggilan LLM, jadi cap `now()` bisa berumur
+menit saat commit dan klien inkremental yang sudah melewati waktu itu melewatkan barisnya. Dengan
+`clock_timestamp()` settle lag cukup menutup jarak tulis -> commit (persist langkah terakhir).
+
 Revision ID: c4f1a8d27b93
 Revises: a9e4c7b1d3f6
 Create Date: 2026-10-29 14:00:00.000000
@@ -68,7 +73,7 @@ def upgrade() -> None:
         sa.Column(
             "feed_changed_at",
             sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
+            server_default=sa.text("clock_timestamp()"),
             nullable=False,
         ),
     )
@@ -110,7 +115,7 @@ def upgrade() -> None:
                OR NEW.seen_count IS DISTINCT FROM OLD.seen_count
                OR NEW.last_seen_at IS DISTINCT FROM OLD.last_seen_at
             THEN
-                NEW.feed_changed_at = now();
+                NEW.feed_changed_at = clock_timestamp();
             END IF;
             RETURN NEW;
         END $$
@@ -124,7 +129,7 @@ def upgrade() -> None:
         """
         CREATE FUNCTION indicator_tags_feed_bump() RETURNS trigger LANGUAGE plpgsql AS $$
         BEGIN
-            UPDATE indicators SET feed_changed_at = now()
+            UPDATE indicators SET feed_changed_at = clock_timestamp()
             WHERE id = COALESCE(NEW.indicator_id, OLD.indicator_id);
             RETURN NULL;
         END $$
