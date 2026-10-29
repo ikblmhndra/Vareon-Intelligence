@@ -13,7 +13,7 @@ from typing import Any
 
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.attack import AsyncAttackQueryRepo
-from cti_core.db.repositories.ioc import AsyncIOCRepo
+from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from cti_core.db.repositories.ta import AsyncTARepo
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 async def get_ioc_ta_links(
     session: AsyncSession, ioc_type: str, value: str
 ) -> dict[str, Any] | None:
-    ioc = await AsyncIOCRepo(session).get(type=ioc_type, value=value)
+    ioc = await AsyncIndicatorRepo(session).get(type=ioc_type, value=value)
     if ioc is None:
         return None
 

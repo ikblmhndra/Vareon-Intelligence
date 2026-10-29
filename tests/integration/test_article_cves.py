@@ -9,11 +9,11 @@ from types import ModuleType
 import pytest
 from cti_api.services import campaign as campaign_service
 from cti_core.db.models.article_cve import ArticleCve
-from cti_core.db.models.ioc import IOC
+from cti_core.db.models.indicator import Indicator, IndicatorSource
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.article_cve import AsyncArticleCveRepo
 from cti_core.db.repositories.auth import AsyncClientRepo
-from cti_core.db.repositories.ioc import AsyncIOCRepo
+from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from cti_enrich.routing import RoutingResult
 from cti_enrich.stages.classify import ClassifyResult
 from cti_enrich.stages.persist import persist
@@ -49,7 +49,7 @@ def test_persist_writes_article_cves_not_iocs(db_session: Session) -> None:
 
     rows = db_session.execute(select(ArticleCve)).scalars().all()
     assert [(r.cve_id, r.in_title) for r in rows] == [("CVE-2026-1234", True)]
-    assert db_session.execute(select(IOC).where(IOC.type == "cve")).first() is None
+    assert db_session.execute(select(Indicator).where(Indicator.type == "cve")).first() is None
 
 
 @pytest.mark.asyncio
@@ -101,15 +101,14 @@ async def test_migration_moves_cve_iocs(async_db_session: AsyncSession) -> None:
         url="https://example.com/m1", title="Bug cve-2026-5555", source="s"
     )
     second = await articles.upsert(url="https://example.com/m2", title="Other", source="s")
-    iocs = AsyncIOCRepo(async_db_session)
+    iocs = AsyncIndicatorRepo(async_db_session)
+    # Baris legacy bertipe `cve` dibuat langsung: `upsert` menolak tipe tanpa TTL (P7a), dan
+    # baris seperti ini hanya ada dari sebelum migrasi.
+    legacy = Indicator(type="cve", value="CVE-2026-5555")
     for article in (first, second, first):  # tautan kedua ke artikel pertama = duplikat
-        await iocs.upsert(
-            type="cve",
-            value="CVE-2026-5555",
-            source_url="u",
-            source_name="s",
-            article_id=article.id,
-        )
+        legacy.sources.append(IndicatorSource(url="u", source_name="s", article_id=article.id))
+    async_db_session.add(legacy)
+    await async_db_session.flush()
     await iocs.upsert(type="ip", value="203.0.113.9", source_url="u", source_name="s")
 
     await async_db_session.execute(text(migration.COPY_CVE_SQL))
@@ -120,5 +119,5 @@ async def test_migration_moves_cve_iocs(async_db_session: AsyncSession) -> None:
         (first.id, "CVE-2026-5555", True),
         (second.id, "CVE-2026-5555", False),
     }
-    remaining = (await async_db_session.execute(select(IOC.type, IOC.value))).all()
+    remaining = (await async_db_session.execute(select(Indicator.type, Indicator.value))).all()
     assert remaining == [("ip", "203.0.113.9")]

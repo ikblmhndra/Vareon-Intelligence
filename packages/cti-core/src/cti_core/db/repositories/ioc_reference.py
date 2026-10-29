@@ -22,7 +22,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from cti_core.db.models.ioc import IOC
+from cti_core.db.models.indicator import Indicator
 from cti_core.db.models.ioc_reference import IocAllowlistEntry, ThreatFeedEntry
 from cti_core.ioc.allowlist import allowlist_reason
 
@@ -94,8 +94,8 @@ class AsyncIocAllowlistRepo:
         if entry is None:
             return False
         await self.session.execute(
-            update(IOC)
-            .where(IOC.suppression_reason == allowlist_reason(entry.type, entry.value))
+            update(Indicator)
+            .where(Indicator.suppression_reason == allowlist_reason(entry.type, entry.value))
             .values(auto_suppressed=False, suppression_reason=None)
         )
         await self.session.delete(entry)

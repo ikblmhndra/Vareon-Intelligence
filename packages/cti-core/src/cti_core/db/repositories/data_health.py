@@ -16,7 +16,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_core.db.models.article import Article, RejectedArticle
-from cti_core.db.models.ioc import IOC
+from cti_core.db.models.indicator import Indicator
 from cti_core.db.models.tweet import Tweet
 from cti_core.db.repositories.article import AUTO_REPLAY_KINDS
 from cti_core.enrich_replay import MAX_ATTEMPTS
@@ -25,7 +25,7 @@ from cti_core.enrich_replay import MAX_ATTEMPTS
 # karena `jsonb_array_elements` di FROM; tanpa operator `?` (bentrok dengan bind param `text()`).
 _ENRICHED_IOC = text(
     "EXISTS (SELECT 1 FROM jsonb_array_elements("
-    "COALESCE(iocs.enrichment -> 'providers', '[]'::jsonb)) AS card "
+    "COALESCE(indicators.enrichment -> 'providers', '[]'::jsonb)) AS card "
     "WHERE card -> 'raw' -> 'skipped' IS NULL)"
 )
 
@@ -99,12 +99,12 @@ class AsyncDataHealthRepo:
         return (await self.session.execute(select(func.max(Tweet.fetched_at)))).scalar_one()
 
     async def newest_ioc_at(self) -> datetime.datetime | None:
-        return (await self.session.execute(select(func.max(IOC.last_seen_at)))).scalar_one()
+        return (await self.session.execute(select(func.max(Indicator.last_seen_at)))).scalar_one()
 
     async def ioc_coverage_by_type(self) -> list[IocCoverage]:
         stmt = (
-            select(IOC.type, func.count(), func.count().filter(_ENRICHED_IOC))
-            .group_by(IOC.type)
+            select(Indicator.type, func.count(), func.count().filter(_ENRICHED_IOC))
+            .group_by(Indicator.type)
             .order_by(func.count().desc())
         )
         rows = (await self.session.execute(stmt)).all()

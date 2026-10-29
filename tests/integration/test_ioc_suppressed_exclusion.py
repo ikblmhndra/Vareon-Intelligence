@@ -7,10 +7,10 @@ import datetime
 from collections.abc import Callable
 
 import pytest
-from cti_core.db.models.ioc import IOC
+from cti_core.db.models.indicator import Indicator
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.dashboard import AsyncDashboardRepo
-from cti_core.db.repositories.ioc import AsyncIOCRepo
+from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,7 +26,7 @@ async def _seed(session: AsyncSession) -> int:
         source="S",
         posted_on=datetime.date.today(),
     )
-    repo = AsyncIOCRepo(session)
+    repo = AsyncIndicatorRepo(session)
     for value, reason in (("store1.gofile.io", _REASON), ("evil-c2.net", None)):
         await repo.upsert(
             type="domain",
@@ -83,7 +83,7 @@ async def test_campaign_recap_and_fp_queue_exclude_suppressed(
     async_db_session: AsyncSession,
 ) -> None:
     article_id = await _seed(async_db_session)
-    repo = AsyncIOCRepo(async_db_session)
+    repo = AsyncIndicatorRepo(async_db_session)
 
     rows = await repo.list_by_article_ids([article_id])
     assert [r.value for r in rows] == ["evil-c2.net"]
@@ -94,7 +94,7 @@ async def test_campaign_recap_and_fp_queue_exclude_suppressed(
 
     for value in ("store1.gofile.io", "evil-c2.net"):
         ioc = await repo.get(type="domain", value=value)
-        assert isinstance(ioc, IOC)
+        assert isinstance(ioc, Indicator)
         ioc.confidence_score = 55
     await async_db_session.flush()
     dash = AsyncDashboardRepo(async_db_session)

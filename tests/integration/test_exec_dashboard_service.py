@@ -11,7 +11,7 @@ from cti_api.services import exec_dashboard as exec_dashboard_service
 from cti_api.services import risk_matrix as risk_matrix_service
 from cti_api.services import spike as spike_service
 from cti_core.db.models.cve import CveTracker
-from cti_core.db.models.ioc import IOC
+from cti_core.db.models.indicator import Indicator
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.auth import AsyncClientRepo
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -134,7 +134,7 @@ async def test_pending_fp_queue_includes_ioc_id(async_db_session: AsyncSession) 
     `POST /api/iocs/feedback` yang legacy `exec.js` masih pakai, gap #7
     docs/PROGRESS.md)."""
     await _ensure_clients(async_db_session)
-    ioc = IOC(type="ip", value="203.0.113.5", confidence_score=55)
+    ioc = Indicator(type="ip", value="203.0.113.5", confidence_score=55)
     async_db_session.add(ioc)
     await async_db_session.flush()
 
@@ -297,7 +297,9 @@ async def test_exec_dashboard_v2_reports_fp_queue_depth_and_volume_only_risk(
 ) -> None:
     await _ensure_clients(async_db_session)
     for i, score in enumerate([45, 60, 90]):  # antrean = skor 40..74 -> 2 dari 3
-        async_db_session.add(IOC(type="ip", value=f"203.0.113.{i + 10}", confidence_score=score))
+        async_db_session.add(
+            Indicator(type="ip", value=f"203.0.113.{i + 10}", confidence_score=score)
+        )
     await _seed_incident_article(
         async_db_session,
         url="https://x.com/one",

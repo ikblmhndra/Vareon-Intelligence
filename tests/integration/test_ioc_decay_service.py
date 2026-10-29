@@ -12,14 +12,14 @@ import datetime
 
 import pytest
 from cti_api.services.ioc_decay import decay_sweep
-from cti_core.db.repositories.ioc import AsyncIOCRepo
+from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from sqlalchemy.ext.asyncio import AsyncSession
 
 pytestmark = pytest.mark.asyncio
 
 
 async def test_decay_sweep_updates_never_decayed_ioc(async_db_session: AsyncSession) -> None:
-    ioc = await AsyncIOCRepo(async_db_session).upsert(
+    ioc = await AsyncIndicatorRepo(async_db_session).upsert(
         type="ip", value="203.0.113.5", source_url="https://x.example", source_name="s"
     )
     assert ioc.confidence_decayed_at is None
@@ -32,7 +32,7 @@ async def test_decay_sweep_updates_never_decayed_ioc(async_db_session: AsyncSess
 
 
 async def test_decay_sweep_skips_recently_decayed_ioc(async_db_session: AsyncSession) -> None:
-    ioc = await AsyncIOCRepo(async_db_session).upsert(
+    ioc = await AsyncIndicatorRepo(async_db_session).upsert(
         type="domain", value="fresh.example", source_url="https://x.example", source_name="s"
     )
     recent = datetime.datetime.now(datetime.UTC) - datetime.timedelta(hours=1)
@@ -47,7 +47,7 @@ async def test_decay_sweep_skips_recently_decayed_ioc(async_db_session: AsyncSes
 
 
 async def test_decay_sweep_refreshes_stale_ioc(async_db_session: AsyncSession) -> None:
-    ioc = await AsyncIOCRepo(async_db_session).upsert(
+    ioc = await AsyncIndicatorRepo(async_db_session).upsert(
         type="domain", value="stale.example", source_url="https://x.example", source_name="s"
     )
     stale = datetime.datetime.now(datetime.UTC) - datetime.timedelta(hours=48)

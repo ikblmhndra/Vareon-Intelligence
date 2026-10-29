@@ -22,13 +22,13 @@ from typing import Any
 
 from cti_core.confidence import Assessment, assess
 from cti_core.db.models.article import Article
-from cti_core.db.models.ioc import IOC
+from cti_core.db.models.indicator import Indicator
 from cti_core.db.repositories.assessment import (
     apply_assessments_async,
     facts_from_row,
     facts_stmt,
 )
-from cti_core.db.repositories.ioc import AsyncIOCRepo
+from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -109,7 +109,7 @@ _IOC_HALF_LIFE: dict[str, float] = {
 bukan diikutin (bukan bug, cuma noise dari enum IOC type yang beda)."""
 
 
-def compute_ioc_confidence(ioc: IOC, now: datetime.datetime) -> int:
+def compute_ioc_confidence(ioc: Indicator, now: datetime.datetime) -> int:
     age_days = max((now - ioc.last_seen_at).total_seconds() / 86400, 0)
 
     base = 50
@@ -153,7 +153,7 @@ def _recommended_action(label: str, ioc_type: str) -> str:
 
 
 def compute_ioc_actionability(
-    ioc: IOC, now: datetime.datetime, *, confidence_score: int
+    ioc: Indicator, now: datetime.datetime, *, confidence_score: int
 ) -> dict[str, Any]:
     """`confidence_score` diterima sebagai parameter (bukan baca
     `ioc.confidence_score`) -- port urutan `submit_feedback()` lama: skor
@@ -203,8 +203,8 @@ def compute_ioc_actionability(
 
 
 async def recompute_ioc_confidence_and_actionability(
-    session: AsyncSession, ioc: IOC, *, now: datetime.datetime | None = None
-) -> IOC:
+    session: AsyncSession, ioc: Indicator, *, now: datetime.datetime | None = None
+) -> Indicator:
     """Port bagian akhir `submit_feedback()` -- dipanggil router `iocs`
     SETELAH `AsyncIOCRepo.add_feedback()` (tp/fp_count udah ke-increment
     di objek `ioc` yang sama, jadi `compute_ioc_confidence` otomatis
@@ -212,7 +212,7 @@ async def recompute_ioc_confidence_and_actionability(
     now = now or datetime.datetime.now(datetime.UTC)
     confidence_score = compute_ioc_confidence(ioc, now)
     actionability = compute_ioc_actionability(ioc, now, confidence_score=confidence_score)
-    return await AsyncIOCRepo(session).apply_confidence_and_actionability(
+    return await AsyncIndicatorRepo(session).apply_confidence_and_actionability(
         ioc,
         confidence_score=confidence_score,
         actionability_score=actionability["actionability_score"],

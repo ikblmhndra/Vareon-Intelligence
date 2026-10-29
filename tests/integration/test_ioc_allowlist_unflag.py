@@ -7,7 +7,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 import pytest
-from cti_core.db.repositories.ioc import AsyncIOCRepo
+from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,7 +28,7 @@ async def test_removing_allowlist_entry_unflags_its_iocs(
         json={"type": "url_domain", "value": "unflag.example"},
     )
     entry_id = add.json()["id"]
-    repo = AsyncIOCRepo(api_session)
+    repo = AsyncIndicatorRepo(api_session)
     flagged = await repo.upsert(
         type="domain",
         value="cdn.unflag.example",
@@ -64,7 +64,7 @@ async def test_lookup_and_search_accept_defanged_values(
     api_session: AsyncSession,
     auth_header: Callable[..., dict[str, str]],
 ) -> None:
-    await AsyncIOCRepo(api_session).upsert(
+    await AsyncIndicatorRepo(api_session).upsert(
         type="domain", value="lookup-evil.com", source_url="https://a.example/2", source_name="A"
     )
 

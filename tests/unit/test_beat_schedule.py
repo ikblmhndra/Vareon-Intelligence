@@ -60,6 +60,7 @@ def test_one_entry_per_enabled_scraper_on_the_right_queue(monkeypatch: pytest.Mo
     for name in (
         "pir-check-p1-alerts",
         "ioc-decay-sweep",
+        "indicator-reconcile-validity",
         "ioc-enrich-pending",
         "scraper-health-digest",
     ):
@@ -342,3 +343,11 @@ def test_relevance_evaluate_runs_hourly_on_the_enrich_queue(monkeypatch) -> None
     assert entry["task"] == "relevance.evaluate"
     assert entry["options"]["queue"] == "enrich"
     assert _cron(entry)[0] == "7"
+
+
+def test_reconcile_validity_scheduled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(beat, "_scraper_configs", lambda: {})
+    entry = beat.build_beat_schedule()["indicator-reconcile-validity"]
+    assert entry["task"] == "indicator.reconcile_validity"
+    assert entry["options"] == {"queue": "maintenance"}
+    assert _cron(entry) == ("15", "4", "*")

@@ -31,7 +31,7 @@ from typing import Any
 from cti_core.config import platform_name
 from cti_core.db.models.pir import PIRRequirement
 from cti_core.db.repositories.article import AsyncArticleRepo, all_country_codes
-from cti_core.db.repositories.ioc import AsyncIOCRepo
+from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from cti_core.db.repositories.pir import AsyncPIRRepo
 from cti_core.db.repositories.ta import AsyncTAProfileRepo
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -42,6 +42,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 _IDENTITY_UUID = "b67d2b96-5e1e-4b78-9e5f-8f3a1c2d4e7a"
 
 _SPEC = "2.1"
+
+# Marking-definition TLP 2.0 resmi OASIS (cti-stix-common-objects, tlp-2.0): id dan bentuk objeknya
+# tetap, jadi ditulis apa adanya, bukan diturunkan.
+_TLP_EXTENSION_ID = "extension-definition--60a3c5c5-0d10-413e-aab3-9e08dde9e88d"
+TLP_MARKING_IDS: dict[str, str] = {
+    "clear": "marking-definition--94868c89-83c2-464b-929b-a1a8aa3c8487",
+    "green": "marking-definition--bab4a63c-aed9-4cf5-a766-dfca5abac2bb",
+    "amber": "marking-definition--55d920b0-5e8b-4f79-9ee9-91f868d9b421",
+    "amber+strict": "marking-definition--939a9414-2ddd-4d32-a0cd-375ea402b003",
+    "red": "marking-definition--e828b379-4e03-4974-9ac4-e53a884c97c1",
+}
 
 _TECHNIQUE_RE = re.compile(r"(T\d{4}(?:\.\d{3})?)\s*(.*)")
 
@@ -75,7 +86,22 @@ def _identity_object() -> dict[str, Any]:
     }
 
 
+def _marking_definition(tlp: str) -> dict[str, Any]:
+    return {
+        "type": "marking-definition",
+        "spec_version": _SPEC,
+        "id": TLP_MARKING_IDS[tlp],
+        "created": "2022-10-01T00:00:00.000Z",
+        "name": f"TLP:{tlp.upper()}",
+        "extensions": {_TLP_EXTENSION_ID: {"extension_type": "property-extension", "tlp_2_0": tlp}},
+    }
+
+
 def _make_bundle(objects: list[dict[str, Any]]) -> dict[str, Any]:
+    """Tiap marking-definition yang dirujuk `object_marking_refs` ikut disertakan sekali, supaya
+    bundle berdiri sendiri (konsumen tidak perlu mengambil objek marking dari luar)."""
+    used = {ref for o in objects for ref in o.get("object_marking_refs", [])}
+    objects = objects + [_marking_definition(t) for t, i in TLP_MARKING_IDS.items() if i in used]
     return {
         "type": "bundle",
         "id": f"bundle--{_uuid4()}",
@@ -130,9 +156,12 @@ def _build_indicator(
     tags: list[str] | None = None,
     seen_count: int | None = None,
     last_seen: str | None = None,
+    valid_until: str | None = None,
+    # Default None: bundle threat-actor tanpa marking; bundle IOC selalu mengisi TLP indikator.
+    tlp: str | None = None,
 ) -> dict[str, Any] | None:
     """Build a STIX 2.1 indicator. `first_seen`/`last_seen` kalau dikasih
-    HARUS string tanggal `YYYY-MM-DD` (lihat pemanggil)."""
+    HARUS string tanggal `YYYY-MM-DD` (lihat pemanggil); `valid_until` RFC 3339 dengan `Z`."""
     pattern = _ioc_pattern(ioc_type, value)
     if not pattern:
         return None
@@ -156,6 +185,10 @@ def _build_indicator(
         "indicator_types": [_ioc_type_to_indicator_type(ioc_type)],
     }
 
+    if valid_until:
+        obj["valid_until"] = valid_until
+    if tlp:
+        obj["object_marking_refs"] = [TLP_MARKING_IDS[tlp]]
     if tags:
         obj["labels"] = tags
     if seen_count is not None:
@@ -474,8 +507,12 @@ async def build_ioc_stix_bundle(
     objects.append(identity)
 
     # Export tidak pernah memuat IOC `auto_suppressed` (bukan indikator), apa pun parameternya.
-    iocs, _total = await AsyncIOCRepo(session).list_filtered(
-        page=1, page_size=min(limit, 1000), ioc_type=ioc_type, include_suppressed=False
+    iocs, _total = await AsyncIndicatorRepo(session).list_filtered(
+        page=1,
+        page_size=min(limit, 1000),
+        ioc_type=ioc_type,
+        include_suppressed=False,
+        include_revoked=False,
     )
 
     for ioc in iocs:
@@ -487,6 +524,13 @@ async def build_ioc_stix_bundle(
             tags=[t.tag for t in ioc.tags] or None,
             seen_count=ioc.seen_count,
             last_seen=ioc.last_seen_at.date().isoformat(),
+            # Hash tidak kedaluwarsa (`valid_until` NULL): kuncinya sengaja tidak ditulis.
+            valid_until=(
+                ioc.valid_until.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+                if ioc.valid_until
+                else None
+            ),
+            tlp=ioc.tlp,
         )
         if ind_obj:
             objects.append(ind_obj)

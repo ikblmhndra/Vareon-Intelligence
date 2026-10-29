@@ -14,7 +14,7 @@ from cti_core.db.models.article import Article, ArticleThreatActor, ArticleTTP
 from cti_core.db.models.article_cve import ArticleCve
 from cti_core.db.models.auth import Client
 from cti_core.db.models.cve import CveFalsePositive, CveTracker
-from cti_core.db.models.ioc import IOC, IOCSource
+from cti_core.db.models.indicator import Indicator, IndicatorSource
 from cti_core.db.models.source_reliability import SourceReliabilityEntry
 from cti_core.db.models.story import Story
 from cti_core.db.repositories.assessment import (
@@ -110,22 +110,52 @@ async def test_suppressed_ioc_is_not_an_artefact(async_db_session: AsyncSession)
     s = async_db_session
     s.add(_sr("Hackernews", "C", "news"))
     art = _article("https://ex.com/ioc", "Hackernews")
-    bad = IOC(type="ip", value="10.0.0.1", auto_suppressed=True)
+    bad = Indicator(type="ip", value="10.0.0.1", auto_suppressed=True)
     s.add_all([art, bad])
     await s.flush()
-    s.add(IOCSource(ioc_id=bad.id, article_id=art.id, url=art.url, source_name="Hackernews"))
+    s.add(
+        IndicatorSource(
+            indicator_id=bad.id, article_id=art.id, url=art.url, source_name="Hackernews"
+        )
+    )
     await s.flush()
 
     assert (await apply_assessments_async(s, [art.id]))[art.id].credibility == 4
 
-    good = IOC(type="ip", value="10.0.0.2", auto_suppressed=False)
+    good = Indicator(type="ip", value="10.0.0.2", auto_suppressed=False)
     s.add(good)
     await s.flush()
-    s.add(IOCSource(ioc_id=good.id, article_id=art.id, url=art.url, source_name="Hackernews"))
+    s.add(
+        IndicatorSource(
+            indicator_id=good.id, article_id=art.id, url=art.url, source_name="Hackernews"
+        )
+    )
     await s.flush()
 
     assert (await apply_assessments_async(s, [art.id]))[art.id].credibility == 3
     assert (await _cols(s, art.id))[1] == 3
+
+
+@pytest.mark.asyncio
+async def test_revoked_ioc_is_not_an_artefact(async_db_session: AsyncSession) -> None:
+    """IOC dicabut analis (FP) bukan bukti: kredibilitas tetap 4 walau `auto_suppressed` false."""
+    s = async_db_session
+    s.add(_sr("Hackernews", "C", "news"))
+    art = _article("https://ex.com/revoked", "Hackernews")
+    bad = Indicator(
+        type="ip", value="10.0.0.3", auto_suppressed=False,
+        revoked_at=datetime.datetime.now(datetime.UTC),
+    )  # fmt: skip
+    s.add_all([art, bad])
+    await s.flush()
+    s.add(
+        IndicatorSource(
+            indicator_id=bad.id, article_id=art.id, url=art.url, source_name="Hackernews"
+        )
+    )
+    await s.flush()
+
+    assert (await apply_assessments_async(s, [art.id]))[art.id].credibility == 4
 
 
 def test_story_with_three_sources_and_cve_is_1(db_session: Session) -> None:

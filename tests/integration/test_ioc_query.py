@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import cast
 
 import pytest
-from cti_core.db.repositories.ioc import AsyncIOCRepo
+from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from cti_core.db.repositories.ioc_reference import AsyncIocAllowlistRepo
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 pytestmark = pytest.mark.asyncio
 
 
-async def _seed(repo: AsyncIOCRepo) -> dict[str, int]:
+async def _seed(repo: AsyncIndicatorRepo) -> dict[str, int]:
     ip = await repo.upsert(
         type="ip", value="45.33.32.156", source_url="https://a.com", source_name="a"
     )
@@ -29,7 +29,7 @@ async def _seed(repo: AsyncIOCRepo) -> dict[str, int]:
 
 
 async def test_list_filtered_by_type(async_db_session: AsyncSession) -> None:
-    repo = AsyncIOCRepo(async_db_session)
+    repo = AsyncIndicatorRepo(async_db_session)
     ids = await _seed(repo)
 
     iocs, total = await repo.list_filtered(ioc_type="ip")
@@ -38,7 +38,7 @@ async def test_list_filtered_by_type(async_db_session: AsyncSession) -> None:
 
 
 async def test_list_filtered_by_search(async_db_session: AsyncSession) -> None:
-    repo = AsyncIOCRepo(async_db_session)
+    repo = AsyncIndicatorRepo(async_db_session)
     ids = await _seed(repo)
 
     iocs, total = await repo.list_filtered(search="evil")
@@ -47,7 +47,7 @@ async def test_list_filtered_by_search(async_db_session: AsyncSession) -> None:
 
 
 async def test_list_filtered_ignores_unknown_type(async_db_session: AsyncSession) -> None:
-    repo = AsyncIOCRepo(async_db_session)
+    repo = AsyncIndicatorRepo(async_db_session)
     await _seed(repo)
 
     # port dari `ioc_service.get_iocs()`: tipe gak dikenal diabaikan (bukan
@@ -57,7 +57,7 @@ async def test_list_filtered_ignores_unknown_type(async_db_session: AsyncSession
 
 
 async def test_list_filtered_pagination(async_db_session: AsyncSession) -> None:
-    repo = AsyncIOCRepo(async_db_session)
+    repo = AsyncIndicatorRepo(async_db_session)
     await _seed(repo)
 
     page1, total = await repo.list_filtered(page=1, page_size=2)
@@ -68,7 +68,7 @@ async def test_list_filtered_pagination(async_db_session: AsyncSession) -> None:
 
 
 async def test_get_stats_groups_by_type(async_db_session: AsyncSession) -> None:
-    repo = AsyncIOCRepo(async_db_session)
+    repo = AsyncIndicatorRepo(async_db_session)
     await _seed(repo)
     await repo.upsert(type="ip", value="1.1.1.1", source_url="https://d.com", source_name="d")
 
@@ -82,7 +82,7 @@ async def test_get_stats_groups_by_type(async_db_session: AsyncSession) -> None:
 
 
 async def test_add_tags_is_idempotent(async_db_session: AsyncSession) -> None:
-    repo = AsyncIOCRepo(async_db_session)
+    repo = AsyncIndicatorRepo(async_db_session)
     ids = await _seed(repo)
     ioc = await repo.get_by_id(ids["ip"])
     assert ioc is not None
@@ -96,7 +96,7 @@ async def test_add_tags_is_idempotent(async_db_session: AsyncSession) -> None:
 
 
 async def test_add_threat_actors_is_idempotent(async_db_session: AsyncSession) -> None:
-    repo = AsyncIOCRepo(async_db_session)
+    repo = AsyncIndicatorRepo(async_db_session)
     ids = await _seed(repo)
     ioc = await repo.get_by_id(ids["ip"])
     assert ioc is not None
@@ -118,7 +118,7 @@ async def test_remove_threat_actor_updates_in_memory_collection_immediately(
     pakai `.remove()` dari koleksi, bukan `session.delete()` langsung,
     biar `ioc.threat_actors` di objek YANG SAMA langsung ke-update tanpa
     perlu fetch ulang."""
-    repo = AsyncIOCRepo(async_db_session)
+    repo = AsyncIndicatorRepo(async_db_session)
     ids = await _seed(repo)
     ioc = await repo.get_by_id(ids["ip"])
     assert ioc is not None
@@ -138,7 +138,7 @@ async def test_remove_threat_actor_updates_in_memory_collection_immediately(
 async def test_remove_threat_actor_returns_false_when_not_tagged(
     async_db_session: AsyncSession,
 ) -> None:
-    repo = AsyncIOCRepo(async_db_session)
+    repo = AsyncIndicatorRepo(async_db_session)
     ids = await _seed(repo)
     ioc = await repo.get_by_id(ids["ip"])
     assert ioc is not None
@@ -147,7 +147,7 @@ async def test_remove_threat_actor_returns_false_when_not_tagged(
 
 
 async def test_delete_removes_ioc(async_db_session: AsyncSession) -> None:
-    repo = AsyncIOCRepo(async_db_session)
+    repo = AsyncIndicatorRepo(async_db_session)
     ids = await _seed(repo)
 
     assert await repo.delete(ids["ip"]) is True
@@ -158,7 +158,7 @@ async def test_delete_removes_ioc(async_db_session: AsyncSession) -> None:
 async def test_bulk_delete_returns_count_of_actually_deleted(
     async_db_session: AsyncSession,
 ) -> None:
-    repo = AsyncIOCRepo(async_db_session)
+    repo = AsyncIndicatorRepo(async_db_session)
     ids = await _seed(repo)
 
     count = await repo.bulk_delete([ids["ip"], ids["domain"], 999999])

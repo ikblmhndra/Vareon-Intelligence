@@ -7,7 +7,7 @@ from __future__ import annotations
 import datetime
 
 from cti_core.db.models.article import RejectedArticle
-from cti_core.db.models.ioc import IOC
+from cti_core.db.models.indicator import Indicator
 from cti_core.db.models.llm_call import LlmCall
 from cti_core.db.models.story import Story
 from cti_core.db.repositories.article import AsyncArticleRepo
@@ -29,8 +29,10 @@ def _rejected(n: int, kind: str | None, age: datetime.timedelta) -> RejectedArti
     )
 
 
-def _ioc(value: str, type_: str, providers: list[dict[str, object]]) -> IOC:
-    return IOC(type=type_, value=value, enrichment={"providers": providers} if providers else {})
+def _ioc(value: str, type_: str, providers: list[dict[str, object]]) -> Indicator:
+    return Indicator(
+        type=type_, value=value, enrichment={"providers": providers} if providers else {}
+    )
 
 
 async def test_data_health_reports_failures_queue_freshness_and_ioc_coverage(

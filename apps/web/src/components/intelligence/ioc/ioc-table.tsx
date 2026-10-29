@@ -2,6 +2,7 @@
 
 import { ThumbsDownIcon, ThumbsUpIcon } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { api } from "@/lib/api/client";
@@ -14,9 +15,10 @@ import { SimplePager } from "@/components/pager";
 import { Checkbox } from "@/components/ui/checkbox";
 import { defang } from "@/lib/intelligence/defang";
 import { cn } from "@/lib/utils";
+import { useCan } from "@/lib/auth/permissions";
 import { iocTypeStyle } from "@/lib/intelligence/ioc-style";
-import { IocActionabilityChip, IocConfidenceChip, IocTypeBadge } from "@/components/intelligence/ioc/ioc-badges";
-import type { IocListResponse, IocStats } from "@/lib/api/loose-types";
+import { IocActionabilityChip, IocConfidenceChip, IocStateBadge, IocTlpChip, IocTypeBadge } from "@/components/intelligence/ioc/ioc-badges";
+import type { IocListResponse, IocStats, IocSummary } from "@/lib/api/loose-types";
 import type { IocTarget } from "@/components/intelligence/ioc/ioc-detail-dialog";
 
 const ALL = "__all__";
@@ -30,16 +32,19 @@ const IOC_TYPES = Object.keys({
   md5: 0,
 });
 const ACTIONABILITY_OPTIONS = ["block_now", "investigate", "monitor", "archive"];
+const STATE_OPTIONS = ["active", "expired", "revoked", "allowlisted"];
 const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
 
 /** Port `iocmgmtLoad()`+`_renderIocStats()`+`iocmgmtFeedback()`
  * (`ioc_mgmt.js:48-156,623-663`) -- tabel IOC + stat bar per-tipe
  * (klik buat filter) + feedback TP/FP inline. */
 export function IocTable({ onSelect }: { onSelect: (target: IocTarget) => void }) {
+  const can = useCan();
   const queryClient = useQueryClient();
   const [type, setType] = useState("");
   const [search, setSearch] = useState("");
   const [actionability, setActionability] = useState("");
+  const [state, setState] = useState("");
   const [sortBy, setSortBy] = useState("");
   const [pageSize, setPageSize] = useState(50);
   const [page, setPage] = useState(1);
@@ -56,7 +61,7 @@ export function IocTable({ onSelect }: { onSelect: (target: IocTarget) => void }
   });
 
   const listQuery = useQuery({
-    queryKey: ["intelligence", "ioc-list", type, search, actionability, sortBy, pageSize, page, includeSuppressed],
+    queryKey: ["intelligence", "ioc-list", type, search, actionability, state, sortBy, pageSize, page, includeSuppressed],
     queryFn: async () => {
       const { data, error } = await api.GET("/api/iocs", {
         params: {
@@ -65,6 +70,7 @@ export function IocTable({ onSelect }: { onSelect: (target: IocTarget) => void }
             search: search || undefined,
             sort_by: sortBy || undefined,
             actionability: actionability || undefined,
+            state: (state || undefined) as IocSummary["state"] | undefined,
             include_suppressed: includeSuppressed || undefined,
             page,
             page_size: pageSize,
@@ -85,6 +91,10 @@ export function IocTable({ onSelect }: { onSelect: (target: IocTarget) => void }
       });
       if (error) throw new Error(JSON.stringify(error));
       await queryClient.invalidateQueries({ queryKey: ["intelligence", "ioc-list"] });
+      void queryClient.invalidateQueries({ queryKey: ["intelligence", "ioc-stats"] });
+      void queryClient.invalidateQueries({ queryKey: ["intelligence", "ioc-detail"] });
+    } catch (e) {
+      toast.error(`Feedback failed: ${(e as Error).message}`);
     } finally {
       setFeedbackPending(null);
     }
@@ -186,6 +196,31 @@ export function IocTable({ onSelect }: { onSelect: (target: IocTarget) => void }
           </Select>
         </div>
         <div className="flex flex-col gap-1">
+          <Label className="text-sm font-medium text-muted-foreground">State</Label>
+          <Select
+            items={{ [ALL]: "All", ...Object.fromEntries(STATE_OPTIONS.map((x) => [x, x])) }}
+            value={state || ALL}
+            onValueChange={(v) => {
+              setState(v === ALL ? "" : (v ?? ""));
+              setPage(1);
+            }}
+          >
+            <SelectTrigger size="sm" className="w-32 font-mono text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL} className="font-mono text-xs">
+                All
+              </SelectItem>
+              {STATE_OPTIONS.map((x) => (
+                <SelectItem key={x} value={x} className="font-mono text-xs">
+                  {x}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex flex-col gap-1">
           <Label className="text-sm font-medium text-muted-foreground">Sort</Label>
           <Select
             items={{ last_seen: "Last Seen", confidence: "Confidence" }}
@@ -253,6 +288,8 @@ export function IocTable({ onSelect }: { onSelect: (target: IocTarget) => void }
               <TableRow>
                 <TableHead>Type</TableHead>
                 <TableHead>Value</TableHead>
+                <TableHead>State</TableHead>
+                <TableHead>TLP</TableHead>
                 <TableHead className="text-center">Confidence</TableHead>
                 <TableHead className="text-center">Action</TableHead>
                 <TableHead className="text-center">Seen</TableHead>
@@ -264,13 +301,13 @@ export function IocTable({ onSelect }: { onSelect: (target: IocTarget) => void }
             <TableBody>
               {listQuery.data.iocs.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-6 text-center text-xs text-muted-foreground">
+                  <TableCell colSpan={10} className="py-6 text-center text-xs text-muted-foreground">
                     No IOCs found
                   </TableCell>
                 </TableRow>
               )}
               {listQuery.data.iocs.map((ioc) => (
-                <TableRow key={ioc.id} className="cursor-pointer" onClick={() => onSelect({ type: ioc.type, value: ioc.value })}>
+                <TableRow key={ioc.id} className={cn("cursor-pointer", ioc.state === "revoked" && "opacity-50")} onClick={() => onSelect({ type: ioc.type, value: ioc.value })}>
                   <TableCell>
                     <IocTypeBadge type={ioc.type} />
                   </TableCell>
@@ -286,6 +323,12 @@ export function IocTable({ onSelect }: { onSelect: (target: IocTarget) => void }
                       )}
                     </div>
                   </TableCell>
+                  <TableCell>
+                    <IocStateBadge state={ioc.state} />
+                  </TableCell>
+                  <TableCell>
+                    <IocTlpChip tlp={ioc.tlp} />
+                  </TableCell>
                   <TableCell className="text-center">
                     <IocConfidenceChip score={ioc.confidence_score} />
                   </TableCell>
@@ -296,24 +339,30 @@ export function IocTable({ onSelect }: { onSelect: (target: IocTarget) => void }
                   <TableCell className="font-mono text-xs text-muted-foreground">{ioc.first_seen || "—"}</TableCell>
                   <TableCell className="font-mono text-xs text-muted-foreground">{ioc.last_seen || "—"}</TableCell>
                   <TableCell className="text-center whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                    <button
-                      type="button"
-                      disabled={feedbackPending === ioc.id}
-                      onClick={() => void submitFeedback(ioc.id, "tp")}
-                      title="True Positive"
-                      className={cn("rounded-full border border-success/35 bg-success/10 px-1.5 py-0.5 text-xs text-success-text", feedbackPending === ioc.id && "opacity-50")}
-                    >
-                      <ThumbsUpIcon aria-hidden />
-                    </button>
-                    <button
-                      type="button"
-                      disabled={feedbackPending === ioc.id}
-                      onClick={() => void submitFeedback(ioc.id, "fp")}
-                      title="False Positive"
-                      className={cn("ml-1 rounded-full border border-destructive/35 bg-destructive/10 px-1.5 py-0.5 text-xs text-destructive-text", feedbackPending === ioc.id && "opacity-50")}
-                    >
-                      <ThumbsDownIcon aria-hidden />
-                    </button>
+                    {can("manage_ioc") && (
+                      <>
+                      <button
+                        type="button"
+                        disabled={feedbackPending === ioc.id}
+                        onClick={() => void submitFeedback(ioc.id, "tp")}
+                        title="TP / restore"
+                        aria-label="TP / restore"
+                        className={cn("rounded-full border border-success/35 bg-success/10 px-1.5 py-0.5 text-xs text-success-text", feedbackPending === ioc.id && "opacity-50")}
+                      >
+                        <ThumbsUpIcon aria-hidden />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={feedbackPending === ioc.id}
+                        onClick={() => void submitFeedback(ioc.id, "fp")}
+                        title="FP: remove from feeds"
+                        aria-label="FP: remove from feeds"
+                        className={cn("ml-1 rounded-full border border-destructive/35 bg-destructive/10 px-1.5 py-0.5 text-xs text-destructive-text", feedbackPending === ioc.id && "opacity-50")}
+                      >
+                        <ThumbsDownIcon aria-hidden />
+                      </button>
+                      </>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from cti_core.confidence import DEFAULT_GRADES, SourceStats
 from cti_core.db.models.article import Article, ArticleTTP, RejectedArticle
 from cti_core.db.models.article_cve import ArticleCve
-from cti_core.db.models.ioc import IOC, IOCFeedback, IOCSource
+from cti_core.db.models.indicator import Indicator, IndicatorFeedback, IndicatorSource
 from cti_core.db.models.source_reliability import SourceReliabilityEntry
 from cti_core.db.models.story import Story
 
@@ -271,18 +271,20 @@ class AsyncSourceReliabilityRepo:
         malam). Penolakan karena enrichment GAGAL (`failure_kind` terisi atau `reason` berawalan
         `[enrichment_failed]`) tidak dihitung: itu bukan konten di luar topik. Artefak = definisi
         tangga kredibilitas (`repositories.assessment.facts_stmt`): CVE, IOC yang tidak
-        di-suppress, atau TTP `explicit`. Story dihitung dari artikel dalam jendela: story dengan
-        `source_count > 1`, dan berapa yang `lead_article_id`-nya artikel sumber ini. Verdict IOC
+        di-suppress atau dicabut, atau TTP `explicit`. Story dihitung dari artikel dalam jendela:
+        story dengan `source_count > 1`, dan berapa yang `lead_article_id`-nya artikel sumber ini.
+        Verdict IOC
         tanpa jendela (feedback jarang) untuk IOC yang PERTAMA dilaporkan sumber ini (baris
-        `ioc_sources` paling awal per IOC), supaya FP tidak dibebankan ke sumber yang cuma ikut
-        menyebut. Semua nama sumber dicocokkan case-insensitive; agregat per tabel satu query."""
+        `indicator_sources` paling awal per IOC), supaya FP tidak dibebankan ke sumber yang cuma
+        ikut menyebut. Semua nama sumber dicocokkan case-insensitive; agregat per tabel satu
+        query."""
         start = datetime.datetime.combine(since, datetime.time.min, tzinfo=datetime.UTC)
 
         artefact = or_(
             select(ArticleCve.article_id).where(ArticleCve.article_id == Article.id).exists(),
-            select(IOCSource.id)
-            .join(IOC, IOC.id == IOCSource.ioc_id)
-            .where(IOCSource.article_id == Article.id, IOC.auto_suppressed.is_(False))
+            select(IndicatorSource.id)
+            .join(Indicator, Indicator.id == IndicatorSource.indicator_id)
+            .where(IndicatorSource.article_id == Article.id, Indicator.usable)
             .exists(),
             select(ArticleTTP.id)
             .where(ArticleTTP.article_id == Article.id, ArticleTTP.source == "explicit")
@@ -320,18 +322,25 @@ class AsyncSourceReliabilityRepo:
         rejected = {k: int(n) for k, n in rej_rows.all()}
 
         first_reporter = (
-            select(IOCSource.ioc_id, func.lower(IOCSource.source_name).label("source"))
-            .distinct(IOCSource.ioc_id)
-            .order_by(IOCSource.ioc_id, IOCSource.first_seen_at, IOCSource.id)
+            select(
+                IndicatorSource.indicator_id,
+                func.lower(IndicatorSource.source_name).label("source"),
+            )
+            .distinct(IndicatorSource.indicator_id)
+            .order_by(
+                IndicatorSource.indicator_id, IndicatorSource.first_seen_at, IndicatorSource.id
+            )
             .subquery()
         )
         ioc_rows = await self.session.execute(
             select(
                 first_reporter.c.source,
-                func.count(IOCFeedback.id),
-                func.count(IOCFeedback.id).filter(IOCFeedback.verdict == "fp"),
+                func.count(IndicatorFeedback.id),
+                func.count(IndicatorFeedback.id).filter(IndicatorFeedback.verdict == "fp"),
             )
-            .join(IOCFeedback, IOCFeedback.ioc_id == first_reporter.c.ioc_id)
+            .join(
+                IndicatorFeedback, IndicatorFeedback.indicator_id == first_reporter.c.indicator_id
+            )
             .group_by(first_reporter.c.source)
         )
         iocs = {k: (int(v), int(fp)) for k, v, fp in ioc_rows.all()}

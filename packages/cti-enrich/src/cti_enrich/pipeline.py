@@ -194,13 +194,17 @@ def run_pipeline(
     alert: bool = True,
     content_kind: str | None = None,
     default_relevance: str = "classify",
+    tlp: str = "clear",
+    pap: str = "clear",
 ) -> PipelineOutcome:
     """`alert=False` (replay artikel yang gagal di-enrich) menyimpan artikel tanpa mengirim
     Telegram: beritanya sudah berhari-hari, ratusan pesan sekaligus hanya menjadi noise.
 
     `default_relevance="always"` (dari `ScraperMeta`, dicari task worker; `cti_enrich` tidak boleh
     mengimpor `cti_scraper`) untuk sumber terstruktur (KEV, exploit, advisory): pasti relevan,
-    jadi panggilan LLM classify dan TTP dilewati. Penanda lewat disimpan di audit classify."""
+    jadi panggilan LLM classify dan TTP dilewati. Penanda lewat disimpan di audit classify.
+
+    `tlp`/`pap` (marking bawaan sumber, dari `ScraperMeta`) diteruskan ke `persist` untuk IOC."""
     title = normalize_title(title)
     known = _known_article(session, url)
     if known is not None:
@@ -324,6 +328,8 @@ def run_pipeline(
             tier1=tier1,
             industries=industries,
             relevance=relevance,
+            tlp=tlp,
+            pap=pap,
         )
         session.commit()  # lihat catatan di situs kedua: alert gagal != artikel batal
         if alert:
@@ -407,6 +413,8 @@ def run_pipeline(
         merged_ttps=merged_ttps,
         industries=industries,
         relevance=relevance,
+        tlp=tlp,
+        pap=pap,
     )
     # COMMIT dulu sebelum alert: `persist` + `route_alerts` satu sesi/transaksi,
     # dan `sync_session()` ROLLBACK kalau ada exception. Tanpa commit ini, alert

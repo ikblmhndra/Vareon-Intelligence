@@ -4,7 +4,7 @@ Postgres REAL (testcontainers)."""
 from __future__ import annotations
 
 import pytest
-from cti_core.db.repositories.ioc import IOCRepo
+from cti_core.db.repositories.indicator import IndicatorRepo
 from cti_enrich.routing import RoutingResult
 from cti_enrich.stages import extract_iocs as extract_iocs_stage
 from cti_enrich.stages.classify import ClassifyResult
@@ -34,7 +34,7 @@ def test_allowlisted_ioc_is_stored_flagged(
     )
     monkeypatch.setattr(extract_iocs_stage, "_allowlist_cache", None)
 
-    repo = IOCRepo(db_session)
+    repo = IndicatorRepo(db_session)
     flagged = repo.get(type="domain", value="store1.gofile.io")
     clean = repo.get(type="domain", value="evil-c2.net")
     assert flagged is not None and clean is not None

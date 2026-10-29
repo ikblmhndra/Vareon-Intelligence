@@ -1737,6 +1737,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/iocs/{ioc_id}/marking": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Set Ioc Marking
+         * @description Koreksi TLP/PAP manual oleh analis; nilai yang tidak dikirim tidak diubah.
+         */
+        patch: operations["set_ioc_marking_api_iocs__ioc_id__marking_patch"];
+        trace?: never;
+    };
     "/api/iocs/{ioc_type}/{value}": {
         parameters: {
             query?: never;
@@ -4779,6 +4799,13 @@ export interface components {
             top_actor?: string | null;
             /** Top Industry */
             top_industry?: string | null;
+        };
+        /** MarkingBody */
+        MarkingBody: {
+            /** Pap */
+            pap?: ("clear" | "green" | "amber" | "red") | null;
+            /** Tlp */
+            tlp?: ("clear" | "green" | "amber" | "amber+strict" | "red") | null;
         };
         /** MetricStat */
         MetricStat: {
@@ -10288,6 +10315,7 @@ export interface operations {
                 sort_by?: string | null;
                 actionability?: string | null;
                 include_suppressed?: boolean;
+                state?: ("active" | "expired" | "revoked" | "allowlisted") | null;
             };
             header?: {
                 authorization?: string | null;
@@ -10647,6 +10675,45 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["FeedbackBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_ioc_marking_api_iocs__ioc_id__marking_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                ioc_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarkingBody"];
             };
         };
         responses: {

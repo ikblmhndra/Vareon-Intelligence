@@ -309,6 +309,10 @@ def test_a_failing_pg_restore_is_reported(tmp_path: Path) -> None:
         pb.restore(ex, TARGET, dump_file(tmp_path), "cti_test")
 
 
+def test_key_tables_include_indicators() -> None:
+    assert "indicators" in pb.KEY_TABLES
+
+
 # --- verify -------------------------------------------------------------------
 
 

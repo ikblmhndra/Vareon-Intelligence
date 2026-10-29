@@ -12,14 +12,14 @@ from typing import Any
 
 import pytest
 from cti_core.db.models.cve import CveTracker
-from cti_core.db.models.ioc import IOC
+from cti_core.db.models.indicator import Indicator
 from cti_core.db.models.recap import DailyRecap
 from cti_core.db.models.threat_reference import ThreatActorGroup
 from cti_core.db.models.tweet import Tweet
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.auth import AsyncClientRepo
 from cti_core.db.repositories.cve import AsyncCveFalsePositiveRepo, AsyncCveTrackerRepo
-from cti_core.db.repositories.ioc import AsyncIOCRepo
+from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from cti_core.db.repositories.recap import AsyncRecapRepo
 from cti_core.db.repositories.ta import AsyncTARepo
 from cti_core.db.repositories.tweet import AsyncTweetRepo
@@ -521,16 +521,20 @@ async def test_count_first_seen_iocs_by_type_groups_in_sql_and_respects_the_rang
     d = datetime.timedelta
     async_db_session.add_all(
         [
-            IOC(type="ip", value="203.0.113.1", first_seen_at=_on(WEEK_START, 0, 0)),
-            IOC(type="ip", value="203.0.113.2", first_seen_at=_on(WEEK_END, 23, 59)),
-            IOC(type="domain", value="a.example", first_seen_at=_on(WEEK_START + d(days=2))),
-            IOC(type="domain", value="late.example", first_seen_at=_on(WEEK_END + d(days=1), 0, 0)),
-            IOC(type="sha256", value="a" * 64, first_seen_at=_on(WEEK_START - d(days=1), 23, 59)),
+            Indicator(type="ip", value="203.0.113.1", first_seen_at=_on(WEEK_START, 0, 0)),
+            Indicator(type="ip", value="203.0.113.2", first_seen_at=_on(WEEK_END, 23, 59)),
+            Indicator(type="domain", value="a.example", first_seen_at=_on(WEEK_START + d(days=2))),
+            Indicator(
+                type="domain", value="late.example", first_seen_at=_on(WEEK_END + d(days=1), 0, 0)
+            ),
+            Indicator(
+                type="sha256", value="a" * 64, first_seen_at=_on(WEEK_START - d(days=1), 23, 59)
+            ),
         ]
     )
     await async_db_session.flush()
 
-    counts = await AsyncIOCRepo(async_db_session).count_first_seen_by_type_between(
+    counts = await AsyncIndicatorRepo(async_db_session).count_first_seen_by_type_between(
         WEEK_START, WEEK_END
     )
 

@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/api/client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { useCan } from "@/lib/auth/permissions";
 import { cn } from "@/lib/utils";
 import { cvssColorClass } from "@/lib/exec/format";
 import { defang } from "@/lib/intelligence/defang";
@@ -58,6 +59,7 @@ export function ClusterList({ d }: { d: ExecDashboardV2 }) {
  * `services/exec_dashboard.py::_get_pending_fp_queue()`). */
 export function FpQueue({ d }: { d: ExecDashboardV2 }) {
   const queryClient = useQueryClient();
+  const can = useCan();
   const [voting, setVoting] = useState<number | null>(null);
 
   async function vote(iocId: number, verdict: "tp" | "fp") {
@@ -113,28 +115,32 @@ export function FpQueue({ d }: { d: ExecDashboardV2 }) {
                 <TableCell className="font-mono text-xs text-muted-foreground">{ioc.last_seen || "—"}</TableCell>
                 <TableCell className={cn("font-mono text-xs", confColor)}>{conf}%</TableCell>
                 <TableCell>
-                  <div className="flex gap-1">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-6 px-1.5 text-xs"
-                      disabled={voting === ioc.id}
-                      title="Mark as true positive"
-                      onClick={() => void vote(ioc.id, "tp")}
-                    >
-                      <ThumbsUpIcon aria-hidden />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-6 px-1.5 text-xs"
-                      disabled={voting === ioc.id}
-                      title="Mark as false positive"
-                      onClick={() => void vote(ioc.id, "fp")}
-                    >
-                      <ThumbsDownIcon aria-hidden />
-                    </Button>
-                  </div>
+                  {can("manage_ioc") && (
+                    <div className="flex gap-1">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-1.5 text-xs"
+                        disabled={voting === ioc.id}
+                        title="TP / restore"
+                        aria-label="TP / restore"
+                        onClick={() => void vote(ioc.id, "tp")}
+                      >
+                        <ThumbsUpIcon aria-hidden />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-1.5 text-xs"
+                        disabled={voting === ioc.id}
+                        title="FP: remove from feeds"
+                        aria-label="FP: remove from feeds"
+                        onClick={() => void vote(ioc.id, "fp")}
+                      >
+                        <ThumbsDownIcon aria-hidden />
+                      </Button>
+                    </div>
+                  )}
                 </TableCell>
               </TableRow>
             );

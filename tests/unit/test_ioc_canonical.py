@@ -80,7 +80,7 @@ def test_persist_stores_canonical(monkeypatch: pytest.MonkeyPatch) -> None:
     from cti_enrich.stages import persist as persist_mod
 
     ioc_repo = MagicMock()
-    monkeypatch.setattr(persist_mod, "IOCRepo", lambda session: ioc_repo)
+    monkeypatch.setattr(persist_mod, "IndicatorRepo", lambda session: ioc_repo)
     monkeypatch.setattr(persist_mod, "ArticleRepo", lambda session: MagicMock())
     monkeypatch.setattr(persist_mod, "resolve_industries", lambda x: [])
     monkeypatch.setattr(persist_mod, "_country_roles", lambda *a, **k: [])
@@ -111,7 +111,7 @@ async def test_newsletter_writer_stores_canonical(monkeypatch: pytest.MonkeyPatc
 
     repo = MagicMock()
     repo.upsert = AsyncMock()
-    monkeypatch.setattr(newsletter, "AsyncIOCRepo", lambda s: repo)
+    monkeypatch.setattr(newsletter, "AsyncIndicatorRepo", lambda s: repo)
     monkeypatch.setattr(newsletter, "AsyncCveTrackerRepo", lambda s: MagicMock())
     monkeypatch.setattr(
         newsletter,

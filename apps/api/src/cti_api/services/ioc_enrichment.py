@@ -48,7 +48,7 @@ from typing import Any
 import httpx
 import structlog
 from cti_core.config import Settings
-from cti_core.db.repositories.ioc import AsyncIOCRepo
+from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from cti_core.ioc.extractor import refang
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -171,7 +171,7 @@ async def enrich_pending(
     (`None` | `"budget"` | `"HTTP <kode>"` | `"consecutive_failures"` |
     `"consecutive_rejections"`)."""
     now = now or datetime.datetime.now(datetime.UTC)
-    repo = AsyncIOCRepo(session)
+    repo = AsyncIndicatorRepo(session)
     summary: dict[str, dict[str, Any]] = {}
 
     for spec in specs:

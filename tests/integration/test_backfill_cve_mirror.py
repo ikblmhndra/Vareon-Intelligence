@@ -92,7 +92,9 @@ def test_zip_source_and_limit(session: Session, tmp_path: Path) -> None:
     clone = make_clone(tmp_path / "src")
     archive = tmp_path / "cvelistV5-main.zip"
     with zipfile.ZipFile(archive, "w") as zf:
-        for path in clone.rglob("CVE-*.json"):
+        # Urut supaya entri pertama selalu CVE valid (0xxx), bukan file rusak 9xxx: urutan
+        # rglob tergantung filesystem, dan `limit=1` hanya membaca entri pertama.
+        for path in sorted(clone.rglob("CVE-*.json")):
             zf.writestr(
                 f"cvelistV5-main/cves/{path.relative_to(clone / 'cves')}", path.read_bytes()
             )
