@@ -11,7 +11,7 @@ memakai `source` pemanggil.
 from __future__ import annotations
 
 from sqlalchemy import Select, func, select
-from sqlalchemy.dialects.postgresql import Insert, ReturningInsert, insert
+from sqlalchemy.dialects.postgresql import Insert, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -35,7 +35,7 @@ def _by_name(type: str, norm: str) -> Select[tuple[Entity]]:
 
 def _new_entity(
     type: str, display: str, source: str, external_id: str | None, cls: str | None
-) -> Insert:
+) -> ReturningInsert[tuple[int]]:
     return (
         insert(Entity)
         .values(
