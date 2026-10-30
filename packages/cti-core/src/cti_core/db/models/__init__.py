@@ -45,6 +45,15 @@ from cti_core.db.models.cve import (
     CveTTP,
 )
 from cti_core.db.models.cve_mirror import CvePromotionShadow, CveRecord, CveRecordProduct
+from cti_core.db.models.entity import (
+    Entity,
+    EntityAlias,
+    EntityMention,
+    EntityProfile,
+    EntityWatch,
+    ReferenceSnapshot,
+    Relationship,
+)
 from cti_core.db.models.indicator import (
     Indicator,
     IndicatorFeedback,
@@ -116,6 +125,11 @@ __all__ = [
     "CveTicket",
     "CveTracker",
     "DailyRecap",
+    "Entity",
+    "EntityAlias",
+    "EntityMention",
+    "EntityProfile",
+    "EntityWatch",
     "Indicator",
     "IndicatorFeedback",
     "IndicatorSource",
@@ -139,7 +153,9 @@ __all__ = [
     "PackageVuln",
     "RFIRequest",
     "RansomwareVictim",
+    "ReferenceSnapshot",
     "RejectedArticle",
+    "Relationship",
     "RelevanceModel",
     "Role",
     "RuntimeSecret",

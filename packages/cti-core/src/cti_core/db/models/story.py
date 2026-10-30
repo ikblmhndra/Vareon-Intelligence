@@ -22,6 +22,7 @@ class Story(TimestampMixin, Base):
     __table_args__ = (
         Index("ix_stories_cve_ids", "cve_ids", postgresql_using="gin"),
         Index("ix_stories_last_seen_at", "last_seen_at"),
+        Index("ix_stories_feed_changed_at_id", "feed_changed_at", "id"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -46,6 +47,10 @@ class Story(TimestampMixin, Base):
     last_seen_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+    feed_changed_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.clock_timestamp()
+    )
+    """Jam feed mesin (P7c); trigger-nya dipasang migrasi `entity_model`."""
     article_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default=text("0")
     )
