@@ -191,6 +191,7 @@ class IndicatorThreatActor(Base):
     __tablename__ = "indicator_threat_actors"
     __table_args__ = (
         UniqueConstraint("indicator_id", "threat_actor", name="uq_indicator_threat_actor"),
+        {"info": {"compat_view": True}},
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)

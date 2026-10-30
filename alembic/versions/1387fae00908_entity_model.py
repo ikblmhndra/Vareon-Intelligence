@@ -348,15 +348,79 @@ def _backfill() -> None:
     op.execute(sql.read_text())
 
 
+# Tabel lama yang diganti view kompatibilitas (spec 3.6); urutan = urutan di compat_views.sql.
+_COMPAT = (
+    "article_threat_actors",
+    "article_malware",
+    "article_ttps",
+    "article_cves",
+    "article_countries",
+    "article_industries",
+    "indicator_threat_actors",
+    "cve_threat_actors",
+    "cve_ttps",
+    "ta_watchlist",
+    "ta_profiles",
+    "ta_whitelist",
+)
+_COMPAT_HELPERS = (
+    "entity_compat_extracted(text, text)",
+    "entity_compat_mention(bigint, bigint, bigint, bigint, text, text, text, text, jsonb)",
+    "entity_compat_country(text)",
+    "entity_compat_sector(text)",
+    "entity_compat_cve(text)",
+    "entity_compat_technique(text, text)",
+    "entity_compat_resolve(text, text)",
+    "entity_compat_method(text, text)",
+)
+_IOC_VIEW_COMMENT = "deprecated since 0.8.11: read-only compatibility view, use indicator_*"
+
+
+def _rename_compat(src: str, dst: str) -> None:
+    """Rename tabel lama <-> `_legacy_*`; sekuens id ikut tabelnya (`article_cves` tanpa id)."""
+    for t in _COMPAT:
+        op.rename_table(src + t, dst + t)
+        if t != "article_cves":
+            op.execute(f"ALTER SEQUENCE {src}{t}_id_seq RENAME TO {dst}{t}_id_seq")
+
+
+def _create_compat_views() -> None:
+    """Seksi 4: tabel lama -> `_legacy_<nama>` (disimpan sampai rilis sesudah 0.8.11 untuk audit
+    dan undo manual), lalu view bernama lama + trigger INSTEAD OF supaya kode 0.8.2/0.8.10 yang
+    di-rollback tetap jalan. View P7a `ioc_threat_actors` dipasang ulang di atas view baru."""
+    op.execute("DROP VIEW ioc_threat_actors")
+    _rename_compat("", "_legacy_")
+    sql = pathlib.Path(__file__).parent / "entity_model_sql" / "compat_views.sql"
+    op.execute(sql.read_text())
+
+
+def _drop_compat_views() -> None:
+    """Kebalikan seksi 4. Baris yang ditulis lewat view sesudah upgrade hilang (spec 3.2)."""
+    op.execute("DROP VIEW ioc_threat_actors")
+    for t in _COMPAT:
+        op.execute(f"DROP VIEW {t}")
+        op.execute(f"DROP FUNCTION {t}_compat()")
+    for fn in _COMPAT_HELPERS:
+        op.execute(f"DROP FUNCTION {fn}")
+    _rename_compat("_legacy_", "")
+    op.execute(
+        "CREATE VIEW ioc_threat_actors AS SELECT id, indicator_id AS ioc_id, threat_actor"
+        " FROM indicator_threat_actors"
+    )
+    op.execute(f"COMMENT ON VIEW ioc_threat_actors IS '{_IOC_VIEW_COMMENT}'")
+
+
 def upgrade() -> None:
     op.execute("SET LOCAL lock_timeout = '10s'")
     _create_tables()
     _create_resolve()
     _backfill()
+    _create_compat_views()
 
 
 def downgrade() -> None:
     op.execute("SET LOCAL lock_timeout = '10s'")
+    _drop_compat_views()
     op.execute("DROP FUNCTION entity_resolve_technique(text, text, text)")
     op.execute("DROP FUNCTION entity_resolve(text, text, text)")
     op.execute("DROP FUNCTION entity_resolve_lookup(text, text)")

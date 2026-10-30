@@ -156,6 +156,7 @@ class ArticleCountry(Base):
     __table_args__ = (
         UniqueConstraint("article_id", "country_code", "role", name="uq_article_country_role"),
         Index("ix_article_countries_country_role", "country_code", "role"),
+        {"info": {"compat_view": True}},
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -174,7 +175,10 @@ class ArticleCountry(Base):
 
 class ArticleIndustry(Base):
     __tablename__ = "article_industries"
-    __table_args__ = (UniqueConstraint("article_id", "industry", name="uq_article_industry"),)
+    __table_args__ = (
+        UniqueConstraint("article_id", "industry", name="uq_article_industry"),
+        {"info": {"compat_view": True}},
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     article_id: Mapped[int] = mapped_column(
@@ -193,6 +197,7 @@ class ArticleThreatActor(Base):
     __tablename__ = "article_threat_actors"
     __table_args__ = (
         UniqueConstraint("article_id", "threat_actor", name="uq_article_threat_actor"),
+        {"info": {"compat_view": True}},
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -210,7 +215,10 @@ class ArticleTTP(Base):
     """Ganti `ttps: [{id, name}]` Mongo."""
 
     __tablename__ = "article_ttps"
-    __table_args__ = (UniqueConstraint("article_id", "ttp_id", name="uq_article_ttp"),)
+    __table_args__ = (
+        UniqueConstraint("article_id", "ttp_id", name="uq_article_ttp"),
+        {"info": {"compat_view": True}},
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     article_id: Mapped[int] = mapped_column(
@@ -239,7 +247,10 @@ class ArticleMalware(Base):
     """Malware/tool hasil kamus Tier 1 (`kind` malware | tool)."""
 
     __tablename__ = "article_malware"
-    __table_args__ = (UniqueConstraint("article_id", "name", name="uq_article_malware"),)
+    __table_args__ = (
+        UniqueConstraint("article_id", "name", name="uq_article_malware"),
+        {"info": {"compat_view": True}},
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     article_id: Mapped[int] = mapped_column(

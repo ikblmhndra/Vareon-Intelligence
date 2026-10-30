@@ -273,12 +273,16 @@ def _seed_rich(suffix: str) -> tuple[Article, list[Any]]:
     return art, [_sr("Unit42", "B", "vendor_research"), art]
 
 
-def _children(art: Article) -> list[Any]:
+def _children(
+    art: Article, ids: tuple[str, ...] = ("T1059", "T1566", "T1078", "APT41")
+) -> list[Any]:
+    # Sejak P7c tautan = view di atas entitas bersama: dua transaksi terbuka yang membuat entitas
+    # sama saling mengunci, jadi sesi kedua memakai nama lain (yang dinilai hanya `source`).
     return [
-        ArticleTTP(article_id=art.id, ttp_id="T1059", ttp_name="x", source="explicit"),
-        ArticleTTP(article_id=art.id, ttp_id="T1566", ttp_name="y", source="llm"),
-        ArticleTTP(article_id=art.id, ttp_id="T1078", ttp_name="z", source="keyword"),
-        ArticleThreatActor(article_id=art.id, threat_actor="APT41"),
+        ArticleTTP(article_id=art.id, ttp_id=ids[0], ttp_name="x", source="explicit"),
+        ArticleTTP(article_id=art.id, ttp_id=ids[1], ttp_name="y", source="llm"),
+        ArticleTTP(article_id=art.id, ttp_id=ids[2], ttp_name="z", source="keyword"),
+        ArticleThreatActor(article_id=art.id, threat_actor=ids[3]),
     ]
 
 
@@ -294,7 +298,7 @@ async def test_sync_and_async_agree(db_session: Session, async_db_session: Async
     art_a, objs_a = _seed_rich("async")
     async_db_session.add_all(objs_a)
     await async_db_session.flush()
-    async_db_session.add_all(_children(art_a))
+    async_db_session.add_all(_children(art_a, ("T1203", "T1190", "T1133", "APT40")))
     await async_db_session.flush()
     async_result = await apply_assessments_async(async_db_session, [art_a.id])
 

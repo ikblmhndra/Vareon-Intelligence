@@ -16,7 +16,7 @@ from cti_core.db.base import Base
 
 class ArticleCve(Base):
     __tablename__ = "article_cves"
-    __table_args__ = (Index("ix_article_cves_cve_id", "cve_id"),)
+    __table_args__ = (Index("ix_article_cves_cve_id", "cve_id"), {"info": {"compat_view": True}})
 
     article_id: Mapped[int] = mapped_column(
         ForeignKey("articles.id", ondelete="CASCADE"), primary_key=True

@@ -199,6 +199,7 @@ class CveNewsletterMention(Base):
 
 class CveThreatActor(Base):
     __tablename__ = "cve_threat_actors"
+    __table_args__ = ({"info": {"compat_view": True}},)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     cve_tracker_id: Mapped[int] = mapped_column(
@@ -211,6 +212,7 @@ class CveThreatActor(Base):
 
 class CveTTP(Base):
     __tablename__ = "cve_ttps"
+    __table_args__ = ({"info": {"compat_view": True}},)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     cve_tracker_id: Mapped[int] = mapped_column(

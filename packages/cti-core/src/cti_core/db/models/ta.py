@@ -37,6 +37,7 @@ from cti_core.db.base import Base, TimestampMixin
 
 class TAWhitelistEntry(Base):
     __tablename__ = "ta_whitelist"
+    __table_args__ = ({"info": {"compat_view": True}},)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False, unique=True, index=True)
@@ -49,6 +50,7 @@ class TAWhitelistEntry(Base):
 
 class TAWatchlistEntry(TimestampMixin, Base):
     __tablename__ = "ta_watchlist"
+    __table_args__ = ({"info": {"compat_view": True}},)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
@@ -59,6 +61,7 @@ class TAWatchlistEntry(TimestampMixin, Base):
 
 class TAProfile(Base):
     __tablename__ = "ta_profiles"
+    __table_args__ = ({"info": {"compat_view": True}},)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     actor_name: Mapped[str] = mapped_column(String(200), nullable=False, unique=True, index=True)
