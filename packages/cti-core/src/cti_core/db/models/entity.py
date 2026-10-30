@@ -99,8 +99,8 @@ class Entity(TimestampMixin, Base):
         DateTime(timezone=True), nullable=False, server_default=func.clock_timestamp()
     )
     """Jam feed mesin: `trg_entities_feed_bump` (name, description, external_id, suppressed,
-    merged_into_id, tlp) dan `trg_entity_aliases_feed_bump` (alias masuk/keluar), migrasi
-    `entity_model`. first_seen/last_seen tidak membump."""
+    merged_into_id, tlp, identity_class) dan `trg_entity_aliases_feed_bump` (alias masuk/keluar/
+    pindah: entitas lama dan baru), migrasi `entity_model`. first_seen/last_seen tidak membump."""
 
     aliases: Mapped[list[EntityAlias]] = relationship(
         back_populates="entity", lazy="selectin", cascade="all, delete-orphan"

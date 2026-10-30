@@ -51,7 +51,7 @@ class Story(TimestampMixin, Base):
         DateTime(timezone=True), nullable=False, server_default=func.clock_timestamp()
     )
     """Jam feed mesin (P7c); migrasi `entity_model` memasang `trg_stories_feed_bump` (title,
-    article_count) dan `trg_entity_mentions_feed_bump` (mention artikel masuk/keluar)."""
+    article_count) dan `trg_entity_mentions_feed_bump` (mention artikel masuk/keluar/pindah)."""
     article_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default=text("0")
     )

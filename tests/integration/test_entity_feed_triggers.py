@@ -56,6 +56,7 @@ def ent(db_session: Session) -> Iterator[tuple[Session, int]]:
         ("suppressed", "true"),
         ("merged_into_id", "(SELECT id FROM entities WHERE name = 'feed-target')"),
         ("tlp", "'amber'"),
+        ("identity_class", "'class'"),
     ],
 )
 def test_entity_bumps_on_feed_fields(ent: tuple[Session, int], column: str, value: str) -> None:
@@ -92,6 +93,28 @@ def test_alias_insert_and_delete_bump_entity(ent: tuple[Session, int]) -> None:
     _age(s, "entities", eid)
     s.execute(text("DELETE FROM entity_aliases WHERE entity_id = :e"), {"e": eid})
     assert _bumped(s, "entities", eid)
+
+
+@pytest.mark.parametrize("assignment", ["entity_id = :other", "alias = 'Foo2'"])
+def test_alias_update_bumps_old_and_new_entity(ent: tuple[Session, int], assignment: str) -> None:
+    """Merge/split memindah alias lewat UPDATE (Ruling 14): entitas lama dan baru sama-sama bump."""
+    s, eid = ent
+    other = _entity(s, "intrusion-set", "feed-other")
+    s.execute(
+        text(
+            "INSERT INTO entity_aliases (entity_id, entity_type, alias, alias_norm, source)"
+            " VALUES (:e, 'intrusion-set', 'Foo', 'foo', 'analyst')"
+        ),
+        {"e": eid},
+    )
+    _age(s, "entities", eid)
+    _age(s, "entities", other)
+    s.execute(
+        text(f"UPDATE entity_aliases SET {assignment} WHERE entity_id = :e"),
+        {"e": eid, "other": other},
+    )
+    assert _bumped(s, "entities", eid)
+    assert _bumped(s, "entities", other) == assignment.startswith("entity_id")
 
 
 @pytest.fixture
@@ -243,3 +266,35 @@ def test_mention_without_story_or_article_is_harmless(
         {"n": ind, "e": ids["eid"]},
     )
     assert not _bumped(s, "stories", ids["sid"])
+
+
+def test_mention_update_bumps_old_and_new_story(story: tuple[Session, dict[str, Any]]) -> None:
+    """Merge/split memindah mention lewat UPDATE (Ruling 14): story lama dan baru sama-sama bump."""
+    s, ids = story
+    sid2 = s.execute(
+        text("INSERT INTO stories (title, lead_source) VALUES ('t2', 'src') RETURNING id")
+    ).scalar_one()
+    s.execute(
+        text("UPDATE articles SET story_id = :s WHERE id = :a"), {"s": sid2, "a": ids["orphan"]}
+    )
+    mid = s.execute(
+        text(
+            "INSERT INTO entity_mentions (article_id, entity_id, method, matched_alias)"
+            " VALUES (:a, :e, 'analyst', 'x') RETURNING id"
+        ),
+        {"a": ids["aid"], "e": ids["eid"]},
+    ).scalar_one()
+    _age(s, "stories", ids["sid"])
+    _age(s, "stories", sid2)
+    s.execute(
+        text("UPDATE entity_mentions SET article_id = :a WHERE id = :i"),
+        {"a": ids["orphan"], "i": mid},
+    )
+    assert _bumped(s, "stories", ids["sid"]) and _bumped(s, "stories", sid2)
+
+    other = _entity(s, "malware", "feed-mal-2")
+    _age(s, "stories", sid2)
+    s.execute(
+        text("UPDATE entity_mentions SET entity_id = :e WHERE id = :i"), {"e": other, "i": mid}
+    )
+    assert _bumped(s, "stories", sid2)

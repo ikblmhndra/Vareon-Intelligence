@@ -12,6 +12,7 @@ BEGIN
        OR NEW.suppressed IS DISTINCT FROM OLD.suppressed
        OR NEW.merged_into_id IS DISTINCT FROM OLD.merged_into_id
        OR NEW.tlp IS DISTINCT FROM OLD.tlp
+       OR NEW.identity_class IS DISTINCT FROM OLD.identity_class
     THEN
         NEW.feed_changed_at = clock_timestamp();
     END IF;
@@ -21,14 +22,17 @@ END $fn$;
 CREATE TRIGGER trg_entities_feed_bump BEFORE UPDATE ON entities
 FOR EACH ROW EXECUTE FUNCTION entities_feed_bump();
 
+-- merge/split memindah alias lewat UPDATE entity_id: entitas lama DAN baru bump (OLD/NEW NULL
+-- pada INSERT/DELETE, jadi IN (...) cukup untuk ketiga operasi)
 CREATE FUNCTION entity_aliases_feed_bump() RETURNS trigger LANGUAGE plpgsql AS $fn$
 BEGIN
     UPDATE entities SET feed_changed_at = clock_timestamp()
-    WHERE id = COALESCE(NEW.entity_id, OLD.entity_id);
+    WHERE id IN (OLD.entity_id, NEW.entity_id);
     RETURN NULL;
 END $fn$;
 
-CREATE TRIGGER trg_entity_aliases_feed_bump AFTER INSERT OR DELETE ON entity_aliases
+CREATE TRIGGER trg_entity_aliases_feed_bump
+AFTER INSERT OR DELETE OR UPDATE OF alias, entity_id ON entity_aliases
 FOR EACH ROW EXECUTE FUNCTION entity_aliases_feed_bump();
 
 CREATE FUNCTION relationships_feed_bump() RETURNS trigger LANGUAGE plpgsql AS $fn$
@@ -63,17 +67,15 @@ END $fn$;
 CREATE TRIGGER trg_stories_feed_bump BEFORE UPDATE ON stories
 FOR EACH ROW EXECUTE FUNCTION stories_feed_bump();
 
--- object_refs story berubah saat mention artikelnya berubah; mention tanpa artikel/story dilewati
+-- object_refs story berubah saat mention artikelnya berubah; mention tanpa artikel/story dilewati.
+-- UPDATE (merge/split memindah entity_id, atau article_id pindah) membump story lama DAN baru.
 CREATE FUNCTION entity_mentions_feed_bump() RETURNS trigger LANGUAGE plpgsql AS $fn$
-DECLARE
-    v_article bigint := COALESCE(NEW.article_id, OLD.article_id);
 BEGIN
-    IF v_article IS NOT NULL THEN
-        UPDATE stories SET feed_changed_at = clock_timestamp()
-        WHERE id = (SELECT story_id FROM articles WHERE id = v_article);
-    END IF;
+    UPDATE stories SET feed_changed_at = clock_timestamp()
+    WHERE id IN (SELECT story_id FROM articles WHERE id IN (OLD.article_id, NEW.article_id));
     RETURN NULL;
 END $fn$;
 
-CREATE TRIGGER trg_entity_mentions_feed_bump AFTER INSERT OR DELETE ON entity_mentions
+CREATE TRIGGER trg_entity_mentions_feed_bump
+AFTER INSERT OR DELETE OR UPDATE OF entity_id, article_id ON entity_mentions
 FOR EACH ROW EXECUTE FUNCTION entity_mentions_feed_bump();
