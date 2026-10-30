@@ -88,7 +88,6 @@ def _create_tables() -> None:
         unique=True,
         postgresql_where=sa.text("external_id IS NOT NULL AND merged_into_id IS NULL"),
     )
-    op.create_index("ix_entities_type_external_id", "entities", ["type", "external_id"])
     op.create_index("ix_entities_feed_changed_at_id", "entities", ["feed_changed_at", "id"])
 
     op.create_table(

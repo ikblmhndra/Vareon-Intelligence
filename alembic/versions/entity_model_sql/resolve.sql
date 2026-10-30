@@ -73,7 +73,7 @@ END $fn$;
 CREATE FUNCTION entity_resolve_technique(p_ext_id text, p_name text, p_source text)
 RETURNS bigint LANGUAGE plpgsql AS $fn$
 DECLARE
-    v_ext text := entity_collapse_ws(coalesce(p_ext_id, ''));
+    v_ext text := upper(entity_collapse_ws(coalesce(p_ext_id, '')));  -- id ATT&CK huruf besar
     v_norm text := lower(v_ext);
     v_name text := entity_collapse_ws(coalesce(p_name, ''));
     v_id bigint;

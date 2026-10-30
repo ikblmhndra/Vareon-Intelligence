@@ -72,6 +72,11 @@ _LABEL_TO_SECTOR: dict[str, str | None] = {
 }
 
 
+def label_to_sector() -> dict[str, str]:
+    """Label lama -> id vocab, hanya label yang punya sektor (dipakai generator SQL migrasi)."""
+    return {label: sec for label, sec in _LABEL_TO_SECTOR.items() if sec is not None}
+
+
 def sector_for_label(label: str) -> str | None:
     """Id vocab untuk label lama; `None` untuk "General" dan label yang tak dikenal."""
     return _LABEL_TO_SECTOR.get(label.strip())

@@ -14,7 +14,7 @@ import pathlib
 
 from cti_core.entity import entity_stix_id
 from cti_core.entity.countries import ISO_COUNTRY_NAMES
-from cti_core.entity.sectors import _LABEL_TO_SECTOR, SECTORS
+from cti_core.entity.sectors import SECTORS, label_to_sector
 
 BACKFILL = (
     pathlib.Path(__file__).resolve().parents[2]
@@ -37,7 +37,7 @@ def _values(rows: list[tuple[str, ...]]) -> str:
 
 def render() -> str:
     sectors = [(k, v, entity_stix_id("identity", v)) for k, v in sorted(SECTORS.items())]
-    labels = sorted((label, sec) for label, sec in _LABEL_TO_SECTOR.items() if sec is not None)
+    labels = sorted(label_to_sector().items())
     countries = [
         (k, v, entity_stix_id("location", v)) for k, v in sorted(ISO_COUNTRY_NAMES.items())
     ]

@@ -73,7 +73,6 @@ class Entity(TimestampMixin, Base):
             unique=True,
             postgresql_where=text("external_id IS NOT NULL AND merged_into_id IS NULL"),
         ),
-        Index("ix_entities_type_external_id", "type", "external_id"),
         Index("ix_entities_feed_changed_at_id", "feed_changed_at", "id"),
     )
 

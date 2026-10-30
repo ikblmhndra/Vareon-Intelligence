@@ -33,7 +33,7 @@ def _key(type: str, name: str, external_id: str | None) -> str:
         return name
     if not external_id or not collapse_ws(external_id):
         raise ValueError("attack-pattern butuh external_id (id teknik)")
-    return external_id
+    return external_id.upper()  # id teknik ATT&CK selalu huruf besar (T1566.001)
 
 
 def _lookup(type: str, norm: str) -> Select[tuple[Entity]]:

@@ -263,3 +263,23 @@ def test_external_id_unique_per_type(db_session: Session) -> None:
                 " VALUES ('vulnerability', 'v--2', 'CVE-1 dup', 'cve', 'CVE-1')"
             )
         )
+
+
+def test_technique_id_uppercased(db_session: Session) -> None:
+    existing = resolve(
+        db_session,
+        "attack-pattern",
+        "Spearphishing Attachment",
+        source="attack",
+        external_id="T1566.001",
+    )
+    low = resolve(db_session, "attack-pattern", "x", source="legacy", external_id="t1566.001")
+    assert low.id == existing.id
+    py_new = resolve(db_session, "attack-pattern", "N", source="legacy", external_id=" t9002 ")
+    sql_id = db_session.execute(
+        text("SELECT entity_resolve_technique('t9003', 'M', 'legacy')")
+    ).scalar_one()
+    sql_new = db_session.scalar(select(Entity.external_id).where(Entity.id == sql_id))
+    assert (py_new.external_id, sql_new) == ("T9002", "T9003")
+    alias = db_session.scalar(select(EntityAlias.alias).where(EntityAlias.entity_id == py_new.id))
+    assert alias == "T9002"

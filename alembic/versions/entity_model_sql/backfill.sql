@@ -327,10 +327,15 @@ INSERT INTO _bf_countries VALUES
 -- END GENERATED
 
 -- 2. ATT&CK -> entitas, alias (source=attack), relasi (provenance=attack, confidence 85).
--- Bentrok nama/id (mis. software senama lintas domain) dilewati: yang pertama menurut stix_id
--- menang. Daftar yang terlewat (query laporan, jalankan manual sesudah migrasi):
---   SELECT stix_id, software_id, name FROM attack_software s
---    WHERE NOT EXISTS (SELECT 1 FROM entities e WHERE e.stix_id = s.stix_id);
+-- Bentrok dilewati (ON CONFLICT DO NOTHING), yang pertama menurut stix_id menang: grup (nama
+-- atau group_id kembar), software (nama kembar per tipe, mis. lintas domain), teknik (attack_id
+-- kembar). Daftar yang terlewat (query laporan, jalankan manual sesudah migrasi):
+--   SELECT 'group' AS kind, stix_id, group_id AS ext, name FROM attack_groups x
+--    WHERE NOT EXISTS (SELECT 1 FROM entities e WHERE e.stix_id = x.stix_id)
+--   UNION ALL SELECT 'software', stix_id, software_id, name FROM attack_software x
+--    WHERE NOT EXISTS (SELECT 1 FROM entities e WHERE e.stix_id = x.stix_id)
+--   UNION ALL SELECT 'technique', stix_id, attack_id, name FROM attack_techniques x
+--    WHERE NOT EXISTS (SELECT 1 FROM entities e WHERE e.stix_id = x.stix_id);
 INSERT INTO entities (type, stix_id, name, description, external_id, source)
 SELECT 'intrusion-set', stix_id, entity_collapse_ws(name), nullif(description, ''),
        nullif(group_id, ''), 'attack'
@@ -348,7 +353,7 @@ ON CONFLICT DO NOTHING;
 -- identitas teknik = id teknik (Ruling 7): nama boleh kembar, alias hanya id teknik
 INSERT INTO entities (type, stix_id, name, description, external_id, source)
 SELECT 'attack-pattern', stix_id, entity_collapse_ws(name), nullif(description, ''),
-       entity_collapse_ws(attack_id), 'attack'
+       upper(entity_collapse_ws(attack_id)), 'attack'
   FROM attack_techniques WHERE entity_alias_norm(attack_id) <> ''
  ORDER BY stix_id
 ON CONFLICT DO NOTHING;
@@ -441,9 +446,14 @@ UNION ALL SELECT 'intrusion-set', name, 'legacy', NULL, 4, id FROM ta_watchlist
 UNION ALL SELECT 'intrusion-set', actor_name, 'legacy', NULL, 5, id FROM ta_profiles
 UNION ALL SELECT 'intrusion-set', name, 'legacy', NULL, 6, id FROM ta_whitelist
 UNION ALL SELECT 'intrusion-set', group_name, 'legacy', NULL, 7, id FROM ransomware_victims
-UNION ALL SELECT 'intrusion-set', jsonb_array_elements_text(criteria -> 'threat_actors'),
-                 'legacy', NULL, 8, id
-            FROM pir_requirements WHERE jsonb_typeof(criteria -> 'threat_actors') = 'array'
+-- isian bebas pengguna: hanya elemen string, dipotong ke panjang kolom; kunci hilang atau bukan
+-- array -> tidak ada apa-apa (tanpa error)
+UNION ALL SELECT 'intrusion-set', left(x.e #>> '{}', 300), 'legacy', NULL, 8, p.id
+            FROM pir_requirements p
+           CROSS JOIN LATERAL jsonb_array_elements(
+                 CASE WHEN jsonb_typeof(p.criteria -> 'threat_actors') = 'array'
+                      THEN p.criteria -> 'threat_actors' ELSE '[]'::jsonb END) AS x(e)
+           WHERE jsonb_typeof(x.e) = 'string'
 UNION ALL SELECT CASE WHEN kind = 'tool' THEN 'tool' ELSE 'malware' END, name, 'legacy', NULL, 1,
                  id
             FROM article_malware
@@ -457,7 +467,7 @@ UNION ALL SELECT 'identity', industry, 'legacy', 'class', 2, id FROM ransomware_
 -- korban dipotong ke panjang kolom entities.name (ransomware_victims.victim varchar(500))
 UNION ALL SELECT 'identity', left(victim, 300), 'ransomware', 'organization', 3, id
             FROM ransomware_victims;
-DELETE FROM _bf_names WHERE entity_alias_norm(name) = ''
+DELETE FROM _bf_names WHERE name IS NULL OR entity_alias_norm(name) = ''
     OR (identity_class = 'class' AND entity_alias_norm(name) = 'general');
 
 INSERT INTO entities (type, stix_id, name, source, identity_class, external_id)
@@ -486,7 +496,7 @@ INSERT INTO entities (type, stix_id, name, external_id, source)
 SELECT DISTINCT ON (entity_alias_norm(t.ttp_id))
        'attack-pattern', 'attack-pattern--' || gen_random_uuid(),
        coalesce(nullif(entity_collapse_ws(t.ttp_name), ''), entity_collapse_ws(t.ttp_id)),
-       entity_collapse_ws(t.ttp_id), 'legacy'
+       upper(entity_collapse_ws(t.ttp_id)), 'legacy'
   FROM (SELECT ttp_id, ttp_name, 1 AS prio, id FROM article_ttps
         UNION ALL SELECT ttp_id, ttp_name, 2, id FROM cve_ttps) t
  WHERE entity_alias_norm(t.ttp_id) <> ''

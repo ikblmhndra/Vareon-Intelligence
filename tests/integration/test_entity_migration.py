@@ -185,17 +185,29 @@ def bf(db_session: Session) -> Iterator[dict[str, Any]]:
     ]
     victims = [
         RansomwareVictim(
-            offset_key=k, group_name=g, victim=v, country_code="DE", industry=i, discovered=d
+            offset_key=k, group_name=g, victim=v, country_code=c, industry=i, discovered=d
         )
-        for k, g, v, i, d in (
-            ("k1", "LockBit", "Acme Corp", "Manufacturing", datetime.date(2026, 1, 2)),
-            ("k2", "lockbit", "ACME  corp", "General", datetime.date(2026, 1, 5)),
+        for k, g, v, c, i, d in (
+            ("k1", "LockBit", "Acme Corp", "DE", "Manufacturing", datetime.date(2026, 1, 2)),
+            ("k2", "lockbit", "ACME  corp", "DE", "General", datetime.date(2026, 1, 5)),
+            # nama korban 350 karakter (kolom lama varchar(500)) -> dipotong 300
+            ("k3", "LockBit", "V" * 350, "de", None, datetime.date(2026, 1, 7)),
         )
     ]
-    pir = PIRRequirement(
-        title="p", client_id="bfc", criteria={"threat_actors": ["Scattered Spider", "APT29"]}
-    )
-    s.add_all([*arts, ind, cve, *attack, *victims, pir])
+    pirs = [
+        PIRRequirement(
+            title="p", client_id="bfc", criteria={"threat_actors": ["Scattered Spider", "APT29"]}
+        ),
+        # isian bebas pengguna: hanya string non-kosong yang jadi entitas, string panjang dipotong
+        PIRRequirement(
+            title="p2",
+            client_id="bfc",
+            criteria={"threat_actors": [None, 123, {"a": 1}, "", "   ", "L" * 301]},
+        ),
+        PIRRequirement(title="p3", client_id="bfc", criteria={}),
+        PIRRequirement(title="p4", client_id="bfc", criteria={"threat_actors": "Not A List"}),
+    ]
+    s.add_all([*arts, ind, cve, *attack, *victims, *pirs])
     s.flush()
     ids: dict[str, Any] = {
         "a1": arts[0].id,
@@ -216,10 +228,10 @@ def bf(db_session: Session) -> Iterator[dict[str, Any]]:
     for sql in (
         "INSERT INTO article_threat_actors (article_id, threat_actor, source) VALUES"
         " (:a1, 'Cozy bear', 'dictionary'), (:a1, 'Apt29', 'dictionary'),"
-        " (:a2, 'Volt typhoon', 'llm')",
+        " (:a2, 'Volt typhoon', 'llm'), (:a2, '   ', 'dictionary')",
         "INSERT INTO article_malware (article_id, name, kind, source) VALUES"
         " (:a1, 'Emotet', 'malware', 'dictionary'), (:a1, 'Mimikatz', 'tool', 'dictionary'),"
-        " (:a2, 'NewLoader', 'malware', 'llm')",
+        " (:a2, 'NewLoader', 'malware', 'llm'), (:a2, '', 'malware', 'dictionary')",
         "INSERT INTO article_ttps (article_id, ttp_id, ttp_name, extracted_id, extracted_name,"
         " source, evidence) VALUES"
         " (:a1, 'T1566.001', 'Spearphishing Attachment', 'T1193', 'Spearphishing Attachment',"
@@ -228,7 +240,8 @@ def bf(db_session: Session) -> Iterator[dict[str, Any]]:
         "INSERT INTO article_cves (article_id, cve_id, in_title, first_seen_at) VALUES"
         " (:a1, 'CVE-2024-1234', true, '2026-03-02'), (:a2, 'CVE-2024-1234', false, '2026-03-03')",
         "INSERT INTO article_countries (article_id, country_code, role) VALUES"
-        " (:a1, 'US', 'target'), (:a1, 'US', 'origin'), (:a2, 'ZZ', 'target')",
+        " (:a1, 'US', 'target'), (:a1, 'US', 'origin'), (:a2, 'ZZ', 'target'),"
+        " (:a2, 'us', 'origin')",
         "INSERT INTO article_industries (article_id, industry, source) VALUES"
         " (:a1, 'Cloud Services', 'llm'), (:a1, 'Information Technology & Software', 'llm'),"
         " (:a1, 'General', 'llm'), (:a2, 'Underwater Basketry', 'llm')",
@@ -288,6 +301,7 @@ def test_mention_counts_equal_per_old_table(db_session: Session, bf: dict[str, A
         ("attack-pattern", "PowerShell", "T1086", "keyword", None),
         ("identity", "Underwater Basketry", "Underwater Basketry", "llm", None),
         ("intrusion-set", "Volt typhoon", "Volt typhoon", "llm", None),
+        ("location", "United States", "us", "legacy", "origin"),  # kode huruf kecil
         ("location", "ZZ", "ZZ", "legacy", "target"),
         ("malware", "NewLoader", "NewLoader", "llm", None),
         ("vulnerability", "CVE-2024-1234", "CVE-2024-1234", "legacy", None),
@@ -429,8 +443,10 @@ def test_ransomware(db_session: Session, bf: dict[str, Any]) -> None:
             "SELECT r.relationship_type, r.source_entity_id, t.name, r.confidence, r.provenance,"
             " r.first_seen::date::text, r.last_seen::date::text, r.stix_id LIKE 'relationship--%'"
             " FROM relationships r JOIN entities t ON t.id = r.target_entity_id"
-            " WHERE r.provenance = 'ransomware' ORDER BY 1"
-        )
+            " WHERE r.provenance = 'ransomware' AND :v IN (r.source_entity_id, r.target_entity_id)"
+            " ORDER BY 1"
+        ),
+        {"v": victim[0]},
     ).all()
     assert [tuple(r) for r in rels] == [
         ("located-at", victim[0], "Germany", 50, "ransomware", "2026-01-02", "2026-01-05", True),
@@ -506,7 +522,17 @@ def test_pir_actor_criteria_become_entities(db_session: Session, bf: dict[str, A
     assert _entity_id(s, "intrusion-set", "apt29") == _one(
         s, "SELECT id FROM entities WHERE stix_id = 'intrusion-set--g1'"
     )
-    crit = _one(s, "SELECT criteria FROM pir_requirements WHERE client_id = 'bfc'")
+    long = _one(s, "SELECT name FROM entities WHERE type = 'intrusion-set' AND name LIKE 'LLL%'")
+    assert long == "L" * 300
+    assert (
+        _one(
+            s,
+            "SELECT count(*) FROM entities WHERE type = 'intrusion-set'"
+            " AND name IN ('123', '{\"a\": 1}', 'null', 'Not A List')",
+        )
+        == 0
+    )
+    crit = _one(s, "SELECT criteria FROM pir_requirements WHERE title = 'p'")
     assert crit == {"threat_actors": ["Scattered Spider", "APT29"]}  # baris PIR tidak diubah
 
 
@@ -525,3 +551,40 @@ def test_reference_stix_ids_from_generator(db_session: Session, bf: dict[str, An
         text("SELECT name, identity_class, stix_id FROM entities WHERE external_id = 'technology'")
     ).one()
     assert tuple(tech) == ("Technology", "class", entity_stix_id("identity", "Technology"))
+
+
+def test_victim_name_truncated(db_session: Session, bf: dict[str, Any]) -> None:
+    s = db_session
+    vid = _one(s, "SELECT id FROM entities WHERE type = 'identity' AND name = :n", n="V" * 300)
+    rels = s.execute(
+        text(
+            "SELECT r.relationship_type, t.name FROM relationships r"
+            " JOIN entities t ON t.id = r.target_entity_id"
+            " WHERE :v IN (r.source_entity_id, r.target_entity_id) ORDER BY 1"
+        ),
+        {"v": vid},
+    ).all()
+    assert [tuple(r) for r in rels] == [("located-at", "Germany"), ("targets", "V" * 300)]
+
+
+def test_blank_old_names_dropped(db_session: Session, bf: dict[str, Any]) -> None:
+    s = db_session
+    assert _one(s, "SELECT count(*) FROM entities WHERE btrim(name) = ''") == 0
+    assert _one(s, "SELECT count(*) FROM entity_aliases WHERE alias_norm = ''") == 0
+
+
+def test_unknown_industry_labels_become_legacy_sectors(
+    db_session: Session, bf: dict[str, Any]
+) -> None:
+    unknown = (
+        db_session.execute(
+            text(
+                "SELECT name FROM entities WHERE type = 'identity' AND identity_class = 'class'"
+                " AND source = 'legacy' ORDER BY name"
+            )
+        )
+        .scalars()
+        .all()
+    )
+    print("label industri tak dikenal:", unknown)  # spec 3.3: daftar label yang tak terpetakan
+    assert unknown == ["Underwater Basketry"]

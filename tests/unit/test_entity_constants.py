@@ -61,3 +61,13 @@ def test_sectors_are_stix_vocab() -> None:
 def test_iso_names() -> None:
     assert ISO_COUNTRY_NAMES["ID"] == "Indonesia"
     assert len(ISO_COUNTRY_NAMES) == 249
+
+
+def test_label_to_sector_public_mapping() -> None:
+    from cti_core.entity.sectors import label_to_sector
+
+    mapping = label_to_sector()
+    assert "General" not in mapping  # tanpa sektor
+    assert mapping["Cloud Services"] == "technology"
+    assert set(mapping.values()) <= set(SECTORS)
+    assert all(sector_for_label(k) == v for k, v in mapping.items())
