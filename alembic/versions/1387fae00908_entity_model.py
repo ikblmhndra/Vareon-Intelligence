@@ -342,10 +342,18 @@ def _create_resolve() -> None:
     op.execute(sql.read_text())
 
 
+def _backfill() -> None:
+    """Seksi 3: isi entitas/alias/relasi/mention/watch/profil dari tabel lama (spec 3.2 langkah
+    2-7). Tabel lama tidak diubah di sini; downgrade cukup membuang tabel baru (seksi 1)."""
+    sql = pathlib.Path(__file__).parent / "entity_model_sql" / "backfill.sql"
+    op.execute(sql.read_text())
+
+
 def upgrade() -> None:
     op.execute("SET LOCAL lock_timeout = '10s'")
     _create_tables()
     _create_resolve()
+    _backfill()
 
 
 def downgrade() -> None:
