@@ -17,7 +17,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql.dml import ReturningInsert
 
 from cti_core.db.models.entity import Entity, EntityAlias
-from cti_core.entity import alias_norm, entity_stix_id
+from cti_core.entity import alias_norm, collapse_ws, entity_stix_id
+
+_MAX_HOPS = 20  # batas rantai merged_into_id; lebih dari ini dianggap siklus
 
 
 def _lookup(type: str, norm: str) -> Select[tuple[Entity]]:
@@ -71,14 +73,16 @@ def resolve(
     external_id: str | None = None,
     identity_class: str | None = None,
 ) -> Entity:
-    display = " ".join(name.split())
+    display = collapse_ws(name)
     norm = alias_norm(name)
 
     def find() -> Entity | None:
         found = session.execute(_lookup(type, norm)).scalars().first()
-        while found is not None and found.merged_into_id is not None:
+        for _ in range(_MAX_HOPS):
+            if found is None or found.merged_into_id is None:
+                return found
             found = session.get(Entity, found.merged_into_id)
-        return found
+        raise RuntimeError(f"rantai merge terlalu panjang/siklik untuk {type} {name!r}")
 
     if (found := find()) is not None:
         return found
@@ -86,7 +90,10 @@ def resolve(
         _new_entity(type, display, source, external_id, identity_class)
     ).scalar()
     if new_id is None:  # nama sudah dipakai entitas hidup tanpa alias ini
-        new_id = session.execute(_by_name(type, norm)).scalar_one().id
+        existing = session.execute(_by_name(type, norm)).scalar_one_or_none()
+        if existing is None:
+            raise RuntimeError(f"resolve gagal membuat/menemukan {type} {name!r}")
+        new_id = existing.id
     session.execute(_new_alias(new_id, type, display, norm, source))
     if (found := find()) is None:
         raise RuntimeError(f"resolve gagal untuk {type} {name!r}")
@@ -102,14 +109,16 @@ async def resolve_async(
     external_id: str | None = None,
     identity_class: str | None = None,
 ) -> Entity:
-    display = " ".join(name.split())
+    display = collapse_ws(name)
     norm = alias_norm(name)
 
     async def find() -> Entity | None:
         found = (await session.execute(_lookup(type, norm))).scalars().first()
-        while found is not None and found.merged_into_id is not None:
+        for _ in range(_MAX_HOPS):
+            if found is None or found.merged_into_id is None:
+                return found
             found = await session.get(Entity, found.merged_into_id)
-        return found
+        raise RuntimeError(f"rantai merge terlalu panjang/siklik untuk {type} {name!r}")
 
     if (found := await find()) is not None:
         return found
@@ -117,7 +126,10 @@ async def resolve_async(
         await session.execute(_new_entity(type, display, source, external_id, identity_class))
     ).scalar()
     if new_id is None:
-        new_id = (await session.execute(_by_name(type, norm))).scalar_one().id
+        existing = (await session.execute(_by_name(type, norm))).scalar_one_or_none()
+        if existing is None:
+            raise RuntimeError(f"resolve gagal membuat/menemukan {type} {name!r}")
+        new_id = existing.id
     await session.execute(_new_alias(new_id, type, display, norm, source))
     if (found := await find()) is None:
         raise RuntimeError(f"resolve gagal untuk {type} {name!r}")

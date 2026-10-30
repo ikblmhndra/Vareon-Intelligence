@@ -24,6 +24,15 @@ def test_alias_norm() -> None:
     assert alias_norm("  APT  29 ") == "apt 29"
 
 
+_UNICODE_WS = [0xA0, 0x1680, *range(0x2000, 0x200C), 0x2028, 0x2029, 0x202F, 0x205F, 0x3000, 0xFEFF]
+
+
+def test_alias_norm_explicit_unicode_whitespace() -> None:
+    for cp in _UNICODE_WS:
+        assert alias_norm(f"{chr(cp)}APT{chr(cp)}{chr(cp)}29{chr(cp)}") == "apt 29", hex(cp)
+    assert alias_norm("a\t\n\v\f\r b") == "a b"
+
+
 def test_stix_ids_stable() -> None:
     a = entity_stix_id("intrusion-set", "APT29")
     assert a == entity_stix_id("intrusion-set", "apt29")

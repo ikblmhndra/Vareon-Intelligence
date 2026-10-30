@@ -4,12 +4,60 @@ from __future__ import annotations
 
 import threading
 
+import pytest
 from cti_core.db.engine import get_sync_engine
 from cti_core.db.models.entity import Entity, EntityAlias
 from cti_core.entity.resolve import resolve, resolve_async
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
+
+_UNICODE_WS = [0xA0, 0x1680, *range(0x2000, 0x200C), 0x2028, 0x2029, 0x202F, 0x205F, 0x3000, 0xFEFF]
+
+
+def _race(name: str, first: str, second: str) -> None:
+    """Dua koneksi terpisah me-resolve `name` bersamaan (py/sql), commit, lalu bersihkan."""
+    engine = get_sync_engine()
+    barrier = threading.Barrier(2)
+    ids: list[int] = []
+
+    def worker(kind: str) -> None:
+        with Session(engine) as s:
+            barrier.wait()
+            if kind == "py":
+                ids.append(resolve(s, "intrusion-set", name, source="legacy").id)
+            else:
+                ids.append(
+                    s.execute(
+                        text("SELECT entity_resolve('intrusion-set', :n, 'legacy')"), {"n": name}
+                    ).scalar_one()
+                )
+            s.commit()
+
+    try:
+        threads = [threading.Thread(target=worker, args=(k,)) for k in (first, second)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        assert len(ids) == 2 and ids[0] == ids[1]
+        with Session(engine) as s:
+            n = s.scalar(select(func.count()).select_from(Entity).where(Entity.name == name))
+            assert n == 1
+    finally:
+        with Session(engine) as s:
+            s.execute(delete(Entity).where(Entity.name == name))
+            s.commit()
+
+
+@pytest.mark.usefixtures("_migrated_schema")
+def test_sql_concurrent() -> None:
+    _race("NewActor2", "sql", "sql")
+
+
+@pytest.mark.usefixtures("_migrated_schema")
+def test_mixed_python_sql_concurrent() -> None:
+    _race("NewActor3", "py", "sql")
 
 
 def _make(s: Session, type_: str, name: str, *aliases: str) -> Entity:
@@ -123,6 +171,9 @@ def test_sql_twin_agrees(db_session: Session) -> None:
         ("identity", "Ünï Çode"),
         ("campaign", "  Spaced  "),
         ("location", "ID"),
+        *[("campaign", f"Op{chr(cp)}  Name{chr(cp)}") for cp in _UNICODE_WS],
+        ("campaign", "Op Name"),
+        ("campaign", "Op\t\n\v\f\rName"),
     ]
     for type_, name in cases:
         py = resolve(db_session, type_, name, source="dictionary").id

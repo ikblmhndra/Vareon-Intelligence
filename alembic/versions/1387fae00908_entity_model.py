@@ -343,4 +343,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.execute("SET LOCAL lock_timeout = '10s'")
     op.execute("DROP FUNCTION entity_resolve(text, text, text)")
+    op.execute("DROP FUNCTION entity_resolve_lookup(text, text)")
+    op.execute("DROP FUNCTION entity_alias_norm(text)")
+    op.execute("DROP FUNCTION entity_collapse_ws(text)")
     _drop_tables()
