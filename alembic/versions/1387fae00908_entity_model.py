@@ -14,6 +14,7 @@ Create Date: 2026-10-30 09:00:00.000000
 
 """
 
+import pathlib
 from collections.abc import Sequence
 
 import sqlalchemy as sa
@@ -327,11 +328,19 @@ def _drop_tables() -> None:
     op.drop_table("entities")
 
 
+def _create_resolve() -> None:
+    """Seksi 2: fungsi `entity_resolve` (kembaran SQL resolver Python)."""
+    sql = pathlib.Path(__file__).parent / "entity_model_sql" / "resolve.sql"
+    op.execute(sql.read_text())
+
+
 def upgrade() -> None:
     op.execute("SET LOCAL lock_timeout = '10s'")
     _create_tables()
+    _create_resolve()
 
 
 def downgrade() -> None:
     op.execute("SET LOCAL lock_timeout = '10s'")
+    op.execute("DROP FUNCTION entity_resolve(text, text, text)")
     _drop_tables()
