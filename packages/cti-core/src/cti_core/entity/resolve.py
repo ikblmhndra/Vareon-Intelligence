@@ -14,6 +14,7 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.dialects.postgresql import Insert, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.dml import ReturningInsert
 
 from cti_core.db.models.entity import Entity, EntityAlias
 from cti_core.entity import alias_norm, entity_stix_id
