@@ -1,0 +1,79 @@
+-- Jam feed TAXII/REST (spec 3.5), pola `trg_indicators_feed_bump` P7b: `clock_timestamp()` dan
+-- IS DISTINCT FROM per kolom. Dipasang SESUDAH backfill supaya muatan massal tidak menggeser jam.
+-- first_seen/last_seen/updated_at sengaja tidak memicu bump (berubah tiap artikel, tak diterbitkan).
+-- Trigger mention juga menyala untuk view kompatibilitas (INSERT/DELETE view menulis
+-- entity_mentions), jadi kode lama hasil rollback tetap menggeser jam story: disengaja.
+
+CREATE FUNCTION entities_feed_bump() RETURNS trigger LANGUAGE plpgsql AS $fn$
+BEGIN
+    IF NEW.name IS DISTINCT FROM OLD.name
+       OR NEW.description IS DISTINCT FROM OLD.description
+       OR NEW.external_id IS DISTINCT FROM OLD.external_id
+       OR NEW.suppressed IS DISTINCT FROM OLD.suppressed
+       OR NEW.merged_into_id IS DISTINCT FROM OLD.merged_into_id
+       OR NEW.tlp IS DISTINCT FROM OLD.tlp
+    THEN
+        NEW.feed_changed_at = clock_timestamp();
+    END IF;
+    RETURN NEW;
+END $fn$;
+
+CREATE TRIGGER trg_entities_feed_bump BEFORE UPDATE ON entities
+FOR EACH ROW EXECUTE FUNCTION entities_feed_bump();
+
+CREATE FUNCTION entity_aliases_feed_bump() RETURNS trigger LANGUAGE plpgsql AS $fn$
+BEGIN
+    UPDATE entities SET feed_changed_at = clock_timestamp()
+    WHERE id = COALESCE(NEW.entity_id, OLD.entity_id);
+    RETURN NULL;
+END $fn$;
+
+CREATE TRIGGER trg_entity_aliases_feed_bump AFTER INSERT OR DELETE ON entity_aliases
+FOR EACH ROW EXECUTE FUNCTION entity_aliases_feed_bump();
+
+CREATE FUNCTION relationships_feed_bump() RETURNS trigger LANGUAGE plpgsql AS $fn$
+BEGIN
+    IF NEW.relationship_type IS DISTINCT FROM OLD.relationship_type
+       OR NEW.source_entity_id IS DISTINCT FROM OLD.source_entity_id
+       OR NEW.source_indicator_id IS DISTINCT FROM OLD.source_indicator_id
+       OR NEW.target_entity_id IS DISTINCT FROM OLD.target_entity_id
+       OR NEW.confidence IS DISTINCT FROM OLD.confidence
+       OR NEW.description IS DISTINCT FROM OLD.description
+       OR NEW.revoked_at IS DISTINCT FROM OLD.revoked_at
+       OR NEW.tlp IS DISTINCT FROM OLD.tlp
+    THEN
+        NEW.feed_changed_at = clock_timestamp();
+    END IF;
+    RETURN NEW;
+END $fn$;
+
+CREATE TRIGGER trg_relationships_feed_bump BEFORE UPDATE ON relationships
+FOR EACH ROW EXECUTE FUNCTION relationships_feed_bump();
+
+CREATE FUNCTION stories_feed_bump() RETURNS trigger LANGUAGE plpgsql AS $fn$
+BEGIN
+    IF NEW.title IS DISTINCT FROM OLD.title
+       OR NEW.article_count IS DISTINCT FROM OLD.article_count
+    THEN
+        NEW.feed_changed_at = clock_timestamp();
+    END IF;
+    RETURN NEW;
+END $fn$;
+
+CREATE TRIGGER trg_stories_feed_bump BEFORE UPDATE ON stories
+FOR EACH ROW EXECUTE FUNCTION stories_feed_bump();
+
+-- object_refs story berubah saat mention artikelnya berubah; mention tanpa artikel/story dilewati
+CREATE FUNCTION entity_mentions_feed_bump() RETURNS trigger LANGUAGE plpgsql AS $fn$
+DECLARE
+    v_article bigint := COALESCE(NEW.article_id, OLD.article_id);
+BEGIN
+    IF v_article IS NOT NULL THEN
+        UPDATE stories SET feed_changed_at = clock_timestamp()
+        WHERE id = (SELECT story_id FROM articles WHERE id = v_article);
+    END IF;
+    RETURN NULL;
+END $fn$;
+
+CREATE TRIGGER trg_entity_mentions_feed_bump AFTER INSERT OR DELETE ON entity_mentions
+FOR EACH ROW EXECUTE FUNCTION entity_mentions_feed_bump();

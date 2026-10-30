@@ -98,6 +98,9 @@ class Entity(TimestampMixin, Base):
     feed_changed_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.clock_timestamp()
     )
+    """Jam feed mesin: `trg_entities_feed_bump` (name, description, external_id, suppressed,
+    merged_into_id, tlp) dan `trg_entity_aliases_feed_bump` (alias masuk/keluar), migrasi
+    `entity_model`. first_seen/last_seen tidak membump."""
 
     aliases: Mapped[list[EntityAlias]] = relationship(
         back_populates="entity", lazy="selectin", cascade="all, delete-orphan"
@@ -170,6 +173,8 @@ class Relationship(TimestampMixin, Base):
     feed_changed_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.clock_timestamp()
     )
+    """Jam feed mesin: `trg_relationships_feed_bump` (tipe, ujung, confidence, description,
+    revoked_at, tlp), migrasi `entity_model`."""
 
 
 class EntityMention(Base):

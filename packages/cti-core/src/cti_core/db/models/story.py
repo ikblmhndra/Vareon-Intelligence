@@ -50,7 +50,8 @@ class Story(TimestampMixin, Base):
     feed_changed_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.clock_timestamp()
     )
-    """Jam feed mesin (P7c); trigger-nya dipasang migrasi `entity_model`."""
+    """Jam feed mesin (P7c); migrasi `entity_model` memasang `trg_stories_feed_bump` (title,
+    article_count) dan `trg_entity_mentions_feed_bump` (mention artikel masuk/keluar)."""
     article_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default=text("0")
     )

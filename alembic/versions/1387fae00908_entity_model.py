@@ -385,6 +385,27 @@ def _rename_compat(src: str, dst: str) -> None:
             op.execute(f"ALTER SEQUENCE {src}{t}_id_seq RENAME TO {dst}{t}_id_seq")
 
 
+def _create_feed_triggers() -> None:
+    """Jam feed entitas/relasi/story (spec 3.5); SESUDAH backfill supaya muatan massal tak bump."""
+    sql = pathlib.Path(__file__).parent / "entity_model_sql" / "feed_triggers.sql"
+    op.execute(sql.read_text())
+
+
+_FEED_TRIGGERS = (
+    ("entity_mentions", "entity_mentions_feed_bump"),
+    ("stories", "stories_feed_bump"),
+    ("relationships", "relationships_feed_bump"),
+    ("entity_aliases", "entity_aliases_feed_bump"),
+    ("entities", "entities_feed_bump"),
+)
+
+
+def _drop_feed_triggers() -> None:
+    for table, fn in _FEED_TRIGGERS:
+        op.execute(f"DROP TRIGGER trg_{fn} ON {table}")
+        op.execute(f"DROP FUNCTION {fn}()")
+
+
 def _create_compat_views() -> None:
     """Seksi 4: tabel lama -> `_legacy_<nama>` (disimpan sampai rilis sesudah 0.8.11 untuk audit
     dan undo manual), lalu view bernama lama + trigger INSTEAD OF supaya kode 0.8.2/0.8.10 yang
@@ -417,10 +438,12 @@ def upgrade() -> None:
     _create_resolve()
     _backfill()
     _create_compat_views()
+    _create_feed_triggers()
 
 
 def downgrade() -> None:
     op.execute("SET LOCAL lock_timeout = '10s'")
+    _drop_feed_triggers()
     _drop_compat_views()
     op.execute("DROP FUNCTION entity_resolve_technique(text, text, text)")
     op.execute("DROP FUNCTION entity_resolve(text, text, text)")
