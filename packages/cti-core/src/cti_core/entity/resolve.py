@@ -6,6 +6,10 @@ entitas + alias dengan `ON CONFLICT DO NOTHING` lalu baca ulang (aman untuk work
 tanpa retry berbasis exception). Entitas `suppressed` tetap dikembalikan: pemanggil yang memutuskan.
 Nama tampilan mempertahankan huruf besar-kecil pemanggil (spasi dirapatkan); alias baru
 memakai `source` pemanggil.
+
+`attack-pattern` (Ruling 7): identitas = id teknik, karena nama ATT&CK tidak unik (sub-teknik di
+induk berbeda, lintas domain). `external_id` wajib; alias satu-satunya = id teknik, `stix_id`
+diturunkan dari id itu, `name` tetap nama tampilan. Kembaran SQL: `entity_resolve_technique()`.
 """
 
 from __future__ import annotations
@@ -20,6 +24,16 @@ from cti_core.db.models.entity import Entity, EntityAlias
 from cti_core.entity import alias_norm, collapse_ws, entity_stix_id
 
 _MAX_HOPS = 20  # batas rantai merged_into_id; lebih dari ini dianggap siklus
+TECHNIQUE = "attack-pattern"
+
+
+def _key(type: str, name: str, external_id: str | None) -> str:
+    """Teks yang jadi alias/kunci identitas: nama, atau id teknik untuk attack-pattern."""
+    if type != TECHNIQUE:
+        return name
+    if not external_id or not collapse_ws(external_id):
+        raise ValueError("attack-pattern butuh external_id (id teknik)")
+    return external_id
 
 
 def _lookup(type: str, norm: str) -> Select[tuple[Entity]]:
@@ -30,20 +44,19 @@ def _lookup(type: str, norm: str) -> Select[tuple[Entity]]:
     )
 
 
-def _by_name(type: str, norm: str) -> Select[tuple[Entity]]:
-    return select(Entity).where(
-        Entity.type == type, func.lower(Entity.name) == norm, Entity.merged_into_id.is_(None)
-    )
+def _by_name(type: str, norm: str, key: str) -> Select[tuple[Entity]]:
+    match = Entity.external_id == key if type == TECHNIQUE else func.lower(Entity.name) == norm
+    return select(Entity).where(Entity.type == type, match, Entity.merged_into_id.is_(None))
 
 
 def _new_entity(
-    type: str, display: str, source: str, external_id: str | None, cls: str | None
+    type: str, display: str, key: str, source: str, external_id: str | None, cls: str | None
 ) -> ReturningInsert[tuple[int]]:
     return (
         insert(Entity)
         .values(
             type=type,
-            stix_id=entity_stix_id(type, display),
+            stix_id=entity_stix_id(type, key),
             name=display,
             source=source,
             external_id=external_id,
@@ -74,7 +87,10 @@ def resolve(
     identity_class: str | None = None,
 ) -> Entity:
     display = collapse_ws(name)
-    norm = alias_norm(name)
+    key = collapse_ws(_key(type, name, external_id))
+    if type == TECHNIQUE:
+        external_id = key
+    norm = alias_norm(key)
 
     def find() -> Entity | None:
         found = session.execute(_lookup(type, norm)).scalars().first()
@@ -87,14 +103,14 @@ def resolve(
     if (found := find()) is not None:
         return found
     new_id = session.execute(
-        _new_entity(type, display, source, external_id, identity_class)
+        _new_entity(type, display, key, source, external_id, identity_class)
     ).scalar()
     if new_id is None:  # nama sudah dipakai entitas hidup tanpa alias ini
-        existing = session.execute(_by_name(type, norm)).scalar_one_or_none()
+        existing = session.execute(_by_name(type, norm, key)).scalar_one_or_none()
         if existing is None:
             raise RuntimeError(f"resolve gagal membuat/menemukan {type} {name!r}")
         new_id = existing.id
-    session.execute(_new_alias(new_id, type, display, norm, source))
+    session.execute(_new_alias(new_id, type, key, norm, source))
     if (found := find()) is None:
         raise RuntimeError(f"resolve gagal untuk {type} {name!r}")
     return found
@@ -110,7 +126,10 @@ async def resolve_async(
     identity_class: str | None = None,
 ) -> Entity:
     display = collapse_ws(name)
-    norm = alias_norm(name)
+    key = collapse_ws(_key(type, name, external_id))
+    if type == TECHNIQUE:
+        external_id = key
+    norm = alias_norm(key)
 
     async def find() -> Entity | None:
         found = (await session.execute(_lookup(type, norm))).scalars().first()
@@ -123,14 +142,14 @@ async def resolve_async(
     if (found := await find()) is not None:
         return found
     new_id = (
-        await session.execute(_new_entity(type, display, source, external_id, identity_class))
+        await session.execute(_new_entity(type, display, key, source, external_id, identity_class))
     ).scalar()
     if new_id is None:
-        existing = (await session.execute(_by_name(type, norm))).scalar_one_or_none()
+        existing = (await session.execute(_by_name(type, norm, key))).scalar_one_or_none()
         if existing is None:
             raise RuntimeError(f"resolve gagal membuat/menemukan {type} {name!r}")
         new_id = existing.id
-    await session.execute(_new_alias(new_id, type, display, norm, source))
+    await session.execute(_new_alias(new_id, type, key, norm, source))
     if (found := await find()) is None:
         raise RuntimeError(f"resolve gagal untuk {type} {name!r}")
     return found

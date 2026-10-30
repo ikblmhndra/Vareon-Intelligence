@@ -186,3 +186,80 @@ def test_sql_twin_agrees(db_session: Session) -> None:
         text("SELECT entity_resolve('tool', 'Sql First', 'dictionary')")
     ).scalar_one()
     assert resolve(db_session, "tool", "sql  FIRST", source="dictionary").id == sql_first
+
+
+# --- jalur teknik (Ruling 7): identitas attack-pattern = id teknik, bukan nama ---
+
+
+def test_technique_requires_external_id(db_session: Session) -> None:
+    with pytest.raises(ValueError):
+        resolve(db_session, "attack-pattern", "Phishing", source="analyst")
+    with pytest.raises(Exception, match="external_id"), db_session.begin_nested():
+        db_session.execute(text("SELECT entity_resolve('attack-pattern', 'Phishing', 'legacy')"))
+
+
+def test_technique_same_name_different_ids(db_session: Session) -> None:
+    a = resolve(
+        db_session, "attack-pattern", "Cloud Account", source="analyst", external_id="T1136.003"
+    )
+    b = resolve(
+        db_session, "attack-pattern", "Cloud Account", source="analyst", external_id="T1087.004"
+    )
+    assert a.id != b.id and a.name == b.name == "Cloud Account"
+    assert a.stix_id != b.stix_id
+    again = resolve(
+        db_session, "attack-pattern", "Other", source="analyst", external_id="t1136.003"
+    )
+    assert again.id == a.id and again.name == "Cloud Account"
+    norms = db_session.scalars(
+        select(EntityAlias.alias_norm).where(EntityAlias.entity_id == a.id)
+    ).all()
+    assert norms == ["t1136.003"]  # hanya id teknik, tanpa alias nama
+
+
+async def test_technique_async(async_db_session: AsyncSession) -> None:
+    a = await resolve_async(
+        async_db_session, "attack-pattern", "X", source="analyst", external_id="T9001"
+    )
+    b = await resolve_async(
+        async_db_session, "attack-pattern", "Y", source="analyst", external_id="T9001"
+    )
+    assert a.id == b.id and a.external_id == "T9001"
+    with pytest.raises(ValueError):
+        await resolve_async(async_db_session, "attack-pattern", "X", source="analyst")
+
+
+def test_technique_sql_twin_agrees(db_session: Session) -> None:
+    cases = [
+        ("T1566.001", "Spearphishing Attachment"),
+        ("T1598.002", "Spearphishing Attachment"),  # nama sama, id beda
+        ("  t1566.001 ", "renamed"),
+        ("T0809", "Data Destruction"),
+    ]
+    for ext, name in cases:
+        py = resolve(db_session, "attack-pattern", name, source="legacy", external_id=ext).id
+        sql = db_session.execute(
+            text("SELECT entity_resolve_technique(:e, :n, 'legacy')"), {"e": ext, "n": name}
+        ).scalar_one()
+        assert sql == py, (ext, name)
+    sql_first = db_session.execute(
+        text("SELECT entity_resolve_technique('T1485', 'Data Destruction', 'legacy')")
+    ).scalar_one()
+    py = resolve(db_session, "attack-pattern", "x", source="legacy", external_id="t1485")
+    assert py.id == sql_first and py.name == "Data Destruction"
+
+
+def test_external_id_unique_per_type(db_session: Session) -> None:
+    db_session.execute(
+        text(
+            "INSERT INTO entities (type, stix_id, name, source, external_id)"
+            " VALUES ('vulnerability', 'v--1', 'CVE-1', 'cve', 'CVE-1')"
+        )
+    )
+    with pytest.raises(Exception, match="uq_entities_type_external_id"), db_session.begin_nested():
+        db_session.execute(
+            text(
+                "INSERT INTO entities (type, stix_id, name, source, external_id)"
+                " VALUES ('vulnerability', 'v--2', 'CVE-1 dup', 'cve', 'CVE-1')"
+            )
+        )

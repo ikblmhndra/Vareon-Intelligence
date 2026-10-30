@@ -39,6 +39,9 @@ DECLARE
     v_norm text := lower(v_name);
     v_id bigint := entity_resolve_lookup(p_type, v_norm);
 BEGIN
+    IF p_type = 'attack-pattern' THEN
+        RAISE EXCEPTION 'attack-pattern butuh external_id: pakai entity_resolve_technique()';
+    END IF;
     IF v_id IS NOT NULL THEN RETURN v_id; END IF;
 
     INSERT INTO entities (type, stix_id, name, source)
@@ -59,6 +62,46 @@ BEGIN
     v_id := entity_resolve_lookup(p_type, v_norm);
     IF v_id IS NULL THEN
         RAISE EXCEPTION 'entity_resolve gagal untuk % %', p_type, p_name;
+    END IF;
+    RETURN v_id;
+END $fn$;
+
+
+-- Ruling 7: identitas attack-pattern = id teknik (nama ATT&CK tidak unik). Alias satu-satunya =
+-- id teknik; entitas baru: name = p_name (dirapatkan), external_id = id; kembaran jalur teknik
+-- resolve() Python. stix_id acak seperti entity_resolve() (Ruling 5).
+CREATE FUNCTION entity_resolve_technique(p_ext_id text, p_name text, p_source text)
+RETURNS bigint LANGUAGE plpgsql AS $fn$
+DECLARE
+    v_ext text := entity_collapse_ws(coalesce(p_ext_id, ''));
+    v_norm text := lower(v_ext);
+    v_name text := entity_collapse_ws(coalesce(p_name, ''));
+    v_id bigint;
+BEGIN
+    IF v_ext = '' THEN
+        RAISE EXCEPTION 'attack-pattern butuh external_id (id teknik)';
+    END IF;
+    v_id := entity_resolve_lookup('attack-pattern', v_norm);
+    IF v_id IS NOT NULL THEN RETURN v_id; END IF;
+
+    INSERT INTO entities (type, stix_id, name, source, external_id)
+    VALUES ('attack-pattern', 'attack-pattern--' || gen_random_uuid(), v_name, p_source, v_ext)
+    ON CONFLICT DO NOTHING
+    RETURNING id INTO v_id;
+    IF v_id IS NULL THEN  -- id sudah dipakai entitas hidup tanpa alias ini
+        SELECT id INTO v_id FROM entities
+         WHERE type = 'attack-pattern' AND external_id = v_ext AND merged_into_id IS NULL;
+    END IF;
+    IF v_id IS NULL THEN
+        RAISE EXCEPTION 'entity_resolve_technique gagal membuat/menemukan %', p_ext_id;
+    END IF;
+    INSERT INTO entity_aliases (entity_id, entity_type, alias, alias_norm, source)
+    VALUES (v_id, 'attack-pattern', v_ext, v_norm, p_source)
+    ON CONFLICT DO NOTHING;
+
+    v_id := entity_resolve_lookup('attack-pattern', v_norm);
+    IF v_id IS NULL THEN
+        RAISE EXCEPTION 'entity_resolve_technique gagal untuk %', p_ext_id;
     END IF;
     RETURN v_id;
 END $fn$;

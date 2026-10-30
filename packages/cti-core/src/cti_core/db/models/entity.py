@@ -63,7 +63,15 @@ class Entity(TimestampMixin, Base):
             "type",
             text("lower(name)"),
             unique=True,
-            postgresql_where=text("merged_into_id IS NULL"),
+            postgresql_where=text("merged_into_id IS NULL AND type <> 'attack-pattern'"),
+        ),
+        # identitas teknik = id teknik (nama ATT&CK tidak unik: sub-teknik, lintas domain)
+        Index(
+            "uq_entities_type_external_id",
+            "type",
+            "external_id",
+            unique=True,
+            postgresql_where=text("external_id IS NOT NULL AND merged_into_id IS NULL"),
         ),
         Index("ix_entities_type_external_id", "type", "external_id"),
         Index("ix_entities_feed_changed_at_id", "feed_changed_at", "id"),

@@ -78,7 +78,15 @@ def _create_tables() -> None:
         "entities",
         ["type", sa.text("lower(name)")],
         unique=True,
-        postgresql_where=sa.text("merged_into_id IS NULL"),
+        postgresql_where=sa.text("merged_into_id IS NULL AND type <> 'attack-pattern'"),
+    )
+    # identitas teknik = id teknik (nama ATT&CK tidak unik: sub-teknik, lintas domain)
+    op.create_index(
+        "uq_entities_type_external_id",
+        "entities",
+        ["type", "external_id"],
+        unique=True,
+        postgresql_where=sa.text("external_id IS NOT NULL AND merged_into_id IS NULL"),
     )
     op.create_index("ix_entities_type_external_id", "entities", ["type", "external_id"])
     op.create_index("ix_entities_feed_changed_at_id", "entities", ["feed_changed_at", "id"])
@@ -342,6 +350,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.execute("SET LOCAL lock_timeout = '10s'")
+    op.execute("DROP FUNCTION entity_resolve_technique(text, text, text)")
     op.execute("DROP FUNCTION entity_resolve(text, text, text)")
     op.execute("DROP FUNCTION entity_resolve_lookup(text, text)")
     op.execute("DROP FUNCTION entity_alias_norm(text)")
