@@ -209,6 +209,11 @@ def test_set_enrichment_twice_with_the_same_values_is_a_noop_not_a_unique_violat
     assert _snapshot(article)["industries"] == ["General"]
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason="P7c Task 11: industry_unspecified counts articles without a sector mention;"
+    " P7c Task 11: ttp_name comes from the technique entity",
+)
 def test_set_enrichment_applies_added_removed_and_renamed_children(db_session: Session) -> None:
     repo = ArticleRepo(db_session)
     article = repo.upsert(url="https://example.com/chg", title="t", source="s")

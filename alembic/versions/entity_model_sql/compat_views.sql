@@ -8,7 +8,7 @@
 --   (external_id); label industri lewat alias sektor ("General" = tidak ada apa-apa).
 -- * id view = entity_mentions.id (atau entity_watches/entity_profiles/entities), diisi trigger
 --   INSERT supaya ORM lama dapat RETURNING id; kolom server_default lama juga diisi.
--- * Nama kosong, "General", atau entitas suppressed: tidak ada baris, tidak ada error (Review
+-- * Nama kosong, "General", atau entitas suppressed: tidak ada baris (juga untuk view TA), tidak ada error (Review
 --   Focus 5). ORM lama tetap butuh id, jadi trigger memberi id "fantom" dari sekuens
 --   entity_mentions; DELETE id fantom tidak melakukan apa-apa.
 -- * Bentrok di kunci unik mention (dua ejaan -> satu entitas): baris yang ada diberi id baru dan
@@ -77,6 +77,8 @@ BEGIN
         INSERT INTO entities (type, stix_id, name, external_id, source)
         VALUES ('location', 'location--' || gen_random_uuid(), v_code, v_code, 'legacy')
         ON CONFLICT DO NOTHING;
+        -- kode baru yang namanya bentrok dengan lokasi lain (unik type+lower(name)) tidak dibuat:
+        -- v_id tetap NULL -> mention fantom, sengaja (sama dengan backfill yang melewatinya)
         SELECT id INTO v_id FROM entities
          WHERE type = 'location' AND external_id = v_code AND merged_into_id IS NULL;
         INSERT INTO entity_aliases (entity_id, entity_type, alias, alias_norm, source)
@@ -114,6 +116,18 @@ BEGIN
     RETURN coalesce(v_id, nextval('entity_mentions_id_seq'));
 END $fn$;
 
+-- UPDATE yang mengganti kunci: arahkan mention ke entitas baru; NULL (kosong, "General") atau
+-- suppressed -> mention dihapus, sama dengan INSERT yang dibuang
+CREATE FUNCTION entity_compat_repoint(p_id bigint, p_entity bigint, p_alias text)
+RETURNS void LANGUAGE plpgsql AS $fn$
+BEGIN
+    IF p_entity IS NULL OR (SELECT suppressed FROM entities WHERE id = p_entity) THEN
+        DELETE FROM entity_mentions WHERE id = p_id;
+    ELSE
+        UPDATE entity_mentions SET entity_id = p_entity, matched_alias = p_alias WHERE id = p_id;
+    END IF;
+END $fn$;
+
 CREATE FUNCTION entity_compat_extracted(p_id text, p_name text) RETURNS jsonb
 LANGUAGE sql IMMUTABLE AS $fn$
     SELECT nullif(jsonb_strip_nulls(jsonb_build_object('extracted_id', p_id,
@@ -140,10 +154,8 @@ BEGIN
         RETURN NEW;
     END IF;
     IF NEW.threat_actor IS DISTINCT FROM OLD.threat_actor THEN
-        UPDATE entity_mentions
-           SET entity_id = entity_compat_resolve('intrusion-set', NEW.threat_actor),
-               matched_alias = NEW.threat_actor
-         WHERE id = OLD.id;
+        PERFORM entity_compat_repoint(
+            OLD.id, entity_compat_resolve('intrusion-set', NEW.threat_actor), NEW.threat_actor);
     END IF;
     UPDATE entity_mentions SET method = NEW.source WHERE id = OLD.id;
     RETURN NEW;
@@ -172,11 +184,11 @@ BEGIN
         RETURN NEW;
     END IF;
     IF (NEW.name, NEW.kind) IS DISTINCT FROM (OLD.name, OLD.kind) THEN
-        UPDATE entity_mentions
-           SET entity_id = entity_compat_resolve(
-                   CASE WHEN NEW.kind = 'tool' THEN 'tool' ELSE 'malware' END, NEW.name),
-               matched_alias = NEW.name
-         WHERE id = OLD.id;
+        PERFORM entity_compat_repoint(
+            OLD.id,
+            entity_compat_resolve(CASE WHEN NEW.kind = 'tool' THEN 'tool' ELSE 'malware' END,
+                                  NEW.name),
+            NEW.name);
     END IF;
     UPDATE entity_mentions SET method = NEW.source WHERE id = OLD.id;
     RETURN NEW;
@@ -208,10 +220,8 @@ BEGIN
         RETURN NEW;
     END IF;
     IF NEW.ttp_id IS DISTINCT FROM OLD.ttp_id THEN
-        UPDATE entity_mentions
-           SET entity_id = entity_compat_technique(NEW.ttp_id, NEW.ttp_name),
-               matched_alias = NEW.ttp_id
-         WHERE id = OLD.id;
+        PERFORM entity_compat_repoint(
+            OLD.id, entity_compat_technique(NEW.ttp_id, NEW.ttp_name), NEW.ttp_id);
     END IF;
     UPDATE entity_mentions
        SET method = NEW.source, evidence = NEW.evidence,
@@ -286,9 +296,7 @@ BEGIN
         RETURN NEW;
     END IF;
     IF NEW.industry IS DISTINCT FROM OLD.industry THEN
-        UPDATE entity_mentions
-           SET entity_id = entity_compat_sector(NEW.industry), matched_alias = NEW.industry
-         WHERE id = OLD.id;
+        PERFORM entity_compat_repoint(OLD.id, entity_compat_sector(NEW.industry), NEW.industry);
     END IF;
     UPDATE entity_mentions SET method = NEW.source WHERE id = OLD.id;
     RETURN NEW;
@@ -370,8 +378,13 @@ BEGIN
         RETURN OLD;
     END IF;
     v_entity := entity_compat_resolve('intrusion-set', NEW.name);
-    IF v_entity IS NULL THEN
-        RAISE EXCEPTION 'ta_watchlist: nama aktor kosong';
+    IF v_entity IS NULL THEN  -- nama kosong: id fantom, tanpa baris, tanpa error
+        IF TG_OP = 'INSERT' THEN
+            NEW.id := nextval('entity_watches_id_seq');
+            NEW.created_at := now();
+            NEW.updated_at := NEW.created_at;
+        END IF;
+        RETURN NEW;
     END IF;
     IF TG_OP = 'UPDATE' THEN
         UPDATE entity_watches SET entity_id = v_entity, client_id = NEW.client_id
@@ -414,8 +427,9 @@ BEGIN
         RETURN NEW;
     END IF;
     v_entity := entity_compat_resolve('intrusion-set', NEW.actor_name);
-    IF v_entity IS NULL THEN
-        RAISE EXCEPTION 'ta_profiles: nama aktor kosong';
+    IF v_entity IS NULL THEN  -- nama kosong: id fantom, tanpa baris, tanpa error
+        NEW.id := nextval('entity_profiles_id_seq');
+        RETURN NEW;
     END IF;
     INSERT INTO entity_profiles (entity_id, profile, generated_at)
     VALUES (v_entity, NEW.profile, NEW.generated_at)
@@ -444,8 +458,10 @@ BEGIN
         RETURN OLD;
     END IF;
     v_entity := entity_compat_resolve('intrusion-set', NEW.name);
-    IF v_entity IS NULL THEN
-        RAISE EXCEPTION 'ta_whitelist: nama aktor kosong';
+    IF v_entity IS NULL THEN  -- nama kosong: id fantom, tanpa entitas, tanpa error
+        NEW.id := nextval('entities_id_seq');
+        NEW.added_date := now();
+        RETURN NEW;
     END IF;
     UPDATE entities SET suppressed = true, updated_at = now()
      WHERE id = v_entity AND NOT suppressed;
@@ -460,4 +476,4 @@ CREATE TRIGGER trg_ta_whitelist_compat INSTEAD OF INSERT OR DELETE
 CREATE VIEW ioc_threat_actors AS
 SELECT id, indicator_id AS ioc_id, threat_actor FROM indicator_threat_actors;
 COMMENT ON VIEW ioc_threat_actors IS
-    'deprecated since 0.8.11: read-only compatibility view, use indicator_*';
+    'deprecated since 0.8.11: compatibility view, writable through the indicator_threat_actors triggers; use indicator_*';

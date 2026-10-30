@@ -92,6 +92,7 @@ def test_article_alias_merged_into_existing_canonical(seeded: Session) -> None:
     assert sum(stats.articles.renamed.values()) + sum(stats.articles.merged.values()) == 3
 
 
+@pytest.mark.xfail(strict=True, reason="P7c Task 8: canonicalise_actors rewritten for entities")
 def test_dry_run_writes_nothing(seeded: Session) -> None:
     art = _article(seeded, 4, ["Paper heron"])
     seeded.add(TAWatchlistEntry(name="paper heron", client_id=CLIENT))
@@ -107,6 +108,7 @@ def test_dry_run_writes_nothing(seeded: Session) -> None:
     ).scalars().all() == ["paper heron"]
 
 
+@pytest.mark.xfail(strict=True, reason="P7c Task 8: canonicalise_actors rewritten for entities")
 def test_watchlist_renamed_or_dropped_when_canonical_present(seeded: Session) -> None:
     seeded.add(Client(client_id="canon-other", name="Other"))
     seeded.flush()

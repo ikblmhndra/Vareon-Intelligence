@@ -365,6 +365,7 @@ _COMPAT = (
 )
 _COMPAT_HELPERS = (
     "entity_compat_extracted(text, text)",
+    "entity_compat_repoint(bigint, bigint, text)",
     "entity_compat_mention(bigint, bigint, bigint, bigint, text, text, text, text, jsonb)",
     "entity_compat_country(text)",
     "entity_compat_sector(text)",

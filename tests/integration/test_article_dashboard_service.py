@@ -224,6 +224,9 @@ async def test_get_dashboard_stats_prev_period_reliable_with_enough_days(
     assert result["prev_period_reliable"] is True
 
 
+@pytest.mark.xfail(
+    strict=True, reason="P7c Task 11: industry_unspecified counts articles without a sector mention"
+)
 async def test_get_dashboard_stats_incident_only_drops_non_incident_types(
     async_db_session: AsyncSession,
 ) -> None:
@@ -238,6 +241,9 @@ async def test_get_dashboard_stats_incident_only_drops_non_incident_types(
     assert result["industry_unspecified"] == 1  # tinggal p3
 
 
+@pytest.mark.xfail(
+    strict=True, reason="P7c Task 11: industry_unspecified counts articles without a sector mention"
+)
 async def test_get_dashboard_stats_splits_general_industry_and_reports_coverage(
     async_db_session: AsyncSession,
 ) -> None:

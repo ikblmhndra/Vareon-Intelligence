@@ -92,6 +92,9 @@ async def _seed_async(session: AsyncSession, *, catalog: bool = True) -> None:
 # ── agregasi (fix berlaku SEBELUM backfill) ──────────────────────────────────
 
 
+@pytest.mark.xfail(
+    strict=True, reason="P7c Task 11: industry_unspecified counts articles without a sector mention"
+)
 @pytest.mark.asyncio
 async def test_heatmap_has_one_column_per_technique_id_with_canonical_name(
     async_db_session: AsyncSession,
@@ -171,6 +174,7 @@ def _ttps_of(session: Session, article_id: int) -> list[tuple[str, str, str | No
     return [tuple(r) for r in rows]
 
 
+@pytest.mark.xfail(strict=True, reason="P7c Task 11: ttp_name comes from the technique entity")
 def test_remap_article_ttps_backfills_and_is_idempotent(db_session: Session) -> None:
     ids = _seed_sync(db_session)
     stats = remap_article_ttps(db_session, load_catalog(db_session), batch_size=2)

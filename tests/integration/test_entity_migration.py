@@ -105,6 +105,41 @@ def test_downgrade_drops_everything(db_session: Session) -> None:
     _run(db_session, "upgrade")  # bolak-balik harus mulus
 
 
+def test_downgrade_restores_legacy_rows_and_sequences(db_session: Session) -> None:
+    """Baris lama -> upgrade (tabel jadi _legacy_*) -> downgrade: baris kembali dengan id-nya dan
+    sekuens id melanjutkan dari max(id)."""
+    s = db_session
+    _run(s, "downgrade")
+    s.merge(Client(client_id="dgc", name="DG"))
+    art = Article(url="https://dg.example/a", url_hash="dg-a", title="t", source="dg")
+    s.add(art)
+    s.flush()
+    seeded = {
+        "article_threat_actors": _one(
+            s,
+            "INSERT INTO article_threat_actors (article_id, threat_actor, source)"
+            " VALUES (:a, 'Dg Actor', 'llm') RETURNING id",
+            a=art.id,
+        ),
+        "ta_watchlist": _one(
+            s,
+            "INSERT INTO ta_watchlist (name, client_id) VALUES ('Dg Actor', 'dgc') RETURNING id",
+        ),
+        "ta_whitelist": _one(s, "INSERT INTO ta_whitelist (name) VALUES ('dg x') RETURNING id"),
+    }
+    _run(s, "upgrade")
+    assert _one(s, "SELECT relkind FROM pg_class WHERE relname = 'article_threat_actors'") == "v"
+    _run(s, "downgrade")
+    for table, row_id in seeded.items():
+        assert _one(s, f"SELECT count(*) FROM {table} WHERE id = :i", i=row_id) == 1
+        nxt = _one(s, f"SELECT nextval('{table}_id_seq')")
+        assert nxt > _one(s, f"SELECT max(id) FROM {table}")
+    assert (
+        _one(s, "SELECT count(*) FROM article_cves WHERE article_id = :a", a=art.id) == 0
+    )  # tabel tanpa sekuens ikut kembali
+    _run(s, "upgrade")
+
+
 # --- backfill (Task 3): tabel lama -> entitas/alias/relasi/mention, set-based di upgrade() ---
 
 

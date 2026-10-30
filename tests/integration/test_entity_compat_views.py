@@ -248,6 +248,11 @@ def _fresh(s: Session, article_id: int) -> Article:
     return s.get_one(Article, article_id)
 
 
+# DELETE id fantom/ber-id-baru tidak menemukan baris view: SQLAlchemy hanya memperingatkan
+_DELETE_UNMATCHED = pytest.mark.filterwarnings(
+    "ignore:DELETE statement on table .* were matched:sqlalchemy.exc.SAWarning"
+)
+
 # --- test -------------------------------------------------------------------------------------
 
 
@@ -306,6 +311,7 @@ def test_old_delete_orphan_removes_mention(db_session: Session) -> None:
     assert _mentions(s, art.id) == []
 
 
+@_DELETE_UNMATCHED  # DELETE baris lama yang id-nya sudah diganti
 def test_old_reconcile_alias_keeps_mention(db_session: Session) -> None:
     """`_reconcile` 0.8.10: baris lama (dibaca dengan nama entitas) tidak ada di daftar baru, ejaan
     alias baru ditambah. UoW menjalankan INSERT sebelum DELETE: mention harus tetap ada."""
@@ -439,6 +445,7 @@ def test_old_whitelist_add_suppresses(db_session: Session) -> None:
     assert _q(s, "SELECT suppressed FROM entities WHERE id = :e", e=eid) == [(False,)]
 
 
+@_DELETE_UNMATCHED  # DELETE id fantom
 def test_suppressed_name_insert_is_dropped(db_session: Session) -> None:
     """Review Focus 5: nama entitas suppressed -> tanpa mention, tanpa error, artikel jalan."""
     s = db_session
@@ -473,10 +480,14 @@ def test_industry_view_returns_original_label(db_session: Session) -> None:
 def test_old_country_lookup_by_code(db_session: Session) -> None:
     s = db_session
     art = _article(s, "country")
-    art.countries.append(ArticleCountry(country_code="us", role="victim"))
-    art.countries.append(ArticleCountry(country_code="US", role="actor"))
-    art.countries.append(ArticleCountry(country_code="QQ", role="victim"))
-    s.flush()
+    rows = [
+        ArticleCountry(country_code="us", role="victim"),
+        ArticleCountry(country_code="US", role="actor"),
+        ArticleCountry(country_code="QQ", role="victim"),
+    ]
+    art.countries.extend(rows)
+    s.flush()  # satu flush multi-baris: id RETURNING harus cocok per baris
+    assert [r.id for r in rows] == [m[0] for m in _mentions(s, art.id)]
     assert [m[1:6] for m in _mentions(s, art.id)] == [
         ("location", "United States", "us", "legacy", "victim"),
         ("location", "United States", "US", "legacy", "actor"),
@@ -549,3 +560,42 @@ def test_legacy_tables_kept(db_session: Session) -> None:
     assert "_legacy_article_threat_actors" in names
     assert "_legacy_article_cves" in names
     assert "_legacy_article_threat_actors_id_seq" in names
+
+
+def test_update_to_blank_general_or_suppressed_deletes_mention(db_session: Session) -> None:
+    """UPDATE yang mengganti kunci ke nama tanpa entitas ("General") atau ke entitas suppressed
+    menghapus mention, sama dengan INSERT yang dibuang."""
+    s = db_session
+    eid = _actor(s, "Muted Crew")
+    s.execute(text("UPDATE entities SET suppressed = true WHERE id = :e"), {"e": eid})
+    art = _article(s, "repoint")
+    ind = ArticleIndustry(industry="Finance & Insurance")
+    actor = ArticleThreatActor(threat_actor="APT41")
+    art.industries.append(ind)
+    art.threat_actors.append(actor)
+    s.flush()
+    assert len(_mentions(s, art.id)) == 2
+    ind.industry = "General"
+    actor.threat_actor = "muted crew"
+    s.flush()
+    assert _mentions(s, art.id) == []
+
+
+def test_ta_views_blank_name_is_phantom(db_session: Session) -> None:
+    s = db_session
+    s.merge(Client(client_id="cvc", name="CV"))
+    rows = [
+        TAWatchlistEntry(name="   ", client_id="cvc"),
+        TAProfile(actor_name="", profile={"v": 1}),
+        TAWhitelistEntry(name=" "),
+    ]
+    s.add_all(rows)
+    s.flush()
+    assert all(r.id is not None for r in rows)
+    assert _q(
+        s,
+        "SELECT (SELECT count(*) FROM entity_watches WHERE client_id = 'cvc'),"
+        " (SELECT count(*) FROM entity_profiles WHERE id = :p),"
+        " (SELECT count(*) FROM entities WHERE name = '')",
+        p=rows[1].id,
+    ) == [(0, 0, 0)]
