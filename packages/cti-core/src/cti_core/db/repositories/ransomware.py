@@ -17,9 +17,10 @@ from sqlalchemy import Date, cast, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from cti_core.db.models.article import Article, ArticleThreatActor
+from cti_core.db.models.article import Article
 from cti_core.db.models.entity import Entity
 from cti_core.db.models.ransomware import RansomwareVictim
+from cti_core.db.repositories.entity import ACTOR, entity_ids_named, mention_rows
 from cti_core.entity import collapse_ws, relationship_stix_id
 from cti_core.entity.mentions import (
     country_mention,
@@ -312,7 +313,7 @@ class AsyncRansomwareVictimRepo:
     ) -> tuple[list[Article], int]:
         """Port `get_related_articles()` -- artikel yang nyebut nama grup
         ransomware yang tercatat di `ransomware_victims`, baik lewat tag
-        `ArticleThreatActor` (exact match) ATAUPUN judul (substring,
+        aktor artikel (alias entitas, case-insensitive -- P7c) ATAUPUN judul (substring,
         dibatasin 40 grup pertama -- port perilaku lama persis, alasan
         yang sama: batasin ukuran alternation regex/OR)."""
         group_names = (
@@ -325,15 +326,14 @@ class AsyncRansomwareVictimRepo:
             return [], 0
 
         top_groups = group_names[:40]
-        stmt = (
-            select(Article)
-            .distinct()
-            .outerjoin(ArticleThreatActor)
-            .where(
-                or_(
-                    ArticleThreatActor.threat_actor.in_(group_names),
-                    *[Article.title.ilike(f"%{g}%") for g in top_groups],
-                )
+        m = mention_rows(ACTOR)
+        tagged = select(m.c.article_id).where(
+            m.c.entity_id.in_(entity_ids_named(ACTOR, group_names))
+        )
+        stmt = select(Article).where(
+            or_(
+                Article.id.in_(tagged),
+                *[Article.title.ilike(f"%{g}%") for g in top_groups],
             )
         )
         total = (

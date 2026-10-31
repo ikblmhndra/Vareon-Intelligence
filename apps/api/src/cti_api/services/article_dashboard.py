@@ -10,8 +10,8 @@ Cache TTL module-level 900 detik (15 menit), pola sama kayak
 Dashboard informativeness: `days` (periode + pembanding periode sebelumnya,
 pola `exec_dashboard.get_exec_dashboard`), `incident_only` (buang
 `NON_INCIDENT_TYPES`), `confirmed_incidents`, `coverage` (penyebut chart), dan
-industri "General" dipisah dari `top_industries` -- di prod 62% artikel
-berlabel "General", jadi tanpa dipisah bar teratas selalu "General"."""
+artikel tanpa sektor spesifik (dulu label "General", P7c: tanpa mention sektor) dihitung terpisah
+dari `top_industries` -- di prod 62% artikel, jadi tanpa dipisah bar teratas selalu itu."""
 
 from __future__ import annotations
 
@@ -22,11 +22,7 @@ from typing import Any
 from cti_core.db.repositories.dashboard import AsyncDashboardRepo
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_api.services.exec_dashboard import (
-    NON_INCIDENT_TYPES,
-    PREV_MIN_DAY_COVERAGE,
-    UNSPECIFIED_INDUSTRY,
-)
+from cti_api.services.exec_dashboard import NON_INCIDENT_TYPES, PREV_MIN_DAY_COVERAGE
 
 _dashboard_cache: dict[str, tuple[dict[str, Any], float]] = {}
 _CACHE_TTL = 900.0
@@ -93,10 +89,9 @@ async def _fetch_dashboard_stats(
     top_countries = country_counts[:10]
     top_sources = await repo.top_sources(limit=10, **filters)
     top_actors = await repo.top_threat_actors(limit=10, **filters)
-    # 30 > 10 supaya "General" (hampir pasti teratas) terpisah tanpa menggeser 10 sektor spesifik.
-    industries = await repo.top_industries(limit=30, **filters)
-    industry_unspecified = sum(cnt for i, cnt in industries if i == UNSPECIFIED_INDUSTRY)
-    top_industries = [(i, cnt) for i, cnt in industries if i != UNSPECIFIED_INDUSTRY][:10]
+    top_industries = await repo.top_industries(limit=10, **filters)
+    # P7c (Ruling 13): "General" bukan lagi mention sektor; arti v1 tetap = artikel tanpa sektor.
+    industry_unspecified = await repo.count_articles_without_sector(**filters)
     top_ttps = await repo.ttp_counts(limit=10, **filters)
     by_type = await repo.news_type_breakdown(**filters)
     timeline = await repo.article_timeline(**filters)

@@ -4,30 +4,91 @@ LLM+timeline+dormancy) -- port `ScraperNewsWeb/app/services/ta_service.py`
 
 Daftar nama TA utama (`ThreatActorGroup`, Fase 5) dipakai bareng
 `cti_enrich.stages.score` -- lihat docstring `db/models/ta.py` soal
-kenapa gak ada tabel baru terpisah buat itu."""
+kenapa gak ada tabel baru terpisah buat itu.
+
+P7c (Task 11): whitelist = entitas aktor `suppressed`, watchlist = `entity_watches`, profil =
+`entity_profiles`. Tanda tangan method publik tetap; baris yang dikembalikan kini dataclass
+(`WhitelistRow`, `WatchlistRow`, `TAProfileRow`) dengan atribut yang sama seperti baris ORM
+lama. Nama dari pengguna di-resolve lewat `entity_aliases` ("apt36" = "Transparent Tribe");
+nama yang dikembalikan = `entities.name`."""
 
 from __future__ import annotations
 
 import datetime
 import re
+from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import case, func, select, text
+from sqlalchemy import case, delete, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_core.db.models.article import Article, ArticleThreatActor
+from cti_core.db.models.article import Article
+from cti_core.db.models.entity import Entity, EntityAlias, EntityProfile, EntityWatch
 from cti_core.db.models.ransomware import RansomwareVictim
-from cti_core.db.models.ta import TAProfile, TAWatchlistEntry, TAWhitelistEntry
 from cti_core.db.models.threat_reference import ThreatActorGroup
 from cti_core.db.models.tweet import Tweet
+from cti_core.db.repositories.entity import ACTOR, entity_ids_named, live_entity, mention_rows
+from cti_core.entity import alias_norm
+from cti_core.entity.merge import set_suppressed_async
+from cti_core.entity.resolve import resolve_async
 
 _GROUP_SORT_FIELDS = {
     "name": ThreatActorGroup.name,
     "added_date": ThreatActorGroup.created_at,
     "source": ThreatActorGroup.source,
 }
-_WHITELIST_SORT_FIELDS = {"name": TAWhitelistEntry.name, "added_date": TAWhitelistEntry.added_date}
-_WATCHLIST_SORT_FIELDS = {"name": TAWatchlistEntry.name, "added_date": TAWatchlistEntry.created_at}
+_WHITELIST_SORT_FIELDS: dict[str, Any] = {
+    "name": func.lower(Entity.name),
+    "added_date": Entity.updated_at,
+}
+_WATCHLIST_SORT_FIELDS: dict[str, Any] = {"name": Entity.name, "added_date": EntityWatch.created_at}
+
+_TA_ACTOR = "system:ta_groups"
+"""Pelaku audit `entity_suppress` bila pemanggil tidak menyebut username."""
+
+
+@dataclass(frozen=True)
+class WhitelistRow:
+    """Baris `ta_whitelist` v1: `id` = `entities.id`, `name` huruf kecil, `added_date` = waktu
+    entitas terakhir berubah (= saat di-suppress)."""
+
+    id: int
+    name: str
+    added_date: datetime.datetime
+
+
+@dataclass(frozen=True)
+class WatchlistRow:
+    id: int
+    name: str
+    client_id: str
+    created_at: datetime.datetime
+
+
+@dataclass(frozen=True)
+class TAProfileRow:
+    id: int
+    actor_name: str
+    profile: dict[str, Any]
+    generated_at: datetime.datetime
+
+
+async def _find_actor(session: AsyncSession, name: str) -> Entity | None:
+    """Aktor (bukan tombstone, suppressed IKUT) yang punya alias `name`; tanpa membuat entitas."""
+    norm = alias_norm(name or "")
+    if not norm:
+        return None
+    result = await session.execute(
+        select(Entity)
+        .join(EntityAlias, EntityAlias.entity_id == Entity.id)
+        .where(
+            EntityAlias.entity_type == ACTOR,
+            EntityAlias.alias_norm == norm,
+            Entity.merged_into_id.is_(None),
+        )
+        .limit(1)
+    )
+    return result.scalars().first()
 
 
 class AsyncTARepo:
@@ -121,10 +182,8 @@ class AsyncTARepo:
         return [n.lower() for n in result.scalars().all() if n]
 
     async def add_group(self, name: str) -> dict[str, Any]:
-        wl = await self.session.execute(
-            select(TAWhitelistEntry).where(TAWhitelistEntry.name == name.lower())
-        )
-        if wl.scalars().first() is not None:
+        found = await _find_actor(self.session, name)
+        if found is not None and found.suppressed:
             return {"success": False, "reason": "whitelisted"}
 
         dup = await self.session.execute(
@@ -138,12 +197,16 @@ class AsyncTARepo:
         await self.session.flush()
         return {"success": True}
 
-    async def delete_group(self, group_id: int, group_name: str) -> dict[str, bool]:
-        existing = await self.session.execute(
-            select(TAWhitelistEntry).where(TAWhitelistEntry.name == group_name.lower())
-        )
-        if existing.scalars().first() is None:
-            self.session.add(TAWhitelistEntry(name=group_name.lower()))
+    async def delete_group(
+        self, group_id: int, group_name: str, *, actor: str = _TA_ACTOR
+    ) -> dict[str, bool]:
+        """Hapus grup + whitelist namanya = suppress entitas aktornya (dibuat bila belum ada,
+        supaya nama itu tidak pernah dicocokkan lagi, sama seperti `ta_whitelist` v1)."""
+        ent = await _find_actor(self.session, group_name)
+        if ent is None and alias_norm(group_name or ""):
+            ent = await resolve_async(self.session, ACTOR, group_name, source="analyst")
+        if ent is not None and not ent.suppressed:
+            await set_suppressed_async(self.session, ent.id, True, actor=actor)
 
         group = await self.session.get(ThreatActorGroup, group_id)
         if group is not None:
@@ -156,7 +219,15 @@ class AsyncTARepo:
             await self.session.execute(select(func.count()).select_from(ThreatActorGroup))
         ).scalar_one()
         wl_total = (
-            await self.session.execute(select(func.count()).select_from(TAWhitelistEntry))
+            await self.session.execute(
+                select(func.count())
+                .select_from(Entity)
+                .where(
+                    Entity.type == ACTOR,
+                    Entity.suppressed.is_(True),
+                    Entity.merged_into_id.is_(None),
+                )
+            )
         ).scalar_one()
         by_source_rows = (
             await self.session.execute(
@@ -168,23 +239,24 @@ class AsyncTARepo:
         by_source = [{"name": s or "unknown", "count": c} for s, c in by_source_rows]
         manual_count = next((r["count"] for r in by_source if r["name"] == "manual"), 0)
 
+        # Aktor di berita yang salah satu alias-nya = nama grup TA (P7c: alias satu entitas = satu
+        # baris, nama tampilan `entities.name`).
         all_names = (await self.session.execute(select(ThreatActorGroup.name))).scalars().all()
-        group_names_lower = {n.lower() for n in all_names if n}
-
+        m = mention_rows(ACTOR)
         top_news = (
             await self.session.execute(
-                select(ArticleThreatActor.threat_actor, func.count())
-                .where(ArticleThreatActor.threat_actor != "")
-                .group_by(ArticleThreatActor.threat_actor)
+                select(m.c.name, func.count())
+                .where(
+                    m.c.article_id.is_not(None),
+                    m.c.name != "",
+                    m.c.entity_id.in_(entity_ids_named(ACTOR, all_names)),
+                )
+                .group_by(m.c.name)
                 .order_by(func.count().desc())
                 .limit(500)
             )
         ).all()
-        in_news = [
-            {"name": name, "count": count}
-            for name, count in top_news
-            if name and name.lower() in group_names_lower
-        ]
+        in_news = [{"name": name, "count": count} for name, count in top_news if name]
 
         return {
             "total_groups": total,
@@ -203,35 +275,30 @@ class AsyncTARepo:
         page_size: int = 50,
         sort_by: str = "name",
         sort_dir: str = "asc",
-    ) -> tuple[list[TAWhitelistEntry], int]:
-        stmt = select(TAWhitelistEntry)
+    ) -> tuple[list[WhitelistRow], int]:
+        stmt = select(Entity.id, func.lower(Entity.name), Entity.updated_at).where(
+            Entity.type == ACTOR, Entity.suppressed.is_(True), Entity.merged_into_id.is_(None)
+        )
         if search:
-            stmt = stmt.where(TAWhitelistEntry.name.ilike(f"%{search}%"))
+            stmt = stmt.where(Entity.name.ilike(f"%{search}%"))
         total = (
             await self.session.execute(select(func.count()).select_from(stmt.subquery()))
         ).scalar_one()
-        order_col = _WHITELIST_SORT_FIELDS.get(sort_by, TAWhitelistEntry.name)
+        order_col = _WHITELIST_SORT_FIELDS.get(sort_by, _WHITELIST_SORT_FIELDS["name"])
         order = order_col.desc() if sort_dir == "desc" else order_col.asc()
         rows = (
-            (
-                await self.session.execute(
-                    stmt.order_by(order).offset((page - 1) * page_size).limit(page_size)
-                )
+            await self.session.execute(
+                stmt.order_by(order, Entity.id).offset((page - 1) * page_size).limit(page_size)
             )
-            .scalars()
-            .all()
-        )
-        return list(rows), total
+        ).all()
+        return [WhitelistRow(id=i, name=n, added_date=d) for i, n, d in rows], total
 
-    async def remove_from_whitelist(self, name: str) -> bool:
-        result = await self.session.execute(
-            select(TAWhitelistEntry).where(TAWhitelistEntry.name == name.lower())
-        )
-        entry = result.scalars().first()
-        if entry is None:
+    async def remove_from_whitelist(self, name: str, *, actor: str = _TA_ACTOR) -> bool:
+        """Unsuppress aktor yang alias-nya `name`; mention dan alias kembali terlihat (spec 3.4)."""
+        ent = await _find_actor(self.session, name)
+        if ent is None or not ent.suppressed:
             return False
-        await self.session.delete(entry)
-        await self.session.flush()
+        await set_suppressed_async(self.session, ent.id, False, actor=actor)
         return True
 
     async def list_watchlist(
@@ -243,67 +310,94 @@ class AsyncTARepo:
         page_size: int = 50,
         sort_by: str = "name",
         sort_dir: str = "asc",
-    ) -> tuple[list[TAWatchlistEntry], int]:
-        stmt = select(TAWatchlistEntry).where(TAWatchlistEntry.client_id == client_id)
+    ) -> tuple[list[WatchlistRow], int]:
+        stmt = (
+            select(EntityWatch.id, Entity.name, EntityWatch.client_id, EntityWatch.created_at)
+            .join(Entity, Entity.id == EntityWatch.entity_id)
+            .where(EntityWatch.client_id == client_id, Entity.type == ACTOR)
+        )
         if search:
-            stmt = stmt.where(TAWatchlistEntry.name.ilike(f"%{search}%"))
+            stmt = stmt.where(Entity.name.ilike(f"%{search}%"))
         total = (
             await self.session.execute(select(func.count()).select_from(stmt.subquery()))
         ).scalar_one()
-        order_col = _WATCHLIST_SORT_FIELDS.get(sort_by, TAWatchlistEntry.name)
+        order_col = _WATCHLIST_SORT_FIELDS.get(sort_by, Entity.name)
         order = order_col.desc() if sort_dir == "desc" else order_col.asc()
         rows = (
-            (
-                await self.session.execute(
-                    stmt.order_by(order).offset((page - 1) * page_size).limit(page_size)
-                )
+            await self.session.execute(
+                stmt.order_by(order, EntityWatch.id).offset((page - 1) * page_size).limit(page_size)
             )
-            .scalars()
-            .all()
-        )
-        return list(rows), total
+        ).all()
+        return [WatchlistRow(id=i, name=n, client_id=c, created_at=d) for i, n, c, d in rows], total
 
     async def get_watchlist_names(self, client_id: str) -> list[str]:
         result = await self.session.execute(
-            select(TAWatchlistEntry.name).where(TAWatchlistEntry.client_id == client_id)
+            select(Entity.name)
+            .join(EntityWatch, EntityWatch.entity_id == Entity.id)
+            .where(EntityWatch.client_id == client_id, Entity.type == ACTOR)
+            .order_by(EntityWatch.id)
         )
         return list(result.scalars().all())
+
+    async def is_watched(self, name: str, client_id: str) -> bool:
+        """Apakah aktor dengan alias `name` di-watch `client_id` (cocok per entitas)."""
+        ent = await _find_actor(self.session, name)
+        if ent is None:
+            return False
+        found = await self.session.execute(
+            select(EntityWatch.id).where(
+                EntityWatch.client_id == client_id, EntityWatch.entity_id == ent.id
+            )
+        )
+        return found.first() is not None
 
     async def get_watchlist_names_unscoped(self) -> list[str]:
         """Port `ioc_service.get_ioc_ta_links()` (Fase 7.4 Grup D) -- legacy
         cek watchlist LINTAS SEMUA client (`ta_db[TA_WATCHLIST_COLLECTION].
         distinct("name")`, tanpa filter client), beda dari model baru yang
         `client_id`-scoped (Fase 2). Asimetri legacy dipertahankan apa
-        adanya -- sama pola kayak `AsyncPIRRepo.list_active_unscoped()`."""
-        result = await self.session.execute(select(TAWatchlistEntry.name))
+        adanya -- sama pola kayak `AsyncPIRRepo.list_active_unscoped()`.
+
+        P7c: nama + SEMUA alias entitas yang di-watch, huruf kecil (`alias_norm`), supaya
+        pencocokan nama di `ioc_ta_links` tetap kena alias apa pun yang tersimpan di IOC."""
+        result = await self.session.execute(
+            select(EntityAlias.alias_norm)
+            .join(EntityWatch, EntityWatch.entity_id == EntityAlias.entity_id)
+            .where(EntityAlias.entity_type == ACTOR)
+            .distinct()
+            .order_by(EntityAlias.alias_norm)
+        )
         return list(result.scalars().all())
 
     async def add_to_watchlist(self, name: str, client_id: str) -> dict[str, Any]:
+        """Nama di-resolve ke aktor lewat alias (dibuat bila belum dikenal, seperti v1 yang
+        menerima nama apa pun); satu watch per (client, entitas)."""
+        ent = await _find_actor(self.session, name)
+        if ent is None:
+            ent = await resolve_async(self.session, ACTOR, name, source="analyst")
         existing = await self.session.execute(
-            select(TAWatchlistEntry).where(
-                func.lower(TAWatchlistEntry.name) == name.lower(),
-                TAWatchlistEntry.client_id == client_id,
+            select(EntityWatch.id).where(
+                EntityWatch.client_id == client_id, EntityWatch.entity_id == ent.id
             )
         )
-        if existing.scalars().first() is not None:
+        if existing.first() is not None:
             return {"success": False, "reason": "already_watched"}
-        self.session.add(TAWatchlistEntry(name=name, client_id=client_id))
+        self.session.add(EntityWatch(client_id=client_id, entity_id=ent.id))
         await self.session.flush()
         return {"success": True}
 
     async def remove_from_watchlist(self, name: str, client_id: str) -> bool:
-        result = await self.session.execute(
-            select(TAWatchlistEntry).where(
-                func.lower(TAWatchlistEntry.name) == name.lower(),
-                TAWatchlistEntry.client_id == client_id,
-            )
-        )
-        entry = result.scalars().first()
-        if entry is None:
+        ent = await _find_actor(self.session, name)
+        if ent is None:
             return False
-        await self.session.delete(entry)
+        result = await self.session.execute(
+            delete(EntityWatch)
+            .where(EntityWatch.client_id == client_id, EntityWatch.entity_id == ent.id)
+            .returning(EntityWatch.id)
+        )
+        removed = result.first() is not None
         await self.session.flush()
-        return True
+        return removed
 
 
 def build_ta_name_pattern(actor_name: str) -> str:
@@ -315,34 +409,64 @@ class AsyncTAProfileRepo:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def get_profile(self, actor_name: str) -> TAProfile | None:
-        result = await self.session.execute(
-            select(TAProfile).where(func.lower(TAProfile.actor_name) == actor_name.lower())
+    @staticmethod
+    def _profiles() -> Any:
+        return (
+            select(EntityProfile.id, Entity.name, EntityProfile.profile, EntityProfile.generated_at)
+            .join(Entity, Entity.id == EntityProfile.entity_id)
+            .where(Entity.type == ACTOR)
         )
-        return result.scalars().first()
 
-    async def list_profiles_by_names(self, actor_names: list[str]) -> list[TAProfile]:
-        """Case-insensitive `IN` -- dipakai `crossref` (Bagian 3) buat
-        cross-ref sekumpulan nama TA sekaligus."""
+    @staticmethod
+    def _row(r: Any) -> TAProfileRow:
+        return TAProfileRow(id=r[0], actor_name=r[1], profile=r[2] or {}, generated_at=r[3])
+
+    async def get_profile(self, actor_name: str) -> TAProfileRow | None:
+        """Profil aktor yang alias-nya `actor_name`; `actor_name` hasil = `entities.name`."""
+        ent = await _find_actor(self.session, actor_name)
+        if ent is None:
+            return None
+        row = (
+            await self.session.execute(self._profiles().where(EntityProfile.entity_id == ent.id))
+        ).first()
+        return self._row(row) if row is not None else None
+
+    async def list_profiles_by_names(self, actor_names: list[str]) -> list[TAProfileRow]:
+        """Case-insensitive lewat alias -- dipakai `crossref` (Bagian 3) buat
+        cross-ref sekumpulan nama TA sekaligus. Satu baris per entitas."""
         if not actor_names:
             return []
-        lowered = [n.lower() for n in actor_names]
         result = await self.session.execute(
-            select(TAProfile).where(func.lower(TAProfile.actor_name).in_(lowered))
+            self._profiles()
+            .where(EntityProfile.entity_id.in_(entity_ids_named(ACTOR, actor_names)))
+            .order_by(EntityProfile.id)
         )
-        return list(result.scalars().all())
+        return [self._row(r) for r in result.all()]
 
-    async def save_profile(self, actor_name: str, profile: dict[str, Any]) -> TAProfile:
-        existing = await self.get_profile(actor_name)
+    async def save_profile(self, actor_name: str, profile: dict[str, Any]) -> TAProfileRow:
+        """Upsert profil per entitas aktor (dibuat bila namanya belum dikenal)."""
+        ent = await _find_actor(self.session, actor_name)
+        if ent is None:
+            ent = await resolve_async(self.session, ACTOR, actor_name, source="analyst")
+        existing = (
+            await self.session.execute(
+                select(EntityProfile).where(EntityProfile.entity_id == ent.id)
+            )
+        ).scalar_one_or_none()
         if existing is not None:
             existing.profile = profile
             existing.generated_at = datetime.datetime.now(datetime.UTC)
-            await self.session.flush()
-            return existing
-        row = TAProfile(actor_name=actor_name, profile=profile)
-        self.session.add(row)
+        else:
+            existing = EntityProfile(entity_id=ent.id, profile=profile)
+            self.session.add(existing)
         await self.session.flush()
-        return row
+        await self.session.refresh(existing)
+        return TAProfileRow(
+            id=existing.id,
+            actor_name=ent.name,
+            profile=existing.profile or {},
+            generated_at=existing.generated_at,
+        )
 
     async def fetch_recent_news(
         self, actor_name: str, *, days: int = 90, limit: int = 10
@@ -378,13 +502,21 @@ class AsyncTAProfileRepo:
         # ("must appear in GROUP BY") karena dicek secara SINTAKS, bukan
         # nilai. Ketauan dari test integrasi, bukan hipotesis.
         article_month = func.to_char(Article.posted_on, "YYYY-MM")
+        ment = mention_rows(ACTOR)
+        # Nama entitas cocok regex, ATAU salah satu token adalah alias entitas (P7c: "apt36"
+        # menghitung artikel "Transparent Tribe").
+        tokens = [t.strip() for t in re.split(r"[/,]", actor_name) if t.strip()]
         article_rows = (
             await self.session.execute(
                 select(article_month, func.count(func.distinct(Article.id)))
-                .join(Article.threat_actors)
+                .select_from(Article)
+                .join(ment, ment.c.article_id == Article.id)
                 .where(
                     Article.posted_on >= cutoff_date,
-                    ArticleThreatActor.threat_actor.op("~*")(pattern),
+                    or_(
+                        ment.c.name.op("~*")(pattern),
+                        ment.c.entity_id.in_(entity_ids_named(ACTOR, tokens)),
+                    ),
                 )
                 .group_by(article_month)
             )
@@ -472,30 +604,46 @@ class AsyncTAProfileRepo:
             return {}
         cutoff_90 = datetime.datetime.now(datetime.UTC).date() - datetime.timedelta(days=90)
         cutoff_30 = datetime.datetime.now(datetime.UTC).date() - datetime.timedelta(days=30)
-        lower_names = {n.lower() for n in actor_names}
+        # Nama -> entitas lewat alias (P7c): aktivitas dihitung per entitas, alias apa pun.
+        alias_rows = (
+            await self.session.execute(
+                select(EntityAlias.alias_norm, EntityAlias.entity_id)
+                .join(Entity, Entity.id == EntityAlias.entity_id)
+                .where(
+                    EntityAlias.entity_type == ACTOR,
+                    EntityAlias.alias_norm.in_({alias_norm(n) for n in actor_names}),
+                    live_entity(),
+                )
+            )
+        ).all()
+        entity_of = {norm: eid for norm, eid in alias_rows}
 
+        m = mention_rows(ACTOR)
         rows = (
             await self.session.execute(
                 select(
-                    func.lower(ArticleThreatActor.threat_actor),
+                    m.c.entity_id,
                     func.count(func.distinct(Article.id)),
                     func.sum(case((Article.posted_on >= cutoff_30, 1), else_=0)),
                 )
                 .select_from(Article)
-                .join(Article.threat_actors)
-                .where(Article.posted_on >= cutoff_90)
-                .group_by(func.lower(ArticleThreatActor.threat_actor))
+                .join(m, m.c.article_id == Article.id)
+                .where(
+                    Article.posted_on >= cutoff_90,
+                    m.c.entity_id.in_(set(entity_of.values()) or {-1}),
+                )
+                .group_by(m.c.entity_id)
             )
         ).all()
         activity = {
-            name: {"total_90": total_90, "total_30": total_30 or 0}
-            for name, total_90, total_30 in rows
-            if name in lower_names
+            eid: {"total_90": total_90, "total_30": total_30 or 0}
+            for eid, total_90, total_30 in rows
         }
 
         states: dict[str, str] = {}
         for name in actor_names:
-            rec = activity.get(name.lower())
+            eid = entity_of.get(alias_norm(name))
+            rec = activity.get(eid) if eid is not None else None
             if not rec or rec["total_90"] == 0:
                 states[name] = "DORMANT"
             elif rec["total_30"] > 0:

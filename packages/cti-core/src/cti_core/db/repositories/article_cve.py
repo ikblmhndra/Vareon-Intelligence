@@ -11,7 +11,8 @@ from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from cti_core.db.models.entity import Entity, EntityMention
+from cti_core.db.repositories.entity import CVE
+from cti_core.db.repositories.entity import mention_rows as live_mentions
 from cti_core.entity.mentions import (
     MentionInput,
     cve_mention,
@@ -33,11 +34,9 @@ def _hits(cve_ids: Iterable[str], title: str) -> list[MentionInput]:
 
 
 def _ids_stmt(article_ids: Sequence[int]) -> Select[tuple[int | None, str]]:
-    return (
-        select(EntityMention.article_id, Entity.name)
-        .join(Entity, Entity.id == EntityMention.entity_id)
-        .where(Entity.type == "vulnerability", EntityMention.article_id.in_(article_ids))
-    )
+    # entitas hidup saja (`mention_rows`); id CVE = `external_id` = nama entitas
+    m = live_mentions(CVE)
+    return select(m.c.article_id, m.c.name).where(m.c.article_id.in_(article_ids))
 
 
 def _group(rows: Iterable[Any]) -> dict[int, set[str]]:

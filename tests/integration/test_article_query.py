@@ -287,7 +287,8 @@ async def test_get_filter_options_returns_distinct_sorted_values(
     options = await repo.get_filter_options()
     assert options["sources"] == sorted(options["sources"])
     assert "gbhacker" in options["sources"]
-    assert "Government & Public Sector" in options["industries"]
+    # P7c (plan Decision 3): opsi industri = nama tampilan sektor, bukan label lama
+    assert "Government" in options["industries"]
     assert "Apt41" in options["threat_actors"]
     assert options["date_range"]["min"] == "2026-08-01"
     assert options["date_range"]["max"] == "2026-09-17"

@@ -13,11 +13,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from cti_core.confidence import DEFAULT_GRADES, SourceStats
-from cti_core.db.models.article import Article, ArticleTTP, RejectedArticle
-from cti_core.db.models.article_cve import ArticleCve
+from cti_core.db.models.article import Article, RejectedArticle
 from cti_core.db.models.indicator import Indicator, IndicatorFeedback, IndicatorSource
 from cti_core.db.models.source_reliability import SourceReliabilityEntry
 from cti_core.db.models.story import Story
+from cti_core.db.repositories.entity import CVE, TECHNIQUE, mention_rows
 
 RELIABILITY_LABELS: dict[str, str] = {
     "A": "Completely reliable",
@@ -280,14 +280,16 @@ class AsyncSourceReliabilityRepo:
         query."""
         start = datetime.datetime.combine(since, datetime.time.min, tzinfo=datetime.UTC)
 
+        cves = mention_rows(CVE)
+        ttps = mention_rows(TECHNIQUE)
         artefact = or_(
-            select(ArticleCve.article_id).where(ArticleCve.article_id == Article.id).exists(),
+            select(cves.c.article_id).where(cves.c.article_id == Article.id).exists(),
             select(IndicatorSource.id)
             .join(Indicator, Indicator.id == IndicatorSource.indicator_id)
             .where(IndicatorSource.article_id == Article.id, Indicator.usable)
             .exists(),
-            select(ArticleTTP.id)
-            .where(ArticleTTP.article_id == Article.id, ArticleTTP.source == "explicit")
+            select(ttps.c.article_id)
+            .where(ttps.c.article_id == Article.id, ttps.c.method == "explicit")
             .exists(),
         )
         multi = Story.source_count > 1

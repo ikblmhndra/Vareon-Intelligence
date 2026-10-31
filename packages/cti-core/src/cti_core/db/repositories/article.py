@@ -18,17 +18,18 @@ from typing import Any, Literal
 
 from sqlalchemy import Select, func, literal_column, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session, aliased, object_session
+from sqlalchemy.orm import Session, object_session
 
 from cti_core.attack_ttp import NormalizedTTP
-from cti_core.db.models.article import (
-    Article,
-    ArticleCountry,
-    ArticleIndustry,
-    ArticleThreatActor,
-    ArticleTTP,
-    RejectedArticle,
+from cti_core.db.models.article import Article, RejectedArticle
+from cti_core.db.repositories.entity import (
+    ACTOR,
+    COUNTRY,
+    SECTOR,
+    TECHNIQUE,
+    entity_ids_named,
 )
+from cti_core.db.repositories.entity import mention_rows as live_mentions
 from cti_core.enrich_replay import BACKOFF_BASE, MAX_ATTEMPTS, ReplayCandidate
 from cti_core.entity.mentions import (
     ARTICLE_MENTION_ATTRS,
@@ -51,7 +52,7 @@ _ACTOR_SOURCES = frozenset({"dictionary", "llm", "analyst"})
 _INDUSTRY_SOURCES = frozenset({"llm", "keyword"})
 _MALWARE_KINDS = frozenset({"malware", "tool"})
 """Nilai sah kolom `source`/`kind` Tier 1. Dicek di sini, bukan Postgres CHECK (konvensi
-`ArticleCountry.role`), biar nilai baru tidak butuh migrasi."""
+`entity_mentions.role` negara), biar nilai baru tidak butuh migrasi."""
 
 
 def _check(value: str, allowed: frozenset[str], what: str) -> None:
@@ -82,14 +83,19 @@ def _apply_list_filters(
     """Filter bersama buat query list DAN count -- port dari `article_service.
     get_articles()` (Mongo query dict) ke SQL. Tiga field negara Mongo lama
     (`mentioned_countries`/`victim_countries`/`actor_countries`, tiga ARRAY
-    terpisah) sekarang SATU tabel `article_countries` + kolom `role` (Fase 2)
+    terpisah) sekarang mention negara + kolom `role` (Fase 2; P7c: `entity_mentions`)
     -- `countries` (param umum) = role APA PUN. Di Mongo lama
     `mentioned_countries` itu GABUNGAN regex/NER + victim GPT + actor GPT
     (`nlp.py`: `regex_countries + gpt_victim_countries + gpt_actor_countries`),
     sedangkan role "mentioned" di skema baru cuma SISA yang gak kepakai
     victim/actor (`cti_enrich.stages.persist._country_roles`). Filter
     `role == "mentioned"` (bug lama, QA BUG-B1) bikin artikel yang negaranya
-    victim -- mayoritas data -- gak pernah ketemu."""
+    victim -- mayoritas data -- gak pernah ketemu.
+
+    P7c: tiap filter anak = `Article.id IN (mention_rows ...)` (bukan JOIN), jadi tidak ada baris
+    dobel. Nama aktor dan industri dari pengguna di-resolve lewat `entity_aliases`
+    (`entity_ids_named`): "apt36" menemukan artikel "Transparent Tribe", label industri lama
+    menemukan sektornya; tetap case-insensitive seperti regex `^...$` Mongo lama."""
     if posted_on_start is not None:
         stmt = stmt.where(Article.posted_on >= posted_on_start)
     if posted_on_end is not None:
@@ -106,40 +112,30 @@ def _apply_list_filters(
     if story_id is not None:
         stmt = stmt.where(Article.story_id == story_id)
     if industries:
-        stmt = stmt.join(Article.industries).where(ArticleIndustry.industry.in_(industries))
+        stmt = stmt.where(_mentioning(SECTOR, entity_ids_named(SECTOR, industries)))
     if countries:
-        any_role = _country_alias()
-        stmt = stmt.join(any_role, Article.id == any_role.article_id).where(
-            any_role.country_code.in_(countries)
-        )
+        stmt = stmt.where(_with_country(countries, role=None))
     if victim_countries:
-        victim = _country_alias()
-        stmt = stmt.join(victim, Article.id == victim.article_id).where(
-            victim.role == "victim", victim.country_code.in_(victim_countries)
-        )
+        stmt = stmt.where(_with_country(victim_countries, role="victim"))
     if actor_countries:
-        actor = _country_alias()
-        stmt = stmt.join(actor, Article.id == actor.article_id).where(
-            actor.role == "actor", actor.country_code.in_(actor_countries)
-        )
+        stmt = stmt.where(_with_country(actor_countries, role="actor"))
     if sources:
         stmt = stmt.where(Article.source.in_(sources))
     if news_types:
         stmt = stmt.where(Article.news_type.in_(news_types))
     if threat_actors:
         # Mongo lama: regex `^...$` case-insensitive -- exact match, BUKAN
-        # substring. `func.lower(...).in_(...)` ekuivalen persis.
-        lowered = [t.lower() for t in threat_actors]
-        stmt = stmt.join(Article.threat_actors).where(
-            func.lower(ArticleThreatActor.threat_actor).in_(lowered)
-        )
+        # substring. Alias (`alias_norm`) ekuivalen persis, plus alias lain entitas yang sama.
+        stmt = stmt.where(_mentioning(ACTOR, entity_ids_named(ACTOR, threat_actors)))
     if ttps or ttp_sources:
-        # Satu join: ID dan sumber harus cocok pada BARIS TTP yang sama.
-        stmt = stmt.join(Article.ttps)
+        # Satu subquery: ID dan sumber harus cocok pada mention teknik yang SAMA.
+        t = live_mentions(TECHNIQUE)
+        sub = select(t.c.article_id)
         if ttps:
-            stmt = stmt.where(ArticleTTP.ttp_id.in_(ttps))
+            sub = sub.where(t.c.external_id.in_(ttps))
         if ttp_sources:
-            stmt = stmt.where(ArticleTTP.source.in_(ttp_sources))
+            sub = sub.where(t.c.method.in_(ttp_sources))
+        stmt = stmt.where(Article.id.in_(sub))
     keyword_or = (
         [Article.title.ilike(f"%{kw}%") for kw in title_keywords] if title_keywords else None
     )
@@ -157,11 +153,20 @@ def _apply_list_filters(
     return stmt
 
 
-def _country_alias() -> Any:
-    """Alias baru tiap dipanggil -- filter negara bisa dipakai 3x sekaligus
-    (mentioned + victim + actor) dalam SATU query; tanpa alias, tiga JOIN
-    ke tabel yang sama bakal nabrak nama."""
-    return aliased(ArticleCountry)
+def _mentioning(etype: str, entity_ids: Any) -> Any:
+    """`Article.id IN (artikel yang menyebut salah satu entitas hidup `entity_ids`)`."""
+    m = live_mentions(etype)
+    return Article.id.in_(select(m.c.article_id).where(m.c.entity_id.in_(entity_ids)))
+
+
+def _with_country(codes: Sequence[str], *, role: str | None) -> Any:
+    """Subquery baru tiap dipanggil -- filter negara bisa dipakai 3x sekaligus
+    (mentioned + victim + actor) dalam SATU query."""
+    m = live_mentions(COUNTRY)
+    sub = select(m.c.article_id).where(m.c.external_id.in_(codes))
+    if role is not None:
+        sub = sub.where(m.c.role == role)
+    return Article.id.in_(sub)
 
 
 def all_country_codes(article: Article) -> list[str]:
@@ -169,8 +174,13 @@ def all_country_codes(article: Article) -> list[str]:
     padanan field `mentioned_countries` Mongo lama (gabungan regex + victim +
     actor, lihat `_apply_list_filters`). Dipakai output yang dulu baca
     `mentioned_countries` mentah (PIR, STIX, clustering campaign); output yang
-    memang mecah per role (`ArticleOut`, newsletter) tetap baca per role."""
-    return list(dict.fromkeys(c.country_code for c in article.countries if c.country_code))
+    memang mecah per role (`ArticleOut`, newsletter) tetap baca per role.
+    P7c: kode = `external_id` mention negara entitas hidup, urut id mention."""
+    return list(
+        dict.fromkeys(
+            m.entity.external_id for m in article.mentions_of(COUNTRY) if m.entity.external_id
+        )
+    )
 
 
 def _merge_overrides(article: Article) -> dict[str, Any]:
@@ -599,7 +609,7 @@ class AsyncArticleRepo:
         (satu artikel bisa punya banyak baris industry/country/TA yang
         cocok, tanpa distinct dia muncul dobel di halaman).
 
-        `ttps` (Fase 7.3, router `pir`) filter `ArticleTTP.ttp_id` --
+        `ttps` (Fase 7.3, router `pir`) filter id teknik mention --
         ditambah di sini alih-alih duplikat query builder terpisah di
         `pir`, biar SATU sumber logic filter artikel (beda dari kode
         lama: `pir_service._build_query` DAN `export_pir_docx.py
@@ -712,13 +722,18 @@ class AsyncArticleRepo:
         """Port `article_service.get_filter_options()`. Distinct langsung
         dari kolom/tabel anak yang udah ternormalisasi -- gak butuh
         `col.distinct()` Mongo-style, ini query SQL biasa per tabel."""
+        sec = live_mentions(SECTOR)
         industries_q = (
-            select(ArticleIndustry.industry).distinct().order_by(ArticleIndustry.industry)
+            select(sec.c.name).where(sec.c.article_id.is_not(None)).distinct().order_by(sec.c.name)
         )
         # Role apa pun -- sama semantik sama filter `countries` (lihat
         # `_apply_list_filters`), biar opsi dropdown = negara yang bisa ketemu.
+        cty = live_mentions(COUNTRY)
         countries_q = (
-            select(ArticleCountry.country_code).distinct().order_by(ArticleCountry.country_code)
+            select(cty.c.external_id)
+            .where(cty.c.article_id.is_not(None), cty.c.external_id.is_not(None))
+            .distinct()
+            .order_by(cty.c.external_id)
         )
         sources_q = (
             select(Article.source).where(Article.source != "").distinct().order_by(Article.source)
@@ -729,10 +744,9 @@ class AsyncArticleRepo:
             .distinct()
             .order_by(Article.news_type)
         )
+        act = live_mentions(ACTOR)
         threat_actors_q = (
-            select(ArticleThreatActor.threat_actor)
-            .distinct()
-            .order_by(ArticleThreatActor.threat_actor)
+            select(act.c.name).where(act.c.article_id.is_not(None)).distinct().order_by(act.c.name)
         )
         date_range_q = select(func.min(Article.posted_on), func.max(Article.posted_on))
 

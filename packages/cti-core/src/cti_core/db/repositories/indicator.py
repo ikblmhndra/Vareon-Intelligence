@@ -475,7 +475,7 @@ class AsyncIndicatorRepo:
     async def list_by_article_ids(self, article_ids: Sequence[int]) -> list[Indicator]:
         """IOC yang nyantol ke salah satu `article_ids` lewat `IOCSource` -- port
         `cluster_service.py`'s `ioc_map` building (Fase 7.4 Grup A,
-        `get_recent_campaigns()`). CVE tidak termasuk: relasinya ada di `article_cves`
+        `get_recent_campaigns()`). CVE tidak termasuk: relasinya ada di mention CVE artikel
         (`AsyncArticleCveRepo.cve_ids_by_article`)."""
         if not article_ids:
             return []

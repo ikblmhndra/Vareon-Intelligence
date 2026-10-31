@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session
 
 _TODAY = datetime.date.today()
 _INDUSTRY = "Finance & Insurance"
+_SECTOR = "Financial Services"  # P7c (plan Decision 3): nama tampilan sektor label di atas
 _GROUPS = ["shinyhunters", "star blizzard", "temp.periscope"]
 
 
@@ -81,7 +82,7 @@ async def test_backfill_fixes_options_pir_coverage_and_risk_matrix(
     # udah ada sebelum backfill -- yang kosong cuma top actor-nya.
     risk_matrix._CACHE.clear()
     before = (await risk_matrix.get_risk_matrix(session))["matrix"]
-    assert [(c["industry"], c["country"]) for c in before] == [(_INDUSTRY, "US")]
+    assert [(c["industry"], c["country"]) for c in before] == [(_SECTOR, "US")]
     assert not before[0]["top_actors"]
 
     stats = await _backfill(session)
@@ -102,7 +103,7 @@ async def test_backfill_fixes_options_pir_coverage_and_risk_matrix(
     risk_matrix._CACHE.clear()
     matrix = (await risk_matrix.get_risk_matrix(session))["matrix"]
     assert [(c["industry"], c["country"], c["current_count"]) for c in matrix] == [
-        (_INDUSTRY, "US", 4)
+        (_SECTOR, "US", 4)
     ]
     assert matrix[0]["top_actors"][0] == "Shinyhunters"
     risk_matrix._CACHE.clear()

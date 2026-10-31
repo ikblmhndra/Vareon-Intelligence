@@ -209,9 +209,6 @@ async def test_get_risk_matrix_scores_high_activity_cell(async_db_session: Async
     assert set(cell["top_actors"]) == {"Apt41", "Lazarus"}
 
 
-@pytest.mark.xfail(
-    strict=True, reason="P7c Task 11: industry_unspecified counts articles without a sector mention"
-)
 async def test_exec_dashboard_leaves_general_out_of_sector_views(
     async_db_session: AsyncSession,
 ) -> None:

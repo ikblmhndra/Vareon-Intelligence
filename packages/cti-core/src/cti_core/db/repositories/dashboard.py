@@ -28,17 +28,12 @@ from typing import Any
 from sqlalchemy import Date, Integer, Select, and_, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_core.db.models.article import (
-    Article,
-    ArticleCountry,
-    ArticleIndustry,
-    ArticleThreatActor,
-    ArticleTTP,
-)
+from cti_core.db.models.article import Article
 from cti_core.db.models.cve import CveTicket, CveTracker
+from cti_core.db.models.entity import EntityWatch
 from cti_core.db.models.indicator import Indicator
-from cti_core.db.models.ta import TAWatchlistEntry
 from cti_core.db.repositories.cve import is_false_positive_row
+from cti_core.db.repositories.entity import ACTOR, COUNTRY, SECTOR, TECHNIQUE, mention_rows
 from cti_core.db.repositories.ttp_catalog import canonical_ttp_name
 
 
@@ -63,7 +58,21 @@ def _apply_article_filters(
     return stmt
 
 
-def _country_role(stmt: Select[tuple[Any, ...]], role: str | None) -> Select[tuple[Any, ...]]:
+def _joined(stmt: Select[tuple[Any, ...]], m: Any) -> Select[tuple[Any, ...]]:
+    """`FROM articles JOIN <mention_rows>` -- pengganti `.select_from(Article).join(ArticleX)`."""
+    return stmt.select_from(Article).join(m, m.c.article_id == Article.id)
+
+
+def _no_sector() -> Any:
+    """Artikel tanpa mention sektor -- arti v1 label "General" (Ruling 13): "General" tidak lagi
+    menghasilkan mention, jadi "tanpa sektor spesifik" = tidak punya mention sektor sama sekali."""
+    s = mention_rows(SECTOR)
+    return ~select(s.c.article_id).where(s.c.article_id == Article.id).exists()
+
+
+def _country_role(
+    stmt: Select[tuple[Any, ...]], role: str | None, m: Any
+) -> Select[tuple[Any, ...]]:
     """`role=None` = negara role APA PUN -- padanan `mentioned_countries`
     Mongo lama, yang isinya GABUNGAN regex + victim + actor (lihat
     `cti_core.db.repositories.article._apply_list_filters`). Role
@@ -73,7 +82,7 @@ def _country_role(stmt: Select[tuple[Any, ...]], role: str | None) -> Select[tup
     negara yang SAMA di dua role (victim + actor), makanya hitungan per
     negara pakai `count(DISTINCT article.id)`, bukan `count(*)`."""
     if role is not None:
-        stmt = stmt.where(ArticleCountry.role == role)
+        stmt = stmt.where(m.c.role == role)
     return stmt
 
 
@@ -102,40 +111,49 @@ class AsyncDashboardRepo:
 
     async def monthly_industry_counts(self, **filters: Any) -> list[tuple[str, str, int]]:
         month = func.to_char(cast(Article.posted_on, Date), "YYYY-MM")
+        m = mention_rows(SECTOR)
         stmt = _apply_article_filters(
-            select(ArticleIndustry.industry, month, func.count())
-            .select_from(Article)
-            .join(ArticleIndustry),
-            **filters,
-        ).group_by(ArticleIndustry.industry, month)
+            _joined(select(m.c.name, month, func.count()), m), **filters
+        ).group_by(m.c.name, month)
         rows = (await self.session.execute(stmt)).all()
         return [(industry, mo, cnt) for industry, mo, cnt in rows]
+
+    async def monthly_unspecified_counts(self, **filters: Any) -> list[tuple[str, int]]:
+        """`(bulan, jumlah artikel tanpa sektor)` -- pengganti baris "General" di
+        `monthly_industry_counts` v1 (Ruling 13, lihat `_no_sector`)."""
+        month = func.to_char(cast(Article.posted_on, Date), "YYYY-MM")
+        stmt = _apply_article_filters(
+            select(month, func.count()).where(_no_sector()), **filters
+        ).group_by(month)
+        rows = (await self.session.execute(stmt)).all()
+        return [(mo, cnt) for mo, cnt in rows]
+
+    async def count_articles_without_sector(self, **filters: Any) -> int:
+        """Jumlah artikel tanpa mention sektor = `industry_unspecified` v1 (Ruling 13)."""
+        stmt = _apply_article_filters(select(func.count(Article.id)).where(_no_sector()), **filters)
+        return int((await self.session.execute(stmt)).scalar_one())
 
     async def monthly_country_counts(
         self, *, role: str | None = None, **filters: Any
     ) -> list[tuple[str, str, int]]:
         month = func.to_char(cast(Article.posted_on, Date), "YYYY-MM")
+        m = mention_rows(COUNTRY)
         stmt = _apply_article_filters(
             _country_role(
-                select(ArticleCountry.country_code, month, func.count(func.distinct(Article.id)))
-                .select_from(Article)
-                .join(ArticleCountry),
+                _joined(select(m.c.external_id, month, func.count(func.distinct(Article.id))), m),
                 role,
+                m,
             ),
             **filters,
-        ).group_by(ArticleCountry.country_code, month)
+        ).group_by(m.c.external_id, month)
         rows = (await self.session.execute(stmt)).all()
         return [(country, mo, cnt) for country, mo, cnt in rows]
 
     async def top_threat_actors(self, *, limit: int = 10, **filters: Any) -> list[tuple[str, int]]:
+        m = mention_rows(ACTOR)
         stmt = (
-            _apply_article_filters(
-                select(ArticleThreatActor.threat_actor, func.count())
-                .select_from(Article)
-                .join(ArticleThreatActor),
-                **filters,
-            )
-            .group_by(ArticleThreatActor.threat_actor)
+            _apply_article_filters(_joined(select(m.c.name, func.count()), m), **filters)
+            .group_by(m.c.name)
             .order_by(func.count().desc())
             .limit(limit)
         )
@@ -143,35 +161,27 @@ class AsyncDashboardRepo:
         return [(actor, cnt) for actor, cnt in rows]
 
     async def unique_threat_actor_count(self, **filters: Any) -> int:
+        m = mention_rows(ACTOR)
         stmt = _apply_article_filters(
-            select(func.count(func.distinct(ArticleThreatActor.threat_actor)))
-            .select_from(Article)
-            .join(ArticleThreatActor),
-            **filters,
+            _joined(select(func.count(func.distinct(m.c.entity_id))), m), **filters
         )
         return int((await self.session.execute(stmt)).scalar_one())
 
     async def distinct_threat_actors(self, **filters: Any) -> list[str]:
-        stmt = _apply_article_filters(
-            select(ArticleThreatActor.threat_actor.distinct())
-            .select_from(Article)
-            .join(ArticleThreatActor),
-            **filters,
-        )
+        m = mention_rows(ACTOR)
+        stmt = _apply_article_filters(_joined(select(m.c.name.distinct()), m), **filters)
         result = await self.session.execute(stmt)
         return [r for r in result.scalars().all() if r]
 
     async def unique_industry_count(
         self, *, exclude_industry: str | None = None, **filters: Any
     ) -> int:
+        m = mention_rows(SECTOR)
         stmt = _apply_article_filters(
-            select(func.count(func.distinct(ArticleIndustry.industry)))
-            .select_from(Article)
-            .join(ArticleIndustry),
-            **filters,
+            _joined(select(func.count(func.distinct(m.c.entity_id))), m), **filters
         )
         if exclude_industry is not None:
-            stmt = stmt.where(ArticleIndustry.industry != exclude_industry)
+            stmt = stmt.where(m.c.name != exclude_industry)
         return int((await self.session.execute(stmt)).scalar_one())
 
     async def distinct_day_count(self, **filters: Any) -> int:
@@ -203,9 +213,9 @@ class AsyncDashboardRepo:
     #
     # `top_countries` SENGAJA gak re-normalize nama negara kayak
     # `normalize_country()` lama (legacy: `mentioned_countries` FREE-TEXT,
-    # butuh grouping ulang manual di Python) -- `ArticleCountry.country_code`
-    # (Fase 2) UDAH ISO alpha-2 kanonik dari enrichment, masalah yang
-    # legacy kerjain di query-time udah beres duluan di data model.
+    # butuh grouping ulang manual di Python) -- kode negara (`external_id` entitas
+    # `location`, dulu `article_countries.country_code`) UDAH ISO alpha-2 kanonik dari
+    # enrichment, masalah yang legacy kerjain di query-time udah beres duluan di data model.
 
     async def distinct_source_count(self, **filters: Any) -> int:
         stmt = _apply_article_filters(
@@ -216,11 +226,9 @@ class AsyncDashboardRepo:
 
     async def unique_country_count(self, **filters: Any) -> int:
         """Negara role apa pun (lihat `_country_role`)."""
+        m = mention_rows(COUNTRY)
         stmt = _apply_article_filters(
-            select(func.count(func.distinct(ArticleCountry.country_code)))
-            .select_from(Article)
-            .join(ArticleCountry),
-            **filters,
+            _joined(select(func.count(func.distinct(m.c.external_id))), m), **filters
         )
         return int((await self.session.execute(stmt)).scalar_one())
 
@@ -228,18 +236,14 @@ class AsyncDashboardRepo:
         self, *, limit: int = 10, role: str | None = None, **filters: Any
     ) -> list[tuple[str, int]]:
         n_articles = func.count(func.distinct(Article.id))
+        m = mention_rows(COUNTRY)
         stmt = (
             _apply_article_filters(
-                _country_role(
-                    select(ArticleCountry.country_code, n_articles)
-                    .select_from(Article)
-                    .join(ArticleCountry),
-                    role,
-                ),
+                _country_role(_joined(select(m.c.external_id, n_articles), m), role, m),
                 **filters,
             )
-            .group_by(ArticleCountry.country_code)
-            .order_by(n_articles.desc(), ArticleCountry.country_code)
+            .group_by(m.c.external_id)
+            .order_by(n_articles.desc(), m.c.external_id)
             .limit(limit)
         )
         rows = (await self.session.execute(stmt)).all()
@@ -258,14 +262,10 @@ class AsyncDashboardRepo:
         return [(s, cnt) for s, cnt in rows]
 
     async def top_industries(self, *, limit: int = 10, **filters: Any) -> list[tuple[str, int]]:
+        m = mention_rows(SECTOR)
         stmt = (
-            _apply_article_filters(
-                select(ArticleIndustry.industry, func.count())
-                .select_from(Article)
-                .join(ArticleIndustry),
-                **filters,
-            )
-            .group_by(ArticleIndustry.industry)
+            _apply_article_filters(_joined(select(m.c.name, func.count()), m), **filters)
+            .group_by(m.c.name)
             .order_by(func.count().desc())
             .limit(limit)
         )
@@ -297,14 +297,14 @@ class AsyncDashboardRepo:
         46% artikel yang punya datanya, jadi tanpa angka ini chart kelihatan
         lebih penuh daripada basis datanya."""
         out: dict[str, int] = {}
-        for key, model in (
-            ("with_country", ArticleCountry),
-            ("with_actor", ArticleThreatActor),
-            ("with_ttp", ArticleTTP),
+        for key, etype in (
+            ("with_country", COUNTRY),
+            ("with_actor", ACTOR),
+            ("with_ttp", TECHNIQUE),
         ):
+            m = mention_rows(etype)
             stmt = _apply_article_filters(
-                select(func.count(func.distinct(Article.id))).select_from(Article).join(model),
-                **filters,
+                _joined(select(func.count(func.distinct(Article.id))), m), **filters
             )
             out[key] = int((await self.session.execute(stmt)).scalar_one())
         return out
@@ -312,15 +312,21 @@ class AsyncDashboardRepo:
     # ── exec_dashboard v2 -- tier 2/3 ───────────────────────────────────────
 
     async def ttp_counts(self, *, limit: int = 15, **filters: Any) -> list[tuple[str, str, int]]:
+        m = mention_rows(TECHNIQUE)
         stmt = (
             _apply_article_filters(
-                select(ArticleTTP.ttp_id, canonical_ttp_name(), func.count())
-                .select_from(Article)
-                .join(ArticleTTP),
+                _joined(
+                    select(
+                        m.c.external_id,
+                        canonical_ttp_name(m.c.external_id, m.c.name),
+                        func.count(),
+                    ),
+                    m,
+                ),
                 **filters,
             )
             # per ID saja -- lihat `canonical_ttp_name` (QA BUG-04)
-            .group_by(ArticleTTP.ttp_id)
+            .group_by(m.c.external_id)
             .order_by(func.count().desc())
             .limit(limit)
         )
@@ -329,12 +335,10 @@ class AsyncDashboardRepo:
 
     async def monthly_ta_counts(self, **filters: Any) -> list[tuple[str, str, int]]:
         month = func.to_char(cast(Article.posted_on, Date), "YYYY-MM")
+        m = mention_rows(ACTOR)
         stmt = _apply_article_filters(
-            select(ArticleThreatActor.threat_actor, month, func.count())
-            .select_from(Article)
-            .join(ArticleThreatActor),
-            **filters,
-        ).group_by(ArticleThreatActor.threat_actor, month)
+            _joined(select(m.c.name, month, func.count()), m), **filters
+        ).group_by(m.c.name, month)
         rows = (await self.session.execute(stmt)).all()
         return [(actor, mo, cnt) for actor, mo, cnt in rows]
 
@@ -342,12 +346,8 @@ class AsyncDashboardRepo:
         """`(article_id -> [industry, ...])` buat artikel yang punya >= 2
         industri -- Python-side, sama kayak `_compute_sector_cooccurrence()`
         lama (proyeksi array per dokumen, bukan pipeline unwind)."""
-        stmt = _apply_article_filters(
-            select(ArticleIndustry.article_id, ArticleIndustry.industry)
-            .select_from(Article)
-            .join(ArticleIndustry),
-            **filters,
-        )
+        m = mention_rows(SECTOR)
+        stmt = _apply_article_filters(_joined(select(m.c.article_id, m.c.name), m), **filters)
         rows = (await self.session.execute(stmt)).all()
         out: dict[int, list[str]] = {}
         for article_id, industry in rows:
@@ -367,17 +367,15 @@ class AsyncDashboardRepo:
     ) -> list[tuple[str, str, int]]:
         if not sectors or not actors:
             return []
+        # `sectors`/`actors` = nama keluaran repo ini sendiri (top list), jadi cocok per nama.
+        sec = mention_rows(SECTOR)
+        act = mention_rows(ACTOR)
         stmt = _apply_article_filters(
-            select(ArticleIndustry.industry, ArticleThreatActor.threat_actor, func.count())
-            .select_from(Article)
-            .join(ArticleIndustry)
-            .join(ArticleThreatActor, ArticleThreatActor.article_id == Article.id)
-            .where(
-                ArticleIndustry.industry.in_(sectors),
-                ArticleThreatActor.threat_actor.in_(actors),
-            ),
+            _joined(select(sec.c.name, act.c.name, func.count()), sec)
+            .join(act, act.c.article_id == Article.id)
+            .where(sec.c.name.in_(sectors), act.c.name.in_(actors)),
             **filters,
-        ).group_by(ArticleIndustry.industry, ArticleThreatActor.threat_actor)
+        ).group_by(sec.c.name, act.c.name)
         rows = (await self.session.execute(stmt)).all()
         return [(sector, actor, cnt) for sector, actor, cnt in rows]
 
@@ -390,20 +388,19 @@ class AsyncDashboardRepo:
         perlu tau daftar `NON_INCIDENT_TYPES`, itu urusan service)."""
         if not actors:
             return []
+        m = mention_rows(ACTOR)
         stmt = (
-            select(
-                ArticleThreatActor.threat_actor,
-                func.count(),
-                func.sum(cast(Article.confirmed_incident.is_(True), Integer)),
-                func.sum(cast(Article.confirmed_incident.is_not(None), Integer)),
+            _joined(
+                select(
+                    m.c.name,
+                    func.count(),
+                    func.sum(cast(Article.confirmed_incident.is_(True), Integer)),
+                    func.sum(cast(Article.confirmed_incident.is_not(None), Integer)),
+                ),
+                m,
             )
-            .select_from(Article)
-            .join(ArticleThreatActor)
-            .where(
-                Article.posted_on >= posted_on_start,
-                ArticleThreatActor.threat_actor.in_(actors),
-            )
-            .group_by(ArticleThreatActor.threat_actor)
+            .where(Article.posted_on >= posted_on_start, m.c.name.in_(actors))
+            .group_by(m.c.name)
         )
         rows = (await self.session.execute(stmt)).all()
         return [(actor, total, conf or 0, has_field or 0) for actor, total, conf, has_field in rows]
@@ -417,16 +414,15 @@ class AsyncDashboardRepo:
     ) -> dict[str, int]:
         if not actors or not non_incident_types:
             return {}
+        m = mention_rows(ACTOR)
         stmt = (
-            select(ArticleThreatActor.threat_actor, func.count())
-            .select_from(Article)
-            .join(ArticleThreatActor)
+            _joined(select(m.c.name, func.count()), m)
             .where(
                 Article.posted_on >= posted_on_start,
-                ArticleThreatActor.threat_actor.in_(actors),
+                m.c.name.in_(actors),
                 Article.news_type.in_(non_incident_types),
             )
-            .group_by(ArticleThreatActor.threat_actor)
+            .group_by(m.c.name)
         )
         rows = (await self.session.execute(stmt)).all()
         return {actor: cnt for actor, cnt in rows}
@@ -484,25 +480,23 @@ class AsyncDashboardRepo:
         # Buat TA/industri efeknya nol (unik per artikel di level constraint).
         # `key` = kolom GROUP BY/filter kosong, `col` = nilai yang dikembalikan
         # (beda cuma buat "ttp": nama kanonik itu agregat, jadi tidak boleh di WHERE).
-        model, key, col = {
-            "threat_actor": (
-                ArticleThreatActor,
-                ArticleThreatActor.threat_actor,
-                ArticleThreatActor.threat_actor,
-            ),
-            "country": (ArticleCountry, ArticleCountry.country_code, ArticleCountry.country_code),
-            "industry": (ArticleIndustry, ArticleIndustry.industry, ArticleIndustry.industry),
-            "ttp": (
-                ArticleTTP,
-                ArticleTTP.ttp_id,
-                func.concat(ArticleTTP.ttp_id, "|", canonical_ttp_name()),
-            ),
+        etype = {
+            "threat_actor": ACTOR,
+            "country": COUNTRY,
+            "industry": SECTOR,
+            "ttp": TECHNIQUE,
         }[dimension]
+        m = mention_rows(etype)
+        key = m.c.external_id if dimension in ("country", "ttp") else m.c.name
+        col = (
+            func.concat(m.c.external_id, "|", canonical_ttp_name(m.c.external_id, m.c.name))
+            if dimension == "ttp"
+            else key
+        )
         stmt = _apply_article_filters(
-            select(Article.posted_on, col, func.count(func.distinct(Article.id)))
-            .select_from(Article)
-            .join(model)
-            .where(key.is_not(None), key != ""),
+            _joined(select(Article.posted_on, col, func.count(func.distinct(Article.id))), m).where(
+                key.is_not(None), key != ""
+            ),
             posted_on_start=posted_on_start,
             posted_on_end=posted_on_end,
             exclude_news_types=exclude_news_types,
@@ -511,12 +505,9 @@ class AsyncDashboardRepo:
         if countries:
             # Negara role apa pun; subquery (bukan join) biar hitungan
             # `count(DISTINCT article.id)` tidak ikut berlipat.
+            c = mention_rows(COUNTRY)
             stmt = stmt.where(
-                Article.id.in_(
-                    select(ArticleCountry.article_id).where(
-                        ArticleCountry.country_code.in_(countries)
-                    )
-                )
+                Article.id.in_(select(c.c.article_id).where(c.c.external_id.in_(countries)))
             )
         if news_types:
             stmt = stmt.where(Article.news_type.in_(news_types))
@@ -561,8 +552,9 @@ class AsyncDashboardRepo:
         ids = [a.id for a in articles]
         posted_map = {a.id: a.posted_on for a in articles}
 
-        async def _grouped(model: Any, col: Any) -> dict[int, list[str]]:
-            stmt = select(model.article_id, col).where(model.article_id.in_(ids))
+        async def _grouped(etype: str, column: str) -> dict[int, list[str]]:
+            m = mention_rows(etype)
+            stmt = select(m.c.article_id, m.c[column]).where(m.c.article_id.in_(ids))
             rows = (await self.session.execute(stmt)).all()
             out: dict[int, list[str]] = {}
             for aid, val in rows:
@@ -570,11 +562,11 @@ class AsyncDashboardRepo:
                     out.setdefault(aid, []).append(val)
             return out
 
-        industries = await _grouped(ArticleIndustry, ArticleIndustry.industry)
+        industries = await _grouped(SECTOR, "name")
         # Role apa pun (lihat `_country_role`); dedup di `_grouped`.
-        countries = await _grouped(ArticleCountry, ArticleCountry.country_code)
-        actors = await _grouped(ArticleThreatActor, ArticleThreatActor.threat_actor)
-        ttps = await _grouped(ArticleTTP, ArticleTTP.ttp_id)
+        countries = await _grouped(COUNTRY, "external_id")
+        actors = await _grouped(ACTOR, "name")
+        ttps = await _grouped(TECHNIQUE, "external_id")
 
         return [
             {
@@ -663,35 +655,34 @@ class AsyncDashboardRepo:
     ) -> list[tuple[str, int, str | None, str | None]]:
         """Profil per negara untuk peta dashboard: `(country_code, jumlah artikel insiden
         terkonfirmasi, aktor teratas atau None, industri teratas non-"General" atau None)`.
-        Negara = role APA PUN di `article_countries` (spec 4.4); jumlah memakai
+        Negara = role APA PUN di mention negara (spec 4.4); jumlah memakai
         `count(DISTINCT article.id)` supaya artikel dengan dua role untuk negara yang sama
         dihitung sekali. Aktor/industri teratas memakai himpunan artikel yang sama.
         Aktor/industri dipilih terbanyak, seri sama diurutkan nama biar deterministik.
         Urutan hasil: jumlah desc, lalu kode negara."""
+        cm = mention_rows(COUNTRY)
         counts = _apply_article_filters(
-            select(ArticleCountry.country_code, func.count(func.distinct(Article.id)))
-            .select_from(Article)
-            .join(ArticleCountry),
+            _joined(select(cm.c.external_id, func.count(func.distinct(Article.id))), cm),
             posted_on_start=posted_on_start,
             posted_on_end=None,
             confirmed_only=True,
-        ).group_by(ArticleCountry.country_code)
+        ).group_by(cm.c.external_id)
         count_rows = (await self.session.execute(counts)).all()
         if not count_rows:
             return []
 
-        async def _top_by_country(label: Any, join_model: Any, *extra: Any) -> dict[str, str]:
+        async def _top_by_country(etype: str) -> dict[str, str]:
             n = func.count(func.distinct(Article.id))
+            c = mention_rows(COUNTRY)
+            other = mention_rows(etype)
             stmt = _apply_article_filters(
-                select(ArticleCountry.country_code, label, n)
-                .select_from(Article)
-                .join(ArticleCountry)
-                .join(join_model, join_model.article_id == Article.id)
-                .where(*extra),
+                _joined(select(c.c.external_id, other.c.name, n), c).join(
+                    other, other.c.article_id == Article.id
+                ),
                 posted_on_start=posted_on_start,
                 posted_on_end=None,
                 confirmed_only=True,
-            ).group_by(ArticleCountry.country_code, label)
+            ).group_by(c.c.external_id, other.c.name)
             best: dict[str, tuple[int, str]] = {}
             for code, name, cnt in (await self.session.execute(stmt)).all():
                 cur = best.get(code)
@@ -699,12 +690,9 @@ class AsyncDashboardRepo:
                     best[code] = (cnt, name)
             return {code: name for code, (_, name) in best.items()}
 
-        actors = await _top_by_country(ArticleThreatActor.threat_actor, ArticleThreatActor)
-        industries = await _top_by_country(
-            ArticleIndustry.industry,
-            ArticleIndustry,
-            func.lower(ArticleIndustry.industry) != "general",
-        )
+        actors = await _top_by_country(ACTOR)
+        # "General" tidak lagi jadi mention sektor (Ruling 13), jadi tidak perlu disaring.
+        industries = await _top_by_country(SECTOR)
         rows = [
             (code, int(cnt), actors.get(code), industries.get(code)) for code, cnt in count_rows
         ]
@@ -714,19 +702,14 @@ class AsyncDashboardRepo:
     async def watchlist_hit_count(
         self, *, client_id: str, posted_on_start: datetime.date | None
     ) -> int:
-        """Jumlah artikel DISTINCT yang menyebut nama dari `ta_watchlist` milik `client_id`
-        (cocok case-insensitive ke `article_threat_actors`). Watchlist client lain tidak ikut."""
+        """Jumlah artikel DISTINCT yang menyebut aktor yang di-watch `client_id`
+        (`entity_watches`, cocok per entitas -- alias apa pun ikut). Watchlist client lain tidak
+        ikut."""
+        m = mention_rows(ACTOR)
         stmt = _apply_article_filters(
-            select(func.count(func.distinct(Article.id)))
-            .select_from(Article)
-            .join(ArticleThreatActor, ArticleThreatActor.article_id == Article.id)
-            .join(
-                TAWatchlistEntry,
-                and_(
-                    func.lower(TAWatchlistEntry.name)
-                    == func.lower(ArticleThreatActor.threat_actor),
-                    TAWatchlistEntry.client_id == client_id,
-                ),
+            _joined(select(func.count(func.distinct(Article.id))), m).join(
+                EntityWatch,
+                and_(EntityWatch.entity_id == m.c.entity_id, EntityWatch.client_id == client_id),
             ),
             posted_on_start=posted_on_start,
             posted_on_end=None,

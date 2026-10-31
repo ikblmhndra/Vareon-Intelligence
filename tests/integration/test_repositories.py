@@ -184,11 +184,17 @@ ENRICHMENT = {
 
 
 def _snapshot(article) -> dict:
+    """Bentuk v1 dibaca dari mention entitas (P7c): sektor = nama tampilan sektor, nama teknik =
+    nama entitas teknik (satu per id, Ruling 13)."""
     return {
-        "countries": sorted((c.country_code, c.role) for c in article.countries),
-        "industries": sorted(i.industry for i in article.industries),
-        "threat_actors": sorted(t.threat_actor for t in article.threat_actors),
-        "ttps": sorted((t.ttp_id, t.ttp_name) for t in article.ttps),
+        "countries": sorted(
+            (m.entity.external_id, m.role) for m in article.mentions_of("location")
+        ),
+        "industries": sorted(article.entity_names("identity")),
+        "threat_actors": sorted(article.entity_names("intrusion-set")),
+        "ttps": sorted(
+            (m.entity.external_id, m.entity.name) for m in article.mentions_of("attack-pattern")
+        ),
     }
 
 
@@ -209,11 +215,6 @@ def test_set_enrichment_twice_with_the_same_values_is_a_noop_not_a_unique_violat
     assert _snapshot(article)["industries"] == []  # P7c: "General" = tanpa mention sektor
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="P7c Task 11: industry_unspecified counts articles without a sector mention;"
-    " P7c Task 11: ttp_name comes from the technique entity",
-)
 def test_set_enrichment_applies_added_removed_and_renamed_children(db_session: Session) -> None:
     repo = ArticleRepo(db_session)
     article = repo.upsert(url="https://example.com/chg", title="t", source="s")
@@ -229,11 +230,13 @@ def test_set_enrichment_applies_added_removed_and_renamed_children(db_session: S
     db_session.flush()
     db_session.expire_all()
 
+    # P7c (Ruling 13): "General" tidak menjadi mention sektor; label lama -> nama tampilan sektor
+    # (plan Decision 3); nama teknik = nama entitas T1059 yang sudah ada (bukan nama kiriman).
     assert _snapshot(article) == {
         "countries": [("ID", "mentioned"), ("ID", "victim")],
-        "industries": ["Finance & Insurance", "General"],
+        "industries": ["Financial Services"],
         "threat_actors": ["Lazarus"],
-        "ttps": [("T1059", "Renamed Technique"), ("T1566", "Phishing")],
+        "ttps": [("T1059", "Command and Scripting Interpreter"), ("T1566", "Phishing")],
     }
 
 

@@ -121,9 +121,10 @@ async def get_exec_dashboard(
         "confirmed_only": confirmed_only,
     }
 
-    sector_trend_all = await repo.monthly_industry_counts(**base)
-    sector_trend_raw = [r for r in sector_trend_all if r[0] != UNSPECIFIED_INDUSTRY]
-    sector_unspecified = sum(cnt for ind, _, cnt in sector_trend_all if ind == UNSPECIFIED_INDUSTRY)
+    sector_trend_raw = await repo.monthly_industry_counts(**base)
+    # P7c (Ruling 13): "General" bukan lagi mention sektor; arti v1 = artikel tanpa sektor.
+    unspecified_monthly = await repo.monthly_unspecified_counts(**base)
+    sector_unspecified = sum(cnt for _, cnt in unspecified_monthly)
     country_trend_raw = await repo.monthly_country_counts(**base)
     ta_raw = await repo.top_threat_actors(limit=10, **base)
     unique_ta_count = await repo.unique_threat_actor_count(**base)
@@ -140,9 +141,9 @@ async def get_exec_dashboard(
     prev_days_with_data = await repo.distinct_day_count(**prev_base)
     cve_raw = await repo.cve_tech_severity_breakdown(limit=10)
 
-    # Bulan diambil dari SEMUA baris (termasuk "General") supaya bulan yang isinya cuma artikel
-    # tanpa sektor spesifik tetap muncul di sumbu.
-    months_set = {mo for _, mo, _ in sector_trend_all}
+    # Bulan diambil dari SEMUA artikel (termasuk yang tanpa sektor) supaya bulan yang isinya cuma
+    # artikel tanpa sektor spesifik tetap muncul di sumbu.
+    months_set = {mo for _, mo, _ in sector_trend_raw} | {mo for mo, _ in unspecified_monthly}
     months = sorted(months_set)
 
     sector_map: dict[str, dict[str, int]] = {}

@@ -41,9 +41,9 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_core.db.models.article import ArticleTTP
 from cti_core.db.models.pir import PIRNote, PIRRequirement
 from cti_core.db.repositories.article import AsyncArticleRepo
+from cti_core.db.repositories.entity import TECHNIQUE, mention_rows
 from cti_core.db.repositories.ttp_catalog import canonical_ttp_name
 
 _CRITERIA_KEYS = ("threat_actors", "industries", "countries", "news_types", "keywords", "ttps")
@@ -269,10 +269,12 @@ class AsyncPIRRepo:
 
     async def get_options(self, article_repo: AsyncArticleRepo) -> dict[str, Any]:
         base = await article_repo.get_filter_options()
+        t = mention_rows(TECHNIQUE)
         ttp_result = await self.session.execute(
-            select(ArticleTTP.ttp_id, canonical_ttp_name())
-            .group_by(ArticleTTP.ttp_id)
-            .order_by(ArticleTTP.ttp_id)
+            select(t.c.external_id, canonical_ttp_name(t.c.external_id, t.c.name))
+            .where(t.c.article_id.is_not(None))
+            .group_by(t.c.external_id)
+            .order_by(t.c.external_id)
             .limit(500)
         )
         ttps = [{"id": tid, "name": tname} for tid, tname in ttp_result.all()]
