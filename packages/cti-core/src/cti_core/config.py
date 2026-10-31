@@ -207,6 +207,14 @@ class CveMirrorSettings(_StrictModel):
     """Timeout satu unduhan; `deltaLog.json` (24 MB) memakai tiga kali lipat nilai ini."""
 
 
+class EntitySettings(_StrictModel):
+    """Model entitas (P7c): sinkronisasi alias MISP Galaxy mingguan (`entity.alias_sync`)."""
+
+    alias_sync_enabled: bool = True
+    """`false` = task mingguan langsung kembali (tidak mengunduh dan tidak merge). Default nyala,
+    jadi prod tidak butuh key `.env`; ganti nilai butuh restart worker."""
+
+
 class StorySettings(_StrictModel):
     """Dedup story saat ingest (P3, spec 3.3): artikel yang membahas peristiwa yang sama
     dikelompokkan ke satu `stories` supaya klasifikasi LLM dipakai ulang. Semua field punya
@@ -425,6 +433,7 @@ class Settings(BaseSettings):
     scraper: ScraperSettings = Field(default_factory=ScraperSettings)
     worker: WorkerSettings = Field(default_factory=WorkerSettings)
     cve_mirror: CveMirrorSettings = Field(default_factory=CveMirrorSettings)
+    entity: EntitySettings = Field(default_factory=EntitySettings)
     story: StorySettings = Field(default_factory=StorySettings)
     indicator: IndicatorSettings = Field(default_factory=IndicatorSettings)
     relevance: RelevanceSettings = Field(default_factory=RelevanceSettings)
