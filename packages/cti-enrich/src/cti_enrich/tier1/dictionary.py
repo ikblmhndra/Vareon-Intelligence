@@ -16,10 +16,11 @@ Strike" gak kecatat sebagai aktor "Cobalt" -- audit UI U8):
 from __future__ import annotations
 
 import hashlib
-import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal
+
+from cti_core.entity.ambiguous import is_single_token as _is_single_token
 
 from cti_enrich.tier1.entities import AMBIGUOUS, WINDOWS_UTILITY_NAMES
 
@@ -48,10 +49,6 @@ class EntityDictionary:
 
 def _is_case_sensitive(term: str) -> bool:
     return len(term) <= _SHORT_NAME or term.isupper()
-
-
-def _is_single_token(lowered: str) -> bool:
-    return re.fullmatch(r"[a-z]+", lowered) is not None
 
 
 def build_dictionary(

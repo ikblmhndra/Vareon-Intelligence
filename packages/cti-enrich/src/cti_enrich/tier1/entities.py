@@ -13,77 +13,13 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+# AMBIGUOUS/WINDOWS_UTILITY_NAMES dipindah ke cti-core (P7c Task 7); diekspor ulang supaya impor
+# lama tetap jalan.
+from cti_core.entity.ambiguous import AMBIGUOUS as AMBIGUOUS
+from cti_core.entity.ambiguous import WINDOWS_UTILITY_NAMES as WINDOWS_UTILITY_NAMES
+
 if TYPE_CHECKING:
     from cti_enrich.tier1.dictionary import EntityDictionary, Kind
-
-# Nama yang juga kata biasa; wajib ada kata konteks di dekatnya.
-AMBIGUOUS: frozenset[str] = frozenset(
-    {
-        "cobalt",
-        "play",
-        "royal",
-        "hive",
-        "medusa",
-        "castle",
-        "slug",
-        "akira",
-        "cactus",
-        "cicada",
-        "dune",
-        "lynx",
-        "karma",
-        "everest",
-        "nemesis",
-        "phobos",
-        "mercury",
-        "nickel",
-        "copper",
-        "outlaw",
-        # P4 eval: nama software/grup ATT&CK yang juga kata biasa (false positive di 57 artikel).
-        "tor",
-        "chaos",
-        "exodus",
-        "cuba",
-        "embargo",
-        "responder",
-        "equation",
-        "silence",
-        "harvester",
-        "comando",
-        "rtm",
-    }
-)
-
-# P4 eval: software ATT&CK yang namanya utilitas Windows / kata Inggris umum ("at" 40x salah,
-# "cmd" 9x, "Net" 6x, "route" 6x, ...). Untuk nama ini HANYA bentuk `<nama>.exe` yang cocok;
-# kata telanjang tidak pernah. Canonical tetap nama ATT&CK. Nama yang khas (netstat, certutil,
-# Nltest, PsExec, schtasks) sengaja TIDAK di sini. Daftar kurasi: kebanyakan nama <= 6 huruf yang
-# juga kata Inggris/perintah umum (at, cmd, net, whoami, ...), plus tiga perintah > 6 huruf yang
-# lazim muncul di prosa (tasklist, systeminfo, ipconfig).
-WINDOWS_UTILITY_NAMES: frozenset[str] = frozenset(
-    {
-        "at",
-        "cmd",
-        "net",
-        "route",
-        "expand",
-        "reg",
-        "netsh",
-        "ping",
-        "tasklist",
-        "systeminfo",
-        "whoami",
-        "ipconfig",
-        "arp",
-        "sc",
-        "ftp",
-        "find",
-        "copy",
-        "del",
-        "dir",
-        "query",
-    }
-)
 
 CONTEXT_WORDS: tuple[str, ...] = (
     "ransomware",
