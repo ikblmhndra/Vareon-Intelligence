@@ -37,10 +37,10 @@ from cti_core.entity.mentions import (
     delete_other_mentions,
     insert_mentions,
     mention_rows,
-    resolve_mention,
-    resolve_mention_async,
+    resolve_all,
+    resolve_all_async,
     sector_mention,
-    touch_seen_stmt,
+    touch_seen,
 )
 from cti_core.urlkit import url_hash as compute_url_hash
 
@@ -395,9 +395,7 @@ class ArticleRepo:
     ) -> None:
         """Mention artikel bertipe `types` dibuat persis `hits` (lihat `set_enrichment`)."""
         self.session.flush()
-        rows = mention_rows(
-            {"article_id": article.id}, [(h, resolve_mention(self.session, h)) for h in hits]
-        )
+        rows = mention_rows({"article_id": article.id}, resolve_all(self.session, hits))
         keep = [(r["entity_id"], r["role"]) for r in rows]
         self.session.execute(delete_other_mentions(article.id, types, keep))
         if rows:
@@ -409,9 +407,7 @@ class ArticleRepo:
         """ADD-ONLY dan idempoten (`ON CONFLICT DO NOTHING` di kunci unik mention): mention yang
         sudah ada tidak diubah. Return jumlah mention baru."""
         self.session.flush()
-        rows = mention_rows(
-            {"article_id": article.id}, [(h, resolve_mention(self.session, h)) for h in hits]
-        )
+        rows = mention_rows({"article_id": article.id}, resolve_all(self.session, hits))
         added = len(self.session.execute(insert_mentions(rows, update=False)).all()) if rows else 0
         self.session.flush()
         self.session.expire(article, ARTICLE_MENTION_ATTRS)
@@ -419,8 +415,7 @@ class ArticleRepo:
 
     def touch_entity_seen(self, article: Article) -> None:
         """`first_seen`/`last_seen` entitas yang disebut artikel, satu statement (spec 4.3)."""
-        stmt, params = touch_seen_stmt(article.id)
-        self.session.execute(stmt, params)
+        touch_seen(self.session, article.id)
 
     def add_tier1(
         self,
@@ -430,18 +425,20 @@ class ArticleRepo:
         threat_actors: Sequence[str],
         malware: Sequence[tuple[str, str]],
         industries: Sequence[str],
+        aliases: EntityAliases | None = None,
     ) -> dict[str, int]:
         """ADD-ONLY untuk backfill Tier 1: mention yang ada tidak pernah diubah/dihapus (teknik
         LLM tetap; teknik keyword dengan ID sama, atau aktor yang alias-nya sudah tersebut, tidak
         ditambah karena resolve ke entitas yang sama). Sektor `keyword` hanya ditambah kalau
         artikel belum punya sektor sama sekali (dulu: industri persis `["General"]`; "General"
         kini tidak menghasilkan mention) -- sektor dari LLM tidak boleh ditimpa tebakan keyword.
+        `aliases`: teks cocok Tier 1 untuk `matched_alias` (sama seperti `set_enrichment`).
         Return jumlah mention baru per jenis."""
         no_sector = not article.mentions_of("identity")
         return {
             "ttps": self.add_mentions(article, _ttp_hits(ttps)),
-            "threat_actors": self.add_mentions(article, _actor_hits(threat_actors, {})),
-            "malware": self.add_mentions(article, _malware_hits(malware, {})),
+            "threat_actors": self.add_mentions(article, _actor_hits(threat_actors, aliases or {})),
+            "malware": self.add_mentions(article, _malware_hits(malware, aliases or {})),
             "industries": (
                 self.add_mentions(article, _sector_hits(industries, "keyword")) if no_sector else 0
             ),
@@ -517,7 +514,7 @@ class AsyncArticleRepo:
         await self.session.flush()
         rows = mention_rows(
             {"article_id": article.id},
-            [(h, await resolve_mention_async(self.session, h)) for h in hits],
+            await resolve_all_async(self.session, hits),
         )
         keep = [(r["entity_id"], r["role"]) for r in rows]
         await self.session.execute(delete_other_mentions(article.id, ENRICHMENT_TYPES, keep))
@@ -531,7 +528,7 @@ class AsyncArticleRepo:
         await self.session.flush()
         rows = mention_rows(
             {"article_id": article.id},
-            [(h, await resolve_mention_async(self.session, h)) for h in hits],
+            await resolve_all_async(self.session, hits),
         )
         added = 0
         if rows:

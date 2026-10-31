@@ -25,7 +25,7 @@ from cti_core.entity.mentions import (
     MentionInput,
     insert_mentions,
     mention_rows,
-    resolve_mention_async,
+    resolve_all_async,
 )
 from cti_core.indicator.marking import stricter_pap, stricter_tlp
 from cti_core.indicator.stix_id import indicator_uuid
@@ -526,7 +526,7 @@ class AsyncIndicatorRepo:
         ]
         rows = mention_rows(
             {"indicator_id": indicator.id},
-            [(h, await resolve_mention_async(self.session, h)) for h in hits],
+            await resolve_all_async(self.session, hits),
         )
         if rows:
             await self.session.execute(insert_mentions(rows, update=False))

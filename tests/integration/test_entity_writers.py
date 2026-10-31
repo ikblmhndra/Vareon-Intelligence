@@ -18,6 +18,7 @@ from cti_core.entity import alias_norm
 from cti_enrich.routing import RoutingResult
 from cti_enrich.stages.classify import ClassifyResult
 from cti_enrich.stages.persist import persist
+from cti_enrich.stages.score import ScoreResult
 from cti_enrich.stages.tier1 import Tier1Result
 from cti_enrich.tier1.dictionary import build_entity_dictionary
 from cti_enrich.tier1.entities import EntityHit, match_entities
@@ -138,6 +139,114 @@ def test_persist_writes_mentions(db_session: Session) -> None:
     assert len(_mentions(db_session, article.id)) == 7
 
 
+def test_persist_again_removes_dropped_mentions_and_keeps_cve(db_session: Session) -> None:
+    """Jalur hapus sebagian `set_enrichment` (`delete_other_mentions`): role negara, aktor, TTP
+    dan sektor yang hilang dibuang; CVE (bukan tipe enrichment) dan baris yang tetap bertahan;
+    mention lokasi ber-role NULL (mis. dari view kompatibilitas) ikut terhapus."""
+    _seed_attack(db_session)
+    seed_entity(
+        db_session, "attack-pattern", "Command and Scripting Interpreter", external_id="T1059"
+    )
+    url = "https://w.example/partial"
+
+    def run(**kw: Any) -> Article:
+        base: dict[str, Any] = {
+            "session": db_session,
+            "url": url,
+            "title": "APT29 exploits CVE-2026-1234 in VPN",
+            "source": "s",
+            "scraper_id": None,
+            "posted_on": None,
+            "ttp_result": None,
+            "c2_indicator": False,
+        }
+        return persist(**base, **kw)
+
+    first = run(
+        classify_result=ClassifyResult(
+            related_cyber=True, confidence=0.9, victim_countries=["Indonesia"]
+        ),
+        score_result=None,
+        routing_result=RoutingResult(
+            news_type="General", alert_topics=[], msg_data="", threat_actors=["Apt29"]
+        ),
+        ioc_data={"cves": ["CVE-2026-1234"]},
+        merged_ttps=[
+            NormalizedTTP("T1190", "Exploit Public-Facing Application", source="llm"),
+            NormalizedTTP("T1059", "Command and Scripting Interpreter", source="llm"),
+        ],
+        industries=(["Finance & Insurance"], "llm"),
+    )
+    repo = ArticleRepo(db_session)
+    # role NULL untuk negara yang TETAP disebut (ID/mentioned): `(entity, role) IN (...)` bernilai
+    # NULL untuk baris ini, jadi predikat tanpa IS NULL eksplisit tidak pernah menghapusnya
+    repo.add_mentions(first, [MentionInput("location", "ID", "legacy", "ID", external_id="ID")])
+    assert {(m[0], m[1], m[4]) for m in _mentions(db_session, first.id)} >= {
+        ("location", "Indonesia", "victim"),
+        ("location", "Indonesia", "mentioned"),
+        ("location", "Indonesia", None),
+        ("attack-pattern", "Command and Scripting Interpreter", None),
+    }
+
+    run(
+        classify_result=ClassifyResult(related_cyber=True, confidence=0.9),
+        score_result=ScoreResult(mentioned_countries=["Indonesia"]),
+        routing_result=RoutingResult(
+            news_type="General",
+            alert_topics=[],
+            msg_data="",
+            threat_actors=["Lazarus"],
+            is_global_branch=True,  # tanpa fallback victim: ID hanya `mentioned`
+        ),
+        ioc_data={},  # CVE tidak dikirim ulang: mention lamanya harus bertahan
+        merged_ttps=[NormalizedTTP("T1190", "Exploit Public-Facing Application", source="llm")],
+        industries=(["Healthcare & Life Sciences"], "llm"),
+    )
+
+    assert [(m[0], m[1], m[2], m[3], m[4]) for m in _mentions(db_session, first.id)] == [
+        ("attack-pattern", "Exploit Public-Facing Application", "llm", "T1190", None),
+        ("identity", "Healthcare", "llm", "Healthcare & Life Sciences", None),
+        ("intrusion-set", "Lazarus", "dictionary", "Lazarus", None),
+        ("location", "Indonesia", "llm", "ID", "mentioned"),
+        ("vulnerability", "CVE-2026-1234", "explicit", "CVE-2026-1234", None),
+    ]
+
+
+def test_sector_label_resolving_to_organization_is_dropped(db_session: Session) -> None:
+    org = seed_entity(
+        db_session, "identity", "Underwater Basketry", source="ransomware", alias_source="legacy"
+    )
+    org.identity_class = "organization"  # korban bernama seperti label industri
+    db_session.flush()
+    repo = ArticleRepo(db_session)
+    article = repo.upsert(url="https://w.example/org", title="t", source="s")
+
+    repo.set_enrichment(article, industries=["Underwater Basketry", "Finance & Insurance"])
+
+    assert article.entity_names("identity") == ["Financial Services"]
+
+
+def test_add_tier1_records_matched_alias(db_session: Session) -> None:
+    _seed_attack(db_session)
+    repo = ArticleRepo(db_session)
+    article = repo.upsert(url="https://w.example/t1", title="t", source="s")
+
+    counts = repo.add_tier1(
+        article,
+        ttps=[],
+        threat_actors=["Apt29"],
+        malware=[("Cobalt Strike", "tool")],
+        industries=[],
+        aliases={"apt29": "Cozy Bear", "cobalt strike": "CS beacon"},
+    )
+
+    assert counts["threat_actors"] == 1 and counts["malware"] == 1
+    assert [(m[1], m[3]) for m in _mentions(db_session, article.id)] == [
+        ("APT29", "Cozy Bear"),
+        ("Cobalt Strike", "CS beacon"),
+    ]
+
+
 def test_persist_skips_suppressed_and_follows_merge(db_session: Session) -> None:
     _seed_attack(db_session)
     noisy = seed_entity(db_session, "intrusion-set", "Noisy Crew", source="legacy")
@@ -221,6 +330,26 @@ def test_dictionary_version_changes_with_alias(db_session: Session) -> None:
     after = _dictionary(db_session)
     assert after.version != before
     assert after.entries["midnight blizzard"].canonical == "APT29"
+
+
+def test_dictionary_version_changes_with_merge(db_session: Session) -> None:
+    apt29 = seed_entity(db_session, "intrusion-set", "APT29")
+    other = seed_entity(db_session, "intrusion-set", "Dark Halo", source="legacy")
+    before = _dictionary(db_session)
+    assert before.entries["dark halo"].canonical == "Dark Halo"
+
+    # merge: alias pindah ke target, sumber jadi tombstone -> key sama, kanonik berubah
+    db_session.execute(
+        text("UPDATE entity_aliases SET entity_id = :t WHERE entity_id = :o"),
+        {"t": apt29.id, "o": other.id},
+    )
+    other.merged_into_id = apt29.id
+    db_session.flush()
+
+    after = _dictionary(db_session)
+    assert set(after.entries) == set(before.entries)
+    assert after.entries["dark halo"].canonical == "APT29"
+    assert after.version != before.version
 
 
 def test_dictionary_rules_for_galaxy_suppressed_and_leftover_names(db_session: Session) -> None:

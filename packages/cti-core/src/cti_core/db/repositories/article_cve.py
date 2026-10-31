@@ -17,8 +17,9 @@ from cti_core.entity.mentions import (
     cve_mention,
     insert_mentions,
     mention_rows,
-    resolve_mention,
-    resolve_mention_async,
+    resolve_all,
+    resolve_all_async,
+    touch_seen_async,
 )
 
 _METHOD = "explicit"
@@ -53,9 +54,7 @@ class ArticleCveRepo:
     def add_many(self, article_id: int, cve_ids: Iterable[str], title: str) -> None:
         """Insert-ignore: pasangan yang sudah ada dibiarkan (idempotent saat replay)."""
         hits = _hits(cve_ids, title)
-        rows = mention_rows(
-            {"article_id": article_id}, [(h, resolve_mention(self.session, h)) for h in hits]
-        )
+        rows = mention_rows({"article_id": article_id}, resolve_all(self.session, hits))
         if rows:
             self.session.execute(insert_mentions(rows, update=False))
 
@@ -74,10 +73,13 @@ class AsyncArticleCveRepo:
         hits = _hits(cve_ids, title)
         rows = mention_rows(
             {"article_id": article_id},
-            [(h, await resolve_mention_async(self.session, h)) for h in hits],
+            await resolve_all_async(self.session, hits),
         )
         if rows:
             await self.session.execute(insert_mentions(rows, update=False))
+            # jalur sync (persist) memperbarui seen sesudah semua mention; jalur async berdiri
+            # sendiri, jadi memperbaruinya di sini
+            await touch_seen_async(self.session, article_id)
 
     async def cve_ids_by_article(self, article_ids: Sequence[int]) -> dict[int, set[str]]:
         """Id CVE (huruf besar) per artikel; artikel tanpa CVE tidak ada di hasil."""

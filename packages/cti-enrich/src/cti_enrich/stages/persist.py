@@ -142,17 +142,6 @@ def _with_tier1(
     return {"raw_enrichment": {**audit.get("raw_enrichment", {}), "tier1": tier1.audit()}}
 
 
-def _tier1_aliases(tier1: Tier1Result | None) -> dict[str, str]:
-    """Nama kanonik huruf kecil -> teks yang cocok dari hit Tier 1, untuk `matched_alias` mention
-    (aktor dari routing berbentuk `capitalize()` dari nama kanonik itu)."""
-    if tier1 is None:
-        return {}
-    out: dict[str, str] = {}
-    for hit in tier1.entities:
-        out.setdefault(hit.canonical.lower(), hit.matched)
-    return out
-
-
 def _story_classify(classify_result: ClassifyResult) -> dict[str, object] | None:
     """Isi `stories.classify` hanya dari classify LLM. Warisan (sudah dari story) dan Tier 0
     (`default_relevance="always"`, classify sintetis tanpa industri/korban) tidak pernah
@@ -248,7 +237,7 @@ def persist(
         ttps=ttps,
         malware=tier1.malware if tier1 is not None else (),
         industry_source=industry_source,
-        aliases=_tier1_aliases(tier1),
+        aliases=tier1.matched_aliases() if tier1 is not None else None,
     )
 
     ioc_repo = IndicatorRepo(session)

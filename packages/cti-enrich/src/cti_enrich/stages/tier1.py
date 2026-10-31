@@ -118,6 +118,13 @@ class Tier1Result:
     def malware(self) -> list[tuple[str, str]]:
         return [(e.canonical, e.kind) for e in self.entities if e.kind in ("malware", "tool")]
 
+    def matched_aliases(self) -> dict[str, str]:
+        """Nama kanonik huruf kecil -> teks yang cocok, untuk `matched_alias` mention (P7c)."""
+        out: dict[str, str] = {}
+        for e in self.entities:
+            out.setdefault(e.canonical.lower(), e.matched)
+        return out
+
     def audit(self) -> dict[str, object]:
         """Jejak untuk `raw_enrichment["tier1"]`: versi, hit beserta offset, dan vonis insiden."""
         return {

@@ -122,6 +122,7 @@ def _backfill_threat_actors(
     )
     if not added:
         return
+    ArticleRepo(session).touch_entity_seen(article)  # first/last seen entitas (P7c)
     stats.articles_with_new_actors += 1
     stats.actor_rows_added += added
     if len(stats.samples) < sample_limit:
@@ -146,6 +147,7 @@ def _backfill_mentioned_countries(session: Session, article: Article, stats: Bac
     )
     if not added:
         return
+    ArticleRepo(session).touch_entity_seen(article)  # first/last seen entitas (P7c)
     stats.articles_with_new_mentioned += 1
     stats.mentioned_rows_added += added
 

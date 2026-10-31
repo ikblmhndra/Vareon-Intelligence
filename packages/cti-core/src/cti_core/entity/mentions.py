@@ -20,6 +20,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+import structlog
 from sqlalchemy import ColumnElement, Select, and_, delete, or_, select, text, tuple_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,6 +32,8 @@ from cti_core.entity import alias_norm, collapse_ws
 from cti_core.entity.countries import ISO_COUNTRY_NAMES
 from cti_core.entity.resolve import resolve, resolve_async
 from cti_core.entity.sectors import SECTORS, sector_for_label
+
+log = structlog.get_logger()
 
 # Atribut ORM `Article` yang membaca mention (langsung atau lewat view kompatibilitas); di-expire
 # sesudah tulis Core supaya pembaca di sesi yang sama melihat keadaan baru.
@@ -124,6 +127,15 @@ def _usable(ent: Entity | None) -> Entity | None:
     return None if ent is None or ent.suppressed else ent
 
 
+def _sector_only(hit: MentionInput, ent: Entity | None) -> Entity | None:
+    """Mention identitas di subjek = sektor. Label yang resolve ke organisasi (korban bernama
+    sama) dibuang dan dicatat, cermin Ruling 10 (korban bernama sektor tidak ditautkan)."""
+    if hit.type != "identity" or ent is None or ent.identity_class == "class":
+        return ent
+    log.info("sector_label_is_organization", label=hit.matched_alias, entity_id=ent.id)
+    return None
+
+
 def resolve_mention(session: Session, hit: MentionInput) -> Entity | None:
     """Entitas hidup untuk `hit`, atau None (kosong/suppressed)."""
     if not collapse_ws(hit.name or "") and not hit.external_id:
@@ -136,7 +148,7 @@ def resolve_mention(session: Session, hit: MentionInput) -> Entity | None:
             found = resolve(session, "location", name, **kw)
         return _usable(found)
     name, kw = _resolve_kwargs(hit)
-    return _usable(resolve(session, hit.type, name, **kw))
+    return _sector_only(hit, _usable(resolve(session, hit.type, name, **kw)))
 
 
 async def resolve_mention_async(session: AsyncSession, hit: MentionInput) -> Entity | None:
@@ -150,7 +162,35 @@ async def resolve_mention_async(session: AsyncSession, hit: MentionInput) -> Ent
             found = await resolve_async(session, "location", name, **kw)
         return _usable(found)
     name, kw = _resolve_kwargs(hit)
-    return _usable(await resolve_async(session, hit.type, name, **kw))
+    return _sector_only(hit, _usable(await resolve_async(session, hit.type, name, **kw)))
+
+
+def _order(hits: Sequence[MentionInput]) -> list[int]:
+    # Resolve selalu urut (tipe, nama): dua worker yang membuat entitas yang sama dalam urutan
+    # berlawanan tidak saling menunggu kunci alias/nama (deadlock).
+    return sorted(range(len(hits)), key=lambda i: (hits[i].type, alias_norm(hits[i].name or "")))
+
+
+def resolve_all(
+    session: Session, hits: Iterable[MentionInput]
+) -> list[tuple[MentionInput, Entity | None]]:
+    """`resolve_mention` untuk semua hit dalam urutan deterministik; hasil urut seperti input
+    (supaya "sebutan pertama menang" di `mention_rows` tetap urutan teks)."""
+    seq = list(hits)
+    ents: list[Entity | None] = [None] * len(seq)
+    for i in _order(seq):
+        ents[i] = resolve_mention(session, seq[i])
+    return list(zip(seq, ents, strict=True))
+
+
+async def resolve_all_async(
+    session: AsyncSession, hits: Iterable[MentionInput]
+) -> list[tuple[MentionInput, Entity | None]]:
+    seq = list(hits)
+    ents: list[Entity | None] = [None] * len(seq)
+    for i in _order(seq):
+        ents[i] = await resolve_mention_async(session, seq[i])
+    return list(zip(seq, ents, strict=True))
 
 
 def mention_rows(
@@ -208,16 +248,24 @@ def delete_other_mentions(
         .execution_options(synchronize_session=False)  # pemanggil meng-expire relasinya
     )
     if kept:
+        # Tiap cabang membandingkan role secara eksplisit (IS NULL / IS NOT NULL) supaya predikat
+        # "dipertahankan" tidak pernah NULL: `(entity_id, role) IN (...)` bernilai NULL untuk
+        # baris ber-role NULL, dan NOT NULL membuat baris itu tidak pernah terhapus.
         with_role = [(e, r) for e, r in kept if r is not None]
         without_role = [e for e, r in kept if r is None]
-        conds: list[ColumnElement[bool]] = []
+        keep_conds: list[ColumnElement[bool]] = []
         if with_role:
-            conds.append(tuple_(EntityMention.entity_id, EntityMention.role).in_(with_role))
-        if without_role:
-            conds.append(
-                and_(EntityMention.entity_id.in_(without_role), EntityMention.role.is_(None))
+            keep_conds.append(
+                and_(
+                    EntityMention.role.is_not(None),
+                    tuple_(EntityMention.entity_id, EntityMention.role).in_(with_role),
+                )
             )
-        stmt = stmt.where(~or_(*conds))
+        if without_role:
+            keep_conds.append(
+                and_(EntityMention.role.is_(None), EntityMention.entity_id.in_(without_role))
+            )
+        stmt = stmt.where(~or_(*keep_conds))
     return stmt
 
 
@@ -245,8 +293,12 @@ _TOUCH_SEEN = text(
 )
 
 
-def touch_seen_stmt(article_id: int) -> tuple[Any, dict[str, int]]:
-    return _TOUCH_SEEN, {"article_id": article_id}
+def touch_seen(session: Session, article_id: int) -> None:
+    session.execute(_TOUCH_SEEN, {"article_id": article_id})
+
+
+async def touch_seen_async(session: AsyncSession, article_id: int) -> None:
+    await session.execute(_TOUCH_SEEN, {"article_id": article_id})
 
 
 def utc_midnight(day: datetime.date | None) -> datetime.datetime | None:

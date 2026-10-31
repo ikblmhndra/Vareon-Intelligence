@@ -54,7 +54,8 @@ class Tier1BackfillStats:
     actor_rows_added: int = 0
     malware_rows_added: int = 0
     industry_replaced: int = 0
-    """Jumlah ARTIKEL yang industri "General"-nya diganti tebakan keyword."""
+    """Jumlah ARTIKEL tanpa sektor yang mendapat sektor tebakan keyword (P7c: "General" tidak
+    lagi tersimpan sebagai mention)."""
 
 
 def _process(
@@ -99,7 +100,9 @@ def _process(
         ),
         malware=result.malware,
         industries=result.industries,
+        aliases=result.matched_aliases(),
     )
+    ArticleRepo(session).touch_entity_seen(article)
     if dry_run:
         session.rollback()
     else:

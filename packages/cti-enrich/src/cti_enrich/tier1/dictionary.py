@@ -47,7 +47,8 @@ class Entity:
 class EntityDictionary:
     # Key = nama apa adanya untuk entri case-sensitive, huruf kecil untuk sisanya.
     entries: Mapping[str, Entity]
-    # 8 hex pertama sha256 dari key terurut; stabil terhadap urutan input.
+    # 8 hex pertama sha256 dari (key, kanonik, kind) terurut; stabil terhadap urutan input, dan
+    # berubah juga saat merge entitas mengganti kanonik sebuah key (P7c).
     version: str
 
 
@@ -129,7 +130,8 @@ def _build(
             continue
         add(name, name, "actor", curated=False, from_ta=True)
 
-    digest = hashlib.sha256("\n".join(sorted(entries)).encode()).hexdigest()[:8]
+    lines = sorted(f"{k}\t{e.canonical}\t{e.kind}" for k, e in entries.items())
+    digest = hashlib.sha256("\n".join(lines).encode()).hexdigest()[:8]
     return EntityDictionary(entries=entries, version=digest)
 
 
@@ -162,8 +164,9 @@ def build_entity_dictionary(
 ) -> EntityDictionary:
     """Kamus dari `entity_aliases` (P7c, spec 4.3; bahan dari
     `threat_reference.load_entity_sources`): `(alias, nama entitas, tipe entitas, alias ATT&CK?)`.
-    Kanonik = `entities.name`, jadi hit "Cozy Bear" -> "APT29"; versi (hash key terurut) ikut
-    berubah saat alias bertambah, sehingga cache proses ter-refresh oleh TTL berikutnya."""
+    Kanonik = `entities.name`, jadi hit "Cozy Bear" -> "APT29"; versi (hash key+kanonik+kind
+    terurut) ikut berubah saat alias bertambah atau entitas di-merge; cache proses ter-refresh
+    oleh TTL berikutnya."""
     terms = [
         _Term(alias, name, _KIND_OF_TYPE[typ], curated)
         for alias, name, typ, curated in aliases
