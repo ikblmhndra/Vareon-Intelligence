@@ -86,6 +86,10 @@ def _hi(a: Any, b: Any) -> Any:
     return max(a, b) if a is not None and b is not None else (a if b is None else b)
 
 
+def _iso(v: datetime.datetime | None) -> str | None:
+    return None if v is None else v.isoformat()
+
+
 def _merge_relationships(
     session: Session, src: int, dst: int, actor: str, detail: dict[str, Any]
 ) -> int:
@@ -108,14 +112,28 @@ def _merge_relationships(
         ).one_or_none()
         if twin is None:
             r.source_entity_id, r.target_entity_id = new_src, new_tgt
+            detail["repointed_relationship_ids"].append(r.id)
             survivor = r
         else:
-            twin.confidence = _hi(twin.confidence, r.confidence)
-            twin.first_seen = _lo(twin.first_seen, r.first_seen)
-            twin.last_seen = _hi(twin.last_seen, r.last_seen)
+            detail["folded_twins"].append(
+                {
+                    "id": twin.id,
+                    "folded_id": r.id,
+                    "confidence": twin.confidence,
+                    "first_seen": _iso(twin.first_seen),
+                    "last_seen": _iso(twin.last_seen),
+                    "revoked_at": _iso(twin.revoked_at),
+                }
+            )
+            # relasi A yang sudah revoked tidak menyumbang apa pun; kembaran yang di-revoke
+            # analis tetap revoked (keputusan analis menang atas klaim A)
             if r.revoked_at is None:
-                # klaim A yang masih hidup sekarang klaim B: kembaran revoked ikut hidup lagi
-                twin.revoked_at = twin.revoked_by = None
+                if twin.revoked_at is None:
+                    twin.confidence = _hi(twin.confidence, r.confidence)
+                    twin.first_seen = _lo(twin.first_seen, r.first_seen)
+                    twin.last_seen = _hi(twin.last_seen, r.last_seen)
+                else:
+                    detail["kept_revoked_twin_ids"].append(twin.id)
                 r.revoked_at, r.revoked_by = func.now(), actor
             detail["folded_relationship_ids"].append(r.id)
             survivor = twin
@@ -197,7 +215,12 @@ def merge_entities(session: Session, source_id: int, into_id: int, *, actor: str
         "alias_ids": alias_ids,
         "dropped_mentions": dropped_mentions,
         "dropped_watch_clients": dropped_watches,
+        "moved_mention_ids": sorted(mentions),
+        "moved_watch_ids": sorted(watches),
+        "repointed_relationship_ids": [],
         "folded_relationship_ids": [],
+        "folded_twins": [],
+        "kept_revoked_twin_ids": [],
         "revoked_self_relationship_ids": [],
     }
     n_rels = _merge_relationships(session, source_id, into_id, actor, detail)
@@ -253,11 +276,33 @@ def _restore_mention(session: Session, entity_id: int, m: dict[str, Any]) -> boo
     )
 
 
+def _check_revive(session: Session, tomb: Entity, norms: set[str]) -> None:
+    """Tolak revive yang melanggar invarian sebelum ada yang ditulis."""
+    technique = tomb.type == TECHNIQUE and tomb.external_id
+    if alias_norm(tomb.external_id if technique and tomb.external_id else tomb.name) not in norms:
+        raise EntityMergeError(f"revive entitas {tomb.id} harus menyertakan alias namanya sendiri")
+    clash = (
+        Entity.external_id == tomb.external_id
+        if technique
+        else func.lower(Entity.name) == tomb.name.lower()
+    )
+    taken = session.scalar(
+        select(Entity.id).where(
+            Entity.type == tomb.type, Entity.merged_into_id.is_(None), Entity.id != tomb.id, clash
+        )
+    )
+    if taken is not None:
+        raise EntityMergeError(f"nama entitas {tomb.id} sudah dipakai entitas hidup {taken}")
+
+
 def split_aliases(session: Session, entity_id: int, alias_ids: list[int], *, actor: str) -> Entity:
-    """Keluarkan `alias_ids` dari entitas: hidupkan tombstone pemilik aslinya (merge terakhir yang
-    memindah semua alias itu, selama tombstone masih menunjuk entitas ini), atau buat entitas
-    baru. Mention yang `matched_alias`-nya ternormalisasi ke salah satu alias ikut pindah. Relasi
-    tidak dipindah (spec 3.4: dialog menampilkannya ke analis)."""
+    """Keluarkan `alias_ids` dari entitas: kembalikan ke pemilik aslinya (sumber merge terakhir
+    yang memindah semua alias itu) kalau ia masih tombstone entitas ini (dihidupkan; alias nama
+    sendirinya wajib ikut) atau sudah hidup lagi lewat split sebelumnya, selain itu buat entitas
+    baru. Baris audit selalu mencatat `merge_audit_id` yang cocok (Task 7 mengenali merge Galaxy
+    yang dibatalkan). Rantai merge (A->B->C) dibongkar terbalik: merge terbaru (B->C) yang cocok,
+    jadi B dulu. Mention yang `matched_alias`-nya ternormalisasi ke salah satu alias ikut pindah.
+    Relasi tidak dipindah (spec 3.4: dialog menampilkannya ke analis)."""
     ids = sorted(set(alias_ids))
     if not ids:
         raise EntityMergeError("alias_ids kosong")
@@ -275,21 +320,31 @@ def split_aliases(session: Session, entity_id: int, alias_ids: list[int], *, act
     merge_row = session.scalars(
         select(AuditLogEntry)
         .where(
-            AuditLogEntry.action == "entity_merge", AuditLogEntry.detail["alias_ids"].contains(ids)
+            AuditLogEntry.action == "entity_merge",
+            AuditLogEntry.detail["alias_ids"].contains(ids),
+            # merge yang sumbernya entitas ini sendiri (B->C saat membongkar dari B) bukan asal
+            AuditLogEntry.detail["source_id"].as_integer() != entity_id,
         )
         .order_by(AuditLogEntry.id.desc())
         .limit(1)
     ).one_or_none()
-    tomb = None
+    owner = None
     if merge_row is not None:
-        tomb = session.get(
+        owner = session.get(
             Entity, merge_row.detail["source_id"], with_for_update=True, populate_existing=True
         )
-    revived = tomb is not None and tomb.merged_into_id == entity_id
-    if revived:
-        assert tomb is not None
-        tomb.merged_into_id = None
-        target = tomb
+        # pemilik asli: tombstone yang masih menunjuk entitas ini (dihidupkan), atau sudah hidup
+        # lagi karena split sebelumnya (alias sisanya dikembalikan ke entitas yang sama)
+        if owner is not None and (
+            owner.type != ent.type or owner.merged_into_id not in (entity_id, None)
+        ):
+            owner = None
+    revived = owner is not None and owner.merged_into_id == entity_id
+    if owner is not None:
+        if revived:
+            _check_revive(session, owner, norms)
+            owner.merged_into_id = None
+        target = owner
     else:
         first = by_id[alias_ids[0]].alias  # urutan pemanggil: alias pertama jadi nama
         key = first.upper() if ent.type == TECHNIQUE else first
@@ -320,7 +375,7 @@ def split_aliases(session: Session, entity_id: int, alias_ids: list[int], *, act
         {"new": target.id, "old": entity_id, "norms": sorted(norms)},
     )
     restored = 0
-    if revived and merge_row is not None:
+    if owner is not None and merge_row is not None:
         for m in merge_row.detail.get("dropped_mentions", []):
             if alias_norm(m["matched_alias"]) in norms:
                 restored += _restore_mention(session, target.id, m)
@@ -334,7 +389,8 @@ def split_aliases(session: Session, entity_id: int, alias_ids: list[int], *, act
             "into_id": target.id,
             "alias_ids": ids,
             "revived": revived,
-            "merge_audit_id": merge_row.id if revived and merge_row is not None else None,
+            "returned_to_owner": owner is not None and not revived,
+            "merge_audit_id": None if merge_row is None else merge_row.id,
             "moved_mentions": len(moved),
             "restored_mentions": restored,
         },

@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 from cti_core.db.models.article import Article
 from cti_core.db.models.auth import AuditLogEntry, Client
+from cti_core.db.models.cve import CveTracker
 from cti_core.db.models.entity import (
     Entity,
     EntityAlias,
@@ -20,6 +21,7 @@ from cti_core.db.models.entity import (
     EntityWatch,
     Relationship,
 )
+from cti_core.db.models.indicator import Indicator
 from cti_core.entity import alias_norm, entity_stix_id
 from cti_core.entity.merge import (
     EntityMergeError,
@@ -29,9 +31,10 @@ from cti_core.entity.merge import (
     merge_preview,
     set_suppressed,
     split_aliases,
+    split_aliases_async,
 )
 from cti_core.entity.resolve import resolve
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -321,8 +324,11 @@ def test_split_new_entity_when_no_tombstone(db_session: Session) -> None:
         split_aliases(s, b.id, [ids["Ns-Beta"]], actor="alice")
     with pytest.raises(EntityMergeError):  # alias milik entitas lain
         split_aliases(s, b.id, [other.aliases[0].id], actor="alice")
+    n_audit = s.scalar(select(func.count()).select_from(AuditLogEntry))
     with pytest.raises(EntityMergeError):
         split_aliases(s, b.id, [], actor="alice")
+    assert s.scalar(select(func.count()).select_from(AuditLogEntry)) == n_audit
+    assert {x.alias for x in s.get(Entity, b.id).aliases} == set(ids)  # type: ignore[union-attr]
 
     new = split_aliases(s, b.id, [ids["Ns Beta X"], ids["Ns Beta Y"]], actor="alice")
 
@@ -384,3 +390,212 @@ async def test_merge_async_wrapper(async_db_session: AsyncSession) -> None:
     assert result.moved_aliases == 0
     await s.refresh(a)
     assert a.merged_into_id == b.id
+
+
+def _state(s: Session, *ents: Entity) -> list[Any]:
+    return [(_alias_ids(s, e), _mentions(s, e)) for e in ents]
+
+
+def test_two_step_split_restores_pre_merge(db_session: Session) -> None:
+    """Split sebagian (tombstone hidup lagi), lalu sisanya: alias kembali ke A yang SAMA."""
+    s = db_session
+    a = _make(s, "intrusion-set", "Two-A", "Two a1", "Two a2")
+    b = _make(s, "intrusion-set", "Two-B")
+    shared, art1, art2 = _article(s), _article(s), _article(s)
+    _mention(s, a, shared, "Two a2")  # dibuang saat merge (B juga di artikel ini)
+    _mention(s, b, shared, "Two-B")
+    _mention(s, a, art1, "Two a1")
+    _mention(s, a, art2, "Two-A")
+    ids = {x.alias: x.id for x in a.aliases}
+    before = _state(s, a, b)
+
+    merge_entities(s, a.id, b.id, actor="system:galaxy")
+    first = split_aliases(s, b.id, [ids["Two-A"], ids["Two a1"]], actor="alice")
+    second = split_aliases(s, b.id, [ids["Two a2"]], actor="alice")
+
+    assert first.id == second.id == a.id
+    assert _state(s, a, b) == before
+
+
+def test_revive_requires_own_name_alias(db_session: Session) -> None:
+    s = db_session
+    a = _make(s, "malware", "Own-A", "Own x")
+    b = _make(s, "malware", "Own-B")
+    x_id = next(x.id for x in a.aliases if x.alias == "Own x")
+    merge_entities(s, a.id, b.id, actor="alice")
+    before = _state(s, a, b)
+    with pytest.raises(EntityMergeError):
+        split_aliases(s, b.id, [x_id], actor="alice")
+    assert _state(s, a, b) == before
+    s.refresh(a)
+    assert a.merged_into_id == b.id
+
+
+def test_revive_rejects_taken_name(db_session: Session) -> None:
+    s = db_session
+    a = _make(s, "malware", "Taken-A")
+    b = _make(s, "malware", "Taken-B")
+    a_ids = sorted(_alias_ids(s, a))
+    merge_entities(s, a.id, b.id, actor="alice")
+    # nama tombstone tak dijaga indeks unik, jadi entitas hidup baru boleh memakainya
+    s.add(Entity(type="malware", stix_id="malware--taken-new", name="taken-a", source="analyst"))
+    s.flush()
+    with pytest.raises(EntityMergeError):
+        split_aliases(s, b.id, a_ids, actor="alice")
+
+
+def test_split_records_matched_merge_without_revive(db_session: Session) -> None:
+    s = db_session
+    a = _make(s, "tool", "Ch-A", "Ch a1")
+    b = _make(s, "tool", "Ch-B")
+    d = _make(s, "tool", "Ch-D")
+    ids = {x.alias: x.id for x in a.aliases}
+    merge_entities(s, a.id, b.id, actor="system:galaxy")
+    merge_row = s.scalars(
+        select(AuditLogEntry)
+        .where(AuditLogEntry.action == "entity_merge")
+        .order_by(AuditLogEntry.id.desc())
+    ).first()
+    assert merge_row is not None
+    split_aliases(s, b.id, [ids["Ch-A"]], actor="alice")  # A hidup lagi tanpa "Ch a1"
+    merge_entities(s, a.id, d.id, actor="alice")  # A pindah ke D
+    new = split_aliases(s, b.id, [ids["Ch a1"]], actor="alice")  # pemilik A menunjuk D, bukan B
+    assert new.id not in (a.id, b.id, d.id)
+    split = s.scalars(
+        select(AuditLogEntry)
+        .where(AuditLogEntry.action == "entity_split")
+        .order_by(AuditLogEntry.id.desc())
+    ).first()
+    assert split is not None
+    assert split.detail["merge_audit_id"] == merge_row.id
+    assert (split.detail["revived"], split.detail["returned_to_owner"]) == (False, False)
+
+
+def test_chain_unwinds_in_reverse(db_session: Session) -> None:
+    s = db_session
+    a = _make(s, "tool", "Rc-A")
+    b = _make(s, "tool", "Rc-B")
+    c = _make(s, "tool", "Rc-C")
+    a_ids, b_ids = sorted(_alias_ids(s, a)), sorted(_alias_ids(s, b))
+    merge_entities(s, a.id, b.id, actor="alice")
+    merge_entities(s, b.id, c.id, actor="alice")
+    with pytest.raises(EntityMergeError):  # merge terbaru B->C: B harus kembali dulu
+        split_aliases(s, c.id, a_ids, actor="alice")
+    assert split_aliases(s, c.id, a_ids + b_ids, actor="alice").id == b.id
+    assert split_aliases(s, b.id, a_ids, actor="alice").id == a.id
+
+
+def test_merge_relationship_revocation_rules(db_session: Session) -> None:
+    s = db_session
+    a = _make(s, "intrusion-set", "Rv-A")
+    b = _make(s, "intrusion-set", "Rv-B")
+    m1, m2 = _make(s, "malware", "Rv-M1"), _make(s, "malware", "Rv-M2")
+    # A revoked -> tidak menyumbang confidence/seen ke kembaran hidup
+    dead_a = _rel(s, a, m1, confidence=99, first_seen=_dt(1), revoked_at=_dt(2))
+    live_b = _rel(s, b, m1, confidence=40, first_seen=_dt(5))
+    # A hidup, kembaran B di-revoke analis -> kembaran tetap revoked
+    live_a = _rel(s, a, m2, confidence=70)
+    dead_b = _rel(s, b, m2, confidence=30, revoked_at=_dt(3), revoked_by="analyst1")
+    moved = _rel(s, a, _make(s, "tool", "Rv-T"))
+
+    merge_entities(s, a.id, b.id, actor="alice")
+
+    for r in (dead_a, live_b, live_a, dead_b, moved):
+        s.refresh(r)
+    assert (live_b.confidence, live_b.first_seen, live_b.revoked_at) == (40, _dt(5), None)
+    assert dead_b.revoked_at == _dt(3) and dead_b.revoked_by == "analyst1"
+    assert live_a.revoked_at is not None and live_a.source_entity_id == a.id
+    detail = s.scalars(
+        select(AuditLogEntry.detail)
+        .where(AuditLogEntry.action == "entity_merge")
+        .order_by(AuditLogEntry.id.desc())
+    ).first()
+    assert detail is not None
+    assert detail["repointed_relationship_ids"] == [moved.id]
+    assert detail["kept_revoked_twin_ids"] == [dead_b.id]
+    twins = {t["id"]: t for t in detail["folded_twins"]}
+    assert twins[dead_b.id]["confidence"] == 30
+    assert twins[dead_b.id]["revoked_at"] == _dt(3).isoformat()
+    assert twins[live_b.id]["folded_id"] == dead_a.id
+
+
+def test_merge_audit_lists_repointed_rows(db_session: Session) -> None:
+    s = db_session
+    a = _make(s, "intrusion-set", "Ar-A")
+    b = _make(s, "intrusion-set", "Ar-B")
+    _mention(s, a, _article(s), "Ar-A")
+    w = EntityWatch(client_id=_client(s, "ar1"), entity_id=a.id)
+    s.add(w)
+    s.flush()
+    mention_ids = s.scalars(select(EntityMention.id).where(EntityMention.entity_id == a.id)).all()
+    merge_entities(s, a.id, b.id, actor="alice")
+    detail = s.scalars(
+        select(AuditLogEntry.detail)
+        .where(AuditLogEntry.action == "entity_merge")
+        .order_by(AuditLogEntry.id.desc())
+    ).first()
+    assert detail is not None
+    assert detail["moved_mention_ids"] == list(mention_ids)
+    assert detail["moved_watch_ids"] == [w.id]
+
+
+def test_merge_indicator_and_cve_mentions(db_session: Session) -> None:
+    s = db_session
+    _client(s, "icv")
+    a = _make(s, "intrusion-set", "Ic-A", "Ic alias")
+    b = _make(s, "intrusion-set", "Ic-B")
+    ind = Indicator(type="ip", value="192.0.2.91")
+    cve = CveTracker(cve_id="CVE-2026-9191", client_id="icv", tech="x")
+    ind2 = Indicator(type="ip", value="192.0.2.92")
+    s.add_all([ind, cve, ind2])
+    s.flush()
+    for kw in ({"indicator_id": ind.id}, {"cve_tracker_id": cve.id}, {"indicator_id": ind2.id}):
+        s.add(EntityMention(entity_id=a.id, method="explicit", matched_alias="Ic alias", **kw))
+    s.add(
+        EntityMention(entity_id=b.id, method="explicit", matched_alias="Ic-B", indicator_id=ind2.id)
+    )
+    s.flush()
+    rows = lambda e: set(  # noqa: E731
+        s.execute(
+            select(EntityMention.indicator_id, EntityMention.cve_tracker_id).where(
+                EntityMention.entity_id == e.id
+            )
+        ).all()
+    )
+    before = (rows(a), rows(b))
+
+    assert merge_entities(s, a.id, b.id, actor="alice").moved_mentions == 2
+    assert rows(b) == {(ind.id, None), (None, cve.id), (ind2.id, None)}
+    split_aliases(
+        s,
+        b.id,
+        sorted(_alias_ids(s, b) - {x.id for x in b.aliases if x.alias == "Ic-B"}),
+        actor="alice",
+    )
+    assert (rows(a), rows(b)) == before
+
+
+async def test_split_async_wrapper(async_db_session: AsyncSession) -> None:
+    s = async_db_session
+    b = Entity(type="campaign", stix_id="campaign--as-split", name="As-S", source="analyst")
+    s.add(b)
+    await s.flush()
+    s.add_all(
+        [
+            EntityAlias(
+                entity_id=b.id,
+                entity_type="campaign",
+                alias=x,
+                alias_norm=alias_norm(x),
+                source="analyst",
+            )
+            for x in ("As-S", "As other")
+        ]
+    )
+    await s.flush()
+    other_id = (
+        await s.scalars(select(EntityAlias.id).where(EntityAlias.alias == "As other"))
+    ).one()
+    new = await split_aliases_async(s, b.id, [other_id], actor="alice")
+    assert new.name == "As other"
+    assert [x.alias for x in new.aliases] == ["As other"]
