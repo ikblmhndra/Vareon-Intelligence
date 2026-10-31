@@ -111,14 +111,17 @@ def _attack_entity_row(obj: dict[str, Any]) -> dict[str, Any] | None:
     type_ = obj.get("type")
     if type_ not in _ENTITY_TYPES or _is_dead(obj):
         return None
-    ext_id = collapse_ws(_extract_id(obj))
+    ext_id: str | None = collapse_ws(_extract_id(obj)) or None
     name = collapse_ws(obj.get("name", ""))
-    if not ext_id or not alias_norm(name):
+    if not alias_norm(name):
         return None
     if type_ == "attack-pattern":
+        if not ext_id:
+            return None  # identitas teknik = id teknik (Ruling 7)
         ext_id = ext_id.upper()
         aliases = [ext_id]
     else:
+        # grup/software/campaign tanpa id tetap dibuat (external_id NULL), seperti backfill
         raw = obj.get("x-mitre-aliases") or obj.get("x_mitre_aliases") or obj.get("aliases") or []
         aliases = [name, *raw]
     return {
@@ -136,80 +139,148 @@ async def upsert_attack_entities(
 ) -> dict[str, int]:
     """Upsert objek ATT&CK dari satu bundle ke `entities`, `entity_aliases`, `relationships`.
 
-    Kunci = `stix_id` ATT&CK (bukan resolver nama). Nama/deskripsi/external_id entitas yang sudah
-    ada diperbarui (trigger feed membump jam); alias resmi baru ditambah dengan
-    `ON CONFLICT DO NOTHING`, jadi alias analis tidak pernah dihapus atau ditimpa dan alias resmi
-    lama tidak dibuang. Tombstone merge dibiarkan. Bentrok nama dengan entitas lain dilewati
-    (yang pertama menang, seperti backfill). Relasi hanya tipe di CHECK `RELATIONSHIP_TYPES`,
-    kedua ujung harus entitas hidup; provenance `attack`, confidence 85. Return jumlah objek
-    yang diproses per tipe, plus `relationship`."""
-    rows = [r for o in bundle_objects if (r := _attack_entity_row(o))]
+    Kunci = `stix_id` ATT&CK. Entitas hidup non-ATT&CK yang sudah ada dengan nama sama (per
+    tipe; teknik: id teknik sama) DIADOPSI (Ruling 25): `source='attack'`, `stix_id`/`external_id`/
+    `name` dari ATT&CK; deskripsi ATT&CK hanya mengisi deskripsi yang kosong (Ruling 27); alias dan
+    mention analis tetap. Entitas ATT&CK yang sudah ada diperbarui (trigger feed membump jam).
+    Alias resmi ditambah dengan `ON CONFLICT DO NOTHING` (alias analis tak pernah dihapus/ditimpa,
+    alias resmi lama tak dibuang). Urutan seperti backfill: baris diurut `stix_id`, alias nama
+    sendiri dulu baru alias lain, jadi bentrokan alias dimenangkan nama sendiri lalu `stix_id`
+    terkecil. Tombstone merge dibiarkan; bentrok nama dengan entitas lain dilewati. Relasi hanya
+    tipe di CHECK `RELATIONSHIP_TYPES`, ujung tombstone mengikuti `merged_into_id`; provenance
+    `attack`, confidence 85. Return: jumlah objek yang DILIHAT (bukan yang baru dibuat) per tipe,
+    plus `relationship` (relasi yang kedua ujungnya ada)."""
+    rows = sorted(
+        (r for o in bundle_objects if (r := _attack_entity_row(o))), key=lambda r: r["stix_id"]
+    )
     counts = {t: 0 for t in _ENTITY_TYPES}
     for r in rows:
         counts[r["type"]] += 1
 
-    # 1. entitas: sisipkan yang baru (bentrok apa pun dilewati), perbarui yang berubah
+    adopted_now: set[str] = set()  # diadopsi di panggilan ini: deskripsi lama tidak ditimpa
+    # 1a. adopsi entitas non-ATT&CK yang identitasnya sama (Ruling 25/27)
     for i in range(0, len(rows), _CHUNK):
         chunk = rows[i : i + _CHUNK]
+        have = set(
+            (
+                await session.execute(
+                    select(Entity.stix_id).where(Entity.stix_id.in_([r["stix_id"] for r in chunk]))
+                )
+            ).scalars()
+        )
+        todo = [r for r in chunk if r["stix_id"] not in have]
+        if not todo:
+            continue
+        names = {(r["type"], r["name"].lower()): r for r in todo if r["type"] != "attack-pattern"}
+        techs = {r["external_id"]: r for r in todo if r["type"] == "attack-pattern"}
+        cand = (
+            await session.execute(
+                select(Entity.id, Entity.type, Entity.name, Entity.external_id, Entity.description)
+                .where(
+                    Entity.source != "attack",
+                    Entity.merged_into_id.is_(None),
+                    or_(
+                        func.lower(Entity.name).in_([n for _, n in names]),
+                        Entity.external_id.in_(list(techs)),
+                    ),
+                )
+                .order_by(Entity.id)
+            )
+        ).all()
+        adopted = adopted_now
+        for eid, etype, ename, eext, edesc in cand:
+            row = (
+                techs.get(eext) if etype == "attack-pattern" else names.get((etype, ename.lower()))
+            )
+            if row is None or row["type"] != etype or row["stix_id"] in adopted:
+                continue
+            adopted.add(row["stix_id"])
+            values: dict[str, Any] = {
+                "source": "attack",
+                "stix_id": row["stix_id"],
+                "name": row["name"],
+            }
+            if row["external_id"] is not None:
+                values["external_id"] = row["external_id"]
+            if not edesc and row["description"]:
+                values["description"] = row["description"]
+            try:
+                async with session.begin_nested():
+                    await session.execute(update(Entity).where(Entity.id == eid).values(**values))
+            except IntegrityError:
+                adopted.discard(row["stix_id"])
+
+    # 1b. entitas baru (bentrok apa pun dilewati)
+    for i in range(0, len(rows), _CHUNK):
         await session.execute(
             pg_insert(Entity)
             .values(
                 [
                     {k: r[k] for k in ("stix_id", "type", "name", "description", "external_id")}
                     | {"source": "attack"}
-                    for r in chunk
+                    for r in rows[i : i + _CHUNK]
                 ]
             )
             .on_conflict_do_nothing()
         )
+
+    # 1c. perbarui entitas ATT&CK yang berubah (UPDATE Core: savepoint tak meng-expire objek ORM)
     ids: dict[str, int] = {}
     for i in range(0, len(rows), _CHUNK):
+        chunk = rows[i : i + _CHUNK]
         found = await session.execute(
-            select(Entity).where(
-                Entity.stix_id.in_([r["stix_id"] for r in rows[i : i + _CHUNK]]),
+            select(
+                Entity.stix_id, Entity.id, Entity.name, Entity.description, Entity.external_id
+            ).where(
+                Entity.stix_id.in_([r["stix_id"] for r in chunk]),
                 Entity.merged_into_id.is_(None),
             )
         )
-        by_stix = {e.stix_id: e for e in found.scalars()}
-        for r in rows[i : i + _CHUNK]:
-            ent = by_stix.get(r["stix_id"])
-            if ent is None:
-                continue  # bentrok nama/tombstone: dilewati
-            ids[r["stix_id"]] = ent.id
-            if (ent.name, ent.description, ent.external_id) != (
-                r["name"],
-                r["description"],
-                r["external_id"],
-            ):
+        cur = {sid: (eid, n, d, x) for sid, eid, n, d, x in found.all()}
+        for r in chunk:
+            if r["stix_id"] not in cur:
+                continue  # bentrok nama atau tombstone: dilewati
+            eid, n, d, x = cur[r["stix_id"]]
+            ids[r["stix_id"]] = eid
+            desc = d if r["stix_id"] in adopted_now else r["description"]
+            if (n, d, x) != (r["name"], desc, r["external_id"]):
                 try:
                     async with session.begin_nested():
-                        ent.name = r["name"]
-                        ent.description = r["description"]
-                        ent.external_id = r["external_id"]
-                        await session.flush()
+                        await session.execute(
+                            update(Entity)
+                            .where(Entity.id == eid)
+                            .values(
+                                name=r["name"],
+                                description=desc,
+                                external_id=r["external_id"],
+                            )
+                        )
                 except IntegrityError:
                     pass  # nama baru bentrok dengan entitas lain; biarkan nama lama
 
-    # 2. alias resmi (source=attack); DO NOTHING menjaga alias analis
-    alias_rows = [
-        {
-            "entity_id": ids[r["stix_id"]],
-            "entity_type": r["type"],
-            "alias": collapse_ws(a),
-            "alias_norm": alias_norm(a),
-            "source": "attack",
-        }
-        for r in rows
-        if r["stix_id"] in ids
-        for a in r["aliases"]
-        if alias_norm(a)
-    ]
+    # 2. alias resmi (source=attack), dua putaran seperti backfill: nama sendiri, lalu alias
+    def _alias_rows(own: bool) -> list[dict[str, Any]]:
+        return [
+            {
+                "entity_id": ids[r["stix_id"]],
+                "entity_type": r["type"],
+                "alias": collapse_ws(a),
+                "alias_norm": alias_norm(a),
+                "source": "attack",
+            }
+            for r in rows
+            if r["stix_id"] in ids
+            for idx, a in enumerate(r["aliases"])
+            if alias_norm(a) and ((idx == 0) == own)
+        ]
+
+    alias_rows = _alias_rows(True) + _alias_rows(False)
     for i in range(0, len(alias_rows), _CHUNK):
         await session.execute(
             pg_insert(EntityAlias).values(alias_rows[i : i + _CHUNK]).on_conflict_do_nothing()
         )
 
-    # 3. relasi: kedua ujung entitas (bisa dari domain lain, jadi cari lewat stix_id di DB)
+    # 3. relasi: kedua ujung entitas (bisa dari domain lain; tombstone -> entitas hidup)
     wanted = [
         o
         for o in bundle_objects
@@ -220,15 +291,26 @@ async def upsert_attack_entities(
         and o.get("target_ref")
     ]
     refs = {o["source_ref"] for o in wanted} | {o["target_ref"] for o in wanted}
-    ref_ids: dict[str, int] = dict(ids)
+    ref_ids: dict[str, int] = {s: ids[s] for s in refs if s in ids}
     missing = sorted(refs - set(ref_ids))
     for i in range(0, len(missing), _CHUNK):
         found_ids = await session.execute(
-            select(Entity.stix_id, Entity.id).where(
-                Entity.stix_id.in_(missing[i : i + _CHUNK]), Entity.merged_into_id.is_(None)
-            )
+            select(Entity.stix_id, Entity.id).where(Entity.stix_id.in_(missing[i : i + _CHUNK]))
         )
         ref_ids.update({s: eid for s, eid in found_ids.all()})
+    for _ in range(20):  # ikuti merged_into_id sampai entitas hidup
+        mid = list(set(ref_ids.values()))
+        up: dict[int, int] = {}
+        for i in range(0, len(mid), _CHUNK):
+            res = await session.execute(
+                select(Entity.id, Entity.merged_into_id).where(
+                    Entity.id.in_(mid[i : i + _CHUNK]), Entity.merged_into_id.is_not(None)
+                )
+            )
+            up.update({a: b for a, b in res.all() if b is not None})
+        if not up:
+            break
+        ref_ids = {s: up.get(e, e) for s, e in ref_ids.items()}
     rel_rows = [
         {
             "stix_id": o["id"],

@@ -9,7 +9,8 @@ from typing import Any
 
 import httpx
 import pytest
-from cti_core.db.models.entity import Entity, EntityAlias, Relationship
+from cti_core.db.models.article import Article
+from cti_core.db.models.entity import Entity, EntityAlias, EntityMention, Relationship
 from cti_core.db.repositories import attack as attack_mod
 from cti_core.db.repositories.attack import AsyncAttackSyncRepo, upsert_attack_entities
 from sqlalchemy import select
@@ -253,3 +254,190 @@ async def test_sync_domain_calls_entity_upsert(
 
     assert result["status"] == "success"
     assert await _entity(async_db_session, CAMPAIGN) is not None
+
+
+def _ent(type_: str, name: str, source: str, **kw: Any) -> Entity:
+    return Entity(type=type_, name=name, source=source, stix_id=f"{type_}--legacy-{name}", **kw)
+
+
+async def _snapshot(session: AsyncSession, stix_id: str) -> tuple[Any, ...]:
+    e = await _entity(session, stix_id)
+    assert e
+    await session.refresh(e)
+    return (e.type, e.name, e.external_id, e.source, e.stix_id)
+
+
+@pytest.mark.parametrize("old_source", ["dictionary", "legacy"])
+async def test_sync_adopts_existing_entity(async_db_session: AsyncSession, old_source: str) -> None:
+    s = async_db_session
+    old = _ent("intrusion-set", "test group", old_source, description=None)
+    s.add(old)
+    await s.flush()
+    s.add(
+        EntityAlias(
+            entity_id=old.id,
+            entity_type="intrusion-set",
+            alias="Mine",
+            alias_norm="mine",
+            source="analyst",
+        )
+    )
+    art = Article(url="http://a/1", url_hash="adopt-1", title="t", source="src")
+    s.add(art)
+    await s.flush()
+    s.add(
+        EntityMention(
+            article_id=art.id, entity_id=old.id, method="dictionary", matched_alias="test group"
+        )
+    )
+    await s.flush()
+    old_id = old.id
+
+    await upsert_attack_entities(s, _bundle())
+
+    got = await _entity(s, GROUP)
+    assert got and got.id == old_id
+    await s.refresh(got)
+    assert (got.source, got.name, got.external_id, got.description) == (
+        "attack",
+        "Test Group",
+        "G9001",
+        "grup uji",  # kosong -> diisi ATT&CK (Ruling 27)
+    )
+    norms = {
+        (n, src)
+        for n, src in (
+            await s.execute(
+                select(EntityAlias.alias_norm, EntityAlias.source).where(
+                    EntityAlias.entity_id == old_id
+                )
+            )
+        ).all()
+    }
+    assert ("mine", "analyst") in norms and ("group alias", "attack") in norms
+    n_ment = (
+        await s.execute(select(EntityMention.id).where(EntityMention.entity_id == old_id))
+    ).all()
+    assert len(n_ment) == 1
+    assert (
+        await s.execute(
+            select(Entity.id).where(Entity.type == "intrusion-set", Entity.name.ilike("test group"))
+        )
+    ).all() == [(old_id,)]
+
+
+async def test_adopted_equals_fresh_insert(async_db_session: AsyncSession) -> None:
+    s = async_db_session
+    await upsert_attack_entities(s, _bundle())
+    fresh = await _snapshot(s, MALWARE)
+    # entitas lama dengan nama sama tapi huruf kecil, deskripsi sudah terisi (tidak ditimpa)
+    other = copy.deepcopy(_bundle())
+    other[1]["id"] = "malware--99999999-9999-4999-8999-999999999999"
+    other[1]["name"] = "OtherMal"
+    other[1]["x-mitre-aliases"] = ["OtherMal"]
+    other[1]["external_references"] = _ext("S9009")
+    s.add(_ent("malware", "othermal", "dictionary", description="punya analis"))
+    await s.flush()
+    await upsert_attack_entities(s, other)
+    adopted = await _snapshot(s, other[1]["id"])
+    assert adopted[1:3] == ("OtherMal", "S9009") and adopted[3] == "attack"
+    ent = await _entity(s, other[1]["id"])
+    assert ent and ent.description == "punya analis"
+    assert fresh[0] == adopted[0] == "malware"
+
+
+async def test_sync_adopts_legacy_technique_by_id(async_db_session: AsyncSession) -> None:
+    s = async_db_session
+    old = Entity(
+        type="attack-pattern",
+        name="Old name",
+        source="legacy",
+        stix_id="attack-pattern--legacy-1",
+        external_id="T9001.001",
+    )
+    s.add(old)
+    await s.flush()
+    old_id = old.id
+
+    await upsert_attack_entities(s, _bundle())
+
+    tech = await _entity(s, TECH)
+    assert tech and tech.id == old_id
+    await s.refresh(tech)
+    assert (tech.name, tech.source) == ("Spearphishing Attachment", "attack")
+
+
+async def test_alias_collision_own_name_wins_any_order(async_db_session: AsyncSession) -> None:
+    a = {
+        "type": "intrusion-set",
+        "id": "intrusion-set--aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "name": "Zed",
+        "aliases": ["Zed", "xray"],
+        "external_references": _ext("G9101"),
+    }
+    b = {
+        "type": "intrusion-set",
+        "id": "intrusion-set--bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        "name": "Xray",
+        "aliases": ["Xray"],
+        "external_references": _ext("G9102"),
+    }
+    await upsert_attack_entities(async_db_session, [a, b])  # A lebih kecil, daftar alias "xray"
+    owner = (
+        await async_db_session.execute(
+            select(Entity.stix_id)
+            .join(EntityAlias, EntityAlias.entity_id == Entity.id)
+            .where(EntityAlias.entity_type == "intrusion-set", EntityAlias.alias_norm == "xray")
+        )
+    ).scalar_one()
+    assert owner == b["id"]
+
+
+async def test_group_without_external_id_is_created(async_db_session: AsyncSession) -> None:
+    obj = {"type": "intrusion-set", "id": "intrusion-set--no-ext", "name": "No Ext Group"}
+    await upsert_attack_entities(async_db_session, [obj])
+    e = await _entity(async_db_session, "intrusion-set--no-ext")
+    assert e and e.external_id is None
+
+
+async def test_rename_collision_keeps_old_name(async_db_session: AsyncSession) -> None:
+    s = async_db_session
+    await upsert_attack_entities(s, _bundle())
+    other = {
+        "type": "intrusion-set",
+        "id": "intrusion-set--cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        "name": "Other Group",
+        "external_references": _ext("G9201"),
+    }
+    await upsert_attack_entities(s, [other])
+    clash = {**other, "name": "TEST GROUP"}  # bentrok dengan Test Group
+    await upsert_attack_entities(s, [clash])  # tidak boleh melempar
+    e = await _entity(s, other["id"])
+    assert e
+    await s.refresh(e)
+    assert e.name == "Other Group"
+
+
+async def test_relationship_end_follows_merged_tombstone(async_db_session: AsyncSession) -> None:
+    s = async_db_session
+    await upsert_attack_entities(s, _bundle())
+    live = Entity(type="malware", name="Live Mal", source="analyst", stix_id="malware--live-1")
+    s.add(live)
+    await s.flush()
+    mal = await _entity(s, MALWARE)
+    assert mal
+    mal.merged_into_id = live.id
+    await s.flush()
+    extra = [_rel(8, "uses", GROUP, MALWARE)]
+    extra[0]["id"] = "relationship--00000008-0000-4000-8000-00000000000a"
+
+    await upsert_attack_entities(s, extra)
+
+    group = await _entity(s, GROUP)
+    assert group
+    tgt = (
+        await s.execute(
+            select(Relationship.target_entity_id).where(Relationship.stix_id == extra[0]["id"])
+        )
+    ).scalar_one()
+    assert tgt == live.id
