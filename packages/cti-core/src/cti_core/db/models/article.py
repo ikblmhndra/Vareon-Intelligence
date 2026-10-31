@@ -146,13 +146,15 @@ class Article(TimestampMixin, Base):
 
     def mentions_of(self, *types: str) -> list[EntityMention]:
         """Mention ke entitas hidup (tidak suppressed, bukan tombstone) bertipe `types`
-        (kosong = semua), urut id mention."""
+        (kosong = semua), urut id mention. `identity` hanya sektor (kelas `class`), sama dengan
+        `repositories.entity.mention_rows`."""
         return [
             m
             for m in self.mentions
             if (not types or m.entity.type in types)
             and not m.entity.suppressed
             and m.entity.merged_into_id is None
+            and (m.entity.type != "identity" or m.entity.identity_class == "class")
         ]
 
     def entity_names(self, *types: str) -> list[str]:

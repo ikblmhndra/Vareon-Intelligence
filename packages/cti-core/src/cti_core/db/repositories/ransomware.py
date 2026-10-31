@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 from cti_core.db.models.article import Article
 from cti_core.db.models.entity import Entity
 from cti_core.db.models.ransomware import RansomwareVictim
-from cti_core.db.repositories.entity import ACTOR, entity_ids_named, mention_rows
+from cti_core.db.repositories.entity import ACTOR, entity_ids_matching_column, mention_rows
 from cti_core.entity import collapse_ws, relationship_stix_id
 from cti_core.entity.mentions import (
     country_mention,
@@ -328,7 +328,7 @@ class AsyncRansomwareVictimRepo:
         top_groups = group_names[:40]
         m = mention_rows(ACTOR)
         tagged = select(m.c.article_id).where(
-            m.c.entity_id.in_(entity_ids_named(ACTOR, group_names))
+            m.c.entity_id.in_(entity_ids_matching_column(ACTOR, RansomwareVictim.group_name))
         )
         stmt = select(Article).where(
             or_(

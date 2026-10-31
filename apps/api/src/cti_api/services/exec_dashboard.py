@@ -131,11 +131,10 @@ async def get_exec_dashboard(
     news_type_raw = await repo.news_type_breakdown(**base)
     prev_unique_ta_count = await repo.unique_threat_actor_count(**prev_base)
     # Dua-duanya TIDAK dibatasi top-8 (`active_sectors` dulu `len(top_sectors)` <= 8 vs
-    # `prev_active_sectors` tanpa batas, jadi trennya timpang) dan tanpa "General".
-    active_sectors = await repo.unique_industry_count(exclude_industry=UNSPECIFIED_INDUSTRY, **base)
-    prev_active_sectors = await repo.unique_industry_count(
-        exclude_industry=UNSPECIFIED_INDUSTRY, **prev_base
-    )
+    # `prev_active_sectors` tanpa batas, jadi trennya timpang); "General" bukan mention sektor
+    # sejak P7c (Ruling 13), jadi tidak perlu disaring lagi.
+    active_sectors = await repo.unique_industry_count(**base)
+    prev_active_sectors = await repo.unique_industry_count(**prev_base)
     total = await repo.count_articles(**base)
     prev_total = await repo.count_articles(**prev_base)
     prev_days_with_data = await repo.distinct_day_count(**prev_base)

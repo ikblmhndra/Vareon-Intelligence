@@ -19,15 +19,22 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import case, delete, func, or_, select, text
+from sqlalchemy import String, case, cast, delete, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_core.db.models.article import Article
+from cti_core.db.models.auth import AuditLogEntry
 from cti_core.db.models.entity import Entity, EntityAlias, EntityProfile, EntityWatch
 from cti_core.db.models.ransomware import RansomwareVictim
 from cti_core.db.models.threat_reference import ThreatActorGroup
 from cti_core.db.models.tweet import Tweet
-from cti_core.db.repositories.entity import ACTOR, entity_ids_named, live_entity, mention_rows
+from cti_core.db.repositories.entity import (
+    ACTOR,
+    entity_ids_matching_column,
+    entity_ids_named,
+    live_entity,
+    mention_rows,
+)
 from cti_core.entity import alias_norm
 from cti_core.entity.merge import set_suppressed_async
 from cti_core.entity.resolve import resolve_async
@@ -37,10 +44,6 @@ _GROUP_SORT_FIELDS = {
     "added_date": ThreatActorGroup.created_at,
     "source": ThreatActorGroup.source,
 }
-_WHITELIST_SORT_FIELDS: dict[str, Any] = {
-    "name": func.lower(Entity.name),
-    "added_date": Entity.updated_at,
-}
 _WATCHLIST_SORT_FIELDS: dict[str, Any] = {"name": Entity.name, "added_date": EntityWatch.created_at}
 
 _TA_ACTOR = "system:ta_groups"
@@ -49,8 +52,8 @@ _TA_ACTOR = "system:ta_groups"
 
 @dataclass(frozen=True)
 class WhitelistRow:
-    """Baris `ta_whitelist` v1: `id` = `entities.id`, `name` huruf kecil, `added_date` = waktu
-    entitas terakhir berubah (= saat di-suppress)."""
+    """Baris `ta_whitelist` v1: `id` = `entities.id`, `name` huruf kecil, `added_date` lihat
+    `_suppressed_at`."""
 
     id: int
     name: str
@@ -71,6 +74,24 @@ class TAProfileRow:
     actor_name: str
     profile: dict[str, Any]
     generated_at: datetime.datetime
+
+
+def _suppressed_at() -> Any:
+    """Waktu stabil entitas masuk whitelist: audit `entity_suppress` (suppressed=true) terbaru
+    untuk entitas itu; tanpa audit (suppress dari migrasi/backfill `ta_whitelist`, atau trigger
+    view kompatibilitas) = `entities.created_at`. Bukan `updated_at`, yang ikut berubah tiap kali
+    entitas disunting (rename, sync ATT&CK, merge)."""
+    audit_at = (
+        select(func.max(AuditLogEntry.at))
+        .where(
+            AuditLogEntry.action == "entity_suppress",
+            AuditLogEntry.target_id == cast(Entity.id, String),
+            AuditLogEntry.detail["suppressed"].as_boolean().is_(True),
+        )
+        .correlate(Entity)
+        .scalar_subquery()
+    )
+    return func.coalesce(audit_at, Entity.created_at)
 
 
 async def _find_actor(session: AsyncSession, name: str) -> Entity | None:
@@ -241,7 +262,6 @@ class AsyncTARepo:
 
         # Aktor di berita yang salah satu alias-nya = nama grup TA (P7c: alias satu entitas = satu
         # baris, nama tampilan `entities.name`).
-        all_names = (await self.session.execute(select(ThreatActorGroup.name))).scalars().all()
         m = mention_rows(ACTOR)
         top_news = (
             await self.session.execute(
@@ -249,7 +269,7 @@ class AsyncTARepo:
                 .where(
                     m.c.article_id.is_not(None),
                     m.c.name != "",
-                    m.c.entity_id.in_(entity_ids_named(ACTOR, all_names)),
+                    m.c.entity_id.in_(entity_ids_matching_column(ACTOR, ThreatActorGroup.name)),
                 )
                 .group_by(m.c.name)
                 .order_by(func.count().desc())
@@ -276,7 +296,8 @@ class AsyncTARepo:
         sort_by: str = "name",
         sort_dir: str = "asc",
     ) -> tuple[list[WhitelistRow], int]:
-        stmt = select(Entity.id, func.lower(Entity.name), Entity.updated_at).where(
+        added = _suppressed_at()
+        stmt = select(Entity.id, func.lower(Entity.name), added).where(
             Entity.type == ACTOR, Entity.suppressed.is_(True), Entity.merged_into_id.is_(None)
         )
         if search:
@@ -284,7 +305,7 @@ class AsyncTARepo:
         total = (
             await self.session.execute(select(func.count()).select_from(stmt.subquery()))
         ).scalar_one()
-        order_col = _WHITELIST_SORT_FIELDS.get(sort_by, _WHITELIST_SORT_FIELDS["name"])
+        order_col = added if sort_by == "added_date" else func.lower(Entity.name)
         order = order_col.desc() if sort_dir == "desc" else order_col.asc()
         rows = (
             await self.session.execute(
@@ -433,15 +454,42 @@ class AsyncTAProfileRepo:
 
     async def list_profiles_by_names(self, actor_names: list[str]) -> list[TAProfileRow]:
         """Case-insensitive lewat alias -- dipakai `crossref` (Bagian 3) buat
-        cross-ref sekumpulan nama TA sekaligus. Satu baris per entitas."""
-        if not actor_names:
+        cross-ref sekumpulan nama TA sekaligus. Kontrak v1 dipertahankan: satu baris per nama
+        masukan (unik per `alias_norm`) yang punya profil. `actor_name` = nama entitas bila
+        masukan hanya beda kapital (seperti v1), selain itu nama masukan itu sendiri: pemanggil
+        mengindeks hasil dengan `actor_name.lower()` lalu mencari dengan namanya sendiri. Profil
+        dari entitas yang di-resolve lewat alias ("apt36" -> profil "Transparent Tribe")."""
+        seen: set[str] = set()
+        names = []
+        for n in actor_names:
+            key = alias_norm(n or "")
+            if key and key not in seen:
+                seen.add(key)
+                names.append(n)
+        if not names:
             return []
         result = await self.session.execute(
             self._profiles()
-            .where(EntityProfile.entity_id.in_(entity_ids_named(ACTOR, actor_names)))
-            .order_by(EntityProfile.id)
+            .add_columns(EntityAlias.alias_norm)
+            .join(EntityAlias, EntityAlias.entity_id == Entity.id)
+            .where(
+                EntityAlias.entity_type == ACTOR,
+                EntityAlias.alias_norm.in_({alias_norm(n) for n in names}),
+                Entity.merged_into_id.is_(None),
+            )
         )
-        return [self._row(r) for r in result.all()]
+        by_norm = {r[4]: r for r in result.all()}
+        rows = []
+        for name in names:
+            r = by_norm.get(alias_norm(name))
+            if r is not None:
+                # nama masukan = nama entitas (beda kapital saja): nama tersimpan, seperti v1;
+                # alias lain: nama masukan, supaya pemanggil menemukannya
+                shown = r[1] if alias_norm(r[1]) == alias_norm(name) else name
+                rows.append(
+                    TAProfileRow(id=r[0], actor_name=shown, profile=r[2] or {}, generated_at=r[3])
+                )
+        return rows
 
     async def save_profile(self, actor_name: str, profile: dict[str, Any]) -> TAProfileRow:
         """Upsert profil per entitas aktor (dibuat bila namanya belum dikenal)."""

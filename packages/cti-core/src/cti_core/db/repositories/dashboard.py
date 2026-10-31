@@ -173,15 +173,11 @@ class AsyncDashboardRepo:
         result = await self.session.execute(stmt)
         return [r for r in result.scalars().all() if r]
 
-    async def unique_industry_count(
-        self, *, exclude_industry: str | None = None, **filters: Any
-    ) -> int:
+    async def unique_industry_count(self, **filters: Any) -> int:
         m = mention_rows(SECTOR)
         stmt = _apply_article_filters(
             _joined(select(func.count(func.distinct(m.c.entity_id))), m), **filters
         )
-        if exclude_industry is not None:
-            stmt = stmt.where(m.c.name != exclude_industry)
         return int((await self.session.execute(stmt)).scalar_one())
 
     async def distinct_day_count(self, **filters: Any) -> int:

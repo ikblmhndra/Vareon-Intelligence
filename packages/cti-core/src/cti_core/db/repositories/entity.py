@@ -14,8 +14,9 @@ di-suppress tetap tersimpan (unsuppress memulihkannya, spec 3.4), jadi pembaca y
 from __future__ import annotations
 
 from collections.abc import Iterable
+from typing import Any
 
-from sqlalchemy import ColumnElement, Select, and_, or_, select
+from sqlalchemy import ColumnElement, Select, and_, func, or_, select
 from sqlalchemy.sql.selectable import Subquery
 
 from cti_core.db.models.entity import Entity, EntityAlias, EntityMention
@@ -77,6 +78,21 @@ def entity_ids_named(types: str | Iterable[str], names: Iterable[str]) -> Select
         .where(
             EntityAlias.entity_type.in_(type_list),
             EntityAlias.alias_norm.in_(norms),
+            live_entity(),
+        )
+    )
+
+
+def entity_ids_matching_column(type: str, names: Any) -> Select[tuple[int]]:
+    """Seperti `entity_ids_named`, tapi nama datang dari kolom tabel lain (`names` = kolom
+    ORM, mis. `ThreatActorGroup.name`) -- dinormalisasi di SQL lewat `entity_alias_norm()`
+    (kembaran `alias_norm`, Ruling 6), jadi tidak ada daftar bind tak terbatas."""
+    return (
+        select(EntityAlias.entity_id)
+        .join(Entity, Entity.id == EntityAlias.entity_id)
+        .where(
+            EntityAlias.entity_type == type,
+            EntityAlias.alias_norm.in_(select(func.entity_alias_norm(names))),
             live_entity(),
         )
     )

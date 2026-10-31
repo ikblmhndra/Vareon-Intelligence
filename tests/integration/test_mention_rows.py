@@ -170,4 +170,57 @@ async def test_profile_by_alias(async_db_session: AsyncSession) -> None:
     assert row.profile == {"summary": "x"}
     await repo.save_profile("TRANSPARENT TRIBE", {"summary": "y"})
     rows = await repo.list_profiles_by_names(["APT36"])
-    assert [(r.actor_name, r.profile) for r in rows] == [("Transparent Tribe", {"summary": "y"})]
+    assert [(r.actor_name, r.profile) for r in rows] == [("APT36", {"summary": "y"})]
+
+
+async def test_list_profiles_by_names_keeps_caller_names(async_db_session: AsyncSession) -> None:
+    """Kontrak v1: pemanggil (crossref, diamond, geopolitical) mengindeks hasil dengan
+    `actor_name.lower()` lalu mencari pakai nama masukannya sendiri."""
+    await _seed_actor(async_db_session, "Transparent Tribe", "APT36")
+    await _seed_actor(async_db_session, "NoProfile")
+    repo = AsyncTAProfileRepo(async_db_session)
+    await repo.save_profile("Transparent Tribe", {"summary": "tt"})
+
+    rows = await repo.list_profiles_by_names(["apt36", "Transparent Tribe", "NoProfile", "x"])
+    by_lower = {r.actor_name.lower(): r.profile for r in rows}
+    assert by_lower == {"apt36": {"summary": "tt"}, "transparent tribe": {"summary": "tt"}}
+
+
+async def test_whitelist_added_date_is_stable(async_db_session: AsyncSession) -> None:
+    ent = await _seed_actor(async_db_session, "Quiet")
+    repo = AsyncTARepo(async_db_session)
+    await repo.delete_group(0, "Quiet")
+    (first,), _ = await repo.list_whitelist()
+
+    # sunting entitas (rename) menggeser updated_at, bukan tanggal masuk whitelist
+    await async_db_session.execute(
+        update(Entity)
+        .where(Entity.id == ent.id)
+        .values(description="edited", updated_at=datetime.datetime(2030, 1, 1, tzinfo=datetime.UTC))
+    )
+    (again,), _ = await repo.list_whitelist(sort_by="added_date", sort_dir="desc")
+    assert again.added_date == first.added_date
+    assert again.added_date.year != 2030
+
+
+async def test_whitelist_without_audit_uses_created_at(async_db_session: AsyncSession) -> None:
+    """Suppress dari migrasi (`ta_whitelist` lama) tidak punya audit: tanggal = created_at."""
+    ent = await _seed_actor(async_db_session, "Migrated")
+    await async_db_session.execute(
+        update(Entity)
+        .where(Entity.id == ent.id)
+        .values(suppressed=True, updated_at=datetime.datetime(2030, 1, 1, tzinfo=datetime.UTC))
+    )
+    await async_db_session.refresh(ent)
+    (row,), _ = await AsyncTARepo(async_db_session).list_whitelist()
+    assert row.added_date == ent.created_at
+
+
+async def test_ta_stats_in_news_matches_group_aliases(async_db_session: AsyncSession) -> None:
+    await _seed_actor(async_db_session, "Transparent Tribe", "APT36")
+    repo = AsyncTARepo(async_db_session)
+    await repo.add_group("apt36")  # nama grup = alias, bukan nama entitas
+    await _article(async_db_session, "st", threat_actors=["Transparent Tribe"])
+
+    stats = await repo.get_ta_stats()
+    assert stats["top_in_news"] == [{"name": "Transparent Tribe", "count": 1}]
