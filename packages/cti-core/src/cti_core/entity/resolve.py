@@ -5,7 +5,8 @@ Urutan: cari alias `(type, alias_norm)` dan ikuti `merged_into_id`; kalau belum 
 entitas + alias dengan `ON CONFLICT DO NOTHING` lalu baca ulang (aman untuk worker paralel,
 tanpa retry berbasis exception). Entitas `suppressed` tetap dikembalikan: pemanggil yang memutuskan.
 Nama tampilan mempertahankan huruf besar-kecil pemanggil (spasi dirapatkan); alias baru
-memakai `source` pemanggil.
+memakai `source` pemanggil, atau `legacy` bila itu bukan sumber alias (cve, iso, sector,
+ransomware; P7c Task 8).
 
 `attack-pattern` (Ruling 7): identitas = id teknik, karena nama ATT&CK tidak unik (sub-teknik di
 induk berbeda, lintas domain). `external_id` wajib; alias satu-satunya = id teknik, `stix_id`
@@ -21,7 +22,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql.dml import ReturningInsert
 
 from cti_core.db.models.entity import Entity, EntityAlias
-from cti_core.entity import alias_norm, collapse_ws, entity_stix_id
+from cti_core.entity import ALIAS_SOURCES, alias_norm, collapse_ws, entity_stix_id
 
 _MAX_HOPS = 20  # batas rantai merged_into_id; lebih dari ini dianggap siklus
 TECHNIQUE = "attack-pattern"
@@ -68,10 +69,17 @@ def _new_entity(
 
 
 def _new_alias(entity_id: int, type: str, display: str, norm: str, source: str) -> Insert:
+    # sumber entitas yang bukan sumber alias (cve, iso, sector, ransomware) -> alias `legacy`,
+    # sama dengan backfill migrasi (CHECK `entity_aliases.source`)
+    alias_source = source if source in ALIAS_SOURCES else "legacy"
     return (
         insert(EntityAlias)
         .values(
-            entity_id=entity_id, entity_type=type, alias=display, alias_norm=norm, source=source
+            entity_id=entity_id,
+            entity_type=type,
+            alias=display,
+            alias_norm=norm,
+            source=alias_source,
         )
         .on_conflict_do_nothing()
     )

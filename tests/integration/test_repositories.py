@@ -206,7 +206,7 @@ def test_set_enrichment_twice_with_the_same_values_is_a_noop_not_a_unique_violat
         sorted(i.id for i in article.industries) + sorted(c.id for c in article.countries)
         == ids_before
     )
-    assert _snapshot(article)["industries"] == ["General"]
+    assert _snapshot(article)["industries"] == []  # P7c: "General" = tanpa mention sektor
 
 
 @pytest.mark.xfail(
@@ -260,4 +260,4 @@ async def test_async_set_enrichment_twice_with_the_same_values_is_a_noop(
 
     await repo.set_enrichment(article, **ENRICHMENT)
 
-    assert _snapshot(article)["industries"] == ["General"]
+    assert _snapshot(article)["industries"] == []  # P7c: "General" = tanpa mention sektor

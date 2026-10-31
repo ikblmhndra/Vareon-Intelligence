@@ -16,6 +16,8 @@ from cti_enrich.stages.score import ScoreResult
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from tests.integration.entity_support import seed_entity
+
 URL = "https://example.com/tier1-pipeline"
 
 BODY = (
@@ -107,6 +109,8 @@ def _seed(session: Session) -> None:
             domains=["enterprise-attack"],
         )
     )
+    # P7c: kamus Tier 1 dibangun dari entity_aliases (sync ATT&CK mengisinya, Task 9)
+    seed_entity(session, "tool", "Cobalt Strike", external_id="S0154")
     session.flush()
 
 

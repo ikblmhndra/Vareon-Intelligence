@@ -23,7 +23,7 @@ Fase 2. Ditambahin FK-nya nanti kalau tabel master itu ada.
 from __future__ import annotations
 
 import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
     BigInteger,
@@ -45,6 +45,9 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from cti_core.db.base import Base, TimestampMixin
+
+if TYPE_CHECKING:
+    from cti_core.db.models.entity import EntityMention
 
 
 class Article(TimestampMixin, Base):
@@ -135,6 +138,26 @@ class Article(TimestampMixin, Base):
     malware: Mapped[list[ArticleMalware]] = relationship(
         back_populates="article", cascade="all, delete-orphan", lazy="selectin"
     )
+    mentions: Mapped[list[EntityMention]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin", order_by="EntityMention.id"
+    )
+    """Sebutan entitas (P7c). Ditulis lewat `ArticleRepo` (Core INSERT), bukan append ke list
+    ini; relasi link lama di atas kini membaca view kompatibilitas sampai Task 12."""
+
+    def mentions_of(self, *types: str) -> list[EntityMention]:
+        """Mention ke entitas hidup (tidak suppressed, bukan tombstone) bertipe `types`
+        (kosong = semua), urut id mention."""
+        return [
+            m
+            for m in self.mentions
+            if (not types or m.entity.type in types)
+            and not m.entity.suppressed
+            and m.entity.merged_into_id is None
+        ]
+
+    def entity_names(self, *types: str) -> list[str]:
+        """Nama entitas (kanonik) dari `mentions_of`, tanpa duplikat, urut id mention."""
+        return list(dict.fromkeys(m.entity.name for m in self.mentions_of(*types)))
 
 
 class CountryRole(str):

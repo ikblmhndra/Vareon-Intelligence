@@ -22,7 +22,8 @@
    nambahin baris `mentioned` untuk setiap negara `victim`/`actor` yang
    belum punya.
 
-Cuma MENAMBAH baris (gak pernah menghapus), idempoten -- aman diulang.
+Cuma MENAMBAH mention (`entity_mentions`, P7c; gak pernah menghapus), idempoten -- aman diulang.
+Aktor yang alias-nya sudah tersebut di artikel resolve ke entitas yang sama, jadi tidak ditambah.
 
     python -m cti_enrich.backfill --dry-run            # hitung saja, rollback
     python -m cti_enrich.backfill [--since 2026-09-01]
@@ -35,8 +36,10 @@ import datetime
 import sys
 from dataclasses import dataclass, field
 
-from cti_core.db.models.article import Article, ArticleCountry, ArticleThreatActor
+from cti_core.db.models.article import Article
+from cti_core.db.repositories.article import ArticleRepo
 from cti_core.db.repositories.threat_reference import list_threat_actor_groups
+from cti_core.entity.mentions import MentionInput, country_mention
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -89,8 +92,8 @@ def backfill_articles(
             break
         for article in batch:
             stats.scanned += 1
-            _backfill_threat_actors(article, patterns, stats, sample_limit)
-            _backfill_mentioned_countries(article, stats)
+            _backfill_threat_actors(session, article, patterns, stats, sample_limit)
+            _backfill_mentioned_countries(session, article, stats)
         last_id = batch[-1].id
         session.flush()
         session.expunge_all()  # artikel batch ini udah ke-flush; jaga memori tetap kecil
@@ -98,6 +101,7 @@ def backfill_articles(
 
 
 def _backfill_threat_actors(
+    session: Session,
     article: Article,
     patterns: NamePatterns,
     stats: BackfillStats,
@@ -108,33 +112,42 @@ def _backfill_threat_actors(
     found = threat_actor_names(
         [g.replace("\\-", "-") for g in match_names(patterns, article.title or "")]
     )
-    have = {t.threat_actor.lower() for t in article.threat_actors}
+    have = {n.lower() for n in article.entity_names("intrusion-set")}
     new = [name for name in found if name.lower() not in have]
     if not new:
         return
-    for name in new:
-        article.threat_actors.append(ArticleThreatActor(threat_actor=name))
+    # alias dari entitas yang sudah disebut -> resolve ke entitas yang sama -> tidak ditambah
+    added = ArticleRepo(session).add_mentions(
+        article, [MentionInput("intrusion-set", name, "dictionary", name) for name in new]
+    )
+    if not added:
+        return
     stats.articles_with_new_actors += 1
-    stats.actor_rows_added += len(new)
+    stats.actor_rows_added += added
     if len(stats.samples) < sample_limit:
         stats.samples.append((article.id, article.title, new))
 
 
-def _backfill_mentioned_countries(article: Article, stats: BackfillStats) -> None:
-    mentioned = {c.country_code for c in article.countries if c.role == "mentioned"}
+def _backfill_mentioned_countries(session: Session, article: Article, stats: BackfillStats) -> None:
+    countries = article.mentions_of("location")
+    mentioned = {m.entity_id for m in countries if m.role == "mentioned"}
     missing = list(
         dict.fromkeys(
-            c.country_code
-            for c in article.countries
-            if c.role in ("victim", "actor") and c.country_code not in mentioned
+            m.entity.external_id or m.matched_alias
+            for m in countries
+            if m.role in ("victim", "actor") and m.entity_id not in mentioned
         )
     )
     if not missing:
         return
-    for code in missing:
-        article.countries.append(ArticleCountry(country_code=code, role="mentioned"))
+    added = ArticleRepo(session).add_mentions(
+        article,
+        [h for code in missing if (h := country_mention(code, "mentioned", "llm"))],
+    )
+    if not added:
+        return
     stats.articles_with_new_mentioned += 1
-    stats.mentioned_rows_added += len(missing)
+    stats.mentioned_rows_added += added
 
 
 def main(argv: list[str] | None = None) -> int:

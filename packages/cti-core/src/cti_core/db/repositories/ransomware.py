@@ -12,14 +12,69 @@ import datetime
 from collections.abc import Collection
 from typing import Any
 
-from sqlalchemy import Date, cast, func, or_, select
+import structlog
+from sqlalchemy import Date, cast, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from cti_core.db.models.article import Article, ArticleThreatActor
+from cti_core.db.models.entity import Entity
 from cti_core.db.models.ransomware import RansomwareVictim
+from cti_core.entity import collapse_ws, relationship_stix_id
+from cti_core.entity.mentions import (
+    country_mention,
+    resolve_mention,
+    sector_mention,
+    utc_midnight,
+)
+from cti_core.entity.resolve import resolve
+
+log = structlog.get_logger()
 
 _IDENTITY_FIELDS = frozenset({"id", "offset_key", "created_at"})
+
+
+_RANSOMWARE_CONFIDENCE = 50
+
+# Kunci unik `uq_relationships_edge` adalah indeks ekspresi (coalesce), jadi ON CONFLICT ditulis
+# dengan ekspresinya. Relasi yang sudah ada (termasuk yang di-revoke analis) hanya diperlebar
+# rentang first_seen/last_seen-nya; revoke tidak dibatalkan.
+_UPSERT_RELATIONSHIP = text(
+    """
+    INSERT INTO relationships (stix_id, relationship_type, source_entity_id, target_entity_id,
+                               confidence, first_seen, last_seen, provenance, created_by)
+    VALUES (:stix_id, :rel_type, :src, :dst, :confidence, :seen, :seen, 'ransomware',
+            'system:ransomware')
+    ON CONFLICT (coalesce(source_entity_id, 0), coalesce(source_indicator_id, 0),
+                 relationship_type, target_entity_id)
+    DO UPDATE SET first_seen = least(relationships.first_seen, EXCLUDED.first_seen),
+                  last_seen = greatest(relationships.last_seen, EXCLUDED.last_seen)
+    """
+)
+
+
+def _resolve_named(session: Session, type_: str, name: str, cls: str | None) -> Entity | None:
+    """Entitas hidup (tidak suppressed) untuk nama dari sumber ransomware; kosong -> None."""
+    if not collapse_ws(name or ""):
+        return None
+    ent = resolve(session, type_, name, source="ransomware", identity_class=cls)
+    return None if ent.suppressed else ent
+
+
+def _upsert_relationship(
+    session: Session, src: Entity, rel_type: str, dst: Entity, seen: datetime.datetime | None
+) -> None:
+    session.execute(
+        _UPSERT_RELATIONSHIP,
+        {
+            "stix_id": relationship_stix_id(src.stix_id, rel_type, dst.stix_id),
+            "rel_type": rel_type,
+            "src": src.id,
+            "dst": dst.id,
+            "confidence": _RANSOMWARE_CONFIDENCE,
+            "seen": seen,
+        },
+    )
 
 
 class RansomwareVictimRepo:
@@ -39,12 +94,38 @@ class RansomwareVictimRepo:
             victim = RansomwareVictim(offset_key=offset_key, **fields)
             self.session.add(victim)
             self.session.flush()
+            self._link_entities(victim)
             return victim
 
         for k, v in fields.items():
             setattr(existing, k, v)
         self.session.flush()
+        self._link_entities(existing)
         return existing
+
+    def _link_entities(self, victim: RansomwareVictim) -> None:
+        """P7c (spec 4.3): grup, korban, negara dan sektor lewat resolver, plus relasi
+        `grup targets korban` dan `korban located-at negara` (confidence 50, provenance
+        `ransomware`, seen = tanggal `discovered`), sama dengan backfill migrasi. Sektor hanya
+        di-resolve (label tak dikenal -> sektor legacy), tanpa relasi -- backfill juga begitu.
+        Korban yang resolve ke SEKTOR (identity_class `class`, nama sama dengan sektor) tidak
+        ditautkan dan dicatat di log (Ruling 10)."""
+        s = self.session
+        group = _resolve_named(s, "intrusion-set", victim.group_name, None)
+        if victim.industry and (hit := sector_mention(victim.industry, "legacy")):
+            resolve_mention(s, hit)
+        org = _resolve_named(s, "identity", victim.victim[:300], "organization")
+        if org is not None and org.identity_class == "class":
+            log.info("ransomware_victim_is_sector", victim=victim.victim, entity_id=org.id)
+            return
+        country = None
+        if victim.country_code and (hit := country_mention(victim.country_code, None, "legacy")):
+            country = resolve_mention(s, hit)
+        seen = utc_midnight(victim.discovered)
+        if group is not None and org is not None:
+            _upsert_relationship(s, group, "targets", org, seen)
+        if org is not None and country is not None:
+            _upsert_relationship(s, org, "located-at", country, seen)
 
     def get(self, offset_key: str) -> RansomwareVictim | None:
         return self.session.execute(

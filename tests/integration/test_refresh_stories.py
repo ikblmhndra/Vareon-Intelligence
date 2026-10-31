@@ -7,9 +7,9 @@ import datetime
 import pytest
 import redis
 from cti_core.db.models.article import Article
-from cti_core.db.models.article_cve import ArticleCve
 from cti_core.db.models.story import Story
 from cti_core.db.repositories.article import AsyncArticleRepo
+from cti_core.db.repositories.article_cve import AsyncArticleCveRepo
 from cti_core.db.repositories.source_reliability import AsyncSourceReliabilityRepo
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -73,7 +73,7 @@ async def test_refresh_raises_older_member_to_1(async_db_session: AsyncSession) 
         url="https://example.com/r1", title="T", source="SrcA", story_id=story.id
     )
     await s.flush()
-    s.add(ArticleCve(article_id=target.id, cve_id="CVE-2026-0001"))
+    await AsyncArticleCveRepo(s).add_many(target.id, ["CVE-2026-0001"], "")
     await repo.upsert(url="https://example.com/r2", title="T", source="SrcB", story_id=story.id)
     target_id, story_id = target.id, story.id
     await s.commit()

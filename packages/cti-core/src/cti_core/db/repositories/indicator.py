@@ -9,17 +9,23 @@ import datetime
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import DateTime, bindparam, func, or_, select, text
+from sqlalchemy import DateTime, bindparam, delete, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from cti_core.config import IndicatorSettings, get_settings
+from cti_core.db.models.entity import Entity, EntityMention
 from cti_core.db.models.indicator import (
     Indicator,
     IndicatorFeedback,
     IndicatorSource,
     IndicatorTag,
-    IndicatorThreatActor,
+)
+from cti_core.entity.mentions import (
+    MentionInput,
+    insert_mentions,
+    mention_rows,
+    resolve_mention_async,
 )
 from cti_core.indicator.marking import stricter_pap, stricter_tlp
 from cti_core.indicator.stix_id import indicator_uuid
@@ -511,27 +517,41 @@ class AsyncIndicatorRepo:
     async def add_threat_actors(
         self, indicator: Indicator, threat_actors: Sequence[str]
     ) -> Indicator:
-        existing = {t.threat_actor for t in indicator.threat_actors}
-        for actor in threat_actors:
-            if actor not in existing:
-                indicator.threat_actors.append(IndicatorThreatActor(threat_actor=actor))
-                existing.add(actor)
+        """Tag aktor oleh analis = mention `intrusion-set` (method `analyst`) di indikator, lewat
+        resolver (P7c Task 8); alias aktor yang sudah ada menempel ke entitas yang sama, nama
+        suppressed/kosong dibuang, idempoten."""
         await self.session.flush()
+        hits = [
+            MentionInput("intrusion-set", a, "analyst", a) for a in dict.fromkeys(threat_actors)
+        ]
+        rows = mention_rows(
+            {"indicator_id": indicator.id},
+            [(h, await resolve_mention_async(self.session, h)) for h in hits],
+        )
+        if rows:
+            await self.session.execute(insert_mentions(rows, update=False))
+        await self._reload_actors(indicator)
         return indicator
 
     async def remove_threat_actor(self, indicator: Indicator, actor: str) -> bool:
-        match = next((t for t in indicator.threat_actors if t.threat_actor == actor), None)
-        if match is None:
-            return False
-        # `.remove()` dari koleksi (bukan `session.delete()` langsung) --
-        # `cascade="all, delete-orphan"` (model) yang urus DELETE pas
-        # flush, DAN koleksi in-memory `indicator.threat_actors` langsung
-        # ke-update tanpa staleness (lihat bug `update_client_ids`,
-        # `AsyncUserRepo`, Fase 7.2 -- `session.delete()` langsung pada
-        # child gak nyabut dia dari koleksi parent yang udah ke-load).
-        indicator.threat_actors.remove(match)
+        """Hapus mention aktor yang namanya (nama entitas, seperti yang ditampilkan) = `actor`."""
+        actor_ids = select(Entity.id).where(Entity.type == "intrusion-set", Entity.name == actor)
+        result = await self.session.execute(
+            delete(EntityMention)
+            .where(
+                EntityMention.indicator_id == indicator.id,
+                EntityMention.entity_id.in_(actor_ids),
+            )
+            .returning(EntityMention.id)
+            .execution_options(synchronize_session=False)
+        )
+        removed = bool(result.all())
+        await self._reload_actors(indicator)
+        return removed
+
+    async def _reload_actors(self, indicator: Indicator) -> None:
         await self.session.flush()
-        return True
+        await self.session.refresh(indicator, attribute_names=["threat_actors"])
 
     async def delete(self, indicator_id: int) -> bool:
         indicator = await self.get_by_id(indicator_id)

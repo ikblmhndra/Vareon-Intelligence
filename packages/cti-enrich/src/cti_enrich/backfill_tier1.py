@@ -6,9 +6,9 @@ ADD-ONLY: baris hasil LLM tidak pernah diubah atau dihapus, dan `raw_enrichment`
 disentuh (jejak `tier1` hanya ditulis pipeline untuk artikel baru) supaya perintah ini aman
 diulang. Tanpa LLM dan tanpa alert.
 
-Aktor kanonik tidak ditambah bila artikel sudah punya baris aktor yang lewat kamus yang sama
-resolve ke canonical yang sama (Ruling 17): baris lama "Lazarus" (alias) + Tier 1 "Lazarus Group"
--> tidak ada baris baru. Baris lama tidak ditulis ulang ke nama kanonik.
+Aktor kanonik tidak ditambah bila artikel sudah menyebut entitas yang sama lewat alias lain
+(Ruling 17): sejak P7c keduanya resolve ke satu entitas, jadi mention baru ditolak kunci unik
+(`ON CONFLICT DO NOTHING`). Mention lama tidak ditulis ulang.
 
 Artikel "Security Technology & Best Practices" diperlakukan sama seperti di pipeline: tanpa
 teknik dan TANPA aktor (Ruling 11), hanya malware + industri.
@@ -38,8 +38,7 @@ from sqlalchemy.orm import Session
 from cti_enrich.backfill import BEST_PRACTICE_NEWS_TYPE
 from cti_enrich.routing import threat_actor_names
 from cti_enrich.stages.fetch_text import fetch_text
-from cti_enrich.stages.tier1 import get_dictionary, run_tier1
-from cti_enrich.tier1.dictionary import EntityDictionary
+from cti_enrich.stages.tier1 import run_tier1
 
 log = structlog.get_logger()
 
@@ -56,35 +55,6 @@ class Tier1BackfillStats:
     malware_rows_added: int = 0
     industry_replaced: int = 0
     """Jumlah ARTIKEL yang industri "General"-nya diganti tebakan keyword."""
-
-
-def canonical_actor_name(name: str, dictionary: EntityDictionary) -> str | None:
-    """Bentuk simpan canonical kamus untuk nama aktor tersimpan (alias -> nama kanonik), atau
-    None bila nama tidak ada di kamus atau bukan aktor (malware/tool). Bentuk simpan =
-    `capitalize()`, jadi key kamus case-sensitive (alias huruf kapital semua, mis. "NOBELIUM")
-    dicoba juga lewat `upper()`. Dipakai juga `cti_enrich.canonicalise_actors`."""
-    entries = dictionary.entries
-    entity = entries.get(name) or entries.get(name.lower()) or entries.get(name.upper())
-    if entity is None or entity.kind != "actor":
-        return None
-    return threat_actor_names([entity.canonical.lower()])[0]
-
-
-def _known_actor_names(article: Article, dictionary: EntityDictionary) -> set[str]:
-    """Bentuk simpan canonical dari aktor yang sudah dimiliki artikel; aktor Tier 1 di set ini
-    dilewati. Nama yang persis sama sudah dilewati `add_tier1`."""
-    known: set[str] = set()
-    for row in article.threat_actors:
-        canonical = canonical_actor_name(row.threat_actor, dictionary)
-        if canonical is not None:
-            known.add(canonical)
-    return known
-
-
-def _new_actors(article: Article, actors: list[str], session: Session) -> list[str]:
-    # Sama seperti pipeline: huruf kecil lalu `threat_actor_names` (bentuk tersimpan).
-    known = _known_actor_names(article, get_dictionary(session))
-    return [n for n in threat_actor_names([a.lower() for a in actors]) if n not in known]
 
 
 def _process(
@@ -123,7 +93,10 @@ def _process(
             NormalizedTTP(t.ttp_id, t.ttp_name, source=t.source, evidence=t.evidence)
             for t in result.techniques
         ],
-        threat_actors=_new_actors(article, result.actors, session) if not best_practice else [],
+        # bentuk simpan sama dengan pipeline: huruf kecil lalu `threat_actor_names`
+        threat_actors=(
+            threat_actor_names([a.lower() for a in result.actors]) if not best_practice else []
+        ),
         malware=result.malware,
         industries=result.industries,
     )
