@@ -3,8 +3,13 @@
 Cluster `threat-actor`/`ransomware` menggabungkan entitas `intrusion-set`, cluster `malpedia`
 menggabungkan `malware`/`tool`. Target = entitas ATT&CK kalau tepat satu ada di cluster, selain
 itu entitas dengan mention terbanyak; semua sinonim yang belum dimiliki siapa pun jadi alias target
-(`source=galaxy`), juga untuk cluster tanpa entitas (entitas baru, supaya artikel berikutnya
-ter-resolve).
+(`source=galaxy`).
+
+Menyimpang dari spec 4.2 (Ruling 19): cluster yang tidak cocok dengan entitas mana pun TIDAK
+membuat apa pun (tanpa entitas, tanpa alias). Spec meminta entitas baru untuk cluster seperti itu,
+tapi snapshot penuh akan membuat ~6,9 ribu entitas bising (termasuk 2.179 famili ransomware lama
+sebagai `intrusion-set`) yang semuanya jadi pencocok kamus Tier 1. Sinkronisasi mingguan menangkap
+duplikat baru begitu nama itu muncul sebagai entitas dari artikel.
 
 Penjaga risiko R1 (merge otomatis yang salah mencampur dua aktor):
 1. cluster yang menyentuh dua entitas ATT&CK berbeda dilewati seluruhnya (`two_attack`);
@@ -29,6 +34,7 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from importlib.resources import files
 from pathlib import Path
 from typing import Any, Literal
 
@@ -41,7 +47,6 @@ from cti_core.db.models.entity import EntityAlias, ReferenceSnapshot
 from cti_core.entity import ALIAS_SOURCES, alias_norm, collapse_ws
 from cti_core.entity.ambiguous import AMBIGUOUS, WINDOWS_UTILITY_NAMES, is_single_token
 from cti_core.entity.merge import EntityMergeError, merge_entities
-from cti_core.entity.resolve import resolve
 from cti_core.logging import get_logger
 
 Kind = Literal["actor", "malware"]
@@ -60,7 +65,7 @@ GALAXY_ACTOR = "system:galaxy"
 CSV_COLUMNS = ("action", "cluster", "source_entity", "target_entity", "alias", "reason")
 _PROTECTED = ("attack", "analyst")  # sumber alias yang tidak pernah dipindah Galaxy
 _DEADLOCK = "40P01"
-_SNAPSHOT_SUBDIR = Path("tools") / "seed" / "reference" / "misp-galaxy"
+_DATA_SUBDIR = "data/misp-galaxy"
 
 log = get_logger(component="entity.galaxy")
 
@@ -141,7 +146,6 @@ class GalaxyState:
         self.attack_norms: dict[str, list[tuple[str, _Alias]]] = {}
         """Norm -> (tipe, alias) milik alias ATT&CK di tipe mana pun (nama kurasi ATT&CK)."""
         self.undone_pairs: set[frozenset[int]] = set()
-        self._placeholders = 0
 
     def add_entity(
         self,
@@ -176,12 +180,6 @@ class GalaxyState:
             ent = self.entities[ent.merged_into]
         raise RuntimeError(f"rantai merge terlalu panjang/siklik untuk entitas {entity_id}")
 
-    def placeholder(self, type: str, name: str) -> _Ent:
-        self._placeholders += 1
-        ent = _Ent(-self._placeholders, type, name, "galaxy")
-        self.entities[ent.id] = ent
-        return ent
-
     def simulate_merge(self, src: _Ent, dst: _Ent) -> None:
         for alias in self.aliases.values():
             if alias.entity_id == src.id:
@@ -208,7 +206,6 @@ class PlannedMerge:
     source_id: int
     source_name: str
     target_id: int
-    """Negatif = entitas baru yang dibuat di run yang sama (lihat `PlannedAlias.placeholder`)."""
     target_name: str
     aliases: tuple[str, ...]
     """Sinonim cluster yang menghubungkan sumber ke target."""
@@ -232,10 +229,8 @@ class PlannedAlias:
     cluster_uuid: str
     type: str
     alias: str
-    target_id: int | None
-    """None = entitas baru; dibuat saat apply dari `target_name`."""
+    target_id: int
     target_name: str
-    placeholder: int | None = None
 
 
 @dataclass
@@ -317,7 +312,7 @@ def _plan_cluster(state: GalaxyState, c: GalaxyCluster, plan: GalaxyPlan) -> Non
     if attack:
         target = attack[0]
     elif anchors:
-        target = max(anchors, key=lambda e: (e.mentions, e.id > 0, -e.id))
+        target = max(anchors, key=lambda e: (e.mentions, -e.id))
     else:
         target = None
 
@@ -346,10 +341,8 @@ def _plan_cluster(state: GalaxyState, c: GalaxyCluster, plan: GalaxyPlan) -> Non
     for name, ent in foreign:
         skip("owned", name, ent, target)
 
-    if not unowned:
+    if target is None:  # Ruling 19: cluster tanpa entitas tidak membuat apa pun
         return
-    if target is None:
-        target = state.placeholder(types[0], unowned[0])
     for name in unowned:
         plan.new_aliases.append(
             PlannedAlias(
@@ -357,9 +350,8 @@ def _plan_cluster(state: GalaxyState, c: GalaxyCluster, plan: GalaxyPlan) -> Non
                 c.uuid,
                 target.type,
                 name,
-                target.id if target.id > 0 else None,
+                target.id,
                 target.name,
-                target.id if target.id < 0 else None,
             )
         )
         state.add_alias(target.type, name, target.id, "galaxy")
@@ -441,7 +433,6 @@ def plan_merges(session: Session, clusters: list[GalaxyCluster]) -> GalaxyPlan:
 class GalaxyResult:
     merged: int = 0
     aliases_added: int = 0
-    created_entities: int = 0
     errors: list[PlannedSkip] = field(default_factory=list)
     """Merge yang ditolak `EntityMergeError` (reason `error`); run tetap lanjut."""
 
@@ -468,30 +459,15 @@ def _add_alias(session: Session, entity_id: int, type: str, alias: str) -> bool:
 
 
 def apply_plan(session: Session, plan: GalaxyPlan, *, actor: str = GALAXY_ACTOR) -> GalaxyResult:
-    """Alias baru dulu (entitas baru dibuat lewat `resolve`, `source=galaxy`), lalu merge sesuai
-    urutan rencana. Commit urusan pemanggil."""
+    """Alias baru dulu (hanya ke entitas yang sudah ada), lalu merge sesuai urutan rencana.
+    Commit urusan pemanggil."""
     result = GalaxyResult()
-    real: dict[int, int] = {}  # placeholder -> id entitas nyata
     for a in plan.new_aliases:
-        if a.placeholder is not None and a.placeholder not in real:
-            norm = alias_norm(a.target_name)
-            existed = session.scalar(
-                select(EntityAlias.id).where(
-                    EntityAlias.entity_type == a.type, EntityAlias.alias_norm == norm
-                )
-            )
-            ent = resolve(session, a.type, a.target_name, source="galaxy")
-            real[a.placeholder] = ent.id
-            if existed is None:
-                result.created_entities += 1
-                result.aliases_added += 1  # alias nama dibuat resolve
-        entity_id = real[a.placeholder] if a.placeholder is not None else a.target_id
-        assert entity_id is not None
-        result.aliases_added += _add_alias(session, entity_id, a.type, a.alias)
+        result.aliases_added += _add_alias(session, a.target_id, a.type, a.alias)
     session.flush()
 
     for m in plan.merges:
-        src, dst = real.get(m.source_id, m.source_id), real.get(m.target_id, m.target_id)
+        src, dst = m.source_id, m.target_id
         for attempt in (1, 2):
             try:
                 with session.begin_nested():
@@ -525,19 +501,16 @@ def apply_plan(session: Session, plan: GalaxyPlan, *, actor: str = GALAXY_ACTOR)
 # Sumber
 
 
-def repo_snapshot_dir() -> Path:
-    """`tools/seed/reference/misp-galaxy` dari cwd atau induk paket ini (checkout repo)."""
-    for base in (Path.cwd(), *Path(__file__).resolve().parents):
-        if (base / _SNAPSHOT_SUBDIR).is_dir():
-            return base / _SNAPSHOT_SUBDIR
-    raise FileNotFoundError(
-        f"{_SNAPSHOT_SUBDIR} tidak ditemukan; jalankan dari checkout repo atau pakai --snapshot-dir"
-    )
+def _package_snapshot(name: str) -> str:
+    """Snapshot bawaan paket (`cti_core/entity/data/misp-galaxy/`, Ruling 20): ikut wheel, jadi
+    tersedia juga di image Docker yang tidak berisi `tools/`."""
+    return files("cti_core.entity").joinpath(_DATA_SUBDIR, f"{name}.json").read_text("utf-8")
 
 
 def galaxy_sources(session: Session, snapshot_dir: Path | None = None) -> dict[str, dict[str, Any]]:
-    """Salinan `reference_snapshots` (disimpan task sinkronisasi) kalau ada, selain itu snapshot
-    repo. Urutan kunci = `GALAXY_FILES` (aktor dulu, lalu malware)."""
+    """Salinan `reference_snapshots` (disimpan task sinkronisasi) kalau ada, selain itu
+    `snapshot_dir` (override CLI) atau snapshot bawaan paket. Urutan kunci = `GALAXY_FILES`
+    (aktor dulu, lalu malware)."""
     stored = {
         row.name: row.content
         for row in session.scalars(
@@ -551,7 +524,10 @@ def galaxy_sources(session: Session, snapshot_dir: Path | None = None) -> dict[s
         if snapshot_name(name) in stored:
             out[name] = stored[snapshot_name(name)]
             continue
-        if snapshot_dir is None:
-            snapshot_dir = repo_snapshot_dir()
-        out[name] = json.loads((snapshot_dir / f"{name}.json").read_text(encoding="utf-8"))
+        raw = (
+            _package_snapshot(name)
+            if snapshot_dir is None
+            else (snapshot_dir / f"{name}.json").read_text(encoding="utf-8")
+        )
+        out[name] = json.loads(raw)
     return out

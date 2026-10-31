@@ -120,8 +120,8 @@ def test_apply_merges_and_adds_aliases(db_session: Session) -> None:
     assert owner is not None and owner.id == e["apt29"].id
     owner = _owner(s, "Bronze President")
     assert owner is not None and owner.id == e["panda"].id
-    new = _owner(s, "BNC-01")
-    assert new is not None and new.name == "Brand New Crew" and new.source == "galaxy"
+    assert _owner(s, "BNC-01") is None  # Ruling 19: cluster tanpa entitas tidak membuat apa pun
+    assert _owner(s, "Brand New Crew") is None
     galaxy_alias = s.scalar(
         select(EntityAlias.source).where(EntityAlias.alias_norm == alias_norm("Nobelium"))
     )
@@ -143,7 +143,7 @@ def test_second_run_noop(db_session: Session) -> None:
     plan = plan_merges(s, _clusters())
     assert plan.merges == [] and plan.new_aliases == []
     result = apply_plan(s, plan)
-    assert result.merged == 0 and result.aliases_added == 0 and result.created_entities == 0
+    assert result.merged == 0 and result.aliases_added == 0
     assert _counts(s) == before
 
 
@@ -164,6 +164,22 @@ def test_undone_merge_not_redone(db_session: Session) -> None:
     apply_plan(s, plan)
     s.refresh(e["ursa"])
     assert e["ursa"].merged_into_id is None  # tetap terpisah
+
+
+def test_apply_on_empty_db_creates_nothing(db_session: Session) -> None:
+    s = db_session
+    before = _counts(s)
+    result = apply_plan(s, plan_merges(s, _clusters()))
+    assert result.merged == 0 and result.aliases_added == 0
+    assert _counts(s) == before
+
+
+def test_galaxy_sources_snapshot_dir_override(db_session: Session, tmp_path: pathlib.Path) -> None:
+    for name in galaxy.GALAXY_FILES:
+        content = {"values": [{"uuid": name, "value": name}]}
+        (tmp_path / f"{name}.json").write_text(json.dumps(content))
+    sources = galaxy_sources(db_session, tmp_path)
+    assert sources["malpedia"]["values"][0]["value"] == "malpedia"
 
 
 def test_dry_run_writes_nothing(
@@ -218,7 +234,7 @@ def test_galaxy_sources_prefers_stored_copy(db_session: Session) -> None:
     s.flush()
     sources = galaxy_sources(s)
     assert sources["threat-actor"] == content
-    assert len(sources["malpedia"]["values"]) > 1000  # salinan repo
+    assert len(sources["malpedia"]["values"]) > 1000  # snapshot bawaan paket
 
 
 def test_merge_error_is_skipped_and_run_continues(

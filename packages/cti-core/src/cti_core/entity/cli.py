@@ -27,14 +27,10 @@ from cti_core.entity.galaxy import (
 
 
 def plan_rows(plan: GalaxyPlan, errors: Iterable[PlannedSkip] = ()) -> Iterator[list[str]]:
-    """Baris CSV (`CSV_COLUMNS`): `merge`, `create` (entitas baru), `alias`, `skip`."""
+    """Baris CSV (`CSV_COLUMNS`): `merge`, `alias`, `skip`."""
     for m in plan.merges:
         yield ["merge", m.cluster, m.source_name, m.target_name, ";".join(m.aliases), ""]
-    created: set[int] = set()
     for a in plan.new_aliases:
-        if a.placeholder is not None and a.placeholder not in created:
-            created.add(a.placeholder)
-            yield ["create", a.cluster, "", a.target_name, "", ""]
         yield ["alias", a.cluster, "", a.target_name, a.alias, ""]
     for s in (*plan.skips, *errors):
         yield ["skip", s.cluster, s.entity_name, s.target_name, s.alias, s.reason]
@@ -57,7 +53,7 @@ def merge_aliases(apply: bool, csv_path: Path | None, snapshot_dir: Path | None)
             errors = result.errors
             summary = (
                 f"DITULIS: {result.merged} merge, {result.aliases_added} alias baru,"
-                f" {result.created_entities} entitas baru, {len(errors)} error"
+                f" {len(errors)} error"
             )
         else:
             summary = (
@@ -84,7 +80,7 @@ def main(argv: list[str] | None = None) -> int:
     m.add_argument(
         "--snapshot-dir",
         type=Path,
-        help="folder snapshot Galaxy kalau tidak ada salinan di DB dan bukan dari checkout repo",
+        help="folder snapshot Galaxy pengganti snapshot bawaan paket (kalau tak ada salinan di DB)",
     )
     args = ap.parse_args(argv)
     return merge_aliases(args.apply, args.csv, args.snapshot_dir)

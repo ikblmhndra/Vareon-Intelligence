@@ -20,7 +20,7 @@ from cti_core.entity.galaxy import (
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 MINI = ROOT / "tests" / "fixtures" / "galaxy" / "mini-threat-actor.json"
-SNAPSHOT = ROOT / "tools" / "seed" / "reference" / "misp-galaxy"
+SNAPSHOT = ROOT / "packages" / "cti-core" / "src" / "cti_core" / "entity" / "data" / "misp-galaxy"
 IS = "intrusion-set"
 
 
@@ -116,12 +116,22 @@ def test_owned_alias_not_moved() -> None:
     assert _aliases(plan, "Turla") == {"Snake": "Turla"}
 
 
-def test_cluster_without_entity_gets_new_target() -> None:
+def test_cluster_without_entity_creates_nothing() -> None:
+    """Ruling 19: cluster tanpa entitas tidak menambah entitas maupun alias."""
     plan = _plan()
-    new = [a for a in plan.new_aliases if a.cluster == "Brand New Crew"]
-    assert {a.alias for a in new} == {"Brand New Crew", "BNC-01"}
-    assert {a.target_id for a in new} == {None}
-    assert {a.target_name for a in new} == {"Brand New Crew"}
+    for cluster in ("Brand New Crew", "No Synonyms Here"):
+        assert [a for a in plan.new_aliases if a.cluster == cluster] == []
+        assert [s for s in plan.skips if s.cluster == cluster] == []
+
+
+def test_empty_state_plans_nothing_on_full_snapshot() -> None:
+    clusters = [
+        c
+        for name in GALAXY_FILES
+        for c in load_galaxy(name, json.loads((SNAPSHOT / f"{name}.json").read_text()))
+    ]
+    plan = build_plan(GalaxyState(), clusters)
+    assert plan.merges == [] and plan.new_aliases == [] and plan.skips == []
 
 
 def test_merges_are_exactly_expected() -> None:
