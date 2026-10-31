@@ -21,8 +21,9 @@ from datetime import UTC, datetime
 from typing import Any, cast
 
 import httpx
-from sqlalchemy import delete, func, or_, select, text
+from sqlalchemy import delete, func, or_, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_core.attack_ttp import clean_attack_text
@@ -37,6 +38,8 @@ from cti_core.db.models.attack import (
     AttackTechnique,
     AttackTechniqueAlias,
 )
+from cti_core.db.models.entity import Entity, EntityAlias, Relationship
+from cti_core.entity import RELATIONSHIP_TYPES, alias_norm, collapse_ws
 
 DOMAINS: dict[str, dict[str, str]] = {
     "enterprise": {
@@ -86,6 +89,182 @@ def _technique_search(search: str) -> Any:
         AttackTechnique.name.ilike(f"%{term}%"),
         AttackTechnique.attack_id.ilike(f"%{term}%"),
     )
+
+
+_ENTITY_TYPES = ("intrusion-set", "malware", "tool", "attack-pattern", "campaign")
+_CHUNK = 500
+
+
+def _is_dead(obj: dict[str, Any]) -> bool:
+    """Objek revoked/deprecated tidak dibuat sebagai entitas (entitas lama tidak dihapus)."""
+    return bool(
+        obj.get("revoked") or obj.get("x-mitre-deprecated") or obj.get("x_mitre_deprecated")
+    )
+
+
+def _attack_entity_row(obj: dict[str, Any]) -> dict[str, Any] | None:
+    """Petakan objek STIX ATT&CK ke baris `entities` + daftar alias resmi (nama dulu).
+
+    Sama dengan backfill migrasi: grup -> intrusion-set, software -> malware/tool, teknik ->
+    attack-pattern (external_id = id teknik huruf besar; alias hanya id itu, Ruling 7),
+    campaign -> campaign. Return None bila tipe tak dikenal / mati / tanpa id atau nama."""
+    type_ = obj.get("type")
+    if type_ not in _ENTITY_TYPES or _is_dead(obj):
+        return None
+    ext_id = collapse_ws(_extract_id(obj))
+    name = collapse_ws(obj.get("name", ""))
+    if not ext_id or not alias_norm(name):
+        return None
+    if type_ == "attack-pattern":
+        ext_id = ext_id.upper()
+        aliases = [ext_id]
+    else:
+        raw = obj.get("x-mitre-aliases") or obj.get("x_mitre_aliases") or obj.get("aliases") or []
+        aliases = [name, *raw]
+    return {
+        "stix_id": obj["id"],
+        "type": type_,
+        "name": name,
+        "description": obj.get("description") or None,
+        "external_id": ext_id,
+        "aliases": aliases,
+    }
+
+
+async def upsert_attack_entities(
+    session: AsyncSession, bundle_objects: list[dict[str, Any]]
+) -> dict[str, int]:
+    """Upsert objek ATT&CK dari satu bundle ke `entities`, `entity_aliases`, `relationships`.
+
+    Kunci = `stix_id` ATT&CK (bukan resolver nama). Nama/deskripsi/external_id entitas yang sudah
+    ada diperbarui (trigger feed membump jam); alias resmi baru ditambah dengan
+    `ON CONFLICT DO NOTHING`, jadi alias analis tidak pernah dihapus atau ditimpa dan alias resmi
+    lama tidak dibuang. Tombstone merge dibiarkan. Bentrok nama dengan entitas lain dilewati
+    (yang pertama menang, seperti backfill). Relasi hanya tipe di CHECK `RELATIONSHIP_TYPES`,
+    kedua ujung harus entitas hidup; provenance `attack`, confidence 85. Return jumlah objek
+    yang diproses per tipe, plus `relationship`."""
+    rows = [r for o in bundle_objects if (r := _attack_entity_row(o))]
+    counts = {t: 0 for t in _ENTITY_TYPES}
+    for r in rows:
+        counts[r["type"]] += 1
+
+    # 1. entitas: sisipkan yang baru (bentrok apa pun dilewati), perbarui yang berubah
+    for i in range(0, len(rows), _CHUNK):
+        chunk = rows[i : i + _CHUNK]
+        await session.execute(
+            pg_insert(Entity)
+            .values(
+                [
+                    {k: r[k] for k in ("stix_id", "type", "name", "description", "external_id")}
+                    | {"source": "attack"}
+                    for r in chunk
+                ]
+            )
+            .on_conflict_do_nothing()
+        )
+    ids: dict[str, int] = {}
+    for i in range(0, len(rows), _CHUNK):
+        found = await session.execute(
+            select(Entity).where(
+                Entity.stix_id.in_([r["stix_id"] for r in rows[i : i + _CHUNK]]),
+                Entity.merged_into_id.is_(None),
+            )
+        )
+        by_stix = {e.stix_id: e for e in found.scalars()}
+        for r in rows[i : i + _CHUNK]:
+            ent = by_stix.get(r["stix_id"])
+            if ent is None:
+                continue  # bentrok nama/tombstone: dilewati
+            ids[r["stix_id"]] = ent.id
+            if (ent.name, ent.description, ent.external_id) != (
+                r["name"],
+                r["description"],
+                r["external_id"],
+            ):
+                try:
+                    async with session.begin_nested():
+                        ent.name = r["name"]
+                        ent.description = r["description"]
+                        ent.external_id = r["external_id"]
+                        await session.flush()
+                except IntegrityError:
+                    pass  # nama baru bentrok dengan entitas lain; biarkan nama lama
+
+    # 2. alias resmi (source=attack); DO NOTHING menjaga alias analis
+    alias_rows = [
+        {
+            "entity_id": ids[r["stix_id"]],
+            "entity_type": r["type"],
+            "alias": collapse_ws(a),
+            "alias_norm": alias_norm(a),
+            "source": "attack",
+        }
+        for r in rows
+        if r["stix_id"] in ids
+        for a in r["aliases"]
+        if alias_norm(a)
+    ]
+    for i in range(0, len(alias_rows), _CHUNK):
+        await session.execute(
+            pg_insert(EntityAlias).values(alias_rows[i : i + _CHUNK]).on_conflict_do_nothing()
+        )
+
+    # 3. relasi: kedua ujung entitas (bisa dari domain lain, jadi cari lewat stix_id di DB)
+    wanted = [
+        o
+        for o in bundle_objects
+        if o.get("type") == "relationship"
+        and o.get("relationship_type") in RELATIONSHIP_TYPES
+        and not _is_dead(o)
+        and o.get("source_ref")
+        and o.get("target_ref")
+    ]
+    refs = {o["source_ref"] for o in wanted} | {o["target_ref"] for o in wanted}
+    ref_ids: dict[str, int] = dict(ids)
+    missing = sorted(refs - set(ref_ids))
+    for i in range(0, len(missing), _CHUNK):
+        found_ids = await session.execute(
+            select(Entity.stix_id, Entity.id).where(
+                Entity.stix_id.in_(missing[i : i + _CHUNK]), Entity.merged_into_id.is_(None)
+            )
+        )
+        ref_ids.update({s: eid for s, eid in found_ids.all()})
+    rel_rows = [
+        {
+            "stix_id": o["id"],
+            "relationship_type": o["relationship_type"],
+            "source_entity_id": ref_ids[o["source_ref"]],
+            "target_entity_id": ref_ids[o["target_ref"]],
+            "confidence": 85,
+            "provenance": "attack",
+            "description": o.get("description") or None,
+        }
+        for o in wanted
+        if o["source_ref"] in ref_ids and o["target_ref"] in ref_ids
+    ]
+    for i in range(0, len(rel_rows), _CHUNK):
+        chunk = rel_rows[i : i + _CHUNK]
+        existing = {
+            s: d
+            for s, d in (
+                await session.execute(
+                    select(Relationship.stix_id, Relationship.description).where(
+                        Relationship.stix_id.in_([r["stix_id"] for r in chunk]),
+                        Relationship.provenance == "attack",
+                    )
+                )
+            ).all()
+        }
+        for r in chunk:
+            if r["stix_id"] in existing and existing[r["stix_id"]] != r["description"]:
+                await session.execute(
+                    update(Relationship)
+                    .where(Relationship.stix_id == r["stix_id"])
+                    .values(description=r["description"])
+                )
+        await session.execute(pg_insert(Relationship).values(chunk).on_conflict_do_nothing())
+    await session.flush()
+    return {**counts, "relationship": len(rel_rows)}
 
 
 class AsyncAttackSyncRepo:
@@ -220,6 +399,7 @@ class AsyncAttackSyncRepo:
             "software_count": await self._sync_software(by_type, stix_domain),
             "relationship_count": await self._sync_relationships(by_type, stix_domain),
         }
+        await upsert_attack_entities(self.session, objects)
 
         finished_at = datetime.now(UTC)
         delta = {
