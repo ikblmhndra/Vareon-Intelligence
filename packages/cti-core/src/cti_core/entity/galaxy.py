@@ -12,15 +12,20 @@ sebagai `intrusion-set`) yang semuanya jadi pencocok kamus Tier 1. Sinkronisasi 
 duplikat baru begitu nama itu muncul sebagai entitas dari artikel.
 
 Penjaga risiko R1 (merge otomatis yang salah mencampur dua aktor):
-1. cluster yang menyentuh dua entitas ATT&CK berbeda dilewati seluruhnya (`two_attack`);
+1. cluster yang menyentuh dua entitas ATT&CK berbeda (lewat sinonim apa pun, kuat atau berisiko)
+   dilewati seluruhnya (`two_attack`);
 2. sinonim di `AMBIGUOUS`/`WINDOWS_UTILITY_NAMES`, atau satu kata umum yang tidak dikurasi ATT&CK
-   (aturan konteks P4 untuk nama yang asalnya hanya `threat_actor_groups`), hanya ditambahkan
+   untuk tipe cluster itu (aturan konteks P4 untuk nama yang asalnya hanya `threat_actor_groups`),
+   hanya ditambahkan
    kalau belum dimiliki siapa pun dan TIDAK PERNAH menyebabkan merge entitas yang ada
    (`ambiguous`); entitas yang hanya cocok lewat sinonim seperti itu juga tak bisa jadi target;
 3. alias milik entitas lain yang tidak di-merge tidak dipindah; alias ATT&CK/analis menang
    (`owned`), begitu juga nama software ATT&CK di cluster aktor (aturan kamus Tier 1);
 4. merge `system:galaxy` yang sudah di-Split analis (baris `entity_split` dengan `merge_audit_id`,
-   Ruling 16) tidak pernah diulang untuk pasangan entitas yang sama, arah mana pun (`undone`).
+   Ruling 16) tidak pernah diulang untuk pasangan entitas yang sama, arah mana pun (`undone`);
+5. tidak ada merge transitif lintas cluster: norm yang muncul di lebih dari satu cluster sejenis
+   tidak pernah menjangkar merge dan tidak ditambahkan sebagai alias, dan alias `source=galaxy`
+   tidak pernah menjangkar merge (lihat `_plan_cluster`).
 
 Perencanaan murni (`build_plan` di atas `GalaxyState`) dan mensimulasikan merge yang sudah
 direncanakan, jadi cluster yang tumpang tindih melihat pemilik barunya dan run kedua tidak
@@ -121,7 +126,6 @@ def load_galaxy(name: str, content: dict[str, Any]) -> list[GalaxyCluster]:
 @dataclass
 class _Ent:
     id: int
-    """Negatif = entitas baru yang direncanakan (belum ada di DB)."""
     type: str
     name: str
     source: str
@@ -144,7 +148,7 @@ class GalaxyState:
         self.entities: dict[int, _Ent] = {}
         self.aliases: dict[tuple[str, str], _Alias] = {}
         self.attack_norms: dict[str, list[tuple[str, _Alias]]] = {}
-        """Norm -> (tipe, alias) milik alias ATT&CK di tipe mana pun (nama kurasi ATT&CK)."""
+        """Norm -> (tipe, alias) milik alias ATT&CK; dicek per tipe cluster (kurasi ATT&CK)."""
         self.undone_pairs: set[frozenset[int]] = set()
 
     def add_entity(
@@ -168,8 +172,10 @@ class GalaxyState:
 
     def add_alias(self, type: str, alias: str, entity_id: int, source: str) -> None:
         norm = alias_norm(alias)
-        row = self.aliases.setdefault((type, norm), _Alias(entity_id, alias, source))
-        if row.source == "attack":
+        if (type, norm) in self.aliases:
+            return  # (tipe, norm) unik seperti di DB; baris pertama yang berlaku
+        row = self.aliases[(type, norm)] = _Alias(entity_id, alias, source)
+        if source == "attack":
             self.attack_norms.setdefault(norm, []).append((type, row))
 
     def live(self, entity_id: int) -> _Ent:
@@ -244,27 +250,55 @@ class GalaxyPlan:
 class _Match:
     name: str
     alias: _Alias
-    strong: bool
+    risky: bool
+
+    @property
+    def anchors(self) -> bool:
+        """Bisa menjadikan pemiliknya target. Alias `galaxy` tidak pernah: lihat `_plan_cluster`."""
+        return not self.risky and self.alias.source != "galaxy"
+
+    @property
+    def merges(self) -> bool:
+        """Bisa menyebabkan pemiliknya di-merge (alias ATT&CK/analis menang, penjaga 3)."""
+        return self.anchors and self.alias.source not in _PROTECTED
 
 
 def _skip_reason(
     state: GalaxyState, owner: _Ent, ms: list[_Match], target: _Ent | None
 ) -> SkipReason | None:
     """None = boleh di-merge ke target; selain itu alasan skip."""
-    if target is None:
-        return "owned" if any(m.strong for m in ms) else "ambiguous"
-    if owner.suppressed or owner.type != target.type:
-        return "owned"
-    if owner.source == "attack":  # tidak mungkin kuat di sini (itu kasus two_attack)
-        return "ambiguous"
+    blocked: SkipReason = "ambiguous" if all(m.risky for m in ms) else "owned"
+    if target is None or owner.suppressed or owner.type != target.type:
+        return blocked
+    if owner.source == "attack":  # entitas ATT&CK tidak pernah jadi sumber merge
+        return blocked
     if frozenset({owner.id, target.id}) in state.undone_pairs:
         return "undone"
-    if any(m.strong and m.alias.source not in _PROTECTED for m in ms):
-        return None
-    return "owned" if any(m.strong for m in ms) else "ambiguous"
+    return None if any(m.merges for m in ms) else blocked
 
 
-def _plan_cluster(state: GalaxyState, c: GalaxyCluster, plan: GalaxyPlan) -> None:
+def shared_norms(clusters: Iterable[GalaxyCluster]) -> dict[Kind, set[str]]:
+    """Norm yang muncul di lebih dari satu cluster dengan jenis sama (lintas file juga, mis.
+    threat-actor + ransomware). Snapshot 2026-10-29: 95 norm aktor, 57 norm malware."""
+    seen: dict[tuple[Kind, str], str] = {}
+    out: dict[Kind, set[str]] = {"actor": set(), "malware": set()}
+    for c in clusters:
+        for name in c.names():
+            key = (c.kind, alias_norm(name))
+            if seen.setdefault(key, c.uuid) != c.uuid:
+                out[c.kind].add(key[1])
+    return out
+
+
+def _plan_cluster(state: GalaxyState, c: GalaxyCluster, shared: set[str], plan: GalaxyPlan) -> None:
+    """Satu cluster. Pencegah merge transitif lintas cluster (R1, review Task 7):
+    - norm yang muncul di lebih dari satu cluster sejenis (`shared`) berisiko: tidak pernah
+      menjangkar merge dan tidak ditambahkan sebagai alias;
+    - alias `source=galaxy` tidak pernah menjangkar merge, juga lintas run. Uuid cluster tidak
+      dicatat di alias (perlu kolom/migrasi baru), jadi aturannya berlaku untuk cluster mana pun.
+      Untuk cluster asalnya tidak ada yang hilang: alias galaxy hanya ditambahkan ke target yang
+      dijangkar alias non-galaxy di cluster itu, dan alias itu tetap di target kecuali analis
+      men-split-nya (lalu memang sebaiknya tidak di-merge ulang otomatis)."""
     types = KIND_TYPES[c.kind]
     matches: dict[int, list[_Match]] = {}
     unowned: list[str] = []
@@ -272,17 +306,19 @@ def _plan_cluster(state: GalaxyState, c: GalaxyCluster, plan: GalaxyPlan) -> Non
     for name in c.names():
         norm = alias_norm(name)
         hits = [(t, state.aliases[(t, norm)]) for t in types if (t, norm) in state.aliases]
+        curated = state.attack_norms.get(norm, [])
         if not hits:
-            curated = [a for t, a in state.attack_norms.get(norm, []) if t not in types]
-            if curated:  # nama software ATT&CK di cluster aktor (atau sebaliknya)
-                foreign.append((name, state.live(curated[0].entity_id)))
+            other = [a for t, a in curated if t not in types]
+            if other:  # nama software ATT&CK di cluster aktor (atau sebaliknya)
+                foreign.append((name, state.live(other[0].entity_id)))
             else:
                 unowned.append(name)
             continue
-        strong = not is_risky_synonym(norm, attack_curated=norm in state.attack_norms)
+        attack_curated = any(t in types for t, _ in curated)
+        risky = norm in shared or is_risky_synonym(norm, attack_curated=attack_curated)
         for _, alias in hits:
             owner = state.live(alias.entity_id)
-            matches.setdefault(owner.id, []).append(_Match(name, alias, strong))
+            matches.setdefault(owner.id, []).append(_Match(name, alias, risky))
 
     def skip(reason: SkipReason, alias: str, ent: _Ent | None, target: _Ent | None) -> None:
         plan.skips.append(
@@ -298,16 +334,21 @@ def _plan_cluster(state: GalaxyState, c: GalaxyCluster, plan: GalaxyPlan) -> Non
             )
         )
 
+    # penjaga 1: setiap pemilik ATT&CK yang tersentuh dihitung, kuat maupun berisiko
+    attack_owners = sorted(
+        (state.entities[i] for i in matches if state.entities[i].source == "attack"),
+        key=lambda e: e.id,
+    )
+    if len(attack_owners) > 1:
+        for e in attack_owners:
+            skip("two_attack", matches[e.id][0].name, e, None)
+        return
     anchors = [
         state.entities[i]
         for i, ms in matches.items()
-        if any(m.strong for m in ms) and not state.entities[i].suppressed
+        if any(m.anchors for m in ms) and not state.entities[i].suppressed
     ]
     attack = [e for e in anchors if e.source == "attack"]
-    if len(attack) > 1:
-        for e in sorted(attack, key=lambda e: e.id):
-            skip("two_attack", next(m.name for m in matches[e.id] if m.strong), e, None)
-        return
     target: _Ent | None
     if attack:
         target = attack[0]
@@ -331,7 +372,7 @@ def _plan_cluster(state: GalaxyState, c: GalaxyCluster, plan: GalaxyPlan) -> Non
                     owner.name,
                     target.id,
                     target.name,
-                    tuple(m.name for m in ms if m.strong and m.alias.source not in _PROTECTED),
+                    tuple(m.name for m in ms if m.merges),
                 )
             )
             state.simulate_merge(owner, target)
@@ -344,23 +385,22 @@ def _plan_cluster(state: GalaxyState, c: GalaxyCluster, plan: GalaxyPlan) -> Non
     if target is None:  # Ruling 19: cluster tanpa entitas tidak membuat apa pun
         return
     for name in unowned:
+        if alias_norm(name) in shared:  # dipakai cluster lain: bukan milik cluster ini saja
+            skip("ambiguous", name, None, target)
+            continue
         plan.new_aliases.append(
-            PlannedAlias(
-                c.value,
-                c.uuid,
-                target.type,
-                name,
-                target.id,
-                target.name,
-            )
+            PlannedAlias(c.value, c.uuid, target.type, name, target.id, target.name)
         )
         state.add_alias(target.type, name, target.id, "galaxy")
 
 
 def build_plan(state: GalaxyState, clusters: Iterable[GalaxyCluster]) -> GalaxyPlan:
+    """`clusters` = SEMUA cluster run ini (norm bersama dihitung dari seluruhnya)."""
+    clusters = list(clusters)
+    shared = shared_norms(clusters)
     plan = GalaxyPlan()
     for c in clusters:
-        _plan_cluster(state, c, plan)
+        _plan_cluster(state, c, shared[c.kind], plan)
     return plan
 
 

@@ -3,6 +3,11 @@
 `cti-entity merge-aliases [--dry-run | --apply] [--csv PATH] [--snapshot-dir DIR]`: merge alias
 entitas dari MISP Galaxy (spec 4.2). Default `--dry-run`: hanya membaca dan mencetak rencana
 (merge, alias baru, skip) sebagai CSV; runbook meminta CSV itu ditinjau sebelum `--apply`.
+
+`--apply` berjalan dalam SATU transaksi untuk seluruh run (commit di akhir). Merge yang ditolak
+`EntityMergeError` dicatat sebagai skip `error` dan run lanjut (SAVEPOINT per merge; deadlock dicoba
+ulang sekali); error DB lain menggagalkan dan me-rollback seluruh run, jadi tidak ada yang tertulis
+dan runbook cukup meminta perintah dijalankan ulang.
 """
 
 from __future__ import annotations
@@ -75,7 +80,11 @@ def main(argv: list[str] | None = None) -> int:
     m = sub.add_parser("merge-aliases", help="merge alias entitas dari snapshot MISP Galaxy")
     mode = m.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true", help="hanya rencana (default)")
-    mode.add_argument("--apply", action="store_true", help="jalankan merge dan tambah alias")
+    mode.add_argument(
+        "--apply",
+        action="store_true",
+        help="jalankan merge dan tambah alias (satu transaksi; error DB lain = rollback, ulangi)",
+    )
     m.add_argument("--csv", type=Path, help="tulis rencana ke file CSV (default: stdout)")
     m.add_argument(
         "--snapshot-dir",

@@ -16,6 +16,7 @@ from cti_core.entity.galaxy import (
     GalaxyState,
     build_plan,
     load_galaxy,
+    shared_norms,
 )
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -147,19 +148,107 @@ def test_undone_pair_skipped() -> None:
     assert [(s.reason, s.entity_id) for s in plan.skips if s.cluster == "APT29"] == [("undone", 2)]
 
 
-def test_overlapping_clusters_follow_earlier_merge() -> None:
-    """Cluster kedua yang menyebut alias entitas yang sudah di-merge di cluster pertama
-    melihat pemilik barunya, jadi rencana konsisten dan run kedua tidak berubah."""
-    st = _state()
+def _cluster(uuid: str, value: str, *synonyms: str) -> dict[str, object]:
+    return {"uuid": uuid, "value": value, "meta": {"synonyms": list(synonyms)}}
+
+
+def test_shared_synonym_does_not_chain_two_clusters() -> None:
+    """Review Task 7 (R1): cluster A menambah "Cobalt Gypsy" ke targetnya, cluster B lalu
+    me-merge entitasnya ke target A lewat sinonim itu. Norm bersama tidak pernah menjangkar
+    merge dan tidak ditambahkan sebagai alias."""
+    st = GalaxyState()
+    st.add_entity(1, IS, "Cleaver Crew", source="dictionary", mentions=3)
+    st.add_entity(2, IS, "Oil Rig Ops", source="dictionary", mentions=1)
     content = {
         "values": [
-            {"uuid": "a", "value": "Muddled Libra", "meta": {"synonyms": ["0ktapus"]}},
-            {"uuid": "b", "value": "Muddled Libra", "meta": {"synonyms": ["Starfraud"]}},
+            _cluster("a", "Cleaver Crew", "Cobalt Gypsy"),
+            _cluster("b", "Oil Rig Ops", "Cobalt Gypsy"),
         ]
     }
     plan = build_plan(st, load_galaxy("threat-actor", content))
-    assert _merges(plan) == {(6, 5)}
-    assert [(a.alias, a.target_id) for a in plan.new_aliases] == [("Starfraud", 5)]
+    assert plan.merges == []
+    assert plan.new_aliases == []
+    assert [(k.cluster, k.reason, k.alias) for k in plan.skips] == [
+        ("Cleaver Crew", "ambiguous", "Cobalt Gypsy"),
+        ("Oil Rig Ops", "ambiguous", "Cobalt Gypsy"),
+    ]
+
+
+def test_shared_synonym_owned_by_third_entity_never_merges() -> None:
+    st = GalaxyState()
+    st.add_entity(1, IS, "Cleaver Crew", source="dictionary", mentions=3)
+    st.add_entity(2, IS, "Oil Rig Ops", source="dictionary", mentions=1)
+    st.add_entity(3, IS, "Cobalt Gypsy", source="dictionary", mentions=9)
+    content = {
+        "values": [
+            _cluster("a", "Cleaver Crew", "Cobalt Gypsy"),
+            _cluster("b", "Oil Rig Ops", "Cobalt Gypsy"),
+        ]
+    }
+    plan = build_plan(st, load_galaxy("threat-actor", content))
+    assert plan.merges == []
+    assert {(k.reason, k.entity_id) for k in plan.skips} == {("ambiguous", 3)}
+
+
+def test_galaxy_alias_never_anchors_across_runs() -> None:
+    """Run sebelumnya (cluster lain) menambahkan "Cobalt Gypsy" sebagai alias galaxy ke Cleaver
+    Crew; run ini hanya melihat cluster B, jadi norm itu tidak terdeteksi bersama. Alias galaxy
+    tetap tidak boleh menjangkar merge."""
+    st = GalaxyState()
+    st.add_entity(
+        1, IS, "Cleaver Crew", source="dictionary", mentions=3,
+        aliases=[("Cobalt Gypsy", "galaxy")],
+    )  # fmt: skip
+    st.add_entity(2, IS, "Oil Rig Ops", source="dictionary", mentions=1)
+    content = {"values": [_cluster("b", "Oil Rig Ops", "Cobalt Gypsy", "Twisted Kitten")]}
+    plan = build_plan(st, load_galaxy("threat-actor", content))
+    assert plan.merges == []
+    assert [(k.reason, k.entity_id) for k in plan.skips] == [("owned", 1)]
+    assert [(a.alias, a.target_id) for a in plan.new_aliases] == [("Twisted Kitten", 2)]
+
+
+def test_two_attack_counts_risky_attack_owner() -> None:
+    st = GalaxyState()
+    st.add_entity(1, IS, "APT29", source="attack")
+    st.add_entity(2, IS, "Cobalt Group", source="attack", aliases=[("Cobalt", "attack")])
+    content = {"values": [_cluster("x", "APT29", "Cobalt")]}  # "cobalt" ada di AMBIGUOUS
+    plan = build_plan(st, load_galaxy("threat-actor", content))
+    assert {(k.reason, k.entity_id) for k in plan.skips} == {("two_attack", 1), ("two_attack", 2)}
+    assert plan.merges == [] and plan.new_aliases == []
+
+
+def test_attack_curated_scoped_to_cluster_types() -> None:
+    """ "Snake" adalah alias software ATT&CK (malware), bukan nama grup: di cluster aktor ia tetap
+    satu kata umum, jadi entitas aktor "Snake" tidak di-merge."""
+    st = GalaxyState()
+    st.add_entity(1, IS, "Turla", source="attack")
+    st.add_entity(2, IS, "Snake", source="dictionary", mentions=4)
+    st.add_entity(3, "malware", "Uroburos", source="attack", aliases=[("Snake", "attack")])
+    content = {"values": [_cluster("t", "Turla", "Snake")]}
+    plan = build_plan(st, load_galaxy("threat-actor", content))
+    assert plan.merges == []
+    assert [(k.reason, k.entity_id) for k in plan.skips] == [("ambiguous", 2)]
+
+
+def test_attack_norms_only_for_new_alias_rows() -> None:
+    st = GalaxyState()
+    st.add_entity(1, IS, "Foo Crew", source="dictionary")
+    st.add_alias(IS, "Foo Crew", 2, "attack")  # (tipe, norm) sudah ada: diabaikan
+    assert "foo crew" not in st.attack_norms
+    assert st.aliases[(IS, "foo crew")].entity_id == 1
+    st.add_entity(3, IS, "Bar Crew", source="attack")
+    st.add_alias(IS, "Bar Crew", 3, "attack")  # baris yang sama lagi: tidak dicatat dua kali
+    assert len(st.attack_norms["bar crew"]) == 1
+
+
+def test_shared_norms_on_real_snapshot() -> None:
+    clusters = [
+        c
+        for name in GALAXY_FILES
+        for c in load_galaxy(name, json.loads((SNAPSHOT / f"{name}.json").read_text()))
+    ]
+    shared = shared_norms(clusters)
+    assert len(shared["actor"]) > 50 and len(shared["malware"]) > 30
 
 
 def test_repo_snapshot_parses() -> None:
