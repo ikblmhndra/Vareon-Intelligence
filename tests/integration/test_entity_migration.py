@@ -140,6 +140,49 @@ def test_downgrade_restores_legacy_rows_and_sequences(db_session: Session) -> No
     _run(s, "upgrade")
 
 
+def test_upgrade_locks_uppercases_indexes_and_analyzes(db_session: Session) -> None:
+    """M7: tabel lama dikunci EXCLUSIVE di awal (tulisan kode lama selama backfill menunggu,
+    tidak hilang). M8: CVE huruf kecil di tabel lama jadi `CVE-...`. M9: indeks
+    `relationships.source_indicator_id`. M10: ANALYZE tabel baru (reltuples terisi)."""
+    s = db_session
+    _run(s, "downgrade")
+    art = Article(url="https://up.example/a", url_hash="up-a", title="t", source="up")
+    s.add(art)
+    s.flush()
+    s.execute(
+        text(
+            "INSERT INTO article_cves (article_id, cve_id, in_title)"
+            " VALUES (:a, 'cve-2026-4242', false)"
+        ),
+        {"a": art.id},
+    )
+    _run(s, "upgrade")
+    locked = set(
+        s.scalars(
+            text(
+                "SELECT c.relname FROM pg_locks l JOIN pg_class c ON c.oid = l.relation"
+                " WHERE l.pid = pg_backend_pid() AND l.mode = 'ExclusiveLock'"
+                " AND c.relname LIKE '\\_legacy\\_%'"
+            )
+        )
+    )
+    assert locked == {"_legacy_" + t for t in migration._COMPAT}
+    assert s.execute(
+        text("SELECT name, external_id FROM entities WHERE lower(name) = 'cve-2026-4242'")
+    ).all() == [("CVE-2026-4242", "CVE-2026-4242")]
+    assert (
+        _one(
+            s,
+            "SELECT count(*) FROM pg_indexes"
+            " WHERE indexname = 'ix_relationships_source_indicator_id'",
+        )
+        == 1
+    )
+    assert _one(s, "SELECT reltuples FROM pg_class WHERE relname = 'entities'") == _one(
+        s, "SELECT count(*) FROM entities"
+    )
+
+
 # --- backfill (Task 3): tabel lama -> entitas/alias/relasi/mention, set-based di upgrade() ---
 
 

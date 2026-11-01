@@ -198,6 +198,10 @@ def _create_tables() -> None:
     )
     op.create_index("ix_relationships_source_entity_id", "relationships", ["source_entity_id"])
     op.create_index("ix_relationships_target_entity_id", "relationships", ["target_entity_id"])
+    # FK ON DELETE CASCADE dari indicators: tanpa indeks, hapus indikator memindai relationships
+    op.create_index(
+        "ix_relationships_source_indicator_id", "relationships", ["source_indicator_id"]
+    )
     op.create_index(
         "ix_relationships_feed_changed_at_id", "relationships", ["feed_changed_at", "id"]
     )
@@ -439,13 +443,33 @@ def _drop_compat_views() -> None:
     op.execute(f"COMMENT ON VIEW ioc_threat_actors IS '{_IOC_VIEW_COMMENT}'")
 
 
+# Tabel baru yang diisi backfill; ANALYZE di akhir upgrade supaya planner tidak menebak tabel
+# kosong pada query pertama sesudah deploy (autovacuum baru menyusul belakangan).
+_ANALYZE = (
+    "entities",
+    "entity_aliases",
+    "relationships",
+    "entity_mentions",
+    "entity_watches",
+    "entity_profiles",
+    "stories",
+)
+
+
 def upgrade() -> None:
     op.execute("SET LOCAL lock_timeout = '10s'")
+    # Kunci EXCLUSIVE tabel lama SEBELUM backfill membacanya: kode 0.8.2 yang masih jalan selama
+    # migrate tetap bisa membaca, tapi tulisannya menunggu sampai rename/view selesai, bukan masuk
+    # ke tabel yang sudah selesai disalin (lalu hilang di `_legacy_*`). Bila lock_timeout habis
+    # (transaksi panjang di tabel itu), migrasi gagal utuh dan `make deploy` cukup diulang.
+    op.execute(f"LOCK TABLE {', '.join(_COMPAT)} IN EXCLUSIVE MODE")
     _create_tables()
     _create_resolve()
     _backfill()
     _create_compat_views()
     _create_feed_triggers()
+    for table in _ANALYZE:
+        op.execute(f"ANALYZE {table}")
 
 
 def downgrade() -> None:

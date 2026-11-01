@@ -40,12 +40,18 @@ LANGUAGE sql AS $fn$
                 THEN entity_resolve_technique(p_ext_id, p_name, 'legacy') END
 $fn$;
 
--- CVE baru: name = external_id = id CVE, source 'cve' (seperti backfill)
+-- CVE baru: name = external_id = id CVE huruf besar, source 'cve' (seperti backfill dan
+-- cve_mention Python). external_id yang sudah dipegang entitas hidup lain (analis membuat
+-- "Log4Shell" ber-external_id CVE itu) tidak diisi ulang: unik (type, external_id) akan gagal.
 CREATE FUNCTION entity_compat_cve(p_cve text) RETURNS bigint LANGUAGE plpgsql AS $fn$
 DECLARE
-    v_id bigint := entity_compat_resolve('vulnerability', p_cve);
+    v_id bigint := entity_compat_resolve('vulnerability', upper(p_cve));
 BEGIN
-    UPDATE entities SET external_id = name, source = 'cve' WHERE id = v_id AND external_id IS NULL;
+    UPDATE entities e SET external_id = e.name, source = 'cve'
+     WHERE e.id = v_id AND e.external_id IS NULL
+       AND NOT EXISTS (SELECT 1 FROM entities o
+                        WHERE o.type = 'vulnerability' AND o.external_id = e.name
+                          AND o.merged_into_id IS NULL);
     RETURN v_id;
 END $fn$;
 

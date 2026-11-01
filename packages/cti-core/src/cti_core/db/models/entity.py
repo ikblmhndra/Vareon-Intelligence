@@ -150,6 +150,7 @@ class Relationship(TimestampMixin, Base):
         ),
         Index("ix_relationships_source_entity_id", "source_entity_id"),
         Index("ix_relationships_target_entity_id", "target_entity_id"),
+        Index("ix_relationships_source_indicator_id", "source_indicator_id"),
         Index("ix_relationships_feed_changed_at_id", "feed_changed_at", "id"),
     )
 

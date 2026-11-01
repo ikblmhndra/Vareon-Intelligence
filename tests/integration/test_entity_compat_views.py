@@ -297,6 +297,37 @@ def test_old_pg_insert_article_cves_on_conflict(db_session: Session) -> None:
     assert _mentions(s, art.id) == []
 
 
+def test_old_insert_lowercase_cve_is_uppercased(db_session: Session) -> None:
+    """CVE huruf kecil dari kode lama: entitas tetap `CVE-...` (sama dengan resolver Python)."""
+    s = db_session
+    art = _article(s, "cves-lower")
+    rows = [{"article_id": art.id, "cve_id": "cve-2026-7777", "in_title": False}]
+    s.execute(pg_insert(ArticleCve).values(rows).on_conflict_do_nothing())
+    assert _q(
+        s,
+        "SELECT name, external_id FROM entities WHERE type = 'vulnerability'"
+        " AND lower(name) = 'cve-2026-7777'",
+    ) == [("CVE-2026-7777", "CVE-2026-7777")]
+    view = _q(s, "SELECT cve_id FROM article_cves WHERE article_id = :a", a=art.id)
+    assert view == [("CVE-2026-7777",)]
+
+
+def test_old_insert_cve_named_by_analyst_does_not_fail(db_session: Session) -> None:
+    """Entitas analis "Log4Shell" sudah memegang external_id CVE: insert lama tidak boleh error."""
+    s = db_session
+    s.execute(
+        text(
+            "INSERT INTO entities (type, stix_id, name, source, external_id) VALUES"
+            " ('vulnerability', 'vulnerability--l4s-compat', 'Log4Shell C', 'analyst',"
+            " 'CVE-2026-8888')"
+        )
+    )
+    art = _article(s, "cves-named")
+    rows = [{"article_id": art.id, "cve_id": "CVE-2026-8888", "in_title": False}]
+    s.execute(pg_insert(ArticleCve).values(rows).on_conflict_do_nothing())
+    assert len(_mentions(s, art.id)) == 1
+
+
 def test_old_delete_orphan_removes_mention(db_session: Session) -> None:
     s = db_session
     _actor(s, "APT28")

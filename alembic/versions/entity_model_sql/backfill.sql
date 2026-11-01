@@ -457,8 +457,9 @@ UNION ALL SELECT 'intrusion-set', left(x.e #>> '{}', 300), 'legacy', NULL, 8, p.
 UNION ALL SELECT CASE WHEN kind = 'tool' THEN 'tool' ELSE 'malware' END, name, 'legacy', NULL, 1,
                  id
             FROM article_malware
-UNION ALL SELECT 'vulnerability', cve_id, 'cve', NULL, 1, article_id FROM article_cves
-UNION ALL SELECT 'vulnerability', cve_id, 'cve', NULL, 2, id FROM cve_tracker
+-- id CVE selalu huruf besar (sama dengan cve_mention Python): 'cve-...' lama tidak jadi nama
+UNION ALL SELECT 'vulnerability', upper(cve_id), 'cve', NULL, 1, article_id FROM article_cves
+UNION ALL SELECT 'vulnerability', upper(cve_id), 'cve', NULL, 2, id FROM cve_tracker
 -- label industri: lewat alias sektor; label tak dikenal -> identitas sektor legacy;
 -- "General" tidak menghasilkan apa-apa (spec 3.3)
 UNION ALL SELECT 'identity', industry, 'legacy', 'class', 1, id FROM article_industries
