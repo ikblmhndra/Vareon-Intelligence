@@ -103,7 +103,7 @@ export function EntityHero({ entity, totals }: { entity: EntityDetail; totals: E
                     type="button"
                     onClick={() => setShowAll(true)}
                     aria-label={`Show ${hidden} more aliases`}
-                    className="rounded-full border border-dashed border-hero-foreground/40 px-2.5 py-0.5 text-xs outline-none hover:bg-hero-panel focus-visible:ring-3 focus-visible:ring-focus"
+                    className="rounded-full border border-dashed border-hero-foreground/40 px-2.5 py-0.5 text-xs outline-none max-sm:min-h-11 hover:bg-hero-panel focus-visible:ring-3 focus-visible:ring-focus"
                   >
                     +{hidden} aliases
                   </button>
@@ -120,7 +120,7 @@ export function EntityHero({ entity, totals }: { entity: EntityDetail; totals: E
           {can("manage_pir") && (
             <Button
               variant="outline"
-              className={heroButtonClass}
+              className={`${heroButtonClass} max-sm:h-11`}
               aria-pressed={entity.watched}
               disabled={watch.isPending}
               onClick={() => watch.mutate()}

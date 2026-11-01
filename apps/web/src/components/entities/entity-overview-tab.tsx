@@ -20,7 +20,9 @@ type Obj = Record<string, unknown>;
 const obj = (v: unknown): Obj => (v && typeof v === "object" && !Array.isArray(v) ? (v as Obj) : {});
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 const strs = (v: unknown): string[] =>
-  Array.isArray(v) ? v.map(str).filter((s) => s !== "" && s.toLowerCase() !== "unknown") : [];
+  Array.isArray(v)
+    ? [...new Set(v.map(str).filter((s) => s !== "" && s.toLowerCase() !== "unknown"))]
+    : [];
 
 /** Query timeline dipakai bersama tab Overview (12 bulan) dan Timeline (24 bulan). */
 export function useEntityTimeline(entityId: number) {
@@ -49,7 +51,7 @@ function Chips({ type, names }: { type: string; names: string[] }) {
   // Nama dari profil LLM tidak punya entity di belakangnya: chip lewat resolve (W2).
   return (
     <>
-      {names.map((n) => (
+      {[...new Set(names)].map((n) => (
         <EntityChip key={`${type}:${n}`} {...({ type, name: n } satisfies EntityChipItem)} />
       ))}
     </>
@@ -79,7 +81,7 @@ function AboutCard({ entity }: { entity: EntityDetail }) {
   const targeting = obj(p.targeting_profile);
   const capability = obj(p.capability_assessment);
   const malware = Array.isArray(capability.known_malware)
-    ? capability.known_malware.map((m) => str(obj(m).name)).filter(Boolean)
+    ? [...new Set(capability.known_malware.map((m) => str(obj(m).name)).filter(Boolean))]
     : [];
   const sponsor = str(identity.sponsoring_nation);
   const motive = str(motivation.primary_motivation);
