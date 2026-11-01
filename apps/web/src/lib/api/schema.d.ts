@@ -3950,6 +3950,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v2/entities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Entities */
+        get: operations["list_entities_api_v2_entities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v2/indicators": {
         parameters: {
             query?: never;
@@ -3959,6 +3976,23 @@ export interface paths {
         };
         /** List Indicators */
         get: operations["list_indicators_api_v2_indicators_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v2/relationships": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Relationships */
+        get: operations["list_relationships_api_v2_relationships_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4197,6 +4231,8 @@ export interface components {
             max_tlp: "clear" | "green" | "amber" | "amber+strict" | "red";
             /** Name */
             name: string;
+            /** Scopes */
+            scopes?: string[];
         };
         /** ApiTokenCreated */
         ApiTokenCreated: {
@@ -5322,6 +5358,60 @@ export interface components {
             type: string;
             /** Watched */
             watched: boolean;
+        };
+        /**
+         * EntityFeedItem
+         * @description Satu entitas feed REST `/api/v2/entities` (P7c spec 5.3). `revoked` = suppressed atau
+         *     tombstone merge (`merged_into_stix_id` menunjuk entitas tujuan).
+         */
+        EntityFeedItem: {
+            /** Aliases */
+            aliases: string[];
+            /**
+             * Changed At
+             * Format: date-time
+             */
+            changed_at: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string | null;
+            /** External Id */
+            external_id: string | null;
+            /** First Seen */
+            first_seen: string | null;
+            /** Id */
+            id: number;
+            /** Identity Class */
+            identity_class: string | null;
+            /** Last Seen */
+            last_seen: string | null;
+            /** Merged Into Stix Id */
+            merged_into_stix_id: string | null;
+            /** Name */
+            name: string;
+            /** Revoked */
+            revoked: boolean;
+            /** Source */
+            source: string;
+            /** Stix Id */
+            stix_id: string;
+            /** Suppressed */
+            suppressed: boolean;
+            /** Tlp */
+            tlp: string;
+            /** Type */
+            type: string;
+        };
+        /** EntityFeedPage */
+        EntityFeedPage: {
+            /** Items */
+            items: components["schemas"]["EntityFeedItem"][];
+            /** Next Cursor */
+            next_cursor: string | null;
         };
         /** EntityIndicatorItem */
         EntityIndicatorItem: {
@@ -6683,6 +6773,56 @@ export interface components {
             source_id: number;
             /** Target Id */
             target_id: number;
+        };
+        /**
+         * RelationshipFeedItem
+         * @description Satu relasi feed REST `/api/v2/relationships`; `source_ref`/`target_ref` = id STIX ujung
+         *     (entitas, atau indikator untuk sumber `indicates`).
+         */
+        RelationshipFeedItem: {
+            /**
+             * Changed At
+             * Format: date-time
+             */
+            changed_at: string;
+            /** Confidence */
+            confidence: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Description */
+            description: string | null;
+            /** First Seen */
+            first_seen: string | null;
+            /** Id */
+            id: number;
+            /** Last Seen */
+            last_seen: string | null;
+            /** Provenance */
+            provenance: string;
+            /** Relationship Type */
+            relationship_type: string;
+            /** Revoked */
+            revoked: boolean;
+            /** Revoked At */
+            revoked_at: string | null;
+            /** Source Ref */
+            source_ref: string;
+            /** Stix Id */
+            stix_id: string;
+            /** Target Ref */
+            target_ref: string;
+            /** Tlp */
+            tlp: string;
+        };
+        /** RelationshipFeedPage */
+        RelationshipFeedPage: {
+            /** Items */
+            items: components["schemas"]["RelationshipFeedItem"][];
+            /** Next Cursor */
+            next_cursor: string | null;
         };
         /** RelationshipOut */
         RelationshipOut: {
@@ -16926,6 +17066,42 @@ export interface operations {
             };
         };
     };
+    list_entities_api_v2_entities_get: {
+        parameters: {
+            query?: {
+                type?: string[] | null;
+                changed_after?: string | null;
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityFeedPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_indicators_api_v2_indicators_get: {
         parameters: {
             query?: {
@@ -16951,6 +17127,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IndicatorFeedPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_relationships_api_v2_relationships_get: {
+        parameters: {
+            query?: {
+                type?: string[] | null;
+                changed_after?: string | null;
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelationshipFeedPage"];
                 };
             };
             /** @description Validation Error */

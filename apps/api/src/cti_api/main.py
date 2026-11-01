@@ -71,6 +71,7 @@ from cti_api.routers import ta_groups as ta_groups_router
 from cti_api.routers import taxii as taxii_router
 from cti_api.routers import techstack as techstack_router
 from cti_api.routers import tweets as tweets_router
+from cti_api.routers import v2_entities as v2_entities_router
 from cti_api.routers import v2_indicators as v2_indicators_router
 from cti_api.services.roles import ensure_system_roles
 
@@ -233,6 +234,7 @@ def create_app() -> FastAPI:
     app.include_router(scraper_router.router)
     app.include_router(data_health_router.router)
     app.include_router(v2_indicators_router.router)
+    app.include_router(v2_entities_router.router)
     app.include_router(taxii_router.router)
     return app
 

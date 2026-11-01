@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_api.deps import AuthedUser, get_db, request_ip, require_permission
-from cti_api.machine_auth import API_TOKEN_SCOPES, generate_token, hash_token, token_status
+from cti_api.machine_auth import generate_token, hash_token, token_status
 from cti_api.schemas.api_token import ApiTokenCreate, ApiTokenCreated, ApiTokenOut
 
 router = APIRouter(
@@ -47,7 +47,7 @@ async def create_api_token(
         name=body.name,
         token_prefix=token[:12],
         token_hash=hash_token(token),
-        scopes=list(API_TOKEN_SCOPES),
+        scopes=body.scopes,
         max_tlp=body.max_tlp,
         created_by=user["username"],
         expires_at=expires_at,
@@ -59,6 +59,7 @@ async def create_api_token(
         detail={
             "name": body.name,
             "max_tlp": body.max_tlp,
+            "scopes": body.scopes,
             "expires_at": expires_at.isoformat() if expires_at else None,
         },
         ip_address=request_ip(request),

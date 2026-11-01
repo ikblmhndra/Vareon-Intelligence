@@ -118,6 +118,14 @@
             "minLength": 1,
             "title": "Name",
             "type": "string"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Scopes",
+            "type": "array"
           }
         },
         "required": [
@@ -2971,6 +2979,177 @@
           "aliases"
         ],
         "title": "EntityDetail",
+        "type": "object"
+      },
+      "EntityFeedItem": {
+        "description": "Satu entitas feed REST `/api/v2/entities` (P7c spec 5.3). `revoked` = suppressed atau\ntombstone merge (`merged_into_stix_id` menunjuk entitas tujuan).",
+        "properties": {
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Aliases",
+            "type": "array"
+          },
+          "changed_at": {
+            "format": "date-time",
+            "title": "Changed At",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "external_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id"
+          },
+          "first_seen": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Seen"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "identity_class": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Identity Class"
+          },
+          "last_seen": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen"
+          },
+          "merged_into_stix_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merged Into Stix Id"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "revoked": {
+            "title": "Revoked",
+            "type": "boolean"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "stix_id": {
+            "title": "Stix Id",
+            "type": "string"
+          },
+          "suppressed": {
+            "title": "Suppressed",
+            "type": "boolean"
+          },
+          "tlp": {
+            "title": "Tlp",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "stix_id",
+          "type",
+          "name",
+          "aliases",
+          "description",
+          "external_id",
+          "identity_class",
+          "source",
+          "tlp",
+          "suppressed",
+          "merged_into_stix_id",
+          "revoked",
+          "first_seen",
+          "last_seen",
+          "created_at",
+          "changed_at"
+        ],
+        "title": "EntityFeedItem",
+        "type": "object"
+      },
+      "EntityFeedPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EntityFeedItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "EntityFeedPage",
         "type": "object"
       },
       "EntityIndicatorItem": {
@@ -6409,6 +6588,158 @@
           "target_id"
         ],
         "title": "RelationshipCreate",
+        "type": "object"
+      },
+      "RelationshipFeedItem": {
+        "description": "Satu relasi feed REST `/api/v2/relationships`; `source_ref`/`target_ref` = id STIX ujung\n(entitas, atau indikator untuk sumber `indicates`).",
+        "properties": {
+          "changed_at": {
+            "format": "date-time",
+            "title": "Changed At",
+            "type": "string"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "first_seen": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Seen"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "last_seen": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen"
+          },
+          "provenance": {
+            "title": "Provenance",
+            "type": "string"
+          },
+          "relationship_type": {
+            "title": "Relationship Type",
+            "type": "string"
+          },
+          "revoked": {
+            "title": "Revoked",
+            "type": "boolean"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "source_ref": {
+            "title": "Source Ref",
+            "type": "string"
+          },
+          "stix_id": {
+            "title": "Stix Id",
+            "type": "string"
+          },
+          "target_ref": {
+            "title": "Target Ref",
+            "type": "string"
+          },
+          "tlp": {
+            "title": "Tlp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "stix_id",
+          "relationship_type",
+          "source_ref",
+          "target_ref",
+          "confidence",
+          "first_seen",
+          "last_seen",
+          "provenance",
+          "description",
+          "tlp",
+          "revoked",
+          "revoked_at",
+          "created_at",
+          "changed_at"
+        ],
+        "title": "RelationshipFeedItem",
+        "type": "object"
+      },
+      "RelationshipFeedPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RelationshipFeedItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "RelationshipFeedPage",
         "type": "object"
       },
       "RelationshipOut": {
@@ -29163,6 +29494,124 @@
         ]
       }
     },
+    "/api/v2/entities": {
+      "get": {
+        "operationId": "list_entities_api_v2_entities_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "changed_after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Changed After"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 500,
+              "maximum": 5000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntityFeedPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          }
+        ],
+        "summary": "List Entities",
+        "tags": [
+          "machine-api"
+        ]
+      }
+    },
     "/api/v2/indicators": {
       "get": {
         "operationId": "list_indicators_api_v2_indicators_get",
@@ -29311,6 +29760,124 @@
           }
         ],
         "summary": "List Indicators",
+        "tags": [
+          "machine-api"
+        ]
+      }
+    },
+    "/api/v2/relationships": {
+      "get": {
+        "operationId": "list_relationships_api_v2_relationships_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "changed_after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Changed After"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 500,
+              "maximum": 5000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RelationshipFeedPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          }
+        ],
+        "summary": "List Relationships",
         "tags": [
           "machine-api"
         ]

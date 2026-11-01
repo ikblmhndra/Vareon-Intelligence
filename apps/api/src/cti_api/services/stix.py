@@ -130,6 +130,11 @@ _IOC_PATTERN_MAP = {
 }
 
 
+STIX_INDICATOR_TYPES: tuple[str, ...] = tuple(_IOC_PATTERN_MAP)
+"""Tipe indikator yang punya pola STIX; tipe lain (mis. `cve`) membuat `indicator_to_stix` -> None,
+jadi feed `intel` menyaringnya di SQL supaya ref ke indikator selalu terselesaikan."""
+
+
 def _ioc_pattern(ioc_type: str, value: str) -> str | None:
     tmpl = _IOC_PATTERN_MAP.get(ioc_type)
     if tmpl is None:

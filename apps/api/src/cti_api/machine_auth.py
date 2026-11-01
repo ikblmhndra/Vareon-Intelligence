@@ -22,7 +22,9 @@ from cti_api.deps import get_db
 # Hanya untuk dokumentasi OpenAPI (skema `apiToken`); token dibaca dari header `Authorization`.
 _openapi_scheme = HTTPBearer(scheme_name="apiToken", auto_error=False)
 
-API_TOKEN_SCOPES: tuple[str, ...] = ("indicators:read",)
+API_TOKEN_SCOPES: tuple[str, ...] = ("indicators:read", "intel:read")
+DEFAULT_TOKEN_SCOPES: tuple[str, ...] = ("indicators:read",)
+"""Default saat token dibuat tanpa `scopes`: perilaku token P7b tidak berubah (P7c spec 5.3)."""
 TOKEN_PREFIX = "vrn_"
 
 
@@ -83,11 +85,17 @@ def _extract_token(authorization: str | None) -> str:
     return token
 
 
-def require_token(scope: str) -> Callable[..., Awaitable[MachinePrincipal]]:
-    """Dependency: request harus membawa token aktif yang punya `scope`. `.scope` di fungsi hasil
-    dibaca test cakupan route, seperti `.permission` pada `require_permission`."""
-    if scope not in API_TOKEN_SCOPES:
-        raise ValueError(f"Unknown token scope {scope!r}")
+def require_token(*scopes: str) -> Callable[..., Awaitable[MachinePrincipal]]:
+    """Dependency: request harus membawa token aktif yang punya SALAH SATU `scopes` (lebih dari
+    satu hanya untuk route TAXII bersama seperti discovery; koleksi memeriksa scope-nya sendiri).
+    `.scope` di fungsi hasil dibaca test cakupan route, seperti `.permission` pada
+    `require_permission`."""
+    if not scopes:
+        raise ValueError("require_token needs at least one scope")
+    for s in scopes:
+        if s not in API_TOKEN_SCOPES:
+            raise ValueError(f"Unknown token scope {s!r}")
+    scope = " or ".join(scopes)
 
     async def dependency(
         authorization: str | None = Header(default=None),
@@ -100,12 +108,12 @@ def require_token(scope: str) -> Callable[..., Awaitable[MachinePrincipal]]:
         # Satu pesan untuk tidak dikenal/dicabut/kedaluwarsa: tidak membocorkan keberadaan token.
         if row is None or token_status(row, datetime.datetime.now(datetime.UTC)) != "active":
             raise _unauthorized()
-        if scope not in row.scopes:
+        if not set(scopes) & set(row.scopes):
             raise HTTPException(status_code=403, detail=f"Token lacks scope: {scope}")
         await repo.touch_last_used(row.id)
         await session.commit()
         return MachinePrincipal(row.id, row.name, tuple(row.scopes), row.max_tlp)
 
     dependency.scope = scope  # type: ignore[attr-defined]
-    dependency.__name__ = f"require_token_{scope}"
+    dependency.__name__ = f"require_token_{'_or_'.join(scopes)}"
     return dependency
