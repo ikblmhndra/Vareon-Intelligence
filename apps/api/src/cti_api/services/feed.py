@@ -285,12 +285,15 @@ async def entity_feed_page(
     after: tuple[datetime, int] | None = None,
 ) -> RowPage:
     """Feed REST `/api/v2/entities`: semua entitas ber-TLP diizinkan, termasuk tombstone dan
-    suppressed (konsumen perlu tahu pencabutannya). Kursor sama dengan feed indikator."""
+    suppressed (konsumen perlu tahu pencabutannya). Kursor sama dengan feed indikator.
+    `merged_into_stix_id` hanya diisi bila entitas tujuan juga terlihat oleh TLP token; selain
+    itu null, supaya id entitas tersembunyi tidak bocor lewat tombstone."""
+    allowed = tlp_allowed(max_tlp)
     target = aliased(Entity)
     stmt = (
         select(Entity, target.stix_id)
-        .outerjoin(target, target.id == Entity.merged_into_id)
-        .where(_entity_visible(Entity, tlp_allowed(max_tlp), stix=False))
+        .outerjoin(target, and_(target.id == Entity.merged_into_id, target.tlp.in_(allowed)))
+        .where(_entity_visible(Entity, allowed, stix=False))
     )
     if types is not None:
         stmt = stmt.where(Entity.type.in_(list(types)))

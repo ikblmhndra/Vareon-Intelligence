@@ -224,6 +224,25 @@ async def test_rest_entities(api_client: httpx.AsyncClient, api_session: AsyncSe
     assert (await api_client.get("/api/v2/entities?cursor=zz", headers=h)).status_code == 400
 
 
+async def test_rest_entities_hides_invisible_merge_target(
+    api_client: httpx.AsyncClient, api_session: AsyncSession
+) -> None:
+    """Tombstone yang di-merge ke entitas ber-TLP di atas token: `merged_into_stix_id` null,
+    supaya id entitas tersembunyi tidak bocor (token red tetap melihatnya)."""
+    g = await seed_graph(api_session)
+    await api_session.execute(
+        update(Entity).where(Entity.id == g.rows["T"]).values(merged_into_id=g.rows["H"])
+    )
+    await api_session.execute(  # jam lama lagi: baris baru-diubah masih di dalam jeda settle
+        update(Entity).where(Entity.id == g.rows["T"]).values(feed_changed_at=intel_support.t(3))
+    )
+    await api_session.flush()
+    clear = await _rest(api_client, "/api/v2/entities", await _token(api_session))
+    assert {i["stix_id"]: i for i in clear}[g.ids["T"]]["merged_into_stix_id"] is None
+    red = await _rest(api_client, "/api/v2/entities", await _token(api_session, max_tlp="red"))
+    assert {i["stix_id"]: i for i in red}[g.ids["T"]]["merged_into_stix_id"] == g.ids["H"]
+
+
 async def test_rest_relationships(api_client: httpx.AsyncClient, api_session: AsyncSession) -> None:
     g = await seed_graph(api_session)
     token = await _token(api_session)
