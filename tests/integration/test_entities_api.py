@@ -904,3 +904,44 @@ async def test_detail_merged_from(
     assert r.status_code == 200, r.text
     body = (await api_client.get(f"/api/entities/{apt29.id}", headers=h)).json()
     assert body["merged_from"] == []
+
+
+async def test_split_restores_dropped_mentions_under_asyncpg(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Header
+) -> None:
+    """Bug P7c-1 (PR #82): `created_at` mention yang dibuang saat merge tersimpan sebagai string
+    ISO di audit; psycopg menerimanya tapi asyncpg (jalur API) menolak (`DataError`, 500)."""
+    apt29 = await _make(api_session, "intrusion-set", "APT29")
+    duke = await _make(api_session, "intrusion-set", "Cozy Duke")
+    art = await _article(api_session)
+    await _mention(api_session, apt29, art)
+    # subjek sama: mention duke dibuang saat merge; `extracted` jsonb ikut diuji di jalur asyncpg
+    api_session.add(
+        EntityMention(
+            article_id=art.id,
+            entity_id=duke.id,
+            method="dictionary",
+            matched_alias="Cozy Duke",
+            extracted={"k": 1},
+        )
+    )
+    await api_session.commit()
+    h = auth_header()
+    r = await api_client.post(
+        f"/api/entities/{duke.id}/merge", json={"into_id": apt29.id}, headers=h
+    )
+    assert r.status_code == 200, r.text
+    body = (await api_client.get(f"/api/entities/{apt29.id}", headers=h)).json()
+    own = [a["id"] for a in body["aliases"] if a["alias"] == "Cozy Duke"]
+    r = await api_client.post(f"/api/entities/{apt29.id}/split", json={"alias_ids": own}, headers=h)
+    assert r.status_code == 200, r.text
+    restored = (
+        await api_session.execute(
+            select(EntityMention.created_at, EntityMention.extracted)
+            .where(EntityMention.entity_id == duke.id, EntityMention.article_id == art.id)
+            .execution_options(populate_existing=True)
+        )
+    ).all()
+    assert len(restored) == 1
+    assert restored[0].created_at is not None
+    assert restored[0].extracted == {"k": 1}
