@@ -428,6 +428,38 @@ def test_ransomware_victim_named_like_sector_is_not_linked(db_session: Session) 
     assert count == 0  # Ruling 10: korban yang resolve ke sektor tidak ditautkan
 
 
+def test_ransomware_relationship_stix_clash_gets_random_id(db_session: Session) -> None:
+    """stix_id relasi uuid5 sudah dipakai relasi lain (relasi tetap di target sesudah split):
+    upsert memakai id acak, bukan IntegrityError."""
+    from cti_core.entity import relationship_stix_id
+    from cti_core.entity.resolve import resolve
+
+    group = resolve(db_session, "intrusion-set", "clashgroup", source="ransomware")
+    victim = resolve(
+        db_session, "identity", "Clash Victim", source="ransomware", identity_class="organization"
+    )
+    other = resolve(db_session, "intrusion-set", "othergroup", source="ransomware")
+    clash = relationship_stix_id(group.stix_id, "targets", victim.stix_id)
+    db_session.execute(
+        text(
+            "INSERT INTO relationships (stix_id, relationship_type, source_entity_id,"
+            " target_entity_id, provenance) VALUES (:s, 'targets', :src, :dst, 'ransomware')"
+        ),
+        {"s": clash, "src": other.id, "dst": victim.id},
+    )
+    RansomwareVictimRepo(db_session).upsert(
+        offset_key="k-clash", group_name="clashgroup", victim="Clash Victim"
+    )
+    stix = db_session.scalar(
+        text(
+            "SELECT stix_id FROM relationships WHERE source_entity_id = :g"
+            " AND target_entity_id = :v AND relationship_type = 'targets'"
+        ),
+        {"g": group.id, "v": victim.id},
+    )
+    assert stix is not None and stix != clash and stix.startswith("relationship--")
+
+
 def test_seed_fase10_writes_new_tables(db_session: Session) -> None:
     db_session.add(Client(client_id="sc", name="Sc"))
     db_session.flush()

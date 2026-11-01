@@ -39,12 +39,16 @@ _RANSOMWARE_CONFIDENCE = 50
 
 # Kunci unik `uq_relationships_edge` adalah indeks ekspresi (coalesce), jadi ON CONFLICT ditulis
 # dengan ekspresinya. Relasi yang sudah ada (termasuk yang di-revoke analis) hanya diperlebar
-# rentang first_seen/last_seen-nya; revoke tidak dibatalkan.
+# rentang first_seen/last_seen-nya; revoke tidak dibatalkan. stix_id uuid5 yang sudah dipakai relasi
+# LAIN (mis. relasi tetap di target sesudah split, lalu tombstone hidup lagi dan menulis edge yang
+# sama) diganti id acak; edge yang sama tetap kena ON CONFLICT dan stix_id-nya tidak berubah.
 _UPSERT_RELATIONSHIP = text(
     """
     INSERT INTO relationships (stix_id, relationship_type, source_entity_id, target_entity_id,
                                confidence, first_seen, last_seen, provenance, created_by)
-    VALUES (:stix_id, :rel_type, :src, :dst, :confidence, :seen, :seen, 'ransomware',
+    VALUES (CASE WHEN EXISTS (SELECT 1 FROM relationships WHERE stix_id = :stix_id)
+                 THEN 'relationship--' || gen_random_uuid() ELSE :stix_id END,
+            :rel_type, :src, :dst, :confidence, :seen, :seen, 'ransomware',
             'system:ransomware')
     ON CONFLICT (coalesce(source_entity_id, 0), coalesce(source_indicator_id, 0),
                  relationship_type, target_entity_id)

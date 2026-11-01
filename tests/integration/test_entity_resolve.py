@@ -283,3 +283,64 @@ def test_technique_id_uppercased(db_session: Session) -> None:
     assert (py_new.external_id, sql_new) == ("T9002", "T9003")
     alias = db_session.scalar(select(EntityAlias.alias).where(EntityAlias.entity_id == py_new.id))
     assert alias == "T9002"
+
+
+def test_resolve_after_merge_and_alias_removal(db_session: Session) -> None:
+    """Merge A ke B lalu alias "foo" dihapus dari B: uuid5 "foo" sudah dipakai tombstone A,
+    resolve harus membuat entitas baru dengan stix_id acak, bukan RuntimeError permanen."""
+    from cti_core.entity.merge import merge_entities
+
+    a = resolve(db_session, "intrusion-set", "Foo", source="dictionary")
+    b = resolve(db_session, "intrusion-set", "Bar", source="dictionary")
+    merge_entities(db_session, a.id, b.id, actor="t")
+    db_session.execute(
+        delete(EntityAlias).where(EntityAlias.entity_id == b.id, EntityAlias.alias_norm == "foo")
+    )
+    got = resolve(db_session, "intrusion-set", "foo", source="dictionary")
+    assert got.id not in (a.id, b.id) and got.merged_into_id is None
+    assert got.stix_id != a.stix_id and got.stix_id.startswith("intrusion-set--")
+
+
+def test_resolve_after_rename_and_alias_removal(db_session: Session) -> None:
+    e = resolve(db_session, "malware", "OldName", source="dictionary")
+    e.name = "NewName"
+    db_session.execute(delete(EntityAlias).where(EntityAlias.entity_id == e.id))
+    db_session.flush()
+    got = resolve(db_session, "malware", "oldname", source="dictionary")
+    assert got.id != e.id and got.stix_id != e.stix_id
+
+
+def test_named_cve_then_cve_mention(db_session: Session) -> None:
+    """Analis membuat "Log4Shell" dengan external_id CVE; mention CVE menempel ke entitas itu."""
+    from cti_core.entity.mentions import cve_mention, resolve_mention
+
+    named = _make(db_session, "vulnerability", "Log4Shell")
+    named.external_id = "CVE-2021-44228"
+    db_session.flush()
+    hit = cve_mention("cve-2021-44228", "explicit", in_title=False)
+    assert hit is not None
+    got = resolve_mention(db_session, hit)
+    assert got is not None and got.id == named.id
+    norms = db_session.scalars(
+        select(EntityAlias.alias_norm).where(EntityAlias.entity_id == named.id)
+    ).all()
+    assert "cve-2021-44228" in norms
+
+
+async def test_named_cve_then_cve_mention_async(async_db_session: AsyncSession) -> None:
+    from cti_core.entity.mentions import cve_mention, resolve_mention_async
+
+    s = async_db_session
+    named = Entity(
+        type="vulnerability",
+        stix_id="vulnerability--log4shell-async",
+        name="Log4Shell A",
+        source="analyst",
+        external_id="CVE-2021-45046",
+    )
+    s.add(named)
+    await s.flush()
+    hit = cve_mention("CVE-2021-45046", "explicit", in_title=False)
+    assert hit is not None
+    got = await resolve_mention_async(s, hit)
+    assert got is not None and got.id == named.id

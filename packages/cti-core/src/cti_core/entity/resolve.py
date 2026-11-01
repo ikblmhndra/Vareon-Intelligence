@@ -3,7 +3,11 @@
 
 Urutan: cari alias `(type, alias_norm)` dan ikuti `merged_into_id`; kalau belum ada, sisipkan
 entitas + alias dengan `ON CONFLICT DO NOTHING` lalu baca ulang (aman untuk worker paralel,
-tanpa retry berbasis exception). Entitas `suppressed` tetap dikembalikan: pemanggil yang memutuskan.
+tanpa retry berbasis exception). `stix_id` uuid5 yang sudah dipakai (tombstone merge, entitas
+yang di-rename lalu alias lamanya dihapus) diganti uuid4, sama dengan split di `merge.py`; insert
+yang bentrok di `(type, external_id)` (mis. analis membuat "Log4Shell" ber-external_id CVE, lalu
+artikel menyebut CVE itu) menempelkan alias ke entitas hidup pemilik external_id tsb.
+Entitas `suppressed` tetap dikembalikan: pemanggil yang memutuskan.
 Nama tampilan mempertahankan huruf besar-kecil pemanggil (spasi dirapatkan); alias baru
 memakai `source` pemanggil, atau `legacy` bila itu bukan sumber alias (cve, iso, sector,
 ransomware; P7c Task 8).
@@ -14,6 +18,8 @@ diturunkan dari id itu, `name` tetap nama tampilan. Kembaran SQL: `entity_resolv
 """
 
 from __future__ import annotations
+
+import uuid
 
 from sqlalchemy import Select, func, select
 from sqlalchemy.dialects.postgresql import Insert, insert
@@ -45,19 +51,34 @@ def _lookup(type: str, norm: str) -> Select[tuple[Entity]]:
     )
 
 
-def _by_name(type: str, norm: str, key: str) -> Select[tuple[Entity]]:
+def _by_name(type: str, norm: str, key: str) -> Select[tuple[int]]:
     match = Entity.external_id == key if type == TECHNIQUE else func.lower(Entity.name) == norm
-    return select(Entity).where(Entity.type == type, match, Entity.merged_into_id.is_(None))
+    return select(Entity.id).where(Entity.type == type, match, Entity.merged_into_id.is_(None))
+
+
+def _by_external_id(type: str, external_id: str) -> Select[tuple[int]]:
+    return select(Entity.id).where(
+        Entity.type == type, Entity.external_id == external_id, Entity.merged_into_id.is_(None)
+    )
+
+
+def _stix_taken(stix: str) -> Select[tuple[int]]:
+    return select(Entity.id).where(Entity.stix_id == stix)
+
+
+def _fresh_stix(type: str, key: str, taken: bool) -> str:
+    """uuid5 dari kunci; uuid4 kalau uuid5 itu sudah dipakai entitas lain (tombstone/rename)."""
+    return f"{type}--{uuid.uuid4()}" if taken else entity_stix_id(type, key)
 
 
 def _new_entity(
-    type: str, display: str, key: str, source: str, external_id: str | None, cls: str | None
+    type: str, display: str, stix: str, source: str, external_id: str | None, cls: str | None
 ) -> ReturningInsert[tuple[int]]:
     return (
         insert(Entity)
         .values(
             type=type,
-            stix_id=entity_stix_id(type, key),
+            stix_id=stix,
             name=display,
             source=source,
             external_id=external_id,
@@ -110,14 +131,17 @@ def resolve(
 
     if (found := find()) is not None:
         return found
+    taken = session.execute(_stix_taken(entity_stix_id(type, key))).first() is not None
+    stix = _fresh_stix(type, key, taken)
     new_id = session.execute(
-        _new_entity(type, display, key, source, external_id, identity_class)
+        _new_entity(type, display, stix, source, external_id, identity_class)
     ).scalar()
-    if new_id is None:  # nama sudah dipakai entitas hidup tanpa alias ini
-        existing = session.execute(_by_name(type, norm, key)).scalar_one_or_none()
-        if existing is None:
+    if new_id is None:  # nama/external_id sudah dipakai entitas hidup tanpa alias ini
+        new_id = session.execute(_by_name(type, norm, key)).scalar_one_or_none()
+        if new_id is None and external_id:
+            new_id = session.execute(_by_external_id(type, external_id)).scalar_one_or_none()
+        if new_id is None:
             raise RuntimeError(f"resolve gagal membuat/menemukan {type} {name!r}")
-        new_id = existing.id
     session.execute(_new_alias(new_id, type, key, norm, source))
     if (found := find()) is None:
         raise RuntimeError(f"resolve gagal untuk {type} {name!r}")
@@ -149,14 +173,19 @@ async def resolve_async(
 
     if (found := await find()) is not None:
         return found
+    taken = (await session.execute(_stix_taken(entity_stix_id(type, key)))).first() is not None
+    stix = _fresh_stix(type, key, taken)
     new_id = (
-        await session.execute(_new_entity(type, display, key, source, external_id, identity_class))
+        await session.execute(_new_entity(type, display, stix, source, external_id, identity_class))
     ).scalar()
     if new_id is None:
-        existing = (await session.execute(_by_name(type, norm, key))).scalar_one_or_none()
-        if existing is None:
+        new_id = (await session.execute(_by_name(type, norm, key))).scalar_one_or_none()
+        if new_id is None and external_id:
+            new_id = (
+                await session.execute(_by_external_id(type, external_id))
+            ).scalar_one_or_none()
+        if new_id is None:
             raise RuntimeError(f"resolve gagal membuat/menemukan {type} {name!r}")
-        new_id = existing.id
     await session.execute(_new_alias(new_id, type, key, norm, source))
     if (found := await find()) is None:
         raise RuntimeError(f"resolve gagal untuk {type} {name!r}")
