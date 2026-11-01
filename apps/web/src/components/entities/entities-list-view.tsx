@@ -7,6 +7,7 @@ import { Download, Eye, Plus, Search, TrendingDown, TrendingUp } from "lucide-re
 import { toast } from "sonner";
 
 import { AttackSyncCard } from "@/components/entities/attack-sync-card";
+import { otherAliases } from "@/components/entities/entity-action-utils";
 import { EntityChip } from "@/components/entities/entity-chip";
 import { EntityCreateDialog } from "@/components/entities/entity-create-dialog";
 import { Button } from "@/components/ui/button";
@@ -69,7 +70,8 @@ function Mentions30({ item }: { item: EntityListItem }) {
   );
 }
 
-function Aliases({ aliases }: { aliases: string[] }) {
+function Aliases({ item }: { item: { name: string; external_id?: string | null; aliases: string[] } }) {
+  const aliases = otherAliases(item.aliases, item.name, item.external_id);
   if (aliases.length === 0) return <span className="text-xs text-muted-foreground">—</span>;
   return (
     <div className="flex flex-wrap items-center gap-1">
@@ -352,7 +354,7 @@ export function EntitiesListView() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Aliases aliases={it.aliases} />
+                        <Aliases item={it} />
                       </TableCell>
                       <TableCell>
                         <span className="rounded-md bg-muted px-1.5 py-0.5 text-xs">{it.source}</span>
@@ -386,7 +388,7 @@ export function EntitiesListView() {
                       <span className="rounded-md bg-muted px-1.5 py-0.5 text-2xs">Suppressed</span>
                     )}
                   </div>
-                  <Aliases aliases={it.aliases} />
+                  <Aliases item={it} />
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                     <span className="rounded-md bg-muted px-1.5 py-0.5">{it.source}</span>
                     <span>

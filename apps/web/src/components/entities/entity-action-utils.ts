@@ -31,3 +31,9 @@ export function invalidateEntity(qc: QueryClient, ...ids: number[]) {
 
 /** Normalisasi nama alias: trim, huruf kecil, spasi beruntun jadi satu. */
 export const normAlias = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+
+/** Alias selain nama entity sendiri (dan external_id untuk technique), dibanding lewat `normAlias`. */
+export function otherAliases(aliases: string[], name: string, externalId?: string | null): string[] {
+  const own = new Set([normAlias(name), ...(externalId ? [normAlias(externalId)] : [])]);
+  return aliases.filter((a) => !own.has(normAlias(a)));
+}

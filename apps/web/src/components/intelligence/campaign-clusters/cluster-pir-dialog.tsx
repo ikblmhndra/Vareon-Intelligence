@@ -65,6 +65,12 @@ export function ClusterPirDialog({ pir, onClose }: { pir: MatchedPir | null; onC
                     <Chips items={pir.criteria.threat_actors} entity="intrusion-set" />
                   </div>
                 )}
+                {(pir.criteria.malware?.length ?? 0) > 0 && (
+                  <div>
+                    <div className="mb-1 text-sm font-semibold text-muted-foreground">Malware and Tools</div>
+                    <Chips items={pir.criteria.malware} entity="malware,tool" />
+                  </div>
+                )}
                 {(pir.criteria.industries?.length ?? 0) > 0 && (
                   <div>
                     <div className="mb-1 text-sm font-semibold text-muted-foreground">Industries</div>

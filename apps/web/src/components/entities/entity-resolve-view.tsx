@@ -33,7 +33,7 @@ export function EntityResolveView() {
       });
       if (data) return { id: data.id };
       if (response.status === 404) return null;
-      throw new Error(`resolve gagal (${response.status})`);
+      throw new Error(`resolve gagal (${response.status})`, { cause: response.status });
     },
   });
 
@@ -56,7 +56,9 @@ export function EntityResolveView() {
   if (q.isError) {
     return (
       <p role="alert" className="text-sm text-destructive">
-        Could not look up this entity. Try again later.
+        {q.error instanceof Error && q.error.cause === 403
+          ? "You don't have access to entity pages."
+          : "Could not look up this entity. Try again later."}
       </p>
     );
   }

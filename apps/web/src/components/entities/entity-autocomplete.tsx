@@ -57,6 +57,7 @@ export function EntityAutocomplete({
 }: EntityAutocompleteProps) {
   const inputId = useId();
   const listId = `${inputId}-list`;
+  const labelId = `${inputId}-label`;
   const [text, setText] = useState("");
   const [debounced, setDebounced] = useState("");
   const [open, setOpen] = useState(false);
@@ -149,7 +150,7 @@ export function EntityAutocomplete({
 
   return (
     <div className="relative flex flex-col gap-1">
-      <Label htmlFor={inputId} className="text-sm font-medium text-muted-foreground">
+      <Label id={labelId} htmlFor={inputId} className="text-sm font-medium text-muted-foreground">
         {label}
       </Label>
       <div className="flex min-h-8 flex-wrap items-center gap-1 rounded-lg border border-input bg-transparent px-2 py-1 focus-within:ring-3 focus-within:ring-focus max-sm:min-h-11">
@@ -174,6 +175,7 @@ export function EntityAutocomplete({
         <input
           id={inputId}
           role="combobox"
+          aria-labelledby={labelId}
           aria-expanded={showList}
           aria-controls={showList ? listId : undefined}
           aria-activedescendant={showList && activeIdx >= 0 ? `${inputId}-opt-${activeIdx}` : undefined}
@@ -210,6 +212,7 @@ export function EntityAutocomplete({
               key={it.key}
               id={`${inputId}-opt-${i}`}
               role="option"
+              aria-label={it.externalId && it.externalId !== it.name ? `${it.name} ${it.externalId}` : it.name}
               aria-selected={i === activeIdx}
               // mousedown (bukan click) supaya terjadi sebelum blur menutup daftar.
               onMouseDown={(e) => {

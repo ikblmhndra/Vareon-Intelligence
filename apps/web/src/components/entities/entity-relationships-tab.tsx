@@ -6,7 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { EntityChip } from "@/components/entities/entity-chip";
+import { EntityChip, refLabel } from "@/components/entities/entity-chip";
 import {
   RelationshipCreateDialog,
   type RelationshipEnd,
@@ -56,7 +56,7 @@ function OtherEnd({ rel, entityId }: { rel: RelationshipOut; entityId: number })
   const incoming = rel.source?.id !== entityId && rel.target.id === entityId;
   if (incoming) {
     if (rel.source) {
-      return <EntityChip type={rel.source.type} name={rel.source.name} id={rel.source.id} />;
+      return <EntityChip type={rel.source.type} name={rel.source.name} id={rel.source.id} label={refLabel(rel.source)} />;
     }
     return (
       <span className="font-code text-xs break-all" title="Indicator">
@@ -64,7 +64,7 @@ function OtherEnd({ rel, entityId }: { rel: RelationshipOut; entityId: number })
       </span>
     );
   }
-  return <EntityChip type={rel.target.type} name={rel.target.name} id={rel.target.id} />;
+  return <EntityChip type={rel.target.type} name={rel.target.name} id={rel.target.id} label={refLabel(rel.target)} />;
 }
 
 function Verb({ rel, entityId }: { rel: RelationshipOut; entityId: number }) {
@@ -124,7 +124,7 @@ function CoMentionRows({
           key={c.entity.id}
           className="grid grid-cols-[minmax(0,1fr)_7rem_auto] items-center gap-3 max-sm:grid-cols-[minmax(0,1fr)_auto]"
         >
-          <EntityChip type={c.entity.type} name={c.entity.name} id={c.entity.id} />
+          <EntityChip type={c.entity.type} name={c.entity.name} id={c.entity.id} label={refLabel(c.entity)} />
           <div className="max-sm:order-last max-sm:col-span-2">
             <div
               role="meter"

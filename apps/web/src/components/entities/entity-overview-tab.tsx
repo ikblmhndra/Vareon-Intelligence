@@ -2,6 +2,7 @@
 
 import { Sparkles } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import Markdown from "react-markdown";
 import { toast } from "sonner";
 
 import { EntityChip, type EntityChipItem } from "@/components/entities/entity-chip";
@@ -25,6 +26,10 @@ const strs = (v: unknown): string[] =>
   Array.isArray(v)
     ? [...new Set(v.map(str).filter((s) => s !== "" && s.toLowerCase() !== "unknown"))]
     : [];
+
+/** Fragmen sitasi ATT&CK "(Citation: ...)" tidak berguna di UI dan dibuang dari deskripsi. */
+const stripCitations = (s: string) =>
+  s.replace(/\s*\(Citation:[^)]*\)/g, "").trim();
 
 /** Query timeline dipakai bersama tab Overview (12 bulan) dan Timeline (24 bulan). */
 export function useEntityTimeline(entityId: number) {
@@ -116,7 +121,19 @@ function AboutCard({ entity }: { entity: EntityDetail }) {
         )}
       </div>
       {entity.description ? (
-        <p className="text-sm whitespace-pre-line">{entity.description}</p>
+        <div className="prose prose-sm max-w-none text-sm">
+          <Markdown
+            components={{
+              a: ({ href, children }) => (
+                <a href={href} target="_blank" rel="noreferrer">
+                  {children}
+                </a>
+              ),
+            }}
+          >
+            {stripCitations(entity.description)}
+          </Markdown>
+        </div>
       ) : (
         !hasProfile && <p className="text-sm text-muted-foreground">No description yet.</p>
       )}

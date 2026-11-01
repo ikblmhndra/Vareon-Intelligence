@@ -5,6 +5,7 @@ import { Eye, EyeOff } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+import { otherAliases } from "@/components/entities/entity-action-utils";
 import { EntityActionsMenu } from "@/components/entities/entity-actions-menu";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -49,7 +50,11 @@ export function EntityHero({ entity, totals }: { entity: EntityDetail; totals: E
   const qc = useQueryClient();
   const [showAll, setShowAll] = useState(false);
   const meta = entityTypeMeta(entity.type, entity.identity_class);
-  const aliases = entity.aliases.map((a) => a.alias);
+  const aliases = otherAliases(
+    entity.aliases.map((a) => a.alias),
+    entity.name,
+    entity.external_id,
+  );
   const shown = showAll ? aliases : aliases.slice(0, 5);
   const hidden = aliases.length - shown.length;
   const sources = [...new Set([entity.source, ...entity.aliases.map((a) => a.source)])].filter(Boolean);

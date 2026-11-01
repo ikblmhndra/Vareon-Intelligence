@@ -65,7 +65,7 @@ export function EntityView({ id }: { id: number }) {
       });
       if (data) return data;
       if (response.status === 404) return null;
-      throw new Error(`entity gagal (${response.status})`);
+      throw new Error(`entity gagal (${response.status})`, { cause: response.status });
     },
   });
   const entity = detail.data ?? null;
@@ -121,7 +121,9 @@ export function EntityView({ id }: { id: number }) {
   if (detail.isError) {
     return (
       <p role="alert" className="text-sm text-destructive">
-        Could not load this entity. Try again later.
+        {detail.error instanceof Error && detail.error.cause === 403
+          ? "You don't have access to entity pages."
+          : "Could not load this entity. Try again later."}
       </p>
     );
   }

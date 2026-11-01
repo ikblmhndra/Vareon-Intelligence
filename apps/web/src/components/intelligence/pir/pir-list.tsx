@@ -114,9 +114,10 @@ export function PirList() {
       <div className="space-y-3">
         {pirs.map((p) => {
           const c = p.criteria;
-          // Nama entity (aktor, industri, negara, TTP) jadi chip; kata kunci dan tipe berita tetap tag teks.
+          // Nama entity (aktor, malware/tool, industri, negara, TTP) jadi chip; kata kunci dan tipe berita tetap tag teks.
           const tags = [
             ...c.threat_actors.map((x) => nameChip("intrusion-set", x)),
+            ...c.malware.map((x) => nameChip("malware,tool", x)),
             ...c.industries.map((x) => nameChip("identity", x)),
             ...c.countries.map((x) => nameChip("location", x)),
             ...c.keywords.map((x) => `KW:${x}`),
