@@ -61,11 +61,18 @@ def _audit(session: Session, actor: str, action: str, target: int, detail: dict[
 
 
 def _lock(session: Session, *ids: int) -> dict[int, Entity]:
+    """Kunci entitas `FOR NO KEY UPDATE`, urut id (Ruling 36). Bukan `FOR UPDATE`: mode itu bentrok
+    dengan KEY SHARE yang diambil cek FK insert mention, sehingga enrichment yang sudah memegang
+    kunci story-nya akan menunggu entitas ini sementara merge/suppress (lewat
+    `trg_entities_feed_propagate`) menunggu story itu = deadlock. Merge/split/suppress hanya
+    mengubah kolom non-kunci (`merged_into_id`, `suppressed`, seen), jadi UPDATE-nya sendiri juga
+    hanya mengambil NO KEY UPDATE. Urutan kunci: entitas lalu story (trigger), sama dengan
+    `_TOUCH_SEEN` yang tidak pernah menunggu entitas (SKIP LOCKED)."""
     rows = session.scalars(
         select(Entity)
         .where(Entity.id.in_(ids))
         .order_by(Entity.id)  # urutan kunci tetap: dua merge berlawanan tidak deadlock
-        .with_for_update()
+        .with_for_update(key_share=True)
         .execution_options(populate_existing=True)
     ).all()
     found = {e.id: e for e in rows}
@@ -339,7 +346,10 @@ def split_aliases(session: Session, entity_id: int, alias_ids: list[int], *, act
     owner = None
     if merge_row is not None:
         owner = session.get(
-            Entity, merge_row.detail["source_id"], with_for_update=True, populate_existing=True
+            Entity,
+            merge_row.detail["source_id"],
+            with_for_update={"key_share": True},  # NO KEY UPDATE, lihat `_lock`
+            populate_existing=True,
         )
         # pemilik asli: tombstone yang masih menunjuk entitas ini (dihidupkan), atau sudah hidup
         # lagi karena split sebelumnya (alias sisanya dikembalikan ke entitas yang sama)

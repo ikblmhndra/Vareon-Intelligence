@@ -274,6 +274,11 @@ def delete_other_mentions(
 # Entitas "panas" (negara, sektor) disebut hampir tiap artikel dan worker enrich berjalan paralel:
 # baris yang tidak berubah dilewati, dan kunci diambil urut id (NO KEY UPDATE, tidak bentrok
 # dengan KEY SHARE dari FK mention) supaya dua transaksi tidak saling deadlock.
+# SKIP LOCKED (Ruling 36): saat ini dipanggil, transaksi enrich sudah memegang kunci story-nya
+# (`StoryRepo.attach` dan trigger mention), sedangkan suppress/merge/TLP memegang entitas lalu
+# menunggu story (`trg_entities_feed_propagate`). Enrich tidak pernah menunggu entitas, jadi tak ada
+# siklus; entitas yang sedang dikunci dilewati dan seen-nya diperpanjang oleh artikel berikutnya
+# (first_seen bisa tertinggal satu artikel, statistik tampilan saja).
 _TOUCH_SEEN = text(
     """
     WITH s AS (SELECT coalesce(a.posted_on::timestamp AT TIME ZONE 'UTC', a.created_at) AS at
@@ -284,7 +289,7 @@ _TOUCH_SEEN = text(
                   AND (e.first_seen IS NULL OR e.first_seen > s.at
                        OR e.last_seen IS NULL OR e.last_seen < s.at)
                 ORDER BY e.id
-                  FOR NO KEY UPDATE OF e)
+                  FOR NO KEY UPDATE OF e SKIP LOCKED)
     UPDATE entities e
        SET first_seen = least(e.first_seen, s.at), last_seen = greatest(e.last_seen, s.at)
       FROM l, s
