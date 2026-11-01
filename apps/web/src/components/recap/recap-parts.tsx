@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
+import { EntityChip } from "@/components/entities/entity-chip";
+import { cveIdsIn } from "@/lib/entities/name-chips";
 import { cn } from "@/lib/utils";
 
 /**
@@ -41,19 +43,41 @@ export function ConfidenceBadge({ confidence }: { confidence?: string }) {
   );
 }
 
-export function Chips({ items }: { items?: string[] }) {
+/**
+ * Daftar nama recap. Dengan `entity`, nama aktor (`intrusion-set`) menjadi chip entity; untuk
+ * `vulnerability` isinya bisa prosa ("CVE-2024-3400 (PAN-OS) ..."), jadi chip hanya untuk id CVE
+ * yang ditemukan dan prosanya tetap Badge.
+ */
+export function Chips({ items, entity }: { items?: string[]; entity?: "intrusion-set" | "vulnerability" }) {
   if (!items || !items.length) return <EmptyNote />;
   return (
     <div className="flex flex-wrap gap-1.5">
-      {items.map((v) => (
-        <Badge
-          key={v}
-          variant="outline"
-          className="border-primary/40 bg-primary/10 font-mono text-sm text-primary-text"
-        >
-          {v}
-        </Badge>
-      ))}
+      {items.map((v) => {
+        if (entity === "intrusion-set") return <EntityChip key={v} type={entity} name={v} />;
+        if (entity === "vulnerability") {
+          const ids = cveIdsIn(v);
+          if (ids.length === 1 && ids[0] === v.trim().toUpperCase()) return <EntityChip key={v} type={entity} name={ids[0]} />;
+          if (ids.length > 0) {
+            return (
+              <span key={v} className="inline-flex flex-wrap items-center gap-1.5">
+                {ids.map((id) => (
+                  <EntityChip key={id} type={entity} name={id} />
+                ))}
+                <span className="text-sm text-muted-foreground">{v}</span>
+              </span>
+            );
+          }
+        }
+        return (
+          <Badge
+            key={v}
+            variant="outline"
+            className="border-primary/40 bg-primary/10 font-mono text-sm text-primary-text"
+          >
+            {v}
+          </Badge>
+        );
+      })}
     </div>
   );
 }

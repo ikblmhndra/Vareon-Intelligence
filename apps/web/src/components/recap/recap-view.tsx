@@ -129,11 +129,11 @@ export function RecapView({ doc, hitRate }: { doc: RecapDoc; hitRate?: RecapHitR
       </Section>
 
       <Section title="Active Threat Actors">
-        <Chips items={recap.active_threat_actors} />
+        <Chips items={recap.active_threat_actors} entity="intrusion-set" />
       </Section>
 
       <Section title="Notable CVEs">
-        <Chips items={recap.notable_cves} />
+        <Chips items={recap.notable_cves} entity="vulnerability" />
       </Section>
 
       <Section title={`Active Campaigns (${(recap.active_campaigns ?? []).length})`}>

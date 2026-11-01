@@ -51,10 +51,14 @@ const COUNT_LABEL: Record<string, string> = {
   new_threat_actors: "New threat actors",
 };
 
-const NEW_THIS_WEEK: { key: "threat_actors" | "campaigns" | "cves"; label: string }[] = [
-  { key: "threat_actors", label: "Threat actors" },
+const NEW_THIS_WEEK: {
+  key: "threat_actors" | "campaigns" | "cves";
+  label: string;
+  entity?: "intrusion-set" | "vulnerability";
+}[] = [
+  { key: "threat_actors", label: "Threat actors", entity: "intrusion-set" },
   { key: "campaigns", label: "Campaigns" },
-  { key: "cves", label: "CVEs" },
+  { key: "cves", label: "CVEs", entity: "vulnerability" },
 ];
 
 /** Sel tabel yang lebih rapat dari default `ui/table` (halaman ini padat). Di bawah `sm` lebih
@@ -131,10 +135,10 @@ export function ComparisonBlock({ comparison }: { comparison: RecapComparison })
 
       <div className="mt-3 mb-1.5 text-sm font-semibold text-muted-foreground">New this week</div>
       <div className="space-y-2">
-        {NEW_THIS_WEEK.map(({ key, label }) => (
+        {NEW_THIS_WEEK.map(({ key, label, entity }) => (
           <div key={key} className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:gap-3">
             <span className="w-28 shrink-0 text-xs text-muted-foreground">{label}</span>
-            <Chips items={fresh[key]} />
+            <Chips items={fresh[key]} entity={entity} />
           </div>
         ))}
       </div>
