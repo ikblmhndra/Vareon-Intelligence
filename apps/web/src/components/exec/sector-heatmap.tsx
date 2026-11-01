@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api/client";
-import { EntityChipList } from "@/components/entities/entity-chip";
+import { EntityChip, EntityChipList } from "@/components/entities/entity-chip";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { ExecDashboardV2 } from "@/lib/api/loose-types";
 import { actorChips } from "@/lib/entities/article-refs";
@@ -43,8 +43,8 @@ export function SectorHeatmap({ d }: { d: ExecDashboardV2 }) {
           <tbody>
             {d.sector_heatmap.map((row) => (
               <tr key={row.sector}>
-                <td className="px-2 py-1 font-mono whitespace-nowrap text-muted-foreground">
-                  {toTitleCase(row.sector)}
+                <td className="px-2 py-1 whitespace-nowrap">
+                  <EntityChip type="identity" name={row.sector} label={toTitleCase(row.sector)} className="max-w-40" />
                 </td>
                 {row.months.map((cell) => {
                   const intensity = hmax > 0 ? cell.count / hmax : 0;

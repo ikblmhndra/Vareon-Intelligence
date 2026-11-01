@@ -220,7 +220,9 @@ export function RansomwareCard({ days, className }: { days: number | null; class
         {groups.map((g) => (
           <li key={g.name} className="flex flex-col gap-1">
             <div className="flex items-baseline justify-between gap-3 text-sm">
-              <span className="min-w-0 truncate text-foreground">{g.name}</span>
+              <span className="min-w-0">
+                <EntityChip type="intrusion-set" name={g.name} />
+              </span>
               <span className="font-code text-muted-foreground tabular-nums">{g.count}</span>
             </div>
             <div className="h-2 rounded-full bg-background">
@@ -252,24 +254,25 @@ export function CveExposureCard({ days, className }: { days: number | null; clas
           ) : (
             <ul className="flex flex-col divide-y divide-border/70">
               {items.map((c) => (
-                <li key={c.cve_id}>
-                  <Link
-                    href={`/cve?search=${encodeURIComponent(c.cve_id)}`}
-                    className="flex items-start gap-3 py-2.5 first:pt-0 hover:bg-muted/50"
-                  >
-                    {c.cisa_kev ? (
-                      <Badge variant="destructive">KEV</Badge>
-                    ) : (
-                      <Badge variant="secondary">{c.cvss != null ? c.cvss.toFixed(1) : "—"}</Badge>
-                    )}
-                    <span className="min-w-0 flex-1">
-                      <span className="font-code block truncate text-sm text-foreground">{c.cve_id}</span>
-                      <span className="block truncate text-xs text-muted-foreground">
-                        {c.tech ?? "—"} · CVSS {c.cvss != null ? c.cvss.toFixed(1) : "—"} ·{" "}
-                        {c.ticket_id ? `tiket ${c.ticket_age_days ?? 0}h` : "tanpa tiket"}
-                      </span>
+                <li key={c.cve_id} className="flex items-start gap-3 py-2.5 first:pt-0 hover:bg-muted/50">
+                  {c.cisa_kev ? (
+                    <Badge variant="destructive">KEV</Badge>
+                  ) : (
+                    <Badge variant="secondary">{c.cvss != null ? c.cvss.toFixed(1) : "—"}</Badge>
+                  )}
+                  <span className="min-w-0 flex-1">
+                    {/* Chip di luar tautan baris: tautan di dalam tautan tidak valid. */}
+                    <span className="block">
+                      <EntityChip type="vulnerability" name={c.cve_id} />
                     </span>
-                  </Link>
+                    <Link
+                      href={`/cve?search=${encodeURIComponent(c.cve_id)}`}
+                      className="block truncate text-xs text-muted-foreground hover:underline"
+                    >
+                      {c.tech ?? "—"} · CVSS {c.cvss != null ? c.cvss.toFixed(1) : "—"} ·{" "}
+                      {c.ticket_id ? `tiket ${c.ticket_age_days ?? 0}h` : "tanpa tiket"}
+                    </Link>
+                  </span>
                 </li>
               ))}
             </ul>
