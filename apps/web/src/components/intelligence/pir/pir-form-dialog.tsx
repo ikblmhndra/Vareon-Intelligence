@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import type { components } from "@/lib/api/schema";
 import { MultiSelectField } from "@/components/intelligence/pir/multi-select-field";
+import { EntityAutocomplete } from "@/components/entities/entity-autocomplete";
 
 type PIROut = components["schemas"]["PIROut"];
 
@@ -44,6 +45,7 @@ export function PirFormDialog({ pir, open, onClose, onSaved }: PirFormDialogProp
   const [endDate, setEndDate] = useState(pir?.end_date ?? "");
   const [keywords, setKeywords] = useState((pir?.criteria.keywords ?? []).join(", "));
   const [threatActors, setThreatActors] = useState<string[]>(pir?.criteria.threat_actors ?? []);
+  const [malware, setMalware] = useState<string[]>(pir?.criteria.malware ?? []);
   const [industries, setIndustries] = useState<string[]>(pir?.criteria.industries ?? []);
   const [countries, setCountries] = useState<string[]>(pir?.criteria.countries ?? []);
   const [newsTypes, setNewsTypes] = useState<string[]>(pir?.criteria.news_types ?? []);
@@ -68,8 +70,7 @@ export function PirFormDialog({ pir, open, onClose, onSaved }: PirFormDialogProp
     try {
       const criteria = {
         threat_actors: threatActors,
-        // Field Malware belum ada di form (Task 11); nilai lama dibawa agar tidak terhapus saat simpan.
-        malware: pir?.criteria.malware ?? [],
+        malware,
         industries,
         countries,
         news_types: newsTypes,
@@ -187,19 +188,16 @@ export function PirFormDialog({ pir, open, onClose, onSaved }: PirFormDialogProp
           <div className="border-t border-border pt-3">
             <p className="mb-2 text-sm font-semibold text-muted-foreground">Match Criteria</p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <MultiSelectField label="Threat Actors" options={toOptions(opts?.threat_actors ?? [])} selected={threatActors} onChange={setThreatActors} />
-              <MultiSelectField label="Industries" options={toOptions(opts?.industries ?? [])} selected={industries} onChange={setIndustries} />
-              <MultiSelectField label="Countries" options={toOptions(opts?.countries ?? [])} selected={countries} onChange={setCountries} />
+              <EntityAutocomplete label="Threat Actors" types={["intrusion-set"]} value={threatActors} onChange={setThreatActors} />
+              <EntityAutocomplete label="Malware and tools" types={["malware", "tool"]} value={malware} onChange={setMalware} />
+              <EntityAutocomplete label="Industries" types={["identity"]} identityClass="class" value={industries} onChange={setIndustries} />
+              {/* Negara disimpan sebagai kode ISO (sama seperti opsi lama), TTP sebagai id teknik. */}
+              <EntityAutocomplete label="Countries" types={["location"]} store="external_id" value={countries} onChange={setCountries} />
               <MultiSelectField label="News Types" options={toOptions(opts?.news_types ?? [])} selected={newsTypes} onChange={setNewsTypes} />
-              <MultiSelectField
-                label="TTPs"
-                options={(opts?.ttps ?? []).map((t) => ({ value: t.id, label: `${t.id} — ${t.name}` }))}
-                selected={ttps}
-                onChange={setTtps}
-              />
+              <EntityAutocomplete label="TTPs" types={["attack-pattern"]} store="external_id" value={ttps} onChange={setTtps} />
               <div className="flex flex-col gap-1">
-                <Label className="text-sm font-medium text-muted-foreground">Keywords (comma-separated)</Label>
-                <Input value={keywords} onChange={(e) => setKeywords(e.target.value)} className="text-xs" />
+                <Label htmlFor="pir-keywords" className="text-sm font-medium text-muted-foreground">Keywords (comma-separated)</Label>
+                <Input id="pir-keywords" value={keywords} onChange={(e) => setKeywords(e.target.value)} className="text-xs" />
               </div>
             </div>
           </div>

@@ -8,6 +8,7 @@ import type { components } from "@/lib/api/schema";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -41,6 +42,11 @@ const EXPIRY_ITEMS: Record<string, string> = {
   "90": "90 days",
   never: "Never",
 };
+
+const SCOPE_ITEMS: { value: string; help: string }[] = [
+  { value: "indicators:read", help: "IOC feed and the TAXII \u201cindicators\u201d collection" },
+  { value: "intel:read", help: "Entities, relationships, reports and the TAXII \u201cintel\u201d collection" },
+];
 
 const STATUS_CLASS: Record<string, string> = {
   active: "bg-success/10 text-success-text",
@@ -109,6 +115,7 @@ export function ApiTokensSection() {
                 <TableHead>Name</TableHead>
                 <TableHead>Token</TableHead>
                 <TableHead>Max TLP</TableHead>
+                <TableHead>Scopes</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Created</TableHead>
                 <TableHead>Expires</TableHead>
@@ -125,6 +132,15 @@ export function ApiTokensSection() {
                     <TableCell className="font-code text-xs text-muted-foreground">{t.token_prefix}…</TableCell>
                     <TableCell className="font-code text-xs">
                       {TLP_ITEMS[t.max_tlp] ?? t.max_tlp}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {t.scopes.map((sc) => (
+                          <Badge key={sc} variant="outline" className="font-code text-xs">
+                            {sc}
+                          </Badge>
+                        ))}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-1">
@@ -211,6 +227,8 @@ function CreateForm({
   const [name, setName] = useState("");
   const [maxTlp, setMaxTlp] = useState<Tlp>("clear");
   const [expiry, setExpiry] = useState("365");
+  const [scopes, setScopes] = useState<string[]>(["indicators:read"]);
+  const [scopeError, setScopeError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // gcTime 0: token mentah tidak boleh tinggal di MutationCache setelah form unmount.
@@ -222,6 +240,7 @@ function CreateForm({
           name: name.trim(),
           max_tlp: maxTlp,
           expires_in_days: expiry === "never" ? null : Number(expiry),
+          scopes,
         },
       });
       await failIfNotOk(response);
@@ -234,7 +253,9 @@ function CreateForm({
 
   function handleSave() {
     setError(null);
+    setScopeError(null);
     if (!name.trim()) return setError("Name is required.");
+    if (scopes.length === 0) return setScopeError("Select at least one scope.");
     mutation.mutate();
   }
 
@@ -283,6 +304,31 @@ function CreateForm({
             </SelectContent>
           </Select>
         </div>
+        <fieldset className="space-y-1.5" aria-describedby={scopeError ? "api-token-scope-error" : undefined}>
+          <legend className="text-sm font-medium text-muted-foreground">Scopes</legend>
+          {SCOPE_ITEMS.map((sc) => (
+            <div key={sc.value} className="flex items-start gap-2">
+              <Checkbox
+                id={`api-token-scope-${sc.value}`}
+                aria-label={sc.value}
+                checked={scopes.includes(sc.value)}
+                onCheckedChange={(on) =>
+                  setScopes((cur) => (on ? [...cur, sc.value] : cur.filter((x) => x !== sc.value)))
+                }
+                className="mt-0.5"
+              />
+              <Label htmlFor={`api-token-scope-${sc.value}`} className="flex flex-col items-start gap-0.5">
+                <span className="font-code text-xs">{sc.value}</span>
+                <span className="text-2xs font-normal text-muted-foreground">{sc.help}</span>
+              </Label>
+            </div>
+          ))}
+          {scopeError && (
+            <p id="api-token-scope-error" className="text-xs text-destructive">
+              {scopeError}
+            </p>
+          )}
+        </fieldset>
         {error && <p className="text-xs text-destructive">{error}</p>}
       </div>
       <DialogFooter>
