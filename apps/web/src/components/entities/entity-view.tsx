@@ -11,7 +11,7 @@ import { EntityCvesTab } from "@/components/entities/entity-cves-tab";
 import { EntityHero } from "@/components/entities/entity-hero";
 import { EntityIndicatorsTab } from "@/components/entities/entity-indicators-tab";
 import { EntityOverviewTab, useEntityTimeline } from "@/components/entities/entity-overview-tab";
-import { EntityRelationshipsTab } from "@/components/entities/entity-relationships-tab";
+import { EntityRelationshipsTab, useEntityRelationships } from "@/components/entities/entity-relationships-tab";
 import { EntityStoriesTab } from "@/components/entities/entity-stories-tab";
 import { EntityTimelineChart } from "@/components/entities/entity-timeline-chart";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -85,6 +85,10 @@ export function EntityView({ id }: { id: number }) {
     },
   });
 
+  // Badge jumlah Relationships; kunci sama dengan tab/ringkasan, jadi satu request.
+  const relationships = useEntityRelationships(id, entity != null && entity.merged_into_id == null);
+  const relCount = relationships.data?.relationships.length;
+
   const mergedInto = entity?.merged_into_id ?? null;
   const tabParam = params.get("tab");
   useEffect(() => {
@@ -96,15 +100,15 @@ export function EntityView({ id }: { id: number }) {
   const tabs = useMemo<TabPillItem<TabKey>[]>(() => {
     const items: TabPillItem<TabKey>[] = [
       { value: "overview", label: "Overview" },
-      { value: "relationships", label: "Relationships" },
-      { value: "stories", label: "Stories" },
-      { value: "indicators", label: "Indicators" },
-      { value: "cves", label: "CVEs" },
+      { value: "relationships", label: "Relationships", count: relCount },
+      { value: "stories", label: "Stories", count: totals.data?.stories },
+      { value: "indicators", label: "Indicators", count: totals.data?.indicators },
+      { value: "cves", label: "CVEs", count: totals.data?.cves },
       { value: "timeline", label: "Timeline" },
     ];
     if (entity && ATTACK_TYPES.has(entity.type)) items.push({ value: "attack", label: "ATT&CK" });
     return items;
-  }, [entity]);
+  }, [entity, relCount, totals.data]);
 
   if (detail.isPending || mergedInto != null) {
     return (
@@ -173,7 +177,7 @@ export function EntityView({ id }: { id: number }) {
       <EntityHero entity={entity} totals={totals.data ?? {}} />
       <TabPills items={tabs} value={tab} onChange={setTab} aria-label="Entity sections" />
       <div role="tabpanel">
-        {tab === "overview" && <EntityOverviewTab entity={entity} />}
+        {tab === "overview" && <EntityOverviewTab entity={entity} onViewAllRelationships={() => setTab("relationships")} />}
         {tab === "relationships" && <EntityRelationshipsTab entity={entity} />}
         {tab === "stories" && <EntityStoriesTab entity={entity} />}
         {tab === "indicators" && <EntityIndicatorsTab entity={entity} />}

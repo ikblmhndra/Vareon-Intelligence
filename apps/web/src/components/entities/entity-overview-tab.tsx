@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { EntityChip, type EntityChipItem } from "@/components/entities/entity-chip";
+import { EntityRelationshipsSummary } from "@/components/entities/entity-relationships-tab";
 import { EntityTimelineChart } from "@/components/entities/entity-timeline-chart";
 import { MindmapWidget } from "@/components/mindmap/mindmap-widget";
 import { Button } from "@/components/ui/button";
@@ -17,7 +18,8 @@ import { relativeTime } from "@/lib/cve/freshness";
 type EntityDetail = components["schemas"]["EntityDetail"];
 
 type Obj = Record<string, unknown>;
-const obj = (v: unknown): Obj => (v && typeof v === "object" && !Array.isArray(v) ? (v as Obj) : {});
+const obj = (v: unknown): Obj =>
+  v && typeof v === "object" && !Array.isArray(v) ? (v as Obj) : {};
 const str = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 const strs = (v: unknown): string[] =>
   Array.isArray(v)
@@ -105,7 +107,11 @@ function AboutCard({ entity }: { entity: EntityDetail }) {
             onClick={() => generate.mutate()}
           >
             <Sparkles aria-hidden />
-            {generate.isPending ? "Generating..." : hasProfile ? "Regenerate profile" : "Generate profile"}
+            {generate.isPending
+              ? "Generating..."
+              : hasProfile
+                ? "Regenerate profile"
+                : "Generate profile"}
           </Button>
         )}
       </div>
@@ -159,30 +165,42 @@ function AboutCard({ entity }: { entity: EntityDetail }) {
   );
 }
 
-export function EntityOverviewTab({ entity }: { entity: EntityDetail }) {
+export function EntityOverviewTab({
+  entity,
+  onViewAllRelationships,
+}: {
+  entity: EntityDetail;
+  onViewAllRelationships: () => void;
+}) {
   const timeline = useEntityTimeline(entity.id);
   const last12 = timeline.data?.slice(-12) ?? [];
   return (
-    <div className="space-y-4">
-      <AboutCard entity={entity} />
-      <section className="surface-raised space-y-3 rounded-xl p-5" aria-labelledby="entity-mentions">
-        <h2 id="entity-mentions" className="text-base font-semibold">
-          Mentions per month{" "}
-          <span className="text-xs font-normal text-muted-foreground">last 12 months</span>
-        </h2>
-        {timeline.isPending ? (
-          <Skeleton className="h-44 w-full" />
-        ) : timeline.isError ? (
-          <p role="alert" className="text-sm text-destructive">
-            Could not load the timeline.
-          </p>
-        ) : (
-          <EntityTimelineChart months={last12} />
+    <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+      <div className="min-w-0 space-y-4">
+        <AboutCard entity={entity} />
+        <section
+          className="surface-raised space-y-3 rounded-xl p-5"
+          aria-labelledby="entity-mentions"
+        >
+          <h2 id="entity-mentions" className="text-base font-semibold">
+            Mentions per month{" "}
+            <span className="text-xs font-normal text-muted-foreground">last 12 months</span>
+          </h2>
+          {timeline.isPending ? (
+            <Skeleton className="h-44 w-full" />
+          ) : timeline.isError ? (
+            <p role="alert" className="text-sm text-destructive">
+              Could not load the timeline.
+            </p>
+          ) : (
+            <EntityTimelineChart months={last12} />
+          )}
+        </section>
+        {entity.type === "intrusion-set" && (
+          <MindmapWidget featureType="threat_actor" docId={entity.name} title={entity.name} />
         )}
-      </section>
-      {entity.type === "intrusion-set" && (
-        <MindmapWidget featureType="threat_actor" docId={entity.name} title={entity.name} />
-      )}
+      </div>
+      <EntityRelationshipsSummary entity={entity} onViewAll={onViewAllRelationships} />
     </div>
   );
 }
