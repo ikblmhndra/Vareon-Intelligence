@@ -29,7 +29,7 @@ import structlog
 from cti_core.db.models.article import Article
 from cti_core.db.repositories.article import AsyncArticleRepo, all_country_codes, ttp_refs
 from cti_core.db.repositories.article_cve import AsyncArticleCveRepo
-from cti_core.db.repositories.entity import ACTOR, SECTOR, name_keys_async
+from cti_core.db.repositories.entity import ACTOR, MALWARE_TYPES, SECTOR, name_keys_async
 from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from cti_core.db.repositories.pir import AsyncPIRRepo
 from cti_core.db.repositories.source_reliability import AsyncSourceReliabilityRepo
@@ -158,6 +158,8 @@ def _article_to_dict(articles: list[Article], ratings: dict[str, Any]) -> list[d
                 # dibandingin ke `criteria.countries` PIR, yang match role apa pun).
                 "countries": all_country_codes(a),
                 "ttps": ttp_refs(a),
+                # Malware dan tool digabung: kriteria PIR `malware` mencocokkan keduanya.
+                "malware": a.entity_names(*MALWARE_TYPES),
             }
         )
     return out
@@ -275,6 +277,7 @@ def _build_campaign_groups(
         ta_counter: Counter[str] = Counter()
         ind_counter: Counter[str] = Counter()
         ctr_counter: Counter[str] = Counter()
+        mal_counter: Counter[str] = Counter()
         tech_set: set[str] = set()
         attack_techniques: list[str] = []
         cve_set: set[str] = set()
@@ -294,6 +297,8 @@ def _build_campaign_groups(
                 ind_counter[ind] += 1
             for ctr in a.get("countries", []):
                 ctr_counter[ctr] += 1
+            for mal in a.get("malware", []):
+                mal_counter[mal] += 1
             for ttp in a.get("ttps", []):
                 # legacy: `ttp.get("name", "")` doang -- `or ttp.get("id")`
                 # fallback DITAMBAHIN (bukan literal port) buat jaga-jaga
@@ -334,6 +339,8 @@ def _build_campaign_groups(
                 "dominant_tas": dominant_tas,
                 "dominant_industries": dominant_industries,
                 "dominant_countries": dominant_countries,
+                # Sementara, hanya untuk `_match_pirs` (dibuang di sana): bukan bagian respons.
+                "_malware": [m for m, _ in mal_counter.most_common(5)],
                 "attack_techniques": attack_techniques[:20],
                 "kill_chain": campaign_analysis.analyze_kill_chain(attack_techniques),
                 "iocs": iocs[:50],
@@ -365,9 +372,9 @@ async def _match_pirs(
     `_match_pirs()`. PIR aktif DI-SCOPE `client_id` (beda dari
     `AsyncPIRRepo.list_active_unscoped()` yang lintas client).
 
-    P7c: aktor dan industri dicocokkan lewat `entity_aliases` (`NameKeys`, spec 5.1) -- kriteria
-    "apt36" cocok dengan cluster "Transparent Tribe", label industri lama cocok dengan nama
-    sektor; nama tak dikenal tetap cocok case-insensitive."""
+    P7c: aktor, industri, dan malware (+ tool) dicocokkan lewat `entity_aliases` (`NameKeys`,
+    spec 5.1) -- kriteria "apt36" cocok dengan cluster "Transparent Tribe", label industri lama
+    cocok dengan nama sektor; nama tak dikenal tetap cocok case-insensitive."""
     pirs = await AsyncPIRRepo(session).list_active_by_client(client_id)
     crits = [pir.criteria or {} for pir in pirs]
     ta_keys = await name_keys_async(
@@ -387,8 +394,26 @@ async def _match_pirs(
         ],
     )
 
+    # Malware dan tool = dua tipe entity; kunci "entity" dari tipe mana pun menang atas kunci nama.
+    mal_key_sets = [
+        await name_keys_async(
+            session,
+            t,
+            [
+                *(m for c in clusters for m in c.get("_malware", [])),
+                *(m for crit in crits for m in crit.get("malware", [])),
+            ],
+        )
+        for t in MALWARE_TYPES
+    ]
+
+    def mal_keys(name: str) -> tuple[str, int | str]:
+        keys = [ks(name) for ks in mal_key_sets]
+        return next((k for k in keys if k[0] == "entity"), keys[0])
+
     for cluster in clusters:
         tas = {ta_keys(t) for t in cluster.get("dominant_tas", [])}
+        mals = {mal_keys(m) for m in cluster.pop("_malware", [])}
         inds = {ind_keys(i) for i in cluster.get("dominant_industries", [])}
         ctrs = {c.lower() for c in cluster.get("dominant_countries", [])}
 
@@ -397,7 +422,8 @@ async def _match_pirs(
             pir_tas = {ta_keys(t) for t in crit.get("threat_actors", [])}
             pir_inds = {ind_keys(i) for i in crit.get("industries", [])}
             pir_ctrs = {c.lower() for c in crit.get("countries", [])}
-            if (tas & pir_tas) or (inds & pir_inds) or (ctrs & pir_ctrs):
+            pir_mals = {mal_keys(m) for m in crit.get("malware", [])}
+            if (tas & pir_tas) or (inds & pir_inds) or (ctrs & pir_ctrs) or (mals & pir_mals):
                 matched.append(
                     {
                         "id": pir.id,
