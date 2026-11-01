@@ -66,6 +66,12 @@ clusters, diamond model, kill chain, geopolitical.
 
 ## 4. Pages
 
+Approved visual reference (2026-11-01, user-approved after a ui-ux-pro-max pass):
+`docs/superpowers/specs/2026-11-01-p7c2-mockup.html` (chip anatomy, list, entity page with burgundy
+hero header and KPIs, dialogs, 375 px dark). The hero KPIs read `total` from the stories,
+indicators and CVEs sub-list endpoints (limit 1) plus `mentions_30d` / `last_seen` from the
+detail; the list's trend arrow compares `mentions_30d` with `mentions_90d / 3` (no new API).
+
 As parent spec 7.1, with these specifics:
 
 - **`/intelligence/entities`**: tabs as `TabPills` with the tab in the URL (`?type=`), search

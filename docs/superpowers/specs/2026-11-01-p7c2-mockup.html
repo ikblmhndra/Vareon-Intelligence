@@ -1,0 +1,434 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>P7c-2 entity mockup</title>
+<link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root,.light{--background:#fff;--foreground:#2b0d19;--surface:#f6efe6;--panel:#f0e7db;--primary:#d0002f;--primary-fg:#fff;--primary-text:#a8001f;--muted:#6b4452;--border:#e3d6c6;--success-text:#0f5c32;--warning-text:#7d3b00;--hero:#430a23;--hero-fg:#f6ede4;--hero-muted:#e6cfd6;--hero-eyebrow:#fbbfa1;--hero-panel:rgb(0 0 0/.18);--overlay:rgb(15 7 11/.4);--focus:rgb(208 0 47/.7);--c-actor:#7a3a5a;--c-mal:#b04a00;--c-tech:#256a8a;--c-vuln:#b42318;--c-sector:#17703f;--c-country:#6b4a9e;--c-camp:#0f766e;--shadow:0 1px 2px 0 rgb(67 10 35/.06),0 1px 3px 0 rgb(67 10 35/.08);--ring7:rgb(43 13 25/.07)}
+.dark{--background:#0f070b;--foreground:#f6ede4;--surface:#231320;--panel:#33202f;--primary:#ff4d6d;--primary-fg:#0f070b;--primary-text:#ff4d6d;--muted:#bfa7b3;--border:#55344a;--success-text:#76ce93;--warning-text:#ffa164;--c-actor:#e08fb5;--c-mal:#ffa164;--c-tech:#92bbd1;--c-vuln:#ff8a7e;--c-sector:#76ce93;--c-country:#c9b0f0;--c-camp:#5eead4;--ring7:rgb(246 237 228/.07)}
+*{box-sizing:border-box}
+body{margin:0;background:#e6ddd3;font-family:"Google Sans Flex","Google Sans",system-ui,sans-serif;color:var(--foreground);font-size:14px;font-feature-settings:"tnum" 1}
+body.alldark{background:#000}
+.lead{max-width:1440px;margin:22px auto 6px;padding:0 16px;display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+.lead b{font-size:15px;color:#2b0d19}.alldark .lead b{color:#f6ede4}
+.lead span{font-size:12.5px;color:#6b4452}.alldark .lead span{color:#bfa7b3}
+.frame{max-width:1440px;margin:0 auto 26px;background:var(--background);color:var(--foreground);border-radius:12px;overflow:hidden;box-shadow:0 6px 20px rgb(67 10 35/.14)}
+.app{display:grid;grid-template-columns:220px minmax(0,1fr)}
+.side{border-right:1px solid var(--border);padding:18px 12px;min-height:780px}
+.logo{display:flex;gap:10px;align-items:center;font-weight:700;line-height:1.15;margin:0 6px 24px}
+.logo .v{width:34px;height:34px;border-radius:50%;background:var(--primary);color:var(--primary-fg);display:grid;place-items:center}
+.nav a{display:flex;gap:10px;align-items:center;padding:9px 12px;border-radius:999px;font-size:13.5px;margin-bottom:2px;color:inherit}
+.nav a.on{background:var(--primary);color:var(--primary-fg)}
+.top{height:50px;border-bottom:1px solid var(--border);display:flex;justify-content:flex-end;align-items:center;gap:20px;padding:0 24px;font-size:13px}
+.main{padding:22px 28px 34px;min-width:0}
+svg.lucide{width:16px;height:16px;stroke-width:1.8;flex:none}
+.crumb{font-size:12.5px;color:var(--muted);display:flex;gap:6px;align-items:center;margin-bottom:10px}
+.bar{width:26px;height:3px;background:var(--primary);border-radius:2px;margin-bottom:10px}
+h1{font-size:30px;line-height:1.15;margin:0;font-weight:700;letter-spacing:-.01em;text-wrap:balance}
+h2{font-size:16px;margin:0;font-weight:600}
+.desc{color:var(--muted);margin:6px 0 16px}
+.subnav{display:flex;gap:6px;overflow-x:auto;padding-bottom:12px;border-bottom:1px solid var(--border);margin-bottom:18px}
+.tp{padding:7px 13px;border-radius:999px;background:var(--surface);border:1px solid var(--border);font-size:13px;white-space:nowrap}
+.tp.on{background:color-mix(in oklab,var(--primary) 12%,var(--background));color:var(--primary-text);border-color:color-mix(in oklab,var(--primary) 35%,var(--background))}
+.raised{background:var(--surface);border-radius:16px;box-shadow:var(--shadow);outline:1px solid var(--ring7)}
+.btn{height:36px;border-radius:999px;padding:0 14px;font:inherit;font-size:13px;border:1px solid var(--border);background:var(--background);color:var(--foreground);display:inline-flex;gap:6px;align-items:center;white-space:nowrap;cursor:pointer}
+.btn:hover{background:var(--panel)}
+.btn.pri{background:var(--primary);border-color:var(--primary);color:var(--primary-fg)}
+.btn.sm{height:28px;padding:0 10px;font-size:12px}
+.btn.ghost{border-color:transparent;background:transparent}
+.btn.ghost:hover{background:var(--panel)}
+.field label{display:block;font-size:12px;font-weight:500;margin-bottom:5px}
+.input{height:36px;border-radius:999px;border:1px solid var(--border);background:var(--panel);display:flex;align-items:center;gap:8px;padding:0 12px;font-size:13px;color:var(--muted);min-width:280px}
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:999px;padding:2px;background:var(--panel)}
+.seg span{padding:5px 12px;border-radius:999px;font-size:12.5px}
+.seg span.on{background:var(--background);box-shadow:var(--shadow);font-weight:500}
+.switch{display:inline-flex;align-items:center;gap:8px;font-size:12.5px}
+.switch i{width:30px;height:18px;border-radius:999px;background:var(--border);position:relative;display:inline-block}
+.switch i:after{content:"";position:absolute;width:14px;height:14px;border-radius:50%;background:var(--background);top:2px;left:2px}
+.typetabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin-bottom:14px;overflow-x:auto}
+.tt{display:flex;gap:7px;align-items:center;padding:10px 14px;font-size:13.5px;color:var(--muted);border-bottom:2px solid transparent;white-space:nowrap}
+.tt.on{color:var(--foreground);border-color:var(--primary);font-weight:600}
+.tt .dot{width:8px;height:8px;border-radius:2px}
+table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
+thead th{position:sticky;top:0;background:var(--panel);font-size:11px;letter-spacing:.06em;text-transform:uppercase;text-align:left;padding:11px 14px;font-weight:600;color:var(--muted)}
+thead th:first-child{border-top-left-radius:16px}thead th:last-child{border-top-right-radius:16px}
+tbody td{padding:10px 14px;border-top:1px solid var(--border);vertical-align:middle}
+tbody tr:hover td{background:color-mix(in oklab,var(--panel) 60%,transparent)}
+.r{text-align:right}
+.code{font-family:"IBM Plex Mono",monospace;font-size:12px}
+.muted{color:var(--muted)}
+.chip{display:inline-flex;align-items:center;gap:6px;height:26px;max-width:260px;padding:0 9px 0 7px;border-radius:8px;background:var(--background);border:1px solid var(--border);font-size:12.5px;color:var(--foreground);white-space:nowrap;vertical-align:middle;cursor:pointer}
+.chip:hover{border-color:var(--primary)}
+.chip:focus-visible{outline:3px solid var(--focus);outline-offset:1px}
+.chip .t{overflow:hidden;text-overflow:ellipsis;min-width:0}
+.chip svg{width:14px;height:14px}
+.k-actor{color:var(--c-actor)}.k-mal{color:var(--c-mal)}.k-tech{color:var(--c-tech)}.k-vuln{color:var(--c-vuln)}.k-sector{color:var(--c-sector)}.k-country{color:var(--c-country)}.k-camp{color:var(--c-camp)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.more{height:26px;padding:0 9px;border-radius:8px;border:1px dashed var(--border);background:transparent;font:inherit;font-size:12px;color:var(--muted);cursor:pointer}
+.tag{display:inline-flex;align-items:center;height:22px;padding:0 8px;border-radius:999px;font-size:11.5px;border:1px solid var(--border);background:var(--background);color:var(--muted);white-space:nowrap}
+.up{color:var(--success-text);display:inline-flex;align-items:center;gap:2px;font-size:11.5px}
+.down{color:var(--muted);display:inline-flex;align-items:center;gap:2px;font-size:11.5px}
+.watch.on{color:var(--primary-text);border-color:color-mix(in oklab,var(--primary) 35%,var(--background));background:color-mix(in oklab,var(--primary) 8%,var(--background))}
+.sync{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:10px;align-items:center;padding:12px 14px;margin-bottom:14px}
+.sync div b{display:block;font-size:15px}
+.ok{color:var(--success-text)}
+.hero{background:var(--hero);color:var(--hero-fg);border-radius:18px;padding:22px 24px;position:relative}
+.hero .eyebrow{color:var(--hero-eyebrow);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;display:flex;gap:8px;align-items:center}
+.hero h1{color:var(--hero-fg);font-size:34px;margin:6px 0 10px}
+.hero .meta{color:var(--hero-muted);font-size:13px}
+.hero .al{display:inline-flex;align-items:center;height:24px;padding:0 9px;border-radius:999px;background:var(--hero-panel);color:var(--hero-fg);font-size:12px;margin:0 6px 6px 0;white-space:nowrap}
+.hero .btn{background:transparent;color:var(--hero-fg);border-color:rgb(246 237 228/.35)}
+.hero .btn:hover{background:var(--hero-panel)}
+.hero .btn.on{background:var(--hero-fg);color:var(--hero);border-color:var(--hero-fg)}
+.kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-top:16px}
+.kpi{background:var(--hero-panel);border-radius:12px;padding:10px 12px}
+.kpi span{display:block;font-size:11.5px;color:var(--hero-muted)}
+.kpi b{font-size:20px;font-weight:600}
+.etabs{display:flex;gap:2px;border-bottom:1px solid var(--border);margin:18px 0 16px;overflow-x:auto}
+.etabs .tt b{font-weight:500;font-size:11.5px;color:var(--muted);background:var(--panel);border-radius:999px;padding:1px 7px}
+.cols{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:16px}
+.card{padding:16px 18px}
+.card h2{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.dl{display:grid;grid-template-columns:120px minmax(0,1fr);gap:10px 12px;font-size:13px;margin:0}
+.dl dt{color:var(--muted)}
+.dl dd{margin:0}
+.prof{font-size:13.5px;line-height:1.6;margin:0 0 14px}
+.llm{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--border);padding-top:12px;margin-top:14px;font-size:12px;color:var(--muted);gap:8px}
+.co{display:grid;grid-template-columns:minmax(0,1fr) 90px auto;gap:10px;align-items:center;padding:7px 0;border-top:1px solid var(--border);font-size:12.5px}
+.co:first-of-type{border-top:0}
+.meter{height:6px;border-radius:999px;background:var(--panel);overflow:hidden}
+.meter i{display:block;height:100%;background:var(--c-actor)}
+.rel{display:grid;grid-template-columns:86px minmax(0,1fr) auto;gap:10px;align-items:center;padding:7px 0;border-top:1px solid var(--border);font-size:12.5px}
+.rel:first-of-type{border-top:0}
+.verb{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.bars{display:flex;gap:4px;align-items:flex-end;height:84px}
+.bars i{flex:1;background:var(--c-actor);border-radius:4px 4px 0 0;opacity:.9}
+.axis{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:6px}
+.menu{position:absolute;right:24px;top:62px;background:var(--surface);color:var(--foreground);border-radius:12px;box-shadow:0 6px 12px -2px rgb(67 10 35/.18);outline:1px solid var(--ring7);padding:6px;width:220px;font-size:13px;z-index:2}
+.menu div{display:flex;gap:9px;align-items:center;padding:8px 10px;border-radius:8px}
+.menu div.f{background:var(--panel)}
+.menu hr{border:0;border-top:1px solid var(--border);margin:4px 0}
+.menu .dz{color:var(--primary-text)}
+.scrim{background:var(--overlay);padding:36px;display:flex;gap:22px;justify-content:center;align-items:flex-start;flex-wrap:wrap}
+.dlg{background:var(--surface);color:var(--foreground);border-radius:18px;width:470px;max-width:100%;box-shadow:0 12px 24px -4px rgb(67 10 35/.2);overflow:hidden}
+.dlg header{padding:18px 20px 6px}
+.dlg header p{margin:4px 0 0;font-size:13px;color:var(--muted)}
+.dlg section{padding:10px 20px}
+.dlg footer{padding:14px 20px;display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--border);background:var(--panel)}
+.opt{display:flex;gap:10px;align-items:center;padding:9px 10px;border-radius:10px;font-size:13px}
+.opt.sel{background:var(--background);outline:2px solid var(--primary)}
+.mv{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.mv div{background:var(--background);border:1px solid var(--border);border-radius:12px;padding:10px;text-align:center;font-size:11.5px;color:var(--muted)}
+.mv b{display:block;font-size:20px;color:var(--foreground);font-weight:600}
+.note{display:flex;gap:8px;font-size:12.5px;background:var(--background);border:1px solid var(--border);border-radius:10px;padding:9px 11px;color:var(--muted)}
+.ck{display:flex;gap:10px;align-items:center;padding:9px 2px;border-top:1px solid var(--border);font-size:13px}
+.ck:first-of-type{border-top:0}
+.box{width:18px;height:18px;border-radius:5px;border:1.5px solid var(--muted);display:grid;place-items:center;flex:none}
+.box.x{background:var(--primary);border-color:var(--primary);color:var(--primary-fg)}
+.box svg{width:12px;height:12px;stroke-width:3}
+.tokenin{border:1px solid var(--border);background:var(--background);border-radius:12px;padding:6px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-height:40px;font-size:13px}
+.pop{margin-top:4px;background:var(--background);border-radius:12px;outline:1px solid var(--border);padding:4px;font-size:13px}
+.pop div{padding:7px 9px;border-radius:8px;display:flex;justify-content:space-between;gap:10px}
+.pop div.f{background:var(--panel)}
+.help{font-size:12px;color:var(--muted);margin-top:5px}
+.phones{display:flex;gap:26px;justify-content:center;flex-wrap:wrap;padding:26px;background:transparent}
+.phone{width:375px;border-radius:28px;overflow:hidden;background:var(--background);color:var(--foreground);box-shadow:0 8px 24px rgb(0 0 0/.25);outline:8px solid #1a1015}
+.phone .ptop{height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:1px solid var(--border)}
+.phone .pmain{padding:16px}
+.mcard{padding:12px 14px;margin-bottom:10px}
+.mrow{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.phone .hero{border-radius:16px;padding:16px}
+.phone .hero h1{font-size:26px}
+.phone .kpis{grid-template-columns:repeat(3,minmax(0,1fr))}
+.toggle{position:fixed;right:16px;bottom:16px;z-index:9}
+.legend{display:flex;gap:10px;flex-wrap:wrap;font-size:12px}
+.legend span{display:inline-flex;gap:5px;align-items:center}
+@media (max-width:900px){.app{grid-template-columns:1fr}.side{display:none}.cols{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
+</style>
+</head>
+<body>
+<button class="btn toggle" onclick="document.querySelectorAll('.frame').forEach(f=>f.classList.toggle('dark'));document.body.classList.toggle('alldark')"><i data-lucide="moon"></i> Light / dark</button>
+
+<div class="lead"><b>A. Entity chip</b><span>Satu komponen untuk semua nama. Ikon + warna per tipe, satu baris, terpotong dengan elipsis, nama lengkap di aria-label.</span></div>
+<div class="frame"><div class="main" style="padding:18px 22px">
+  <div class="chips" style="margin-bottom:12px">
+    <a class="chip" aria-label="Actor APT29"><i data-lucide="skull" class="k-actor"></i><span class="t">APT29</span></a>
+    <a class="chip" aria-label="Malware WellMess"><i data-lucide="bug" class="k-mal"></i><span class="t">WellMess</span></a>
+    <a class="chip" aria-label="Tool Cobalt Strike"><i data-lucide="wrench" class="k-mal"></i><span class="t">Cobalt Strike</span></a>
+    <a class="chip" aria-label="Technique T1566.001 Spearphishing Attachment"><i data-lucide="crosshair" class="k-tech"></i><span class="t"><span class="code">T1566.001</span> Spearphishing Attachment</span></a>
+    <a class="chip" aria-label="Vulnerability CVE-2024-3400"><i data-lucide="shield-alert" class="k-vuln"></i><span class="t code">CVE-2024-3400</span></a>
+    <a class="chip" aria-label="Campaign SolarWinds Compromise"><i data-lucide="flag" class="k-camp"></i><span class="t">SolarWinds Compromise</span></a>
+    <a class="chip" aria-label="Sector Government"><i data-lucide="landmark" class="k-sector"></i><span class="t">Government</span></a>
+    <a class="chip" aria-label="Country Indonesia"><i data-lucide="globe" class="k-country"></i><span class="t">Indonesia</span></a>
+    <a class="chip" aria-label="Victim PT Contoh Tbk"><i data-lucide="building-2" class="k-sector"></i><span class="t">PT Contoh Tbk</span></a>
+    <button class="more">+4 more</button>
+  </div>
+  <div class="legend muted"><span><i data-lucide="mouse-pointer-click"></i> Klik = halaman entity</span><span><i data-lucide="link"></i> Ada id: link langsung · Cuma nama: lewat resolve lalu redirect</span><span><i data-lucide="keyboard"></i> Fokus keyboard: cincin merah 3px</span></div>
+</div></div>
+
+<div class="lead"><b>B. Entities list</b><span>/intelligence/entities?type=intrusion-set · gantiin Threat Actor Room dan ATT&amp;CK DB</span></div>
+<div class="frame"><div class="app">
+  <aside class="side">
+    <div class="logo"><span class="v">V</span>Vareon<br>Intelligence</div>
+    <nav class="nav">
+      <a><i data-lucide="layout-grid"></i>Dashboard</a><a><i data-lucide="newspaper"></i>Newsroom</a><a><i data-lucide="shield"></i>CVE Tracker</a><a class="on"><i data-lucide="radar"></i>Intelligence</a><a><i data-lucide="gauge"></i>Exec</a><a><i data-lucide="radio"></i>X Intel</a><a><i data-lucide="clipboard-list"></i>Recap</a><a><i data-lucide="mail"></i>Newsletter</a><a><i data-lucide="bot"></i>Scrapers</a><a><i data-lucide="heart-pulse"></i>Data health</a><a><i data-lucide="settings"></i>Admin</a>
+    </nav>
+  </aside>
+  <div>
+    <div class="top">Changelog <i data-lucide="moon"></i><span>ikbal.mahendra</span></div>
+    <div class="main">
+      <div class="bar"></div>
+      <h1>Intelligence</h1>
+      <p class="desc">Threat actors, campaigns, IOCs and ATT&amp;CK, plus PIR, RFI and early warning.</p>
+      <nav class="subnav"><span class="tp">Risk Matrix</span><span class="tp">Source Reliability</span><span class="tp">Early Warning</span><span class="tp">PIR</span><span class="tp">RFI</span><span class="tp">MITRE Heatmap</span><span class="tp on">Entities</span><span class="tp">IOC Management</span><span class="tp">Campaign Clusters</span></nav>
+
+      <div class="typetabs" role="tablist">
+        <span class="tt on"><i data-lucide="skull" class="k-actor"></i>Actors</span>
+        <span class="tt"><i data-lucide="bug" class="k-mal"></i>Malware and tools</span>
+        <span class="tt"><i data-lucide="crosshair" class="k-tech"></i>Techniques</span>
+        <span class="tt"><i data-lucide="shield-alert" class="k-vuln"></i>Vulnerabilities</span>
+        <span class="tt"><i data-lucide="flag" class="k-camp"></i>Campaigns</span>
+        <span class="tt"><i data-lucide="landmark" class="k-sector"></i>Sectors</span>
+        <span class="tt"><i data-lucide="globe" class="k-country"></i>Countries</span>
+        <span class="tt"><i data-lucide="building-2" class="k-sector"></i>Victims</span>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+        <div style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap">
+          <div class="field"><label for="q">Search name or alias</label><div class="input" id="q"><i data-lucide="search"></i>cozy bear</div></div>
+          <div class="field"><label>Show</label><div class="seg"><span>All</span><span class="on">Watched</span></div></div>
+          <span class="switch" style="height:36px"><i></i>Include suppressed</span>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn"><i data-lucide="download"></i>Watchlist Navigator layer</button>
+          <button class="btn pri"><i data-lucide="plus"></i>New entity</button>
+        </div>
+      </div>
+
+      <div class="raised">
+        <table>
+          <thead><tr><th style="width:27%">Actor</th><th>Also known as</th><th style="width:9%">Source</th><th class="r" style="width:12%">Mentions 30 d</th><th class="r" style="width:8%">90 d</th><th style="width:10%">Last seen</th><th class="r" style="width:12%"><span class="sr">Watch</span></th></tr></thead>
+          <tbody>
+            <tr><td><a class="chip"><i data-lucide="skull" class="k-actor"></i><span class="t">APT29</span></a> <span class="code muted">G0016</span></td><td><div class="chips"><span class="tag">Cozy Bear</span><span class="tag">Midnight Blizzard</span><span class="tag">NOBELIUM</span><button class="more" style="height:22px">+10</button></div></td><td><span class="tag">ATT&amp;CK</span></td><td class="r"><b>42</b> <span class="up"><i data-lucide="trending-up"></i>+7%</span></td><td class="r">118</td><td>2 h ago</td><td class="r"><button class="btn sm watch on"><i data-lucide="eye"></i>Watching</button></td></tr>
+            <tr><td><a class="chip"><i data-lucide="skull" class="k-actor"></i><span class="t">Scattered Spider</span></a> <span class="code muted">G1015</span></td><td><div class="chips"><span class="tag">0ktapus</span><span class="tag">Scatter Swine</span><span class="tag">Muddled Libra</span><button class="more" style="height:22px">+1</button></div></td><td><span class="tag">ATT&amp;CK</span></td><td class="r"><b>17</b> <span class="down"><i data-lucide="trending-down"></i>−19%</span></td><td class="r">63</td><td>1 d ago</td><td class="r"><button class="btn sm"><i data-lucide="eye"></i>Watch</button></td></tr>
+            <tr><td><a class="chip"><i data-lucide="skull" class="k-actor"></i><span class="t">Transparent Tribe</span></a> <span class="code muted">G0134</span></td><td><div class="chips"><span class="tag">APT36</span><span class="tag">Mythic Leopard</span><button class="more" style="height:22px">+4</button></div></td><td><span class="tag">ATT&amp;CK</span></td><td class="r"><b>6</b> <span class="down"><i data-lucide="trending-down"></i>−14%</span></td><td class="r">21</td><td>3 d ago</td><td class="r"><button class="btn sm watch on"><i data-lucide="eye"></i>Watching</button></td></tr>
+            <tr><td><a class="chip"><i data-lucide="skull" class="k-actor"></i><span class="t">LockBit</span></a></td><td><div class="chips"><span class="tag">LockBit 3.0</span><span class="tag">LockBit Black</span></div></td><td><span class="tag">Galaxy</span></td><td class="r"><b>31</b> <span class="down"><i data-lucide="trending-down"></i>−4%</span></td><td class="r">97</td><td>5 h ago</td><td class="r"><button class="btn sm"><i data-lucide="eye"></i>Watch</button></td></tr>
+            <tr><td><a class="chip"><i data-lucide="skull" class="k-actor"></i><span class="t">Mustang Panda</span></a> <span class="code muted">G0129</span></td><td><div class="chips"><span class="tag">Bronze President</span><span class="tag">TA416</span><button class="more" style="height:22px">+7</button></div></td><td><span class="tag">ATT&amp;CK</span></td><td class="r"><b>9</b> <span class="down"><i data-lucide="trending-down"></i>−33%</span></td><td class="r">40</td><td>6 d ago</td><td class="r"><button class="btn sm"><i data-lucide="eye"></i>Watch</button></td></tr>
+          </tbody>
+        </table>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-top:1px solid var(--border);font-size:12.5px" class="muted"><span>Trend = 30 d compared with the 90 d monthly average</span><button class="btn sm">Load more</button></div>
+      </div>
+
+      <div class="lead" style="padding:0;margin:22px 0 8px"><b style="font-size:13.5px">Tab Techniques (admin only): ATT&amp;CK sync card di atas tabel</b></div>
+      <div class="raised sync">
+        <div><span class="muted" style="font-size:12px">Enterprise</span><b>v17.1 <span class="ok" style="font-size:12px;font-weight:500">· synced 2 d ago</span></b></div>
+        <div><span class="muted" style="font-size:12px">Mobile</span><b>v17.1 <span class="ok" style="font-size:12px;font-weight:500">· synced 2 d ago</span></b></div>
+        <div><span class="muted" style="font-size:12px">ICS</span><b>v17.1 <span class="ok" style="font-size:12px;font-weight:500">· synced 2 d ago</span></b></div>
+        <button class="btn"><i data-lucide="refresh-cw"></i>Sync now</button>
+      </div>
+    </div>
+  </div>
+</div></div>
+
+<div class="lead"><b>C. Entity page</b><span>/intelligence/entities/412 · header pakai band burgundy (hierarki hero &gt; raised &gt; flat), menu Actions terbuka</span></div>
+<div class="frame"><div class="app">
+  <aside class="side">
+    <div class="logo"><span class="v">V</span>Vareon<br>Intelligence</div>
+    <nav class="nav"><a><i data-lucide="layout-grid"></i>Dashboard</a><a><i data-lucide="newspaper"></i>Newsroom</a><a><i data-lucide="shield"></i>CVE Tracker</a><a class="on"><i data-lucide="radar"></i>Intelligence</a><a><i data-lucide="gauge"></i>Exec</a><a><i data-lucide="radio"></i>X Intel</a><a><i data-lucide="clipboard-list"></i>Recap</a><a><i data-lucide="mail"></i>Newsletter</a><a><i data-lucide="bot"></i>Scrapers</a><a><i data-lucide="heart-pulse"></i>Data health</a><a><i data-lucide="settings"></i>Admin</a></nav>
+  </aside>
+  <div>
+    <div class="top">Changelog <i data-lucide="moon"></i><span>ikbal.mahendra</span></div>
+    <div class="main">
+      <div class="crumb"><i data-lucide="arrow-left"></i>Entities <i data-lucide="chevron-right"></i> Actors <i data-lucide="chevron-right"></i> APT29</div>
+      <div class="hero">
+        <div style="display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap">
+          <div style="min-width:0">
+            <div class="eyebrow"><i data-lucide="skull"></i>Actor · intrusion-set <span class="code" style="letter-spacing:0">G0016</span></div>
+            <h1>APT29</h1>
+            <div><span class="al">Cozy Bear</span><span class="al">Midnight Blizzard</span><span class="al">NOBELIUM</span><span class="al">The Dukes</span><span class="al">UNC2452</span><span class="al" style="background:transparent;outline:1px dashed rgb(246 237 228/.4)">+8 aliases</span></div>
+            <div class="meta">Sources: ATT&amp;CK, MISP Galaxy · first seen 2 Mar 2021</div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:flex-start">
+            <button class="btn on"><i data-lucide="eye"></i>Watching</button>
+            <button class="btn"><i data-lucide="sparkles"></i>Regenerate profile</button>
+            <button class="btn" aria-label="More actions"><i data-lucide="ellipsis"></i>Actions</button>
+          </div>
+        </div>
+        <div class="kpis">
+          <div class="kpi"><span>Mentions, 30 days</span><b>42</b></div>
+          <div class="kpi"><span>Stories</span><b>34</b></div>
+          <div class="kpi"><span>Indicators</span><b>212</b></div>
+          <div class="kpi"><span>CVEs</span><b>9</b></div>
+          <div class="kpi"><span>Last seen</span><b>2 h ago</b></div>
+        </div>
+        <div class="menu">
+          <div class="f"><i data-lucide="pencil"></i>Edit name and description</div>
+          <div><i data-lucide="tags"></i>Manage aliases</div>
+          <div><i data-lucide="merge"></i>Merge into another actor</div>
+          <div><i data-lucide="split"></i>Split aliases</div>
+          <hr><div class="dz"><i data-lucide="eye-off"></i>Suppress</div>
+        </div>
+      </div>
+
+      <nav class="etabs">
+        <span class="tt on">Overview</span><span class="tt">Relationships <b>23</b></span><span class="tt">Stories <b>34</b></span><span class="tt">Indicators <b>212</b></span><span class="tt">CVEs <b>9</b></span><span class="tt">Timeline</span><span class="tt">ATT&amp;CK</span>
+      </nav>
+
+      <div class="cols">
+        <div style="display:grid;gap:16px;align-content:start">
+          <section class="raised card">
+            <h2>About</h2>
+            <p class="prof">Russian state-sponsored group attributed to the SVR, active since at least 2008. Targets government, diplomatic, think-tank and technology organisations, mostly in NATO and EU member states.</p>
+            <dl class="dl">
+              <dt>Motivation</dt><dd>Espionage</dd>
+              <dt>Sponsor</dt><dd><a class="chip"><i data-lucide="globe" class="k-country"></i><span class="t">Russia</span></a></dd>
+              <dt>Targets</dt><dd class="chips"><a class="chip"><i data-lucide="landmark" class="k-sector"></i><span class="t">Government</span></a><a class="chip"><i data-lucide="landmark" class="k-sector"></i><span class="t">Diplomatic</span></a><a class="chip"><i data-lucide="landmark" class="k-sector"></i><span class="t">Technology</span></a></dd>
+              <dt>Malware and tools</dt><dd class="chips"><a class="chip"><i data-lucide="bug" class="k-mal"></i><span class="t">WellMess</span></a><a class="chip"><i data-lucide="bug" class="k-mal"></i><span class="t">SUNBURST</span></a><a class="chip"><i data-lucide="wrench" class="k-mal"></i><span class="t">Cobalt Strike</span></a></dd>
+            </dl>
+            <div class="llm"><span><i data-lucide="sparkles"></i> Profile written by the LLM from 34 stories · 3 days ago</span><span>Review before sharing</span></div>
+          </section>
+          <section class="raised card">
+            <h2>Mentions per month <span class="muted" style="font-size:12px;font-weight:400">last 12 months</span></h2>
+            <div class="bars"><i style="height:30%"></i><i style="height:45%"></i><i style="height:25%"></i><i style="height:60%"></i><i style="height:40%"></i><i style="height:35%"></i><i style="height:70%"></i><i style="height:55%"></i><i style="height:50%"></i><i style="height:80%"></i><i style="height:95%"></i><i style="height:65%"></i></div>
+            <div class="axis"><span>Dec 2025</span><span>Nov 2026</span></div>
+          </section>
+        </div>
+        <div style="display:grid;gap:16px;align-content:start">
+          <section class="raised card">
+            <h2>Relationships <a class="btn sm ghost">View all 23 <i data-lucide="arrow-right"></i></a></h2>
+            <div class="rel"><span class="verb">uses</span><a class="chip"><i data-lucide="bug" class="k-mal"></i><span class="t">WellMess</span></a><span class="tag">ATT&amp;CK</span></div>
+            <div class="rel"><span class="verb">uses</span><a class="chip"><i data-lucide="crosshair" class="k-tech"></i><span class="t"><span class="code">T1566.002</span> Spearphishing Link</span></a><span class="tag">ATT&amp;CK</span></div>
+            <div class="rel"><span class="verb">targets</span><a class="chip"><i data-lucide="landmark" class="k-sector"></i><span class="t">Diplomatic</span></a><span class="tag">Analyst</span></div>
+          </section>
+          <section class="raised card">
+            <h2>Often mentioned together <span class="muted" style="font-size:12px;font-weight:400">365 days</span></h2>
+            <div class="co"><a class="chip"><i data-lucide="wrench" class="k-mal"></i><span class="t">Cobalt Strike</span></a><div><div class="meter"><i style="width:100%"></i></div><span class="muted" style="font-size:11px">14 stories</span></div><button class="btn sm" aria-label="Make relationship with Cobalt Strike"><i data-lucide="plus"></i>Relate</button></div>
+            <div class="co"><a class="chip"><i data-lucide="globe" class="k-country"></i><span class="t">Ukraine</span></a><div><div class="meter"><i style="width:78%"></i></div><span class="muted" style="font-size:11px">11 stories</span></div><button class="btn sm" aria-label="Make relationship with Ukraine"><i data-lucide="plus"></i>Relate</button></div>
+            <div class="co"><a class="chip"><i data-lucide="shield-alert" class="k-vuln"></i><span class="t code">CVE-2023-42793</span></a><div><div class="meter"><i style="width:43%"></i></div><span class="muted" style="font-size:11px">6 stories</span></div><button class="btn sm" aria-label="Make relationship with CVE-2023-42793"><i data-lucide="plus"></i>Relate</button></div>
+            <p class="help" style="margin-top:10px">Computed from shared stories. Not published to TAXII until you make it a relationship.</p>
+          </section>
+        </div>
+      </div>
+    </div>
+  </div>
+</div></div>
+
+<div class="lead"><b>D. Dialogs</b><span>Merge (pilih target, lihat yang pindah, konfirmasi), Split (alias nama asli terkunci tercentang), Make relationship</span></div>
+<div class="frame"><div class="scrim">
+  <div class="dlg">
+    <header><h2>Merge Cozy Duke</h2><p>Pick the actor that keeps the name. Cozy Duke becomes a redirect to it.</p></header>
+    <section>
+      <div class="field"><label>Merge into</label><div class="input" style="min-width:0;background:var(--background)"><i data-lucide="search"></i><span style="color:var(--foreground)">apt29</span></div></div>
+      <div style="margin-top:6px">
+        <div class="opt sel"><i data-lucide="skull" class="k-actor"></i><b>APT29</b><span class="code muted">G0016</span><span class="muted" style="margin-left:auto;font-size:12px">13 aliases</span></div>
+        <div class="opt"><i data-lucide="skull" class="k-actor"></i>APT28<span class="code muted">G0007</span><span class="muted" style="margin-left:auto;font-size:12px">16 aliases</span></div>
+      </div>
+    </section>
+    <section>
+      <div class="field"><label>What moves to APT29</label></div>
+      <div class="mv"><div><b>3</b>aliases</div><div><b>27</b>mentions</div><div><b>2</b>relationships</div><div><b>1</b>watch</div></div>
+    </section>
+    <section><div class="note"><i data-lucide="undo-2"></i>You can undo this later with Split on APT29. The change is recorded in the audit log.</div></section>
+    <footer><button class="btn">Cancel</button><button class="btn pri"><i data-lucide="merge"></i>Merge into APT29</button></footer>
+  </div>
+
+  <div class="dlg">
+    <header><h2>Split aliases from APT29</h2><p>Checked aliases and their mentions move out of APT29.</p></header>
+    <section>
+      <div class="ck"><span class="box x"><i data-lucide="check"></i></span><div style="flex:1">Cozy Duke<div class="help" style="margin:2px 0 0"><i data-lucide="lock"></i> Required: this brings back Cozy Duke, merged on 30 Oct 2026</div></div></div>
+      <div class="ck"><span class="box x"><i data-lucide="check"></i></span><span style="flex:1">CozyDuke</span><span class="tag">from merge</span></div>
+      <div class="ck"><span class="box"></span><span style="flex:1">Midnight Blizzard</span><span class="tag">ATT&amp;CK</span></div>
+      <div class="ck"><span class="box"></span><span style="flex:1">NOBELIUM</span><span class="tag">ATT&amp;CK</span></div>
+    </section>
+    <section><div class="field"><label>Result</label></div><div class="note" style="color:var(--foreground)"><i data-lucide="split"></i>Revives <b>Cozy Duke</b> with 2 aliases and 27 mentions</div></section>
+    <footer><button class="btn">Cancel</button><button class="btn pri"><i data-lucide="split"></i>Split 2 aliases</button></footer>
+  </div>
+
+  <div class="dlg">
+    <header><h2>Make relationship</h2><p>Published to TAXII “intel” as an analyst relationship.</p></header>
+    <section style="display:grid;gap:12px">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><a class="chip"><i data-lucide="skull" class="k-actor"></i><span class="t">APT29</span></a><div class="input" style="min-width:0;width:130px;background:var(--background);color:var(--foreground)">uses <i data-lucide="chevron-down" style="margin-left:auto"></i></div><a class="chip"><i data-lucide="wrench" class="k-mal"></i><span class="t">Cobalt Strike</span></a></div>
+      <div class="field"><label>Confidence (0-100)</label><div class="input" style="min-width:0;width:120px;background:var(--background);color:var(--foreground)">70</div></div>
+      <div class="field"><label>Note (optional)</label><div class="input" style="min-width:0;border-radius:12px;height:56px;align-items:flex-start;padding-top:8px;background:var(--background)">Seen as second stage in 14 stories since March</div></div>
+    </section>
+    <footer><button class="btn">Cancel</button><button class="btn pri"><i data-lucide="plus"></i>Create relationship</button></footer>
+  </div>
+</div></div>
+
+<div class="lead"><b>E. Fitur lain</b><span>Modal artikel Newsroom (chip gantiin badge polos) · form PIR (autocomplete alias + kriteria malware baru) · Admin API tokens</span></div>
+<div class="frame"><div class="scrim">
+  <div class="dlg" style="width:560px">
+    <header><span class="muted" style="font-size:12px">BleepingComputer · 2 h ago</span><h2 style="font-size:19px;margin-top:4px">Midnight Blizzard targets diplomatic entities with new WINELOADER variant</h2></header>
+    <section style="display:grid;gap:10px">
+      <div><div class="field"><label>Threat actors</label></div><div class="chips"><a class="chip"><i data-lucide="skull" class="k-actor"></i><span class="t">APT29</span></a></div></div>
+      <div><div class="field"><label>Malware and tools</label></div><div class="chips"><a class="chip"><i data-lucide="bug" class="k-mal"></i><span class="t">WINELOADER</span></a><a class="chip"><i data-lucide="wrench" class="k-mal"></i><span class="t">Cobalt Strike</span></a></div></div>
+      <div><div class="field"><label>Techniques</label></div><div class="chips"><a class="chip"><i data-lucide="crosshair" class="k-tech"></i><span class="t"><span class="code">T1566.001</span> Spearphishing Attachment</span></a><a class="chip"><i data-lucide="crosshair" class="k-tech"></i><span class="t"><span class="code">T1059.001</span> PowerShell</span></a></div></div>
+      <div><div class="field"><label>Sectors, countries and CVEs</label></div><div class="chips"><a class="chip"><i data-lucide="landmark" class="k-sector"></i><span class="t">Government</span></a><a class="chip"><i data-lucide="globe" class="k-country"></i><span class="t">Germany</span></a><a class="chip"><i data-lucide="globe" class="k-country"></i><span class="t">Czechia</span></a><a class="chip"><i data-lucide="shield-alert" class="k-vuln"></i><span class="t code">CVE-2024-21412</span></a></div></div>
+    </section>
+    <footer style="justify-content:space-between"><span class="muted" style="font-size:12px;align-self:center">Same chip in dashboard, exec, recap, risk matrix, clusters, MITRE, IOC, CVE ticket</span><button class="btn">Close</button></footer>
+  </div>
+
+  <div class="dlg">
+    <header><h2>Edit PIR</h2><p>Pick entities; any of their aliases match.</p></header>
+    <section style="display:grid;gap:14px">
+      <div class="field"><label>Threat actors</label>
+        <div class="tokenin"><a class="chip"><i data-lucide="skull" class="k-actor"></i><span class="t">APT29</span><i data-lucide="x"></i></a><a class="chip"><i data-lucide="skull" class="k-actor"></i><span class="t">Transparent Tribe</span><i data-lucide="x"></i></a><span>cozy</span></div>
+        <div class="pop"><div class="f"><span><b>APT29</b> <span class="muted">matches “Cozy Bear”</span></span><span class="code muted">G0016</span></div><div><span>Cozy Duke <span class="muted">merged into APT29</span></span></div></div>
+      </div>
+      <div class="field"><label>Malware and tools <span class="tag" style="margin-left:4px">New</span></label>
+        <div class="tokenin"><a class="chip"><i data-lucide="wrench" class="k-mal"></i><span class="t">Cobalt Strike</span><i data-lucide="x"></i></a><a class="chip"><i data-lucide="bug" class="k-mal"></i><span class="t">Lumma Stealer</span><i data-lucide="x"></i></a></div>
+        <div class="help">Matches stories that mention the malware or tool anywhere, not only in the title.</div>
+      </div>
+    </section>
+    <footer><button class="btn">Cancel</button><button class="btn pri">Save PIR</button></footer>
+  </div>
+
+  <div class="dlg">
+    <header><h2>Create API token</h2><p>The token is shown once after you create it.</p></header>
+    <section style="display:grid;gap:12px">
+      <div class="field"><label>Name</label><div class="input" style="min-width:0;background:var(--background);color:var(--foreground)">Splunk TAXII</div></div>
+      <div class="field"><label>Scopes</label>
+        <div class="ck"><span class="box x"><i data-lucide="check"></i></span><div><span class="code">indicators:read</span><div class="help" style="margin:2px 0 0">IOC feed and the TAXII “indicators” collection</div></div></div>
+        <div class="ck"><span class="box x"><i data-lucide="check"></i></span><div><span class="code">intel:read</span><div class="help" style="margin:2px 0 0">Entities, relationships, reports and the TAXII “intel” collection</div></div></div>
+      </div>
+    </section>
+    <footer><button class="btn">Cancel</button><button class="btn pri"><i data-lucide="key-round"></i>Create token</button></footer>
+  </div>
+</div></div>
+
+<div class="lead"><b>F. 375 px, mode gelap</b><span>List jadi kartu (tanpa scroll horizontal di halaman), tab per tipe bisa digeser, hero menumpuk</span></div>
+<div class="phones">
+  <div class="phone dark frame" style="margin:0">
+    <div class="ptop"><span style="display:flex;gap:8px;align-items:center"><i data-lucide="menu"></i><b>Entities</b></span><i data-lucide="plus"></i></div>
+    <div class="typetabs" style="padding:0 8px;margin:0"><span class="tt on"><i data-lucide="skull" class="k-actor"></i>Actors</span><span class="tt"><i data-lucide="bug" class="k-mal"></i>Malware</span><span class="tt"><i data-lucide="crosshair" class="k-tech"></i>Techniques</span></div>
+    <div class="pmain">
+      <div class="field" style="margin-bottom:10px"><label>Search name or alias</label><div class="input" style="min-width:0;height:44px"><i data-lucide="search"></i>cozy bear</div></div>
+      <div class="seg" style="margin-bottom:14px"><span>All</span><span class="on">Watched</span></div>
+      <div class="raised mcard"><div class="mrow"><a class="chip"><i data-lucide="skull" class="k-actor"></i><span class="t">APT29</span></a><button class="btn sm watch on" style="height:44px"><i data-lucide="eye"></i>Watching</button></div><div class="muted" style="font-size:12px;margin:6px 0">Cozy Bear, Midnight Blizzard +11</div><div class="mrow" style="font-size:12.5px"><span><b>42</b> in 30 d <span class="up"><i data-lucide="trending-up"></i>+7%</span></span><span class="muted">2 h ago</span></div></div>
+      <div class="raised mcard"><div class="mrow"><a class="chip"><i data-lucide="skull" class="k-actor"></i><span class="t">Transparent Tribe</span></a><button class="btn sm watch on" style="height:44px"><i data-lucide="eye"></i>Watching</button></div><div class="muted" style="font-size:12px;margin:6px 0">APT36, Mythic Leopard +4</div><div class="mrow" style="font-size:12.5px"><span><b>6</b> in 30 d</span><span class="muted">3 d ago</span></div></div>
+    </div>
+  </div>
+  <div class="phone dark frame" style="margin:0">
+    <div class="ptop"><span style="display:flex;gap:8px;align-items:center"><i data-lucide="arrow-left"></i><b>Actor</b></span><i data-lucide="ellipsis"></i></div>
+    <div class="pmain">
+      <div class="hero">
+        <div class="eyebrow"><i data-lucide="skull"></i>Actor <span class="code" style="letter-spacing:0">G0016</span></div>
+        <h1>APT29</h1>
+        <div><span class="al">Cozy Bear</span><span class="al">NOBELIUM</span><span class="al" style="background:transparent;outline:1px dashed rgb(246 237 228/.4)">+11</span></div>
+        <div style="display:flex;gap:8px;margin-top:8px"><button class="btn on" style="height:44px;flex:1;justify-content:center"><i data-lucide="eye"></i>Watching</button></div>
+        <div class="kpis"><div class="kpi"><span>30 d</span><b>42</b></div><div class="kpi"><span>Stories</span><b>34</b></div><div class="kpi"><span>IOCs</span><b>212</b></div></div>
+      </div>
+      <nav class="etabs" style="margin:12px 0"><span class="tt on">Overview</span><span class="tt">Relationships</span><span class="tt">Stories</span><span class="tt">Indicators</span></nav>
+      <section class="raised card"><h2>About</h2><p class="prof" style="font-size:13px">Russian state-sponsored group attributed to the SVR…</p><div class="chips"><a class="chip"><i data-lucide="landmark" class="k-sector"></i><span class="t">Government</span></a><a class="chip"><i data-lucide="bug" class="k-mal"></i><span class="t">WellMess</span></a></div></section>
+    </div>
+  </div>
+</div>
+
+<p style="max-width:1440px;margin:0 auto;padding:0 16px 40px;font-size:12.5px;color:#6b4452">Mockup statis dengan token tema app (Clear Beige, Privy Red, Heartful Burgundy, Google Sans Flex, IBM Plex Mono) dan ikon Lucide (sama dengan app). Angka contoh. Tombol kanan bawah mengganti terang/gelap.</p>
+
+<script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+<script>lucide.createIcons();</script>
+</body>
+</html>
