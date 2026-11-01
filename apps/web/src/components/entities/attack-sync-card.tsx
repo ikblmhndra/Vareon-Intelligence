@@ -28,13 +28,14 @@ function delta(val: number | null | undefined) {
   );
 }
 
-/** Port kartu sync status + polling (`attack_db.js:26-124`). Polling 5s
+/** Salinan `SyncStatusCards` untuk tab Techniques di halaman Entities (file asal dihapus bersama
+ * halaman ATT&CK DB). Gate sama: `manage_intel`. Port kartu sync status + polling (`attack_db.js:26-124`). Polling 5s
  * SELAMA ada domain berstatus "syncing" -- port apa adanya, bukan
  * polling terus-terusan. `POST /api/attack/sync`/`GET /sync/{key}`
  * butuh `require_admin` -- tombol tetep tampil ke semua (port apa
  * adanya, backend yang nolak 403 kalau bukan admin, sama asimetri
  * kayak monitored-accounts Grup C). */
-export function SyncStatusCards() {
+export function AttackSyncCard() {
   const queryClient = useQueryClient();
   const canSync = useCan()("manage_intel");
   const [syncingAll, setSyncingAll] = useState(false);
@@ -92,7 +93,7 @@ export function SyncStatusCards() {
   }
 
   return (
-    <div className="mb-4 border-b border-border pb-4">
+    <div className="mb-4 rounded-2xl surface-raised p-4">
       <div className="mb-2 flex items-center justify-between">
         <p className="text-sm font-semibold text-muted-foreground">ATT&amp;CK Sync Status</p>
         {canSync && (
@@ -107,7 +108,7 @@ export function SyncStatusCards() {
         {query.data?.map((d) => (
           <div key={d.domain_key} className="min-w-[220px] flex-1 rounded-xl border border-border bg-background p-3">
             <div className="mb-2 flex items-center justify-between">
-              <span className="font-mono text-xs font-bold text-foreground">{d.label || d.domain_key}</span>
+              <span className="font-code text-xs font-bold text-foreground">{d.label || d.domain_key}</span>
               {canSync && (
                 <Button
                   size="sm"
@@ -120,17 +121,17 @@ export function SyncStatusCards() {
                 </Button>
               )}
             </div>
-            <div className={cn("mb-1.5 font-mono text-xs", STATUS_COLOR[d.status] ?? "text-muted-foreground")}>
+            <div className={cn("mb-1.5 font-code text-xs", STATUS_COLOR[d.status] ?? "text-muted-foreground")}>
               ● {d.status.toUpperCase()} · {d.version ? `v${d.version}` : "—"}
             </div>
             {d.status === "syncing" && d.phase && (
-              <div className="mb-1 font-mono text-xs text-warning">
+              <div className="mb-1 font-code text-xs text-warning">
                 {d.phase === "downloading" && d.bytes_downloaded
                   ? `↓ downloading ${(d.bytes_downloaded / 1024 / 1024).toFixed(1)}MB${d.bytes_total ? ` / ${(d.bytes_total / 1024 / 1024).toFixed(0)}MB` : ""} ${d.download_pct ?? ""}`
                   : `${d.phase}`}
               </div>
             )}
-            <div className="font-mono text-xs leading-relaxed text-muted-foreground">
+            <div className="font-code text-xs leading-relaxed text-muted-foreground">
               MITRE updated: {d.mitre_modified ? new Date(d.mitre_modified).toLocaleDateString() : "—"}
               <br />
               Last sync: {d.last_sync ? new Date(d.last_sync).toLocaleDateString() : "Never"}

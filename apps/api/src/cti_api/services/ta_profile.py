@@ -389,13 +389,3 @@ async def generate_ta_profile(session: AsyncSession, actor_name: str) -> dict[st
     # Enrich in-memory buat response doang -- enrichment TIDAK dipersist,
     # port apa adanya (`_enrich_profile_cves` dipanggil SETELAH save).
     return await _enrich_profile_cves(session, profile)
-
-
-async def get_ta_profile_enriched(session: AsyncSession, actor_name: str) -> dict[str, Any] | None:
-    row = await AsyncTAProfileRepo(session).get_profile(actor_name)
-    if row is None:
-        return None
-    profile = dict(row.profile)
-    profile["_actor_name"] = row.actor_name
-    profile["_generated_at"] = row.generated_at.isoformat()
-    return await _enrich_profile_cves(session, profile)

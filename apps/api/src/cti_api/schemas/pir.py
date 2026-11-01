@@ -15,6 +15,7 @@ from cti_api.schemas.article import TTP
 
 class PIRCriteria(BaseModel):
     threat_actors: list[str] = []
+    malware: list[str] = []
     industries: list[str] = []
     countries: list[str] = []
     news_types: list[str] = []
@@ -97,6 +98,7 @@ class PIRNoteOut(BaseModel):
 
 class PIROptions(BaseModel):
     threat_actors: list[str]
+    malware: list[str]
     industries: list[str]
     countries: list[str]
     news_types: list[str]

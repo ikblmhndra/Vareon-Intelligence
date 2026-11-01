@@ -5,6 +5,8 @@ import { useQuery } from "@tanstack/react-query";
 import { TrendingUpIcon, TriangleAlertIcon } from "lucide-react";
 
 import { api } from "@/lib/api/client";
+import { EntityChip } from "@/components/entities/entity-chip";
+import { nameChip } from "@/lib/entities/name-chips";
 import type { GeopoliticalSummary } from "@/lib/api/loose-types";
 
 const MOTIVATION_COLOR: Record<string, string> = {
@@ -89,8 +91,8 @@ export function GeopoliticalPanel({ days }: { days: number }) {
                         <tr>
                           <th className="border border-border/50 px-2 py-1 text-left font-mono text-xs text-muted-foreground">Nation</th>
                           {sectors.map((s) => (
-                            <th key={s} title={s} className="max-w-[80px] truncate border border-border/50 px-1.5 py-1 text-center font-mono text-xs text-muted-foreground">
-                              {s.length > 12 ? `${s.slice(0, 11)}…` : s}
+                            <th key={s} className="border border-border/50 px-1.5 py-1 text-center font-normal">
+                              <EntityChip type="identity" name={s} className="max-w-28" />
                             </th>
                           ))}
                         </tr>
@@ -100,8 +102,8 @@ export function GeopoliticalPanel({ days }: { days: number }) {
                           const entry = d.nation_state_activity[nation];
                           return (
                             <tr key={nation}>
-                              <td className="border border-border/50 px-2 py-1 font-mono text-xs font-semibold whitespace-nowrap text-foreground">
-                                {nation}
+                              <td className="border border-border/50 px-2 py-1 whitespace-nowrap">
+                                <EntityChip {...nameChip("location", nation)} className="align-middle" />
                                 {entry.primary_motivations.slice(0, 1).map((m) => (
                                   <span key={m} className="ml-1 rounded-full border border-tag-violet/40 bg-tag-violet/20 px-1 py-0.5 font-mono text-xs text-tag-violet-text">
                                     {m}

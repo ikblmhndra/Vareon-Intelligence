@@ -17,6 +17,7 @@ from cti_core.db.models.attack import (
     AttackSoftware,
     AttackTechnique,
 )
+from cti_core.db.repositories.entity import TECHNIQUE, entity_ids_by_external_id_async
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -37,7 +38,8 @@ def _index(
 
 
 async def for_article(session: AsyncSession, article: Article) -> list[InferredEntity]:
-    actors = article.entity_names("intrusion-set")
+    # Aktor per mention (bukan nama saja) supaya `entity_id` ikut dari entitas di baliknya.
+    actors = {m.entity.name: m.entity.id for m in article.mentions_of("intrusion-set")}
     malware = article.mentions_of("malware", "tool")
     if not actors and not malware:
         return []
@@ -60,16 +62,16 @@ async def for_article(session: AsyncSession, article: Article) -> list[InferredE
     group_index = _index([(r[0], r[1], r[2], list(r[3])) for r in groups])
     software_index = _index([(r[0], r[1], r[2], list(r[3])) for r in software])
 
-    # (entity, kind, stix_id, attack_id), urut: aktor lalu malware/tool, sesuai urutan artikel
-    matched: list[tuple[str, str, str, str]] = []
-    for actor in actors:
+    # (entity, kind, stix_id, attack_id, entity_id), urut: aktor lalu malware/tool, sesuai artikel
+    matched: list[tuple[str, str, str, str, int]] = []
+    for actor, actor_id in actors.items():
         hit = group_index.get(actor.lower())
         if hit:
-            matched.append((actor, "actor", hit[0], hit[1]))
+            matched.append((actor, "actor", hit[0], hit[1], actor_id))
     for m in malware:
         hit = software_index.get(m.entity.name.lower())
         if hit:
-            matched.append((m.entity.name, m.entity.type, hit[0], hit[1]))
+            matched.append((m.entity.name, m.entity.type, hit[0], hit[1], m.entity.id))
     if not matched:
         return []
 
@@ -88,8 +90,15 @@ async def for_article(session: AsyncSession, article: Article) -> list[InferredE
     for source_ref, attack_id, name in rels:
         techniques.setdefault(source_ref, {})[attack_id] = name
 
+    # Id entitas teknik: satu query untuk semua ID yang akan tampil, sesudah teknik terkumpul.
+    technique_ids = await entity_ids_by_external_id_async(
+        session,
+        TECHNIQUE,
+        {i for stix_id in {m[2] for m in matched} for i in techniques.get(stix_id, {})},
+    )
+
     out: list[InferredEntity] = []
-    for entity, kind, stix_id, attack_id in matched:
+    for entity, kind, stix_id, attack_id, entity_id in matched:
         techs = techniques.get(stix_id, {})
         if not techs:
             continue
@@ -98,7 +107,11 @@ async def for_article(session: AsyncSession, article: Article) -> list[InferredE
                 entity=entity,
                 kind=kind,  # type: ignore[arg-type]
                 attack_id=attack_id,
-                techniques=[InferredTechnique(id=i, name=techs[i]) for i in sorted(techs)],
+                techniques=[
+                    InferredTechnique(id=i, name=techs[i], entity_id=technique_ids.get(i))
+                    for i in sorted(techs)
+                ],
+                entity_id=entity_id,
             )
         )
     return out

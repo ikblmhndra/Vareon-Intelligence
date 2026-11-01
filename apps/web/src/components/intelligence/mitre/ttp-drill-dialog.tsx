@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api/client";
+import { EntityChip } from "@/components/entities/entity-chip";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { SimplePager } from "@/components/pager";
 import { D3fendToggle } from "@/components/newsroom/d3fend-toggle";
@@ -14,7 +15,10 @@ const PAGE_SIZE = 20;
 export interface TtpDrillTarget {
   ttpId: string;
   ttpName: string;
+  /** Id entity teknik dan baris (aktor) dari heatmap; null/absen = resolve by name. */
+  ttpEntityId?: number | null;
   row: string;
+  rowEntityId?: number | null;
   view: "ta" | "industry";
   days: number;
 }
@@ -68,12 +72,27 @@ export function TtpDrillDialog({ target, onClose }: TtpDrillDialogProps) {
     >
       <DialogContent className="max-h-[85vh] w-full max-w-xl overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle className="font-mono">
-            {target?.ttpId} — {target?.ttpName}
+          <DialogTitle className="flex flex-wrap items-center gap-2 font-mono">
+            {target && (
+              <EntityChip
+                type="attack-pattern"
+                name={target.ttpId}
+                id={target.ttpEntityId}
+                label={target.ttpId}
+              />
+            )}
+            <span>{target?.ttpName}</span>
           </DialogTitle>
           <div className="flex items-center justify-between gap-2">
-            <p className="font-mono text-xs text-muted-foreground">
-              {target?.view === "ta" ? "Threat Actor" : "Industry"}: {target?.row}
+            <p className="flex min-w-0 items-center gap-1.5 font-mono text-xs text-muted-foreground">
+              {target?.view === "ta" ? "Threat Actor" : "Industry"}:
+              {target && (
+                <EntityChip
+                  type={target.view === "ta" ? "intrusion-set" : "identity"}
+                  name={target.row}
+                  id={target.rowEntityId}
+                />
+              )}
             </p>
             {target && <D3fendToggle ttpId={target.ttpId} />}
           </div>

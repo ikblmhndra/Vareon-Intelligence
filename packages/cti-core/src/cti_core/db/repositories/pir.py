@@ -46,7 +46,15 @@ from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.entity import TECHNIQUE, mention_rows
 from cti_core.db.repositories.ttp_catalog import canonical_ttp_name
 
-_CRITERIA_KEYS = ("threat_actors", "industries", "countries", "news_types", "keywords", "ttps")
+_CRITERIA_KEYS = (
+    "threat_actors",
+    "malware",
+    "industries",
+    "countries",
+    "news_types",
+    "keywords",
+    "ttps",
+)
 
 
 def _has_criteria(criteria: dict[str, Any]) -> bool:
@@ -56,6 +64,7 @@ def _has_criteria(criteria: dict[str, Any]) -> bool:
 def _criteria_filters(criteria: dict[str, Any]) -> dict[str, Any]:
     return {
         "threat_actors": criteria.get("threat_actors") or None,
+        "malware": criteria.get("malware") or None,
         "industries": criteria.get("industries") or None,
         "countries": criteria.get("countries") or None,
         "news_types": criteria.get("news_types") or None,
@@ -280,6 +289,7 @@ class AsyncPIRRepo:
         ttps = [{"id": tid, "name": tname} for tid, tname in ttp_result.all()]
         return {
             "threat_actors": base["threat_actors"],
+            "malware": base["malware"],
             "industries": base["industries"],
             "countries": base["countries"],
             "news_types": base["news_types"],

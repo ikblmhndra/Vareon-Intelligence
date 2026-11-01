@@ -162,57 +162,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/attack/groups": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Groups */
-        get: operations["list_groups_api_attack_groups_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/attack/groups/{group_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Group */
-        get: operations["get_group_api_attack_groups__group_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/attack/mitigations": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Mitigations */
-        get: operations["list_mitigations_api_attack_mitigations_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/attack/navigator-layer": {
         parameters: {
             query?: never;
@@ -222,40 +171,6 @@ export interface paths {
         };
         /** Attack Navigator Layer */
         get: operations["attack_navigator_layer_api_attack_navigator_layer_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/attack/software": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Software */
-        get: operations["list_software_api_attack_software_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/attack/software/{software_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Software Item */
-        get: operations["get_software_item_api_attack_software__software_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -307,74 +222,6 @@ export interface paths {
         };
         /** Attack Sync Single */
         get: operations["attack_sync_single_api_attack_sync__domain_key__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/attack/tactics": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Tactics */
-        get: operations["list_tactics_api_attack_tactics_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/attack/tactics/distinct": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Distinct Tactics */
-        get: operations["distinct_tactics_api_attack_tactics_distinct_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/attack/techniques": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Techniques */
-        get: operations["list_techniques_api_attack_techniques_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/attack/techniques/{attack_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Technique */
-        get: operations["get_technique_api_attack_techniques__attack_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1448,6 +1295,26 @@ export interface paths {
         put?: never;
         /** Create Entity */
         post: operations["create_entity_api_entities_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/entities/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Resolve Entity
+         * @description Nama teks -> entitas (alias, external_id, ikuti merge). Harus sebelum `/{entity_id}`.
+         */
+        get: operations["resolve_entity_api_entities_resolve_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3586,75 +3453,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/ta/groups": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Ta Groups */
-        get: operations["get_ta_groups_api_ta_groups_get"];
-        put?: never;
-        /** Post Ta Group */
-        post: operations["post_ta_group_api_ta_groups_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/ta/groups/{group_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Delete Ta Group */
-        delete: operations["delete_ta_group_api_ta_groups__group_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/ta/profile/generate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Post Ta Profile Generate */
-        post: operations["post_ta_profile_generate_api_ta_profile_generate_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/ta/profile/{name}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Ta Profile Endpoint */
-        get: operations["get_ta_profile_endpoint_api_ta_profile__name__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/ta/stats": {
         parameters: {
             query?: never;
@@ -3666,24 +3464,6 @@ export interface paths {
         get: operations["ta_stats_api_ta_stats_get"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/ta/watchlist": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Ta Watchlist */
-        get: operations["get_ta_watchlist_api_ta_watchlist_get"];
-        put?: never;
-        /** Post Ta Watchlist */
-        post: operations["post_ta_watchlist_api_ta_watchlist_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3716,74 +3496,6 @@ export interface paths {
         };
         /** Watchlist Navigator Layer */
         get: operations["watchlist_navigator_layer_api_ta_watchlist_navigator_layer_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/ta/watchlist/{name}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Delete Ta Watchlist */
-        delete: operations["delete_ta_watchlist_api_ta_watchlist__name__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/ta/whitelist": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Whitelist */
-        get: operations["get_whitelist_api_ta_whitelist_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/ta/whitelist/{name}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /** Restore From Whitelist */
-        delete: operations["restore_from_whitelist_api_ta_whitelist__name__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/ta/{actor}/timeline": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Actor Timeline */
-        get: operations["get_actor_timeline_api_ta__actor__timeline_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4296,6 +4008,22 @@ export interface components {
             /** Token Prefix */
             token_prefix: string;
         };
+        /**
+         * ArticleEntityRef
+         * @description Entitas yang disebut artikel; `role` = peran mention (victim/actor/mentioned) atau `None`.
+         */
+        ArticleEntityRef: {
+            /** External Id */
+            external_id?: string | null;
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Role */
+            role?: string | null;
+            /** Type */
+            type: string;
+        };
         /** ArticleListResponse */
         ArticleListResponse: {
             /** Articles */
@@ -4327,6 +4055,11 @@ export interface components {
             confirmed_incident: boolean;
             /** Credibility */
             credibility?: number | null;
+            /**
+             * Entities
+             * @default []
+             */
+            entities: components["schemas"]["ArticleEntityRef"][];
             /** Grade Origin */
             grade_origin?: ("default" | "analyst") | null;
             /** Id */
@@ -5338,6 +5071,11 @@ export interface components {
             mentions_30d: number;
             /** Mentions 90D */
             mentions_90d: number;
+            /**
+             * Merged From
+             * @default []
+             */
+            merged_from: components["schemas"]["EntityRef"][];
             /** Merged Into Id */
             merged_into_id: number | null;
             /** Name */
@@ -5674,6 +5412,8 @@ export interface components {
             attack_id: string;
             /** Entity */
             entity: string;
+            /** Entity Id */
+            entity_id?: number | null;
             /**
              * Kind
              * @enum {string}
@@ -5684,6 +5424,8 @@ export interface components {
         };
         /** InferredTechnique */
         InferredTechnique: {
+            /** Entity Id */
+            entity_id?: number | null;
             /** Id */
             id: string;
             /** Name */
@@ -6290,6 +6032,7 @@ export interface components {
              *       "countries": [],
              *       "industries": [],
              *       "keywords": [],
+             *       "malware": [],
              *       "news_types": [],
              *       "threat_actors": [],
              *       "ttps": []
@@ -6335,6 +6078,11 @@ export interface components {
              * @default []
              */
             keywords: string[];
+            /**
+             * Malware
+             * @default []
+             */
+            malware: string[];
             /**
              * News Types
              * @default []
@@ -6385,6 +6133,8 @@ export interface components {
             countries: string[];
             /** Industries */
             industries: string[];
+            /** Malware */
+            malware: string[];
             /** News Types */
             news_types: string[];
             /** Threat Actors */
@@ -7560,83 +7310,6 @@ export interface components {
             /** Domains */
             domains?: string[] | null;
         };
-        /** TAGroupAdd */
-        TAGroupAdd: {
-            /** Name */
-            name: string;
-        };
-        /** TAGroupListResponse */
-        TAGroupListResponse: {
-            /** Groups */
-            groups: components["schemas"]["TAGroupOut"][];
-            /** Page */
-            page: number;
-            /** Page Size */
-            page_size: number;
-            /** Total */
-            total: number;
-        };
-        /** TAGroupOut */
-        TAGroupOut: {
-            /** Added Date */
-            added_date: string;
-            /** Id */
-            id: number;
-            /** Name */
-            name: string;
-            /** Source */
-            source: string;
-        };
-        /** TAProfileGenerateBody */
-        TAProfileGenerateBody: {
-            /** Name */
-            name: string;
-        };
-        /** TAWatchlistListResponse */
-        TAWatchlistListResponse: {
-            /** Items */
-            items: components["schemas"]["TAWatchlistOut"][];
-            /** Page */
-            page: number;
-            /** Page Size */
-            page_size: number;
-            /** Total */
-            total: number;
-        };
-        /** TAWatchlistOut */
-        TAWatchlistOut: {
-            /** Added Date */
-            added_date: string;
-            /**
-             * Dormancy State
-             * @default DORMANT
-             */
-            dormancy_state: string;
-            /** Id */
-            id: number;
-            /** Name */
-            name: string;
-        };
-        /** TAWhitelistListResponse */
-        TAWhitelistListResponse: {
-            /** Items */
-            items: components["schemas"]["TAWhitelistOut"][];
-            /** Page */
-            page: number;
-            /** Page Size */
-            page_size: number;
-            /** Total */
-            total: number;
-        };
-        /** TAWhitelistOut */
-        TAWhitelistOut: {
-            /** Added Date */
-            added_date: string;
-            /** Id */
-            id: number;
-            /** Name */
-            name: string;
-        };
         /** TTP */
         TTP: {
             /** Evidence */
@@ -7900,6 +7573,8 @@ export interface components {
             count: number;
             /** Daily */
             daily: number[];
+            /** Entity Id */
+            entity_id?: number | null;
             /** Is New */
             is_new: boolean;
             /**
@@ -7941,6 +7616,8 @@ export interface components {
             count: number;
             /** Daily */
             daily: number[];
+            /** Entity Id */
+            entity_id?: number | null;
             /** Is New */
             is_new: boolean;
             /**
@@ -8526,117 +8203,6 @@ export interface operations {
             };
         };
     };
-    list_groups_api_attack_groups_get: {
-        parameters: {
-            query?: {
-                domain?: string | null;
-                search?: string | null;
-                page?: number;
-                page_size?: number;
-            };
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_group_api_attack_groups__group_id__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                group_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_mitigations_api_attack_mitigations_get: {
-        parameters: {
-            query?: {
-                domain?: string | null;
-                search?: string | null;
-                page?: number;
-                page_size?: number;
-            };
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     attack_navigator_layer_api_attack_navigator_layer_get: {
         parameters: {
             query?: {
@@ -8661,80 +8227,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_software_api_attack_software_get: {
-        parameters: {
-            query?: {
-                domain?: string | null;
-                type?: string | null;
-                search?: string | null;
-                page?: number;
-                page_size?: number;
-            };
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_software_item_api_attack_software__software_id__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                software_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
                 };
             };
             /** @description Validation Error */
@@ -8826,149 +8318,6 @@ export interface operations {
             };
             path: {
                 domain_key: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_tactics_api_attack_tactics_get: {
-        parameters: {
-            query?: {
-                domain?: string | null;
-            };
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    distinct_tactics_api_attack_tactics_distinct_get: {
-        parameters: {
-            query?: {
-                domain?: string | null;
-            };
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": string[];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_techniques_api_attack_techniques_get: {
-        parameters: {
-            query?: {
-                domain?: string | null;
-                tactic?: string | null;
-                search?: string | null;
-                is_subtechnique?: boolean | null;
-                page?: number;
-                page_size?: number;
-            };
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_technique_api_attack_techniques__attack_id__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                attack_id: string;
             };
             cookie?: never;
         };
@@ -11223,6 +10572,7 @@ export interface operations {
         parameters: {
             query?: {
                 type?: string | null;
+                identity_class?: string | null;
                 q?: string | null;
                 watched?: boolean;
                 include_suppressed?: boolean;
@@ -11281,6 +10631,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EntityDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_entity_api_entities_resolve_get: {
+        parameters: {
+            query: {
+                type: string;
+                name: string;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityRef"];
                 };
             };
             /** @description Validation Error */
@@ -16160,189 +15544,6 @@ export interface operations {
             };
         };
     };
-    get_ta_groups_api_ta_groups_get: {
-        parameters: {
-            query?: {
-                search?: string | null;
-                page?: number;
-                page_size?: number;
-                sort_by?: string;
-                sort_dir?: string;
-            };
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TAGroupListResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    post_ta_group_api_ta_groups_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TAGroupAdd"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_ta_group_api_ta_groups__group_id__delete: {
-        parameters: {
-            query: {
-                group_name: string;
-            };
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                group_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: boolean;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    post_ta_profile_generate_api_ta_profile_generate_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TAProfileGenerateBody"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_ta_profile_endpoint_api_ta_profile__name__get: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                name: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     ta_stats_api_ta_stats_get: {
         parameters: {
             query?: never;
@@ -16353,82 +15554,6 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_ta_watchlist_api_ta_watchlist_get: {
-        parameters: {
-            query?: {
-                search?: string | null;
-                page?: number;
-                page_size?: number;
-                sort_by?: string;
-                sort_dir?: string;
-            };
-            header?: {
-                "x-client-id"?: string | null;
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TAWatchlistListResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    post_ta_watchlist_api_ta_watchlist_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-client-id"?: string | null;
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TAGroupAdd"];
-            };
-        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -16505,151 +15630,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    delete_ta_watchlist_api_ta_watchlist__name__delete: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-client-id"?: string | null;
-                authorization?: string | null;
-            };
-            path: {
-                name: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: boolean;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_whitelist_api_ta_whitelist_get: {
-        parameters: {
-            query?: {
-                search?: string | null;
-                page?: number;
-                page_size?: number;
-                sort_by?: string;
-                sort_dir?: string;
-            };
-            header?: {
-                authorization?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TAWhitelistListResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    restore_from_whitelist_api_ta_whitelist__name__delete: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                name: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: boolean;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_actor_timeline_api_ta__actor__timeline_get: {
-        parameters: {
-            query?: {
-                months?: number;
-            };
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                actor: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
                 };
             };
             /** @description Validation Error */

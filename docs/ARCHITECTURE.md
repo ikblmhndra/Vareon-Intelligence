@@ -531,6 +531,19 @@ The old tables `article_threat_actors`, `article_malware`, `article_ttps`, `arti
 rollback keeps working; the original tables are kept as `_legacy_*` until the release after 0.8.11. v1 endpoints read
 mentions and keep their response shapes (names are entity names, industries are sector display names).
 
+**Web (P7c-2).** Two pages replace TA Room and ATT&CK DB (their URLs redirect permanently, and the routes that only they
+used were removed): `/intelligence/entities` (tabs per type, alias search, watched/suppressed, New entity, Navigator layer,
+ATT&CK sync card) and `/intelligence/entities/[id]` (hero KPIs, Overview with profile and relationship preview,
+Relationships, Stories, Indicators, CVEs, Timeline, ATT&CK; Edit, Aliases, Merge with preview, Split, Suppress; a merged id
+redirects). Every entity name elsewhere in the web is an `EntityChip` that links to `/intelligence/entities/[id]`. When a
+response carries no id (older shapes, free text), the chip links to the resolve route, which calls
+`GET /api/entities/resolve` (alias, external id, then name; follows `merged_into_id`) and redirects. **Rule W2: every value
+that comes from an entity mention carries its `entity_id` end to end (API response fields such as `ArticleOut.entities`,
+trending/spike `entity_id`, MITRE `row_ids`); resolving by name is only for text with no entity behind it.** Resolving by
+name picks a different entity when two share a spelling, so a name lookup must never replace an id the API already has.
+The PIR `malware` criterion matches malware and tool entities across all of an article's mentions, and the PIR form
+picks entities by autocomplete.
+
 Feed clocks follow P7b: triggers keep `feed_changed_at` on `entities`, `relationships` and `stories` (also on alias and
 mention inserts, deletes and repointing updates, and on suppress/merge/TLP changes of an entity for the relationships and
 stories that reference it). `/api/entities` and `/api/relationships` (web JWT, permission `manage_entities` for writes)

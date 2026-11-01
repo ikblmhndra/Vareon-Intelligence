@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import { api } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
+import { EntityChip } from "@/components/entities/entity-chip";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -263,9 +264,7 @@ export function IocDetailDialog({ target, onClose, onDeleted }: IocDetailDialogP
                             <div className="mb-1 text-xs text-muted-foreground">MALWARE FAMILIES</div>
                             <div className="flex flex-wrap gap-1">
                               {families.map((f) => (
-                                <span key={f} className="rounded-full border border-destructive/30 bg-destructive/10 px-1.5 py-0.5 text-xs text-destructive-text">
-                                  {f}
-                                </span>
+                                <EntityChip key={f} type="malware,tool" name={f} />
                               ))}
                             </div>
                           </div>
@@ -353,7 +352,7 @@ function IocTaLinksSection({
             return (
               <div key={ta.name} className="flex flex-col gap-0.5 border-b border-border p-2.5 last:border-b-0">
                 <div className="flex flex-wrap items-center">
-                  <span className="text-xs text-foreground">{ta.name}</span>
+                  <EntityChip type="intrusion-set" name={ta.name} />
                   {ta.is_watched && (
                     <span className="ml-1.5 rounded-full border border-warning/40 bg-warning/10 px-1.5 py-0.5 text-xs text-warning-text">WATCHED</span>
                   )}

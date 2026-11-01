@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable
 
+from cti_core.entity import ENTITY_TYPES
 from cti_core.logging import get_logger
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from sqlalchemy.exc import IntegrityError
@@ -26,6 +27,7 @@ from cti_api.schemas.entities import (
     EntityIndicatorsResponse,
     EntityListResponse,
     EntityProfileOut,
+    EntityRef,
     EntityRelationshipsResponse,
     EntityStoriesResponse,
     EntityTimelineResponse,
@@ -67,9 +69,19 @@ async def _call[T](session: AsyncSession, op: Awaitable[T]) -> T:
         ) from exc
 
 
+def _check_types(type_: str | None) -> list[str]:
+    """Daftar tipe dipisah koma -> list; tipe di luar `ENTITY_TYPES` = 422."""
+    types = [t for t in (type_ or "").split(",") if t]
+    bad = [t for t in types if t not in ENTITY_TYPES]
+    if bad:
+        raise HTTPException(status_code=422, detail=f"unknown entity type: {', '.join(bad)}")
+    return types
+
+
 @router.get("", response_model=EntityListResponse)
 async def list_entities(
     type: str | None = None,
+    identity_class: str | None = None,
     q: str | None = None,
     watched: bool = False,
     include_suppressed: bool = False,
@@ -79,11 +91,13 @@ async def list_entities(
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(_view),
 ) -> EntityListResponse:
+    _check_types(type)
     try:
         return await svc.list_entities(
             session,
             client_id=effective_client_id(user, x_client_id),
             type=type,
+            identity_class=identity_class,
             q=q,
             watched=watched,
             include_suppressed=include_suppressed,
@@ -108,6 +122,23 @@ async def create_entity(
     )
     await session.commit()
     return await svc.entity_detail(session, entity_id, effective_client_id(user, x_client_id))
+
+
+@router.get("/resolve", response_model=EntityRef)
+async def resolve_entity(
+    type: str,
+    name: str,
+    session: AsyncSession = Depends(get_db),
+    _user: AuthedUser = Depends(_view),
+) -> EntityRef:
+    """Nama teks -> entitas (alias, external_id, ikuti merge). Harus sebelum `/{entity_id}`."""
+    types = _check_types(type)
+    if not types:
+        raise HTTPException(status_code=422, detail="type is required")
+    ref = await svc.resolve_entity(session, types, name)
+    if ref is None:
+        raise HTTPException(status_code=404, detail=f"no entity named {name}")
+    return ref
 
 
 @router.get("/{entity_id}", response_model=EntityDetail)

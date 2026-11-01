@@ -220,6 +220,7 @@ async def build_pir_mindmap(session: AsyncSession, doc_id: str) -> tuple[str, st
     criteria = pir.criteria
     branches = [
         _branch(2, "Threat Actors", threat_actors[:8]),
+        _branch(2, "Malware and tools", criteria.get("malware", [])[:8]),
         _branch(2, "Industries", criteria.get("industries", [])[:6]),
         _branch(2, "Countries", criteria.get("countries", [])[:6]),
         _branch(2, "Keywords", criteria.get("keywords", [])[:6]),

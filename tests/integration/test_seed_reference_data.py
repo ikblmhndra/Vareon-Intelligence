@@ -244,6 +244,7 @@ def test_pir_notes_attach_to_the_right_pir_even_when_titles_collide(db_session: 
     assert pirs["Michael"].start_date == datetime.date(2026, 5, 4)
     assert set(pirs["Michael"].criteria) == {
         "threat_actors",
+        "malware",
         "industries",
         "countries",
         "news_types",

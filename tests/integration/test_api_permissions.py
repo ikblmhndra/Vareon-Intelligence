@@ -43,7 +43,7 @@ async def test_analyst_cannot_send_newsletter_or_spend_llm(
         ("POST", "/api/newsletter/1/resend"),
         ("POST", "/api/recap/generate"),
         ("POST", "/api/exec/brief"),
-        ("POST", "/api/ta/profile/generate"),
+        ("POST", "/api/entities/1/profile"),
         ("POST", "/api/cve/draft-email"),
         ("GET", "/api/auth/users"),
     ):

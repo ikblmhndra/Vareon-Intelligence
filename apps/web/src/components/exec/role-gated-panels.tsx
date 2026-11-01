@@ -1,12 +1,13 @@
 "use client";
 
 import { ThumbsDownIcon, ThumbsUpIcon } from "lucide-react";
-import Link from "next/link";
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { api } from "@/lib/api/client";
+import { EntityChip, EntityChipList } from "@/components/entities/entity-chip";
+import { nameChips } from "@/lib/entities/name-chips";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { useCan } from "@/lib/auth/permissions";
@@ -40,8 +41,12 @@ export function ClusterList({ d }: { d: ExecDashboardV2 }) {
           <TableRow key={c.cluster_id}>
             <TableCell className="text-xs text-primary">{c.summary_title || "—"}</TableCell>
             <TableCell className="font-mono text-xs">{c.size || "—"}</TableCell>
-            <TableCell className="font-mono text-xs text-muted-foreground">
-              {c.threat_actors.slice(0, 3).join(", ") || "—"}
+            <TableCell className="text-xs text-muted-foreground">
+              {c.threat_actors.length > 0 ? (
+                <EntityChipList items={nameChips("intrusion-set", c.threat_actors.slice(0, 3))} max={3} />
+              ) : (
+                "—"
+              )}
             </TableCell>
             <TableCell className="font-mono text-xs">{c.last_seen || "—"}</TableCell>
           </TableRow>
@@ -154,9 +159,9 @@ export function FpQueue({ d }: { d: ExecDashboardV2 }) {
 /** Port Critical CVE Feed role-gated (`exec.js:536-559`). `epss_score`/
  * `first_seen` DIHAPUS -- gak ada di response (`_get_critical_cves()`
  * cuma filter `cisa_kev`, kolom `epss_score` gak ada di `CveTracker`,
- * lihat docstring `exec_dashboard.py`). Klik CVE ID -> `/cve` (link
- * polos, BUKAN auto-buka modal -- butuh row `CveOut` lengkap yang cuma
- * ada di query list `/cve`, sama pola defer kayak Grup E). */
+ * lihat docstring `exec_dashboard.py`). CVE ID tampil sebagai
+ * `EntityChip` (tautan ke halaman entity vulnerability lewat resolve by name), BUKAN auto-buka
+ * modal CVE -- modal butuh row `CveOut` lengkap yang cuma ada di query list `/cve`. */
 export function CriticalCveFeed({ d }: { d: ExecDashboardV2 }) {
   if (d.critical_cves.length === 0) return <EmptyNote />;
   return (
@@ -172,10 +177,8 @@ export function CriticalCveFeed({ d }: { d: ExecDashboardV2 }) {
       <TableBody>
         {d.critical_cves.map((c) => (
           <TableRow key={c.cve_id}>
-            <TableCell className="font-mono text-xs text-primary">
-              <Link href="/cve" className="hover:underline">
-                {c.cve_id || "—"}
-              </Link>
+            <TableCell className="text-xs">
+              {c.cve_id ? <EntityChip type="vulnerability" name={c.cve_id} /> : "—"}
             </TableCell>
             <TableCell className="text-xs">{c.tech || "—"}</TableCell>
             <TableCell className={cn("font-mono text-xs", cvssColorClass(c.cve_score))}>

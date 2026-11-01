@@ -283,6 +283,8 @@ def _restore_mention(session: Session, entity_id: int, m: dict[str, Any]) -> boo
             {
                 **m,
                 "entity_id": entity_id,
+                # audit menyimpan ISO string; asyncpg (jalur API) menolak string untuk timestamptz
+                "created_at": datetime.datetime.fromisoformat(m["created_at"]),
                 "extracted": None if m["extracted"] is None else json.dumps(m["extracted"]),
             },
         ).first()

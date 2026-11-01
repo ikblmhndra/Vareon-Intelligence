@@ -20,22 +20,24 @@ const NAV_ITEMS = [
   { href: "/intelligence/pir", label: "PIR" },
   { href: "/intelligence/rfi", label: "RFI" },
   { href: "/intelligence/mitre", label: "MITRE Heatmap" },
-  { href: "/intelligence/attack-db", label: "ATT&CK DB" },
+  { href: "/intelligence/entities", label: "Entities" },
   { href: "/intelligence/ioc-management", label: "IOC Management" },
-  { href: "/intelligence/threat-actor-room", label: "Threat Actor Room" },
   { href: "/intelligence/campaign-clusters", label: "Campaign Clusters" },
 ] as const;
 
 export function IntelligenceNav() {
   const pathname = usePathname();
+  // "Entities" aktif untuk semua /intelligence/entities* (daftar, detail, resolve).
+  const isActive = (href: string) =>
+    href === "/intelligence/entities" ? pathname.startsWith(href) : pathname === href;
   return (
     <nav aria-label="Intelligence sections" className="mb-4 flex gap-1.5 border-b border-border pb-3 overflow-x-auto">
       {NAV_ITEMS.map((item) => (
         <Link
           key={item.href}
           href={item.href}
-          aria-current={pathname === item.href ? "page" : undefined}
-          className={tabPillClass(pathname === item.href)}
+          aria-current={isActive(item.href) ? "page" : undefined}
+          className={tabPillClass(isActive(item.href))}
         >
           {item.label}
         </Link>
