@@ -551,7 +551,7 @@ class AsyncIndicatorRepo:
 
     async def _reload_actors(self, indicator: Indicator) -> None:
         await self.session.flush()
-        await self.session.refresh(indicator, attribute_names=["threat_actors"])
+        await self.session.refresh(indicator, attribute_names=["mentions"])
 
     async def delete(self, indicator_id: int) -> bool:
         indicator = await self.get_by_id(indicator_id)

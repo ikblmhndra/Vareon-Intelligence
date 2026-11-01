@@ -31,7 +31,7 @@ from typing import Any
 from cti_core.config import platform_name
 from cti_core.db.models.indicator import Indicator
 from cti_core.db.models.pir import PIRRequirement
-from cti_core.db.repositories.article import AsyncArticleRepo, all_country_codes
+from cti_core.db.repositories.article import AsyncArticleRepo, all_country_codes, ttp_refs
 from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from cti_core.db.repositories.pir import AsyncPIRRepo
 from cti_core.db.repositories.ta import AsyncTAProfileRepo
@@ -566,8 +566,8 @@ async def build_article_stix_bundle(
     session: AsyncSession, article_id: int
 ) -> dict[str, Any] | None:
     """Ambil satu artikel dan ubah jadi bundle STIX 2.1 berisi identity,
-    report object (artikelnya), attack-pattern (dari `article.ttps`),
-    threat-actor stub (dari `article.threat_actors`), dan relationship.
+    report object (artikelnya), attack-pattern (dari mention teknik),
+    threat-actor stub (dari mention aktor, nama entitas), dan relationship.
     Balikin `None` kalau artikel gak ketemu."""
     article = await AsyncArticleRepo(session).get_by_id(article_id)
     if article is None:
@@ -583,15 +583,15 @@ async def build_article_stix_bundle(
 
     # ── Threat Actor stubs ──────────────────────────────────────────────
     ta_refs: list[str] = []
-    for ta in article.threat_actors:
-        ta_id = f"threat-actor--{_uuid5(ta.threat_actor)}"
+    for ta_name in article.entity_names("intrusion-set"):
+        ta_id = f"threat-actor--{_uuid5(ta_name)}"
         ta_obj: dict[str, Any] = {
             "type": "threat-actor",
             "id": ta_id,
             "spec_version": _SPEC,
             "created": ts,
             "modified": ts,
-            "name": ta.threat_actor,
+            "name": ta_name,
         }
         objects.append(ta_obj)
         object_refs.append(ta_id)
@@ -600,8 +600,8 @@ async def build_article_stix_bundle(
     # ── Attack Patterns (TTPs) ──────────────────────────────────────────
     ap_refs: list[str] = []
     seen_ap: set[str] = set()
-    for ttp in article.ttps:
-        tech_str = f"{ttp.ttp_id} {ttp.ttp_name}".strip()
+    for ttp in ttp_refs(article):
+        tech_str = f"{ttp['id']} {ttp['name']}".strip()
         if not tech_str:
             continue
         ap_obj = _build_attack_pattern(tech_str, "unknown", ts)
@@ -636,7 +636,7 @@ async def build_article_stix_bundle(
         ]
     if article.news_type:
         report_obj["labels"] = [article.news_type]
-    industries = [i.industry for i in article.industries]
+    industries = article.entity_names("identity")
     if industries:
         report_obj["x_impacted_industries"] = industries
     # Padanan `mentioned_countries` Mongo lama = role apa pun (lihat

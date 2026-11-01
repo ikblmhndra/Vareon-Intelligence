@@ -130,8 +130,6 @@ def test_persist_writes_mentions(db_session: Session) -> None:
     assert article.entity_names("intrusion-set") == ["APT29"]
     assert article.entity_names("location") == ["Indonesia"]
     assert [m.role for m in article.mentions_of("location")] == ["victim", "mentioned"]
-    # view kompatibilitas (pembaca lama) tetap melihat hasil yang sama
-    assert [a.threat_actor for a in article.threat_actors] == ["APT29"]
 
     # replay: idempoten, tanpa duplikat; industri yang hilang dibuang
     again = _persist(db_session, "https://w.example/1", actors=["Apt29"], tier1=tier1)

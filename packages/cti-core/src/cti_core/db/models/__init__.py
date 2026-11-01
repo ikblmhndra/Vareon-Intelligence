@@ -4,14 +4,8 @@
 
 from cti_core.db.models.article import (
     Article,
-    ArticleCountry,
-    ArticleIndustry,
-    ArticleMalware,
-    ArticleThreatActor,
-    ArticleTTP,
     RejectedArticle,
 )
-from cti_core.db.models.article_cve import ArticleCve
 from cti_core.db.models.attack import (
     AttackGroup,
     AttackMitigation,
@@ -39,10 +33,8 @@ from cti_core.db.models.cve import (
     CveNewsletterMention,
     CvePoc,
     CveReference,
-    CveThreatActor,
     CveTicket,
     CveTracker,
-    CveTTP,
 )
 from cti_core.db.models.cve_mirror import CvePromotionShadow, CveRecord, CveRecordProduct
 from cti_core.db.models.entity import (
@@ -59,7 +51,6 @@ from cti_core.db.models.indicator import (
     IndicatorFeedback,
     IndicatorSource,
     IndicatorTag,
-    IndicatorThreatActor,
 )
 from cti_core.db.models.ioc_reference import IocAllowlistEntry, ThreatFeedEntry
 from cti_core.db.models.llm_call import LlmCall
@@ -82,7 +73,6 @@ from cti_core.db.models.runtime_secret import RuntimeSecret
 from cti_core.db.models.scraper import ScraperConfig, ScraperItem, ScraperRun, ScraperSeen
 from cti_core.db.models.source_reliability import SourceReliabilityEntry
 from cti_core.db.models.story import Story
-from cti_core.db.models.ta import TAProfile, TAWatchlistEntry, TAWhitelistEntry
 from cti_core.db.models.techstack import TechStackEntry, TechStackTarget
 from cti_core.db.models.threat_reference import MonitoredPerson, ThreatActorGroup
 from cti_core.db.models.tweet import MonitoredAccount, Tweet
@@ -90,12 +80,6 @@ from cti_core.db.models.tweet import MonitoredAccount, Tweet
 __all__ = [
     "ApiToken",
     "Article",
-    "ArticleCountry",
-    "ArticleCve",
-    "ArticleIndustry",
-    "ArticleMalware",
-    "ArticleTTP",
-    "ArticleThreatActor",
     "AttackGroup",
     "AttackMitigation",
     "AttackRelationship",
@@ -120,8 +104,6 @@ __all__ = [
     "CveRecord",
     "CveRecordProduct",
     "CveReference",
-    "CveTTP",
-    "CveThreatActor",
     "CveTicket",
     "CveTracker",
     "DailyRecap",
@@ -134,7 +116,6 @@ __all__ = [
     "IndicatorFeedback",
     "IndicatorSource",
     "IndicatorTag",
-    "IndicatorThreatActor",
     "IocAllowlistEntry",
     "JobState",
     "LlmCall",
@@ -165,9 +146,6 @@ __all__ = [
     "ScraperSeen",
     "SourceReliabilityEntry",
     "Story",
-    "TAProfile",
-    "TAWatchlistEntry",
-    "TAWhitelistEntry",
     "TechStackEntry",
     "TechStackTarget",
     "ThreatActorGroup",

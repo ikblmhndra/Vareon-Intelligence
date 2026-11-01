@@ -290,7 +290,10 @@ def test_pipeline_persists_normalized_ttps_and_alert_uses_canonical_names(
     assert outcome.accepted
     article = pipeline_session.scalar(select(Article).where(Article.url_hash == url_hash(url)))
     assert article is not None
-    assert sorted((t.ttp_id, t.ttp_name, t.extracted_name) for t in article.ttps) == [
+    assert sorted(
+        (m.entity.external_id, m.entity.name, (m.extracted or {}).get("extracted_name"))
+        for m in article.mentions_of("attack-pattern")
+    ) == [
         ("T1003", "OS Credential Dumping", "Credential Dumping"),
         ("T1203", "Exploitation for Client Execution", "Remote Code Execution"),
     ]

@@ -183,6 +183,15 @@ def all_country_codes(article: Article) -> list[str]:
     )
 
 
+def ttp_refs(article: Article) -> list[dict[str, str]]:
+    """`[{"id", "name"}]` teknik artikel -- bentuk `ttps` v1 di dict newsletter/campaign/dedup.
+    P7c: `id` = `external_id` (Ruling 7), `name` = nama entitas teknik, urut id mention."""
+    return [
+        {"id": m.entity.external_id or "", "name": m.entity.name}
+        for m in article.mentions_of(TECHNIQUE)
+    ]
+
+
 def _merge_overrides(article: Article) -> dict[str, Any]:
     base = {c.name: getattr(article, c.name) for c in Article.__table__.columns}
     overrides = {k: v for k, v in article.overrides.items() if k not in _RESERVED_OVERRIDE_KEYS}

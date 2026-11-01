@@ -31,6 +31,7 @@ from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from cti_core.db.base import Base, TimestampMixin
+from cti_core.db.models.entity import EntityMention, live_entity_names
 
 
 class Indicator(TimestampMixin, Base):
@@ -146,12 +147,18 @@ class Indicator(TimestampMixin, Base):
     tags: Mapped[list[IndicatorTag]] = relationship(
         back_populates="indicator", cascade="all, delete-orphan", lazy="selectin"
     )
-    threat_actors: Mapped[list[IndicatorThreatActor]] = relationship(
-        back_populates="indicator", cascade="all, delete-orphan", lazy="selectin"
+    mentions: Mapped[list[EntityMention]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin", order_by="EntityMention.id"
     )
+    """Tag aktor oleh analis = mention `intrusion-set` (P7c), pengganti relasi `threat_actors`
+    lama. Baca lewat `entity_names("intrusion-set")`; feed machine API me-`noload` relasi ini."""
     feedback: Mapped[list[IndicatorFeedback]] = relationship(
         back_populates="indicator", cascade="all, delete-orphan", lazy="selectin"
     )
+
+    def entity_names(self, *types: str) -> list[str]:
+        """Nama entitas kanonik hidup bertipe `types` (kosong = semua), urut id mention."""
+        return live_entity_names(self.mentions, types)
 
 
 class IndicatorSource(Base):
@@ -185,22 +192,6 @@ class IndicatorTag(Base):
     tag: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
 
     indicator: Mapped[Indicator] = relationship(back_populates="tags")
-
-
-class IndicatorThreatActor(Base):
-    __tablename__ = "indicator_threat_actors"
-    __table_args__ = (
-        UniqueConstraint("indicator_id", "threat_actor", name="uq_indicator_threat_actor"),
-        {"info": {"compat_view": True}},
-    )
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    indicator_id: Mapped[int] = mapped_column(
-        ForeignKey("indicators.id", ondelete="CASCADE"), nullable=False
-    )
-    threat_actor: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
-
-    indicator: Mapped[Indicator] = relationship(back_populates="threat_actors")
 
 
 class IndicatorFeedback(Base):

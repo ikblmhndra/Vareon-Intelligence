@@ -214,7 +214,7 @@ async def test_list_filtered_by_search_matches_title_or_source(
 
 
 async def test_list_filtered_by_ttps(async_db_session: AsyncSession) -> None:
-    """`ttps` (Fase 7.3, router `pir`) -- filter `ArticleTTP.ttp_id`."""
+    """`ttps` (Fase 7.3, router `pir`) -- filter id teknik (`external_id` mention teknik)."""
     repo = AsyncArticleRepo(async_db_session)
     ids = await _seed(repo)
 
@@ -273,8 +273,8 @@ async def test_list_filtered_article_without_enrichment_has_empty_relations(
     assert len(articles) == 1
     a5 = articles[0]
     assert a5.id == ids["a5"]
-    assert a5.countries == []
-    assert a5.industries == []
+    assert a5.country_codes() == []
+    assert a5.entity_names("identity") == []
     assert a5.posted_on is None
 
 

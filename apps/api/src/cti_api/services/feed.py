@@ -79,7 +79,7 @@ async def feed_page(
         .options(
             selectinload(Indicator.tags),
             noload(Indicator.sources),
-            noload(Indicator.threat_actors),
+            noload(Indicator.mentions),
             noload(Indicator.feedback),
         )
         .order_by(Indicator.feed_changed_at, Indicator.id)

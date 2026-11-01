@@ -88,7 +88,7 @@ def _serialize_summary(ioc: Indicator) -> dict[str, object]:
         "last_seen": ioc.last_seen_at.isoformat(),
         "seen_count": ioc.seen_count,
         "tags": [t.tag for t in ioc.tags],
-        "threat_actors": [t.threat_actor for t in ioc.threat_actors],
+        "threat_actors": ioc.entity_names("intrusion-set"),
         "tp_count": ioc.tp_count,
         "fp_count": ioc.fp_count,
         "confidence_score": ioc.confidence_score,

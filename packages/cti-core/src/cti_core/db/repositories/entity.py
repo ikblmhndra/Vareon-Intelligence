@@ -17,6 +17,7 @@ from collections.abc import Iterable
 from typing import Any
 
 from sqlalchemy import ColumnElement, Select, and_, func, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.selectable import Subquery
 
 from cti_core.db.models.entity import Entity, EntityAlias, EntityMention
@@ -96,3 +97,31 @@ def entity_ids_matching_column(type: str, names: Any) -> Select[tuple[int]]:
             live_entity(),
         )
     )
+
+
+class NameKeys:
+    """Kunci pencocokan nama dari pengguna (kriteria PIR) dengan nama entitas di memori: nama
+    yang ter-resolve lewat alias -> id entitas, sisanya -> `alias_norm` nama itu sendiri. Jadi
+    "apt36" dan "Transparent Tribe" berkunci sama, dan nama yang tidak dikenal tetap cocok
+    case-insensitive seperti sebelum P7c (spec 5.1: kriteria menyimpan nama, cocok lewat alias)."""
+
+    def __init__(self, ids: dict[str, int]) -> None:
+        self._ids = ids
+
+    def __call__(self, name: str) -> tuple[str, int | str]:
+        norm = alias_norm(name or "")
+        entity_id = self._ids.get(norm)
+        return ("entity", entity_id) if entity_id is not None else ("name", norm)
+
+
+async def name_keys_async(session: AsyncSession, type: str, names: Iterable[str]) -> NameKeys:
+    """`NameKeys` untuk `names` bertipe `type`, satu query (alias unik per (tipe, alias_norm))."""
+    norms = sorted({alias_norm(n) for n in names if n and alias_norm(n)})
+    if not norms:
+        return NameKeys({})
+    rows = await session.execute(
+        select(EntityAlias.alias_norm, EntityAlias.entity_id)
+        .join(Entity, Entity.id == EntityAlias.entity_id)
+        .where(EntityAlias.entity_type == type, EntityAlias.alias_norm.in_(norms), live_entity())
+    )
+    return NameKeys({norm: entity_id for norm, entity_id in rows.tuples()})

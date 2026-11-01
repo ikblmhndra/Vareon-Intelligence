@@ -35,9 +35,9 @@ from cti_core.entity.sectors import SECTORS, sector_for_label
 
 log = structlog.get_logger()
 
-# Atribut ORM `Article` yang membaca mention (langsung atau lewat view kompatibilitas); di-expire
+# Atribut ORM `Article` yang membaca mention (relasi link lama dihapus di Task 12); di-expire
 # sesudah tulis Core supaya pembaca di sesi yang sama melihat keadaan baru.
-ARTICLE_MENTION_ATTRS = ("mentions", "countries", "industries", "threat_actors", "ttps", "malware")
+ARTICLE_MENTION_ATTRS = ("mentions",)
 
 # Sumber entitas baru per tipe bila nama belum dikenal (spec 3.1 `entities.source`).
 _NEW_SOURCE = {

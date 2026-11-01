@@ -248,7 +248,7 @@ def _prompt_items(
 def _article_line(a: Any, *, with_id: bool = False) -> str:
     """`with_id`: awali baris dengan `[#<id>]` (prompt MINGGUAN: story diverifikasi lewat id itu).
     Bawaannya tanpa id, supaya prompt harian tidak berubah satu byte pun."""
-    actors = ", ".join(t.threat_actor for t in a.threat_actors[:3])
+    actors = ", ".join(a.entity_names("intrusion-set")[:3])
     tag = f"[#{a.id}] " if with_id else ""
     return f"- {tag}[{a.source}] {_truncate(a.title, 200)}" + (
         f" | actors: {actors}" if actors else ""
@@ -729,7 +729,7 @@ class WeeklyPrompt:
 def _prompt_actor_names(inputs: WeeklyInputs, campaigns: list[dict[str, Any]]) -> list[str]:
     """Nama threat actor yang TERCETAK di prompt. Irisan `[:3]` meniru `_article_line`,
     `_tweet_line`, dan `_campaign_line`: yang tidak tercetak tidak ikut dianggap dikenal."""
-    names = [t.threat_actor for a, _ in inputs.articles for t in a.threat_actors[:3]]
+    names = [n for a, _ in inputs.articles for n in a.entity_names("intrusion-set")[:3]]
     for tweet in inputs.tweets:
         names += ((tweet.scan_results or {}).get("mentioned_group") or [])[:3]
     for campaign in campaigns:

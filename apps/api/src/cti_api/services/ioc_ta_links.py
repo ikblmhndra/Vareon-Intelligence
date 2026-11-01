@@ -5,7 +5,11 @@ Bagian 3).
 
 Watchlist check UNSCOPED (lintas semua client) -- asimetri legacy
 dipertahankan apa adanya, lihat docstring
-`AsyncTARepo.get_watchlist_names_unscoped()`."""
+`AsyncTARepo.get_watchlist_names_unscoped()` (P7c: nama + semua alias entitas yang
+di-watch, huruf kecil).
+
+P7c: aktor tag analis (mention indikator) dan aktor artikel sumber = nama entitas hidup, jadi tag
+"apt36" dan mention "Transparent Tribe" adalah SATU aktor; aktor suppressed tidak tampil."""
 
 from __future__ import annotations
 
@@ -25,16 +29,15 @@ async def get_ioc_ta_links(
     if ioc is None:
         return None
 
-    manual_tas: set[str] = {t.threat_actor for t in ioc.threat_actors if t.threat_actor}
+    manual_tas: set[str] = set(ioc.entity_names("intrusion-set"))
 
     article_ids = {s.article_id for s in ioc.sources if s.article_id is not None}
     article_ta_counts: dict[str, int] = {}
     if article_ids:
         articles = await AsyncArticleRepo(session).get_by_ids(list(article_ids))
         for article in articles.values():
-            for t in article.threat_actors:
-                if t.threat_actor:
-                    article_ta_counts[t.threat_actor] = article_ta_counts.get(t.threat_actor, 0) + 1
+            for name in article.entity_names("intrusion-set"):
+                article_ta_counts[name] = article_ta_counts.get(name, 0) + 1
 
     all_ta_names = manual_tas | set(article_ta_counts.keys())
     if not all_ta_names:

@@ -6,7 +6,7 @@ job pertama menembakkan isi file itu ke Graylog Cloud sebagai log lalu mengosong
 job kedua bertanya ke Graylog (7 hari terakhir vs 7 hari sebelumnya) dan mengirim
 peringkatnya ke Telegram. Graylog cuma dipakai sebagai penyimpan deret waktu.
 
-Sekarang datanya SUDAH ada di Postgres (`article_threat_actors` + `articles.first_seen_at`),
+Sekarang datanya SUDAH ada di Postgres (mention aktor `entity_mentions` + `articles.first_seen_at`),
 jadi peringkat dihitung langsung: tanpa Graylog, tanpa file lokal (yang hilang kalau
 container di-restart dan bisa kehilangan baris yang ditulis di antara baca dan kosongkan),
 tanpa dua token hardcoded.
@@ -21,7 +21,8 @@ Sama dengan lama:
 Beda:
   - nama grup digabung tanpa membedakan huruf besar/kecil (Graylog membedakannya, jadi
     "APT41" dan "Apt41" dulu terhitung dua grup); ditampilkan dengan ejaan yang paling
-    sering muncul;
+    sering muncul. Sejak P7c nama = nama entitas, jadi alias satu aktor ("APT36" dan
+    "Transparent Tribe") sudah satu grup; aktor suppressed/tombstone tidak ikut;
   - "Baru muncul" tidak lagi memakai persen (lama: jumlah x 100, angka tanpa arti, dan
     tanda kurung penutup berlebih);
   - pekan tanpa satu pun grup -> tidak ada pesan (lama: pesan berisi judul saja);
@@ -35,7 +36,8 @@ import html
 from collections import Counter
 from dataclasses import dataclass
 
-from cti_core.db.models.article import Article, ArticleThreatActor
+from cti_core.db.models.article import Article
+from cti_core.db.repositories.entity import ACTOR, mention_rows
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -86,9 +88,10 @@ def _counts(
     """`{nama_kecil: (ejaan_tampil, jumlah_artikel)}` untuk artikel yang pertama kali terlihat
     di [start, end). Satu artikel dihitung SEKALI per grup walau menyebut dua ejaan ("APT41"
     dan "Apt41"). Ejaan tampil = yang paling sering; seri -> urutan abjad paling awal."""
+    a = mention_rows(ACTOR)
     rows = session.execute(
-        select(ArticleThreatActor.article_id, ArticleThreatActor.threat_actor)
-        .join(Article, Article.id == ArticleThreatActor.article_id)
+        select(a.c.article_id, a.c.name)
+        .join(Article, Article.id == a.c.article_id)
         .where(Article.first_seen_at >= start, Article.first_seen_at < end)
     ).all()
 

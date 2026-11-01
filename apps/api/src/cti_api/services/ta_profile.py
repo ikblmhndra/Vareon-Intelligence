@@ -13,9 +13,10 @@ import datetime
 import re
 from typing import Any
 
-from cti_core.db.models.article import Article, ArticleThreatActor
+from cti_core.db.models.article import Article
 from cti_core.db.repositories.attack import AsyncAttackQueryRepo
 from cti_core.db.repositories.cve import AsyncCveTrackerRepo
+from cti_core.db.repositories.entity import ACTOR, entity_ids_named, mention_rows
 from cti_core.db.repositories.ta import AsyncTAProfileRepo, build_ta_name_pattern
 from cti_core.llm.client import get_llm_client, parse_json_response
 from cti_core.llm.usage import prompt_version
@@ -311,11 +312,15 @@ async def _enrich_profile_cves(session: AsyncSession, profile: dict[str, Any]) -
     article_cve_ids: set[str] = set()
     if actor_name:
         pattern = build_ta_name_pattern(actor_name)
+        # P7c: aktor dari mention (nama entitas cocok regex, atau entitas yang alias-nya =
+        # nama aktor), ditambah judul yang cocok regex -- sama seperti dulu.
+        a = mention_rows(ACTOR)
         result = await session.execute(
             select(Article.title)
-            .outerjoin(Article.threat_actors)
+            .outerjoin(a, a.c.article_id == Article.id)
             .where(
-                (ArticleThreatActor.threat_actor.op("~*")(pattern))
+                (a.c.name.op("~*")(pattern))
+                | a.c.entity_id.in_(entity_ids_named(ACTOR, [actor_name]))
                 | (Article.title.op("~*")(pattern))
             )
             .distinct()

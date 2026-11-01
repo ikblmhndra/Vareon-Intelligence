@@ -251,7 +251,7 @@ async def test_recompute_ignores_keyword_ttps_like_persist(
             NormalizedTTP("T1566", "Phishing", source="keyword"),
         ],
     )
-    assert sorted(t.source for t in article.ttps) == ["keyword", "llm"]
+    assert sorted(m.method for m in article.mentions_of("attack-pattern")) == ["keyword", "llm"]
 
     assert (await svc.compute_article_confidence(async_db_session, article)).priority_score == 53
     await svc.recompute_all_confidence(async_db_session, source_name="UnratedKw")

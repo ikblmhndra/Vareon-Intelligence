@@ -9,6 +9,7 @@ Menggantikan tabel link per-tipe (`article_threat_actors`, `article_ttps`, ...).
 from __future__ import annotations
 
 import datetime
+from collections.abc import Iterable
 from typing import Any
 
 from sqlalchemy import (
@@ -219,6 +220,25 @@ class EntityMention(Base):
     )
 
     entity: Mapped[Entity] = relationship(lazy="joined")
+
+
+def live_mentions(mentions: Iterable[EntityMention], types: tuple[str, ...]) -> list[EntityMention]:
+    """Mention ke entitas hidup (tidak suppressed, bukan tombstone) bertipe `types` (kosong =
+    semua), urutan dipertahankan. `identity` hanya sektor (kelas `class`), sama dengan
+    `repositories.entity.mention_rows`. Dipakai `mentions_of` milik Article/Indicator/CveTracker."""
+    return [
+        m
+        for m in mentions
+        if (not types or m.entity.type in types)
+        and not m.entity.suppressed
+        and m.entity.merged_into_id is None
+        and (m.entity.type != "identity" or m.entity.identity_class == "class")
+    ]
+
+
+def live_entity_names(mentions: Iterable[EntityMention], types: tuple[str, ...]) -> list[str]:
+    """Nama entitas (kanonik) dari `live_mentions`, tanpa duplikat, urutan dipertahankan."""
+    return list(dict.fromkeys(m.entity.name for m in live_mentions(mentions, types)))
 
 
 class EntityWatch(Base):

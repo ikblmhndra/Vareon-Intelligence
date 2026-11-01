@@ -10,7 +10,7 @@ resolve, lihat `cti_api.services.confidence`/`dedup`/`article_dashboard`.
 Mongo, kemungkinan besar OBSOLETE di skema baru -- `persist.py` Fase 5
 udah nulis IOC lewat jalur normal, bukan backfill URL-match belakangan).
 `/api/country-groups` SENGAJA di-skip -- itu peta nama->varian buat data
-negara yang dulu FREE-TEXT; skema baru (`ArticleCountry.country_code`)
+negara yang dulu FREE-TEXT; skema baru (mention `location`, `external_id`)
 udah ISO alpha-2 dari enrichment, gak ada lagi varian nama yang perlu
 di-grup di layer API.
 
@@ -81,6 +81,19 @@ SENGAJA gak pakai `require_auth` -- port apa adanya dari legacy
 cuma endpoint detail `{article_id}` dan tulis-confidence yang di-gate).
 Asimetri ini ada di kode lama, bukan keputusan baru di sini."""
 
+_TTP_SOURCES = frozenset({"explicit", "keyword", "llm"})
+
+
+def _ttp_source(method: str) -> Literal["explicit", "keyword", "llm"]:
+    """`entity_mentions.method` -> `TTP.source` v1. Method di luar tiga nilai v1 (`legacy`,
+    `analyst`, ...) dibaca sebagai `llm`, default skema dan pembacaan remap (Task 11)."""
+    return method if method in _TTP_SOURCES else "llm"  # type: ignore[return-value]
+
+
+def _industry_source(method: str) -> Literal["llm", "keyword"]:
+    """Sama untuk `industry_source` v1 (`llm` | `keyword`)."""
+    return "keyword" if method == "keyword" else "llm"
+
 
 def _serialize(
     article: Article,
@@ -102,6 +115,7 @@ def _serialize(
     audit = article.raw_enrichment.get("classify")
     inherited = isinstance(audit, dict) and audit.get("inherited_from_story") is not None
     lead_id = audit.get("lead_article_id") if inherited and isinstance(audit, dict) else None
+    sectors = article.mentions_of("identity")
     return ArticleOut(
         id=article.id,
         year=year,
@@ -111,27 +125,25 @@ def _serialize(
         url=str(machine_fields.get("url", "")),
         posted_on=posted_on.isoformat() if isinstance(posted_on, datetime.date) else "",
         source=source,
-        impacted_industries=[i.industry for i in article.industries],
-        mentioned_countries=[c.country_code for c in article.countries if c.role == "mentioned"],
-        victim_countries=[c.country_code for c in article.countries if c.role == "victim"],
-        actor_countries=[c.country_code for c in article.countries if c.role == "actor"],
-        threat_actors=[t.threat_actor for t in article.threat_actors],
+        impacted_industries=article.entity_names("identity"),
+        mentioned_countries=article.country_codes("mentioned"),
+        victim_countries=article.country_codes("victim"),
+        actor_countries=article.country_codes("actor"),
+        threat_actors=article.entity_names("intrusion-set"),
         ttps=[
             TTP(
-                id=t.ttp_id,
-                name=t.ttp_name,
-                source=t.source,  # type: ignore[arg-type]
-                evidence=t.evidence,
+                id=m.entity.external_id or "",
+                name=m.entity.name,
+                source=_ttp_source(m.method),
+                evidence=m.evidence,
             )
-            for t in article.ttps
+            for m in article.mentions_of("attack-pattern")
         ],
         malware=[
-            MalwareRef(name=m.name, kind=m.kind)  # type: ignore[arg-type]
-            for m in article.malware
+            MalwareRef(name=m.entity.name, kind=m.entity.type)  # type: ignore[arg-type]
+            for m in article.mentions_of("malware", "tool")
         ],
-        industry_source=(
-            article.industries[0].source if article.industries else None  # type: ignore[arg-type]
-        ),
+        industry_source=_industry_source(sectors[0].method) if sectors else None,
         news_type=str(machine_fields.get("news_type") or ""),
         confidence_score=machine_fields.get("confidence_score"),  # type: ignore[arg-type]
         admiralty_code=(

@@ -153,7 +153,7 @@ def test_set_enrichment_dedups_ttps_by_id_even_when_names_differ(db_session: Ses
     )
     db_session.flush()  # kalau dedup salah, IntegrityError meledak di sini
 
-    kept = {t.ttp_id: t.ttp_name for t in article.ttps}
+    kept = {m.entity.external_id: m.entity.name for m in article.mentions_of("attack-pattern")}
     assert kept == {"T1176": "Browser Extensions", "T1059.001": "PowerShell"}  # nama pertama menang
 
 
@@ -166,7 +166,9 @@ async def test_async_set_enrichment_dedups_ttps_by_id_even_when_names_differ(
     await repo.set_enrichment(article, ttps=[("T1176", "A"), ("T1176", "B")])
     await async_db_session.flush()
 
-    assert [(t.ttp_id, t.ttp_name) for t in article.ttps] == [("T1176", "A")]
+    assert [
+        (m.entity.external_id, m.entity.name) for m in article.mentions_of("attack-pattern")
+    ] == [("T1176", "A")]
 
 
 # --- set_enrichment idempoten (Fase 10.E) ------------------------------------------
@@ -204,14 +206,11 @@ def test_set_enrichment_twice_with_the_same_values_is_a_noop_not_a_unique_violat
     repo = ArticleRepo(db_session)
     article = repo.upsert(url="https://example.com/dup", title="t", source="s")
     repo.set_enrichment(article, **ENRICHMENT)
-    ids_before = sorted(i.id for i in article.industries) + sorted(c.id for c in article.countries)
+    ids_before = sorted(m.id for m in article.mentions)
 
     repo.set_enrichment(article, **ENRICHMENT)  # dulu: UniqueViolation uq_article_industry
 
-    assert (
-        sorted(i.id for i in article.industries) + sorted(c.id for c in article.countries)
-        == ids_before
-    )
+    assert sorted(m.id for m in article.mentions) == ids_before
     assert _snapshot(article)["industries"] == []  # P7c: "General" = tanpa mention sektor
 
 

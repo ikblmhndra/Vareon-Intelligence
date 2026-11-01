@@ -23,12 +23,10 @@ from cti_core.db.engine import get_sync_engine
 def _include_object(
     obj: Any, name: str | None, type_: str, reflected: bool, compare_to: Any
 ) -> bool:
-    """P7c-1 (Ruling 2): kelas tautan lama sementara dipetakan ke VIEW kompatibilitas
-    (`info={"compat_view": True}`), dan tabel aslinya kini `_legacy_*` tanpa model. Keduanya di
-    luar perbandingan sampai Task 12 menghapus kelas lama (dan filter ini)."""
+    """P7c-1: tabel link/TA lama di-rename jadi `_legacy_*` (disimpan satu rilis untuk rollback,
+    tanpa model) -- di luar perbandingan. View kompatibilitas dengan nama lama tidak ikut
+    di-reflect `compare_metadata`, dan kelas ORM-nya sudah dihapus (Task 12)."""
     table = obj if type_ == "table" else getattr(obj, "table", None)
-    if table is not None and table.info.get("compat_view"):
-        return False
     table_name = name if type_ == "table" else getattr(table, "name", "")
     return not (table_name or "").startswith("_legacy_")
 

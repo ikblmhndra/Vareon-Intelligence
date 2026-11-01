@@ -88,8 +88,8 @@ def _article_out(article: Article, has_note: bool) -> PIRArticleOut:
         posted_on=article.posted_on.isoformat() if article.posted_on else None,
         source=article.source,
         news_type=article.news_type,
-        threat_actors=[t.threat_actor for t in article.threat_actors],
-        impacted_industries=[i.industry for i in article.industries],
+        threat_actors=article.entity_names("intrusion-set"),
+        impacted_industries=article.entity_names("identity"),
         # Role apa pun -- PIR match negara lewat filter `countries` (role apa
         # pun), jadi negara yang bikin artikel ke-match harus ikut tampil.
         mentioned_countries=all_country_codes(article),
@@ -105,8 +105,8 @@ def _article_export_dict(article: Article, note: PIRNote | None) -> dict[str, An
         "posted_on": article.posted_on.isoformat() if article.posted_on else None,
         "source": article.source,
         "news_type": article.news_type,
-        "threat_actors": [t.threat_actor for t in article.threat_actors],
-        "impacted_industries": [i.industry for i in article.industries],
+        "threat_actors": article.entity_names("intrusion-set"),
+        "impacted_industries": article.entity_names("identity"),
         "mentioned_countries": all_country_codes(article),
         "analyst_note": (
             {"note": note.note, "analyst": note.analyst, "updated_at": note.updated_at.isoformat()}
