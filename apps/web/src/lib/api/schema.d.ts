@@ -1436,6 +1436,270 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/entities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Entities */
+        get: operations["list_entities_api_entities_get"];
+        put?: never;
+        /** Create Entity */
+        post: operations["create_entity_api_entities_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/entities/{entity_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Entity */
+        get: operations["get_entity_api_entities__entity_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Entity */
+        patch: operations["update_entity_api_entities__entity_id__patch"];
+        trace?: never;
+    };
+    "/api/entities/{entity_id}/aliases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Alias */
+        post: operations["add_alias_api_entities__entity_id__aliases_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/entities/{entity_id}/aliases/{alias_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove Alias */
+        delete: operations["remove_alias_api_entities__entity_id__aliases__alias_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/entities/{entity_id}/attack": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Attack */
+        get: operations["get_attack_api_entities__entity_id__attack_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/entities/{entity_id}/cves": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Cves */
+        get: operations["get_cves_api_entities__entity_id__cves_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/entities/{entity_id}/indicators": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Indicators */
+        get: operations["get_indicators_api_entities__entity_id__indicators_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/entities/{entity_id}/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge
+         * @description Audit ditulis `merge_entities` (actor = username).
+         */
+        post: operations["merge_api_entities__entity_id__merge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/entities/{entity_id}/merge-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Merge Preview */
+        get: operations["merge_preview_api_entities__entity_id__merge_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/entities/{entity_id}/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Generate Profile */
+        post: operations["generate_profile_api_entities__entity_id__profile_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/entities/{entity_id}/relationships": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Relationships */
+        get: operations["get_relationships_api_entities__entity_id__relationships_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/entities/{entity_id}/split": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Split
+         * @description Mengembalikan entitas baru atau tombstone yang dihidupkan lagi.
+         */
+        post: operations["split_api_entities__entity_id__split_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/entities/{entity_id}/stories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Stories */
+        get: operations["get_stories_api_entities__entity_id__stories_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/entities/{entity_id}/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Timeline */
+        get: operations["get_timeline_api_entities__entity_id__timeline_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/entities/{entity_id}/watch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Watch */
+        put: operations["watch_api_entities__entity_id__watch_put"];
+        post?: never;
+        /** Unwatch */
+        delete: operations["unwatch_api_entities__entity_id__watch_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/exec/brief": {
         parameters: {
             query?: never;
@@ -2666,6 +2930,46 @@ export interface paths {
         patch: operations["recap_override_scorecard_api_recap__recap_id__scorecard__event_id__patch"];
         trace?: never;
     };
+    "/api/relationships": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Relationship
+         * @description Relasi analis (termasuk "make relationship" dari co-mention); confidence default 75.
+         */
+        post: operations["create_relationship_api_relationships_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/relationships/{relationship_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke Relationship
+         * @description Hapus = revoke (terbit `revoked: true`); idempoten.
+         */
+        delete: operations["revoke_relationship_api_relationships__relationship_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/rfi": {
         parameters: {
             query?: never;
@@ -3854,6 +4158,20 @@ export interface components {
             /** Username */
             username: string;
         };
+        /** AliasCreate */
+        AliasCreate: {
+            /** Alias */
+            alias: string;
+        };
+        /** AliasOut */
+        AliasOut: {
+            /** Alias */
+            alias: string;
+            /** Id */
+            id: number;
+            /** Source */
+            source: string;
+        };
         /** AllowlistBody */
         AllowlistBody: {
             /**
@@ -4069,6 +4387,30 @@ export interface components {
              */
             year: number;
         };
+        /** AttackMitigationOut */
+        AttackMitigationOut: {
+            /** Description */
+            description: string;
+            /** Mitigation Id */
+            mitigation_id: string;
+            /** Name */
+            name: string;
+            /** Techniques */
+            techniques: string[];
+        };
+        /** AttackTechniqueOut */
+        AttackTechniqueOut: {
+            /** External Id */
+            external_id?: string | null;
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Tactics */
+            tactics: string[];
+            /** Type */
+            type: string;
+        };
         /**
          * Backlog
          * @description Beban kerja yang belum selesai (belum di-acknowledge, menunggu status, Open, atau In
@@ -4245,6 +4587,12 @@ export interface components {
             countries?: string[] | null;
             /** Name */
             name: string;
+        };
+        /** CoMention */
+        CoMention: {
+            entity: components["schemas"]["EntityRef"];
+            /** Stories */
+            stories: number;
         };
         /**
          * CredibilityOverrideIn
@@ -4879,6 +5227,235 @@ export interface components {
             /** Processed 7D */
             processed_7d: number;
         };
+        /** EntityAttackResponse */
+        EntityAttackResponse: {
+            /** Layer */
+            layer: {
+                [key: string]: unknown;
+            };
+            /** Mitigations */
+            mitigations: components["schemas"]["AttackMitigationOut"][];
+            /** Techniques */
+            techniques: components["schemas"]["AttackTechniqueOut"][];
+        };
+        /** EntityCreate */
+        EntityCreate: {
+            /** Aliases */
+            aliases?: string[];
+            /** Description */
+            description?: string | null;
+            /** External Id */
+            external_id?: string | null;
+            /** Identity Class */
+            identity_class?: string | null;
+            /** Name */
+            name: string;
+            /** Type */
+            type: string;
+        };
+        /** EntityCveItem */
+        EntityCveItem: {
+            /** Cisa Kev */
+            cisa_kev: boolean;
+            /** Cve Id */
+            cve_id: string;
+            /** Cve Score */
+            cve_score: number | null;
+            /** Cve Severity */
+            cve_severity: string | null;
+            /**
+             * Detected On
+             * Format: date-time
+             */
+            detected_on: string;
+            /** Id */
+            id: number;
+            /** Published */
+            published: string | null;
+            /** Tech */
+            tech: string | null;
+        };
+        /** EntityCvesResponse */
+        EntityCvesResponse: {
+            /** Items */
+            items: components["schemas"]["EntityCveItem"][];
+            /** Total */
+            total: number;
+        };
+        /** EntityDetail */
+        EntityDetail: {
+            /** Aliases */
+            aliases: components["schemas"]["AliasOut"][];
+            /** Description */
+            description: string | null;
+            /** External Id */
+            external_id: string | null;
+            /** First Seen */
+            first_seen: string | null;
+            /** Id */
+            id: number;
+            /** Identity Class */
+            identity_class: string | null;
+            /** Last Seen */
+            last_seen: string | null;
+            /** Mentions 30D */
+            mentions_30d: number;
+            /** Mentions 90D */
+            mentions_90d: number;
+            /** Merged Into Id */
+            merged_into_id: number | null;
+            /** Name */
+            name: string;
+            /** Profile */
+            profile?: {
+                [key: string]: unknown;
+            } | null;
+            /** Profile Generated At */
+            profile_generated_at?: string | null;
+            /** Source */
+            source: string;
+            /** Stix Id */
+            stix_id: string;
+            /** Suppressed */
+            suppressed: boolean;
+            /** Type */
+            type: string;
+            /** Watched */
+            watched: boolean;
+        };
+        /** EntityIndicatorItem */
+        EntityIndicatorItem: {
+            /** Confidence Score */
+            confidence_score: number;
+            /**
+             * First Seen At
+             * Format: date-time
+             */
+            first_seen_at: string;
+            /** Id */
+            id: number;
+            /**
+             * Last Seen At
+             * Format: date-time
+             */
+            last_seen_at: string;
+            /** Revoked At */
+            revoked_at: string | null;
+            /** Type */
+            type: string;
+            /** Value */
+            value: string;
+        };
+        /** EntityIndicatorsResponse */
+        EntityIndicatorsResponse: {
+            /** Items */
+            items: components["schemas"]["EntityIndicatorItem"][];
+            /** Total */
+            total: number;
+        };
+        /** EntityListItem */
+        EntityListItem: {
+            /** Aliases */
+            aliases: string[];
+            /** External Id */
+            external_id: string | null;
+            /** Id */
+            id: number;
+            /** Last Seen */
+            last_seen: string | null;
+            /** Mentions 30D */
+            mentions_30d: number;
+            /** Mentions 90D */
+            mentions_90d: number;
+            /** Name */
+            name: string;
+            /** Source */
+            source: string;
+            /** Suppressed */
+            suppressed: boolean;
+            /** Type */
+            type: string;
+            /** Watched */
+            watched: boolean;
+        };
+        /** EntityListResponse */
+        EntityListResponse: {
+            /** Items */
+            items: components["schemas"]["EntityListItem"][];
+            /** Next Cursor */
+            next_cursor: string | null;
+        };
+        /** EntityProfileOut */
+        EntityProfileOut: {
+            /** Profile */
+            profile: {
+                [key: string]: unknown;
+            };
+        };
+        /** EntityRef */
+        EntityRef: {
+            /** External Id */
+            external_id?: string | null;
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Type */
+            type: string;
+        };
+        /** EntityRelationshipsResponse */
+        EntityRelationshipsResponse: {
+            /** Co Mentions */
+            co_mentions: components["schemas"]["CoMention"][];
+            /** Relationships */
+            relationships: components["schemas"]["RelationshipOut"][];
+        };
+        /** EntityStoriesResponse */
+        EntityStoriesResponse: {
+            /** Items */
+            items: components["schemas"]["EntityStoryItem"][];
+            /** Total */
+            total: number;
+        };
+        /** EntityStoryItem */
+        EntityStoryItem: {
+            /** Article Count */
+            article_count: number;
+            /**
+             * First Seen At
+             * Format: date-time
+             */
+            first_seen_at: string;
+            /** Id */
+            id: number;
+            /**
+             * Last Seen At
+             * Format: date-time
+             */
+            last_seen_at: string;
+            /** Lead Source */
+            lead_source: string;
+            /** Mentioned Articles */
+            mentioned_articles: number;
+            /** Source Count */
+            source_count: number;
+            /** Title */
+            title: string;
+        };
+        /** EntityTimelineResponse */
+        EntityTimelineResponse: {
+            /** Months */
+            months: components["schemas"]["TimelineMonth"][];
+        };
+        /** EntityUpdate */
+        EntityUpdate: {
+            /** Description */
+            description?: string | null;
+            /** Name */
+            name?: string | null;
+            /** Suppressed */
+            suppressed?: boolean | null;
+        };
         /**
          * ExploitRiskCve
          * @description CVE yang belum selesai tetapi terbukti/berpeluang tinggi dieksploitasi.
@@ -5145,6 +5722,24 @@ export interface components {
             pap?: ("clear" | "green" | "amber" | "red") | null;
             /** Tlp */
             tlp?: ("clear" | "green" | "amber" | "amber+strict" | "red") | null;
+        };
+        /** MergeBody */
+        MergeBody: {
+            /** Into Id */
+            into_id: number;
+        };
+        /** MergeResultOut */
+        MergeResultOut: {
+            /** Moved Aliases */
+            moved_aliases: number;
+            /** Moved Mentions */
+            moved_mentions: number;
+            /** Moved Profile */
+            moved_profile: boolean;
+            /** Moved Relationships */
+            moved_relationships: number;
+            /** Moved Watches */
+            moved_watches: number;
         };
         /** MetricStat */
         MetricStat: {
@@ -6073,6 +6668,51 @@ export interface components {
             /** Url */
             url: string;
         };
+        /** RelationshipCreate */
+        RelationshipCreate: {
+            /**
+             * Confidence
+             * @default 75
+             */
+            confidence: number;
+            /** Description */
+            description?: string | null;
+            /** Relationship Type */
+            relationship_type: string;
+            /** Source Id */
+            source_id: number;
+            /** Target Id */
+            target_id: number;
+        };
+        /** RelationshipOut */
+        RelationshipOut: {
+            /** Confidence */
+            confidence: number | null;
+            /** Created By */
+            created_by: string | null;
+            /** Description */
+            description: string | null;
+            /** First Seen */
+            first_seen: string | null;
+            /** Id */
+            id: number;
+            /** Last Seen */
+            last_seen: string | null;
+            /** Provenance */
+            provenance: string;
+            /** Relationship Type */
+            relationship_type: string;
+            /** Revoked At */
+            revoked_at: string | null;
+            /** Revoked By */
+            revoked_by: string | null;
+            source: components["schemas"]["EntityRef"] | null;
+            /** Source Indicator Id */
+            source_indicator_id: number | null;
+            /** Stix Id */
+            stix_id: string;
+            target: components["schemas"]["EntityRef"];
+        };
         /**
          * RelevanceHealthOut
          * @description Model relevansi lokal (P5). `None` = belum ada data (tanpa model aktif / penyebut nol).
@@ -6704,6 +7344,11 @@ export interface components {
             /** Tweets Newest At */
             tweets_newest_at: string | null;
         };
+        /** SplitBody */
+        SplitBody: {
+            /** Alias Ids */
+            alias_ids: number[];
+        };
         /**
          * StatusBreakdown
          * @description Partisi lengkap: tiap CVE masuk TEPAT SATU bucket, jumlahnya = `summary.total`.
@@ -7031,6 +7676,13 @@ export interface components {
             /** Threat Actors */
             threat_actors: string[];
         };
+        /** TimelineMonth */
+        TimelineMonth: {
+            /** Articles */
+            articles: number;
+            /** Month */
+            month: string;
+        };
         /** TimelinePoint */
         TimelinePoint: {
             /** Count */
@@ -7350,6 +8002,11 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** WatchOut */
+        WatchOut: {
+            /** Watched */
+            watched: boolean;
         };
         /** WeekCount */
         WeekCount: {
@@ -10422,6 +11079,646 @@ export interface operations {
             };
         };
     };
+    list_entities_api_entities_get: {
+        parameters: {
+            query?: {
+                type?: string | null;
+                q?: string | null;
+                watched?: boolean;
+                include_suppressed?: boolean;
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: {
+                "x-client-id"?: string | null;
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_entity_api_entities_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-client-id"?: string | null;
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EntityCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_entity_api_entities__entity_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-client-id"?: string | null;
+                authorization?: string | null;
+            };
+            path: {
+                entity_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_entity_api_entities__entity_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-client-id"?: string | null;
+                authorization?: string | null;
+            };
+            path: {
+                entity_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EntityUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_alias_api_entities__entity_id__aliases_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                entity_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AliasCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AliasOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_alias_api_entities__entity_id__aliases__alias_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-client-id"?: string | null;
+                authorization?: string | null;
+            };
+            path: {
+                entity_id: number;
+                alias_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_attack_api_entities__entity_id__attack_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                entity_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityAttackResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_cves_api_entities__entity_id__cves_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                "x-client-id"?: string | null;
+                authorization?: string | null;
+            };
+            path: {
+                entity_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityCvesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_indicators_api_entities__entity_id__indicators_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                entity_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityIndicatorsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    merge_api_entities__entity_id__merge_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                entity_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MergeBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MergeResultOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    merge_preview_api_entities__entity_id__merge_preview_get: {
+        parameters: {
+            query: {
+                into_id: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                entity_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MergeResultOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_profile_api_entities__entity_id__profile_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                entity_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityProfileOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_relationships_api_entities__entity_id__relationships_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                entity_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityRelationshipsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    split_api_entities__entity_id__split_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-client-id"?: string | null;
+                authorization?: string | null;
+            };
+            path: {
+                entity_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SplitBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_stories_api_entities__entity_id__stories_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                entity_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityStoriesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_timeline_api_entities__entity_id__timeline_get: {
+        parameters: {
+            query?: {
+                months?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                entity_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityTimelineResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    watch_api_entities__entity_id__watch_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-client-id"?: string | null;
+                authorization?: string | null;
+            };
+            path: {
+                entity_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unwatch_api_entities__entity_id__watch_delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-client-id"?: string | null;
+                authorization?: string | null;
+            };
+            path: {
+                entity_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     exec_brief_api_exec_brief_post: {
         parameters: {
             query?: {
@@ -13161,6 +14458,74 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_relationship_api_relationships_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RelationshipCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelationshipOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_relationship_api_relationships__relationship_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                relationship_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelationshipOut"];
                 };
             };
             /** @description Validation Error */

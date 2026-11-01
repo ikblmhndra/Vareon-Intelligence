@@ -66,6 +66,38 @@ _TIMEOUT = httpx.Timeout(300.0)
 _HEADERS = {"User-Agent": "cti-platform/1.0 (ATT&CK sync)"}
 
 
+def build_navigator_layer(
+    technique_ids: list[str], *, name: str, domain: str, description: str
+) -> dict[str, Any]:
+    """Layer ATT&CK Navigator untuk daftar id teknik. Dipakai `get_navigator_layer` (ATT&CK DB)
+    dan tab ATT&CK entitas (P7c `GET /api/entities/{id}/attack`), jadi formatnya satu."""
+    return {
+        "name": name,
+        "versions": {"attack": "16", "navigator": "4.5", "layer": "4.5"},
+        "domain": domain,
+        "description": description,
+        "techniques": [
+            {
+                "techniqueID": tid,
+                "color": "#0C969C",
+                "score": 1,
+                "enabled": True,
+                "metadata": [],
+                "links": [],
+            }
+            for tid in technique_ids
+        ],
+        "gradient": {"colors": ["#ffffff", "#0C969C"], "minValue": 0, "maxValue": 1},
+        "legendItems": [],
+        "metadata": [],
+        "links": [],
+        "showTacticRowBackground": True,
+        "tacticRowBackground": "#162B2C",
+        "selectTechniquesAcrossTactics": True,
+        "selectSubtechniquesWithParent": False,
+    }
+
+
 def _mitre_ref(obj: dict[str, Any]) -> dict[str, Any]:
     for ref in obj.get("external_references", []):
         if ref.get("source_name") == "mitre-attack":
@@ -1296,29 +1328,9 @@ class AsyncAttackQueryRepo:
             )
         )
 
-        return {
-            "name": f"{platform_name()} — ATT&CK DB",
-            "versions": {"attack": "16", "navigator": "4.5", "layer": "4.5"},
-            "domain": nav_domain,
-            "description": description,
-            "techniques": [
-                {
-                    "techniqueID": t.attack_id,
-                    "color": "#0C969C",
-                    "score": 1,
-                    "enabled": True,
-                    "metadata": [],
-                    "links": [],
-                }
-                for t in techniques
-                if t.attack_id
-            ],
-            "gradient": {"colors": ["#ffffff", "#0C969C"], "minValue": 0, "maxValue": 1},
-            "legendItems": [],
-            "metadata": [],
-            "links": [],
-            "showTacticRowBackground": True,
-            "tacticRowBackground": "#162B2C",
-            "selectTechniquesAcrossTactics": True,
-            "selectSubtechniquesWithParent": False,
-        }
+        return build_navigator_layer(
+            [t.attack_id for t in techniques if t.attack_id],
+            name=f"{platform_name()} — ATT&CK DB",
+            domain=nav_domain,
+            description=description,
+        )

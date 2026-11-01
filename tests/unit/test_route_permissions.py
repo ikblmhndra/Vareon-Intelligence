@@ -119,3 +119,45 @@ def test_analyst_keeps_cve_triage_and_ops_views() -> None:
 
 def test_admin_has_manage_api_tokens() -> None:
     assert "manage_api_tokens" in SYSTEM_ROLES["admin"]["permissions"]
+
+
+# Spec P7c 5.2: permission per endpoint entitas (persis tabel spec).
+_ENTITY_PERMS: dict[tuple[str, str], str] = {
+    ("GET", "/api/entities"): "view_ta",
+    ("GET", "/api/entities/{entity_id}"): "view_ta",
+    ("GET", "/api/entities/{entity_id}/relationships"): "view_ta",
+    ("GET", "/api/entities/{entity_id}/stories"): "view_ta",
+    ("GET", "/api/entities/{entity_id}/indicators"): "view_ta",
+    ("GET", "/api/entities/{entity_id}/cves"): "view_ta",
+    ("GET", "/api/entities/{entity_id}/timeline"): "view_ta",
+    ("GET", "/api/entities/{entity_id}/attack"): "view_ta",
+    ("POST", "/api/entities"): "manage_entities",
+    ("PATCH", "/api/entities/{entity_id}"): "manage_entities",
+    ("POST", "/api/entities/{entity_id}/aliases"): "manage_entities",
+    ("DELETE", "/api/entities/{entity_id}/aliases/{alias_id}"): "manage_entities",
+    ("GET", "/api/entities/{entity_id}/merge-preview"): "manage_entities",
+    ("POST", "/api/entities/{entity_id}/merge"): "manage_entities",
+    ("POST", "/api/entities/{entity_id}/split"): "manage_entities",
+    ("POST", "/api/relationships"): "manage_entities",
+    ("DELETE", "/api/relationships/{relationship_id}"): "manage_entities",
+    ("PUT", "/api/entities/{entity_id}/watch"): "manage_pir",
+    ("DELETE", "/api/entities/{entity_id}/watch"): "manage_pir",
+    ("POST", "/api/entities/{entity_id}/profile"): "manage_intel",
+}
+
+
+def test_entity_routes_use_spec_permissions(monkeypatch: pytest.MonkeyPatch) -> None:
+    got: dict[tuple[str, str], set[str]] = {}
+    for route in _app_routes(monkeypatch):
+        if route.path.startswith(("/api/entities", "/api/relationships")):
+            for method in route.methods:
+                got[(method, route.path)] = _permissions(route.dependant)
+    assert set(got) == set(_ENTITY_PERMS)
+    for key, perm in _ENTITY_PERMS.items():
+        assert got[key] == {perm}, (key, got[key])
+
+
+def test_manage_entities_granted_to_admin_and_analyst() -> None:
+    assert "manage_entities" in ALL_PERMISSIONS
+    for role in ("admin", "analyst"):
+        assert "manage_entities" in SYSTEM_ROLES[role]["permissions"], role  # type: ignore[operator]
