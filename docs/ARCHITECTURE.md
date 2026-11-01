@@ -175,8 +175,9 @@ tweet would move `since_id` past tweets the alert filters rejected.
    and does not replace it. `tier1.merge.merge_ttps` merges per technique id with the priority explicit > llm > keyword
    (keyword hits are not sent to the TTP LLM call); Tier 1 actors join the scorer's `mentioned_group`, so some new
    articles move from "Global Article" to "TA Group Article" and the Telegram alert gains a "Related Threat Actor" line.
-5. `persist` upserts `articles` by `url_hash` and writes countries, industries, threat actors, TTPs, IOCs and
-   `article_cves` (CVE ids no longer go into `indicators`). IOC values are stored in canonical form
+5. `persist` upserts `articles` by `url_hash` and writes countries, industries (sectors), threat actors, malware/tools,
+   TTPs and CVEs as `entity_mentions` (each name resolved to its entity, section 3.10), plus IOCs (CVE ids no longer go
+   into `indicators`). IOC values are stored in canonical form
    (`cti_core.ioc.canonical.canonical`: refang, lowercase; URL path and query keep their case) and the web shows them defanged.
    An IOC that matches the infrastructure allowlist (a curated domain seed; a URL with a path never matches) is not
    dropped but flagged `auto_suppressed` with reason `allowlist:<type>:<entry> (infrastructure-abuse)`; suppressed
@@ -206,14 +207,15 @@ keeps it. The Newsroom "Restore" button does **not** do this: it only creates a 
 enrichment, and that stub makes the pipeline skip the URL (`_known_article`), so the tool skips such rows unless
 `--replace-restored-stubs` removes the stub first.
 
-**Tier 1 provenance and backfill.** Rows carry their origin: `article_ttps.source` (`explicit`/`llm`/`keyword`) and
-`evidence`, `article_threat_actors.source`, `article_industries.source`, and malware lives in the new `article_malware`
-table. Inferred TTPs are not stored: `GET /api/articles/{id}/inferred-ttps` computes them on read from the ATT&CK
+**Tier 1 provenance and backfill.** Mentions carry their origin in `entity_mentions.method` (`explicit`/`llm`/`keyword`
+for TTPs, `dictionary` for Tier 1 actors and malware) and `evidence`; before 0.8.11 the same lived in
+`article_ttps.source`, `article_threat_actors.source`, `article_industries.source` and `article_malware`, which are now
+compatibility views. Inferred TTPs are not stored: `GET /api/articles/{id}/inferred-ttps` computes them on read from the ATT&CK
 relationships of the article's actors and malware. The article list and the MITRE heatmap accept `ttp_source`.
 `python -m cti_enrich.backfill_tier1 [--since] [--limit] [--sleep] [--dry-run]` runs Tier 1 over stored articles by hand;
 it only adds rows and makes no LLM call. `tools/eval/tier1_eval.py` is the evaluation harness.
-`python -m cti_enrich.canonicalise_actors [--apply]` (dry-run unless `--apply`) is the one-off remap of pre-0.8.8 alias-form actor
-names to the canonical stored form in `article_threat_actors`, `ta_watchlist`, `ta_profiles` and PIR criteria, merging duplicates.
+`python -m cti_enrich.canonicalise_actors` was the 0.8.8 one-off remap of alias-form actor names; since 0.8.11 the entity
+model resolves alias forms itself and the command is a no-op that says so.
 
 **Story settings** (`Settings.story`, all optional; a change needs a worker restart):
 
@@ -308,7 +310,8 @@ Beat also schedules non-scraper tasks (`cti_worker.beat._periodic_schedule`, `_r
 | `scraper.reap_stale_runs` | maintenance | Every 30 min. Close runs still `running` after `WORKER__SCRAPER_RUN_STALE_HOURS` (2) as `timeout` with a reaper note; `finished_at` stays NULL so the row never looks like the latest result in `/api/cve/freshness`. |
 | `scraper.health_digest` | notify | One Telegram message summarising unhealthy scrapers; silent when all are fine. |
 | `pir.check_p1_alerts`, `pir.check_all_alerts` | notify | Match new articles against PIRs and alert. |
-| `attack.sync_check`, `ioc.decay_sweep` | maintenance | Re-sync the ATT&CK catalog when older than `worker.attack_sync_interval_days`, IOC confidence decay. |
+| `attack.sync_check`, `ioc.decay_sweep` | maintenance | Re-sync the ATT&CK catalog when older than `worker.attack_sync_interval_days` (the sync also upserts ATT&CK entities, aliases, relationships and campaigns), IOC confidence decay. |
+| `entity.alias_sync` | maintenance | Sunday 05:00 UTC. Fetch the MISP Galaxy `threat-actor`, `ransomware` and `malpedia` clusters (30 s timeout), reject a broken file or one that shrank by more than 20 %, store the copy in `reference_snapshots`, then run the Galaxy alias merge in apply mode (section 3.10). Off with `ENTITY__ALIAS_SYNC_ENABLED=false`. |
 | `ioc.enrich_pending` | maintenance | Every 15 minutes: reputation lookups for IOCs at AbuseIPDB, VirusTotal and OTX (the ones whose key is set), written to `indicators.enrichment`. No-op without a key. Section 3.7. |
 | `recap.generate_weekly` | maintenance | Monday 00:15 UTC (07:15 WIB): the weekly recap for the Monday-Sunday week (UTC dates) that ended the day before, one LLM call from aggregates, none for a week without articles, tweets or CVEs. There is no scheduled daily recap; a single day is still generated by hand with `POST /api/recap/generate?kind=daily`. |
 | `newsletter.prepare_monthly` | maintenance | Every weekday 02:00 UTC (09:00 WIB). Returns at once except on the first Monday-Friday of the month and the next 7 days, and only while the previous month has no suggestion: then it builds the suggested content and the Executive Summary (one LLM call, none without weekly recaps). Section 3.5. |
@@ -483,7 +486,8 @@ flowchart LR
 ### 3.9 Machine API (P7b)
 
 SIEM/TIP clients read indicators without a web login. Two read-only surfaces in `cti-api`, both token-only: the REST feed
-`GET /api/v2/indicators` and the TAXII 2.1 server under `/taxii2/` (one collection, `indicators`). They share one
+`GET /api/v2/indicators` and the TAXII 2.1 server under `/taxii2/` (collection `indicators`; P7c adds `intel`, section
+3.10). They share one
 service layer and build STIX objects at read time (no stored object table). Auth is a bearer or Basic-password token from
 `api_tokens` (sha256 hash, shown once, scope `indicators:read`, optional expiry, `max_tlp` filters what the token sees);
 admins manage tokens at `/api/api-tokens` through the web proxy (Admin page, permission `manage_api_tokens`).
@@ -496,6 +500,45 @@ limitations (spec risks R7-R9): a hard delete is not a retraction (revoke via FP
 `indicator--` id without `revoked`; expiry is time-based and does not move the clock, so consumers evaluate `valid_until`.
 Spec: `docs/superpowers/specs/2026-10-29-p7b-machine-api-design.md`.
 
+### 3.10 Entity model (P7c)
+
+One id per real-world thing: actors (`intrusion-set`), malware, tools, ATT&CK techniques (`attack-pattern`, identity =
+technique id), CVEs (`vulnerability`), ATT&CK campaigns, sectors (`identity`, class) and ransomware victims (`identity`,
+organization), countries (`location`). Tables (migration `1387fae00908`):
+
+- `entities`: `type`, `name`, `external_id`, `stix_id` (fixed at creation; uuid5 of type and name for non-ATT&CK rows),
+  `source`, `tlp`, `suppressed` (replaces the TA whitelist), `merged_into_id` (a merged tombstone), first/last seen.
+- `entity_aliases`: unique per `(entity_type, alias_norm)`; `alias_norm` lowercases and collapses whitespace the same way
+  in Python (`cti_core.entity.alias_norm`) and SQL.
+- `relationships`: STIX SROs (`uses`, `targets`, `attributed-to`, ...) with `provenance` (`attack`, `analyst`,
+  `ransomware`), `confidence` and `revoked_at`.
+- `entity_mentions`: the only link table. An article, indicator or CVE mentions an entity with a `method`
+  (`dictionary`, `llm`, `keyword`, `explicit`, `analyst`, `legacy`), the `matched_alias`, a `role` (countries) and
+  `evidence`. `Article.mentions` and `mention_rows(*types)` are the reader helpers.
+- `entity_watches` (per client), `entity_profiles` (LLM actor profile), `reference_snapshots` (Galaxy copies).
+
+Writes go through `cti_core.entity.resolve` (alias lookup following `merged_into_id`, else create; safe under concurrent
+workers); the SQL twin `entity_resolve` serves the compatibility views. Merge, split and suppress live in
+`cti_core.entity.merge`: a merge repoints aliases, mentions, watches and relationships to the target and leaves a
+tombstone; split restores the recorded aliases and mentions exactly; every operation is audit-logged. `cti-entity
+merge-aliases` (`cti_core.entity.galaxy`) plans Galaxy merges with guards (two ATT&CK entities in one cluster, ambiguous
+words, owned aliases, analyst-undone merges) and applies them through the same merge code. The Tier 1 dictionary is
+built from the aliases of live entities.
+
+The old tables `article_threat_actors`, `article_malware`, `article_ttps`, `article_cves`, `article_countries`,
+`article_industries`, `indicator_threat_actors`, `cve_threat_actors`, `cve_ttps`, `ta_watchlist`, `ta_profiles` and
+`ta_whitelist` are views over these tables, with `INSTEAD OF` triggers where 0.8.2/0.8.10 code writes them, so a code
+rollback keeps working; the original tables are kept as `_legacy_*` until the release after 0.8.11. v1 endpoints read
+mentions and keep their response shapes (names are entity names, industries are sector display names).
+
+Feed clocks follow P7b: triggers keep `feed_changed_at` on `entities`, `relationships` and `stories` (also on alias and
+mention inserts, deletes and repointing updates, and on suppress/merge/TLP changes of an entity for the relationships and
+stories that reference it). `/api/entities` and `/api/relationships` (web JWT, permission `manage_entities` for writes)
+serve the analyst side; tokens with scope `intel:read` read `GET /api/v2/entities`, `GET /api/v2/relationships` and the
+TAXII collection `intel` (entities, relationships, one `report` per story, indicators; refs filtered to objects the
+token's TLP can see; merged and suppressed entities published `revoked`). Spec:
+`docs/superpowers/specs/2026-10-29-p7c-entity-model-design.md`.
+
 ## 4. Data stores and access patterns
 
 Postgres is reached through two drivers: **sync psycopg** in Celery and the CLI (`cti_core.db.engine.
@@ -506,10 +549,11 @@ sync_session`), and **async asyncpg** in FastAPI (`deps.get_db`). The schema has
 | `scraper_config` | `scraper_id` | API (control plane) | beat (once, at import), `Runner` (every run), API |
 | `scraper_runs` | `run_id` | `Runner.execute` (start, finish) | API (`/scrapers`), `scraper.health_digest` |
 | `scraper_seen` | `dedup_key` = sha256(`scraper_id`, raw key) | `Runner` via `DedupStore` (reserve, commit, release) | `Runner` |
-| `articles` (+ `article_countries`, `_industries`, `_threat_actors`, `_ttps`, `_malware`) | `url_hash` (unique) | `enrich.article` (`ArticleRepo.upsert`) | API, reports, PIR alerts |
+| `articles` | `url_hash` (unique) | `enrich.article` (`ArticleRepo.upsert`) | API, reports, PIR alerts |
+| `entities` (+ `entity_aliases`, `relationships`, `entity_watches`, `entity_profiles`) | `id`; aliases unique per `(entity_type, alias_norm)` | resolver (persist, ATT&CK sync, ransomware sink), `entity.alias_sync`, entity API | API (v1 readers, `/api/entities`, `/api/v2`, TAXII `intel`), Tier 1 dictionary |
+| `entity_mentions` (replaces `article_countries`, `_industries`, `_threat_actors`, `_ttps`, `_malware`, `article_cves` and the indicator/CVE actor links, which are compatibility views since 0.8.11) | `id`; unique per article/indicator/CVE, entity and role | `enrich.article` persist, Tier 1 backfill, IOC tags, CVE links | API, reports, PIR, dashboards |
 | `rejected_articles` | `url_hash` | `enrich.article` (not cyber, or final failure with `failure_kind`) | API (Filtered Articles: restore for rejects, admin replay for failures); `enrich.auto_replay` (every 10 min; kinds `transient`/`config`/`json`, max 3 attempts, backoff 30 min x 2^count, tracked in `auto_replay_count` / `last_auto_replay_at`) |
 | `llm_calls` | `id` | LLM client (one row per call: task, model, prompt version, tokens, latency, status `ok`/`empty`/`error`; purged after 90 days by `llm.purge_calls`) | API (`/data-health` LLM block) |
-| `article_cves` | `(article_id, cve_id)` | `enrich.article` persist (CVEs no longer live in `indicators`) | API, campaigns |
 | `indicators` (+ `indicator_sources`, `indicator_tags`, `indicator_threat_actors`, `indicator_feedback`; was `iocs*` before 0.8.11) | `(type, value)` | `enrich.article`, IOC feed sink, `ioc.enrich_pending` (the `enrichment` column) | API, `ioc.decay_sweep` |
 | `techstack_entries` | `(name, client_id)` | API (techstack, catalog) | `new_cve` (`reference_data`), promotion, API |
 | `cve_tracker` (+ `cve_references`, `cve_affected`, ...) | `(cve_id, client_id)` | `_cve_sink`, `_promote_live`, `cve.enrichment_sweep` | API (CVE tab, dashboards, export) |

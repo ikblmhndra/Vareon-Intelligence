@@ -237,13 +237,18 @@ and the test lists them.
 ### 3.5 Feed clocks (pattern of P7b)
 
 - `entities`: `BEFORE UPDATE` trigger bumps `feed_changed_at = clock_timestamp()` when `name`,
-  `description`, `external_id`, `suppressed`, `merged_into_id` or `tlp` change; `AFTER INSERT OR
-  DELETE ON entity_aliases` bumps the entity. `first_seen`/`last_seen` do **not** bump (they change
+  `description`, `external_id`, `suppressed`, `merged_into_id`, `identity_class` or `tlp` change;
+  `AFTER INSERT OR DELETE OR UPDATE OF alias, entity_id ON entity_aliases` bumps the entity (on an
+  UPDATE both the old and the new entity, so a merge that repoints aliases moves both). `first_seen`/`last_seen` do **not** bump (they change
   with every article and are not published).
 - `relationships`: bumps on `relationship_type`, ends, `confidence`, `description`, `revoked_at`,
   `tlp`.
-- `stories`: bumps on `title` and `article_count`; `AFTER INSERT OR DELETE ON entity_mentions`
-  with an `article_id` bumps the article's story (its `object_refs` changed).
+- `stories`: bumps on `title` and `article_count`; `AFTER INSERT OR DELETE OR UPDATE OF entity_id,
+  article_id ON entity_mentions` with an `article_id` bumps the article's story (its `object_refs`
+  changed; on an UPDATE both the old and the new story). The UPDATE cases exist because merge and
+  split repoint mentions and aliases by UPDATE (plan Ruling 14). A change of an entity's
+  `suppressed`, `merged_into_id` or `tlp` also bumps the relationships touching it and the stories
+  whose articles mention it, and `indicator_sources` changes bump the article's story (Ruling 33).
 - The model docstrings name the triggers and the migration; dedicated trigger tests (section 8).
 
 ### 3.6 Compatibility views (rollback safety)

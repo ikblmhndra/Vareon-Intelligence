@@ -251,8 +251,23 @@ in `docs/prod-upgrade/0.8.11.md`, migration `c4f1a8d27b93`):
 - **Edge.** nginx exposes only `/taxii2/` and `/api/v2/` to `api`. Not built: a Splunk-specific connector (dropped),
   per-token rate limits.
 
-Not started: P7c (entities), P7e-P7g. Cost measurement over a week of real data is now possible
-on dev.
+Also built for **0.8.11** (P7c-1 entity model, backend; spec
+`docs/superpowers/specs/2026-10-29-p7c-entity-model-design.md`; runbook in `docs/prod-upgrade/0.8.11.md`, migration
+`1387fae00908`, 4.35 s on a dev copy):
+
+- **Entities.** `entities` (intrusion-set, malware, tool, attack-pattern, vulnerability, campaign, identity for sectors and
+  ransomware victims, location), `entity_aliases`, `relationships` (STIX SROs with provenance), one `entity_mentions`
+  table for every article, indicator and CVE link, plus watches and actor profiles. The old link and TA tables are
+  writable compatibility views (`_legacy_*` kept), proven with the real 0.8.2 and 0.8.10 code.
+- **Identity.** ATT&CK is the anchor; MISP Galaxy synonyms merge names (`cti-entity merge-aliases`, dry-run CSV then
+  apply; weekly `entity.alias_sync`); analysts merge, split and suppress through `/api/entities`, every merge reversible.
+  Dev copy: 35 Galaxy merges, actors with article mentions 316 -> 282.
+- **Machine side.** Scope `intel:read`, `GET /api/v2/entities` and `/api/v2/relationships`, TAXII collection `intel`
+  (entities, relationships, one report per story, indicators).
+- **Still open.** The web entity pages (P7c-2, replacing TA Room and ATT&CK DB), co-mention relationships stay
+  unpublished suggestions, no LLM relationship assessment.
+
+Not started: P7e-P7g. Cost measurement over a week of real data is now possible on dev.
 
 Correction (2026-10-24, rereading against the code): E4 first said these articles were
 "lost"; they are parked and replayable by hand, so P1 is now about recovering them
@@ -391,7 +406,9 @@ Replace the LLM self-rating (E7) with an explainable score:
 
 Ordered by value for the effort, assuming Splunk is the first consumer.
 
-1. **Entity model**: first-class `intrusion_set`, `malware`, `campaign`, `vulnerability`,
+1. **Entity model** (backend delivered in 0.8.11 by P7c-1: `entities` with aliases, `relationships` with provenance,
+   one `entity_mentions` table, stories published as STIX `report`s, ATT&CK campaigns as entities; the web entity pages
+   follow in P7c-2): first-class `intrusion_set`, `malware`, `campaign`, `vulnerability`,
    `indicator`, `report` (= story) and a generic `relationship` table (STIX SRO shaped:
    `source_ref, type, target_ref, confidence, first_seen, last_seen, provenance`). Today
    campaigns are computed on the fly and malware has no table.
@@ -428,7 +445,7 @@ testing first. Phases 1-3 can start without schema redesign.
 | P4 Deterministic extractors (**built for 0.8.8**) | Actor/malware dictionary matcher, explicit + inferred ATT&CK, industry taxonomy, incident rule | Coverage (E9) measured before/after on the same article set; equal or better than LLM for actor and TTP precision on a 100-article hand-labelled sample. Measured 2026-10-25 on silver labels: met for actor (71% vs 70%) and TTP (keyword 70%, explicit 99% vs LLM 35%) precision and for coverage; malware precision 47% is the weakest field |
 | P5 Local relevance model (**built for 0.8.9**) | Train on audit trail, shadow mode, then gate | Agreement with LLM >= 95% on the confident bands; LLM classify calls down by the measured share. Measured 2026-10-26 on prod labels at 0.85: holdout 98.1% agreement over 54.5% of titles, 5-fold CV 97.6% over 52.2%; the share of calls actually avoided is read from Data health after deploy |
 | P6 Confidence (**built for 0.8.10**) | Grade all sources, Admiralty score in API/UI | Every article shows A-F/1-6. Replay of 1,546 dev articles: top priority value 16.9% of articles, 33 distinct values in the top decile, 11 Admiralty codes |
-| P7+ CTI model (**P7a and P7b built for 0.8.11**) | Split into P7a-P7g; see `docs/superpowers/specs/2026-10-28-p7a-indicator-lifecycle-design.md` section 0. P7a: indicators, lifecycle, TLP/PAP. Later: machine API + TAXII, entities and relationships, hunting packs, PIR at ingest; sightings (P7d) deferred | Per item in section 4 |
+| P7+ CTI model (**P7a, P7b and P7c-1 built for 0.8.11**) | Split into P7a-P7g; see `docs/superpowers/specs/2026-10-28-p7a-indicator-lifecycle-design.md` section 0. P7a: indicators, lifecycle, TLP/PAP. P7b: machine API + TAXII. P7c-1: entities and relationships (backend; web pages in P7c-2). Later: hunting packs, PIR at ingest; sightings (P7d) deferred | Per item in section 4 |
 
 Success metrics tracked from P0: LLM tokens per accepted article, LLM calls per day by call
 site, articles left parked as `[enrichment_failed]` after the model is healthy again (target 0), TTP precision on the labelled sample,
