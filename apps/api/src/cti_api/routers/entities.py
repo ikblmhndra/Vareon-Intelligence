@@ -10,7 +10,9 @@ from __future__ import annotations
 
 from collections.abc import Awaitable
 
+from cti_core.logging import get_logger
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_api.deps import AuthedUser, effective_client_id, get_db, request_ip, require_permission
@@ -39,6 +41,7 @@ from cti_api.services import entities as svc
 
 router = APIRouter(prefix="/api/entities", tags=["entities"])
 relationships_router = APIRouter(prefix="/api/relationships", tags=["entities"])
+log = get_logger()
 
 _view = require_permission("view_ta")
 _manage = require_permission("manage_entities")
@@ -56,6 +59,12 @@ async def _call[T](session: AsyncSession, op: Awaitable[T]) -> T:
     except svc.EntityConflict as exc:
         await session.rollback()
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except IntegrityError as exc:
+        # Ruling 29: balapan dua request (cek di service lolos, indeks unik menolak) -> 409
+        await session.rollback()
+        raise HTTPException(
+            status_code=409, detail="conflicting change, reload and try again"
+        ) from exc
 
 
 @router.get("", response_model=EntityListResponse)
@@ -340,8 +349,9 @@ async def generate_profile(
         )
     except HTTPException:
         raise
-    except Exception as exc:  # sama dengan /api/ta/profile/generate: kegagalan LLM -> 500
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except Exception as exc:  # kegagalan LLM -> 500; detail generik, rinciannya ke log
+        log.exception("entity_profile_generate_failed", entity_id=entity_id)
+        raise HTTPException(status_code=500, detail="profile generation failed") from exc
     await session.commit()
     return EntityProfileOut(profile=profile)
 

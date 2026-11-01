@@ -352,6 +352,21 @@ def test_suppress_keeps_mentions(db_session: Session) -> None:
     assert (_alias_ids(s, e), _mentions(s, e)) == before
 
 
+def test_merge_rejects_suppressed_either_side(db_session: Session) -> None:
+    """Ruling 30: merge ke target suppressed menyembunyikan mention sumber, dari sumber
+    suppressed menghidupkan mention yang sengaja disembunyikan; keduanya ditolak."""
+    s = db_session
+    live = _make(s, "malware", "Sup-Live")
+    hidden = _make(s, "malware", "Sup-Hidden")
+    hidden.suppressed = True
+    s.flush()
+    for src, dst in ((live, hidden), (hidden, live)):
+        with pytest.raises(EntityMergeError, match="suppressed"):
+            merge_entities(s, src.id, dst.id, actor="t")
+    assert live.merged_into_id is None
+    assert hidden.merged_into_id is None
+
+
 def test_audit_rows_written(db_session: Session) -> None:
     s = db_session
     a = _make(s, "tool", "Au-A", "Au alias")

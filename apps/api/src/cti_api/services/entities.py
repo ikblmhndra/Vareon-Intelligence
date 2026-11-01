@@ -79,6 +79,8 @@ from cti_api.schemas.entities import (
 )
 
 ACTOR = "intrusion-set"
+_UPPER_IDS = (TECHNIQUE, "vulnerability")
+"""Tipe yang id eksternalnya kanonik huruf besar (id teknik ATT&CK, id CVE)."""
 CO_MENTION_DAYS = 365
 CO_MENTION_LIMIT = 50
 
@@ -107,8 +109,9 @@ def _sort_key() -> ColumnElement[str]:
     return func.lower(Entity.name).collate("C")
 
 
-def encode_cursor(name: str, entity_id: int) -> str:
-    return base64.urlsafe_b64encode(json.dumps([name.lower(), entity_id]).encode()).decode()
+def encode_cursor(sort_key: str, entity_id: int) -> str:
+    """`sort_key` = nilai `_sort_key()` dari baris SQL itu sendiri (bukan dihitung ulang)."""
+    return base64.urlsafe_b64encode(json.dumps([sort_key, entity_id]).encode()).decode()
 
 
 def decode_cursor(cursor: str) -> tuple[str, int]:
@@ -207,7 +210,8 @@ async def list_entities(
     cursor: str | None,
     limit: int,
 ) -> EntityListResponse:
-    stmt = select(Entity).where(Entity.merged_into_id.is_(None))
+    sort_key = _sort_key()
+    stmt = select(Entity, sort_key).where(Entity.merged_into_id.is_(None))
     if not include_suppressed:
         stmt = stmt.where(Entity.suppressed.is_(False))
     if type:
@@ -225,17 +229,20 @@ async def list_entities(
         )
     if cursor:
         name, last_id = decode_cursor(cursor)
-        stmt = stmt.where(tuple_(_sort_key(), Entity.id) > tuple_(name, last_id))
+        stmt = stmt.where(tuple_(sort_key, Entity.id) > tuple_(name, last_id))
     rows = list(
         (
-            await session.scalars(
-                stmt.order_by(_sort_key(), Entity.id)
+            await session.execute(
+                stmt.order_by(sort_key, Entity.id)
                 .limit(limit + 1)
                 .execution_options(populate_existing=True)  # alias segar sesudah merge/split
             )
-        ).all()
+        ).tuples()
     )
-    page, more = rows[:limit], len(rows) > limit
+    page, more = [e for e, _ in rows[:limit]], len(rows) > limit
+    # kursor menyimpan kunci urut hasil SQL (lower() Postgres), bukan str.lower() Python:
+    # keduanya bisa beda untuk huruf non-ASCII, dan kursor harus sama dengan ORDER BY
+    last_key = rows[limit - 1][1] if more else None
     ids = [e.id for e in page]
     counts = await _mention_counts(session, ids)
     watched_ids = await _watched(session, client_id, ids)
@@ -256,7 +263,7 @@ async def list_entities(
             )
             for e in page
         ],
-        next_cursor=encode_cursor(page[-1].name, page[-1].id) if more else None,
+        next_cursor=encode_cursor(last_key, page[-1].id) if last_key is not None else None,
     )
 
 
@@ -630,14 +637,25 @@ async def _check_name_free(
     )
     if taken is not None:
         raise EntityConflict(f"name {name!r} is already used by entity {taken}")
+    if external_id and type_ != TECHNIQUE:  # teknik sudah dicek lewat external_id di atas
+        taken = await session.scalar(
+            select(Entity.id).where(
+                Entity.type == type_,
+                Entity.merged_into_id.is_(None),
+                Entity.id != (self_id or 0),
+                Entity.external_id == external_id,
+            )
+        )
+        if taken is not None:
+            raise EntityConflict(f"external_id {external_id!r} is already used by entity {taken}")
 
 
 async def create_entity(session: AsyncSession, body: EntityCreate, *, actor: str, ip: str) -> int:
     display = collapse_ws(body.name)
     technique = body.type == TECHNIQUE
     external_id = collapse_ws(body.external_id or "") or None
-    if technique and external_id:
-        external_id = external_id.upper()  # id teknik ATT&CK selalu huruf besar (resolve._key)
+    if external_id and body.type in _UPPER_IDS:
+        external_id = external_id.upper()  # T1566.001, CVE-2024-1234: selalu huruf besar
     key = external_id if technique and external_id else display
     texts = [key] if technique else [display, *(collapse_ws(a) for a in body.aliases)]
     aliases = list({alias_norm(t): t for t in texts if alias_norm(t)}.values())

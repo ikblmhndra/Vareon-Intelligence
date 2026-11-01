@@ -70,7 +70,7 @@ def _lock(session: Session, *ids: int) -> dict[int, Entity]:
     ).all()
     found = {e.id: e for e in rows}
     if missing := sorted(set(ids) - found.keys()):
-        raise EntityMergeError(f"entitas tidak ditemukan: {missing}")
+        raise EntityMergeError(f"entities not found: {missing}")
     return found
 
 
@@ -146,14 +146,18 @@ def _merge_relationships(
 
 def merge_entities(session: Session, source_id: int, into_id: int, *, actor: str) -> MergeResult:
     if source_id == into_id:
-        raise EntityMergeError("entitas tidak bisa di-merge ke dirinya sendiri")
+        raise EntityMergeError("an entity cannot be merged into itself")
     ents = _lock(session, source_id, into_id)
     src, dst = ents[source_id], ents[into_id]
     if src.type != dst.type:
-        raise EntityMergeError(f"tipe beda: {src.type} vs {dst.type}")
+        raise EntityMergeError(f"cannot merge different types: {src.type} vs {dst.type}")
     for e in (src, dst):
         if e.merged_into_id is not None:
-            raise EntityMergeError(f"entitas {e.id} sudah di-merge ke {e.merged_into_id}")
+            raise EntityMergeError(f"entity {e.id} is already merged into {e.merged_into_id}")
+        # Ruling 30: merge ke target suppressed menyembunyikan mention sumber; dari sumber
+        # suppressed menghidupkan kembali mention yang sengaja disembunyikan. Unsuppress dulu.
+        if e.suppressed:
+            raise EntityMergeError(f"entity {e.id} is suppressed; unsuppress it before merging")
     p = {"src": source_id, "dst": into_id}
 
     # (entity_type, alias_norm) unik per tipe dan tipe sama, jadi pemindahan tak bisa bentrok
@@ -280,7 +284,9 @@ def _check_revive(session: Session, tomb: Entity, norms: set[str]) -> None:
     """Tolak revive yang melanggar invarian sebelum ada yang ditulis."""
     technique = tomb.type == TECHNIQUE and tomb.external_id
     if alias_norm(tomb.external_id if technique and tomb.external_id else tomb.name) not in norms:
-        raise EntityMergeError(f"revive entitas {tomb.id} harus menyertakan alias namanya sendiri")
+        raise EntityMergeError(
+            f"reviving entity {tomb.id} requires its own name alias in the split"
+        )
     clash = (
         Entity.external_id == tomb.external_id
         if technique
@@ -292,7 +298,9 @@ def _check_revive(session: Session, tomb: Entity, norms: set[str]) -> None:
         )
     )
     if taken is not None:
-        raise EntityMergeError(f"nama entitas {tomb.id} sudah dipakai entitas hidup {taken}")
+        raise EntityMergeError(
+            f"the name of entity {tomb.id} is already used by live entity {taken}"
+        )
 
 
 def split_aliases(session: Session, entity_id: int, alias_ids: list[int], *, actor: str) -> Entity:
@@ -305,16 +313,16 @@ def split_aliases(session: Session, entity_id: int, alias_ids: list[int], *, act
     Relasi tidak dipindah (spec 3.4: dialog menampilkannya ke analis)."""
     ids = sorted(set(alias_ids))
     if not ids:
-        raise EntityMergeError("alias_ids kosong")
+        raise EntityMergeError("alias_ids is empty")
     ent = _lock(session, entity_id)[entity_id]
     if ent.merged_into_id is not None:
-        raise EntityMergeError(f"entitas {entity_id} sudah di-merge ke {ent.merged_into_id}")
+        raise EntityMergeError(f"entity {entity_id} is already merged into {ent.merged_into_id}")
     by_id = {a.id: a for a in session.scalars(select(EntityAlias).where(EntityAlias.id.in_(ids)))}
     if set(by_id) != set(ids) or any(a.entity_id != entity_id for a in by_id.values()):
-        raise EntityMergeError(f"alias {ids} bukan milik entitas {entity_id}")
+        raise EntityMergeError(f"aliases {ids} do not belong to entity {entity_id}")
     own = alias_norm(ent.external_id if ent.type == TECHNIQUE and ent.external_id else ent.name)
     if any(a.alias_norm == own for a in by_id.values()):
-        raise EntityMergeError("alias nama entitas sendiri tidak bisa di-split")
+        raise EntityMergeError("the entity's own name alias cannot be split off")
     norms = {a.alias_norm for a in by_id.values()}
 
     merge_row = session.scalars(
@@ -404,7 +412,7 @@ def set_suppressed(session: Session, entity_id: int, suppressed: bool, *, actor:
     """Mention dan alias tidak disentuh, jadi unsuppress memulihkan semuanya (spec 3.4)."""
     ent = _lock(session, entity_id)[entity_id]
     if ent.merged_into_id is not None:
-        raise EntityMergeError(f"entitas {entity_id} sudah di-merge ke {ent.merged_into_id}")
+        raise EntityMergeError(f"entity {entity_id} is already merged into {ent.merged_into_id}")
     ent.suppressed = suppressed
     session.flush()
     _audit(

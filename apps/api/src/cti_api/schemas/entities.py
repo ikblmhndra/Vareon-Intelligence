@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import datetime
-from typing import Any
+from typing import Annotated, Any
 
 from cti_core.entity import ENTITY_TYPES, RELATIONSHIP_TYPES
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -67,7 +67,7 @@ class EntityDetail(BaseModel):
 class EntityCreate(BaseModel):
     type: str
     name: str = Field(min_length=1, max_length=300)
-    aliases: list[str] = Field(default_factory=list)
+    aliases: list[Annotated[str, Field(min_length=1, max_length=300)]] = Field(default_factory=list)
     description: str | None = None
     external_id: str | None = Field(default=None, max_length=50)
     """Wajib untuk `attack-pattern` (id teknik, Ruling 7)."""

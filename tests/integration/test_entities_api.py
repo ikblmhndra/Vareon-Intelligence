@@ -330,7 +330,7 @@ async def test_entity_writes_and_audit(
         f"/api/entities/{other_id}/split", json={"alias_ids": moved}, headers=h
     )
     assert no_own.status_code == 409
-    assert "alias namanya sendiri" in no_own.json()["detail"]  # Ruling 17
+    assert "own name alias" in no_own.json()["detail"]  # Ruling 17
     all_ids = [
         a["id"]
         for a in detail["aliases"]
@@ -569,3 +569,153 @@ async def test_stories_indicators_cves_timeline(
     months = r.json()["months"]
     assert len(months) == 3
     assert sum(m["articles"] for m in months) == 2
+
+
+async def test_integrity_error_race_returns_409(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Header,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Ruling 29: request lain menulis di antara cek service dan INSERT -> indeks unik menolak;
+    hasilnya 409 dengan detail netral, bukan 500. Balapan dipaksa dengan melewati cek service."""
+    s = api_session
+    await _make(s, "intrusion-set", "Race Actor")
+    await s.commit()
+
+    async def _free(*args: Any, **kwargs: Any) -> None:
+        return None
+
+    monkeypatch.setattr("cti_api.services.entities._check_alias_free", _free)
+    monkeypatch.setattr("cti_api.services.entities._check_name_free", _free)
+    r = await api_client.post(
+        "/api/entities", json={"type": "intrusion-set", "name": "race actor"}, headers=auth_header()
+    )
+    assert r.status_code == 409, r.text
+    assert r.json() == {"detail": "conflicting change, reload and try again"}
+
+
+async def test_create_external_id_conflicts_and_alias_length(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Header
+) -> None:
+    s = api_session
+    cve_id = (await _make(s, "vulnerability", "CVE-2099-0101", external_id="CVE-2099-0101")).id
+    sw_id = (await _make(s, "malware", "Ext Malware", external_id="S9901")).id
+    await s.commit()
+    h = auth_header()
+
+    # id CVE huruf kecil dinormalisasi ke huruf besar lalu bentrok dengan entitas yang ada
+    r = await api_client.post(
+        "/api/entities",
+        json={"type": "vulnerability", "name": "Other CVE label", "external_id": "cve-2099-0101"},
+        headers=h,
+    )
+    assert r.status_code == 409, r.text
+    assert str(cve_id) in r.json()["detail"]
+    r = await api_client.post(
+        "/api/entities",
+        json={"type": "malware", "name": "Other Malware", "external_id": "S9901"},
+        headers=h,
+    )
+    assert r.status_code == 409, r.text
+    assert str(sw_id) in r.json()["detail"]
+
+    r = await api_client.post(
+        "/api/entities",
+        json={"type": "vulnerability", "name": "New CVE", "external_id": "cve-2099-0102"},
+        headers=h,
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["external_id"] == "CVE-2099-0102"
+
+    long_alias = await api_client.post(
+        "/api/entities",
+        json={"type": "malware", "name": "Long Alias Malware", "aliases": ["x" * 301]},
+        headers=h,
+    )
+    assert long_alias.status_code == 422
+    empty_alias = await api_client.post(
+        "/api/entities",
+        json={"type": "malware", "name": "Empty Alias Malware", "aliases": [""]},
+        headers=h,
+    )
+    assert empty_alias.status_code == 422
+
+
+async def test_merge_rejections(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Header
+) -> None:
+    s = api_session
+    a = await _make(s, "tool", "Rej A")
+    b = await _make(s, "tool", "Rej B")
+    tomb = await _make(s, "tool", "Rej Tomb")
+    tomb.merged_into_id = b.id
+    hidden = await _make(s, "tool", "Rej Hidden", suppressed=True)
+    await s.commit()
+    a_id, tomb_id, hidden_id = a.id, tomb.id, hidden.id
+    h = auth_header()
+
+    for src, dst, needle in (
+        (a_id, a_id, "itself"),
+        (tomb_id, a_id, "already merged"),
+        (a_id, tomb_id, "already merged"),
+        (a_id, hidden_id, "suppressed"),  # Ruling 30
+        (hidden_id, a_id, "suppressed"),
+    ):
+        r = await api_client.post(f"/api/entities/{src}/merge", json={"into_id": dst}, headers=h)
+        assert r.status_code == 409, (src, dst, r.text)
+        assert needle in r.json()["detail"], (src, dst, r.json())
+    r = await api_client.get(
+        f"/api/entities/{a_id}/merge-preview", params={"into_id": hidden_id}, headers=h
+    )
+    assert r.status_code == 409
+
+
+async def test_watch_with_unassigned_client_header_is_403(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Header
+) -> None:
+    s = api_session
+    await s.merge(Client(client_id="other", name="Other"))
+    e = await _make(s, "intrusion-set", "Foreign Watch Actor")
+    await s.commit()
+    e_id = e.id
+    analyst = auth_header(username="alice", role="analyst", client_ids=["default"])
+    await ensure_system_roles(s)
+    await s.commit()
+
+    r = await api_client.put(
+        f"/api/entities/{e_id}/watch", headers={**analyst, "X-Client-ID": "other"}
+    )
+    assert r.status_code == 403, r.text
+    rows = (await s.scalars(select(EntityWatch).where(EntityWatch.entity_id == e_id))).all()
+    assert rows == []
+
+
+async def test_cursor_uses_sql_sort_key_for_non_ascii_names(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Header
+) -> None:
+    """Kursor menyimpan lower() Postgres dari baris itu sendiri: dengan str.lower() Python, nama
+    non-ASCII ("Éclair") bisa melompati baris berikutnya bila lower() server berbeda."""
+    s = api_session
+    first = await _make(s, "campaign", "Éclair Op A")
+    second = await _make(s, "campaign", "Éclair Op B")
+    await s.commit()
+    ids = [first.id, second.id]
+    h = auth_header()
+    params: dict[str, Any] = {"type": "campaign", "q": "clair op", "limit": 1}
+
+    seen: list[int] = []
+    cursor = None
+    for _ in range(3):
+        page = (
+            await api_client.get(
+                "/api/entities",
+                params={**params, **({"cursor": cursor} if cursor else {})},
+                headers=h,
+            )
+        ).json()
+        seen += [i["id"] for i in page["items"]]
+        cursor = page["next_cursor"]
+        if cursor is None:
+            break
+    assert seen == ids

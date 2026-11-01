@@ -2656,6 +2656,8 @@
         "properties": {
           "aliases": {
             "items": {
+              "maxLength": 300,
+              "minLength": 1,
               "type": "string"
             },
             "title": "Aliases",
