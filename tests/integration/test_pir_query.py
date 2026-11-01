@@ -11,6 +11,8 @@ from cti_core.db.repositories.auth import AsyncClientRepo
 from cti_core.db.repositories.pir import AsyncPIRRepo
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests.integration.entity_support import seed_entity
+
 pytestmark = pytest.mark.asyncio
 
 
@@ -185,3 +187,56 @@ async def test_pir_note_unique_per_pir_and_url_allows_same_url_different_pir(
     note2 = await repo.get_note(pir2.id, "https://example.com/shared")
     assert note1 is not None and note1.note == "note for pir1"
     assert note2 is not None and note2.note == "note for pir2"
+
+
+async def test_malware_criterion_matches_malware_and_tool(async_db_session: AsyncSession) -> None:
+    """Kriteria `malware` cocok ke mention bertipe malware DAN tool (lewat alias), bukan judul."""
+    await _ensure_clients(async_db_session)
+    s = async_db_session
+    await s.run_sync(lambda sync: seed_entity(sync, "tool", "Cobalt Strike", source="attack"))
+    await s.run_sync(
+        lambda sync: seed_entity(sync, "malware", "Lumma Stealer", "Lumma", source="attack")
+    )
+    article_repo = AsyncArticleRepo(s)
+    today = datetime.date.today()
+    a = await article_repo.upsert(
+        url="https://example.com/m-a", title="Intrusion write-up", source="s", posted_on=today
+    )
+    await article_repo.set_enrichment(a, malware=[("Cobalt Strike", "tool")])
+    b = await article_repo.upsert(
+        url="https://example.com/m-b", title="Infostealer wave", source="s", posted_on=today
+    )
+    await article_repo.set_enrichment(b, malware=[("Lumma Stealer", "malware")])
+    c = await article_repo.upsert(
+        url="https://example.com/m-c", title="Nothing relevant", source="s", posted_on=today
+    )
+    await article_repo.set_enrichment(c, threat_actors=["Apt41"])
+
+    repo = AsyncPIRRepo(s)
+    pir = await repo.create(
+        {"title": "Track tooling", "criteria": {"malware": ["cobalt strike", "Lumma"]}},
+        client_id="default",
+    )
+    articles, total = await repo.list_articles_for_pir(pir, article_repo, page=1, page_size=10)
+    assert total == 2
+    assert {x.id for x in articles} == {a.id, b.id}
+    count, _last, recent = await repo.compute_coverage(
+        article_repo, pir.criteria, pir.start_date, pir.end_date
+    )
+    assert count == 2
+    assert recent == 2
+
+
+async def test_old_pir_without_malware_key_unchanged(async_db_session: AsyncSession) -> None:
+    """Kriteria lama tanpa kunci `malware` memberi himpunan yang sama seperti sebelumnya."""
+    await _ensure_clients(async_db_session)
+    article_repo = AsyncArticleRepo(async_db_session)
+    await _seed_articles(article_repo)
+    repo = AsyncPIRRepo(async_db_session)
+    pir = await repo.create(
+        {"title": "Track APT41", "criteria": {"threat_actors": ["Apt41"]}}, client_id="default"
+    )
+    _articles, total = await repo.list_articles_for_pir(pir, article_repo, page=1, page_size=10)
+    assert total == 2
+    options = await repo.get_options(article_repo)
+    assert options["malware"] == []

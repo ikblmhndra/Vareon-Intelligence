@@ -5378,6 +5378,7 @@
               "countries": [],
               "industries": [],
               "keywords": [],
+              "malware": [],
               "news_types": [],
               "threat_actors": [],
               "ttps": []
@@ -5457,6 +5458,14 @@
               "type": "string"
             },
             "title": "Keywords",
+            "type": "array"
+          },
+          "malware": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Malware",
             "type": "array"
           },
           "news_types": {
@@ -5559,6 +5568,13 @@
             "title": "Industries",
             "type": "array"
           },
+          "malware": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Malware",
+            "type": "array"
+          },
           "news_types": {
             "items": {
               "type": "string"
@@ -5583,6 +5599,7 @@
         },
         "required": [
           "threat_actors",
+          "malware",
           "industries",
           "countries",
           "news_types",

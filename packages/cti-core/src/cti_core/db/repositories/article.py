@@ -25,6 +25,7 @@ from cti_core.db.models.article import Article, RejectedArticle
 from cti_core.db.repositories.entity import (
     ACTOR,
     COUNTRY,
+    MALWARE_TYPES,
     SECTOR,
     TECHNIQUE,
     entity_ids_named,
@@ -79,6 +80,7 @@ def _apply_list_filters(
     confirmed_only: bool = False,
     story_id: int | None = None,
     ttp_sources: Sequence[str] | None = None,
+    malware: Sequence[str] | None = None,
 ) -> Select[tuple[Article]]:
     """Filter bersama buat query list DAN count -- port dari `article_service.
     get_articles()` (Mongo query dict) ke SQL. Tiga field negara Mongo lama
@@ -127,6 +129,10 @@ def _apply_list_filters(
         # Mongo lama: regex `^...$` case-insensitive -- exact match, BUKAN
         # substring. Alias (`alias_norm`) ekuivalen persis, plus alias lain entitas yang sama.
         stmt = stmt.where(_mentioning(ACTOR, entity_ids_named(ACTOR, threat_actors)))
+    if malware:
+        # Kriteria PIR `malware`: entitas malware DAN tool (Cobalt Strike = tool, Lumma = malware),
+        # dicocokkan lewat alias seperti aktor.
+        stmt = stmt.where(_mentioning(MALWARE_TYPES, entity_ids_named(MALWARE_TYPES, malware)))
     if ttps or ttp_sources:
         # Satu subquery: ID dan sumber harus cocok pada mention teknik yang SAMA.
         t = live_mentions(TECHNIQUE)
@@ -153,9 +159,9 @@ def _apply_list_filters(
     return stmt
 
 
-def _mentioning(etype: str, entity_ids: Any) -> Any:
+def _mentioning(etype: str | tuple[str, ...], entity_ids: Any) -> Any:
     """`Article.id IN (artikel yang menyebut salah satu entitas hidup `entity_ids`)`."""
-    m = live_mentions(etype)
+    m = live_mentions(*([etype] if isinstance(etype, str) else etype))
     return Article.id.in_(select(m.c.article_id).where(m.c.entity_id.in_(entity_ids)))
 
 
@@ -612,6 +618,7 @@ class AsyncArticleRepo:
         confirmed_only: bool = False,
         story_id: int | None = None,
         ttp_sources: Sequence[str] | None = None,
+        malware: Sequence[str] | None = None,
     ) -> tuple[list[Article], int]:
         """Port `article_service.get_articles()`. Filter di-`join()` ke
         tabel anak -- `.distinct()` WAJIB begitu ada join one-to-many
@@ -656,6 +663,7 @@ class AsyncArticleRepo:
             confirmed_only=confirmed_only,
             story_id=story_id,
             ttp_sources=ttp_sources,
+            malware=malware,
         )
         has_join = bool(
             industries
@@ -663,6 +671,7 @@ class AsyncArticleRepo:
             or victim_countries
             or actor_countries
             or threat_actors
+            or malware
             or ttps
             or ttp_sources
         )
@@ -757,6 +766,10 @@ class AsyncArticleRepo:
         threat_actors_q = (
             select(act.c.name).where(act.c.article_id.is_not(None)).distinct().order_by(act.c.name)
         )
+        mal = live_mentions(*MALWARE_TYPES)
+        malware_q = (
+            select(mal.c.name).where(mal.c.article_id.is_not(None)).distinct().order_by(mal.c.name)
+        )
         date_range_q = select(func.min(Article.posted_on), func.max(Article.posted_on))
 
         industries = (await self.session.execute(industries_q)).scalars().all()
@@ -764,6 +777,7 @@ class AsyncArticleRepo:
         sources = (await self.session.execute(sources_q)).scalars().all()
         news_types = (await self.session.execute(news_types_q)).scalars().all()
         threat_actors = (await self.session.execute(threat_actors_q)).scalars().all()
+        malware = (await self.session.execute(malware_q)).scalars().all()
         min_date, max_date = (await self.session.execute(date_range_q)).one()
 
         return {
@@ -772,6 +786,7 @@ class AsyncArticleRepo:
             "sources": list(sources),
             "news_types": list(news_types),
             "threat_actors": list(threat_actors),
+            "malware": list(malware),
             "date_range": {
                 "min": min_date.isoformat() if min_date else "",
                 "max": max_date.isoformat() if max_date else "",

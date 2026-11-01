@@ -128,3 +128,33 @@ async def test_ioc_ta_links_uses_entity_names(async_db_session: AsyncSession) ->
         (t["name"], t["article_count"], t["source"], t["is_watched"])
         for t in result["threat_actors"]
     ] == [("Transparent Tribe", 1, "both", True)]
+
+
+async def test_malware_criterion_via_alias(async_db_session: AsyncSession) -> None:
+    """Kriteria malware "lumma" menemukan artikel yang menyebut "Lumma Stealer" lewat alias."""
+    s = async_db_session
+    await AsyncClientRepo(s).ensure_default()
+    await s.run_sync(
+        lambda sync: seed_entity(sync, "malware", "Lumma Stealer", "Lumma", source="attack")
+    )
+    article_repo = AsyncArticleRepo(s)
+    article = await article_repo.upsert(
+        url="https://example.com/pir-malware-alias",
+        title="Infostealer campaign",
+        source="S",
+        posted_on=datetime.date.today(),
+    )
+    await article_repo.set_enrichment(article, malware=[("Lumma Stealer", "malware")])
+    await article_repo.upsert(
+        url="https://example.com/pir-malware-other",
+        title="Unrelated",
+        source="S",
+        posted_on=datetime.date.today(),
+    )
+    pir = await AsyncPIRRepo(s).create(
+        {"title": "Track Lumma", "criteria": {"malware": ["lumma"]}}, client_id="default"
+    )
+    articles, total = await AsyncPIRRepo(s).list_articles_for_pir(
+        pir, article_repo, page=1, page_size=10
+    )
+    assert total == 1 and [a.id for a in articles] == [article.id]

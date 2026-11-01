@@ -6340,6 +6340,7 @@ export interface components {
              *       "countries": [],
              *       "industries": [],
              *       "keywords": [],
+             *       "malware": [],
              *       "news_types": [],
              *       "threat_actors": [],
              *       "ttps": []
@@ -6385,6 +6386,11 @@ export interface components {
              * @default []
              */
             keywords: string[];
+            /**
+             * Malware
+             * @default []
+             */
+            malware: string[];
             /**
              * News Types
              * @default []
@@ -6435,6 +6441,8 @@ export interface components {
             countries: string[];
             /** Industries */
             industries: string[];
+            /** Malware */
+            malware: string[];
             /** News Types */
             news_types: string[];
             /** Threat Actors */
