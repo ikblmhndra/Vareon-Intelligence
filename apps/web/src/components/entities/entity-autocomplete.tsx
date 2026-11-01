@@ -18,6 +18,13 @@ interface EntityAutocompleteProps {
   store?: "name" | "external_id";
   value: string[];
   onChange: (next: string[]) => void;
+  /** Label baca untuk nilai tersimpan (mis. kode negara -> nama); jatuh ke nilai itu sendiri. */
+  labelFor?: (stored: string) => string | undefined;
+  /** Teks bebas yang diketik -> nilai yang disimpan (mis. nama negara -> kode ISO). */
+  resolveTyped?: (typed: string) => string;
+  /** Tampilkan id (font-code) di depan label, untuk TTP. */
+  showId?: boolean;
+  help?: string;
 }
 
 /** Normalisasi untuk membandingkan query dengan nama/alias (huruf kecil, tanpa spasi/tanda baca). */
@@ -43,14 +50,20 @@ export function EntityAutocomplete({
   store = "name",
   value,
   onChange,
+  labelFor,
+  resolveTyped,
+  showId,
+  help,
 }: EntityAutocompleteProps) {
   const inputId = useId();
   const listId = `${inputId}-list`;
   const [text, setText] = useState("");
   const [debounced, setDebounced] = useState("");
   const [open, setOpen] = useState(false);
-  const [activeIdx, setActiveIdx] = useState(-1);
+  const [active, setActive] = useState({ sig: "", idx: -1 });
   const [forbidden, setForbidden] = useState(false);
+  // Nama yang pernah muncul di saran sesi ini (untuk label token berbasis id).
+  const [seen, setSeen] = useState<Record<string, string>>({});
   const Icon = entityTypeMeta(types[0], identityClass).Icon;
   const colorClass = entityTypeMeta(types[0], identityClass).colorClass;
 
@@ -73,6 +86,11 @@ export function EntityAutocomplete({
         return [];
       }
       if (!data) throw new Error(`HTTP ${response.status}`);
+      setSeen((cur) => {
+        const next = { ...cur };
+        for (const e of data.items) next[store === "external_id" ? (e.external_id ?? e.name) : e.name] = e.name;
+        return next;
+      });
       return data.items;
     },
   });
@@ -87,13 +105,21 @@ export function EntityAutocomplete({
     }))
     .filter((e) => !value.includes(e.stored));
 
-  function add(v: string) {
-    const t = v.trim();
+  // Daftar saran berubah -> sorotan lama tidak berlaku lagi (diturunkan dari signature daftar).
+  const itemsSig = items.map((i) => i.key).join(",");
+  const activeIdx = active.sig === itemsSig ? active.idx : -1;
+  const setActiveIdx = (f: number | ((i: number) => number)) =>
+    setActive({ sig: itemsSig, idx: typeof f === "function" ? f(activeIdx) : f });
+
+  function add(v: string, typed = false) {
+    const t = (typed && resolveTyped ? resolveTyped(v.trim()) : v).trim();
     if (t && !value.includes(t)) onChange([...value, t]);
     setText("");
     setDebounced("");
     setActiveIdx(-1);
   }
+
+  const showList = open && !forbidden && debounced.length >= 1 && items.length > 0;
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "ArrowDown" && items.length) {
@@ -107,15 +133,19 @@ export function EntityAutocomplete({
       e.preventDefault();
       // Enter pada saran yang disorot memilihnya; selain itu teks diketik apa adanya.
       if (open && activeIdx >= 0 && items[activeIdx]) add(items[activeIdx].stored);
-      else add(text);
+      else add(text, true);
     } else if (e.key === "Escape") {
-      setOpen(false);
+      // Daftar terbuka: Escape hanya menutup daftar, bukan dialog PIR di sekelilingnya.
+      if (showList) {
+        e.preventDefault();
+        e.stopPropagation();
+        setOpen(false);
+      }
     } else if (e.key === "Backspace" && !text && value.length) {
       onChange(value.slice(0, -1));
     }
   }
 
-  const showList = open && !forbidden && debounced.length >= 1 && items.length > 0;
 
   return (
     <div className="relative flex flex-col gap-1">
@@ -129,12 +159,13 @@ export function EntityAutocomplete({
             className="inline-flex items-center gap-1 rounded-lg border border-border bg-background px-1.5 py-0.5 text-xs text-foreground"
           >
             <Icon aria-hidden className={cn("size-3.5 shrink-0", colorClass)} />
-            <span className={cn(store === "external_id" && "font-code")}>{v}</span>
+            {showId && <span className="font-code">{v}</span>}
+            <span>{showId ? (labelFor?.(v) ?? seen[v] ?? "") : (labelFor?.(v) ?? seen[v] ?? v)}</span>
             <button
               type="button"
               aria-label={`Remove ${v}`}
               onClick={() => onChange(value.filter((x) => x !== v))}
-              className="rounded text-muted-foreground outline-none hover:text-destructive focus-visible:ring-3 focus-visible:ring-focus"
+              className="inline-flex size-6 items-center justify-center rounded text-muted-foreground outline-none max-sm:size-8 hover:text-destructive focus-visible:ring-3 focus-visible:ring-focus"
             >
               <X aria-hidden className="size-3.5" />
             </button>
@@ -144,7 +175,8 @@ export function EntityAutocomplete({
           id={inputId}
           role="combobox"
           aria-expanded={showList}
-          aria-controls={listId}
+          aria-controls={showList ? listId : undefined}
+          aria-activedescendant={showList && activeIdx >= 0 ? `${inputId}-opt-${activeIdx}` : undefined}
           aria-autocomplete="list"
           autoComplete="off"
           value={text}
@@ -154,12 +186,17 @@ export function EntityAutocomplete({
             setActiveIdx(-1);
           }}
           onFocus={() => setOpen(true)}
-          onBlur={() => setOpen(false)}
+          onBlur={() => {
+            setOpen(false);
+            // Teks yang masih diketik jadi token (aturan sama dengan Enter).
+            if (text.trim()) add(text, true);
+          }}
           onKeyDown={onKeyDown}
           placeholder={value.length === 0 ? "Type a name, Enter to add" : ""}
           className="min-w-[60px] flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
         />
       </div>
+      {help && <p className="text-2xs text-muted-foreground">{help}</p>}
       {forbidden && <p className="text-2xs text-muted-foreground">Suggestions unavailable for your role</p>}
       {showList && (
         <ul
@@ -171,6 +208,7 @@ export function EntityAutocomplete({
           {items.map((it, i) => (
             <li
               key={it.key}
+              id={`${inputId}-opt-${i}`}
               role="option"
               aria-selected={i === activeIdx}
               // mousedown (bukan click) supaya terjadi sebelum blur menutup daftar.

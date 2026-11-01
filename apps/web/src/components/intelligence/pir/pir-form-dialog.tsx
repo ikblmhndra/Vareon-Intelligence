@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import type { components } from "@/lib/api/schema";
 import { MultiSelectField } from "@/components/intelligence/pir/multi-select-field";
+import { COUNTRIES, countryName } from "@/lib/countries";
 import { EntityAutocomplete } from "@/components/entities/entity-autocomplete";
 
 type PIROut = components["schemas"]["PIROut"];
@@ -192,9 +193,24 @@ export function PirFormDialog({ pir, open, onClose, onSaved }: PirFormDialogProp
               <EntityAutocomplete label="Malware and tools" types={["malware", "tool"]} value={malware} onChange={setMalware} />
               <EntityAutocomplete label="Industries" types={["identity"]} identityClass="class" value={industries} onChange={setIndustries} />
               {/* Negara disimpan sebagai kode ISO (sama seperti opsi lama), TTP sebagai id teknik. */}
-              <EntityAutocomplete label="Countries" types={["location"]} store="external_id" value={countries} onChange={setCountries} />
+              <EntityAutocomplete
+                label="Countries"
+                types={["location"]} store="external_id"
+                value={countries}
+                onChange={setCountries}
+                labelFor={(c) => countryName(c)}
+                resolveTyped={(t) => COUNTRIES.find((c) => c.name.toLowerCase() === t.toLowerCase())?.code ?? t}
+                help="Use a country from the list to match articles"
+              />
               <MultiSelectField label="News Types" options={toOptions(opts?.news_types ?? [])} selected={newsTypes} onChange={setNewsTypes} />
-              <EntityAutocomplete label="TTPs" types={["attack-pattern"]} store="external_id" value={ttps} onChange={setTtps} />
+              <EntityAutocomplete
+                label="TTPs"
+                types={["attack-pattern"]} store="external_id"
+                showId
+                value={ttps}
+                onChange={setTtps}
+                labelFor={(id) => opts?.ttps.find((t) => t.id === id)?.name}
+              />
               <div className="flex flex-col gap-1">
                 <Label htmlFor="pir-keywords" className="text-sm font-medium text-muted-foreground">Keywords (comma-separated)</Label>
                 <Input id="pir-keywords" value={keywords} onChange={(e) => setKeywords(e.target.value)} className="text-xs" />
