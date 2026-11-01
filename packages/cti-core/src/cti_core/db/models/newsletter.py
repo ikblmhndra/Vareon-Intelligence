@@ -6,7 +6,7 @@
 diringkas/di-enrich (title/url/source/key_points/summary/iocs/dst) BUKAN
 data relasional yang perlu di-query per-field, murni presentasi arsip
 histori ("kartu apa yang ditampilin newsletter minggu X") -- sama alasan
-kayak `TAProfile.profile`. `html` juga disimpen utuh (arsip lengkap,
+kayak `EntityProfile.profile`. `html` juga disimpen utuh (arsip lengkap,
 `GET /{id}/html`/`resend` baca langsung dari sini).
 
 **`include_clusters` (fitur campaign clustering) SENGAJA belum diport**

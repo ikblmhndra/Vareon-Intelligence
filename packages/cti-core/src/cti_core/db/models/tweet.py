@@ -10,7 +10,7 @@ beda dari Article yang dinormalisasi penuh. Alasannya: ini hasil pencocokan
 regex sekali pakai dari `monitorX.py:33-90` buat satu tweet, bukan data
 relasional yang perlu di-query lintas baris (gak ada use case "semua tweet
 yang nyebut Indonesia sebagai victim" yang butuh index terpisah, beda sama
-Article.countries yang emang butuh itu).
+mention negara artikel yang emang butuh itu).
 """
 
 from __future__ import annotations
@@ -93,6 +93,6 @@ class Tweet(TimestampMixin, Base):
     client yang sama dipakai `nlp_scan()`) yang ketinggalan pas Fase 2 --
     dulu cuma `confidence_score`/`confirmed_incident` yang ke-port. Array
     Postgres (bukan JSONB) karena ini daftar string pendek yang gak butuh
-    query per-elemen, beda sama `Article.countries` yang emang perlu
+    query per-elemen, beda sama mention negara artikel yang emang perlu
     dinormalisasi -- lihat catatan `scan_results` di atas soal alasan
     serupa (satu tweet, sekali pakai, gak ada "semua tweet yang..." query)."""

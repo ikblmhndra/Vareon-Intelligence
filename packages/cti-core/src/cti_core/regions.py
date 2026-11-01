@@ -10,7 +10,7 @@ konstanta minimal ini dibuat di `cti_core` (bukan di `cti_api`) supaya paket lai
 definisi yang sama dan API tidak perlu mengimpor `cti_enrich`.
 
 Acuannya pengelompokan Bank Dunia "East Asia & Pacific" ditambah "South Asia", kode ISO 3166-1
-alpha-2 huruf besar (format `ArticleCountry.country_code` dan `ClientCountry.country_code`).
+alpha-2 huruf besar (format `external_id` entitas negara dan `ClientCountry.country_code`).
 SENGAJA tidak termasuk: Asia Tengah, Timur Tengah, dan Rusia. Ini titik mulai yang bisa digeser
 analis setelah edisi pertama; menambah atau mengurangi kode di sini langsung mengubah section
 saran newsletter, tanpa migrasi."""

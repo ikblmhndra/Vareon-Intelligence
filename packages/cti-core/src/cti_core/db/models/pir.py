@@ -6,7 +6,7 @@ docs/PROGRESS.md) -- domain baru self-contained, CRUD murni lewat web.
 hoc yang analis susun bebas (threat_actors/industries/countries/news_types/
 keywords/ttps) buat nge-filter `articles` -- ini "cair" (plan §3: JSONB
 buat yang emang cair), beda dari field artikel sendiri yang UDAH
-ternormalisasi (ArticleThreatActor dst, lihat `models/article.py`).
+ternormalisasi (`entity_mentions`, lihat `Article.mentions`).
 Matching-nya (hitung coverage, list artikel cocok) pakai
 `AsyncArticleRepo.list_filtered` yang sudah ada, BUKAN query builder
 terpisah -- kode lama justru punya DUA salinan query builder yang sama

@@ -106,7 +106,7 @@ async def test_add_threat_actors_is_idempotent(async_db_session: AsyncSession) -
 
     fetched = await repo.get_by_id(ids["ip"])
     assert fetched is not None
-    assert sorted(t.threat_actor for t in fetched.threat_actors) == ["Apt41", "Turla"]
+    assert sorted(fetched.entity_names("intrusion-set")) == ["Apt41", "Turla"]
 
 
 async def test_remove_threat_actor_updates_in_memory_collection_immediately(
@@ -116,7 +116,7 @@ async def test_remove_threat_actor_updates_in_memory_collection_immediately(
     dari koleksi in-memory parent (bug yang sama kejadian di
     `AsyncUserRepo.update_client_ids`, Fase 7.2) -- `remove_threat_actor`
     pakai `.remove()` dari koleksi, bukan `session.delete()` langsung,
-    biar `ioc.threat_actors` di objek YANG SAMA langsung ke-update tanpa
+    biar `ioc.mentions` di objek YANG SAMA langsung ke-update tanpa
     perlu fetch ulang."""
     repo = AsyncIndicatorRepo(async_db_session)
     ids = await _seed(repo)
@@ -128,11 +128,11 @@ async def test_remove_threat_actor_updates_in_memory_collection_immediately(
     assert ok is True
     # cek di objek YANG SAMA, TANPA fetch ulang -- ini yang gagal kalau
     # bug staleness balik lagi.
-    assert [t.threat_actor for t in ioc.threat_actors] == ["Turla"]
+    assert ioc.entity_names("intrusion-set") == ["Turla"]
 
     fetched = await repo.get_by_id(ids["ip"])
     assert fetched is not None
-    assert [t.threat_actor for t in fetched.threat_actors] == ["Turla"]
+    assert fetched.entity_names("intrusion-set") == ["Turla"]
 
 
 async def test_remove_threat_actor_returns_false_when_not_tagged(

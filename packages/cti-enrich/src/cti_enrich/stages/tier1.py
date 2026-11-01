@@ -1,9 +1,9 @@
 """Stage tier 1: ekstraksi deterministik (entitas, teknik ATT&CK, industri, insiden) tanpa LLM.
 
-Kamus entitas dibangun dari ~5000 nama dan mahal, jadi di-cache per proses dengan TTL 1 jam
-(pola `extract_iocs._get_allowlist`). Seluruh stage dibungkus try/except: tier 1 adalah
-tambahan di atas LLM, kegagalannya TIDAK boleh menggagalkan enrichment artikel -- hasilnya
-`Tier1Result.empty()` dan satu baris log `tier1_failed`.
+Kamus entitas dibangun dari alias entitas (P7c) + ~5000 nama `threat_actor_groups` dan mahal,
+jadi di-cache per proses dengan TTL 1 jam (pola `extract_iocs._get_allowlist`). Seluruh stage
+dibungkus try/except: tier 1 adalah tambahan di atas LLM, kegagalannya TIDAK boleh menggagalkan
+enrichment artikel -- hasilnya `Tier1Result.empty()` dan satu baris log `tier1_failed`.
 """
 
 from __future__ import annotations
@@ -17,7 +17,11 @@ from cti_core.db.repositories.threat_reference import load_entity_sources
 from cti_core.db.repositories.ttp_catalog import load_catalog
 from sqlalchemy.orm import Session
 
-from cti_enrich.tier1.dictionary import EntityDictionary, build_dictionary
+from cti_enrich.tier1.dictionary import (
+    EntityDictionary,
+    build_dictionary,
+    build_entity_dictionary,
+)
 from cti_enrich.tier1.entities import EntityHit, match_entities
 from cti_enrich.tier1.incident import IncidentVerdict, incident_verdict
 from cti_enrich.tier1.industry import INDUSTRY_TAXONOMY_VERSION, match_industries
@@ -60,7 +64,7 @@ def get_dictionary(session: Session) -> EntityDictionary:
         try:
             # SAVEPOINT: statement yang gagal tidak boleh membatalkan transaksi pemanggil.
             with session.begin_nested():
-                _dictionary_cache = build_dictionary(*load_entity_sources(session))
+                _dictionary_cache = build_entity_dictionary(*load_entity_sources(session))
             _dictionary_loaded = True
         except Exception as exc:
             log.warning("tier1_dictionary_load_failed", error=str(exc))
@@ -113,6 +117,13 @@ class Tier1Result:
     @property
     def malware(self) -> list[tuple[str, str]]:
         return [(e.canonical, e.kind) for e in self.entities if e.kind in ("malware", "tool")]
+
+    def matched_aliases(self) -> dict[str, str]:
+        """Nama kanonik huruf kecil -> teks yang cocok, untuk `matched_alias` mention (P7c)."""
+        out: dict[str, str] = {}
+        for e in self.entities:
+            out.setdefault(e.canonical.lower(), e.matched)
+        return out
 
     def audit(self) -> dict[str, object]:
         """Jejak untuk `raw_enrichment["tier1"]`: versi, hit beserta offset, dan vonis insiden."""

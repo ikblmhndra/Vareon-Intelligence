@@ -27,8 +27,9 @@ from typing import Any
 
 import structlog
 from cti_core.db.models.article import Article
-from cti_core.db.repositories.article import AsyncArticleRepo, all_country_codes
+from cti_core.db.repositories.article import AsyncArticleRepo, all_country_codes, ttp_refs
 from cti_core.db.repositories.article_cve import AsyncArticleCveRepo
+from cti_core.db.repositories.entity import ACTOR, SECTOR, name_keys_async
 from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from cti_core.db.repositories.pir import AsyncPIRRepo
 from cti_core.db.repositories.source_reliability import AsyncSourceReliabilityRepo
@@ -151,12 +152,12 @@ def _article_to_dict(articles: list[Article], ratings: dict[str, Any]) -> list[d
                 "title": a.title,
                 "posted_on": a.posted_on.isoformat() if a.posted_on else "",
                 "source_reliability": rating.reliability_grade if rating else "",
-                "threat_actors": [t.threat_actor for t in a.threat_actors if t.threat_actor],
-                "impacted_industries": [i.industry for i in a.industries if i.industry],
+                "threat_actors": a.entity_names("intrusion-set"),
+                "impacted_industries": a.entity_names("identity"),
                 # Role apa pun -- konsisten sama PIR matching (`dominant_countries`
                 # dibandingin ke `criteria.countries` PIR, yang match role apa pun).
                 "countries": all_country_codes(a),
-                "ttps": [{"id": t.ttp_id, "name": t.ttp_name} for t in a.ttps],
+                "ttps": ttp_refs(a),
             }
         )
     return out
@@ -362,19 +363,39 @@ async def _match_pirs(
 ) -> None:
     """Annotate tiap cluster dict dengan `matched_pirs: [{...}]` -- port
     `_match_pirs()`. PIR aktif DI-SCOPE `client_id` (beda dari
-    `AsyncPIRRepo.list_active_unscoped()` yang lintas client)."""
+    `AsyncPIRRepo.list_active_unscoped()` yang lintas client).
+
+    P7c: aktor dan industri dicocokkan lewat `entity_aliases` (`NameKeys`, spec 5.1) -- kriteria
+    "apt36" cocok dengan cluster "Transparent Tribe", label industri lama cocok dengan nama
+    sektor; nama tak dikenal tetap cocok case-insensitive."""
     pirs = await AsyncPIRRepo(session).list_active_by_client(client_id)
+    crits = [pir.criteria or {} for pir in pirs]
+    ta_keys = await name_keys_async(
+        session,
+        ACTOR,
+        [
+            *(t for c in clusters for t in c.get("dominant_tas", [])),
+            *(t for crit in crits for t in crit.get("threat_actors", [])),
+        ],
+    )
+    ind_keys = await name_keys_async(
+        session,
+        SECTOR,
+        [
+            *(i for c in clusters for i in c.get("dominant_industries", [])),
+            *(i for crit in crits for i in crit.get("industries", [])),
+        ],
+    )
 
     for cluster in clusters:
-        tas = {t.lower() for t in cluster.get("dominant_tas", [])}
-        inds = {i.lower() for i in cluster.get("dominant_industries", [])}
+        tas = {ta_keys(t) for t in cluster.get("dominant_tas", [])}
+        inds = {ind_keys(i) for i in cluster.get("dominant_industries", [])}
         ctrs = {c.lower() for c in cluster.get("dominant_countries", [])}
 
         matched: list[dict[str, Any]] = []
-        for pir in pirs:
-            crit = pir.criteria or {}
-            pir_tas = {t.lower() for t in crit.get("threat_actors", [])}
-            pir_inds = {i.lower() for i in crit.get("industries", [])}
+        for pir, crit in zip(pirs, crits, strict=True):
+            pir_tas = {ta_keys(t) for t in crit.get("threat_actors", [])}
+            pir_inds = {ind_keys(i) for i in crit.get("industries", [])}
             pir_ctrs = {c.lower() for c in crit.get("countries", [])}
             if (tas & pir_tas) or (inds & pir_inds) or (ctrs & pir_ctrs):
                 matched.append(

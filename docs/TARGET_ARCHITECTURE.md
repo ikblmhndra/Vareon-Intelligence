@@ -222,7 +222,8 @@ reliability; steps 4-7 move pages one at a time.
    leaves documents pending instead of parked), story resolver, `/api/v2/stories`, triage queue
    page, story page; Newsroom becomes a view of it.
 5. **Entities**: unify actors/malware/campaign into `entities` + relationships, entity pages,
-   retire TA Room/ATT&CK DB/campaign pages into Explore.
+   retire TA Room/ATT&CK DB/campaign pages into Explore. (Backend built for 0.8.11 as P7c-1; the
+   pages follow as P7c-2. Campaign clusters stay an analytic view linking to entities.)
 6. **Relevance model + Admiralty**: local model gate, grade every source, priority score,
    alerts driven by priority.
 7. **Sharing and feedback**: TLP everywhere, STIX fix, TAXII 2.1, scoped tokens, Splunk
@@ -238,7 +239,8 @@ reliability; steps 4-7 move pages one at a time.
 | 2. Sources and indicators, cheap wins | **Done in 0.8.6** | Structured sources skip LLM classify/TTP (`content_kind`); canonical IOC values (refang, lowercase); CVEs moved from IOCs to `article_cves`; allowlist flags instead of dropping, 124-domain seed; suppressed IOCs leave STIX, stats, campaigns, recap counts; default Admiralty grades per `content_kind` and article confidence from the source grade. Out of scope, still open: CVEs in `ArticleOut`, story dedup, deterministic extractors, local relevance model, credibility from corroboration. |
 | 2. Sources and indicators, remaining | **Partly done**: indicator state/expiry and the machine API feed built for 0.8.11 (P7a, P7b) | `iocs` renamed to `indicators`; computed state (active, expired, revoked, allowlisted) from `valid_until` by type and `revoked_at`; analyst FP revokes, TP restores; TLP/PAP markings. The `sources` table (reliability as FK) is not started. The feed side is built for 0.8.11 (P7b): scoped API tokens, `GET /api/v2/indicators` and a TAXII 2.1 server at `/taxii2/` (see `docs/superpowers/specs/2026-10-29-p7b-machine-api-design.md`; P7 decomposition in `docs/superpowers/specs/2026-10-28-p7a-indicator-lifecycle-design.md` section 0). Feed dates (0.8.3) are a prerequisite already in place. |
 | 3. Extractors and claims | Not started | Software masking and longest-name matching for actors (0.8.3) are a first piece. |
-| 4-5 | Not started | |
+| 4. Stories and triage | Not started | Story dedup at ingest (0.8.7, P3) is in place; `documents` and persist-first are not. |
+| 5. Entities | **Backend built for 0.8.11** (P7c-1); web pages next (P7c-2) | `entities` (intrusion-set, malware, tool, attack-pattern, vulnerability, campaign, identity for sectors and ransomware victims, location), `entity_aliases`, `relationships` with provenance, one `entity_mentions` table for every article/indicator/CVE link, watches and profiles; old link tables kept as writable compatibility views. ATT&CK anchors identity, MISP Galaxy merges synonyms (`cti-entity merge-aliases`, weekly `entity.alias_sync`), analysts merge/split/suppress via `/api/entities`. Machine side: scope `intel:read`, `/api/v2/entities`, `/api/v2/relationships`, TAXII collection `intel` with stories as `report`s. Spec: `docs/superpowers/specs/2026-10-29-p7c-entity-model-design.md`. Still open: entity pages replacing TA Room/ATT&CK DB (P7c-2). |
 | 6. Relevance model + Admiralty | **Partly done**: relevance model in 0.8.9 (P5), Admiralty and priority built for 0.8.10 (P6) | Local relevance model gates the LLM classify. Every article has a source reliability grade, a computed credibility (corroboration, primary source, artefacts) and a stored, uncapped priority score; `sort=priority` ranks one article per story; a "Needs review" queue suggests source grades from data. Still open: alerts driven by priority, story-level credibility/priority, PIR and exposure in priority (P7). |
 | 7 | Not started | |
 

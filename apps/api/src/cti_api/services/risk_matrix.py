@@ -12,7 +12,7 @@ bukan field artikel). TTP artikel yang beneran ada namanya `ttps`. Efek
 di kode lama: komponen `unique_ttps * 2` di formula skor SELALU 0,
 diem-diem mati -- bukan keputusan desain, ketauan typo/field salah pas
 baca detail buat porting. Di sini pakai `ttps` (field asli, ternormalisasi
-`ArticleTTP`) supaya komponen TTP skor beneran jalan -- perubahan
+mention teknik) supaya komponen TTP skor beneran jalan -- perubahan
 perilaku yang disengaja & didokumentasikan, bukan silent fix."""
 
 from __future__ import annotations

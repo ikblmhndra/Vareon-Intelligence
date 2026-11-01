@@ -1,0 +1,14 @@
+MISP Galaxy cluster snapshot (input of `cti-entity merge-aliases`, spec P7c section 4.2)
+
+upstream:   https://github.com/MISP/misp-galaxy
+commit:     285d147754492321eed5deda8af6e4196b465ad8 (main, committed 2026-10-29T22:10:26Z)
+fetched:    2026-10-31 from https://raw.githubusercontent.com/MISP/misp-galaxy/main/clusters/{threat-actor,ransomware,malpedia}.json
+versions:   threat-actor 357 (1114 clusters), ransomware 173 (2179 clusters), malpedia 25472 (3683 clusters)
+license:    CC0 1.0 Universal (public domain dedication), per the misp-galaxy repository
+
+Local changes: six strings that gitleaks reports as generic API keys (false positives: UUIDs after
+"KeyBoy:", "Secret Blizzard:", "Operation GhostSecret:", "KEYHOLE PANDA:" in `meta.name-attribution`,
+a credential inside the Hive ransom note in `meta.links`/`meta.ransomnotes`, and a Broadcom
+`DocumentKey=` URL in `meta.refs`) were replaced, on the reported line only, with a same-length
+`REDACTED___` placeholder. No `uuid`, `value` or `meta.synonyms` was changed, so the files are not
+byte-identical to upstream but are identical for the merge.

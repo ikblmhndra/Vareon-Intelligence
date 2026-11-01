@@ -14,11 +14,13 @@ import datetime
 from collections.abc import Iterator
 
 import pytest
-from cti_core.db.models.article import Article, ArticleTTP
+from cti_core.attack_ttp import NormalizedTTP
+from cti_core.db.models.article import Article
 from cti_core.db.models.attack import AttackTactic, AttackTechnique
 from cti_core.db.repositories.article import ArticleRepo, AsyncArticleRepo
 from cti_core.db.repositories.attack import AsyncAttackQueryRepo, AsyncAttackSyncRepo
 from cti_core.db.repositories.dashboard import AsyncDashboardRepo
+from cti_core.db.repositories.entity import mention_rows
 from cti_core.db.repositories.mitre import AsyncMitreHeatmapRepo
 from cti_core.db.repositories.pir import AsyncPIRRepo
 from cti_core.db.repositories.ttp_catalog import (
@@ -34,6 +36,8 @@ from cti_enrich.stages.score import ScoreResult
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
+
+from tests.integration.entity_support import seed_entity
 
 _TECHNIQUES = [
     ("T1003", "OS Credential Dumping"),
@@ -86,7 +90,7 @@ async def _seed_async(session: AsyncSession, *, catalog: bool = True) -> None:
         a = await repo.upsert(
             url=f"https://example.com/ttp-{i}", title=f"a{i}", source="s", posted_on=recent
         )
-        await repo.set_enrichment(a, industries=["General"], ttps=ttps)
+        await repo.set_enrichment(a, industries=["Manufacturing"], ttps=ttps)
 
 
 # ── agregasi (fix berlaku SEBELUM backfill) ──────────────────────────────────
@@ -107,8 +111,9 @@ async def test_heatmap_has_one_column_per_technique_id_with_canonical_name(
     assert names["T1570"] == "Lateral Tool Transfer"
     assert names["T1110"] == "Brute Force"
     assert names["T1203"] == "Exploitation for Client Execution"
-    general = heatmap["rows"].index("General")
-    assert heatmap["matrix"][general][ids.index("T1548")] == 3
+    # P7c (Ruling 13): "General" bukan sektor lagi, jadi baris heatmap = sektor sungguhan.
+    row = heatmap["rows"].index("Manufacturing")
+    assert heatmap["matrix"][row][ids.index("T1548")] == 3
 
 
 @pytest.mark.asyncio
@@ -148,25 +153,32 @@ async def test_aggregation_without_catalog_still_groups_by_id(
 def _seed_sync(session: Session) -> list[int]:
     session.add_all(_catalog_rows())
     session.flush()
+    # P7c (Ruling 13): nama teknik dibaca dari entitas teknik; sync ATT&CK (Task 9) mengisi
+    # entitas dengan nama katalog, jadi seed meniru keadaan itu.
+    for tid, name in _TECHNIQUES:
+        seed_entity(session, "attack-pattern", name, external_id=tid)
     repo = ArticleRepo(session)
     ids = []
     for i, ttps in enumerate(_RAW_ARTICLES):
         a = repo.upsert(url=f"https://example.com/remap-{i}", title=f"r{i}", source="s")
-        repo.set_enrichment(a, ttps=ttps)
+        # P7c: nama teknik tersimpan = nama entitas (satu per id), jadi pasangan mentah LLM hanya
+        # bertahan di `extracted` -- seperti yang ditulis enrichment sejak kolom itu ada.
+        repo.set_enrichment(a, ttps=[NormalizedTTP(t, n, t, n) for t, n in ttps])
         ids.append(a.id)
     return ids
 
 
 def _ttps_of(session: Session, article_id: int) -> list[tuple[str, str, str | None, str | None]]:
+    t = mention_rows("attack-pattern")
     rows = session.execute(
         select(
-            ArticleTTP.ttp_id,
-            ArticleTTP.ttp_name,
-            ArticleTTP.extracted_id,
-            ArticleTTP.extracted_name,
+            t.c.external_id,
+            t.c.name,
+            t.c.extracted["extracted_id"].astext,
+            t.c.extracted["extracted_name"].astext,
         )
-        .where(ArticleTTP.article_id == article_id)
-        .order_by(ArticleTTP.ttp_id)
+        .where(t.c.article_id == article_id)
+        .order_by(t.c.external_id)
     ).all()
     return [tuple(r) for r in rows]
 
@@ -174,7 +186,9 @@ def _ttps_of(session: Session, article_id: int) -> list[tuple[str, str, str | No
 def test_remap_article_ttps_backfills_and_is_idempotent(db_session: Session) -> None:
     ids = _seed_sync(db_session)
     stats = remap_article_ttps(db_session, load_catalog(db_session), batch_size=2)
-    assert stats.articles_scanned == 4 and stats.articles_changed == 4
+    # P7c (Ruling 13): artikel ke-4 hanya "berubah nama" (T1203) dan nama kini milik entitas,
+    # bukan baris per artikel -- tidak ada yang perlu ditulis ulang.
+    assert stats.articles_scanned == 4 and stats.articles_changed == 3
 
     assert _ttps_of(db_session, ids[0]) == [
         ("T1003", "OS Credential Dumping", "T1110", "Credential Dumping"),
@@ -276,7 +290,10 @@ def test_pipeline_persists_normalized_ttps_and_alert_uses_canonical_names(
     assert outcome.accepted
     article = pipeline_session.scalar(select(Article).where(Article.url_hash == url_hash(url)))
     assert article is not None
-    assert sorted((t.ttp_id, t.ttp_name, t.extracted_name) for t in article.ttps) == [
+    assert sorted(
+        (m.entity.external_id, m.entity.name, (m.extracted or {}).get("extracted_name"))
+        for m in article.mentions_of("attack-pattern")
+    ) == [
         ("T1003", "OS Credential Dumping", "Credential Dumping"),
         ("T1203", "Exploitation for Client Execution", "Remote Code Execution"),
     ]

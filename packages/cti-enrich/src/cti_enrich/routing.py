@@ -127,7 +127,7 @@ class RoutingResult:
 
 
 def threat_actor_names(mentioned_group: list[str]) -> list[str]:
-    """Bentuk nama TA yang DISIMPAN (`ArticleThreatActor.threat_actor`) dari
+    """Bentuk nama TA yang ditulis sebagai mention aktor (dulu `article_threat_actors`) dari
     hasil `score` -- `capitalize()` persis kode lama, mis. `shinyhunters` ->
     `Shinyhunters`. Dipakai `route()` dan `cti_enrich.backfill` biar dua
     jalur tulis gak bisa beda format."""

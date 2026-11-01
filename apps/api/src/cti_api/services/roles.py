@@ -17,6 +17,7 @@ ALL_PERMISSIONS: dict[str, str] = {
     "view_intel": "View threat intelligence reports",
     "manage_intel": "Create and edit intelligence reports",
     "view_ta": "View threat actor profiles",
+    "manage_entities": "Create, edit, merge and split entities and relationships",
     "view_ioc": "View and search IOC database",
     "manage_ioc": "Add and delete IOCs",
     "view_cve": "View CVE and vulnerability data",
@@ -66,6 +67,8 @@ SYSTEM_ROLES: dict[str, dict[str, object]] = {
             "manage_pir",
             "view_intel",
             "view_ta",
+            # P7c: analyst merawat entitas (alias, merge/split, relasi), spec 5.2
+            "manage_entities",
             "view_ioc",
             # Sejak 0.8.11 TP/FP me-revoke/memulihkan IOC dan butuh `manage_ioc`; analyst tetap
             # memberi verdict (keputusan user 2026-10-29), termasuk hapus/allowlist/tag IOC.

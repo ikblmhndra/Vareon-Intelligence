@@ -214,7 +214,7 @@ async def test_list_filtered_by_search_matches_title_or_source(
 
 
 async def test_list_filtered_by_ttps(async_db_session: AsyncSession) -> None:
-    """`ttps` (Fase 7.3, router `pir`) -- filter `ArticleTTP.ttp_id`."""
+    """`ttps` (Fase 7.3, router `pir`) -- filter id teknik (`external_id` mention teknik)."""
     repo = AsyncArticleRepo(async_db_session)
     ids = await _seed(repo)
 
@@ -273,8 +273,8 @@ async def test_list_filtered_article_without_enrichment_has_empty_relations(
     assert len(articles) == 1
     a5 = articles[0]
     assert a5.id == ids["a5"]
-    assert a5.countries == []
-    assert a5.industries == []
+    assert a5.country_codes() == []
+    assert a5.entity_names("identity") == []
     assert a5.posted_on is None
 
 
@@ -287,7 +287,8 @@ async def test_get_filter_options_returns_distinct_sorted_values(
     options = await repo.get_filter_options()
     assert options["sources"] == sorted(options["sources"])
     assert "gbhacker" in options["sources"]
-    assert "Government & Public Sector" in options["industries"]
+    # P7c (plan Decision 3): opsi industri = nama tampilan sektor, bukan label lama
+    assert "Government" in options["industries"]
     assert "Apt41" in options["threat_actors"]
     assert options["date_range"]["min"] == "2026-08-01"
     assert options["date_range"]["max"] == "2026-09-17"

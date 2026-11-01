@@ -193,7 +193,7 @@ def resolve_industries(industries_impacted: list[str]) -> list[str]:
     """Port `nlp.py:324-331` -- "General" kalau MUNCUL SELALU menang
     sendirian, gak digabung sama industri spesifik lain walau keduanya ada
     di respons GPT (prompt minta jangan campur, tapi gak dipaksa skema).
-    Dipakai `stages/persist.py` (list buat `ArticleIndustry`) DAN
+    Dipakai `stages/persist.py` (list buat mention sektor) DAN
     `pipeline.py` (display string buat pesan Telegram) -- satu logika,
     dua pemakai, biar gak drift."""
     return ["General"] if "General" in industries_impacted else industries_impacted

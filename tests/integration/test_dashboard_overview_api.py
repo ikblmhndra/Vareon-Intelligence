@@ -8,10 +8,10 @@ import datetime
 import pytest
 from cti_core.db.models.cve import CveTracker
 from cti_core.db.models.ransomware import RansomwareVictim
-from cti_core.db.models.ta import TAWatchlistEntry
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.auth import AsyncClientRepo
 from cti_core.db.repositories.pir import AsyncPIRRepo
+from cti_core.db.repositories.ta import AsyncTARepo
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -75,10 +75,10 @@ async def test_attention_is_client_scoped(
     api_session.add_all(
         [
             CveTracker(cve_id="CVE-2026-1111", client_id="acme", tech="Nginx", cisa_kev=True),
-            TAWatchlistEntry(name="Qilin", client_id="acme"),
         ]
     )
     await api_session.flush()
+    await AsyncTARepo(api_session).add_to_watchlist("Qilin", "acme")
     await _seed_actor_articles(api_session, 1)
 
     h = auth_header(role="analyst", client_ids=["acme", "other"])

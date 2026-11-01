@@ -6,8 +6,9 @@ from __future__ import annotations
 import datetime
 
 import pytest
-from cti_core.db.models.article import Article, ArticleThreatActor
+from cti_core.db.models.article import Article
 from cti_core.db.models.ransomware import RansomwareVictim
+from cti_core.db.repositories.article import AsyncArticleRepo, MentionInput
 from cti_core.db.repositories.ransomware import AsyncRansomwareVictimRepo
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -136,9 +137,11 @@ async def test_get_related_articles_matches_by_threat_actor_tag(
         title="Some unrelated title",
         source="test",
     )
-    article.threat_actors = [ArticleThreatActor(threat_actor="LockBit")]
     async_db_session.add(article)
     await async_db_session.flush()
+    await AsyncArticleRepo(async_db_session).add_mentions(
+        article, [MentionInput("intrusion-set", "LockBit", "dictionary", "LockBit")]
+    )
 
     articles, total = await AsyncRansomwareVictimRepo(async_db_session).get_related_articles()
     assert total == 1
@@ -175,9 +178,11 @@ async def test_get_related_articles_no_duplicate_when_matches_both(
         title="LockBit strikes again",
         source="test",
     )
-    article.threat_actors = [ArticleThreatActor(threat_actor="LockBit")]
     async_db_session.add(article)
     await async_db_session.flush()
+    await AsyncArticleRepo(async_db_session).add_mentions(
+        article, [MentionInput("intrusion-set", "LockBit", "dictionary", "LockBit")]
+    )
 
     articles, total = await AsyncRansomwareVictimRepo(async_db_session).get_related_articles()
     assert total == 1

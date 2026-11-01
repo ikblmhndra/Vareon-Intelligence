@@ -17,7 +17,7 @@ Artikel yang masuk sebelum seed: `python -m cti_enrich.backfill`.
 kuratif) SENGAJA gak ikut di-port jadi tabel baru -- diganti
 `pycountry.countries` (seluruh negara anggota ISO 3166-1, superset dari
 daftar lama) di `stages/score.py`, sekalian nyelesain kebutuhan konversi
-nama->kode ISO yang `ArticleCountry.country_code` (Fase 2) minta. Lihat
+nama->kode ISO yang mention negara (`entities.external_id`) minta. Lihat
 docstring `score.py::_country_list`.
 
 `source` (Fase 7.3, router `ta_groups`) -- kolom ketinggalan pas Fase 5

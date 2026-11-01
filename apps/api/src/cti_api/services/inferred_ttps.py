@@ -1,10 +1,10 @@
 """Teknik ATT&CK yang DIKAITKAN ke aktor/malware sebuah artikel (P4).
 
-Nama aktor (`article.threat_actors`) dan malware/tool (`article.malware`) dicocokkan
-case-insensitive ke nama atau alias `attack_groups` / `attack_software` (nama aktor tersimpan
-sudah `capitalize()`, mis. "Apt29"). Teknik diambil dari relasi `uses` -> `attack-pattern`.
+Nama aktor (mention `intrusion-set`) dan malware/tool (mention `malware`/`tool`) artikel -- nama
+entitas kanonik (P7c) -- dicocokkan case-insensitive ke nama atau alias `attack_groups` /
+`attack_software`. Teknik diambil dari relasi `uses` -> `attack-pattern`.
 Hasil TIDAK disimpan: ini inferensi dari katalog, bukan klaim artikel, jadi tampil terpisah
-dari `article_ttps`. Entitas tanpa kecocokan ATT&CK dilewati."""
+dari teknik artikel. Entitas tanpa kecocokan ATT&CK dilewati."""
 
 from __future__ import annotations
 
@@ -37,8 +37,9 @@ def _index(
 
 
 async def for_article(session: AsyncSession, article: Article) -> list[InferredEntity]:
-    actors = [t.threat_actor for t in article.threat_actors]
-    if not actors and not article.malware:
+    actors = article.entity_names("intrusion-set")
+    malware = article.mentions_of("malware", "tool")
+    if not actors and not malware:
         return []
 
     groups = (
@@ -65,10 +66,10 @@ async def for_article(session: AsyncSession, article: Article) -> list[InferredE
         hit = group_index.get(actor.lower())
         if hit:
             matched.append((actor, "actor", hit[0], hit[1]))
-    for m in article.malware:
-        hit = software_index.get(m.name.lower())
+    for m in malware:
+        hit = software_index.get(m.entity.name.lower())
         if hit:
-            matched.append((m.name, m.kind, hit[0], hit[1]))
+            matched.append((m.entity.name, m.entity.type, hit[0], hit[1]))
     if not matched:
         return []
 

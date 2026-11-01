@@ -41,7 +41,7 @@ from typing import Any
 from cti_core.config import get_settings, platform_name
 from cti_core.db.models.article import Article
 from cti_core.db.models.newsletter import NewsletterArticleSummary
-from cti_core.db.repositories.article import AsyncArticleRepo
+from cti_core.db.repositories.article import AsyncArticleRepo, ttp_refs
 from cti_core.db.repositories.article_cve import AsyncArticleCveRepo
 from cti_core.db.repositories.cve import AsyncCveTrackerRepo
 from cti_core.db.repositories.indicator import AsyncIndicatorRepo
@@ -377,11 +377,11 @@ def _article_dict(article: Article) -> dict[str, Any]:
         "source": article.source,
         "posted_on": article.posted_on.isoformat() if article.posted_on else "",
         "news_type": article.news_type or "",
-        "mentioned_countries": [c.country_code for c in article.countries if c.role == "mentioned"],
-        "victim_countries": [c.country_code for c in article.countries if c.role == "victim"],
-        "impacted_industries": [i.industry for i in article.industries],
-        "threat_actors": [t.threat_actor for t in article.threat_actors],
-        "ttps": [{"id": t.ttp_id, "name": t.ttp_name} for t in article.ttps],
+        "mentioned_countries": article.country_codes("mentioned"),
+        "victim_countries": article.country_codes("victim"),
+        "impacted_industries": article.entity_names("identity"),
+        "threat_actors": article.entity_names("intrusion-set"),
+        "ttps": ttp_refs(article),
     }
 
 

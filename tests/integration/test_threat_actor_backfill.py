@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session
 
 _TODAY = datetime.date.today()
 _INDUSTRY = "Finance & Insurance"
+_SECTOR = "Financial Services"  # P7c (plan Decision 3): nama tampilan sektor label di atas
 _GROUPS = ["shinyhunters", "star blizzard", "temp.periscope"]
 
 
@@ -81,7 +82,7 @@ async def test_backfill_fixes_options_pir_coverage_and_risk_matrix(
     # udah ada sebelum backfill -- yang kosong cuma top actor-nya.
     risk_matrix._CACHE.clear()
     before = (await risk_matrix.get_risk_matrix(session))["matrix"]
-    assert [(c["industry"], c["country"]) for c in before] == [(_INDUSTRY, "US")]
+    assert [(c["industry"], c["country"]) for c in before] == [(_SECTOR, "US")]
     assert not before[0]["top_actors"]
 
     stats = await _backfill(session)
@@ -102,7 +103,7 @@ async def test_backfill_fixes_options_pir_coverage_and_risk_matrix(
     risk_matrix._CACHE.clear()
     matrix = (await risk_matrix.get_risk_matrix(session))["matrix"]
     assert [(c["industry"], c["country"], c["current_count"]) for c in matrix] == [
-        (_INDUSTRY, "US", 4)
+        (_SECTOR, "US", 4)
     ]
     assert matrix[0]["top_actors"][0] == "Shinyhunters"
     risk_matrix._CACHE.clear()
@@ -131,8 +132,8 @@ async def test_backfill_is_idempotent_and_only_adds(async_db_session: AsyncSessi
     session.expire_all()
     a1 = await repo.get_by_url("https://example.com/a1")
     assert a1 is not None
-    assert sorted(t.threat_actor for t in a1.threat_actors) == ["Other actor", "SHINYHUNTERS"]
-    assert sorted((c.country_code, c.role) for c in a1.countries) == [
+    assert sorted(a1.entity_names("intrusion-set")) == ["Other actor", "SHINYHUNTERS"]
+    assert sorted((m.entity.external_id, m.role) for m in a1.mentions_of("location")) == [
         ("US", "mentioned"),
         ("US", "victim"),
     ]
@@ -207,8 +208,8 @@ def test_new_article_gets_threat_actor_and_mentioned_country(
 
     article = pipeline_session.scalar(select(Article).where(Article.id == outcome.article_id))
     assert article is not None
-    assert [t.threat_actor for t in article.threat_actors] == ["Shinyhunters"]
-    assert sorted((c.country_code, c.role) for c in article.countries) == [
+    assert article.entity_names("intrusion-set") == ["Shinyhunters"]
+    assert sorted((m.entity.external_id, m.role) for m in article.mentions_of("location")) == [
         ("US", "mentioned"),
         ("US", "victim"),
     ]

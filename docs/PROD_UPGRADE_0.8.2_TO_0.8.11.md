@@ -12,11 +12,12 @@ Compose commands differ slightly between sections: use the same compose invocati
 
 1. **Before deploy (all read-only):** run every "Before deploy" block below (0.8.4 custom roles, 0.8.5 migration head and
    replay backlog, 0.8.6 baselines and overrides count, 0.8.7 article counts, 0.8.8 ATT&CK dictionary counts, 0.8.9 model
-   download reachability, `.env` keys and disk space, 0.8.10 confidence baseline, 0.8.11 IOC baseline and role check; P7b only needs a stack-env and consumer-planning check, see its read-only bullet). Write the results down: several
+   download reachability, `.env` keys and disk space, 0.8.10 confidence baseline, 0.8.11 IOC baseline and role check; P7b only needs a stack-env and consumer-planning check, see its read-only bullet;
+   P7c link-table baseline, whitelist review and PIR counts). Write the results down: several
    "After deploy" checks compare against them. These run on 0.8.2, where the IOC tables are still `iocs` and `ioc_sources`;
    after the deploy the same data lives in `indicators` and `indicator_sources` (0.8.11), so the After-deploy queries use
    the new names.
-2. **`.env`:** no new required key in any of these releases (0.8.11 adds four optional `INDICATOR__TTL_*_DAYS` keys with defaults; leave them unset). Do **not** copy dev's `RELEVANCE__GATE_MIN_AGREEMENT=0.94` or
+2. **`.env`:** no new required key in any of these releases (0.8.11 adds four optional `INDICATOR__TTL_*_DAYS` keys and the optional `ENTITY__ALIAS_SYNC_ENABLED`, all with defaults; leave them unset). Do **not** copy dev's `RELEVANCE__GATE_MIN_AGREEMENT=0.94` or
    `STORY__EMBEDDING_SIMILARITY=0.8`; leave `RELEVANCE__*` and `STORY__*` unset for the first deploy (see 0.8.7 and 0.8.9).
 3. **Make sure the prod LLM gateway works** (model name and credits). Dev's OpenRouter free quota ran out; with a dead
    gateway 0.8.5's auto-replay stays on one canary per 10 minutes and 0.8.9's first model may be rejected.
@@ -29,9 +30,17 @@ Compose commands differ slightly between sections: use the same compose invocati
 6. **One-off WRITE commands, in this order, after the deploy is healthy (each needs approval, dry-run first):**
    1. 0.8.7 story backfill (`cti_enrich.story_backfill`), bounded with `--since`.
    2. 0.8.8 Tier 1 backfill (`cti_enrich.backfill_tier1`, ~3 s/article; never during a deploy).
-   3. 0.8.8 actor-name canonicalisation (`cti_enrich.canonicalise_actors --apply`).
+   3. 0.8.11 (P7c) ATT&CK sync from the ATT&CK DB page ("Sync All Domains"; brings campaigns and current ATT&CK
+      aliases into the entities).
+   4. 0.8.11 (P7c) Galaxy alias merge: `python -m cti_core.entity.cli merge-aliases --dry-run > /tmp/galaxy.csv`, the
+      user reviews the CSV, then `--apply` (one transaction; on a DB error nothing is written, re-run it). The weekly
+      `entity.alias_sync` applies Galaxy merges only after this first `--apply` (code gate); until then it only stores
+      snapshots.
 
-   0.8.9 needs nothing: the first model trains itself within an hour. 0.8.11 (P7a and P7b) needs nothing either (P7b: only the After-deploy token round trip and the nginx check): the first API start
+   The 0.8.8 actor-name canonicalisation (`cti_enrich.canonicalise_actors`) is **superseded** by the 0.8.11 `entity_model`
+   migration and step 4: skip it (on 0.8.11 it prints that and writes nothing).
+
+   0.8.9 needs nothing: the first model trains itself within an hour. 0.8.11 P7a and P7b need nothing either (P7b: only the After-deploy token round trip and the nginx check): the first API start
    enqueues `indicator.reconcile_validity` once (backfills `valid_until`; check `job_state['indicator.ttl_fingerprint']`).
    0.8.10 needs nothing either: each API process enqueues
    `confidence.recompute_all` once at start (one or two runs with `WEB_CONCURRENCY=2`; idempotent; P6 scoring for every
@@ -54,8 +63,9 @@ Compose commands differ slightly between sections: use the same compose invocati
 | 0.8.10 | `d7a3e1b94c52` article assessment columns + source content_kind | `c4f1a9d27e6b` | yes (computed scores lost; old confidence values only from the backup) |
 | 0.8.11 | `a9e4c7b1d3f6` `iocs` → `indicators` (+ child tables), lifecycle/marking columns, compatibility views | `d7a3e1b94c52` | yes (views, new columns dropped; tables renamed back; revocations and TLP/PAP lost) |
 | 0.8.11 (P7b) | `c4f1a8d27b93` machine_api: `api_tokens`, `indicators.feed_changed_at` + `stix_id`, two feed-clock triggers | `a9e4c7b1d3f6` | yes (tokens lost) |
+| 0.8.11 (P7c) | `1387fae00908` entity_model: entities, aliases, relationships, mentions, watches, profiles, reference snapshots; old link/TA tables renamed `_legacy_*` behind writable compatibility views; feed clocks for entities, relationships and stories (4.35 s on a dev copy) | `c4f1a8d27b93` | yes (`_legacy_*` renamed back; everything written after the upgrade lost) |
 
-Expected `alembic_version` after the deploy: **`c4f1a8d27b93`**. The only way back past `e7b2d4a9c6f1` is the Postgres
+Expected `alembic_version` after the deploy: **`1387fae00908`**. The only way back past `e7b2d4a9c6f1` is the Postgres
 backup `make deploy` writes before migrating.
 
 ---
@@ -385,7 +395,7 @@ select (select count(*) from attack_groups) groups, (select count(*) from attack
 select (select count(*) from articles) articles, (select count(*) from article_ttps) ttps,
        (select count(distinct article_id) from article_threat_actors) arts_with_actor;
 
--- Alias-form actor names that canonicalise_actors would rewrite (measured 2026-10-25: 7 rows, 6 names).
+-- Alias-form actor names that canonicalise_actors would rewrite (measured 2026-10-25: 7 rows, 6 names). (informational only now: superseded in 0.8.11)
 select threat_actor, count(*) from article_threat_actors group by 1 order by 2 desc limit 30;
 ```
 
@@ -417,7 +427,7 @@ select t.source, count(*) from article_ttps t join articles a on a.id = t.articl
 
 Run AFTER the full 0.8.11 deploy is healthy, never during a deploy (a deploy restarts `worker-browser` and kills the run; re-running is safe). Use `worker-browser` for the backfill (Chromium for the `fetch_text` fallback).
 
-1. **Tier 1 backfill — WRITE, needs the user's approval.** Add-only: adds explicit/keyword TTPs whose ID is missing, actors/malware not yet present (skips an actor whose alias form already exists), and keyword industries only when the article's sole industry is "General". Never touches LLM rows, overrides, `news_type`, confidence or alerts. No LLM calls.
+1. **Tier 1 backfill — WRITE, needs the user's approval.** Add-only: adds explicit/keyword TTPs whose ID is missing, actors/malware not yet present (skips an actor whose alias form already exists), and keyword industries only when the article's sole industry is "General" (0.8.11 code: only when the article has no sector mention, since "General" is gone). Never touches LLM rows, overrides, `news_type`, confidence or alerts. No LLM calls.
 
    ```bash
    # dry-run on a small slice first (rolls back)
@@ -431,27 +441,20 @@ Run AFTER the full 0.8.11 deploy is healthy, never during a deploy (a deploy res
 
    Dev: dry-run 20 -> +40 TTP, +19 actors, +6 malware. Full run (after a partial first run cut by a redeploy): 1,537 articles scanned, 1,194 texts fetched, 343 failed/empty, 0 errors; +744 TTP, +254 actors, +209 malware/tool, 2 industries replaced; **~1 h 20 min** at `--sleep 1` (~3 s/article). Dev totals afterwards: `article_ttps` explicit 798 / keyword 698 / llm 2,363; `article_malware` 515 rows on 285 articles. Optional `--since YYYY-MM-DD` / `--limit N`.
 
-2. **Actor-name canonicalisation — WRITE, needs the user's approval.** Rewrites pre-0.8.8 alias-form names to the canonical stored form in `article_threat_actors`, `ta_watchlist`, `ta_profiles` and PIR criteria; merges duplicates (newest `generated_at` wins for TA profiles; dropped names are printed). One transaction; re-runnable (second run is a no-op). Run after the backfill.
-
-   ```bash
-   docker compose --env-file docker/stack.env --profile app exec -T worker python -m cti_enrich.canonicalise_actors          # dry-run, rolls back
-   docker compose --env-file docker/stack.env --profile app exec -T worker python -m cti_enrich.canonicalise_actors --apply  # approval required
-   ```
-
-   Dev: 4 renamed + 1 merged article rows, 1 watchlist, 1 TA profile ("apt36" -> "Transparent tribe"); second dry-run 0/0. Prod measured read-only on 2026-10-25: 7 article rows (6 names) + 1 TA profile. Takes seconds.
+2. **Actor-name canonicalisation — superseded in 0.8.11 (P7c), skip it.** In 0.8.8 it rewrote pre-0.8.8 alias-form names to the canonical stored form in `article_threat_actors`, `ta_watchlist`, `ta_profiles` and PIR criteria. Since the 0.8.11 migration `entity_model` every alias form resolves to one entity, and `cti-entity merge-aliases` (0.8.11 One-off commands) folds the remaining Galaxy duplicates. On 0.8.11 `python -m cti_enrich.canonicalise_actors [--apply]` only prints that it is superseded, writes nothing and exits 0. Measured in 0.8.8, for reference: dev 4 renamed + 1 merged article rows, 1 watchlist, 1 TA profile ("apt36" -> "Transparent tribe"); prod read-only on 2026-10-25: 7 article rows (6 names) + 1 TA profile.
 
 ### Rollback / if it goes wrong
 
 - Code: `deploy.sh` rolls images back to `:prev` when health fails (it never downgrades the DB). The 0.8.8 schema is additive, so older code runs against it.
 - A Tier 1 failure never drops an article: `run_tier1` catches everything, logs `tier1_failed` and persists without Tier 1. Persistent `tier1_failed` -> check reads of `attack_*` / `threat_actor_groups`, then redeploy the previous image if needed.
-- Bad backfill rows (WRITE, approval required): `delete from article_ttps where source in ('explicit','keyword');` and `delete from article_malware;` remove Tier 1 TTPs/malware only; LLM rows stay. Tier 1 actor rows carry `source='dictionary'` like pre-0.8.8 rows, so they cannot be separated by `source`; use the Postgres backup made by `make deploy` for a full revert.
-- Canonicalisation has no undo command: restore from the deploy backup, or reverse it from its printed `old -> new` list.
+- Bad backfill rows (WRITE, approval required): `delete from article_ttps where source in ('explicit','keyword');` and `delete from article_malware;` remove Tier 1 TTPs/malware only; LLM rows stay. On the 0.8.11 schema both names are compatibility views whose `INSTEAD OF DELETE` trigger removes the matching `entity_mentions` rows. Tier 1 actor rows carry `source='dictionary'` like pre-0.8.8 rows, so they cannot be separated by `source`; use the Postgres backup made by `make deploy` for a full revert.
+- Canonicalisation (0.8.8 only) has no undo command: restore from the deploy backup, or reverse it from its printed `old -> new` list. On 0.8.11 it writes nothing.
 - Schema: `alembic downgrade a7d3f1c9e5b2` only together with 0.8.7 code and only after downgrading 0.8.9 (`c4f1a9d27e6b` depends on `b8e2c4a6d1f3`).
 
 ### Known risks and follow-ups
 
 - Precision (silver standard: 2 LLM labellers, 92% agreement, no human labels): actor dictionary 71% vs LLM-era 70%; TTP explicit 99%, keyword 70% vs LLM 35%; industry keyword 5/5 vs LLM 39%; malware/tool 47% (weakest: generic OS tools, incidental mentions). Expect some "mentioned but not involved" actor/malware tags.
-- Leaderboards/PIR/watchlist show a split actor series until `canonicalise_actors --apply` runs; watchlist/profiles added later with alias names still will not match canonical article names.
+- Leaderboards/PIR/watchlist showed a split actor series until `canonicalise_actors --apply` ran (0.8.8-0.8.10). From 0.8.11 alias forms resolve to one entity, PIR criteria and the watchlist match through aliases, and `cti-entity merge-aliases` folds Galaxy synonyms.
 - Fetch failures (~22% on dev, mostly 403/bot-blocked sites): those articles get Tier 1 on title/summary only.
 - Interactions in the 0.8.2 -> 0.8.11 chain: 0.8.6 (P2) confidence recompute now counts only `explicit` + `llm` TTPs (in 0.8.10 they count as priority points, and explicit TTPs as an artefact for credibility); 0.8.7 (P3) story follow-ups skip LLM TTP but still get Tier 1; 0.8.9 (P5) depends on Tier 1: for gate-accepted articles (LLM classify skipped, `industries_impacted=[]`) industries come only from the Tier 1 keyword taxonomy and `confirmed_incident`/victim only from the Tier 1 incident rule, whose precision was measured on few cases (rule 2/2 vs LLM 9/24 on dev); expect fewer industries and confirmed incidents on gated articles.
 - Article modal at a true 375 px viewport is untested.
@@ -485,31 +488,6 @@ Release: tag `0.8.9` / Release `v0.8.9`, merge commit `3cedd1a` (PR #78). Spec:
 - **Image change.** `worker-nlp` now bakes the MiniLM model in at build time (see Known risks). The new wheels in the
   `nlp` extra are `fastembed` 0.15 MB, `onnxruntime` 23.8 MB and `tokenizers` 3.4 MB.
 
-- **P7b machine API (0.8.11, second part).** Read-only, token-only access for SIEM/TIP clients, vendor-neutral
-  (no Splunk-specific connector):
-  - **API tokens.** New table `api_tokens` (hashed, shown once at creation, optional expiry, `max_tlp`, scope
-    `indicators:read`). Admins manage them in the *API tokens* section of the Admin page (`/admin/users`), permission
-    `manage_api_tokens`; the admin routes are `/api/api-tokens` and stay behind the web proxy.
-  - **REST feed** `GET /api/v2/indicators` (cursor on a feed clock, filters, TLP capped per token).
-  - **TAXII 2.1 server** at `/taxii2/` (API root `/taxii2/api/`, one collection
-    `6f0e1a52-6a43-4f0b-9b8e-2a7c1d9e4b10`). Basic auth with any user name and the token as password, or Bearer. Malformed
-    parameters return 400. Revoked and allowlisted indicators stay in the feed with `revoked: true`.
-  - **Feed clock.** `indicators.feed_changed_at` (default `clock_timestamp()`, indexed with `id`) is maintained by two Postgres
-    triggers (`trg_indicators_feed_bump`, `trg_indicator_tags_feed_bump`), not by application code, so every write path
-    (including old code through the `iocs` compatibility view) moves it. Confidence, actionability, enrichment and
-    `updated_at` do not.
-  - **STIX ids.** `indicators.stix_id` (uuid, unique) stores `uuid5(NAMESPACE_DNS, "<type>:<value>")` with no
-    lowercasing. The snapshot export (`/api/stix/iocs`) and the threat-actor bundles now use the same ids, so the
-    `indicator--...` id **changes once** for values with uppercase letters or surrounding whitespace. `created` and
-    `modified` are now stable (row `created_at` / `feed_changed_at`, millisecond precision). No TAXII subscriber exists
-    yet, so nothing downstream sees the one-time change.
-  - **nginx.** The edge now forwards `/taxii2/` and `/api/v2/` to `api:8000` (the only two paths that skip `web`); every
-    other API path is still unreachable from outside. The image `cti-nginx:1` is built from
-    `docker/nginx.Dockerfile` with the template baked in, so a template change needs the image rebuilt: `make deploy`
-    does this (`dc build` then `dc up -d` recreates `nginx` because its image changed). If the deploy is run with a
-    stale image or nginx was not recreated, the paths answer from `web` (a 404 page), not from the API: see
-    After deploy check P7b-1.
-
 ### Migrations (revision ids, reversible or not, rough duration/row counts seen on dev)
 
 | Revision | Down revision | What | Reversible | Dev |
@@ -517,14 +495,6 @@ Release: tag `0.8.9` / Release `v0.8.9`, merge commit `3cedd1a` (PR #78). Spec:
 | `c4f1a9d27e6b` | `b8e2c4a6d1f3` (0.8.8 head) | `CREATE TABLE relevance_models` + partial unique index `uq_relevance_models_active` (`WHERE status='active'`) | yes (`downgrade` drops index + table; loses trained models only, which retrain) | new empty table, under 1 s; `migrate` exited 0 |
 
 This must be the last revision in the chain. After the deploy, `alembic_version` should read `c4f1a9d27e6b`.
-
-**P7b:** `c4f1a8d27b93` (`machine_api`), down revision `a9e4c7b1d3f6`. It creates `api_tokens` (unique `token_hash`,
-CHECK on `max_tlp`), adds `indicators.feed_changed_at` (backfilled from `greatest(created_at, revoked_at)`) and
-`indicators.stix_id` (backfilled in Python in batches of 1,000, then made unique), the index
-`ix_indicators_feed_changed_at_id`, and the two trigger functions (created after the backfill so it does not move the
-clock). Reversible: `downgrade` drops the triggers, functions, index, columns and table. Not run on prod yet.
-**Projection:** seconds (one pass over `indicators`, about 5,500 rows on dev). This is now the last revision in the chain:
-after the deploy `alembic_version` should read **`c4f1a8d27b93`** (the `a9e4c7b1d3f6` line above is the P7a step).
 
 ### Settings / .env (new keys, recommended PROD values, defaults)
 
@@ -545,8 +515,6 @@ Values are read at process start, so after changing them restart `worker-nlp` an
 
 Dev `.env` for reference (backup `~/Vareon-Intelligence/.env.bak-sebelum-0.8.9`): `RELEVANCE__MODE=auto`,
 `STORY__ENABLED=true`, `STORY__EMBEDDING_SIMILARITY=0.8`, `RELEVANCE__GATE_MIN_AGREEMENT=0.94` (dev-only).
-
-**P7b adds no `.env` key.** The token hash needs no secret; nothing to set on the prod host before merging.
 
 ### Before deploy (read-only checks with expected results)
 
@@ -590,10 +558,6 @@ Dev `.env` for reference (backup `~/Vareon-Intelligence/.env.bak-sebelum-0.8.9`)
    ```
 
    Expected: a few GB free.
-
-**P7b (read-only):** nothing to run against the database beyond P7a check 1. Confirm the stack env is the prod one
-(`docker/stack.env`, `NGINX_HTTPS_PORT`): the machine API is reachable on the same HTTPS port as the UI. Decide who will
-consume the feed (host, TLS trust of the self-signed certificate, TLP ceiling) before creating tokens.
 
 ### After deploy (checks with expected results: SQL, logs, UI pages)
 
@@ -641,43 +605,6 @@ Run SQL in the read-only `psql` session shown above.
 6. **Telegram.** A "model rejected" alert means the first model failed its holdout. The absence of an alert says
    nothing; read the `relevance_models` table instead.
 
-**P7b checks.**
-
-- **P7b-1. nginx was recreated with the new template.** Expected: `2` (one match per location) and an `Up` nginx.
-
-  ```bash
-  cd /home/privy-admin/Niskala-Intelligence
-  docker compose --env-file docker/stack.env --profile app exec -T nginx grep -c 'proxy_pass \$cti_api' /etc/nginx/conf.d/cti.conf
-  ```
-
-  If it prints `0` or errors, nginx kept the old image. Recreate only the edge (NEEDS USER APPROVAL; brief edge blip):
-  `docker compose --env-file docker/stack.env --profile app up -d --build nginx`. App rollbacks do not touch nginx.
-- **P7b-2. Migration and shape.** `alembic_version` is `c4f1a8d27b93`. Expected: `count` equals `count(stix_id)`
-  (the migration backfills every existing row) and `min(feed_changed_at)` is not in the future.
-
-  ```sql
-  SELECT count(*), count(stix_id), min(feed_changed_at) FROM indicators;
-  SELECT tgname FROM pg_trigger WHERE tgname LIKE 'trg\_indicator%' AND NOT tgisinternal ORDER BY 1;
-  ```
-
-  The second query returns `trg_indicator_tags_feed_bump` and `trg_indicators_feed_bump`.
-- **P7b-3. Token round trip** (**WRITE**: creates and revokes a throwaway token; needs the user's approval). In the web UI,
-  Admin > API tokens, create `smoke-test` (scope `indicators:read`, TLP `clear`, expiry 1 day). Copy the token once, then
-  from a machine outside the host:
-
-  ```bash
-  curl -ks -u x:<token> -H 'Accept: application/taxii+json;version=2.1' https://<host>/taxii2/ -o /dev/null -w '%{http_code}\n'
-  curl -ks -u x:<token> -H 'Accept: application/taxii+json;version=2.1' \
-    'https://<host>/taxii2/api/collections/6f0e1a52-6a43-4f0b-9b8e-2a7c1d9e4b10/objects/?limit=5' | head -c 600
-  curl -ks -u x:<token> 'https://<host>/api/v2/indicators?limit=3' | head -c 600
-  ```
-
-  Expected: `200`, a STIX envelope with up to 5 `indicator` objects and a `more` flag, and a JSON page. The discovery
-  response lists absolute `https://<host>/taxii2/api/` URLs (checks `Host`/`X-Forwarded-*`). Then read
-  `SELECT name, last_used_at FROM api_tokens;` (read-only): `last_used_at` is set. Finally revoke the token in the UI and
-  repeat the first `curl`: **401**. Without a token the same URLs also answer 401, and `https://<host>/api/api-tokens`
-  must not answer from the API (it goes to `web`).
-
 ### One-off commands (training, backfills etc.: exact command, `--dry-run` first if any, expected numbers from dev, how long; mark each as needing the user's approval)
 
 No backfill is needed: old articles are not scored.
@@ -693,10 +620,6 @@ skipped or rejected and you want to retry now.
 
 ```bash
 cd /home/privy-admin/Niskala-Intelligence
-
-**P7b:** nothing to run. The migration backfills `stix_id` and `feed_changed_at` itself. Rows written by old code during a
-rollback window get their `stix_id` from the next `indicator.reconcile_validity` run (the manual command above).
-
 # read-only first: computes everything, writes nothing
 docker compose -p niskala-intelligence exec -T worker-nlp python -m cti_enrich.relevance.train --dry-run
 # then the real run (write)
@@ -736,6 +659,780 @@ reason. Dev: `"status": "active"` once run with the dev-only 0.94.
   through the LLM classify exactly as in 0.8.8.
 - **Embedding false merges.** Set `STORY__EMBEDDING_SIMILARITY=0` and restart `worker-nlp`. Articles already merged
   stay merged: they keep `story_match='title_embedding'` and their inherited classify.
+- **Code rollback.** `deploy.sh` restores the `:prev` images on failure. 0.8.8 code ignores `relevance_models`, so
+  **no DB downgrade is needed**. If you insist on one: `alembic downgrade b8e2c4a6d1f3` (WRITE, needs approval) drops the
+  table, which only loses trained models.
+- **Failsafe built in.** If the model is missing, stale or fails to load, the code falls back to the LLM classify, and a
+  DB error is contained in a savepoint. A failed relevance step never fails an article.
+
+### Known risks and follow-ups
+
+- **Build-time dependency on huggingface.co.**
+  - The `worker-nlp` build downloads `Qdrant/all-MiniLM-L6-v2-onnx` at pinned revision
+    `d13954661f83248295ba75c1ed411eef3b7b936e` (90,387,630-byte `model.onnx` plus tokenizer and config files) into
+    `/opt/fastembed` inside the image. It is about 88 MB on disk and `FASTEMBED_CACHE_PATH=/opt/fastembed`.
+  - At runtime `HF_HUB_OFFLINE=1` is set and the model is loaded with `local_files_only`, so nothing is downloaded.
+  - If Hugging Face is down or rate-limits the request during `make deploy`, the build fails and the deploy aborts
+    before the containers change. Retry later.
+- **The first prod model may be rejected.**
+  - On dev it scored 94.89%, against a 95% bar. Prod labels are cleaner (mostly `gpt-4o`) and passed offline at 98%.
+  - However, prod has also used `openrouter/free` since 2026-10-21, and noisier recent labels pull the 14-day holdout
+    down.
+  - A rejected model means no model is active, so there are no shadow decisions at all and everything goes to the LLM.
+    That is safe, but there is nothing to measure.
+  - Do not lower `RELEVANCE__GATE_MIN_AGREEMENT` in prod without an explicit decision; it is also the gate's opening
+    threshold.
+- **Dependencies on earlier releases in the chain.**
+  - Gated articles take `confirmed_incident` and `victim_name` from the 0.8.8 (P4) incident rule and industries from
+    P4 `merge_industries`.
+  - The embedding rule extends the 0.8.7 (P3) story resolver.
+  - Labels exclude failed rows through 0.8.5's `failure_kind` and through the `[enrichment_failed]` reason prefix, which
+    covers rows written before 0.8.5.
+  - Migration `c4f1a9d27e6b` sits on top of 0.8.8's `b8e2c4a6d1f3`.
+  - Nothing in 0.8.9 conflicts with earlier releases.
+- **CPU load.** Training runs on the `enrich` queue, about 10 s per week. Each scored title costs about 3 ms of
+  embedding on CPU.
+- **Follow-ups.**
+  - Check the Data health card visually.
+  - Watch the first Sunday training.
+  - Review dev's 0.94 after a week of shadow data.
+  - Watch embedding false merges if the rule is enabled.
+  - About 20 deferred minor review findings are listed in `p5-sdd-ledger.md` in the side-session notes folder; none
+    blocks the upgrade.
+
+---
+
+## 0.8.10 — P6 Admiralty confidence and priority per article
+
+Release: not yet tagged (branch `claude/p6-admiralty-confidence-9bbec2`, PR to `main` pending). Spec:
+`docs/superpowers/specs/2026-10-26-p6-admiralty-confidence-design.md`. Dev evidence: `docs/LLM_ASSIST_REDESIGN.md`
+("Built for 0.8.10").
+
+**Not yet run on dev.** P6 has not been deployed to the dev instance, so there are no dev runtime numbers (migration
+time, recompute time, live distributions). The numbers below come from the dev snapshot replay
+(`tests/fixtures/confidence_replay/dev_2026-10.csv`, 1,546 dev articles, exported 2026-10-26). Anything else is marked
+**projection**.
+
+### What changes in prod
+
+- **Article confidence becomes pure Admiralty**, computed per article by `cti_core.confidence.assess`:
+  - Reliability A-F is the source grade (`F` if the source has no `source_reliability_entries` row).
+  - Credibility 1-6 comes from story corroboration, primary vs aggregator source (`content_kind`) and artefacts (CVE,
+    non-suppressed IOC, explicit TTP).
+  - `confidence_score` uses the STIX 2.1 Admiralty scale averaged over both halves, so it is always **10-90**. Before:
+    the LLM self-rating on 0.8.2, the source grade + bonus on 0.8.6-0.8.9 (many at 100).
+- **New stored `priority_score`** (confidence + incident/KEV/PoC/TTP/actor/corroboration points, uncapped) drives
+  `sort=priority`. The dashboard "Perlu dibaca" and the Newsroom front section show **one article per story**.
+- **Interaction with 0.8.6 in the 0.8.2 jump.** The 0.8.6 source-grade + bonus formula never runs on prod. Each API process
+  enqueues `confidence.recompute_all` once at start (condition: new default grades inserted **or** any article with
+  `credibility IS NULL`), and that task now runs `assess`. `lifespan` runs in every uvicorn process and the API image
+  sets `WEB_CONCURRENCY=2`, so a normal deploy may enqueue it twice. The task is idempotent: the second pass is extra load,
+  not a fault.
+- **Overrides.** An article whose `overrides` has `confidence_score` keeps that confidence, and its credibility and
+  priority are still computed. `overrides.credibility` is new (`PUT /api/articles/{id}/credibility`, `manage_intel`).
+- **New beat entries**, both on the `maintenance` queue (`worker`); beat restarts on deploy:
+  - `confidence-refresh-stories`: every 10 minutes.
+  - `confidence-recompute-all`: daily 03:20.
+- **New API:** `GET /api/sr/review`, `POST /api/sr/entries/{id}/confirm` (`manage_sources`). `ArticleOut.admiralty_code`
+  is now the article's code, plus `reliability_grade`, `credibility`, `priority_score` and `score_reasons`.
+- **Web:** chip `C1 · P131` on the dashboard, the Newsroom front section and list, and the article modal ("Why this
+  grade", credibility override). Source reliability gets a "Needs review" tab.
+
+### Migrations (revision ids, reversible or not, rough duration/row counts seen on dev)
+
+| Revision | Down revision | What | Reversible | Dev |
+|---|---|---|---|---|
+| `d7a3e1b94c52` | `c4f1a9d27e6b` (0.8.9 head) | `articles`: nullable `reliability_grade varchar(1)`, `credibility smallint`, `priority_score smallint`; `score_reasons jsonb NOT NULL DEFAULT '{}'`; check `ck_articles_credibility_range` (1-6); index `ix_articles_priority_score (priority_score DESC NULLS LAST)`. `source_reliability_entries.content_kind varchar(20)` nullable. No data backfill. | yes (`downgrade` drops all of it; computed scores are lost and recomputed on the next upgrade) | not run yet. **Projection:** seconds; nullable `ADD COLUMN` and a constant-default jsonb column are metadata-only, the index and the check constraint scan `articles` once |
+
+This must be the last revision in the chain. After the deploy, `alembic_version` should read `d7a3e1b94c52`.
+
+### Settings / .env (new keys, recommended PROD values, defaults)
+
+None. `git diff origin/main -- .env.example .env.prod.template packages/cti-core/src/cti_core/config.py` is empty for
+this release. Nothing to set on the prod host.
+
+### Before deploy (read-only checks with expected results)
+
+Open the read-only session:
+
+```bash
+ssh privy-admin@10.8.20.78
+docker exec -it -e "PGOPTIONS=-c default_transaction_read_only=on" niskala-intelligence-postgres-1 sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+```
+
+1. **P6 columns do not exist yet.** Expected: 0 rows.
+
+   ```sql
+   select column_name from information_schema.columns
+   where table_name = 'articles'
+     and column_name in ('reliability_grade', 'credibility', 'priority_score', 'score_reasons');
+   ```
+
+2. **Baseline** (write the numbers down; After deploy compares against them).
+
+   ```sql
+   select count(*) articles,
+          count(*) filter (where confidence_score = 100) at_100,
+          count(*) filter (where overrides ? 'confidence_score') analyst_confidence
+   from articles;
+   ```
+
+   `analyst_confidence` is the number of articles that keep their confidence after the recompute (it equals 0.8.6's
+   Before-deploy query 3). If the 0.8.6 remedy clears those overrides after deploy, its follow-up recompute gives them
+   the computed confidence too. For reference, pre-P6 dev had 245 articles at exactly 100.
+
+### After deploy (checks with expected results: SQL, logs, UI pages)
+
+Run SQL in the read-only `psql` session shown above.
+
+1. **Version and migration head.**
+   - `GET /healthz` returns `"version": "0.8.10"`.
+   - `select version_num from alembic_version;` returns `d7a3e1b94c52`.
+2. **The bootstrap enqueued the recompute and a worker ran it.**
+
+   ```bash
+   cd /home/privy-admin/Niskala-Intelligence && docker compose -p niskala-intelligence logs api --since 30m | grep -E "recompute_all_enqueue_failed|api_startup_done"
+   cd /home/privy-admin/Niskala-Intelligence && docker compose -p niskala-intelligence logs worker --since 30m | grep -E "confidence_recompute_all|confidence\.recompute_all"
+   ```
+
+   Expected: `api_startup_done` (one per API process) and **no** `recompute_all_enqueue_failed`; one or two
+   `confidence_recompute_all` lines in the worker log (one enqueue per API process, `WEB_CONCURRENCY=2`) once the tasks
+   finish. Two lines are normal: the task is idempotent.
+3. **Every article assessed.** Expected: `unassessed = 0` once the task finished.
+
+   ```sql
+   select count(*) filter (where credibility is null) unassessed, count(*) total from articles;
+   ```
+
+4. **Code distribution.** Expected (**projection** from the dev replay): several codes (11 on dev), none dominant. `F6`
+   appears only for sources with no grade row.
+
+   ```sql
+   select reliability_grade || credibility code, count(*) from articles group by 1 order by 2 desc;
+   ```
+
+5. **Priority spread and confidence range.** Expected (**projection** from the dev replay): the most common
+   `priority_score` holds at most ~20% of articles (16.9% on dev); without an analyst override, confidence is between
+   10 and 90 and nothing is at 100.
+
+   ```sql
+   select priority_score, count(*), round(100.0 * count(*) / sum(count(*)) over (), 1) pct
+   from articles group by 1 order by 2 desc limit 5;
+
+   select min(confidence_score), max(confidence_score),
+          count(*) filter (where confidence_score = 100) at_100
+   from articles where not overrides ? 'confidence_score';
+   ```
+
+6. **`content_kind` filled from the scraper registry.** Expected: most rows non-NULL; NULL only for non-scraper sources
+   (for example CYFIRMA).
+
+   ```sql
+   select content_kind, count(*) from source_reliability_entries group by 1 order by 2 desc;
+   ```
+
+7. **Story refresh is running** (after 10+ minutes). Expected: a `confidence_refresh_stories` line every 10 minutes, no
+   errors.
+
+   ```bash
+   cd /home/privy-admin/Niskala-Intelligence && docker compose -p niskala-intelligence logs worker --since 30m | grep -i refresh_stories
+   ```
+
+8. **UI** (light and dark):
+   - Dashboard "Perlu dibaca": one article per story, chips like `C1 · P131`, reasons in the tooltip.
+   - Newsroom front section and list rows: same chip.
+   - Article modal: "Why this grade" section; credibility override select for `manage_intel` users.
+   - Intelligence > Source reliability > "Needs review" (`manage_sources`): default grades with 30-day statistics and a
+     suggested grade.
+
+### One-off commands (recompute/backfills: exact command, `--dry-run` first, expected numbers from dev, how long; mark each as needing the user's approval)
+
+Normally **nothing to run**: the API start enqueues `confidence.recompute_all` by itself. Run the command below only if
+After deploy check 2 shows `recompute_all_enqueue_failed` or check 3 stays above 0.
+
+There is **no `--dry-run`** for the recompute (it is idempotent and respects analyst overrides). Read-only preview: After
+deploy check 3.
+
+**Manual recompute (NEEDS USER APPROVAL; WRITE: rewrites confidence/credibility/priority on every article).** It
+enqueues the same task the bootstrap sends; a `worker` runs it, committing per batch of 500.
+
+```bash
+cd /home/privy-admin/Niskala-Intelligence
+docker compose -p niskala-intelligence exec -T api python -c "from cti_core.celery_client import send_recompute_all; send_recompute_all()"
+```
+
+Alternative: `POST /api/articles/confidence/recompute` as a `manage_intel` user (audit-logged). It runs **inside the API
+request**, so on a large table it can hit the proxy timeout; prefer the task.
+
+Expected: `unassessed` goes to 0. Duration: not measured on dev. **Projection:** a few minutes for a few thousand
+articles (pages of 500, one facts query per page).
+
+### Rollback / if it goes wrong
+
+- **Code rollback.** `deploy.sh` restores the `:prev` images on failure and never downgrades the DB. 0.8.9 code ignores
+  the new columns (nullable or defaulted), so **no DB downgrade is needed**.
+- **DB downgrade** (WRITE, needs approval, only after the app is back on 0.8.9): `alembic downgrade c4f1a9d27e6b`. It
+  drops the P6 columns, the index and `content_kind`.
+- **Old confidence values are not restored** by any rollback: the recompute rewrote them. If needed, take them from the
+  Postgres backup `make deploy` writes before migrating.
+- **Recompute stuck or failing:** check the `worker` log for `confidence`; re-run the manual recompute once the cause is
+  fixed (idempotent).
+
+### Known risks and follow-ups
+
+- **Priority query cost.** `sort=priority` collapses per story with `row_number()` over the filtered set. It was not
+  measured on prod-sized data; if "Perlu dibaca" feels slow, run `EXPLAIN (ANALYZE, BUFFERS)` on the dashboard query in
+  the read-only session.
+- **Refresh watermark edge.** `confidence.refresh_stories` advances its Redis watermark
+  (`cti:confidence:refresh_stories:watermark`) only after a successful run, using the timestamp taken before the query. A
+  story commit in flight across that boundary can be missed; the daily `recompute_all` (03:20) catches it. Older story
+  members can be up to 10 minutes stale.
+- **API start scan.** Every API start runs `exists (... credibility is null)` on `articles`. It is cheap once every row
+  is assessed (the first match ends it), but scans the table while rows stay NULL.
+- **Lower confidence downstream.** Values drop to 10-90. The newsletter ranking awards confidence points only above 50
+  (fewer articles get them, intended), and Splunk/STIX consumers see lower `confidence` values. Tell consumers before
+  the deploy.
+- **Follow-ups:** record the live distribution (After deploy checks 4-5) in `docs/LLM_ASSIST_REDESIGN.md`; review the
+  "Needs review" suggestions with an analyst.
+
+---
+
+## 0.8.11 — P7a indicator lifecycle and TLP/PAP (`iocs` becomes `indicators`), P7b machine API, P7c-1 entity model
+
+Release: not yet tagged (branch `nameless/p7-cti-model-165075`, merge to `origin/Dev` for the dev test, then PR to `main`).
+Spec: `docs/superpowers/specs/2026-10-28-p7a-indicator-lifecycle-design.md`. Progress record:
+`docs/LLM_ASSIST_REDESIGN.md` ("Built for 0.8.11").
+
+**Dev result (2026-10-29, `origin/Dev` `27fe2a8`, deploy from 0.8.10).** `make deploy` finished all seven steps and every
+container came up healthy; `/healthz` reports 0.8.11 and `alembic_version` is `a9e4c7b1d3f6` (P7b was not part of that test). Before deploy (on 0.8.10):
+5,469 IOCs, 29 allowlisted, 6,334 source rows, 0 feedback rows; role `analyst` (2 users) had no `manage_ioc` (granted by a follow-up commit on the same branch). After deploy,
+read-only: `indicators` 5,469 = `iocs` view 5,469; `indicator_sources` 6,334; state 5,283 active / 157 expired /
+29 allowlisted / 0 revoked; 0 non-hash rows with `valid_until` NULL (1,727 hashes NULL by design); `valid_until -
+last_seen_at` is exactly 30 days for `ip` and 90 days for `domain`, `url`, `url_with_path`, `email`; the fingerprint is in
+`job_state`; every row `tlp = pap = clear`. The API start enqueued the reconcile twice (two uvicorn processes): the first
+run filled 3,742 rows in 0.1 s, the second reported `skipped`. The UI was checked on a local stack (light/dark, 375 px,
+analyst vs superadmin), not on dev (the dev certificate is not trusted by the checking browser). Remaining
+**projections** below are prod-specific.
+
+### What changes in prod
+
+- **Table rename (instant, ids and rows kept).** `iocs` → `indicators`; `ioc_sources`, `ioc_tags`, `ioc_threat_actors`,
+  `ioc_feedback` → `indicator_sources`, `indicator_tags`, `indicator_threat_actors`, `indicator_feedback`; their `ioc_id`
+  column → `indicator_id`. Sequences, constraints and indexes are renamed with them. `ioc_allowlist_entries` keeps its name.
+  The `/api/iocs` routes do not change.
+- **Compatibility views.** The migration creates five views with the old names (`iocs`, `ioc_sources`, `ioc_tags`,
+  `ioc_threat_actors`, `ioc_feedback`; `indicator_id AS ioc_id`) so old SQL keeps working. They are **deprecated compatibility views (writable; do not use in new code)**: old code
+  writes through them. A later release drops them; do not point new queries at them.
+- **Lifecycle columns on `indicators`.** `valid_from` (NOT NULL, backfilled from `first_seen_at`, server default `now()`),
+  `valid_until`, `revoked_at`, `revoked_by`, `tlp`, `pap` (both with CHECK constraints), plus an index on `valid_until`.
+  **State is computed, never stored**: revoked (`revoked_at` set), allowlisted (`auto_suppressed`), expired
+  (`valid_until` in the past) or active.
+- **Expiry by type.** IP 30 days, domain 90, URL 90, email 90, hashes never expire. Set on ingest; existing rows get their
+  `valid_until` from the reconcile task (next bullet), so right after the migration non-hash indicators read as
+  non-expiring until it has run.
+- **Reconcile task.** New Celery task `indicator.reconcile_validity` (`maintenance` queue, picked up by `worker`) and beat
+  entry `indicator-reconcile-validity` (daily 04:15; beat restarts on deploy). The API `lifespan` enqueues it only when
+  `job_state['indicator.ttl_fingerprint']` is missing or differs from the current TTL settings, so it runs **once right
+  after the first 0.8.11 start** (which backfills `valid_until`) and again whenever a TTL setting changes. It is
+  idempotent; with `WEB_CONCURRENCY=2` it can be enqueued twice and the second run is a no-op.
+- **Behaviour users will notice.**
+  - `POST /api/iocs/{id}/feedback` now needs `manage_ioc`. The built-in `analyst` role gains `manage_ioc` in this
+    release, so `analyst`, `admin` and `superadmin` keep TP/FP; analysts can now also delete IOCs and edit the allowlist,
+    tags and threat-actor links. Custom roles without `manage_ioc` lose the buttons (hidden through `useCan("manage_ioc")`).
+  - **FP revokes** the indicator: it leaves the STIX export, IOC stats, dashboard counts, campaigns, recap counts and the
+    provider-enrichment queue, and it no longer counts as IOC/artefact evidence in the P6 assessment credibility and the
+    source review (the P6 effect lands on the next recompute of the affected articles). **TP restores** it.
+  - New `PATCH /api/iocs/{id}/marking` sets TLP/PAP.
+  - The IOC page shows the indicator state and TLP/PAP.
+  - The STIX IOC export carries `valid_until` and TLP 2.0 marking definitions, and leaves revoked indicators out.
+- **Backups.** `tools/ops/pg_backup.py` verifies `KEY_TABLES` containing both `iocs` and `indicators`; a table that does
+  not exist yet is skipped, so the pre-migration backup (taken by `make deploy`) checks `iocs` and later ones check
+  `indicators`.
+
+- **P7b machine API (0.8.11, second part).** Read-only, token-only access for SIEM/TIP clients, vendor-neutral
+  (no Splunk-specific connector):
+  - **API tokens.** New table `api_tokens` (hashed, shown once at creation, optional expiry, `max_tlp`, scope
+    `indicators:read`). Admins manage them in the *API tokens* section of the Admin page (`/admin/users`), permission
+    `manage_api_tokens`; the admin routes are `/api/api-tokens` and stay behind the web proxy.
+  - **REST feed** `GET /api/v2/indicators` (cursor on a feed clock, filters, TLP capped per token).
+  - **TAXII 2.1 server** at `/taxii2/` (API root `/taxii2/api/`, one collection
+    `6f0e1a52-6a43-4f0b-9b8e-2a7c1d9e4b10`). Basic auth with any user name and the token as password, or Bearer. Malformed
+    parameters return 400. Revoked and allowlisted indicators stay in the feed with `revoked: true`.
+  - **Feed clock.** `indicators.feed_changed_at` (default `clock_timestamp()`, indexed with `id`) is maintained by two Postgres
+    triggers (`trg_indicators_feed_bump`, `trg_indicator_tags_feed_bump`), not by application code, so every write path
+    (including old code through the `iocs` compatibility view) moves it. Confidence, actionability, enrichment and
+    `updated_at` do not.
+  - **STIX ids.** `indicators.stix_id` (uuid, unique) stores `uuid5(NAMESPACE_DNS, "<type>:<value>")` with no
+    lowercasing. The snapshot export (`/api/stix/iocs`) and the threat-actor bundles now use the same ids, so the
+    `indicator--...` id **changes once** for values with uppercase letters or surrounding whitespace. `created` and
+    `modified` are now stable (row `created_at` / `feed_changed_at`, millisecond precision). No TAXII subscriber exists
+    yet, so nothing downstream sees the one-time change.
+  - **nginx.** The edge now forwards `/taxii2/` and `/api/v2/` to `api:8000` (the only two paths that skip `web`); every
+    other API path is still unreachable from outside. The image `cti-nginx:1` is built from
+    `docker/nginx.Dockerfile` with the template baked in, so a template change needs the image rebuilt: `make deploy`
+    does this (`dc build` then `dc up -d` recreates `nginx` because its image changed). If the deploy is run with a
+    stale image or nginx was not recreated, the paths answer from `web` (a 404 page), not from the API: see
+    After deploy check P7b-1.
+
+- **P7c-1 entity model (0.8.11, third part; backend only, the web pages follow in P7c-2).** One id per actor, malware,
+  tool, technique, CVE, campaign, sector, country and ransomware victim. Spec:
+  `docs/superpowers/specs/2026-10-29-p7c-entity-model-design.md`.
+  - **New tables.** `entities` (STIX types `intrusion-set`, `malware`, `tool`, `attack-pattern`, `vulnerability`,
+    `campaign`, `identity` (sectors with `identity_class = 'class'`, ransomware victims `organization`) and `location`;
+    `merged_into_id` marks a merged tombstone, `suppressed` replaces the TA whitelist), `entity_aliases` (unique per type
+    and normalised alias), `relationships` (STIX SROs with `provenance` `attack`/`analyst`/`ransomware`, `confidence`,
+    `revoked_at`), `entity_mentions` (one table for every article, indicator and CVE link, with `method`,
+    `matched_alias`, `role`, `evidence`), `entity_watches` (per client), `entity_profiles` (LLM actor profile) and
+    `reference_snapshots` (stored Galaxy copies). `stories` gains `feed_changed_at` and `stix_id`.
+  - **Old link tables become compatibility views.** `article_threat_actors`, `article_malware`, `article_ttps`,
+    `article_cves`, `article_countries`, `article_industries`, `indicator_threat_actors`, `cve_threat_actors`, `cve_ttps`,
+    `ta_watchlist`, `ta_profiles` and `ta_whitelist` are renamed `_legacy_<name>` (kept for audit and a manual undo until
+    the release after 0.8.11) and replaced by views with the old columns. The views old code writes have `INSTEAD OF`
+    triggers that resolve names through the SQL function `entity_resolve` (same rules as the Python resolver), so
+    0.8.2 and 0.8.10 code write the same rows as new code. The P7a view `ioc_threat_actors` now reads mentions too. They
+    are **deprecated compatibility views (writable; do not use in new code)**, dropped in the first release after 0.8.11.
+  - **Writers.** Enrichment persist, the Tier 1 dictionary (built from the aliases of live entities plus the
+    `threat_actor_groups` names that are not aliases yet), ATT&CK sync (upserts entities, aliases and relationships,
+    including **campaigns**), the ransomware sink (victims plus `targets`/`located-at` relationships) and IOC
+    threat-actor tags all write entities and mentions.
+  - **Readers.** Every v1 endpoint reads mentions. Response shapes do not change; names are entity names.
+  - **Entity API** `/api/entities` and `/api/relationships` (web JWT, behind the web proxy). New permission
+    `manage_entities` for `admin` and `analyst` (granted when `api` starts); reads need `view_ta`, watch `manage_pir`,
+    profiles `manage_intel`. Merge, split, suppress and analyst relationships are audit-logged. No web page uses it yet
+    (P7c-2); TA Room and ATT&CK DB keep working.
+  - **Machine API.** New token scope `intel:read`; `GET /api/v2/entities`, `GET /api/v2/relationships` and a second
+    TAXII collection `intel` (`c0b7e3d4-2f5a-4e91-8a6d-5b3c9f1e7a20`, entities, relationships, one `report` per story,
+    indicators). Existing tokens keep `indicators:read` only. The Admin page has no scope selector until P7c-2.
+  - **Weekly Galaxy sync.** Task `entity.alias_sync` (`maintenance` queue, Sunday 05:00 UTC; beat restarts on deploy)
+    fetches the three MISP Galaxy files, rejects a broken file or one that shrank by more than 20 %, stores the copy in
+    `reference_snapshots` and runs the Galaxy merge in apply mode. **Gate:** it applies merges only after a manual
+    `cti-entity merge-aliases --apply` has run once (an `entity_merge` audit row by `system:galaxy` exists); until then
+    it only stores the snapshots and logs `galaxy_merge_gate_closed`, so the first Sunday after the deploy cannot merge
+    before the dry-run CSV is reviewed (One-off command 3).
+  - **Behaviour users will notice (deliberate, spec R4).**
+    - Aliases of one actor or malware count as one: dashboards, leaderboards, PIR results, recaps, newsletter and the
+      weekly TA trend report. Watchlist rows "apt36" and "Transparent tribe" become one watched entity.
+    - `industry_unspecified` (`GET /api/articles/dashboard`) now counts articles **with no sector mention**; before it counted articles
+      labelled "General". The "General" label is dropped by the migration, so the number rises.
+    - Industry values are sector display names: "Financial Services" for "Finance & Insurance"; "Cloud Services" and
+      "Information Technology & Software" both show "Technology".
+    - Suppressed (whitelisted) actors are hidden everywhere.
+    - Whitelisting a name (TA Room "delete group" or a seed whitelist row) suppresses the **whole entity**: every alias
+      and every past mention is hidden (kept, so unsuppress restores them).
+    - PIR actor criteria are still stored as names but match through aliases ("apt36" matches "Transparent Tribe").
+    - `python -m cti_enrich.canonicalise_actors` (0.8.8 one-off) is superseded: it prints that and writes nothing.
+
+### Migrations (revision ids, reversible or not, rough duration/row counts seen on dev)
+
+| Revision | Down revision | What | Reversible | Dev |
+|---|---|---|---|---|
+| `a9e4c7b1d3f6` (`iocs_to_indicators`) | `d7a3e1b94c52` (0.8.10 head) | Renames the five tables, `ioc_id` → `indicator_id`, sequences, constraints and indexes; adds `valid_from` (NOT NULL, backfilled from `first_seen_at`, default `now()`), `valid_until`, `revoked_at`, `revoked_by`, `tlp`, `pap` (CHECKs `ck_indicators_tlp`, `ck_indicators_pap`) and index `ix_indicators_valid_until`; creates the five compatibility views | yes: `downgrade` drops the views, drops the new columns, then reverses the renames. The migration up/down tests cover it (ids and child rows identical; `iocs` is a table again) | not run on dev yet. On a fresh DB the full chain to `a9e4c7b1d3f6` ran locally. **Projection:** seconds; renames are metadata-only, the `valid_from` backfill and the new index scan `indicators` once (about 5,500 rows on dev) |
+
+`a9e4c7b1d3f6` is the P7a step; the final head is the P7b revision below. The P7a revision is no longer the last in the chain. The prod jump
+is 0.8.2 → 0.8.11 in one `make deploy`, so this runs right after `d7a3e1b94c52` in the same `migrate` step.
+
+**P7b:** `c4f1a8d27b93` (`machine_api`), down revision `a9e4c7b1d3f6`. It creates `api_tokens` (unique `token_hash`,
+CHECK on `max_tlp`), adds `indicators.feed_changed_at` (backfilled from `greatest(created_at, revoked_at)`) and
+`indicators.stix_id` (backfilled in Python in batches of 1,000, then made unique), the index
+`ix_indicators_feed_changed_at_id`, and the two trigger functions (created after the backfill so it does not move the
+clock). Reversible: `downgrade` drops the triggers, functions, index, columns and table. Not run on prod yet.
+**Projection:** seconds (one pass over `indicators`, about 5,500 rows on dev). It is the P7b step; the last revision in
+the chain is the P7c revision below.
+
+**P7c:** `1387fae00908` (`entity_model`), down revision `c4f1a8d27b93`. It sets `lock_timeout = '10s'` first (a stuck
+lock fails the `migrate` step fast instead of hanging the deploy) and locks the twelve old link/TA tables in `EXCLUSIVE`
+mode (reads go on; writes by the still-running 0.8.2 workers wait until the migration commits instead of landing in a
+table that was already copied), then, in pure set-based SQL with no network: creates
+the seven tables, the SQL resolver functions (`entity_resolve` and helpers), backfills entities, aliases, relationships
+and mentions from the ATT&CK tables (`attack_*`), `threat_actor_groups`, the sector vocabulary (34 sectors), the ISO
+country list (249), CVEs, ransomware groups and victims, every old link table and the TA watchlist, profiles and
+whitelist; then renames the old tables to `_legacy_*`, creates the compatibility views and the feed-clock triggers,
+and runs `ANALYZE` on the new tables.
+**This is the last revision in the chain: after the deploy `alembic_version` should read `1387fae00908`.**
+
+Reversible: `downgrade` drops the triggers, views, functions and new tables and renames `_legacy_*` back. Rows written
+after the upgrade (through the views or the new tables: new mentions, entities, merges, watches, profiles) are lost; the
+old tables come back as they were at upgrade time.
+
+**Measured on a copy of dev (2026-11-01).** Read-only `pg_dump --no-owner -Fc` of dev (`c4f1a8d27b93`, database
+745 MB, 1,797 articles, 1,626 stories) restored into the local `qacve` Postgres 16, then `time alembic upgrade head`:
+**4.35 s wall** for the whole revision, no error, no lock wait. **Projection for prod:** seconds; the SQL is set-based and
+scales with the link-table rows, which prod's Before-deploy check P7c-1 counts. Counts before (old tables) and after:
+
+| Old table (before) | Rows | After |
+|---|---|---|
+| `article_threat_actors` | 772 (316 distinct names) | 772 `intrusion-set` mentions on 316 entities |
+| `article_malware` | 558 (155 names) | 358 `malware` + 200 `tool` mentions |
+| `article_ttps` | 4,096 (456 ids) | 4,096 `attack-pattern` mentions |
+| `article_cves` | 4,887 (3,298 CVEs) | 4,887 `vulnerability` mentions |
+| `article_countries` | 965 | 965 `location` mentions |
+| `article_industries` | 2,551 (1,005 of them "General") | 1,541 sector mentions (General dropped; 5 pairs of labels on one article collapsed into one sector) |
+| `ta_watchlist` | 6 | 5 `entity_watches` ("apt36" and "Transparent tribe" are one entity) |
+| `ta_profiles` / `ta_whitelist` | 6 / 2 | 6 `entity_profiles` / 2 suppressed entities |
+| `indicator_threat_actors`, `cve_threat_actors`, `cve_ttps` | 0 | 0 |
+
+Entities after the migration: `attack-pattern` 961, `intrusion-set` 515 (197 ATT&CK, 318 legacy, 2 suppressed),
+`malware` 877, `tool` 97, `vulnerability` 3,802, `identity` 1,498 (34 sectors, 6 legacy sector labels, 1,458 ransomware
+victims), `location` 249, `campaign` 0 (campaigns come from the next ATT&CK sync). Aliases 8,452 (2,559 `attack`,
+5,893 `legacy`). Relationships 22,556 (`attack` `uses` 19,295 and `subtechnique-of` 553, `ransomware` `targets` 1,461 and
+`located-at` 1,247). Mentions 12,819, **0 orphans**; every compatibility view returns the same count as its legacy
+table except `article_industries` (General dropped) and `ta_watchlist` (collapse).
+
+### Settings / .env (new keys, recommended PROD values, defaults)
+
+Four **optional** keys. All have defaults, so **prod needs no `.env` change** and the app starts without them:
+
+| Key | Default | Meaning |
+|---|---|---|
+| `INDICATOR__TTL_IP_DAYS` | `30` | IP indicator lifetime |
+| `INDICATOR__TTL_DOMAIN_DAYS` | `90` | Domain lifetime |
+| `INDICATOR__TTL_URL_DAYS` | `90` | URL lifetime |
+| `INDICATOR__TTL_EMAIL_DAYS` | `90` | Email lifetime |
+
+Leave them unset for the first deploy. Changing one later takes effect after the API restarts (the fingerprint changes,
+which enqueues the reconcile task) and needs the worker restarted too, since settings are read at start.
+`.env.example` and `.env.prod.template` already list the keys.
+
+**P7b adds no `.env` key.** The token hash needs no secret; nothing to set on the prod host before merging.
+
+**P7c adds no required `.env` key.** One optional key with a default: `ENTITY__ALIAS_SYNC_ENABLED` (default `true`;
+`false` stops the weekly Galaxy sync). Leave it unset. `.env.example` and `.env.prod.template` list it commented out.
+
+### Before deploy (read-only checks with expected results)
+
+Open the read-only session:
+
+```bash
+ssh privy-admin@10.8.20.78
+docker exec -it -e "PGOPTIONS=-c default_transaction_read_only=on" niskala-intelligence-postgres-1 sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+```
+
+1. **Baseline of the IOC table (on 0.8.2: the table is still `iocs`).** Write the numbers down; After deploy compares
+   against them. The prod baseline is **unknown**: read it now.
+
+   ```sql
+   SELECT count(*) AS iocs_total,
+          count(*) FILTER (WHERE auto_suppressed) AS allowlisted
+   FROM iocs;
+   ```
+
+   After deploy, `indicators` must have the same total, and `allowlisted` must match.
+   For reference, dev (0.8.9/0.8.10 data, read-only, 2026-10-28): 5,281 active / 157 expired / 29 allowlisted / 0 revoked
+   (plus IOCs added since). "Expired" there is a projection of the TTL rule on `last_seen_at`; prod will show 0 expired
+   until the reconcile task has run.
+
+2. **Who loses the TP/FP buttons.** Only custom roles: the built-in `analyst` role gains `manage_ioc` when `api` starts,
+   and `admin`/`superadmin` already have it. Roles are stored in `roles.permissions` (JSONB list), so list the roles that
+   can see IOCs but not manage them, and the users on them (on 0.8.2 the built-in `analyst` still shows here; ignore it):
+
+   ```sql
+   SELECT r.name, r.is_system, count(u.id) AS users
+   FROM roles r LEFT JOIN users u ON u.role_name = r.name
+   WHERE r.permissions ? 'view_ioc' AND NOT r.permissions ? 'manage_ioc'
+   GROUP BY 1, 2 ORDER BY 1;
+   ```
+
+3. **External readers of `iocs`.** Anything outside the app that names `iocs` (hand-run SQL, a BI dashboard, a Splunk DB
+   Connect input) keeps working through the compatibility views but should be moved to `indicators` before the views are
+   dropped. List them now.
+
+**P7b (read-only):** nothing to run against the database beyond P7a check 1. Confirm the stack env is the prod one
+(`docker/stack.env`, `NGINX_HTTPS_PORT`): the machine API is reachable on the same HTTPS port as the UI. Decide who will
+consume the feed (host, TLS trust of the self-signed certificate, TLP ceiling) before creating tokens.
+
+**P7c (read-only, on 0.8.2; `article_malware` and `article_cves` do not exist there yet, 0.8.6/0.8.8 create them).**
+
+- **P7c-1. Link-table baseline.** Write the numbers down; After deploy check P7c-2 compares against them.
+
+  ```sql
+  SELECT 'article_threat_actors' AS t, count(*), count(DISTINCT lower(threat_actor)) AS distinct_names FROM article_threat_actors
+  UNION ALL SELECT 'article_ttps', count(*), count(DISTINCT ttp_id) FROM article_ttps
+  UNION ALL SELECT 'article_countries', count(*), count(DISTINCT country_code) FROM article_countries
+  UNION ALL SELECT 'article_industries', count(*), count(*) FILTER (WHERE industry = 'General') FROM article_industries
+  UNION ALL SELECT 'ta_watchlist', count(*), count(DISTINCT lower(name)) FROM ta_watchlist
+  UNION ALL SELECT 'ta_profiles', count(*), 0 FROM ta_profiles
+  UNION ALL SELECT 'ta_whitelist', count(*), 0 FROM ta_whitelist;
+  ```
+
+  For `article_industries` the third column is the number of "General" rows (they are dropped by the migration).
+  Dev copy for reference (`count` / third column): `article_threat_actors` 772 / 316 distinct names, `article_ttps`
+  4,096 / 456 distinct ids, `article_countries` 965 rows / 86 distinct codes, `article_industries` 2,551 / 1,005
+  "General", `ta_watchlist` 6 / 6 distinct names, `ta_profiles` 6 / 0, `ta_whitelist` 2 / 0.
+- **P7c-2. Whitelisted names.** After the deploy a whitelist row suppresses the **whole entity** it resolves to,
+  aliases included. Read the list and look for a real actor name or an alias of one (for example a common word that is
+  also an ATT&CK alias); such a row would hide that actor everywhere.
+
+  ```sql
+  SELECT name, added_date FROM ta_whitelist ORDER BY name;
+  ```
+
+  Dev has 2 rows. If a row looks wrong, note it; after the deploy an analyst restores it in TA Room > Whitelist (still
+  there in P7c-1) or sends `PATCH /api/entities/{id}` with `{"suppressed": false}` (WRITE, needs approval), rather than
+  editing SQL.
+- **P7c-3. PIR baseline (UI).** Open the PIR page and note the result counts of the PIRs that have actor criteria; After
+  deploy check P7c-6 compares them (they may rise: aliases now match).
+
+### After deploy (checks with expected results: SQL, logs, UI pages)
+
+Run SQL in the read-only `psql` session shown above.
+
+1. **Version and migration head.**
+   - `GET /healthz` returns `"version": "0.8.11"`.
+   - `select version_num from alembic_version;` returns `1387fae00908` (P7c head; `a9e4c7b1d3f6` and `c4f1a8d27b93` are
+     the P7a and P7b steps).
+2. **The reconcile task ran.**
+
+   ```bash
+   cd /home/privy-admin/Niskala-Intelligence && docker compose -p niskala-intelligence logs api --since 30m | grep -E "reconcile_validity_enqueue_failed|api_startup_done"
+   cd /home/privy-admin/Niskala-Intelligence && docker compose -p niskala-intelligence logs worker --since 30m | grep -E "indicator_validity_reconciled|indicator\.reconcile_validity"
+   ```
+
+   Expected: `api_startup_done` and **no** `reconcile_validity_enqueue_failed`; one `indicator_validity_reconciled` line
+   in the worker log (a second, from the second API process, is normal).
+3. **The TTL fingerprint is stored.** Expected: one non-empty row.
+
+   ```sql
+   SELECT value FROM job_state WHERE key = 'indicator.ttl_fingerprint';
+   ```
+
+4. **State distribution.** Expected: totals equal Before deploy check 1; `revoked` is 0; `allowlisted` equals the
+   Before-deploy `allowlisted` count; `expired` is above 0 only after the reconcile task finished (**projection**: the
+   share of IP indicators not seen for 30 days and domains/URLs/emails not seen for 90 days, similar to dev's 157 of
+   about 5,500).
+
+   ```sql
+   SELECT CASE WHEN revoked_at IS NOT NULL THEN 'revoked'
+               WHEN auto_suppressed THEN 'allowlisted'
+               WHEN valid_until < now() THEN 'expired'
+               ELSE 'active' END AS state,
+          count(*)
+   FROM indicators GROUP BY 1;
+   ```
+
+5. **Compatibility view works and equals the table.** Expected: both numbers equal.
+
+   ```sql
+   SELECT count(*) FROM iocs;
+   SELECT count(*) FROM indicators;
+   SELECT count(*) FROM ioc_sources;   -- equals indicator_sources
+   SELECT count(*) FROM indicator_sources;
+   ```
+
+6. **Every row has a start, and non-hash rows an end.** Expected: `no_valid_from = 0`; `no_valid_until` is 0 for IP,
+   domain, URL and email after the reconcile task, and nonzero only for hashes.
+
+   ```sql
+   SELECT count(*) FILTER (WHERE valid_from IS NULL) AS no_valid_from,
+          count(*) FILTER (WHERE valid_until IS NULL AND type IN ('ip', 'domain', 'url', 'email')) AS no_valid_until
+   FROM indicators;
+   ```
+
+7. **IOC page smoke check** (light and dark):
+   - IOC Management loads, rows show a state badge and TLP/PAP.
+   - Open an indicator: TLP/PAP can be changed by a `manage_ioc` user (`PATCH /api/iocs/{id}/marking`).
+   - As `admin`/`superadmin`, the TP and FP buttons are visible; as `analyst`, they are not.
+   - Marking a test indicator FP revokes it (state `revoked`: it stays in the IOC list, dimmed, and leaves the stats and dashboard counts); TP restores it. Use a
+     throwaway indicator and restore it, since this writes.
+   - `GET /api/stix/iocs` contains `valid_until` and a TLP marking-definition reference, and no revoked indicator.
+8. **Nothing else broke.** The Data health page and the `ioc.enrich_pending` log (every 15 minutes) show no
+   `relation "iocs" does not exist` or `column "ioc_id"` errors:
+
+   ```bash
+   cd /home/privy-admin/Niskala-Intelligence && docker compose -p niskala-intelligence logs api worker --since 30m | grep -Ei 'relation "iocs|ioc_id|UndefinedTable'
+   ```
+
+   Expected: no output.
+
+**P7b checks.**
+
+- **P7b-1. nginx was recreated with the new template.** Expected: `2` (one match per location) and an `Up` nginx.
+
+  ```bash
+  cd /home/privy-admin/Niskala-Intelligence
+  docker compose --env-file docker/stack.env --profile app exec -T nginx grep -c 'proxy_pass \$cti_api' /etc/nginx/conf.d/cti.conf
+  ```
+
+  If it prints `0` or errors, nginx kept the old image. Recreate only the edge (NEEDS USER APPROVAL; brief edge blip):
+  `docker compose --env-file docker/stack.env --profile app up -d --build nginx`. App rollbacks do not touch nginx.
+- **P7b-2. Migration and shape.** `alembic_version` is `1387fae00908` (P7c; P7b's `c4f1a8d27b93` is the step before). Expected: `count` equals `count(stix_id)`
+  (the migration backfills every existing row) and `min(feed_changed_at)` is not in the future.
+
+  ```sql
+  SELECT count(*), count(stix_id), min(feed_changed_at) FROM indicators;
+  SELECT tgname FROM pg_trigger WHERE tgname LIKE 'trg\_indicator%' AND NOT tgisinternal ORDER BY 1;
+  ```
+
+  The second query returns `trg_indicator_tags_feed_bump` and `trg_indicators_feed_bump`.
+- **P7b-3. Token round trip** (**WRITE**: creates and revokes a throwaway token; needs the user's approval). In the web UI,
+  Admin > API tokens, create `smoke-test` (scope `indicators:read`, TLP `clear`, expiry 1 day). Copy the token once, then
+  from a machine outside the host:
+
+  ```bash
+  curl -ks -u x:<token> -H 'Accept: application/taxii+json;version=2.1' https://<host>/taxii2/ -o /dev/null -w '%{http_code}\n'
+  curl -ks -u x:<token> -H 'Accept: application/taxii+json;version=2.1' \
+    'https://<host>/taxii2/api/collections/6f0e1a52-6a43-4f0b-9b8e-2a7c1d9e4b10/objects/?limit=5' | head -c 600
+  curl -ks -u x:<token> 'https://<host>/api/v2/indicators?limit=3' | head -c 600
+  ```
+
+  Expected: `200`, a STIX envelope with up to 5 `indicator` objects and a `more` flag, and a JSON page. The discovery
+  response lists absolute `https://<host>/taxii2/api/` URLs (checks `Host`/`X-Forwarded-*`). Then read
+  `SELECT name, last_used_at FROM api_tokens;` (read-only): `last_used_at` is set. Finally revoke the token in the UI and
+  repeat the first `curl`: **401**. Without a token the same URLs also answer 401, and `https://<host>/api/api-tokens`
+  must not answer from the API (it goes to `web`).
+
+**P7c checks** (read-only unless marked).
+
+- **P7c-1. Head and objects.** `alembic_version` is `1387fae00908`, and the seven tables, twelve `_legacy_*` tables and
+  the views exist:
+
+  ```sql
+  SELECT count(*) FILTER (WHERE table_name LIKE '\_legacy\_%') AS legacy,
+         count(*) FILTER (WHERE table_name IN ('entities','entity_aliases','relationships','entity_mentions',
+                                               'entity_watches','entity_profiles','reference_snapshots')) AS new_tables
+  FROM information_schema.tables WHERE table_schema = 'public';
+  SELECT count(*) AS views FROM information_schema.views WHERE table_schema = 'public'
+    AND table_name IN ('article_threat_actors','article_malware','article_ttps','article_cves','article_countries',
+                       'article_industries','indicator_threat_actors','cve_threat_actors','cve_ttps',
+                       'ta_watchlist','ta_profiles','ta_whitelist');
+  ```
+
+  Expected: `legacy = 12`, `new_tables = 7`, `views = 12`.
+- **P7c-2. Every old row is reachable.** Each view equals its legacy table, except `article_industries` (legacy minus the
+  "General" rows minus labels that map to the same sector on one article) and `ta_watchlist` (alias collapse). No mention
+  points to a missing entity.
+
+  ```sql
+  SELECT 'threat_actors' t, (SELECT count(*) FROM article_threat_actors) v, (SELECT count(*) FROM _legacy_article_threat_actors) l
+  UNION ALL SELECT 'malware', (SELECT count(*) FROM article_malware), (SELECT count(*) FROM _legacy_article_malware)
+  UNION ALL SELECT 'ttps', (SELECT count(*) FROM article_ttps), (SELECT count(*) FROM _legacy_article_ttps)
+  UNION ALL SELECT 'cves', (SELECT count(*) FROM article_cves), (SELECT count(*) FROM _legacy_article_cves)
+  UNION ALL SELECT 'countries', (SELECT count(*) FROM article_countries), (SELECT count(*) FROM _legacy_article_countries)
+  UNION ALL SELECT 'industries', (SELECT count(*) FROM article_industries),
+                   (SELECT count(*) FROM _legacy_article_industries WHERE industry <> 'General')
+  UNION ALL SELECT 'watchlist', (SELECT count(*) FROM ta_watchlist), (SELECT count(*) FROM _legacy_ta_watchlist)
+  UNION ALL SELECT 'profiles', (SELECT count(*) FROM ta_profiles), (SELECT count(*) FROM _legacy_ta_profiles)
+  UNION ALL SELECT 'whitelist', (SELECT count(*) FROM ta_whitelist), (SELECT count(*) FROM _legacy_ta_whitelist);
+  SELECT count(*) AS orphans FROM entity_mentions m LEFT JOIN entities e ON e.id = m.entity_id WHERE e.id IS NULL;
+  ```
+
+  Expected: `v = l` on every row except `industries` (`v <= l`, dev 1,541 vs 1,546) and `watchlist` (`v <= l`, dev 5 vs
+  6); the legacy counts equal Before deploy check P7c-1 plus what 0.8.3-0.8.10 added; `orphans = 0`.
+- **P7c-3. Entities per type** (write the numbers down for the PR / the user; dev copy in the Migrations section):
+
+  ```sql
+  SELECT type, coalesce(identity_class, '') AS class, source, count(*) FROM entities GROUP BY 1, 2, 3 ORDER BY 1, 2, 3;
+  SELECT count(DISTINCT m.entity_id) AS actors_mentioned FROM entity_mentions m JOIN entities e ON e.id = m.entity_id
+  WHERE e.type = 'intrusion-set' AND m.article_id IS NOT NULL;
+  ```
+
+  `actors_mentioned` equals the distinct actor names of check P7c-1 before Galaxy (dev 316) and drops after
+  `cti-entity merge-aliases --apply` (dev copy: 282).
+- **P7c-4. No errors from the new write paths.**
+
+  ```bash
+  cd /home/privy-admin/Niskala-Intelligence && docker compose -p niskala-intelligence logs api worker worker-nlp --since 30m | grep -Ei 'entity_resolve|entity_mentions|UndefinedTable|deadlock'
+  ```
+
+  Expected: no output. One new article enriched after the deploy has mentions:
+  `SELECT a.id, count(m.id) FROM articles a JOIN entity_mentions m ON m.article_id = a.id GROUP BY 1 ORDER BY 1 DESC LIMIT 1;`.
+- **P7c-5. Entity API through the web.** Logged in as an analyst, open
+  `https://<host>/api/proxy/entities?q=apt36` in the browser: one `intrusion-set` (Transparent Tribe, if ATT&CK is
+  synced on prod) with its aliases. TA Room, the Newsroom actor/industry columns and the dashboard still load (light and
+  dark). The entity pages themselves arrive with P7c-2.
+- **P7c-6. PIR results.** The PIRs with actor criteria from Before deploy check P7c-3 return the same or more results
+  (aliases now match).
+- **P7c-7. TAXII `intel` pull** (**WRITE**: creates and revokes a throwaway token; needs the user's approval). The
+  Admin page cannot pick scopes until P7c-2, so create the token from the browser console of a logged-in admin:
+
+  ```js
+  await (await fetch('/api/proxy/api-tokens', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name: 'smoke-intel', scopes: ['intel:read'], max_tlp: 'clear', expires_in_days: 1})})).json()
+  ```
+
+  Then from a machine outside the host:
+
+  ```bash
+  curl -ks -u x:<token> -H 'Accept: application/taxii+json;version=2.1' https://<host>/taxii2/api/collections/ | head -c 600
+  curl -ks -u x:<token> -H 'Accept: application/taxii+json;version=2.1' \
+    'https://<host>/taxii2/api/collections/c0b7e3d4-2f5a-4e91-8a6d-5b3c9f1e7a20/objects/?limit=20' | head -c 1500
+  curl -ks -u x:<token> 'https://<host>/api/v2/entities?limit=3' | head -c 600
+  ```
+
+  Expected: the collection list shows only `intel` (the token lacks `indicators:read`); the objects page holds STIX
+  objects of several types and a `more` flag; the REST page is JSON. Revoke the token in Admin > API tokens afterwards.
+  On the dev copy a full `intel` pull through the service took 4.0 s for 38,258 objects (39 pages of 1,000, worst page
+  0.30 s).
+
+### One-off commands (recompute/backfills: exact command, `--dry-run` first, expected numbers from dev, how long; mark each as needing the user's approval)
+
+Normally **nothing to run**: the first API start enqueues `indicator.reconcile_validity` by itself. Run the command below
+only if After deploy check 2 shows `reconcile_validity_enqueue_failed` or check 3 returns no row.
+
+There is **no `--dry-run`** (the task is idempotent and only fills `valid_until`; it never touches revoked rows). Read-only
+preview: After deploy check 6.
+
+**Manual reconcile (NEEDS USER APPROVAL; WRITE: sets `valid_until` on non-hash indicators).** It enqueues the same task
+the bootstrap sends; the `worker` runs it.
+
+```bash
+cd /home/privy-admin/Niskala-Intelligence
+docker compose -p niskala-intelligence exec -T api python -c "from cti_core.celery_client import send_reconcile_validity; send_reconcile_validity()"
+```
+
+Expected: `indicator_validity_reconciled` in the `worker` log and check 6 clean. Duration: not measured on dev.
+**Projection:** seconds for about 5,500 rows.
+
+**P7b:** nothing to run. The migration backfills `stix_id` and `feed_changed_at` itself. Rows written by old code during a
+rollback window get their `stix_id` from the next `indicator.reconcile_validity` run (the manual command above).
+
+**P7c: three steps, in this order, after the deploy is healthy and After deploy checks P7c-1 to P7c-4 are clean.** They
+replace the 0.8.8 `canonicalise_actors` step (now a no-op).
+
+1. **ATT&CK sync (NEEDS USER APPROVAL; WRITE: downloads the MITRE bundles from GitHub and upserts ATT&CK data,
+   entities, aliases, relationships and campaigns).** The migration has no network, so `campaign` entities and anything
+   newer than prod's last ATT&CK sync only arrive with a sync. In the UI as a `manage_intel` user: ATT&CK DB page, sync
+   cards, "Sync All Domains". Wait until every domain card shows done (no `error`); a failed entity upsert marks the domain sync
+   as error on that card. Then, read-only: `SELECT count(*) FROM entities WHERE type = 'campaign';` is above 0.
+   Duration: not measured (network bound). Running it first matters: the Galaxy merge anchors on ATT&CK entities and
+   aliases.
+2. **Galaxy merge, dry-run (read-only: plans, writes nothing).** The CSV goes to stdout, the summary line to stderr:
+
+   ```bash
+   cd /home/privy-admin/Niskala-Intelligence
+   docker compose --env-file docker/stack.env --profile app exec -T worker \
+     python -m cti_core.entity.cli merge-aliases --dry-run > /tmp/galaxy.csv
+   ```
+
+   Columns: `action,cluster,source_entity,target_entity,alias,reason`. `merge` rows fold `source_entity` into
+   `target_entity` (the ATT&CK entity when the cluster has exactly one, else the one with the most mentions); `alias`
+   rows add a Galaxy synonym to an existing entity; `skip` rows carry the reason (`ambiguous`: a common word or Tier 1
+   ambiguous name, never merged; `owned`: the alias belongs to another entity and is not moved; `two_attack`: the
+   cluster touches two ATT&CK entities). **Share the CSV with the user and review every `merge` row before step 3**
+   (dev-copy targets worth a look: `Red menshen -> Earth bluecrow`, `Predatory sparrow -> Gonjeshke darande`, where the
+   target is the spelling with most mentions, not the cluster name).
+
+   Dev copy (2026-11-01, without a fresh ATT&CK sync): 6,976 clusters; **35 merges, 812 new aliases, 339 skips**
+   (197 `ambiguous`, 85 `owned`, 57 `two_attack`); 1.1 s.
+3. **Galaxy merge, apply (NEEDS USER APPROVAL after the CSV review; WRITE).**
+
+   ```bash
+   docker compose --env-file docker/stack.env --profile app exec -T worker \
+     python -m cti_core.entity.cli merge-aliases --apply > /tmp/galaxy-applied.csv
+   ```
+
+   The whole run is **one transaction**: a DB error other than a planned skip rolls everything back, so just re-run it
+   (each merge has its own savepoint; a deadlock with a concurrent enrichment is retried once, a second deadlock aborts
+   the run; a merge the merge code refuses, for example one touching a suppressed entity, becomes an `error` row and the
+   run goes on). Every merge is audit-logged with actor `system:galaxy` and can be undone exactly with
+   Split (entity API, P7c-2 dialog); an undone merge is never redone by later runs. Dev copy: **2.5 s, 35 merges, 812
+   aliases, 0 errors**; actors with article mentions 316 -> 282; a second dry-run plans 0 merges and 0 aliases (the
+   339 skips stay listed). From then on the weekly `entity.alias_sync` repeats this on fresh Galaxy data: its merge gate
+   opens on the first `entity_merge` audit row by `system:galaxy`, which this step writes. If this step merges nothing
+   (0 `merge` rows), the gate stays closed and the weekly task keeps storing snapshots only; that is intended, re-run
+   steps 2-3 after a later dry-run shows merges.
+
+### Rollback / if it goes wrong
+
 - **Code rollback.** `deploy.sh` restores the `:prev` images on failure and never downgrades the DB. Prod runs 0.8.2, so
   the auto-rollback target is **0.8.2 images on the 0.8.11 schema**, not 0.8.10. The P7a schema change was verified safe
   for both: on 2026-10-29 the real 0.8.10 code and the real 0.8.2 code were each run against a database migrated to
@@ -762,6 +1459,49 @@ reason. Dev: `"status": "active"` once run with the dev-only 0.94.
   the next deploy. nginx is not rolled back by `rollback.py` (own image tag); the extra locations are harmless without
   the routes. An optional `alembic downgrade a9e4c7b1d3f6` (WRITE, app stopped, needs approval) drops the tokens table,
   triggers and columns; tokens are lost.
+
+- **P7c rollback: old code works through the views (verified with the real 0.8.2 and 0.8.10 code, 2026-11-01).** No DB
+  downgrade is needed for `deploy.sh`'s auto-rollback. Check run: local `qacve` Postgres migrated to `1387fae00908` from
+  this branch; the branch's own `persist` wrote a reference article (actor "Volt Typhoon", tool "Cobalt Strike", T1566,
+  country ID/CN, industry "Finance & Insurance", CVE-2026-1111) and merged an analyst entity "Bronze Silhouette" into
+  Volt Typhoon. Then from detached worktrees at tags `0.8.10` and `0.8.2`, each with its own `uv sync --locked`
+  environment, one script (`uv run --no-sync python -I rollback_check.py <label> <0810|082>`, with
+  `DATABASE__URL`/`DATABASE__SYNC_URL` pointing at `qacve`) ran:
+  - the tag's real `cti_enrich.stages.persist.persist` for a new article with actors "Volt typhoon",
+    "BRONZE SILHOUETTE" and a name only that tag knows, two TTPs, malware (0.8.10 via `Tier1Result`), two industries,
+    two countries and two CVEs; the same call again (replay); then once more with a smaller set (old ORM delete-orphan
+    through the views);
+  - `AsyncTARepo.add_to_watchlist` ("bronze silhouette", then "Volt Typhoon"), `remove_from_watchlist`
+    ("bronze silhouette"), `add_to_watchlist` of a new name;
+  - `AsyncTAProfileRepo.save_profile("Volt typhoon", ...)` twice (insert, then the old update path);
+  - `AsyncTARepo.delete_group` (whitelist add), `list_whitelist`, `remove_from_whitelist`, `delete_group` again;
+  - and, from 0.8.2, `remove_from_watchlist("volt typhoon")`.
+
+  Result: **no error in either version.** Every row resolved to the same entities as the new code: actor mentions of
+  all three articles point to entity "Volt Typhoon" (both alias spellings collapse into one mention per article), T1566
+  to one `attack-pattern`, "Finance & Insurance" to the sector "Financial Services", ID/CN to the `location` entities,
+  CVE-2026-1111 to one `vulnerability`, "Cobalt Strike" to one `tool`; the shrink replay removed the dropped mentions;
+  the profile landed on Volt Typhoon's `entity_profiles` row; names only old code knew became `legacy` entities; old
+  whitelist rows became suppressed `legacy` entities. Differences that are expected, not failures:
+  - SQLAlchemy prints `SAWarning: DELETE statement on table 'article_threat_actors' expected to delete 2 row(s); 1 were
+    matched` on the replay, because two spellings of one actor are one mention now. A warning, not an error.
+  - Mentions written by old code carry `method = 'legacy'` for countries (new code: `llm`).
+  - 0.8.2 has no `article_malware`/`article_cves` writers (malware arrived in 0.8.8; 0.8.2 still stores CVEs as `cve`
+    indicators); 0.8.10's `ArticleCveRepo.add_many` only adds, as it always did.
+  - **Old watchlist removal by an alias spelling misses:** `remove_from_watchlist("bronze silhouette")` returns `False`
+    because the view shows the entity name ("Volt Typhoon"); removal by the entity name works. The same applies to the
+    old whitelist removal.
+- **P7c DB downgrade (OPTIONAL, manual; WRITE, app stopped, needs approval):** `alembic downgrade c4f1a8d27b93` drops
+  the triggers, views, functions and new tables and renames the twelve `_legacy_*` tables back. Everything written after
+  the upgrade through the views or the new tables (mentions of new articles, merges, aliases, watches, profiles,
+  whitelist rows) is lost. Not needed for a code rollback.
+- **A wrong Galaxy or analyst merge:** undo it with Split (`POST /api/entities/{id}/split`; the P7c-2 dialog), which
+  restores the aliases and mentions exactly and revives the tombstone. Watches, profile and relationships stay on the
+  target and are listed for the analyst. A merge undone this way is never redone by the weekly sync.
+- **`cti-entity merge-aliases --apply` failed with a DB error:** nothing was written (one transaction). Re-run it.
+- **`migrate` failed with `canceling statement due to lock timeout` or `deadlock detected`:** a long transaction held one of the old link/TA
+  tables (or another table the migration touches) for more than 10 s. The migration rolled back completely and
+  `deploy.sh` restored the `:prev` images; re-run `make deploy` (preferably outside an enrichment burst).
 
 ### Known risks and follow-ups
 
@@ -814,3 +1554,94 @@ reason. Dev: `"status": "active"` once run with the dev-only 0.94.
 - **P7b R9: expiry does not move the feed clock.** Expiry is time-based, so consumers must evaluate `valid_until`
   themselves; the REST `state` field is a snapshot at the time of the request.
 - **P7b follow-ups:** per-token rate limiting; sightings (P7d, deferred); entities and relationships (P7c).
+
+- **P7c R1: a wrong automatic merge from Galaxy** (over-wide clusters, common-word synonyms). Guards: a cluster touching
+  two ATT&CK entities is skipped, ambiguous synonyms never merge, ATT&CK and analyst aliases never move, undone merges are
+  never redone. In prod the dry-run CSV is reviewed before `--apply`; every merge is audit-logged and Split undoes it.
+  The weekly `entity.alias_sync` applies without review (same guards), but only after the first manual `--apply`
+  (code gate on the `system:galaxy` audit row); switch it off with `ENTITY__ALIAS_SYNC_ENABLED=false` if it misbehaves.
+- **P7c R4: users see changed numbers.** Deliberate. Dev copy: actors with article mentions 316 -> 316 after the
+  migration (no two stored article names are aliases of one ATT&CK group) -> 282 after the Galaxy apply; watchlist 6 -> 5;
+  `article_industries` 2,551 rows -> 1,541 sector mentions ("General" dropped); `industry_unspecified` rises because it
+  now counts every article without a sector mention. The spec's "106 actor strings" estimate counted ATT&CK and Galaxy
+  aliases together; the measured Galaxy collapse on the dev copy is 35 merges. Some industry labels map to a neighbouring
+  sector (for example "Cloud Services" -> "Technology", "Legal & Professional Services" -> "Commercial"); analysts can fix that by merging.
+- **P7c R5: TLP raised after publication cannot reach lower-TLP consumers.** As P7b R1, now for entities and
+  relationships: a consumer below the new level stops receiving the object and never gets a deletion (TAXII has none).
+  Everything is `clear` today; markings only rise through an analyst action.
+- **P7c R6: indicator TLP or state changes do not re-send the reports and relationships that reference the indicator.**
+  The indicator itself is re-sent (P7b clock); a consumer keeps the older report until the story changes again.
+- **P7c R7: residual deadlock between re-enrichment and a merge.** Re-enriching an article that already has mentions
+  while a merge, split or suppress touches one of its entities can still deadlock (mention row locks against the story
+  lock). Postgres aborts one side with `40P01`. The enrichment side raises `sqlalchemy.exc.OperationalError`, which the
+  `enrich.article` failure policy treats as transient (retry after 30 s backoff, which repeats the article's LLM calls);
+  Galaxy apply retries the merge once; an analyst merge through the API fails and can simply be repeated. The common
+  case (new article vs analyst operation) is a wait, not a deadlock (merge takes `FOR NO KEY UPDATE`; first/last_seen
+  updates skip locked rows, so they may lag by one article).
+- **P7c R8: rolled-back 0.8.10 `add_tier1` adds no keyword industries.** In 0.8.10 that branch fires only when the
+  article's sole industry is "General", which no longer exists after the migration; a 0.8.10 `backfill_tier1` run during
+  a rollback window therefore adds no keyword industries (0.8.11 adds them when the article has no sector mention).
+- **P7c R9: old watchlist and whitelist removal by an alias spelling misses** during a rollback window (the views show
+  the entity name). Remove by the shown name.
+- **P7c R10: Tier 1 dictionary scope.** The dictionary takes aliases from ATT&CK, Galaxy and analysts, plus
+  `threat_actor_groups` names. Names known only from legacy data or ransomware groups are entities but are not matched
+  in article text: on dev (2026-11-01) the ransomware group "Payload" matched the common word "payload" in a malware
+  article before this rule. A ransomware group missing from `threat_actor_groups` is therefore not tagged in news until
+  an analyst adds an alias or the group gets a Galaxy alias. Single-token non-ATT&CK names still need a context word.
+- **P7c R11: ATT&CK adoption changes a stix_id, and it recurs.** When ATT&CK sync meets a non-ATT&CK entity with the same
+  name it adopts it (ATT&CK id, aliases, relationships), so that entity's `intrusion-set--` (or `malware--`/`tool--`) id
+  changes. This is not a one-off: it happens again whenever a new ATT&CK release adds a group or software that news
+  already mentioned. The swap bumps the entity's feed clock and those of the relationships and reports that reference
+  it, so `intel` consumers receive the entity, relationships and reports under the new id. The old id is **not
+  revoked**: a consumer keeps the old object as a stale duplicate until it deletes it by hand. No `intel` consumer exists
+  before 0.8.11 ships; revisit (publish a revoked copy of the old id) once one does.
+- **P7c R12: `_legacy_*` tables and compatibility views** stay until the first release after 0.8.11, which drops them;
+  that runbook must say so. Hand-run SQL should move to `entity_mentions` join `entities`.
+- **P7c R13: ATT&CK sync overwrites analyst edits** to the name and description of `source = 'attack'` entities at the next sync (Ruling 27).
+- **P7c R14: Galaxy clusters that match no existing entity create nothing**, so an actor first seen under a Galaxy-only synonym stays a separate entity until the next weekly `entity.alias_sync` merges it (Ruling 19).
+- **P7c R15: a ransomware victim named like a sector is skipped** (log `ransomware_victim_is_sector`) instead of being linked to the sector (Ruling 10; 0 of 1,342 dev victims collided on 2026-10-30).
+- **P7c R16: REST v2 shows a few relationships TAXII does not:** relationships whose source is an indicator without a STIX pattern (for example a `cve` indicator) are in `GET /api/v2/relationships` but not in the TAXII `intel` collection.
+- **P7c R17: enrichment throughput.** Each mention insert updates its story's `feed_changed_at` row by row, which can serialise the enrichment of articles of the same story; watch enrichment duration and queue depth on dev after the deploy (Task 5).
+- **P7c R18: intel visibility queries.** EXPLAIN ANALYZE (auto_explain) of two 1,000-object `intel` pages on a fresh dev copy (2026-11-01, after the Galaxy apply): 20 statements, slowest 27 ms (the story visibility `EXISTS`, hashed subplans with sequential scans of `entities` ~8,000, `entity_mentions` ~12,800 and `articles` 1,797 rows), page 0.16-0.24 s; the feed-clock scans use the `ix_*_feed_changed_at_id` indexes. Fine at dev size; the sequential scans grow linearly, so re-check after the data grows.
+- **P7c R19: a mention can land on a merged entity.** An enrichment that runs while a merge (analyst or Galaxy) touches
+  one of its entities can write its mention to the tombstone: the mention's foreign-key check does not conflict with the
+  merge's row lock (R7), and the merge's repoint cannot see the uncommitted insert. Such a mention is hidden from
+  readers (tombstones are not live). `repair_tombstone_mentions` moves these mentions to the live end of the merge chain
+  (dropping duplicates) at the start of every Galaxy apply and in the weekly `entity.alias_sync` (log
+  `tombstone_mentions_repaired`), so with `ENTITY__ALIAS_SYNC_ENABLED` on they stay hidden for at most a week; with it off,
+  only a manual `cti-entity merge-aliases --apply` repairs them. Split stays exact (it moves mentions by
+  `matched_alias`). Read-only check, normally 0: `SELECT count(*) FROM entity_mentions m JOIN entities e
+  ON e.id = m.entity_id WHERE e.merged_into_id IS NOT NULL;`
+- **P7c R20: long transactions can outrun the 60 s settle lag.** `cti-entity merge-aliases --apply`, the weekly
+  `entity.alias_sync` and the ATT&CK entity upsert each run as one transaction and can take longer than 60 s on a large
+  database. Rows they bump carry the statement time, so an incremental `intel` consumer that polled while the
+  transaction was open may move its cursor past them and skip those changes. After a large merge run, ask consumers to
+  re-pull from a cursor older than the run (or from the start); the next change to a row re-sends it anyway.
+- **P7c R21: reports can disappear without a revocation.** A story whose referenced objects all become invisible
+  (suppressed, above the token's TLP, or merged away), a purged story, or a deleted article drops the `report` from the
+  `intel` collection with no `revoked: true` copy; a consumer keeps the last report it saw.
+- **P7c R22: ransomware victims written by 0.8.2 code during the migrate or rollback window get no entities.** The
+  0.8.2 ransomware sink writes only `ransomware_victims` (that table is not a view), so victims it inserts after the
+  migration and before 0.8.11 code runs again have no victim/group entities and no `targets`/`located-at`
+  relationships; a later 0.8.11 upsert of the same `offset_key` would link them, but scraper dedup normally prevents
+  that. Known gap, small (at most one monthly snapshot). Optional manual re-link (WRITE, needs approval; idempotent, the
+  relationship upsert only widens the seen range), with the migration time in UTC:
+
+  ```bash
+  docker compose --env-file docker/stack.env --profile app exec -T worker python - <<'PY'
+  import sqlalchemy as sa
+  from cti_core.db.engine import sync_session
+  from cti_core.db.models.ransomware import RansomwareVictim
+  from cti_core.db.repositories.ransomware import RansomwareVictimRepo
+  with sync_session() as s:
+      repo = RansomwareVictimRepo(s)
+      since = "<migration time, UTC>"
+      for v in s.scalars(sa.select(RansomwareVictim).where(RansomwareVictim.created_at >= since)):
+          repo._link_entities(v)
+      s.commit()
+  PY
+  ```
+- **P7c follow-ups:** the P7c-2 web (entity pages, merge/split dialogs, token scope selector, TA Room and ATT&CK DB
+  retired); the dev data check of spec section 8 after merging to `origin/Dev` (CSV review, 10 sampled merges, PIR
+  counts, `feed_changed_at` untouched by the 04:00 decay sweep, TAXII `intel` pull from outside the host); prod numbers
+  for After deploy checks P7c-1 to P7c-7.

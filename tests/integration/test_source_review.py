@@ -10,11 +10,11 @@ from typing import Any
 
 import pytest
 from cti_core.db.models.article import Article, RejectedArticle
-from cti_core.db.models.article_cve import ArticleCve
 from cti_core.db.models.auth import AuditLogEntry
 from cti_core.db.models.indicator import Indicator, IndicatorFeedback, IndicatorSource
 from cti_core.db.models.source_reliability import SourceReliabilityEntry
 from cti_core.db.models.story import Story
+from cti_core.db.repositories.article_cve import AsyncArticleCveRepo
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -90,7 +90,7 @@ async def _seed(s: AsyncSession) -> dict[str, SourceReliabilityEntry]:
     s.add_all([*lead, *other, *analyst])
     await s.flush()
 
-    s.add(ArticleCve(article_id=low[0].id, cve_id="CVE-2026-0001"))
+    await AsyncArticleCveRepo(s).add_many(low[0].id, ["CVE-2026-0001"], "")
     for i in range(6):
         story = Story(
             title=f"story {i}", lead_source="x", first_seen_at=_NOW, last_seen_at=_NOW,

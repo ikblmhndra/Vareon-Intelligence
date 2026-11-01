@@ -7,14 +7,13 @@ import datetime
 from collections.abc import Callable
 
 import pytest
-from cti_core.db.models.article import ArticleMalware, ArticleThreatActor
 from cti_core.db.models.attack import (
     AttackGroup,
     AttackRelationship,
     AttackSoftware,
     AttackTechnique,
 )
-from cti_core.db.repositories.article import AsyncArticleRepo
+from cti_core.db.repositories.article import AsyncArticleRepo, MentionInput
 from cti_core.db.repositories.auth import AsyncClientRepo
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -87,9 +86,10 @@ async def _article(
         posted_on=datetime.date.today(),
     )
     aid = art.id
-    session.add_all(
-        [ArticleThreatActor(article_id=aid, threat_actor=a, source="llm") for a in actors]
-        + [ArticleMalware(article_id=aid, name=n, kind=k, source="dictionary") for n, k in malware]
+    await repo.add_mentions(
+        art,
+        [MentionInput("intrusion-set", a, "llm", a) for a in actors]
+        + [MentionInput(k, n, "dictionary", n) for n, k in malware],
     )
     await session.commit()
     session.expire_all()

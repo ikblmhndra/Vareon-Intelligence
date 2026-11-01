@@ -41,7 +41,7 @@ pass-through: cuma validasi format ID + buang nama tactic (daftar cadangan
 `_FALLBACK_TACTIC_NAMES`), nama LLM disimpan apa adanya. Enrichment gak
 boleh gagal/bisu cuma karena sync ATT&CK belum jalan.
 
-Teks asli LLM tetap disimpan (`ArticleTTP.extracted_id`/`extracted_name`)
+Teks asli LLM tetap disimpan (`entity_mentions.extracted`: `extracted_id`/`extracted_name`)
 -- buat audit dan buat remap ulang (`tools/ops/remap_article_ttps.py`)
 kalau katalog/aturannya berubah.
 """
@@ -58,7 +58,8 @@ _ID_TOKEN_RE = re.compile(r"[\[(]?\bT\d{4}(?:\.\d{3})?\b[\])]?", re.IGNORECASE)
 
 _MAX_EXTRACTED_ID = 50
 _MAX_NAME = 300
-"""Panjang kolom `article_ttps.extracted_id`/`ttp_name`/`extracted_name`."""
+"""Panjang kolom lama `article_ttps.extracted_id`/`ttp_name`/`extracted_name` (P7c: teks
+`extracted` mention dan nama entitas teknik; batasnya dipertahankan)."""
 
 _FALLBACK_TACTIC_NAMES = frozenset(
     {
@@ -105,8 +106,8 @@ lama) masih sering pakai. Cuma dipakai kalau ID tujuannya ADA di katalog."""
 
 
 class NormalizedTTP(NamedTuple):
-    """Satu baris `article_ttps` hasil normalisasi. `extracted_*` = teks
-    asli LLM (sebelum dinormalisasi)."""
+    """Satu teknik hasil normalisasi (dulu satu baris `article_ttps`; P7c: satu mention
+    `attack-pattern`). `extracted_*` = teks asli LLM (sebelum dinormalisasi)."""
 
     ttp_id: str
     ttp_name: str

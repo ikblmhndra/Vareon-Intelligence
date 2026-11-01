@@ -7,7 +7,11 @@ Telegram, di sini urutannya kebalik: artikel HARUS udah tersimpan sebelum
 alert dicoba, jadi kegagalan Telegram gak pernah bisa bikin artikel gak
 kesimpen (lihat `cti_alerts.telegram` docstring).
 
-Country role (`ArticleCountry.role`): map dari TIGA field lama
+Entitas (P7c): negara/sektor/aktor/malware/teknik/CVE ditulis sebagai `entity_mentions` lewat
+resolver (`ArticleRepo.set_enrichment`, `ArticleCveRepo.add_many`), lalu `first_seen`/`last_seen`
+entitasnya diperbarui satu statement per artikel.
+
+Country role (mention `location`, kolom `role`): map dari TIGA field lama
 (`mentioned_countries`/`victim_countries`/`actor_countries`) ke skema
 ternormalisasi. `actor` = SELALU dari GPT (`classify_result.actor_countries`,
 konsisten kode lama -- gak pernah regex fallback). `victim` = GPT
@@ -39,6 +43,7 @@ from cti_core.db.repositories.article_cve import ArticleCveRepo
 from cti_core.db.repositories.assessment import apply_assessments
 from cti_core.db.repositories.indicator import IndicatorRepo
 from cti_core.db.repositories.story import StoryRepo
+from cti_core.entity.mentions import ARTICLE_MENTION_ATTRS
 from cti_core.ioc.allowlist import allowlist_match
 from cti_core.ioc.canonical import canonical
 from sqlalchemy import delete
@@ -232,6 +237,7 @@ def persist(
         ttps=ttps,
         malware=tier1.malware if tier1 is not None else (),
         industry_source=industry_source,
+        aliases=tier1.matched_aliases() if tier1 is not None else None,
     )
 
     ioc_repo = IndicatorRepo(session)
@@ -253,8 +259,11 @@ def persist(
                 pap=pap,
             )
 
-    # CVE bukan IOC: relasi artikel -> CVE ada di `article_cves` (insert-ignore, idempotent).
+    # CVE bukan IOC: relasi artikel -> CVE = mention `vulnerability` (insert-ignore, idempotent).
     ArticleCveRepo(session).add_many(article.id, ioc_data.get("cves", []), title)
+    # P7c: first_seen/last_seen entitas yang disebut, satu statement sesudah SEMUA mention ditulis.
+    article_repo.touch_entity_seen(article)
+    session.expire(article, ARTICLE_MENTION_ATTRS)
 
     # P6: penilaian Admiralty dihitung dari fakta yang BARU ditulis di atas (story sudah
     # di-attach, TTP/aktor/IOC/CVE sudah ada), lewat loader yang sama dengan recompute API supaya

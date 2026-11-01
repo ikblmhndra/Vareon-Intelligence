@@ -49,14 +49,16 @@ def _relkind(session: Session, name: str) -> str | None:
 
 
 def _machine_api_downgrade(session: Session) -> None:
-    """Migrasi P7b ada di atas P7a (trigger-nya menunjuk `indicators`); lepas dulu."""
-    path = next(_VERSIONS.glob("*_machine_api.py"))
-    spec = importlib.util.spec_from_file_location("machine_api_migration", path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    with Operations.context(MigrationContext.configure(session.connection())):
-        module.downgrade()
+    """Migrasi P7c (view/FK ke `indicators*`) dan P7b (trigger-nya menunjuk `indicators`) ada di
+    atas P7a; lepas dulu, yang terbaru lebih dulu."""
+    for pattern in ("*_entity_model.py", "*_machine_api.py"):
+        path = next(_VERSIONS.glob(pattern))
+        spec = importlib.util.spec_from_file_location(path.stem, path)
+        assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        with Operations.context(MigrationContext.configure(session.connection())):
+            module.downgrade()
 
 
 @pytest.fixture

@@ -8,11 +8,11 @@ from types import ModuleType
 
 import pytest
 from cti_api.services import campaign as campaign_service
-from cti_core.db.models.article_cve import ArticleCve
 from cti_core.db.models.indicator import Indicator, IndicatorSource
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.article_cve import AsyncArticleCveRepo
 from cti_core.db.repositories.auth import AsyncClientRepo
+from cti_core.db.repositories.entity import CVE, mention_rows
 from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from cti_enrich.routing import RoutingResult
 from cti_enrich.stages.classify import ClassifyResult
@@ -47,8 +47,9 @@ def test_persist_writes_article_cves_not_iocs(db_session: Session) -> None:
     _persist(db_session, "Patch CVE-2026-1234 now")
     _persist(db_session, "Patch CVE-2026-1234 now")  # replay: tidak menambah baris
 
-    rows = db_session.execute(select(ArticleCve)).scalars().all()
-    assert [(r.cve_id, r.in_title) for r in rows] == [("CVE-2026-1234", True)]
+    m = mention_rows(CVE)
+    rows = db_session.execute(select(m.c.external_id, m.c.extracted["in_title"].as_boolean())).all()
+    assert [tuple(r) for r in rows] == [("CVE-2026-1234", True)]
     assert db_session.execute(select(Indicator).where(Indicator.type == "cve")).first() is None
 
 
@@ -114,8 +115,13 @@ async def test_migration_moves_cve_iocs(async_db_session: AsyncSession) -> None:
     await async_db_session.execute(text(migration.COPY_CVE_SQL))
     await async_db_session.execute(text(migration.DELETE_CVE_IOCS_SQL))
 
-    rows = (await async_db_session.execute(select(ArticleCve))).scalars().all()
-    assert {(r.article_id, r.cve_id, r.in_title) for r in rows} == {
+    # dibaca lewat view kompatibilitas `article_cves` (bentuk 0.8.10; kelas ORM-nya dihapus)
+    rows = (
+        await async_db_session.execute(
+            text("SELECT article_id, cve_id, in_title FROM article_cves")
+        )
+    ).all()
+    assert {tuple(r) for r in rows} == {
         (first.id, "CVE-2026-5555", True),
         (second.id, "CVE-2026-5555", False),
     }
