@@ -199,7 +199,10 @@ export function PirFormDialog({ pir, open, onClose, onSaved }: PirFormDialogProp
                 value={countries}
                 onChange={setCountries}
                 labelFor={(c) => countryName(c)}
-                resolveTyped={(t) => COUNTRIES.find((c) => c.name.toLowerCase() === t.toLowerCase())?.code ?? t}
+                resolveTyped={(t) =>
+                  COUNTRIES.find((c) => c.code.toLowerCase() === t.toLowerCase() || c.name.toLowerCase() === t.toLowerCase())?.code ?? null
+                }
+                invalidMessage="Pick a country from the list"
                 help="Use a country from the list to match articles"
               />
               <MultiSelectField label="News Types" options={toOptions(opts?.news_types ?? [])} selected={newsTypes} onChange={setNewsTypes} />
@@ -210,6 +213,8 @@ export function PirFormDialog({ pir, open, onClose, onSaved }: PirFormDialogProp
                 value={ttps}
                 onChange={setTtps}
                 labelFor={(id) => opts?.ttps.find((t) => t.id === id)?.name}
+                resolveTyped={(t) => (/^T\d{4}(\.\d{3})?$/i.test(t) ? t.toUpperCase() : null)}
+                invalidMessage="Pick a technique from the list"
               />
               <div className="flex flex-col gap-1">
                 <Label htmlFor="pir-keywords" className="text-sm font-medium text-muted-foreground">Keywords (comma-separated)</Label>

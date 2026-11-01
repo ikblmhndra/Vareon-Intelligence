@@ -20,8 +20,11 @@ interface EntityAutocompleteProps {
   onChange: (next: string[]) => void;
   /** Label baca untuk nilai tersimpan (mis. kode negara -> nama); jatuh ke nilai itu sendiri. */
   labelFor?: (stored: string) => string | undefined;
-  /** Teks bebas yang diketik -> nilai yang disimpan (mis. nama negara -> kode ISO). */
-  resolveTyped?: (typed: string) => string;
+  /** Teks bebas yang diketik -> nilai yang disimpan (mis. nama negara -> kode ISO); null = tidak valid.
+   * Hanya dipakai untuk `store="external_id"`: di sana teks yang tidak bisa dipetakan DITOLAK. */
+  resolveTyped?: (typed: string) => string | null;
+  /** Pesan galat inline saat teks ketikan ditolak (store="external_id"). */
+  invalidMessage?: string;
   /** Tampilkan id (font-code) di depan label, untuk TTP. */
   showId?: boolean;
   help?: string;
@@ -40,9 +43,12 @@ function matchedAlias(q: string, name: string, aliases: string[], externalId: st
 }
 
 /** Input token dengan saran dari `/api/entities` (cari nama + alias, debounce 250 ms).
- * Enter selalu menambah teks apa adanya (nama tanpa entity, atau role tanpa `view_ta` -> 403,
- * saran disembunyikan dan muncul teks bantuan). Token adalah teks biasa: nama yang disimpan di
- * kriteria PIR tidak membawa entity_id, jadi tidak ada tautan di dalamnya. */
+ * Enter menambah saran yang disorot; selain itu untuk field nama (`store="name"`) teks ditambah apa
+ * adanya (nama tanpa entity sah: cocok lewat alias di server; juga role tanpa `view_ta` -> 403).
+ * Untuk `store="external_id"` (negara, TTP) teks hanya diterima bila terpetakan ke id yang valid
+ * (id saran, atau `resolveTyped`), kalau tidak muncul galat inline: kriteria PIR di-AND di server,
+ * satu token yang tak pernah cocok membuat PIR tak cocok dengan apa pun. Blur TIDAK membuat token.
+ * Token adalah teks biasa: kriteria PIR tidak membawa entity_id, jadi tidak ada tautan. */
 export function EntityAutocomplete({
   label,
   types,
@@ -52,6 +58,7 @@ export function EntityAutocomplete({
   onChange,
   labelFor,
   resolveTyped,
+  invalidMessage,
   showId,
   help,
 }: EntityAutocompleteProps) {
@@ -63,6 +70,7 @@ export function EntityAutocomplete({
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState({ sig: "", idx: -1 });
   const [forbidden, setForbidden] = useState(false);
+  const [invalid, setInvalid] = useState(false);
   // Nama yang pernah muncul di saran sesi ini (untuk label token berbasis id).
   const [seen, setSeen] = useState<Record<string, string>>({});
   const Icon = entityTypeMeta(types[0], identityClass).Icon;
@@ -112,12 +120,24 @@ export function EntityAutocomplete({
   const setActiveIdx = (f: number | ((i: number) => number)) =>
     setActive({ sig: itemsSig, idx: typeof f === "function" ? f(activeIdx) : f });
 
-  function add(v: string, typed = false) {
-    const t = (typed && resolveTyped ? resolveTyped(v.trim()) : v).trim();
+  function add(v: string) {
+    const t = v.trim();
     if (t && !value.includes(t)) onChange([...value, t]);
+    setInvalid(false);
     setText("");
     setDebounced("");
     setActiveIdx(-1);
+  }
+
+  /** Enter tanpa saran yang disorot: teks apa adanya (nama) atau hanya bila terpetakan ke id valid. */
+  function addTyped() {
+    const typed = text.trim();
+    if (!typed) return;
+    if (store === "name") return add(typed);
+    const hit = (suggestions.data ?? []).find((e) => e.external_id?.toLowerCase() === typed.toLowerCase());
+    const resolved = hit?.external_id ?? resolveTyped?.(typed) ?? null;
+    if (resolved) add(resolved);
+    else setInvalid(true);
   }
 
   const showList = open && !forbidden && debounced.length >= 1 && items.length > 0;
@@ -132,9 +152,9 @@ export function EntityAutocomplete({
       setActiveIdx((i) => Math.max(i - 1, 0));
     } else if (e.key === "Enter") {
       e.preventDefault();
-      // Enter pada saran yang disorot memilihnya; selain itu teks diketik apa adanya.
+      // Enter pada saran yang disorot memilihnya; selain itu lihat addTyped.
       if (open && activeIdx >= 0 && items[activeIdx]) add(items[activeIdx].stored);
-      else add(text, true);
+      else addTyped();
     } else if (e.key === "Escape") {
       // Daftar terbuka: Escape hanya menutup daftar, bukan dialog PIR di sekelilingnya.
       if (showList) {
@@ -184,21 +204,24 @@ export function EntityAutocomplete({
           value={text}
           onChange={(e) => {
             setText(e.target.value);
+            setInvalid(false);
             setOpen(true);
             setActiveIdx(-1);
           }}
           onFocus={() => setOpen(true)}
-          onBlur={() => {
-            setOpen(false);
-            // Teks yang masih diketik jadi token (aturan sama dengan Enter).
-            if (text.trim()) add(text, true);
-          }}
+          onBlur={() => setOpen(false)}
+          aria-invalid={invalid || undefined}
           onKeyDown={onKeyDown}
           placeholder={value.length === 0 ? "Type a name, Enter to add" : ""}
           className="min-w-[60px] flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
         />
       </div>
       {help && <p className="text-2xs text-muted-foreground">{help}</p>}
+      {invalid && (
+        <p role="alert" className="text-2xs text-destructive-text">
+          {invalidMessage ?? "Pick a value from the list"}
+        </p>
+      )}
       {forbidden && <p className="text-2xs text-muted-foreground">Suggestions unavailable for your role</p>}
       {showList && (
         <ul
