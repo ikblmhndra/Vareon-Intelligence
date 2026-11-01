@@ -57,6 +57,7 @@ def ent(db_session: Session) -> Iterator[tuple[Session, int]]:
         ("merged_into_id", "(SELECT id FROM entities WHERE name = 'feed-target')"),
         ("tlp", "'amber'"),
         ("identity_class", "'class'"),
+        ("stix_id", "'intrusion-set--adopted'"),  # adopsi ATT&CK menukar stix_id (Ruling 25)
     ],
 )
 def test_entity_bumps_on_feed_fields(ent: tuple[Session, int], column: str, value: str) -> None:
@@ -145,6 +146,8 @@ def rel(db_session: Session) -> Iterator[tuple[Session, int]]:
         ("description", "'x'"),
         ("revoked_at", "now()"),
         ("tlp", "'red'"),
+        ("first_seen", "now()"),  # terbit sebagai start_time
+        ("last_seen", "now()"),  # terbit sebagai stop_time
     ],
 )
 def test_relationship_bumps_on_feed_fields(
@@ -180,10 +183,8 @@ def test_relationship_confidence_bumps(rel: tuple[Session, int]) -> None:
     assert _bumped(s, "relationships", rid)
 
 
-@pytest.mark.parametrize(
-    "assignment", ["last_seen = now()", "first_seen = now()", "updated_at = now()"]
-)
-def test_relationship_ignores_seen_and_updated_at(
+@pytest.mark.parametrize("assignment", ["updated_at = now()", "created_by = 'x'"])
+def test_relationship_ignores_unpublished_columns(
     rel: tuple[Session, int], assignment: str
 ) -> None:
     s, rid = rel
@@ -356,6 +357,7 @@ def graph(db_session: Session) -> Iterator[tuple[Session, dict[str, int]]]:
         "suppressed = true",
         "tlp = 'amber'",
         "merged_into_id = (SELECT id FROM entities WHERE name = 'g-b')",
+        "stix_id = 'intrusion-set--adopted-g-a'",  # ref relasi/report ikut id baru (Ruling 25)
     ],
 )
 def test_entity_visibility_change_bumps_relationships_and_stories(

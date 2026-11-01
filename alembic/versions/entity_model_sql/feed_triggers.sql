@@ -1,6 +1,7 @@
 -- Jam feed TAXII/REST (spec 3.5), pola `trg_indicators_feed_bump` P7b: `clock_timestamp()` dan
 -- IS DISTINCT FROM per kolom. Dipasang SESUDAH backfill supaya muatan massal tidak menggeser jam.
--- first_seen/last_seen/updated_at sengaja tidak memicu bump (berubah tiap artikel, tak diterbitkan).
+-- first_seen/last_seen/updated_at ENTITAS sengaja tidak memicu bump (berubah tiap artikel, tak
+-- diterbitkan); first_seen/last_seen RELASI terbit sebagai start_time/stop_time, jadi membump.
 -- Trigger mention juga menyala untuk view kompatibilitas (INSERT/DELETE view menulis
 -- entity_mentions), jadi kode lama hasil rollback tetap menggeser jam story: disengaja.
 
@@ -13,6 +14,7 @@ BEGIN
        OR NEW.merged_into_id IS DISTINCT FROM OLD.merged_into_id
        OR NEW.tlp IS DISTINCT FROM OLD.tlp
        OR NEW.identity_class IS DISTINCT FROM OLD.identity_class
+       OR NEW.stix_id IS DISTINCT FROM OLD.stix_id  -- adopsi ATT&CK (Ruling 25)
     THEN
         NEW.feed_changed_at = clock_timestamp();
     END IF;
@@ -45,6 +47,8 @@ BEGIN
        OR NEW.description IS DISTINCT FROM OLD.description
        OR NEW.revoked_at IS DISTINCT FROM OLD.revoked_at
        OR NEW.tlp IS DISTINCT FROM OLD.tlp
+       OR NEW.first_seen IS DISTINCT FROM OLD.first_seen  -- start_time
+       OR NEW.last_seen IS DISTINCT FROM OLD.last_seen  -- stop_time
     THEN
         NEW.feed_changed_at = clock_timestamp();
     END IF;
@@ -82,8 +86,10 @@ FOR EACH ROW EXECUTE FUNCTION entity_mentions_feed_bump();
 
 -- Propagasi jam (Ruling 33, spec R7): visibilitas relasi dan `object_refs` report bergantung pada
 -- suppressed/merge/TLP entitas ujung atau entitas yang disebut. Tanpa bump, konsumen inkremental
--- menyimpan relasi yang kini tersembunyi dan report dengan ref basi. AFTER (bukan di BEFORE
--- entities_feed_bump) karena menulis tabel lain; WHEN menyaring UPDATE yang tidak mengubah apa pun.
+-- menyimpan relasi yang kini tersembunyi dan report dengan ref basi. stix_id ikut: adopsi ATT&CK
+-- (Ruling 25) menukar id entitas, jadi source_ref/target_ref/object_refs berubah. AFTER (bukan
+-- di BEFORE entities_feed_bump) karena menulis tabel lain; WHEN menyaring UPDATE yang tidak
+-- mengubah apa pun.
 CREATE FUNCTION entities_feed_propagate() RETURNS trigger LANGUAGE plpgsql AS $fn$
 BEGIN
     UPDATE relationships SET feed_changed_at = clock_timestamp()
@@ -97,11 +103,12 @@ BEGIN
 END $fn$;
 
 CREATE TRIGGER trg_entities_feed_propagate
-AFTER UPDATE OF suppressed, merged_into_id, tlp ON entities
+AFTER UPDATE OF suppressed, merged_into_id, tlp, stix_id ON entities
 FOR EACH ROW
 WHEN (OLD.suppressed IS DISTINCT FROM NEW.suppressed
       OR OLD.merged_into_id IS DISTINCT FROM NEW.merged_into_id
-      OR OLD.tlp IS DISTINCT FROM NEW.tlp)
+      OR OLD.tlp IS DISTINCT FROM NEW.tlp
+      OR OLD.stix_id IS DISTINCT FROM NEW.stix_id)
 EXECUTE FUNCTION entities_feed_propagate();
 
 -- Indikator artikel ikut `object_refs` report: sumber indikator masuk/keluar/pindah artikel
