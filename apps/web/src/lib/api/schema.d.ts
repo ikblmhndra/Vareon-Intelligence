@@ -1454,6 +1454,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/entities/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Resolve Entity
+         * @description Nama teks -> entitas (alias, external_id, ikuti merge). Harus sebelum `/{entity_id}`.
+         */
+        get: operations["resolve_entity_api_entities_resolve_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/entities/{entity_id}": {
         parameters: {
             query?: never;
@@ -5338,6 +5358,11 @@ export interface components {
             mentions_30d: number;
             /** Mentions 90D */
             mentions_90d: number;
+            /**
+             * Merged From
+             * @default []
+             */
+            merged_from: components["schemas"]["EntityRef"][];
             /** Merged Into Id */
             merged_into_id: number | null;
             /** Name */
@@ -11223,6 +11248,7 @@ export interface operations {
         parameters: {
             query?: {
                 type?: string | null;
+                identity_class?: string | null;
                 q?: string | null;
                 watched?: boolean;
                 include_suppressed?: boolean;
@@ -11281,6 +11307,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EntityDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_entity_api_entities_resolve_get: {
+        parameters: {
+            query: {
+                type: string;
+                name: string;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EntityRef"];
                 };
             };
             /** @description Validation Error */

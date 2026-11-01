@@ -62,6 +62,9 @@ class EntityDetail(BaseModel):
     profile: dict[str, Any] | None = None
     """Profil LLM tersimpan (hanya aktor), dibuat lewat `POST /api/entities/{id}/profile`."""
     profile_generated_at: datetime.datetime | None = None
+    merged_from: list[EntityRef] = []
+    """Tombstone yang `merged_into_id`-nya entitas ini, merge terbaru dulu. Dialog split
+    memakainya untuk tahu alias nama-sendiri mana yang menghidupkan tombstone mana."""
 
 
 class EntityCreate(BaseModel):

@@ -2900,6 +2900,14 @@
             "title": "Mentions 90D",
             "type": "integer"
           },
+          "merged_from": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/EntityRef"
+            },
+            "title": "Merged From",
+            "type": "array"
+          },
           "merged_into_id": {
             "anyOf": [
               {
@@ -17351,6 +17359,22 @@
           },
           {
             "in": "query",
+            "name": "identity_class",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Identity Class"
+            }
+          },
+          {
+            "in": "query",
             "name": "q",
             "required": false,
             "schema": {
@@ -17542,6 +17566,74 @@
           }
         },
         "summary": "Create Entity",
+        "tags": [
+          "entities"
+        ]
+      }
+    },
+    "/api/entities/resolve": {
+      "get": {
+        "description": "Nama teks -> entitas (alias, external_id, ikuti merge). Harus sebelum `/{entity_id}`.",
+        "operationId": "resolve_entity_api_entities_resolve_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "type",
+            "required": true,
+            "schema": {
+              "title": "Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntityRef"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resolve Entity",
         "tags": [
           "entities"
         ]
