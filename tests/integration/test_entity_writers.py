@@ -330,9 +330,36 @@ def test_dictionary_version_changes_with_alias(db_session: Session) -> None:
     assert after.entries["midnight blizzard"].canonical == "APT29"
 
 
+def test_dictionary_skips_names_known_only_from_legacy_or_ransomware(db_session: Session) -> None:
+    """Dev 2026-11-01: grup ransomware "Payload" (entitas legacy) masuk kamus dan cocok dengan
+    kata biasa "payload" di artikel malware. Kamus hanya dari ATT&CK, Galaxy, analis, dan nama
+    `threat_actor_groups`; nama legacy/dictionary di luar itu tidak dicocokkan."""
+    seed_entity(db_session, "intrusion-set", "Payload", source="legacy")
+    ransom = seed_entity(db_session, "intrusion-set", "Qilin", source="legacy")
+    seed_entity(db_session, "intrusion-set", "Watched Crew", source="analyst")
+    db_session.add(
+        EntityAlias(
+            entity_id=ransom.id,
+            entity_type="intrusion-set",
+            alias="Agenda",
+            alias_norm=alias_norm("Agenda"),
+            source="galaxy",
+        )
+    )
+    db_session.execute(text("INSERT INTO threat_actor_groups (name, source) VALUES ('qilin', 'x')"))
+    db_session.flush()
+
+    entries = _dictionary(db_session).entries
+
+    assert "payload" not in entries
+    assert entries["qilin"].canonical == "Qilin"  # juga nama threat_actor_groups
+    assert entries["agenda"].canonical == "Qilin"  # alias Galaxy
+    assert entries["watched crew"].canonical == "Watched Crew"  # alias analis
+
+
 def test_dictionary_version_changes_with_merge(db_session: Session) -> None:
     apt29 = seed_entity(db_session, "intrusion-set", "APT29")
-    other = seed_entity(db_session, "intrusion-set", "Dark Halo", source="legacy")
+    other = seed_entity(db_session, "intrusion-set", "Dark Halo", alias_source="galaxy")
     before = _dictionary(db_session)
     assert before.entries["dark halo"].canonical == "Dark Halo"
 
