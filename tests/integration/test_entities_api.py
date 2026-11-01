@@ -809,6 +809,36 @@ async def test_resolve_external_id(
     assert r.json()["id"] == cve.id
 
 
+async def test_resolve_technique_by_name(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Header
+) -> None:
+    # alias technique cuma id-nya; nama ("Phishing") harus tetap menemukannya (chip kluster)
+    tech = await _make(api_session, "attack-pattern", "Phishing", external_id="T1566")
+    await api_session.commit()
+    r = await _resolve(api_client, auth_header(), "attack-pattern", "  phishing ")
+    assert r.status_code == 200, r.text
+    assert r.json()["id"] == tech.id
+    assert r.json()["external_id"] == "T1566"
+
+
+async def test_resolve_name_fallback_after_alias(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Header
+) -> None:
+    # entitas B (id lebih kecil) bernama "Zeta" tanpa alias; A punya alias "Zeta": alias menang
+    s = api_session
+    by_name = Entity(
+        type="intrusion-set", stix_id="intrusion-set--t13-zeta", name="Zeta", source="analyst"
+    )
+    s.add(by_name)
+    await s.flush()
+    by_alias = await _make(s, "intrusion-set", "Alpha", "Zeta")
+    await s.commit()
+    assert by_name.id < by_alias.id
+    r = await _resolve(api_client, auth_header(), "intrusion-set", "zeta")
+    assert r.status_code == 200, r.text
+    assert r.json()["id"] == by_alias.id
+
+
 async def test_resolve_country_code(
     api_client: AsyncClient, api_session: AsyncSession, auth_header: Header
 ) -> None:

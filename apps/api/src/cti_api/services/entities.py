@@ -279,8 +279,10 @@ async def resolve_entity(
 
     Alias dulu (alias entitas ter-merge sudah pindah ke target) tanpa `live_entity()`, jadi tanpa
     saringan suppressed: halaman entitas menampilkan yang suppressed dengan badge. Lalu
-    `external_id` (T1566, CVE-..., kode negara `ID`) case-insensitive; tombstone diikuti ke
-    ujung hidupnya."""
+    `external_id` (T1566, CVE-..., kode negara `ID`) case-insensitive. Terakhir `Entity.name`
+    (trim, spasi dirapatkan, case-insensitive): alias technique cuma id-nya, jadi nama seperti
+    "Phishing" dari chip kluster baru ketemu lewat sini; alias dan external_id selalu menang.
+    Yang hidup didahulukan dari tombstone, id terkecil dulu; tombstone diikuti ke ujung hidupnya."""
     stmt = (
         select(Entity.id)
         .join(EntityAlias, EntityAlias.entity_id == Entity.id)
@@ -299,6 +301,19 @@ async def resolve_entity(
                     .where(
                         Entity.type.in_(list(types)),
                         func.lower(Entity.external_id) == name.strip().lower(),
+                    )
+                    .order_by(Entity.merged_into_id.is_not(None), Entity.id)
+                )
+            ).all()
+        )
+    if not ids and name.strip():
+        ids = list(
+            (
+                await session.scalars(
+                    select(Entity.id)
+                    .where(
+                        Entity.type.in_(list(types)),
+                        func.entity_alias_norm(Entity.name) == alias_norm(name),
                     )
                     .order_by(Entity.merged_into_id.is_not(None), Entity.id)
                 )
