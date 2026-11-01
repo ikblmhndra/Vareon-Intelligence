@@ -38,7 +38,7 @@ export function EntityChip({
   return (
     <Link
       href={entityHref({ id, type, name })}
-      aria-label={`${meta.label} ${name}`}
+      aria-label={`${meta.label} ${text}`}
       title={text}
       className={cn(
         "inline-flex h-6 min-h-6 max-w-64 min-w-0 items-center gap-1.5 rounded-lg border border-border bg-background px-2 text-xs whitespace-nowrap text-foreground transition-colors outline-none hover:border-primary focus-visible:ring-3 focus-visible:ring-focus",

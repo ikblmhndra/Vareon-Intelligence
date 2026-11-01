@@ -55,7 +55,7 @@ export function EntityResolveView() {
   }
   if (q.isError) {
     return (
-      <p role="alert" className="text-sm text-destructive">
+      <p role="alert" className="text-sm text-destructive-text">
         {q.error instanceof Error && q.error.cause === 403
           ? "You don't have access to entity pages."
           : "Could not look up this entity. Try again later."}

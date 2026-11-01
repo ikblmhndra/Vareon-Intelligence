@@ -128,7 +128,7 @@ export function EntitiesListView() {
   const tab = ENTITY_TABS.find((t) => t.key === tabKey)!;
   const q = params.get("q") ?? "";
   const watchedOnly = params.get("watched") === "1";
-  const includeSuppressed = params.get("suppressed") === "1";
+  const includeSuppressed = params.get("suppressed") === "1" && can("manage_entities");
   const creating = params.get("new") === "1";
 
   const setParams = useCallback(
@@ -155,7 +155,7 @@ export function EntitiesListView() {
     queryKey: ["entities", "list", tabKey, q, watchedOnly, includeSuppressed],
     initialPageParam: null as string | null,
     queryFn: async ({ pageParam }) => {
-      const { data, error } = await api.GET("/api/entities", {
+      const { data, error, response } = await api.GET("/api/entities", {
         params: {
           query: {
             type: tab.types.join(","),
@@ -168,7 +168,7 @@ export function EntitiesListView() {
           },
         },
       });
-      if (error || !data) throw new Error("Failed to load entities");
+      if (error || !data) throw new Error("Failed to load entities", { cause: response.status });
       return data;
     },
     getNextPageParam: (last) => last.next_cursor ?? undefined,
@@ -269,6 +269,7 @@ export function EntitiesListView() {
               </Button>
             </div>
           </div>
+          {can("manage_entities") && (
           <div className="flex h-8 items-center gap-2 max-sm:h-11">
             <Checkbox
               id="entity-suppressed"
@@ -279,6 +280,7 @@ export function EntitiesListView() {
               Include suppressed
             </Label>
           </div>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
           {tabKey === "actors" && (
@@ -311,7 +313,9 @@ export function EntitiesListView() {
         )}
         {list.isError && (
           <p role="alert" className="p-4 text-sm text-destructive-text">
-            Failed to load entities.
+            {list.error instanceof Error && list.error.cause === 403
+              ? "You don't have access to entity pages."
+              : "Failed to load entities."}
           </p>
         )}
         {list.isSuccess && items.length === 0 && (

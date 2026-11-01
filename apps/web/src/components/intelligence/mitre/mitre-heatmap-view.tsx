@@ -21,7 +21,7 @@ const DAY_OPTIONS = [30, 90, 180, 365];
 
 /** Port `loadMitreHeatmap()`/`downloadNavigatorLayer()`/`openNavigator()`
  * (`scraper.js:68-182`) -- heatmap TTP OBSERVED di artikel (`ArticleTTP`,
- * beda dari katalog ATT&CK DB di bawah). Klik sel -> `TtpDrillDialog`. */
+ * beda dari katalog teknik di halaman Entities (tab Techniques)). Klik sel -> `TtpDrillDialog`. */
 export function MitreHeatmapView() {
   const [view, setView] = useState<"ta" | "industry">("ta");
   const [days, setDays] = useState(90);

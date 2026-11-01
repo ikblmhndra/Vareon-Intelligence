@@ -690,7 +690,7 @@ export interface DeletedResult {
 }
 
 /**
- * Grup G3 (`/intelligence` -- MITRE heatmap + ATT&CK DB) --
+ * Grup G3 (`/intelligence` -- MITRE heatmap + katalog teknik di halaman Entities) --
  * `routers/mitre.py`/`routers/attack.py` gak declare `response_model`
  * di endpoint manapun (return `dict[str,object]`/`list[dict]` polos).
  * Shape dicek dari `AsyncMitreHeatmapRepo`/`AsyncAttackSyncRepo`/

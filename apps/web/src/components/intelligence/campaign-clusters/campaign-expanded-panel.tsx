@@ -67,7 +67,7 @@ function CampaignTrendSection({ clusterId }: { clusterId: string }) {
 /** Port `_renderCampaignExpanded()` (`clusters.js:263-427`) -- isi row
  * expand: trend, severity breakdown, kill chain, diamond model,
  * matched PIRs, member articles, IOCs, prioritized CVEs, mind map
- * (consumer KEDUA `MindmapWidget` G5, setelah Threat Actor Room G6),
+ * (consumer KEDUA `MindmapWidget` G5; consumer lain di halaman Entities),
  * related campaigns.
  *
  * CVE chip klik: legacy manggil `openCveDetail()` (cross-tab, SPA

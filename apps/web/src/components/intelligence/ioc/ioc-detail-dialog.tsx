@@ -264,7 +264,7 @@ export function IocDetailDialog({ target, onClose, onDeleted }: IocDetailDialogP
                             <div className="mb-1 text-xs text-muted-foreground">MALWARE FAMILIES</div>
                             <div className="flex flex-wrap gap-1">
                               {families.map((f) => (
-                                <EntityChip key={f} type="malware" name={f} />
+                                <EntityChip key={f} type="malware,tool" name={f} />
                               ))}
                             </div>
                           </div>

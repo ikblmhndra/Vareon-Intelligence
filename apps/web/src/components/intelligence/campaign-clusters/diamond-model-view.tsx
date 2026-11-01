@@ -71,8 +71,8 @@ export function DiamondModelView({ clusterName, model }: { clusterName: string; 
   const allTechs = Object.values(cap.attack_techniques).flat();
   const capItems: DiamondItem[] = [
     ...nameChips("attack-pattern", allTechs.slice(0, 3)),
-    ...nameChips("malware", cap.malware.slice(0, 2)),
-    ...nameChips("tool", cap.tools.slice(0, 1)),
+    ...nameChips("malware,tool", cap.malware.slice(0, 2)),
+    ...nameChips("malware,tool", cap.tools.slice(0, 1)),
     ...nameChips("vulnerability", cap.cve_exploited.slice(0, 2)),
   ];
   const vicItems: DiamondItem[] = [
@@ -148,8 +148,8 @@ export function DiamondModelView({ clusterName, model }: { clusterName: string; 
               if (!techs || techs.length === 0) return null;
               return <FullSection key={tactic} title={tactic.replace(/_/g, " ")} color="var(--tag-violet)" items={techs} entity="attack-pattern" />;
             })}
-            <FullSection title="Malware" color="var(--tag-violet)" items={cap.malware} entity="malware" />
-            <FullSection title="Tools" color="var(--tag-violet)" items={cap.tools} entity="tool" />
+            <FullSection title="Malware" color="var(--tag-violet)" items={cap.malware} entity="malware,tool" />
+            <FullSection title="Tools" color="var(--tag-violet)" items={cap.tools} entity="malware,tool" />
             <FullSection title="CVEs Exploited" color="var(--tag-violet)" items={cap.cve_exploited} entity="vulnerability" />
           </div>
           <div>

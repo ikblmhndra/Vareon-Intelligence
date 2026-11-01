@@ -158,12 +158,12 @@ function AboutCard({ entity }: { entity: EntityDetail }) {
           )}
           {malware.length > 0 && (
             <Row label="Malware">
-              <Chips type="malware" names={malware} />
+              <Chips type="malware,tool" names={malware} />
             </Row>
           )}
           {tools.length > 0 && (
             <Row label="Tools">
-              <Chips type="tool" names={tools} />
+              <Chips type="malware,tool" names={tools} />
             </Row>
           )}
         </dl>
