@@ -68,6 +68,8 @@ export function PirFormDialog({ pir, open, onClose, onSaved }: PirFormDialogProp
     try {
       const criteria = {
         threat_actors: threatActors,
+        // Field Malware belum ada di form (Task 11); nilai lama dibawa agar tidak terhapus saat simpan.
+        malware: pir?.criteria.malware ?? [],
         industries,
         countries,
         news_types: newsTypes,
