@@ -345,6 +345,52 @@
         "title": "ApiTokenOut",
         "type": "object"
       },
+      "ArticleEntityRef": {
+        "description": "Entitas yang disebut artikel; `role` = peran mention (victim/actor/mentioned) atau `None`.",
+        "properties": {
+          "external_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "name"
+        ],
+        "title": "ArticleEntityRef",
+        "type": "object"
+      },
       "ArticleListResponse": {
         "properties": {
           "articles": {
@@ -434,6 +480,14 @@
               }
             ],
             "title": "Credibility"
+          },
+          "entities": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ArticleEntityRef"
+            },
+            "title": "Entities",
+            "type": "array"
           },
           "grade_origin": {
             "anyOf": [
@@ -3840,6 +3894,17 @@
             "title": "Entity",
             "type": "string"
           },
+          "entity_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Id"
+          },
           "kind": {
             "enum": [
               "actor",
@@ -3868,6 +3933,17 @@
       },
       "InferredTechnique": {
         "properties": {
+          "entity_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Id"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -9751,6 +9827,17 @@
             "title": "Daily",
             "type": "array"
           },
+          "entity_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Id"
+          },
           "is_new": {
             "title": "Is New",
             "type": "boolean"
@@ -9871,6 +9958,17 @@
             },
             "title": "Daily",
             "type": "array"
+          },
+          "entity_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Id"
           },
           "is_new": {
             "title": "Is New",

@@ -13,6 +13,13 @@ from collections import defaultdict
 from typing import Any
 
 from cti_core.db.repositories.dashboard import AsyncDashboardRepo
+from cti_core.db.repositories.entity import (
+    ACTOR,
+    COUNTRY,
+    SECTOR,
+    entity_ids_by_external_id_async,
+    name_keys_async,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 _CACHE: dict[str, tuple[dict[str, Any], float]] = {}
@@ -81,10 +88,28 @@ async def _compute_spikes(
         confirmed_only=confirmed_only,
     )
 
+    actor_spikes = _detect_entity_spikes(by_actor, recent_cutoff, z_threshold)
+    country_spikes = _detect_entity_spikes(by_country, recent_cutoff, z_threshold)
+    industry_spikes = _detect_entity_spikes(by_industry, recent_cutoff, z_threshold)
+    # `entity_id` dicari sesudah deteksi (satu query per dimensi), hanya untuk entri yang lolos.
+    actor_keys = await name_keys_async(session, ACTOR, [str(s["entity"]) for s in actor_spikes])
+    industry_keys = await name_keys_async(
+        session, SECTOR, [str(s["entity"]) for s in industry_spikes]
+    )
+    country_ids = await entity_ids_by_external_id_async(
+        session, COUNTRY, [str(s["entity"]) for s in country_spikes]
+    )
+    for sp in actor_spikes:
+        sp["entity_id"] = actor_keys.entity_id(str(sp["entity"]))
+    for sp in industry_spikes:
+        sp["entity_id"] = industry_keys.entity_id(str(sp["entity"]))
+    for sp in country_spikes:
+        sp["entity_id"] = country_ids.get(str(sp["entity"]))
+
     return {
-        "threat_actors": _detect_entity_spikes(by_actor, recent_cutoff, z_threshold),
-        "countries": _detect_entity_spikes(by_country, recent_cutoff, z_threshold),
-        "industries": _detect_entity_spikes(by_industry, recent_cutoff, z_threshold),
+        "threat_actors": actor_spikes,
+        "countries": country_spikes,
+        "industries": industry_spikes,
         "overall": _detect_overall_spikes(daily_total, recent_cutoff, z_threshold),
         "generated_at": datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "parameters": {

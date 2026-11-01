@@ -88,6 +88,8 @@
     'confidence_score': None,
     'confirmed_incident': False,
     'credibility': None,
+    'entities': list([
+    ]),
     'grade_origin': None,
     'id': int,
     'impacted_industries': list([
@@ -135,6 +137,8 @@
         'confidence_score': None,
         'confirmed_incident': False,
         'credibility': None,
+        'entities': list([
+        ]),
         'grade_origin': None,
         'id': int,
         'impacted_industries': list([
@@ -187,6 +191,8 @@
         'confidence_score': None,
         'confirmed_incident': False,
         'credibility': None,
+        'entities': list([
+        ]),
         'grade_origin': None,
         'id': int,
         'impacted_industries': list([

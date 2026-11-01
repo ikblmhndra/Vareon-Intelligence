@@ -113,6 +113,11 @@ class NameKeys:
         entity_id = self._ids.get(norm)
         return ("entity", entity_id) if entity_id is not None else ("name", norm)
 
+    def entity_id(self, name: str) -> int | None:
+        """Id entitas hidup untuk `name` (lewat alias), `None` kalau tidak ada entitas di baliknya.
+        Dipakai respons v1 yang menambahkan `entity_id` SESUDAH agregasi per nama."""
+        return self._ids.get(alias_norm(name or ""))
+
 
 async def name_keys_async(session: AsyncSession, type: str, names: Iterable[str]) -> NameKeys:
     """`NameKeys` untuk `names` bertipe `type`, satu query (alias unik per (tipe, alias_norm))."""
@@ -125,3 +130,19 @@ async def name_keys_async(session: AsyncSession, type: str, names: Iterable[str]
         .where(EntityAlias.entity_type == type, EntityAlias.alias_norm.in_(norms), live_entity())
     )
     return NameKeys({norm: entity_id for norm, entity_id in rows.tuples()})
+
+
+async def entity_ids_by_external_id_async(
+    session: AsyncSession, type: str, external_ids: Iterable[str]
+) -> dict[str, int]:
+    """`external_id` (ID teknik ATT&CK, kode negara ISO) -> id entitas hidup bertipe `type`, satu
+    query. Untuk respons v1 yang hanya membawa kode, bukan nama; id dicari sesudah agregasi."""
+    wanted = sorted({e for e in external_ids if e})
+    if not wanted:
+        return {}
+    rows = await session.execute(
+        select(Entity.external_id, Entity.id).where(
+            Entity.type == type, Entity.external_id.in_(wanted), live_entity()
+        )
+    )
+    return {ext: entity_id for ext, entity_id in rows.tuples() if ext is not None}

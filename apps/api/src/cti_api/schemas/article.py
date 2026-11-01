@@ -10,6 +10,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from cti_api.schemas.entities import EntityRef
+
 
 class TTP(BaseModel):
     id: str
@@ -28,6 +30,8 @@ class MalwareRef(BaseModel):
 class InferredTechnique(BaseModel):
     id: str
     name: str
+    entity_id: int | None = None
+    """Id entitas teknik (`attack-pattern`); `None` kalau belum ada entitasnya."""
 
 
 class InferredEntity(BaseModel):
@@ -38,6 +42,8 @@ class InferredEntity(BaseModel):
     kind: Literal["actor", "malware", "tool"]
     attack_id: str
     techniques: list[InferredTechnique]
+    entity_id: int | None = None
+    """Id entitas aktor/malware artikel (dari mention, bukan dicari lewat nama)."""
 
 
 class StoryRef(BaseModel):
@@ -65,6 +71,12 @@ class CredibilityOverrideIn(BaseModel):
 
     credibility: int | None = Field(None, ge=1, le=6)
     note: str = Field("", max_length=500)
+
+
+class ArticleEntityRef(EntityRef):
+    """Entitas yang disebut artikel; `role` = peran mention (victim/actor/mentioned) atau `None`."""
+
+    role: str | None = None
 
 
 class ArticleOut(BaseModel):
@@ -100,6 +112,9 @@ class ArticleOut(BaseModel):
     story: StoryRef | None = None
     classify_inherited_from: int | None = None
     """Id artikel lead kalau klasifikasi artikel ini diwarisi dari story-nya (audit classify)."""
+    entities: list[ArticleEntityRef] = []
+    """Entitas hidup yang disebut artikel, satu per (entitas, peran), urut mention. Aditif:
+    field nama di atas tetap; UI memakai ini untuk tautan ke halaman entitas."""
 
 
 class FilterOptions(BaseModel):

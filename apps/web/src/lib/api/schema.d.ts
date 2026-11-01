@@ -4316,6 +4316,22 @@ export interface components {
             /** Token Prefix */
             token_prefix: string;
         };
+        /**
+         * ArticleEntityRef
+         * @description Entitas yang disebut artikel; `role` = peran mention (victim/actor/mentioned) atau `None`.
+         */
+        ArticleEntityRef: {
+            /** External Id */
+            external_id?: string | null;
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Role */
+            role?: string | null;
+            /** Type */
+            type: string;
+        };
         /** ArticleListResponse */
         ArticleListResponse: {
             /** Articles */
@@ -4347,6 +4363,11 @@ export interface components {
             confirmed_incident: boolean;
             /** Credibility */
             credibility?: number | null;
+            /**
+             * Entities
+             * @default []
+             */
+            entities: components["schemas"]["ArticleEntityRef"][];
             /** Grade Origin */
             grade_origin?: ("default" | "analyst") | null;
             /** Id */
@@ -5699,6 +5720,8 @@ export interface components {
             attack_id: string;
             /** Entity */
             entity: string;
+            /** Entity Id */
+            entity_id?: number | null;
             /**
              * Kind
              * @enum {string}
@@ -5709,6 +5732,8 @@ export interface components {
         };
         /** InferredTechnique */
         InferredTechnique: {
+            /** Entity Id */
+            entity_id?: number | null;
             /** Id */
             id: string;
             /** Name */
@@ -7925,6 +7950,8 @@ export interface components {
             count: number;
             /** Daily */
             daily: number[];
+            /** Entity Id */
+            entity_id?: number | null;
             /** Is New */
             is_new: boolean;
             /**
@@ -7966,6 +7993,8 @@ export interface components {
             count: number;
             /** Daily */
             daily: number[];
+            /** Entity Id */
+            entity_id?: number | null;
             /** Is New */
             is_new: boolean;
             /**
