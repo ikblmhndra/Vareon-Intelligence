@@ -42,6 +42,9 @@ Tiga migrasi (`a9e4c7b1d3f6`, `c4f1a8d27b93`, `1387fae00908`), **tanpa kunci `.e
 - `industry_unspecified` di dashboard kini menghitung artikel **tanpa sebutan sektor** (dulu: artikel berlabel "General"); label "General" dihapus migrasi, jadi angkanya naik.
 - Industri tampil sebagai nama sektor ("Financial Services" untuk "Finance & Insurance"; "Cloud Services" dan "Information Technology & Software" sama-sama "Technology"), dan aktor yang suppressed (whitelist) disembunyikan di semua tempat.
 - Whitelist (TA Room "delete group" atau baris whitelist seed/migrasi) kini men-suppress **seluruh entitas**: semua alias dan sebutan lamanya ikut tersembunyi (tidak dihapus; unsuppress memulihkan).
+- Sumbu bulan dashboard Exec kini juga memuat bulan tanpa industri.
+- Di API v1, `source` TTP dan `industry_source` menampilkan `llm` untuk metode sebutan di luar himpunan nilai v1 (mis. `legacy`), sama dengan default kolom lama (Ruling 28).
+- Watch, profil, atau whitelist untuk nama yang belum dikenal kini membuat entitas `intrusion-set` bersumber `analyst`.
 - `python -m cti_enrich.canonicalise_actors` digantikan migrasi `entity_model` dan `cti-entity merge-aliases`: kini hanya mencetak bahwa ia digantikan dan tidak menulis apa pun.
 - Rollback kode ke 0.8.2/0.8.10 tanpa downgrade DB aman lewat view kompatibilitas; penghapusan watchlist/whitelist lama memakai ejaan alias tidak menemukan barisnya (view menampilkan nama entitas), dan cabang keyword industri `add_tier1` 0.8.10 tidak pernah jalan (label "General" sudah tidak ada).
 - Antara migrasi dan run pertama tugas reconcile (beberapa menit sesudah start API), indikator non-hash terbaca tidak kedaluwarsa. Belum ada konsumen yang memakai masa berlaku sebelum P7b.
