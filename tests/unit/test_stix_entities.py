@@ -258,3 +258,24 @@ def test_report_without_urls_has_no_external_references() -> None:
     obj = story_to_report(_story(), ["malware--b"], [])
     assert obj is not None
     assert "external_references" not in obj
+
+
+def test_stop_time_only_when_after_start_time() -> None:
+    src, dst = entity_stix_id("intrusion-set", "a"), entity_stix_id("malware", "b")
+    equal = relationship_to_stix(_rel(first_seen=_CHANGED, last_seen=_CHANGED), src, dst)
+    assert "start_time" in equal and "stop_time" not in equal
+    reversed_ = relationship_to_stix(_rel(first_seen=_CHANGED, last_seen=_CREATED), src, dst)
+    assert "stop_time" not in reversed_
+    only_last = relationship_to_stix(_rel(last_seen=_CHANGED), src, dst)
+    assert only_last["stop_time"] == "2026-10-29T04:00:25.542Z"
+
+
+def test_report_has_clear_marking() -> None:
+    obj = story_to_report(_story(), ["malware--b"], [])
+    assert obj is not None
+    assert obj["object_marking_refs"] == [TLP_MARKING_IDS["clear"]]
+
+
+def test_location_without_country_code_is_skipped() -> None:
+    assert entity_to_stix(_ent("location", "Nowhere")) is None
+    assert entity_to_stix(_ent("location", "Nowhere", external_id="", suppressed=True)) is None

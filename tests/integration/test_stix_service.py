@@ -256,3 +256,53 @@ async def test_article_bundle_uses_entity_ids(async_db_session: AsyncSession) ->
         assert by_id[e.stix_id] == entity_to_stix(e)
     report = next(o for o in bundle["objects"] if o["type"] == "report")
     assert all(ref in by_id for ref in report["object_refs"])
+
+
+async def test_ta_bundle_skips_suppressed_and_merged_matches(
+    async_db_session: AsyncSession,
+) -> None:
+    from cti_core.entity.resolve import resolve_async
+
+    s = async_db_session
+    tech = await resolve_async(
+        s, "attack-pattern", "Phishing", source="attack", external_id="T1566"
+    )
+    mal = await resolve_async(s, "malware", "ShadowPad", source="attack")
+    tech.suppressed = True
+    mal.suppressed = True
+    await s.flush()
+    await AsyncTAProfileRepo(s).save_profile(
+        "Apt41",
+        {
+            "capability_assessment": {
+                "attack_techniques": {"initial-access": ["T1566 Phishing"]},
+                "known_malware": [{"name": "ShadowPad", "type": "backdoor"}],
+            },
+        },
+    )
+    bundle = await stix_service.build_ta_stix_bundle(s, "apt41")
+    types = _types(bundle)
+    assert "attack-pattern" not in types
+    assert "malware" not in types
+    assert all(
+        o["type"] != "relationship" or o["relationship_type"] == "attributed-to"
+        for o in bundle["objects"]
+    )
+
+
+async def test_revoked_entity_keeps_marking_in_bundle(async_db_session: AsyncSession) -> None:
+    from cti_api.services.stix import TLP_MARKING_IDS, entity_to_stix
+
+    s = async_db_session
+    from cti_core.entity.resolve import resolve_async
+
+    ent = await resolve_async(s, "malware", "Noise", source="attack")
+    ent.suppressed = True
+    ent.tlp = "amber"
+    await s.flush()
+    await s.refresh(ent)
+    obj = entity_to_stix(ent)
+    assert obj is not None and obj["revoked"] is True
+    bundle = stix_service._make_bundle([obj])
+    assert bundle["objects"][0]["object_marking_refs"] == [TLP_MARKING_IDS["amber"]]
+    assert any(o["id"] == TLP_MARKING_IDS["amber"] for o in bundle["objects"])

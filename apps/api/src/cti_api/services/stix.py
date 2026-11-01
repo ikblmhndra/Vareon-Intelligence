@@ -266,11 +266,14 @@ def _attack_reference(e: Entity) -> dict[str, str] | None:
     }
 
 
-def entity_to_stix(e: Entity) -> dict[str, Any]:
+def entity_to_stix(e: Entity) -> dict[str, Any] | None:
     """Satu baris `Entity` (alias sudah dimuat) -> objek STIX 2.1. Id = `stix_id`, waktu dari
     kolom (`created_at`, `feed_changed_at`), jadi dua pemanggilan identik dan id TAXII sama
     dengan id di export bundle. Tanpa `confidence` (itu milik relasi). Tombstone merge dan entitas
-    suppressed terbit `revoked: true` dengan properti wajib saja (spec 5.3)."""
+    suppressed terbit `revoked: true` dengan properti wajib saja (spec 5.3). `None` untuk lokasi
+    tanpa `external_id` (STIX `location` wajib punya `country`/`region`/koordinat): dilewati."""
+    if e.type == "location" and not e.external_id:
+        return None
     revoked = e.suppressed or e.merged_into_id is not None
     obj: dict[str, Any] = {
         "type": e.type,
@@ -285,7 +288,7 @@ def entity_to_stix(e: Entity) -> dict[str, Any]:
         obj["is_family"] = True
     elif e.type == "identity":
         obj["identity_class"] = e.identity_class or "unknown"
-    elif e.type == "location" and e.external_id:
+    elif e.type == "location":
         obj["country"] = e.external_id
     if revoked:
         obj["revoked"] = True
@@ -328,7 +331,8 @@ def relationship_to_stix(r: Relationship, src_stix: str, dst_stix: str) -> dict[
         obj["confidence"] = r.confidence
     if r.first_seen:
         obj["start_time"] = stix_ts(r.first_seen)
-    if r.last_seen:
+    # STIX: stop_time harus SESUDAH start_time; sama/terbalik -> tidak diterbitkan
+    if r.last_seen and (not r.first_seen or r.last_seen > r.first_seen):
         obj["stop_time"] = stix_ts(r.last_seen)
     if r.revoked_at is not None:
         obj["revoked"] = True
@@ -355,6 +359,9 @@ def story_to_report(story: Story, refs: list[str], urls: list[str]) -> dict[str,
         "published": stix_ts(story.first_seen_at),
         "report_types": ["threat-report"],
         "object_refs": object_refs,
+        "object_marking_refs": [
+            TLP_MARKING_IDS["clear"]
+        ],  # story belum punya kolom tlp (Ruling 32)
     }
     if urls:
         obj["external_references"] = [
@@ -586,11 +593,28 @@ def _build_course_of_action(pir: PIRRequirement, ts: str) -> dict[str, Any]:
     return obj
 
 
+def _entity_obj(e: Entity) -> dict[str, Any]:
+    """`entity_to_stix` untuk tipe yang selalu menghasilkan objek (bukan `location`)."""
+    obj = entity_to_stix(e)
+    if obj is None:
+        raise ValueError(f"entitas {e.type} {e.name!r} tidak bisa dibangun jadi objek STIX")
+    return obj
+
+
+def _is_revoked(e: Entity) -> bool:
+    return e.suppressed or e.merged_into_id is not None
+
+
+def _rank(e: Entity, types: tuple[str, ...]) -> tuple[bool, int]:
+    """Urutan pilih: entitas hidup dulu, lalu tipe yang lebih awal di `types`."""
+    return (_is_revoked(e), types.index(e.type) if e.type in types else len(types))
+
+
 async def _live_entities_by_alias(
     session: AsyncSession, types: tuple[str, ...], names: list[str]
 ) -> dict[str, Entity]:
-    """`alias_norm(nama)` -> entitas hidup (bukan tombstone, bukan suppressed) bertipe `types`;
-    tipe yang lebih awal di `types` menang kalau satu alias ada di dua tipe."""
+    """`alias_norm(nama)` -> entitas bertipe `types`; yang hidup menang atas suppressed/tombstone,
+    lalu tipe yang lebih awal di `types`. Pemanggil melewati yang `_is_revoked` (tanpa fallback)."""
     norms = sorted({alias_norm(n) for n in names if n and alias_norm(n)})
     if not norms:
         return {}
@@ -600,32 +624,36 @@ async def _live_entities_by_alias(
         .where(
             EntityAlias.entity_type.in_(types),
             EntityAlias.alias_norm.in_(norms),
-            Entity.merged_into_id.is_(None),
-            Entity.suppressed.is_(False),
         )
         .order_by(Entity.id)
     )
     found: dict[str, Entity] = {}
     for norm, ent in rows.tuples():
         cur = found.get(norm)
-        if cur is None or types.index(ent.type) < types.index(cur.type):
+        if cur is None or _rank(ent, types) < _rank(cur, types):
             found[norm] = ent
     return found
 
 
 async def _techniques_by_id(session: AsyncSession, tech_ids: list[str]) -> dict[str, Entity]:
-    """Id teknik (huruf besar) -> entitas attack-pattern hidup (identitas = `external_id`)."""
+    """Id teknik (huruf besar) -> entitas attack-pattern, yang hidup lebih dulu (identitas =
+    `external_id`)."""
     if not tech_ids:
         return {}
     rows = await session.execute(
         select(Entity).where(
             Entity.type == "attack-pattern",
             Entity.external_id.in_(sorted(set(tech_ids))),
-            Entity.merged_into_id.is_(None),
-            Entity.suppressed.is_(False),
         )
     )
-    return {e.external_id: e for e in rows.scalars() if e.external_id}
+    found: dict[str, Entity] = {}
+    for e in rows.scalars():
+        if e.external_id and (
+            e.external_id not in found
+            or _rank(e, ("attack-pattern",)) < _rank(found[e.external_id], ("attack-pattern",))
+        ):
+            found[e.external_id] = e
+    return found
 
 
 # ── Public service functions ──────────────────────────────────────────────────
@@ -663,9 +691,14 @@ async def build_ta_stix_bundle(session: AsyncSession, actor_name: str) -> dict[s
     # dikaitkan lewat `attributed-to`. Semua relasi "uses"/"indicates" menunjuk ke intrusion-set.
     actor_ent = await _live_entities_by_alias(session, ("intrusion-set",), [profile_row.actor_name])
     actor_entity = actor_ent.get(alias_norm(profile_row.actor_name))
-    if actor_entity is not None:
-        ta_ref = entity_to_stix(actor_entity)["id"]
-        add(entity_to_stix(actor_entity))
+    actor_obj = (
+        entity_to_stix(actor_entity)
+        if actor_entity is not None and not _is_revoked(actor_entity)
+        else None
+    )
+    if actor_obj is not None:
+        ta_ref = actor_obj["id"]
+        add(actor_obj)
         objects.append(
             _build_relationship("attributed-to", ta_ref, ta_obj["id"], ts, deterministic=True)
         )
@@ -693,10 +726,10 @@ async def build_ta_stix_bundle(session: AsyncSession, actor_name: str) -> dict[s
                 continue
             tech_id = tech_matches.get(tech_str)
             ent = tech_entities.get(tech_id.upper()) if tech_id else None
+            if ent is not None and _is_revoked(ent):
+                continue  # entitas suppressed/tombstone: lewati, jangan jatuh ke builder lama
             ap_obj = (
-                entity_to_stix(ent)
-                if ent is not None
-                else _build_attack_pattern(tech_str, tactic, ts)
+                _entity_obj(ent) if ent is not None else _build_attack_pattern(tech_str, tactic, ts)
             )
             if ap_obj["id"] not in seen_technique_ids:
                 seen_technique_ids.add(ap_obj["id"])
@@ -715,7 +748,9 @@ async def build_ta_stix_bundle(session: AsyncSession, actor_name: str) -> dict[s
     for mal_entry in known_malware:
         name = mal_entry.get("name", "") if isinstance(mal_entry, dict) else str(mal_entry)
         ent = mal_entities.get(alias_norm(name))
-        mal_obj = entity_to_stix(ent) if ent is not None else _build_malware(mal_entry, ts)
+        if ent is not None and _is_revoked(ent):
+            continue
+        mal_obj = _entity_obj(ent) if ent is not None else _build_malware(mal_entry, ts)
         if mal_obj["id"] not in seen_malware_ids:
             seen_malware_ids.add(mal_obj["id"])
             add(mal_obj)
@@ -805,7 +840,7 @@ async def build_article_stix_bundle(
     ta_refs: list[str] = []
     for m in article.mentions_of("intrusion-set"):
         ta_obj = entity_to_stix(m.entity)
-        if ta_obj["id"] not in object_refs:
+        if ta_obj is not None and ta_obj["id"] not in object_refs:
             objects.append(ta_obj)
             object_refs.append(ta_obj["id"])
             ta_refs.append(ta_obj["id"])
@@ -813,7 +848,7 @@ async def build_article_stix_bundle(
     ap_refs: list[str] = []
     for m in article.mentions_of("attack-pattern"):
         ap_obj = entity_to_stix(m.entity)
-        if ap_obj["id"] not in object_refs:
+        if ap_obj is not None and ap_obj["id"] not in object_refs:
             objects.append(ap_obj)
             object_refs.append(ap_obj["id"])
             ap_refs.append(ap_obj["id"])
