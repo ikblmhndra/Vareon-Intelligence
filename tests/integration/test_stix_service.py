@@ -53,7 +53,7 @@ async def test_build_article_stix_bundle(async_db_session: AsyncSession) -> None
     types = _types(bundle)
     assert types.count("identity") == 1
     assert "report" in types
-    assert "threat-actor" in types
+    assert "intrusion-set" in types  # aktor = baris entitas (P7c), bukan stub threat-actor
     assert "attack-pattern" in types
     assert "relationship" in types
 
@@ -173,3 +173,86 @@ async def test_build_pir_stix_bundle_only_active_ordered_by_priority(
     relationships = [o for o in bundle["objects"] if o["type"] == "relationship"]
     assert len(relationships) == 2
     assert all(r["relationship_type"] == "derived-from" for r in relationships)
+
+
+# ── id bundle = id TAXII (P7c Task 14) ───────────────────────────────────────
+
+
+async def test_ta_bundle_uses_entity_rows_for_ids(async_db_session: AsyncSession) -> None:
+    from cti_api.services.stix import entity_to_stix
+    from cti_core.entity.resolve import resolve_async
+
+    s = async_db_session
+    technique = await resolve_async(
+        s, "attack-pattern", "Phishing", source="attack", external_id="T1566"
+    )
+    malware = await resolve_async(s, "malware", "ShadowPad", source="attack")
+    await AsyncTAProfileRepo(s).save_profile(
+        "Apt41",
+        {
+            "identity": {"primary_name": "APT41"},
+            "capability_assessment": {
+                "attack_techniques": {"initial-access": ["T1566 Phishing", "T9999 Unknown Thing"]},
+                "known_malware": [{"name": "shadowpad", "type": "backdoor"}, "HomeBrew"],
+            },
+            "infrastructure": {"known_iocs": {"ips": ["1.2.3.4"]}},
+        },
+    )
+    actor = await AsyncTAProfileRepo(s).get_profile("apt41")  # memastikan entitas aktor ada
+    assert actor is not None
+    from cti_core.db.models.entity import Entity
+    from sqlalchemy import select
+
+    intrusion = (await s.execute(select(Entity).where(Entity.type == "intrusion-set"))).scalar_one()
+    for ent in (technique, malware, intrusion):
+        await s.refresh(ent)
+
+    bundle = await stix_service.build_ta_stix_bundle(s, "apt41")
+    by_id = {o["id"]: o for o in bundle["objects"]}
+    for ent in (technique, malware, intrusion):
+        assert by_id[ent.stix_id] == entity_to_stix(ent)
+
+    # teknik/malware yang tidak ada entitasnya tetap lewat builder lama
+    names = {o["name"] for o in bundle["objects"] if o["type"] in ("attack-pattern", "malware")}
+    assert {"Unknown Thing", "HomeBrew"} <= names
+    # tidak ada objek ganda dan semua ref relationship resolvable di bundle
+    assert len(by_id) == len(bundle["objects"])
+    for o in bundle["objects"]:
+        if o["type"] == "relationship":
+            assert o["source_ref"] in by_id and o["target_ref"] in by_id
+
+
+async def test_article_bundle_uses_entity_ids(async_db_session: AsyncSession) -> None:
+    from cti_api.services.stix import entity_to_stix
+    from cti_core.db.models.entity import Entity
+    from sqlalchemy import select
+
+    s = async_db_session
+    await _ensure_clients(s)
+    repo = AsyncArticleRepo(s)
+    article = await repo.upsert(
+        url="https://example.com/ent-ids",
+        title="APT41 lagi",
+        source="example",
+        posted_on=datetime.date(2026, 9, 1),
+    )
+    await repo.set_enrichment(article, threat_actors=["Apt41"], ttps=[("T1566", "Phishing")])
+    ents = (
+        (
+            await s.execute(
+                select(Entity).where(Entity.type.in_(("intrusion-set", "attack-pattern")))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for e in ents:
+        await s.refresh(e)
+    bundle = await stix_service.build_article_stix_bundle(s, article.id)
+    assert bundle is not None
+    by_id = {o["id"]: o for o in bundle["objects"]}
+    assert len(ents) == 2
+    for e in ents:
+        assert by_id[e.stix_id] == entity_to_stix(e)
+    report = next(o for o in bundle["objects"] if o["type"] == "report")
+    assert all(ref in by_id for ref in report["object_refs"])
