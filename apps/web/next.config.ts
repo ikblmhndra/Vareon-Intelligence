@@ -6,6 +6,21 @@ const nextConfig: NextConfig = {
   // jalan tanpa `pnpm install` penuh, jauh lebih kecil.
   output: "standalone",
   poweredByHeader: false,
+  // Halaman lama digantikan Entities (P7c); bookmark lama tetap sampai.
+  async redirects() {
+    return [
+      {
+        source: "/intelligence/threat-actor-room",
+        destination: "/intelligence/entities?tab=actors",
+        permanent: true,
+      },
+      {
+        source: "/intelligence/attack-db",
+        destination: "/intelligence/entities?tab=techniques",
+        permanent: true,
+      },
+    ];
+  },
   async headers() {
     // CSP penuh (script-src) dan HSTS sengaja belum dipasang: CSP butuh nonce untuk script inline
     // Next.js dan HSTS di host dengan sertifikat self-signed bisa mengunci pengguna keluar.
