@@ -10,15 +10,21 @@ dan profil TA tetap korpus bersama.
 
 False positive dinilai per BARIS client (`is_false_positive_row`): CVE baru ditolak/disembunyikan
 bila SEMUA barisnya ditandai FP oleh clientnya masing-masing. Dulu himpunan FP dari client mana
-pun dipakai, sehingga satu client yang menandai FP menyembunyikan CVE itu dari client lain."""
+pun dipakai, sehingga satu client yang menandai FP menyembunyikan CVE itu dari client lain.
+
+P7c: aktor/teknik CVE dan artikel dibaca dari mention (nama entitas, `external_id` teknik), dan
+kriteria aktor PIR dicocokkan lewat `entity_aliases` (`NameKeys`, spec 5.1): PIR "apt36" beririsan
+dengan "Transparent Tribe". Overlap yang ditampilkan memakai nama entitas."""
 
 from __future__ import annotations
 
 from typing import Any
 
+from cti_core.db.models.cve import CveTracker
 from cti_core.db.models.pir import PIRRequirement
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.cve import AsyncCveTrackerRepo
+from cti_core.db.repositories.entity import ACTOR, TECHNIQUE, name_keys_async
 from cti_core.db.repositories.pir import AsyncPIRRepo
 from cti_core.db.repositories.ta import AsyncTAProfileRepo
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,6 +39,14 @@ def _pir_out(pir: PIRRequirement, ta_overlap: set[str], ttp_overlap: set[str]) -
         "ta_overlap": sorted(ta_overlap),
         "ttp_overlap": sorted(ttp_overlap),
     }
+
+
+def _pir_actors(pir: PIRRequirement) -> list[str]:
+    return [t for t in pir.criteria.get("threat_actors", []) if t]
+
+
+def _ttp_ids(cve: CveTracker) -> set[str]:
+    return {m.entity.external_id for m in cve.mentions_of(TECHNIQUE) if m.entity.external_id}
 
 
 def _profile_summary(actor_name: str, profile: dict[str, Any]) -> dict[str, Any]:
@@ -59,23 +73,25 @@ async def get_cve_crossrefs(session: AsyncSession, cve_id: str, client_id: str) 
             return {"error": "CVE not found"}
         return {"error": "CVE is a false positive"}
 
-    cve_tas = {t.threat_actor for t in cve.threat_actors}
-    cve_ttps = {t.ttp_id for t in cve.ttps}
+    cve_tas = set(cve.entity_names(ACTOR))
+    cve_ttps = _ttp_ids(cve)
 
     articles, _ = await AsyncArticleRepo(session).list_filtered(
         title_keywords=[cve_id], page=1, page_size=20
     )
     article_tas: set[str] = set(cve_tas)
     for a in articles:
-        for t in a.threat_actors:
-            article_tas.add(t.threat_actor)
+        article_tas.update(a.entity_names(ACTOR))
 
     active_pirs = await AsyncPIRRepo(session).list_active_by_client(client_id)
+    keys = await name_keys_async(
+        session, ACTOR, [*article_tas, *(t for p in active_pirs for t in _pir_actors(p))]
+    )
     matched_pirs = []
     for pir in active_pirs:
-        pir_tas = set(pir.criteria.get("threat_actors", []))
+        pir_keys = {keys(t) for t in _pir_actors(pir)}
         pir_ttps = set(pir.criteria.get("ttps", []))
-        ta_overlap = pir_tas & article_tas
+        ta_overlap = {t for t in article_tas if keys(t) in pir_keys}
         ttp_overlap = pir_ttps & cve_ttps
         if ta_overlap or ttp_overlap:
             matched_pirs.append(_pir_out(pir, ta_overlap, ttp_overlap))
@@ -101,7 +117,7 @@ async def get_cve_crossrefs(session: AsyncSession, cve_id: str, client_id: str) 
                 "url": a.url,
                 "posted_on": a.posted_on.isoformat() if a.posted_on else None,
                 "source": a.source,
-                "threat_actors": [t.threat_actor for t in a.threat_actors],
+                "threat_actors": a.entity_names(ACTOR),
             }
             for a in articles
         ],
@@ -125,10 +141,13 @@ async def get_pir_crossrefs(session: AsyncSession, pir_id: int, client_id: str) 
     )
 
     matched_cves = []
-    pir_tas_lower = {t.lower() for t in pir_tas}
+    keys = await name_keys_async(
+        session, ACTOR, [*pir_tas, *(t for c in matched_cves_rows for t in c.entity_names(ACTOR))]
+    )
+    pir_keys = {keys(t) for t in pir_tas}
     for c in matched_cves_rows:
-        c_ta_set = {t.threat_actor for t in c.threat_actors}
-        c_ttp_set = {t.ttp_id for t in c.ttps}
+        c_ta_set = set(c.entity_names(ACTOR))
+        c_ttp_set = _ttp_ids(c)
         matched_cves.append(
             {
                 "cve_id": c.cve_id,
@@ -137,7 +156,7 @@ async def get_pir_crossrefs(session: AsyncSession, pir_id: int, client_id: str) 
                 "tech": c.tech or "",
                 "cisa_kev": c.cisa_kev,
                 "poc_available": c.poc_available,
-                "ta_overlap": sorted({t for t in c_ta_set if t.lower() in pir_tas_lower}),
+                "ta_overlap": sorted({t for t in c_ta_set if keys(t) in pir_keys}),
                 "ttp_overlap": sorted(pir_ttps & c_ttp_set),
             }
         )
@@ -173,7 +192,10 @@ async def get_ta_crossrefs(
         actor_name, client_id=client_id
     )
     active_pirs = await AsyncPIRRepo(session).list_active_by_client(client_id)
-    pirs = [p for p in active_pirs if actor_name in p.criteria.get("threat_actors", [])]
+    keys = await name_keys_async(
+        session, ACTOR, [actor_name, *(t for p in active_pirs for t in _pir_actors(p))]
+    )
+    pirs = [p for p in active_pirs if keys(actor_name) in {keys(t) for t in _pir_actors(p)}]
     articles, _ = await AsyncArticleRepo(session).list_filtered(
         threat_actors=[actor_name], page=1, page_size=20
     )

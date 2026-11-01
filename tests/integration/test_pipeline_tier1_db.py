@@ -16,6 +16,8 @@ from cti_enrich.stages.score import ScoreResult
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from tests.integration.entity_support import seed_entity
+
 URL = "https://example.com/tier1-pipeline"
 
 BODY = (
@@ -107,6 +109,8 @@ def _seed(session: Session) -> None:
             domains=["enterprise-attack"],
         )
     )
+    # P7c: kamus Tier 1 dibangun dari entity_aliases (sync ATT&CK mengisinya, Task 9)
+    seed_entity(session, "tool", "Cobalt Strike", external_id="S0154")
     session.flush()
 
 
@@ -125,16 +129,18 @@ def test_pipeline_writes_sources(session: Session) -> None:
     assert outcome.accepted and outcome.article_id is not None
     article = session.scalar(select(Article).where(Article.url_hash == url_hash(URL)))
     assert article is not None
-    ttps = {t.ttp_id: t for t in article.ttps}
-    assert {tid: t.source for tid, t in ttps.items()} == {
+    ttps = {m.entity.external_id: m for m in article.mentions_of("attack-pattern")}
+    assert {tid: t.method for tid, t in ttps.items()} == {
         "T1059.001": "explicit",
         "T1505.003": "keyword",
         "T1190": "llm",
     }
     assert ttps["T1190"].evidence == "exploited a public-facing VPN appliance"
     assert "T1059.001" in (ttps["T1059.001"].evidence or "")
-    assert [(m.name, m.kind) for m in article.malware] == [("Cobalt Strike", "tool")]
-    assert [(i.industry, i.source) for i in article.industries] == [
+    assert [(m.entity.name, m.entity.type) for m in article.mentions_of("malware", "tool")] == [
+        ("Cobalt Strike", "tool")
+    ]
+    assert [(m.matched_alias, m.method) for m in article.mentions_of("identity")] == [
         ("Finance & Insurance", "keyword")
     ]
     assert set(article.raw_enrichment) >= {"classify", "tier1"}

@@ -31,7 +31,7 @@ class RelevanceModel(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     status: Mapped[str] = mapped_column(String(10), nullable=False)
     """`active` / `retired` / `rejected`; divalidasi di repo, bukan CHECK (seperti
-    `ArticleCountry.role`)."""
+    `CountryRole`)."""
     artifact: Mapped[bytes | None] = mapped_column(LargeBinary)
     """Pipeline sklearn hasil `joblib` tanpa embedder; NULL untuk run `rejected`."""
     feature_version: Mapped[str] = mapped_column(String(200), nullable=False)

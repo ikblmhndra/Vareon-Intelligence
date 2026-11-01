@@ -25,8 +25,8 @@
         'name': 'APT41 breaches government network',
         'object_refs': list([
           'identity--b67d2b96-5e1e-4b78-9e5f-8f3a1c2d4e7a',
-          'threat-actor--bc598bc4-4bf0-5aa5-b155-8dcbbe03e918',
-          'attack-pattern--66c00a85-4d58-5f9c-9772-6e90212a2914',
+          'intrusion-set--4c8739f7-95ea-5309-adf4-7f7701cde6f5',
+          'attack-pattern--2b72d7e4-dee6-5664-ae5f-713ba7d2bdb3',
         ]),
         'published': str,
         'report_types': list([
@@ -40,34 +40,45 @@
         'id': str,
         'modified': str,
         'name': 'Apt41',
+        'object_marking_refs': list([
+          'marking-definition--94868c89-83c2-464b-929b-a1a8aa3c8487',
+        ]),
         'spec_version': '2.1',
-        'type': 'threat-actor',
+        'type': 'intrusion-set',
       }),
       dict({
         'created': str,
-        'external_references': list([
-          dict({
-            'external_id': 'T1566',
-            'source_name': 'mitre-attack',
-            'url': 'https://attack.mitre.org/techniques/T1566/',
-          }),
-        ]),
         'id': str,
         'modified': str,
         'name': 'T1566 Phishing',
+        'object_marking_refs': list([
+          'marking-definition--94868c89-83c2-464b-929b-a1a8aa3c8487',
+        ]),
         'spec_version': '2.1',
         'type': 'attack-pattern',
-        'x_tactic': 'unknown',
       }),
       dict({
         'created': str,
         'id': str,
         'modified': str,
         'relationship_type': 'uses',
-        'source_ref': 'threat-actor--bc598bc4-4bf0-5aa5-b155-8dcbbe03e918',
+        'source_ref': 'intrusion-set--4c8739f7-95ea-5309-adf4-7f7701cde6f5',
         'spec_version': '2.1',
-        'target_ref': 'attack-pattern--66c00a85-4d58-5f9c-9772-6e90212a2914',
+        'target_ref': 'attack-pattern--2b72d7e4-dee6-5664-ae5f-713ba7d2bdb3',
         'type': 'relationship',
+      }),
+      dict({
+        'created': str,
+        'extensions': dict({
+          'extension-definition--60a3c5c5-0d10-413e-aab3-9e08dde9e88d': dict({
+            'extension_type': 'property-extension',
+            'tlp_2_0': 'clear',
+          }),
+        }),
+        'id': str,
+        'name': 'TLP:CLEAR',
+        'spec_version': '2.1',
+        'type': 'marking-definition',
       }),
     ]),
     'spec_version': '2.1',

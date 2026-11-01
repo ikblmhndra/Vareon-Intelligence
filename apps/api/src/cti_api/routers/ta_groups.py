@@ -14,10 +14,9 @@ from __future__ import annotations
 
 import re
 
-from cti_core.db.models.ta import TAWhitelistEntry
 from cti_core.db.models.threat_reference import ThreatActorGroup
 from cti_core.db.repositories.auth import AsyncAuditLogRepo
-from cti_core.db.repositories.ta import AsyncTAProfileRepo, AsyncTARepo
+from cti_core.db.repositories.ta import AsyncTAProfileRepo, AsyncTARepo, WhitelistRow
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -56,7 +55,7 @@ def _group_out(g: ThreatActorGroup) -> TAGroupOut:
     )
 
 
-def _whitelist_out(w: TAWhitelistEntry) -> TAWhitelistOut:
+def _whitelist_out(w: WhitelistRow) -> TAWhitelistOut:
     return TAWhitelistOut(id=w.id, name=w.name, added_date=w.added_date.date().isoformat())
 
 

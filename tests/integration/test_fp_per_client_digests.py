@@ -17,7 +17,7 @@ import pytest
 from cti_api.services import crossref as crossref_service
 from cti_api.services import exec_dashboard as exec_dashboard_service
 from cti_api.services import recap as recap_service
-from cti_core.db.models.cve import CveThreatActor, CveTracker
+from cti_core.db.models.cve import CveTracker
 from cti_core.db.repositories.cve import AsyncCveFalsePositiveRepo
 from cti_core.db.repositories.pir import AsyncPIRRepo
 from sqlalchemy import select, update
@@ -31,6 +31,7 @@ from tests.integration.cve_fp_scenario import (
     TRUE_POSITIVES,
     seed_per_client_false_positives,
 )
+from tests.integration.entity_support import actor, add_subject_mentions
 
 pytestmark = pytest.mark.asyncio
 
@@ -157,10 +158,10 @@ async def test_crossref_actor_matches_only_rows_not_marked_by_their_own_client(
 ) -> None:
     await seed_per_client_false_positives(async_db_session)
     row_ids = (await async_db_session.execute(select(CveTracker.id))).scalars().all()
-    async_db_session.add_all(
-        CveThreatActor(cve_tracker_id=i, threat_actor="Apt41") for i in row_ids
-    )
-    await async_db_session.flush()
+    for i in row_ids:
+        await async_db_session.run_sync(
+            lambda s, rid=i: add_subject_mentions(s, {"cve_tracker_id": rid}, [actor("Apt41")])
+        )
 
     acme = await crossref_service.get_ta_crossrefs(async_db_session, "Apt41", "acme")
     default = await crossref_service.get_ta_crossrefs(async_db_session, "Apt41", "default")

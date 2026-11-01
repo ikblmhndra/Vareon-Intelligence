@@ -127,8 +127,9 @@ async def test_get_watchlist_names_unscoped_ignores_client(async_db_session: Asy
     await repo.add_to_watchlist("Apt41", "default")
     await repo.add_to_watchlist("OtherGroup", "acme")
 
+    # P7c: nama + alias entitas yang di-watch, huruf kecil (pencocokan `ioc_ta_links`)
     names = await repo.get_watchlist_names_unscoped()
-    assert sorted(names) == ["Apt41", "OtherGroup"]
+    assert sorted(names) == ["apt41", "othergroup"]
 
 
 async def test_save_and_get_profile(async_db_session: AsyncSession) -> None:

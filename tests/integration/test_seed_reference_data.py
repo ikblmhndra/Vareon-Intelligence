@@ -14,9 +14,9 @@ import pathlib
 
 import pytest
 from cti_core.db.models.auth import Client, ClientCountry, Role
+from cti_core.db.models.entity import Entity, EntityProfile, EntityWatch
 from cti_core.db.models.ioc_reference import IocAllowlistEntry
 from cti_core.db.models.pir import PIRNote, PIRRequirement
-from cti_core.db.models.ta import TAProfile, TAWatchlistEntry, TAWhitelistEntry
 from cti_core.db.models.techstack import TechStackEntry
 from cti_core.db.models.threat_reference import MonitoredPerson, ThreatActorGroup
 from cti_core.db.models.tweet import MonitoredAccount
@@ -218,13 +218,14 @@ def test_seed_maps_every_table(db_session: Session) -> None:
     ts = {(e.name, e.client_id) for e in db_session.scalars(select(TechStackEntry))}
     assert ts == {("anydesk", "default"), ("splunk", "privy")}
 
-    profile = db_session.scalars(select(TAProfile)).one()
-    assert profile.actor_name == "apt36"
+    profile = db_session.scalars(select(EntityProfile)).one()
+    assert db_session.get(Entity, profile.entity_id).name == "apt36"
     assert set(profile.profile) == {"identity", "motivation"}  # meta app lama gak ikut
     assert profile.generated_at == datetime.datetime(2026, 5, 4, 0, 53, 36, tzinfo=datetime.UTC)
 
-    assert db_session.scalars(select(TAWhitelistEntry.name)).one() == "testactor"  # lowercase
-    assert db_session.scalars(select(TAWatchlistEntry.client_id)).one() == "default"
+    suppressed = db_session.scalars(select(Entity.name).where(Entity.suppressed)).one()
+    assert suppressed.lower() == "testactor"  # whitelist lama = entitas suppressed
+    assert db_session.scalars(select(EntityWatch.client_id)).one() == "default"
     assert db_session.scalars(select(MonitoredAccount.created_at)).one() == datetime.datetime(
         2026, 5, 12, 14, 16, 35, tzinfo=datetime.UTC
     )

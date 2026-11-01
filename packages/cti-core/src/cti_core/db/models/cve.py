@@ -10,8 +10,8 @@ Bagian 3) -- field ini ADA di dokumen Mongo `cve_tracker` lama, tapi
 yang BELUM diport -- salah satu dari 5 loop yang dipindah ke Celery beat
 (Fase 7.8). Kolomnya ditambah pas porting `crossref`, buat sekarang
 selalu kosong, cold-start biasa. `threat_actors`/`ttps` dinormalisasi
-jadi tabel anak (`CveThreatActor`/`CveTTP`), sama pola kayak
-`ArticleThreatActor`/`ArticleTTP`.
+jadi baris `entity_mentions` (P7c, relasi `CveTracker.mentions`), sama pola kayak
+`Article.mentions`.
 
 `cisa_kev`/`active_exploitation` (bool) + `epss_score`/`epss_percentile`
 dst (Fase 7.3, router `cve`, Grup B survei 7.4 2026-09-19) -- SEKARANG
@@ -55,6 +55,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from cti_core.db.base import Base, TimestampMixin
+from cti_core.db.models.entity import EntityMention, live_entity_names, live_mentions
 
 
 class CveTracker(TimestampMixin, Base):
@@ -124,15 +125,22 @@ class CveTracker(TimestampMixin, Base):
     pocs: Mapped[list[CvePoc]] = relationship(
         back_populates="cve", cascade="all, delete-orphan", lazy="selectin"
     )
-    threat_actors: Mapped[list[CveThreatActor]] = relationship(
-        back_populates="cve", cascade="all, delete-orphan", lazy="selectin"
+    mentions: Mapped[list[EntityMention]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin", order_by="EntityMention.id"
     )
-    ttps: Mapped[list[CveTTP]] = relationship(
-        back_populates="cve", cascade="all, delete-orphan", lazy="selectin"
-    )
+    """Sebutan entitas CVE ini (P7c): aktor (`intrusion-set`) dan teknik (`attack-pattern`),
+    pengganti relasi `threat_actors`/`ttps` lama. Baca lewat `mentions_of`/`entity_names`."""
     newsletter_mentions: Mapped[list[CveNewsletterMention]] = relationship(
         back_populates="cve", cascade="all, delete-orphan", lazy="selectin"
     )
+
+    def mentions_of(self, *types: str) -> list[EntityMention]:
+        """Mention entitas hidup bertipe `types` (kosong = semua), urut id mention."""
+        return live_mentions(self.mentions, types)
+
+    def entity_names(self, *types: str) -> list[str]:
+        """Nama entitas kanonik dari `mentions_of`, tanpa duplikat."""
+        return live_entity_names(self.mentions, types)
 
 
 class CveReference(Base):
@@ -195,31 +203,6 @@ class CveNewsletterMention(Base):
     )
 
     cve: Mapped[CveTracker] = relationship(back_populates="newsletter_mentions")
-
-
-class CveThreatActor(Base):
-    __tablename__ = "cve_threat_actors"
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    cve_tracker_id: Mapped[int] = mapped_column(
-        ForeignKey("cve_tracker.id", ondelete="CASCADE"), nullable=False
-    )
-    threat_actor: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
-
-    cve: Mapped[CveTracker] = relationship(back_populates="threat_actors")
-
-
-class CveTTP(Base):
-    __tablename__ = "cve_ttps"
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    cve_tracker_id: Mapped[int] = mapped_column(
-        ForeignKey("cve_tracker.id", ondelete="CASCADE"), nullable=False
-    )
-    ttp_id: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
-    ttp_name: Mapped[str] = mapped_column(String(200), nullable=False, default="")
-
-    cve: Mapped[CveTracker] = relationship(back_populates="ttps")
 
 
 class CveFalsePositive(Base):

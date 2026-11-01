@@ -58,7 +58,13 @@ async def test_create_never_expires(
 
 @pytest.mark.parametrize(
     "extra",
-    [{"max_tlp": "white"}, {"expires_in_days": 0}, {"name": "  "}],
+    [
+        {"max_tlp": "white"},
+        {"expires_in_days": 0},
+        {"name": "  "},
+        {"scopes": ["intel:write"]},
+        {"scopes": []},
+    ],
 )
 async def test_create_validation_422(
     api_client: AsyncClient, auth_header: Callable[..., dict[str, str]], extra: dict[str, object]
@@ -110,3 +116,21 @@ async def test_analyst_403(
     h = auth_header(username="alice", role="analyst")
     assert (await api_client.get(URL, headers=h)).status_code == 403
     assert (await _create(api_client, h)).status_code == 403
+
+
+@pytest.mark.parametrize(
+    ("scopes", "expected"),
+    [
+        (["intel:read"], ["intel:read"]),
+        (["intel:read", "indicators:read", "intel:read"], ["indicators:read", "intel:read"]),
+    ],
+)
+async def test_create_with_scopes(
+    api_client: AsyncClient,
+    auth_header: Callable[..., dict[str, str]],
+    scopes: list[str],
+    expected: list[str],
+) -> None:
+    r = await _create(api_client, auth_header(), scopes=scopes)
+    assert r.status_code == 201
+    assert r.json()["scopes"] == expected

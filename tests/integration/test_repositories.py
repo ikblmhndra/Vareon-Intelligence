@@ -153,7 +153,7 @@ def test_set_enrichment_dedups_ttps_by_id_even_when_names_differ(db_session: Ses
     )
     db_session.flush()  # kalau dedup salah, IntegrityError meledak di sini
 
-    kept = {t.ttp_id: t.ttp_name for t in article.ttps}
+    kept = {m.entity.external_id: m.entity.name for m in article.mentions_of("attack-pattern")}
     assert kept == {"T1176": "Browser Extensions", "T1059.001": "PowerShell"}  # nama pertama menang
 
 
@@ -166,7 +166,9 @@ async def test_async_set_enrichment_dedups_ttps_by_id_even_when_names_differ(
     await repo.set_enrichment(article, ttps=[("T1176", "A"), ("T1176", "B")])
     await async_db_session.flush()
 
-    assert [(t.ttp_id, t.ttp_name) for t in article.ttps] == [("T1176", "A")]
+    assert [
+        (m.entity.external_id, m.entity.name) for m in article.mentions_of("attack-pattern")
+    ] == [("T1176", "A")]
 
 
 # --- set_enrichment idempoten (Fase 10.E) ------------------------------------------
@@ -184,11 +186,17 @@ ENRICHMENT = {
 
 
 def _snapshot(article) -> dict:
+    """Bentuk v1 dibaca dari mention entitas (P7c): sektor = nama tampilan sektor, nama teknik =
+    nama entitas teknik (satu per id, Ruling 13)."""
     return {
-        "countries": sorted((c.country_code, c.role) for c in article.countries),
-        "industries": sorted(i.industry for i in article.industries),
-        "threat_actors": sorted(t.threat_actor for t in article.threat_actors),
-        "ttps": sorted((t.ttp_id, t.ttp_name) for t in article.ttps),
+        "countries": sorted(
+            (m.entity.external_id, m.role) for m in article.mentions_of("location")
+        ),
+        "industries": sorted(article.entity_names("identity")),
+        "threat_actors": sorted(article.entity_names("intrusion-set")),
+        "ttps": sorted(
+            (m.entity.external_id, m.entity.name) for m in article.mentions_of("attack-pattern")
+        ),
     }
 
 
@@ -198,15 +206,12 @@ def test_set_enrichment_twice_with_the_same_values_is_a_noop_not_a_unique_violat
     repo = ArticleRepo(db_session)
     article = repo.upsert(url="https://example.com/dup", title="t", source="s")
     repo.set_enrichment(article, **ENRICHMENT)
-    ids_before = sorted(i.id for i in article.industries) + sorted(c.id for c in article.countries)
+    ids_before = sorted(m.id for m in article.mentions)
 
     repo.set_enrichment(article, **ENRICHMENT)  # dulu: UniqueViolation uq_article_industry
 
-    assert (
-        sorted(i.id for i in article.industries) + sorted(c.id for c in article.countries)
-        == ids_before
-    )
-    assert _snapshot(article)["industries"] == ["General"]
+    assert sorted(m.id for m in article.mentions) == ids_before
+    assert _snapshot(article)["industries"] == []  # P7c: "General" = tanpa mention sektor
 
 
 def test_set_enrichment_applies_added_removed_and_renamed_children(db_session: Session) -> None:
@@ -224,11 +229,13 @@ def test_set_enrichment_applies_added_removed_and_renamed_children(db_session: S
     db_session.flush()
     db_session.expire_all()
 
+    # P7c (Ruling 13): "General" tidak menjadi mention sektor; label lama -> nama tampilan sektor
+    # (plan Decision 3); nama teknik = nama entitas T1059 yang sudah ada (bukan nama kiriman).
     assert _snapshot(article) == {
         "countries": [("ID", "mentioned"), ("ID", "victim")],
-        "industries": ["Finance & Insurance", "General"],
+        "industries": ["Financial Services"],
         "threat_actors": ["Lazarus"],
-        "ttps": [("T1059", "Renamed Technique"), ("T1566", "Phishing")],
+        "ttps": [("T1059", "Command and Scripting Interpreter"), ("T1566", "Phishing")],
     }
 
 
@@ -255,4 +262,4 @@ async def test_async_set_enrichment_twice_with_the_same_values_is_a_noop(
 
     await repo.set_enrichment(article, **ENRICHMENT)
 
-    assert _snapshot(article)["industries"] == ["General"]
+    assert _snapshot(article)["industries"] == []  # P7c: "General" = tanpa mention sektor

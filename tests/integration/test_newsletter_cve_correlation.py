@@ -7,10 +7,10 @@ from __future__ import annotations
 
 import pytest
 from cti_api.services import newsletter as newsletter_service
-from cti_core.db.models.article_cve import ArticleCve
 from cti_core.db.models.cve import CveNewsletterMention, CveTracker
 from cti_core.db.models.indicator import Indicator
 from cti_core.db.repositories.cve import AsyncCveFalsePositiveRepo
+from cti_core.db.repositories.entity import CVE, mention_rows
 from cti_core.db.repositories.newsletter import AsyncNewsletterRepo
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -95,7 +95,8 @@ async def test_draft_step_writes_the_cached_iocs_and_cve_mentions_without_any_fe
         (i.type, i.value): i for i in (await async_db_session.execute(select(Indicator))).scalars()
     }
     assert set(iocs) == {("ip", IOC_IP)}  # CVE tidak lagi jadi IOC
-    cves = (await async_db_session.execute(select(ArticleCve.cve_id))).scalars().all()
+    m = mention_rows(CVE)
+    cves = (await async_db_session.execute(select(m.c.external_id))).scalars().all()
     assert sorted(cves) == sorted([FP_IN_DEFAULT_ONLY, FP_IN_BOTH])
     assert {i.seen_count for i in iocs.values()} == {1}  # sekali, walau artikelnya muncul dua kali
 

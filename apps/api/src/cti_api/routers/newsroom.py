@@ -5,12 +5,8 @@ from __future__ import annotations
 
 import datetime
 
-from cti_core.db.models.article import (
-    Article,
-    ArticleCountry,
-    ArticleThreatActor,
-    ArticleTTP,
-)
+from cti_core.db.models.article import Article
+from cti_core.db.repositories.entity import ACTOR, COUNTRY, TECHNIQUE, mention_rows
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -41,19 +37,17 @@ async def _topic_details(
 ) -> tuple[list[str], TopicArticle | None]:
     """Negara teratas + artikel terbaru untuk satu topik di dalam window. Filter yang sama
     dengan perhitungan tren, supaya angka kartu dan artikel yang ditautkan konsisten."""
+    # Nama/ID topik berasal dari `trending` (nama entitas / external_id), jadi cocok persis.
     if item["kind"] == "ttp":
-        ids = select(ArticleTTP.article_id).where(ArticleTTP.ttp_id == item["ttp_id"])
+        t = mention_rows(TECHNIQUE)
+        ids = select(t.c.article_id).where(t.c.external_id == item["ttp_id"])
     else:
-        ids = select(ArticleThreatActor.article_id).where(
-            ArticleThreatActor.threat_actor == item["name"]
-        )
+        a = mention_rows(ACTOR)
+        ids = select(a.c.article_id).where(a.c.name == item["name"])
     scope = [Article.id.in_(ids), Article.posted_on >= start]
     if countries:
-        scope.append(
-            Article.id.in_(
-                select(ArticleCountry.article_id).where(ArticleCountry.country_code.in_(countries))
-            )
-        )
+        cf = mention_rows(COUNTRY)
+        scope.append(Article.id.in_(select(cf.c.article_id).where(cf.c.external_id.in_(countries))))
     if news_types:
         scope.append(Article.news_type.in_(news_types))
     if search:
@@ -61,12 +55,13 @@ async def _topic_details(
     if confirmed_only:
         scope.append(Article.confirmed_incident.is_(True))
 
+    c = mention_rows(COUNTRY)
     top = await session.execute(
-        select(ArticleCountry.country_code)
-        .join(Article, Article.id == ArticleCountry.article_id)
+        select(c.c.external_id)
+        .join(Article, Article.id == c.c.article_id)
         .where(*scope)
-        .group_by(ArticleCountry.country_code)
-        .order_by(func.count(func.distinct(Article.id)).desc(), ArticleCountry.country_code)
+        .group_by(c.c.external_id)
+        .order_by(func.count(func.distinct(Article.id)).desc(), c.c.external_id)
         .limit(_TOP_COUNTRIES)
     )
     latest = (

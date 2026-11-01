@@ -55,7 +55,7 @@ def seeded(session: Session) -> Session:
 
 def _actors(session: Session, art: Article) -> list[str]:
     session.refresh(art)
-    return sorted(a.threat_actor for a in art.threat_actors)
+    return sorted(art.entity_names("intrusion-set"))
 
 
 def test_dry_run_writes_nothing(seeded: Session) -> None:
@@ -78,7 +78,9 @@ def test_adds_only_missing_rows(seeded: Session) -> None:
 
     assert stats.actor_rows_added == 1
     assert _actors(seeded, art) == ["Apt29", "Kimsuky"]
-    assert [i.industry for i in art.industries] == ["Finance"]  # industri LLM tidak ditimpa
+    assert [m.matched_alias for m in art.mentions_of("identity")] == [
+        "Finance"
+    ]  # industri LLM tidak ditimpa
     # idempoten: jalan kedua tidak menambah apa pun
     again = backfill_tier1(seeded, since=None, limit=None, sleep=0, dry_run=False, fetch=_fetch)
     assert again.actor_rows_added == 0

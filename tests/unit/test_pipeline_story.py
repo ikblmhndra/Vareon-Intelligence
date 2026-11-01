@@ -226,6 +226,9 @@ def real_persist(monkeypatch: pytest.MonkeyPatch, rec: dict[str, Any]) -> list[d
         def set_enrichment(self, *a: Any, **k: Any) -> None:
             pass
 
+        def touch_entity_seen(self, *a: Any) -> None:
+            pass
+
     class FakeStoryRepo:
         def __init__(self, session: Any) -> None:
             pass

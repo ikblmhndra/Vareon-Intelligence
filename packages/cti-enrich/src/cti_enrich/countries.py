@@ -1,5 +1,5 @@
 """Nama negara (Inggris, hasil GPT/regex) -> kode ISO 3166-1 alpha-2 --
-`ArticleCountry.country_code` (Fase 2) minta kode, bukan nama, tapi kode
+mention negara (`entities.external_id`) minta kode, bukan nama, tapi kode
 lama (Mongo `apac-country`/`global-country`) cuma nyimpen nama. Lihat
 catatan "Perubahan yang disengaja" di `stages/score.py`.
 

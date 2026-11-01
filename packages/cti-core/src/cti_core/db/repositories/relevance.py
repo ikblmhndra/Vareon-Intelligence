@@ -81,7 +81,7 @@ class GateStats:
 
 
 def check_status(status: str) -> str:
-    """`ValueError` kalau bukan status yang dikenal (konvensi `ArticleCountry.role`)."""
+    """`ValueError` kalau bukan status yang dikenal (konvensi `role` mention negara)."""
     if status not in _STATUSES:
         raise ValueError(f"status model relevansi tidak dikenal: {status!r}")
     return status

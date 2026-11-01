@@ -51,7 +51,7 @@ class ScraperRun(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     """ok | empty | partial | fetch_error | parse_error | rate_limited |
     timeout | backpressure | disabled. Dicek di level aplikasi, bukan
-    Postgres CHECK constraint -- lihat catatan ArticleCountry.role."""
+    Postgres CHECK constraint -- lihat catatan `CountryRole` (models/article.py)."""
 
     started_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

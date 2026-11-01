@@ -8,13 +8,15 @@ import datetime
 
 import pytest
 from cti_api.services import crossref as crossref_service
-from cti_core.db.models.cve import CveThreatActor, CveTracker, CveTTP
+from cti_core.db.models.cve import CveTracker
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.auth import AsyncClientRepo
 from cti_core.db.repositories.cve import AsyncCveFalsePositiveRepo
 from cti_core.db.repositories.pir import AsyncPIRRepo
 from cti_core.db.repositories.ta import AsyncTAProfileRepo
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from tests.integration.entity_support import actor, add_subject_mentions, technique
 
 pytestmark = pytest.mark.asyncio
 
@@ -35,9 +37,10 @@ async def _seed(session: AsyncSession) -> dict[str, object]:
         cve_severity="CRITICAL",
         cisa_kev=True,
     )
-    cve.threat_actors = [CveThreatActor(threat_actor="Apt41")]
-    cve.ttps = [CveTTP(ttp_id="T1059", ttp_name="Command Scripting")]
     session.add(cve)
+    await session.flush()
+    hits = [actor("Apt41"), technique("T1059", "Command Scripting")]
+    await session.run_sync(lambda s: add_subject_mentions(s, {"cve_tracker_id": cve.id}, hits))
 
     fp_cve = CveTracker(cve_id="CVE-2020-0001", client_id="default", tech="OldStuff")
     session.add(fp_cve)
@@ -154,8 +157,11 @@ async def test_pir_and_actor_crossrefs_list_a_cve_tracked_by_two_clients_once(
     await clients.create(client_id="acme", name="Acme", countries=[])
     for client_id, score in (("default", 7.0), ("acme", 9.8)):
         row = CveTracker(cve_id="CVE-2026-7777", client_id=client_id, tech="nginx", cve_score=score)
-        row.threat_actors = [CveThreatActor(threat_actor="Apt41")]
         async_db_session.add(row)
+        await async_db_session.flush()
+        await async_db_session.run_sync(
+            lambda s, rid=row.id: add_subject_mentions(s, {"cve_tracker_id": rid}, [actor("Apt41")])
+        )
     async_db_session.add(
         CveTracker(cve_id="CVE-2026-7778", client_id="default", tech="nginx", cve_score=5.0)
     )

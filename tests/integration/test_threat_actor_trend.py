@@ -12,7 +12,8 @@ from collections.abc import Iterator
 
 import pytest
 from cti_core.db.engine import sync_session
-from cti_core.db.models.article import Article, ArticleThreatActor
+from cti_core.db.models.article import Article
+from cti_core.db.repositories.article import ArticleRepo, MentionInput
 from cti_core.urlkit import url_hash
 from sqlalchemy import delete
 
@@ -31,14 +32,15 @@ def add_article(actors: list[str], first_seen: datetime.datetime) -> None:
     n = next(_counter)
     url = f"{PREFIX}a{n}"
     with sync_session() as s:
-        s.add(
-            Article(
-                url=url, url_hash=url_hash(url), title=f"Judul {n}", source="T",
-                first_seen_at=first_seen, last_seen_at=first_seen, seen_count=1,
-                news_type="global",
-                threat_actors=[ArticleThreatActor(threat_actor=a) for a in actors],
-            )
+        article = Article(
+            url=url, url_hash=url_hash(url), title=f"Judul {n}", source="T",
+            first_seen_at=first_seen, last_seen_at=first_seen, seen_count=1,
+            news_type="global",
         )  # fmt: skip
+        s.add(article)
+        ArticleRepo(s).add_mentions(
+            article, [MentionInput("intrusion-set", a, "dictionary", a) for a in actors]
+        )
 
 
 def this_week(*actors: str) -> None:

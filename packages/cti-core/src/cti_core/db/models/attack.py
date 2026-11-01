@@ -25,7 +25,7 @@ aja berubah.
 Field list-of-string lain (`tactics`/`platforms`/`data_sources`/
 `aliases`) juga ARRAY, bukan tabel anak -- gak ada use case "semua
 technique yang punya platform X" yang butuh index terpisah di sini
-(beda dari `Article.threat_actors` yang emang query-heavy), pola sama
+(beda dari mention aktor artikel yang emang query-heavy), pola sama
 kayak `Tweet.industries_impacted` dkk."""
 
 from __future__ import annotations

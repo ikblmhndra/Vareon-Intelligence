@@ -5,25 +5,26 @@
   Tanpa cache -- dipanggil sekali per artikel di enrichment (sesudah
   beberapa panggilan LLM yang makan detik), ~1-2k baris kecil, murah.
 - `canonical_ttp_name()`: ekspresi nama kanonik buat agregasi GROUP BY
-  `ArticleTTP.ttp_id` (heatmap/dashboard/PIR). Nama dari katalog ATT&CK,
-  fallback `min(ttp_name)` kalau ID gak ada di katalog (belum sync).
-- `remap_article_ttps()`: backfill baris `article_ttps` lama ke aturan
+  id teknik (heatmap/dashboard/PIR). Nama dari katalog ATT&CK,
+  fallback nama entitas teknik kalau ID gak ada di katalog (belum sync).
+- `remap_article_ttps()`: backfill mention teknik lama (dulu `article_ttps`) ke aturan
   normalisasi -- dipanggil `tools/ops/remap_article_ttps.py`.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, NamedTuple
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, aliased
 
 from cti_core.attack_ttp import NormalizedTTP, TechniqueCatalog, normalize_ttps
-from cti_core.db.models.article import Article, ArticleTTP
+from cti_core.db.models.article import Article
 from cti_core.db.models.attack import AttackTactic, AttackTechnique, AttackTechniqueAlias
 from cti_core.db.repositories.article import apply_ttps
+from cti_core.db.repositories.entity import TECHNIQUE, mention_rows
 
 
 def _catalog_statements() -> tuple[Any, Any, Any]:
@@ -62,17 +63,18 @@ async def load_catalog_async(session: AsyncSession) -> TechniqueCatalog:
     )
 
 
-def canonical_ttp_name() -> Any:
-    """Kolom nama buat query yang GROUP BY `ArticleTTP.ttp_id` -- JANGAN
-    group by `ttp_name` juga (itu akar kolom dobel di heatmap: satu ID,
-    beberapa nama karangan LLM = beberapa grup)."""
+def canonical_ttp_name(ttp_id: Any, ttp_name: Any) -> Any:
+    """Kolom nama buat query yang GROUP BY id teknik (`ttp_id`, kolom `external_id` dari
+    `mention_rows`) -- JANGAN group by nama juga (itu akar kolom dobel di heatmap: satu ID,
+    beberapa nama karangan LLM = beberapa grup). Nama katalog ATT&CK menang; tanpa katalog
+    (belum sync) nama entitas teknik (`ttp_name`, P7c: satu entitas per id)."""
     catalog_name = (
         select(func.min(AttackTechnique.name))
-        .where(AttackTechnique.attack_id == ArticleTTP.ttp_id)
-        .correlate(ArticleTTP)
+        .where(AttackTechnique.attack_id == ttp_id)
+        .correlate_except(AttackTechnique)
         .scalar_subquery()
     )
-    return func.coalesce(catalog_name, func.min(ArticleTTP.ttp_name))
+    return func.coalesce(catalog_name, func.min(ttp_name))
 
 
 @dataclass
@@ -89,14 +91,55 @@ _SOURCE_PRIORITY = {"explicit": 0, "llm": 1, "keyword": 2}
 """Urutan kekuatan `source` saat dua baris lama menyatu ke satu ID: explicit > llm > keyword."""
 
 
+class _TTPRow(NamedTuple):
+    """Satu mention teknik artikel dalam bentuk baris `article_ttps` lama: `ttp_id`/`ttp_name`
+    dari entitas teknik (P7c: nama = `entities.name`), `extracted_*` dari `extracted`,
+    `source` = method mention."""
+
+    id: int
+    ttp_id: str
+    ttp_name: str
+    extracted_id: str | None
+    extracted_name: str | None
+    source: str
+    evidence: str | None
+
+
+def _ttp_rows(article: Article) -> list[_TTPRow]:
+    rows = []
+    for m in article.mentions_of(TECHNIQUE):
+        ext = m.extracted or {}
+        # method selain llm/explicit/keyword (mis. `legacy`) dibaca `llm`: itu satu-satunya
+        # sumber teknik lama tanpa label, dan `apply_ttps` hanya menerima tiga sumber Tier 1.
+        source = m.method if m.method in _SOURCE_PRIORITY else "llm"
+        rows.append(
+            _TTPRow(
+                m.id,
+                m.entity.external_id or "",
+                m.entity.name,
+                ext.get("extracted_id"),
+                ext.get("extracted_name"),
+                source,
+                m.evidence,
+            )
+        )
+    return sorted(rows, key=lambda r: r.id)
+
+
+def _identity(n: NormalizedTTP) -> tuple[Any, ...]:
+    """Kunci perbandingan "hasil remap sama dengan yang tersimpan": tanpa nama teknik, karena
+    nama tersimpan = nama entitas (satu per id), bukan nama yang dikirim remap."""
+    return (n.ttp_id, n.extracted_id, n.extracted_name, n.source, n.evidence)
+
+
 def _carry_sources(
-    normalized: list[NormalizedTTP], rows: list[ArticleTTP], catalog: TechniqueCatalog
+    normalized: list[NormalizedTTP], rows: list[_TTPRow], catalog: TechniqueCatalog
 ) -> list[NormalizedTTP]:
     """`normalize_ttps` tidak tahu `source`/`evidence` (selalu default `llm`); tanpa ini remap
     menimpa baris explicit/keyword Tier 1 jadi `llm`. Tiap baris lama di-resolve sendiri untuk
     mendapat ID akhirnya, lalu baris dengan `source` terkuat (urutan baris menang bila seri)
     menyumbang `source`/`evidence`-nya ke hasil dengan ID itu."""
-    best: dict[str, ArticleTTP] = {}
+    best: dict[str, _TTPRow] = {}
     for r in rows:
         rid = r.extracted_id or r.ttp_id
         if not rid:
@@ -119,7 +162,7 @@ def _carry_sources(
 def remap_article_ttps(
     session: Session, catalog: TechniqueCatalog, *, batch_size: int = 500
 ) -> RemapStats:
-    """Normalisasi ulang SEMUA `article_ttps` pakai `catalog`. Sumber =
+    """Normalisasi ulang SEMUA mention teknik artikel pakai `catalog`. Sumber =
     teks asli LLM (`extracted_id`/`extracted_name`) kalau ada, kalau belum
     (baris sebelum kolom itu ada) = `ttp_id`/`ttp_name` yang tersimpan
     (itu memang pasangan mentah LLM dulu). Idempoten: jalan ulang = hasil
@@ -133,7 +176,8 @@ def remap_article_ttps(
         )
     stats = RemapStats()
     last_id = 0
-    with_ttps = select(ArticleTTP.article_id).distinct().scalar_subquery()
+    t = mention_rows(TECHNIQUE)
+    with_ttps = select(t.c.article_id).where(t.c.article_id.is_not(None)).distinct()
     while True:
         articles = (
             session.execute(
@@ -150,7 +194,7 @@ def remap_article_ttps(
         for article in articles:
             last_id = article.id
             stats.articles_scanned += 1
-            rows = sorted(article.ttps, key=lambda r: r.id)
+            rows = _ttp_rows(article)
             stats.rows_before += len(rows)
             raw = [
                 (r.extracted_id or r.ttp_id, r.extracted_name or r.ttp_name)
@@ -165,7 +209,7 @@ def remap_article_ttps(
                 )
                 for r in rows
             ]
-            if sorted(current) == sorted(normalized):
+            if sorted(map(_identity, current)) == sorted(map(_identity, normalized)):
                 continue
             stats.articles_changed += 1
             if len(stats.examples) < 20:

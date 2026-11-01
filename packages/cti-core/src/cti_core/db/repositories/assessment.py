@@ -21,13 +21,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from cti_core.confidence import BONUS_TTP_SOURCES, ArticleFacts, Assessment, assess
-from cti_core.db.models.article import Article, ArticleThreatActor, ArticleTTP
-from cti_core.db.models.article_cve import ArticleCve
+from cti_core.db.models.article import Article
 from cti_core.db.models.cve import CveTracker
 from cti_core.db.models.indicator import Indicator, IndicatorSource
 from cti_core.db.models.source_reliability import SourceReliabilityEntry
 from cti_core.db.models.story import Story
 from cti_core.db.repositories.cve import is_false_positive_row
+from cti_core.db.repositories.entity import ACTOR, CVE, TECHNIQUE, mention_rows
 
 
 def facts_stmt(article_ids: Sequence[int]) -> Select[Any]:
@@ -46,31 +46,33 @@ def facts_stmt(article_ids: Sequence[int]) -> Select[Any]:
         .lateral("sr_pick")
     )
 
-    has_cve = select(ArticleCve.article_id).where(ArticleCve.article_id == Article.id).exists()
+    cves = mention_rows(CVE)
+    has_cve = select(cves.c.article_id).where(cves.c.article_id == Article.id).exists()
     has_ioc = (
         select(IndicatorSource.id)
         .join(Indicator, Indicator.id == IndicatorSource.indicator_id)
         .where(IndicatorSource.article_id == Article.id, Indicator.usable)
         .exists()
     )
-    has_actor = (
-        select(ArticleThreatActor.id).where(ArticleThreatActor.article_id == Article.id).exists()
-    )
+    actors = mention_rows(ACTOR)
+    has_actor = select(actors.c.article_id).where(actors.c.article_id == Article.id).exists()
 
     def _ttp_count(sources: Sequence[str]) -> Any:
+        t = mention_rows(TECHNIQUE)
         return (
             select(func.count())
-            .select_from(ArticleTTP)
-            .where(ArticleTTP.article_id == Article.id, ArticleTTP.source.in_(sources))
+            .select_from(t)
+            .where(t.c.article_id == Article.id, t.c.method.in_(sources))
             .scalar_subquery()
         )
 
     def _cve_flag(column: Any) -> Any:
+        c = mention_rows(CVE)
         return (
             select(func.coalesce(func.bool_or(column), false()))
-            .select_from(ArticleCve)
-            .join(CveTracker, func.upper(CveTracker.cve_id) == func.upper(ArticleCve.cve_id))
-            .where(ArticleCve.article_id == Article.id, ~is_false_positive_row())
+            .select_from(c)
+            .join(CveTracker, func.upper(CveTracker.cve_id) == func.upper(c.c.external_id))
+            .where(c.c.article_id == Article.id, ~is_false_positive_row())
             .scalar_subquery()
         )
 

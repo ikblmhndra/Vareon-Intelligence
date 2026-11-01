@@ -129,7 +129,7 @@ def _article(
         confirmed_incident=confirmed,
         confidence_score=score,
         posted_on=posted,
-        threat_actors=[],
+        entity_names=lambda *types: [],
     )
 
 
@@ -401,7 +401,7 @@ def test_the_daily_prompt_is_untouched_by_the_weekly_quality_work() -> None:
         title="Apt41 exploits a VPN zero-day",
         source="CISA",
         url="https://x/7",
-        threat_actors=[NS(threat_actor="Apt41"), NS(threat_actor="Lazarus")],
+        entity_names=lambda *types: ["Apt41", "Lazarus"],
     )
     tweet = NS(
         author_username="u",
@@ -495,7 +495,7 @@ def _printed_week() -> svc.WeeklyInputs:
     batas), supaya `known` bisa dicek untuk KEDUANYA."""
     first = _article(12)
     first.title = "Patch CVE-2026-4444 now"
-    first.threat_actors = [NS(threat_actor=n) for n in ("Apt41", "Lazarus", "Sandworm", "Turla")]
+    first.entity_names = lambda *types: ["Apt41", "Lazarus", "Sandworm", "Turla"]
     tweet = NS(
         author_username="u",
         text="fin7 is back",

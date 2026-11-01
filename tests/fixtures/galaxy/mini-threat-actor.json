@@ -1,0 +1,41 @@
+{
+  "name": "Threat Actor",
+  "type": "threat-actor",
+  "uuid": "7cdff317-a673-4474-84ec-4f1754947823",
+  "values": [
+    {
+      "uuid": "00000000-0000-4000-8000-000000000001",
+      "value": "APT29",
+      "meta": {"synonyms": ["Cozy Bear", "Nobelium", "Cloaked Ursa"]}
+    },
+    {
+      "uuid": "00000000-0000-4000-8000-000000000002",
+      "value": "Lazarus Group",
+      "meta": {"synonyms": ["Hidden Cobra", "Kimsuky"]}
+    },
+    {
+      "uuid": "00000000-0000-4000-8000-000000000003",
+      "value": "Scattered Spider",
+      "meta": {"synonyms": ["0ktapus", "Muddled Libra", "Octo Tempest"]}
+    },
+    {
+      "uuid": "00000000-0000-4000-8000-000000000004",
+      "value": "Mustang Panda",
+      "meta": {"synonyms": ["Basin", "Bronze President"]}
+    },
+    {
+      "uuid": "00000000-0000-4000-8000-000000000005",
+      "value": "Turla",
+      "meta": {"synonyms": ["Snake", "Venomous Bear"]}
+    },
+    {
+      "uuid": "00000000-0000-4000-8000-000000000006",
+      "value": "Brand New Crew",
+      "meta": {"synonyms": ["BNC-01"]}
+    },
+    {
+      "uuid": "00000000-0000-4000-8000-000000000007",
+      "value": "No Synonyms Here"
+    }
+  ]
+}

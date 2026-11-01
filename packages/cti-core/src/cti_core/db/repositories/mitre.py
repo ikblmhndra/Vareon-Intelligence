@@ -1,18 +1,15 @@
 """AsyncMitreHeatmapRepo -- port `ScraperNewsWeb/app/services/
 mitre_heatmap_service.py`. Fase 7.3 (router `mitre`, Bagian 3). Baca dari
-`articles`/`article_ttps`/`article_threat_actors`/`article_industries`
-(Fase 2, ternormalisasi) -- BUKAN dari katalog `attack_techniques`
+`articles` + mention teknik/aktor/sektor (`mention_rows`, P7c; dulu `article_ttps`/
+`article_threat_actors`/`article_industries`) -- BUKAN dari katalog `attack_techniques`
 (Fase 7.3 Bagian 3 juga, tapi domain beda): heatmap ini ngukur TTP yang
-BENERAN keobservasi di pemberitaan (`ArticleTTP`, hasil ekstraksi LLM
+BENERAN keobservasi di pemberitaan (mention teknik, hasil ekstraksi LLM
 Fase 5), bukan katalog referensi MITRE. Dua sumber data yang gak saling
 gantiin, sama kayak `source_score_service.py` vs `source_score_db_service.py`
 di Bagian 2.
 
-`view` ("ta" | "industry") nentuin tabel anak mana yang di-join buat
-"baris" heatmap -- dicabang eksplisit if/else di tiap method (bukan
-lookup dict `{"ta": (Model, col), ...}`), soalnya nyimpen dua model
-BEDA bareng-bareng di satu dict bikin mypy nge-widen tipe elemennya ke
-`type[Base]` (ilang method spesifik model kayak `.article_id`)."""
+`view` ("ta" | "industry") nentuin tipe entitas "baris" heatmap: aktor (`intrusion-set`) atau
+sektor (`identity`); nama baris = `entities.name` (alias satu entitas = satu baris)."""
 
 from __future__ import annotations
 
@@ -24,13 +21,13 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_core.config import platform_name
-from cti_core.db.models.article import (
-    Article,
-    ArticleIndustry,
-    ArticleThreatActor,
-    ArticleTTP,
-)
+from cti_core.db.models.article import Article
+from cti_core.db.repositories.entity import ACTOR, SECTOR, TECHNIQUE, mention_rows
 from cti_core.db.repositories.ttp_catalog import canonical_ttp_name
+
+
+def _row_type(view: str) -> str:
+    return SECTOR if view == "industry" else ACTOR
 
 
 class AsyncMitreHeatmapRepo:
@@ -49,22 +46,16 @@ class AsyncMitreHeatmapRepo:
         """`ttp_sources` (P4): hanya hitung baris TTP dengan sumber itu (explicit/keyword/llm)."""
         cutoff = datetime.date.today() - datetime.timedelta(days=days)
         count_articles = func.count(func.distinct(Article.id))
-        source_cond = [ArticleTTP.source.in_(ttp_sources)] if ttp_sources else []
+        r = mention_rows(_row_type(view))
+        t = mention_rows(TECHNIQUE)
+        source_cond = [t.c.method.in_(ttp_sources)] if ttp_sources else []
 
-        if view == "industry":
-            rows_stmt = (
-                select(ArticleIndustry.industry, count_articles)
-                .join(Article, ArticleIndustry.article_id == Article.id)
-                .where(Article.posted_on >= cutoff)
-                .group_by(ArticleIndustry.industry)
-            )
-        else:
-            rows_stmt = (
-                select(ArticleThreatActor.threat_actor, count_articles)
-                .join(Article, ArticleThreatActor.article_id == Article.id)
-                .where(Article.posted_on >= cutoff)
-                .group_by(ArticleThreatActor.threat_actor)
-            )
+        rows_stmt = (
+            select(r.c.name, count_articles)
+            .join(Article, r.c.article_id == Article.id)
+            .where(Article.posted_on >= cutoff)
+            .group_by(r.c.name)
+        )
         top_rows_result = await self.session.execute(
             rows_stmt.order_by(count_articles.desc()).limit(top_rows)
         )
@@ -73,10 +64,10 @@ class AsyncMitreHeatmapRepo:
         # GROUP BY ID SAJA, nama kanonik dari katalog ATT&CK (QA BUG-C01: dulu
         # group by (id, nama) -> satu ID dgn 3 nama LLM = 3 kolom angka sama).
         top_ttps_result = await self.session.execute(
-            select(ArticleTTP.ttp_id, canonical_ttp_name(), count_articles)
-            .join(Article, ArticleTTP.article_id == Article.id)
+            select(t.c.external_id, canonical_ttp_name(t.c.external_id, t.c.name), count_articles)
+            .join(Article, t.c.article_id == Article.id)
             .where(Article.posted_on >= cutoff, *source_cond)
-            .group_by(ArticleTTP.ttp_id)
+            .group_by(t.c.external_id)
             .order_by(count_articles.desc())
             .limit(top_ttps)
         )
@@ -87,34 +78,19 @@ class AsyncMitreHeatmapRepo:
         if not row_names or not ttp_ids:
             return {"rows": [], "ttps": [], "matrix": [], "max_val": 0}
 
-        if view == "industry":
-            co_stmt = (
-                select(ArticleIndustry.industry, ArticleTTP.ttp_id, count_articles)
-                .select_from(Article)
-                .join(ArticleIndustry, ArticleIndustry.article_id == Article.id)
-                .join(ArticleTTP, ArticleTTP.article_id == Article.id)
-                .where(
-                    Article.posted_on >= cutoff,
-                    ArticleIndustry.industry.in_(row_names),
-                    ArticleTTP.ttp_id.in_(ttp_ids),
-                    *source_cond,
-                )
-                .group_by(ArticleIndustry.industry, ArticleTTP.ttp_id)
+        co_stmt = (
+            select(r.c.name, t.c.external_id, count_articles)
+            .select_from(Article)
+            .join(r, r.c.article_id == Article.id)
+            .join(t, t.c.article_id == Article.id)
+            .where(
+                Article.posted_on >= cutoff,
+                r.c.name.in_(row_names),
+                t.c.external_id.in_(ttp_ids),
+                *source_cond,
             )
-        else:
-            co_stmt = (
-                select(ArticleThreatActor.threat_actor, ArticleTTP.ttp_id, count_articles)
-                .select_from(Article)
-                .join(ArticleThreatActor, ArticleThreatActor.article_id == Article.id)
-                .join(ArticleTTP, ArticleTTP.article_id == Article.id)
-                .where(
-                    Article.posted_on >= cutoff,
-                    ArticleThreatActor.threat_actor.in_(row_names),
-                    ArticleTTP.ttp_id.in_(ttp_ids),
-                    *source_cond,
-                )
-                .group_by(ArticleThreatActor.threat_actor, ArticleTTP.ttp_id)
-            )
+            .group_by(r.c.name, t.c.external_id)
+        )
         co_result = await self.session.execute(co_stmt)
         co_map = {(row, tid): count for row, tid, count in co_result.all()}
 
@@ -125,15 +101,16 @@ class AsyncMitreHeatmapRepo:
 
     async def get_navigator_layer(self, *, view: str, days: int) -> dict[str, Any]:
         cutoff = datetime.date.today() - datetime.timedelta(days=days)
+        t = mention_rows(TECHNIQUE)
         result = await self.session.execute(
             select(
-                ArticleTTP.ttp_id,
-                func.min(ArticleTTP.ttp_name),
+                t.c.external_id,
+                func.min(t.c.name),
                 func.count(func.distinct(Article.id)),
             )
-            .join(Article, ArticleTTP.article_id == Article.id)
+            .join(Article, t.c.article_id == Article.id)
             .where(Article.posted_on >= cutoff)
-            .group_by(ArticleTTP.ttp_id)
+            .group_by(t.c.external_id)
             .order_by(func.count(func.distinct(Article.id)).desc())
             .limit(500)
         )
@@ -183,30 +160,16 @@ class AsyncMitreHeatmapRepo:
     ) -> tuple[list[Article], int]:
         cutoff = datetime.date.today() - datetime.timedelta(days=days)
 
-        if view == "industry":
-            base = (
-                select(Article)
-                .join(ArticleIndustry, ArticleIndustry.article_id == Article.id)
-                .join(ArticleTTP, ArticleTTP.article_id == Article.id)
-                .where(
-                    Article.posted_on >= cutoff,
-                    ArticleIndustry.industry == row,
-                    ArticleTTP.ttp_id == ttp_id,
-                )
-                .distinct()
-            )
-        else:
-            base = (
-                select(Article)
-                .join(ArticleThreatActor, ArticleThreatActor.article_id == Article.id)
-                .join(ArticleTTP, ArticleTTP.article_id == Article.id)
-                .where(
-                    Article.posted_on >= cutoff,
-                    ArticleThreatActor.threat_actor == row,
-                    ArticleTTP.ttp_id == ttp_id,
-                )
-                .distinct()
-            )
+        # `row` = nama baris heatmap (`entities.name`, keluaran `get_heatmap`): cocok per nama.
+        r = mention_rows(_row_type(view))
+        t = mention_rows(TECHNIQUE)
+        base = (
+            select(Article)
+            .join(r, r.c.article_id == Article.id)
+            .join(t, t.c.article_id == Article.id)
+            .where(Article.posted_on >= cutoff, r.c.name == row, t.c.external_id == ttp_id)
+            .distinct()
+        )
 
         total = (
             await self.session.execute(select(func.count()).select_from(base.subquery()))

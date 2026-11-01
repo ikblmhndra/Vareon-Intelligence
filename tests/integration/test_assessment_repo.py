@@ -10,13 +10,14 @@ import hashlib
 from typing import Any
 
 import pytest
-from cti_core.db.models.article import Article, ArticleThreatActor, ArticleTTP
-from cti_core.db.models.article_cve import ArticleCve
+from cti_core.db.models.article import Article
 from cti_core.db.models.auth import Client
 from cti_core.db.models.cve import CveFalsePositive, CveTracker
 from cti_core.db.models.indicator import Indicator, IndicatorSource
 from cti_core.db.models.source_reliability import SourceReliabilityEntry
 from cti_core.db.models.story import Story
+from cti_core.db.repositories.article import ArticleRepo, AsyncArticleRepo, MentionInput
+from cti_core.db.repositories.article_cve import ArticleCveRepo, AsyncArticleCveRepo
 from cti_core.db.repositories.assessment import (
     apply_assessments,
     apply_assessments_async,
@@ -172,7 +173,7 @@ def test_story_with_three_sources_and_cve_is_1(db_session: Session) -> None:
     for a in arts:
         repo.attach(story_id, article_id=a.id, cve_ids=set(), now=_NOW, classify=None)
     target = arts[0]
-    s.add(ArticleCve(article_id=target.id, cve_id="CVE-2026-0001"))
+    ArticleCveRepo(s).add_many(target.id, ["CVE-2026-0001"], "")
     s.flush()
 
     result = apply_assessments(s, [target.id])
@@ -211,7 +212,7 @@ async def test_kev_ignores_false_positive_tracker_rows(async_db_session: AsyncSe
     art = _article("https://ex.com/kev", "Hackernews")
     s.add(art)
     await s.flush()
-    s.add(ArticleCve(article_id=art.id, cve_id="CVE-2026-0002"))
+    await AsyncArticleCveRepo(s).add_many(art.id, ["CVE-2026-0002"], "")
     # Baris client A: KEV tapi ditandai FP oleh client A sendiri -> tidak dihitung.
     s.add(CveTracker(cve_id="cve-2026-0002", client_id="p6-a", cisa_kev=True))
     s.add(CveFalsePositive(cve_id="cve-2026-0002", client_id="p6-a"))
@@ -273,12 +274,14 @@ def _seed_rich(suffix: str) -> tuple[Article, list[Any]]:
     return art, [_sr("Unit42", "B", "vendor_research"), art]
 
 
-def _children(art: Article) -> list[Any]:
+def _children(ids: tuple[str, ...] = ("T1059", "T1566", "T1078", "APT41")) -> list[MentionInput]:
+    # Sejak P7c tautan = mention ke entitas bersama: dua transaksi terbuka yang membuat entitas
+    # sama saling mengunci, jadi sesi kedua memakai nama lain (yang dinilai hanya `source`).
     return [
-        ArticleTTP(article_id=art.id, ttp_id="T1059", ttp_name="x", source="explicit"),
-        ArticleTTP(article_id=art.id, ttp_id="T1566", ttp_name="y", source="llm"),
-        ArticleTTP(article_id=art.id, ttp_id="T1078", ttp_name="z", source="keyword"),
-        ArticleThreatActor(article_id=art.id, threat_actor="APT41"),
+        MentionInput("attack-pattern", "x", "explicit", ids[0], external_id=ids[0]),
+        MentionInput("attack-pattern", "y", "llm", ids[1], external_id=ids[1]),
+        MentionInput("attack-pattern", "z", "keyword", ids[2], external_id=ids[2]),
+        MentionInput("intrusion-set", ids[3], "dictionary", ids[3]),
     ]
 
 
@@ -287,15 +290,15 @@ async def test_sync_and_async_agree(db_session: Session, async_db_session: Async
     art_s, objs_s = _seed_rich("sync")
     db_session.add_all(objs_s)
     db_session.flush()
-    db_session.add_all(_children(art_s))
-    db_session.flush()
+    ArticleRepo(db_session).add_mentions(art_s, _children())
     sync_result = apply_assessments(db_session, [art_s.id])
 
     art_a, objs_a = _seed_rich("async")
     async_db_session.add_all(objs_a)
     await async_db_session.flush()
-    async_db_session.add_all(_children(art_a))
-    await async_db_session.flush()
+    await AsyncArticleRepo(async_db_session).add_mentions(
+        art_a, _children(("T1203", "T1190", "T1133", "APT40"))
+    )
     async_result = await apply_assessments_async(async_db_session, [art_a.id])
 
     assert sync_result[art_s.id] == async_result[art_a.id]

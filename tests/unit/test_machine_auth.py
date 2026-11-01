@@ -39,3 +39,12 @@ def test_require_token_unknown_scope_raises():
     with pytest.raises(ValueError):
         require_token("nope:read")
     assert require_token("indicators:read").scope == "indicators:read"  # type: ignore[attr-defined]
+
+
+def test_require_token_any_of_scopes():
+    dep = require_token("indicators:read", "intel:read")
+    assert dep.scope == "indicators:read or intel:read"  # type: ignore[attr-defined]
+    with pytest.raises(ValueError):
+        require_token()
+    with pytest.raises(ValueError):
+        require_token("intel:read", "nope:read")

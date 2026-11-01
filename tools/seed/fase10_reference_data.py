@@ -53,13 +53,15 @@ from typing import Any
 
 from cti_core.db.engine import sync_session
 from cti_core.db.models.auth import Client, ClientCountry, Role
+from cti_core.db.models.entity import Entity, EntityProfile, EntityWatch
 from cti_core.db.models.ioc_reference import IocAllowlistEntry
 from cti_core.db.models.pir import _EMPTY_CRITERIA, PIRNote, PIRRequirement
 from cti_core.db.models.source_reliability import SourceReliabilityEntry
-from cti_core.db.models.ta import TAProfile, TAWatchlistEntry, TAWhitelistEntry
 from cti_core.db.models.techstack import TechStackEntry
 from cti_core.db.models.threat_reference import MonitoredPerson, ThreatActorGroup
 from cti_core.db.models.tweet import MonitoredAccount
+from cti_core.entity.merge import set_suppressed
+from cti_core.entity.resolve import resolve
 from cti_enrich.countries import country_code
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -263,74 +265,74 @@ def seed_monitored_accounts(session: Session, docs: list[dict[str, Any]]) -> Tal
 _TA_PROFILE_META = {"_id", "_actor_name", "_generated_at"}
 
 
+def _actor(session: Session, name: str) -> Entity:
+    """Aktor lewat resolver (P7c): nama lama yang alias entitas lain menempel ke entitas itu."""
+    return resolve(session, "intrusion-set", name, source="legacy")
+
+
 def seed_ta_profiles(session: Session, docs: list[dict[str, Any]]) -> Tally:
-    """Identitas: `actor_name` (case-insensitive, sama dengan `get_profile`)."""
+    """Identitas: entitas aktor (`entity_profiles`, satu profil per entitas; P7c)."""
     tally = Tally()
-    have = {n.lower() for n in session.execute(select(TAProfile.actor_name)).scalars()}
     for doc in docs:
         name = (doc.get("_actor_name") or "").strip()
         if not name:
             continue
-        if name.lower() in have:
+        entity = _actor(session, name)
+        if session.scalar(select(EntityProfile.id).where(EntityProfile.entity_id == entity.id)):
             tally.existing += 1
             continue
-        row = TAProfile(
-            actor_name=name,
+        row = EntityProfile(
+            entity_id=entity.id,
             profile={k: v for k, v in doc.items() if k not in _TA_PROFILE_META},
         )
         if generated := _dt(doc.get("_generated_at")):
             row.generated_at = generated
         session.add(row)
-        have.add(name.lower())
+        session.flush()
         tally.inserted += 1
-    session.flush()
     return tally
 
 
 def seed_ta_watchlist(session: Session, docs: list[dict[str, Any]]) -> Tally:
-    """Identitas: (`name` lowercase, `client_id`)."""
+    """Identitas: (entitas aktor, `client_id`) di `entity_watches` (P7c)."""
     tally = Tally()
-    have = {
-        (n.lower(), c)
-        for n, c in session.execute(select(TAWatchlistEntry.name, TAWatchlistEntry.client_id)).all()
-    }
     for doc in docs:
         name = (doc.get("name") or "").strip()
         client_id = doc.get("client_id") or DEFAULT_CLIENT
         if not name:
             continue
-        if (name.lower(), client_id) in have:
+        _require_client(session, client_id, where=f"ta_watchlist '{name}'")
+        entity = _actor(session, name)
+        if session.scalar(
+            select(EntityWatch.id).where(
+                EntityWatch.entity_id == entity.id, EntityWatch.client_id == client_id
+            )
+        ):
             tally.existing += 1
             continue
-        _require_client(session, client_id, where=f"ta_watchlist '{name}'")
-        row = TAWatchlistEntry(name=name, client_id=client_id)
+        row = EntityWatch(entity_id=entity.id, client_id=client_id)
         if added := _dt(doc.get("added_date")):
             row.created_at = added
         session.add(row)
-        have.add((name.lower(), client_id))
+        session.flush()
         tally.inserted += 1
-    session.flush()
     return tally
 
 
 def seed_ta_whitelist(session: Session, docs: list[dict[str, Any]]) -> Tally:
-    """Identitas: `name`, disimpan LOWERCASE (kode lama `name.lower()`)."""
+    """Whitelist lama = entitas aktor `suppressed` (P7c): tidak pernah dicocokkan. `added_date`
+    lama tidak punya kolom padanan (jejaknya baris audit `entity_suppress`)."""
     tally = Tally()
-    have = set(session.execute(select(TAWhitelistEntry.name)).scalars())
     for doc in docs:
-        name = (doc.get("name") or "").strip().lower()
+        name = (doc.get("name") or "").strip()
         if not name:
             continue
-        if name in have:
+        entity = _actor(session, name)
+        if entity.suppressed:
             tally.existing += 1
             continue
-        row = TAWhitelistEntry(name=name)
-        if added := _dt(doc.get("added_date")):
-            row.added_date = added
-        session.add(row)
-        have.add(name)
+        set_suppressed(session, entity.id, True, actor="system:seed")
         tally.inserted += 1
-    session.flush()
     return tally
 
 
@@ -564,9 +566,8 @@ def row_counts(session: Session) -> dict[str, int]:
         "roles": Role,
         "techstack_entries": TechStackEntry,
         "monitored_accounts": MonitoredAccount,
-        "ta_profiles": TAProfile,
-        "ta_watchlist": TAWatchlistEntry,
-        "ta_whitelist": TAWhitelistEntry,
+        "ta_profiles": EntityProfile,  # label lama, tabel P7c
+        "ta_watchlist": EntityWatch,
         "source_reliability_entries": SourceReliabilityEntry,
         "pir_requirements": PIRRequirement,
         "pir_notes": PIRNote,
@@ -574,9 +575,20 @@ def row_counts(session: Session) -> dict[str, int]:
         "monitored_people": MonitoredPerson,
         "ioc_allowlist_entries": IocAllowlistEntry,
     }
-    return {
+    counts = {
         name: session.scalar(select(func.count()).select_from(m)) or 0 for name, m in models.items()
     }
+    counts["ta_whitelist"] = (
+        session.scalar(
+            select(func.count())
+            .select_from(Entity)
+            .where(
+                Entity.type == "intrusion-set", Entity.suppressed, Entity.merged_into_id.is_(None)
+            )
+        )
+        or 0
+    )
+    return counts
 
 
 def main(argv: list[str] | None = None) -> int:

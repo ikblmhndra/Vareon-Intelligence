@@ -6,13 +6,7 @@ import datetime
 from collections.abc import Callable
 
 import pytest
-from cti_core.db.models.article import (
-    ArticleIndustry,
-    ArticleMalware,
-    ArticleThreatActor,
-    ArticleTTP,
-)
-from cti_core.db.repositories.article import AsyncArticleRepo
+from cti_core.db.repositories.article import AsyncArticleRepo, MentionInput
 from cti_core.db.repositories.auth import AsyncClientRepo
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,22 +21,29 @@ async def _seed(session: AsyncSession) -> tuple[int, int]:
     a = await repo.upsert(url="https://x.example/a", title="A", source="S", posted_on=today)
     b = await repo.upsert(url="https://x.example/b", title="B", source="S", posted_on=today)
     aid, bid = a.id, b.id
-    session.add_all(
+    await repo.add_mentions(
+        a,
         [
-            ArticleTTP(
-                article_id=aid,
-                ttp_id="T1566",
-                ttp_name="Phishing",
-                source="explicit",
+            MentionInput(
+                "attack-pattern",
+                "Phishing",
+                "explicit",
+                "T1566",
                 evidence="used phishing",
+                external_id="T1566",
             ),
-            ArticleTTP(article_id=aid, ttp_id="T1059", ttp_name="Scripting", source="llm"),
-            ArticleMalware(article_id=aid, name="Mimikatz", kind="tool", source="dictionary"),
-            ArticleIndustry(article_id=aid, industry="Finance", source="keyword"),
-            ArticleTTP(article_id=bid, ttp_id="T1566", ttp_name="Phishing", source="llm"),
-            ArticleThreatActor(article_id=aid, threat_actor="Grp", source="llm"),
-            ArticleThreatActor(article_id=bid, threat_actor="Grp", source="llm"),
-        ]
+            MentionInput("attack-pattern", "Scripting", "llm", "T1059", external_id="T1059"),
+            MentionInput("tool", "Mimikatz", "dictionary", "Mimikatz"),
+            MentionInput("identity", "Finance", "keyword", "Finance"),
+            MentionInput("intrusion-set", "Grp", "llm", "Grp"),
+        ],
+    )
+    await repo.add_mentions(
+        b,
+        [
+            MentionInput("attack-pattern", "Phishing", "llm", "T1566", external_id="T1566"),
+            MentionInput("intrusion-set", "Grp", "llm", "Grp"),
+        ],
     )
     await session.commit()
     session.expire_all()

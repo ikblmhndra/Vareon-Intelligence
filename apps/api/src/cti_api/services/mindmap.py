@@ -214,7 +214,7 @@ async def build_pir_mindmap(session: AsyncSession, doc_id: str) -> tuple[str, st
     articles, total = await pir_repo.list_articles_for_pir(pir, article_repo, page=1, page_size=30)
 
     all_titles = " ".join(a.title for a in articles)
-    threat_actors = sorted({t.threat_actor for a in articles for t in a.threat_actors})
+    threat_actors = sorted({n for a in articles for n in a.entity_names("intrusion-set")})
     ttps = _extract_ttps(all_titles)
 
     criteria = pir.criteria

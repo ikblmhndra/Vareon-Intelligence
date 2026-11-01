@@ -156,12 +156,8 @@ async def load_candidates(
                 posted_on=article.posted_on,
                 confidence_score=_as_int(effective.get("confidence_score")),
                 confirmed_incident=bool(effective.get("confirmed_incident")),
-                victim_countries=tuple(
-                    sorted({c.country_code for c in article.countries if c.role == "victim"})
-                ),
-                mentioned_countries=tuple(
-                    sorted({c.country_code for c in article.countries if c.role == "mentioned"})
-                ),
+                victim_countries=tuple(sorted(article.country_codes("victim"))),
+                mentioned_countries=tuple(sorted(article.country_codes("mentioned"))),
                 kev_cves=tuple(sorted(c for c in cves if flags.get(c, (False, False))[0])),
                 poc_cves=tuple(sorted(c for c in cves if flags.get(c, (False, False))[1])),
                 cluster_size=sizes.get(article.id, 1),

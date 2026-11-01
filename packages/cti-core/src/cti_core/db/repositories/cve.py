@@ -34,11 +34,10 @@ from cti_core.db.models.cve import (
     CveNewsletterMention,
     CvePoc,
     CveReference,
-    CveThreatActor,
     CveTicket,
     CveTracker,
-    CveTTP,
 )
+from cti_core.db.repositories.entity import ACTOR, TECHNIQUE, entity_ids_named, mention_rows
 
 _TICKET_TZ = zoneinfo.ZoneInfo("Asia/Jakarta")
 """Zona nomor ticket -- sama dengan dashboard dan export (hari/bulan yang dilihat analis)."""
@@ -568,14 +567,15 @@ class AsyncCveTrackerRepo:
     async def get_by_threat_actor_exact(
         self, actor_name: str, *, client_id: str | None = None
     ) -> list[CveTracker]:
-        """Exact-match (case-insensitive) `threat_actors`, urut `cve_score`
-        desc, limit 30 -- port `cross_reference_service.get_ta_crossrefs()`.
+        """Exact-match (case-insensitive, lewat alias entitas -- P7c) `threat_actors`, urut
+        `cve_score` desc, limit 30 -- port `cross_reference_service.get_ta_crossrefs()`.
         Baris yang ditandai FP oleh clientnya sendiri tidak ikut (`is_false_positive_row`).
         Satu baris per `cve_id` (lihat `_strongest_per_cve`)."""
+        m = mention_rows(ACTOR)
         return await self._strongest_per_cve(
             CveTracker.id.in_(
-                select(CveThreatActor.cve_tracker_id).where(
-                    func.lower(CveThreatActor.threat_actor) == actor_name.lower()
+                select(m.c.cve_tracker_id).where(
+                    m.c.entity_id.in_(entity_ids_named(ACTOR, [actor_name]))
                 )
             ),
             ~is_false_positive_row(),
@@ -600,17 +600,18 @@ class AsyncCveTrackerRepo:
         (`is_false_positive_row`). Satu baris per `cve_id` (lihat `_strongest_per_cve`)."""
         conditions = []
         if threat_actors:
-            lowered = [t.lower() for t in threat_actors]
+            a = mention_rows(ACTOR)
             conditions.append(
                 CveTracker.id.in_(
-                    select(CveThreatActor.cve_tracker_id).where(
-                        func.lower(CveThreatActor.threat_actor).in_(lowered)
+                    select(a.c.cve_tracker_id).where(
+                        a.c.entity_id.in_(entity_ids_named(ACTOR, threat_actors))
                     )
                 )
             )
         if ttp_ids:
+            t = mention_rows(TECHNIQUE)
             conditions.append(
-                CveTracker.id.in_(select(CveTTP.cve_tracker_id).where(CveTTP.ttp_id.in_(ttp_ids)))
+                CveTracker.id.in_(select(t.c.cve_tracker_id).where(t.c.external_id.in_(ttp_ids)))
             )
         if tech_list:
             conditions.append(CveTracker.tech.in_(tech_list))

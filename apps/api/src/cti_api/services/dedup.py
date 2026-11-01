@@ -136,8 +136,8 @@ async def get_dedup_groups(
             "url": a.url,
             "source": a.source,
             "posted_on": a.posted_on.isoformat() if a.posted_on else "",
-            "impacted_industries": [i.industry for i in a.industries],
-            "threat_actors": [t.threat_actor for t in a.threat_actors],
+            "impacted_industries": a.entity_names("identity"),
+            "threat_actors": a.entity_names("intrusion-set"),
             "news_type": a.news_type or "",
         }
         for a in articles

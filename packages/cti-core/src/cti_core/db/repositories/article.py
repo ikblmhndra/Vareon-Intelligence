@@ -13,24 +13,36 @@ re-scrape gak pernah update artikel yang udah ada):
 from __future__ import annotations
 
 import datetime
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from typing import Any, Literal
 
 from sqlalchemy import Select, func, literal_column, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session, aliased
+from sqlalchemy.orm import Session, object_session
 
 from cti_core.attack_ttp import NormalizedTTP
-from cti_core.db.models.article import (
-    Article,
-    ArticleCountry,
-    ArticleIndustry,
-    ArticleMalware,
-    ArticleThreatActor,
-    ArticleTTP,
-    RejectedArticle,
+from cti_core.db.models.article import Article, RejectedArticle
+from cti_core.db.repositories.entity import (
+    ACTOR,
+    COUNTRY,
+    SECTOR,
+    TECHNIQUE,
+    entity_ids_named,
 )
+from cti_core.db.repositories.entity import mention_rows as live_mentions
 from cti_core.enrich_replay import BACKOFF_BASE, MAX_ATTEMPTS, ReplayCandidate
+from cti_core.entity.mentions import (
+    ARTICLE_MENTION_ATTRS,
+    MentionInput,
+    country_mention,
+    delete_other_mentions,
+    insert_mentions,
+    mention_rows,
+    resolve_all,
+    resolve_all_async,
+    sector_mention,
+    touch_seen,
+)
 from cti_core.urlkit import url_hash as compute_url_hash
 
 _RESERVED_OVERRIDE_KEYS = frozenset({"_meta"})
@@ -40,7 +52,7 @@ _ACTOR_SOURCES = frozenset({"dictionary", "llm", "analyst"})
 _INDUSTRY_SOURCES = frozenset({"llm", "keyword"})
 _MALWARE_KINDS = frozenset({"malware", "tool"})
 """Nilai sah kolom `source`/`kind` Tier 1. Dicek di sini, bukan Postgres CHECK (konvensi
-`ArticleCountry.role`), biar nilai baru tidak butuh migrasi."""
+`entity_mentions.role` negara), biar nilai baru tidak butuh migrasi."""
 
 
 def _check(value: str, allowed: frozenset[str], what: str) -> None:
@@ -71,14 +83,19 @@ def _apply_list_filters(
     """Filter bersama buat query list DAN count -- port dari `article_service.
     get_articles()` (Mongo query dict) ke SQL. Tiga field negara Mongo lama
     (`mentioned_countries`/`victim_countries`/`actor_countries`, tiga ARRAY
-    terpisah) sekarang SATU tabel `article_countries` + kolom `role` (Fase 2)
+    terpisah) sekarang mention negara + kolom `role` (Fase 2; P7c: `entity_mentions`)
     -- `countries` (param umum) = role APA PUN. Di Mongo lama
     `mentioned_countries` itu GABUNGAN regex/NER + victim GPT + actor GPT
     (`nlp.py`: `regex_countries + gpt_victim_countries + gpt_actor_countries`),
     sedangkan role "mentioned" di skema baru cuma SISA yang gak kepakai
     victim/actor (`cti_enrich.stages.persist._country_roles`). Filter
     `role == "mentioned"` (bug lama, QA BUG-B1) bikin artikel yang negaranya
-    victim -- mayoritas data -- gak pernah ketemu."""
+    victim -- mayoritas data -- gak pernah ketemu.
+
+    P7c: tiap filter anak = `Article.id IN (mention_rows ...)` (bukan JOIN), jadi tidak ada baris
+    dobel. Nama aktor dan industri dari pengguna di-resolve lewat `entity_aliases`
+    (`entity_ids_named`): "apt36" menemukan artikel "Transparent Tribe", label industri lama
+    menemukan sektornya; tetap case-insensitive seperti regex `^...$` Mongo lama."""
     if posted_on_start is not None:
         stmt = stmt.where(Article.posted_on >= posted_on_start)
     if posted_on_end is not None:
@@ -95,40 +112,30 @@ def _apply_list_filters(
     if story_id is not None:
         stmt = stmt.where(Article.story_id == story_id)
     if industries:
-        stmt = stmt.join(Article.industries).where(ArticleIndustry.industry.in_(industries))
+        stmt = stmt.where(_mentioning(SECTOR, entity_ids_named(SECTOR, industries)))
     if countries:
-        any_role = _country_alias()
-        stmt = stmt.join(any_role, Article.id == any_role.article_id).where(
-            any_role.country_code.in_(countries)
-        )
+        stmt = stmt.where(_with_country(countries, role=None))
     if victim_countries:
-        victim = _country_alias()
-        stmt = stmt.join(victim, Article.id == victim.article_id).where(
-            victim.role == "victim", victim.country_code.in_(victim_countries)
-        )
+        stmt = stmt.where(_with_country(victim_countries, role="victim"))
     if actor_countries:
-        actor = _country_alias()
-        stmt = stmt.join(actor, Article.id == actor.article_id).where(
-            actor.role == "actor", actor.country_code.in_(actor_countries)
-        )
+        stmt = stmt.where(_with_country(actor_countries, role="actor"))
     if sources:
         stmt = stmt.where(Article.source.in_(sources))
     if news_types:
         stmt = stmt.where(Article.news_type.in_(news_types))
     if threat_actors:
         # Mongo lama: regex `^...$` case-insensitive -- exact match, BUKAN
-        # substring. `func.lower(...).in_(...)` ekuivalen persis.
-        lowered = [t.lower() for t in threat_actors]
-        stmt = stmt.join(Article.threat_actors).where(
-            func.lower(ArticleThreatActor.threat_actor).in_(lowered)
-        )
+        # substring. Alias (`alias_norm`) ekuivalen persis, plus alias lain entitas yang sama.
+        stmt = stmt.where(_mentioning(ACTOR, entity_ids_named(ACTOR, threat_actors)))
     if ttps or ttp_sources:
-        # Satu join: ID dan sumber harus cocok pada BARIS TTP yang sama.
-        stmt = stmt.join(Article.ttps)
+        # Satu subquery: ID dan sumber harus cocok pada mention teknik yang SAMA.
+        t = live_mentions(TECHNIQUE)
+        sub = select(t.c.article_id)
         if ttps:
-            stmt = stmt.where(ArticleTTP.ttp_id.in_(ttps))
+            sub = sub.where(t.c.external_id.in_(ttps))
         if ttp_sources:
-            stmt = stmt.where(ArticleTTP.source.in_(ttp_sources))
+            sub = sub.where(t.c.method.in_(ttp_sources))
+        stmt = stmt.where(Article.id.in_(sub))
     keyword_or = (
         [Article.title.ilike(f"%{kw}%") for kw in title_keywords] if title_keywords else None
     )
@@ -146,11 +153,20 @@ def _apply_list_filters(
     return stmt
 
 
-def _country_alias() -> Any:
-    """Alias baru tiap dipanggil -- filter negara bisa dipakai 3x sekaligus
-    (mentioned + victim + actor) dalam SATU query; tanpa alias, tiga JOIN
-    ke tabel yang sama bakal nabrak nama."""
-    return aliased(ArticleCountry)
+def _mentioning(etype: str, entity_ids: Any) -> Any:
+    """`Article.id IN (artikel yang menyebut salah satu entitas hidup `entity_ids`)`."""
+    m = live_mentions(etype)
+    return Article.id.in_(select(m.c.article_id).where(m.c.entity_id.in_(entity_ids)))
+
+
+def _with_country(codes: Sequence[str], *, role: str | None) -> Any:
+    """Subquery baru tiap dipanggil -- filter negara bisa dipakai 3x sekaligus
+    (mentioned + victim + actor) dalam SATU query."""
+    m = live_mentions(COUNTRY)
+    sub = select(m.c.article_id).where(m.c.external_id.in_(codes))
+    if role is not None:
+        sub = sub.where(m.c.role == role)
+    return Article.id.in_(sub)
 
 
 def all_country_codes(article: Article) -> list[str]:
@@ -158,8 +174,22 @@ def all_country_codes(article: Article) -> list[str]:
     padanan field `mentioned_countries` Mongo lama (gabungan regex + victim +
     actor, lihat `_apply_list_filters`). Dipakai output yang dulu baca
     `mentioned_countries` mentah (PIR, STIX, clustering campaign); output yang
-    memang mecah per role (`ArticleOut`, newsletter) tetap baca per role."""
-    return list(dict.fromkeys(c.country_code for c in article.countries if c.country_code))
+    memang mecah per role (`ArticleOut`, newsletter) tetap baca per role.
+    P7c: kode = `external_id` mention negara entitas hidup, urut id mention."""
+    return list(
+        dict.fromkeys(
+            m.entity.external_id for m in article.mentions_of(COUNTRY) if m.entity.external_id
+        )
+    )
+
+
+def ttp_refs(article: Article) -> list[dict[str, str]]:
+    """`[{"id", "name"}]` teknik artikel -- bentuk `ttps` v1 di dict newsletter/campaign/dedup.
+    P7c: `id` = `external_id` (Ruling 7), `name` = nama entitas teknik, urut id mention."""
+    return [
+        {"id": m.entity.external_id or "", "name": m.entity.name}
+        for m in article.mentions_of(TECHNIQUE)
+    ]
 
 
 def _merge_overrides(article: Article) -> dict[str, Any]:
@@ -182,8 +212,19 @@ TTPInput = tuple[str, str] | NormalizedTTP
 """`(ttp_id, ttp_name)` polos (test/fixture, tanpa teks asli LLM) atau
 `NormalizedTTP` (enrichment/remap -- bawa `extracted_id`/`extracted_name`)."""
 
+EntityAliases = Mapping[str, str]
+"""Nama huruf kecil -> teks yang cocok (hit Tier 1), supaya mention menyimpan alias yang
+benar-benar muncul di teks (`matched_alias`, split eksak). Entitas tetap di-resolve lewat nama
+yang dikirim (bentuk simpan `capitalize()` untuk nama baru, sama seperti v1)."""
+
+ENRICHMENT_TYPES = ("location", "identity", "intrusion-set", "malware", "tool", "attack-pattern")
+"""Tipe entitas yang diganti utuh oleh `set_enrichment`; CVE ditulis `ArticleCveRepo`."""
+
 
 def _first_ttps(ttps: Sequence[TTPInput]) -> dict[str, NormalizedTTP]:
+    """DEDUP PER `ttp_id`, nama pertama menang: LLM kadang mengembalikan ID yang SAMA dua kali
+    dengan nama beda ("T1176" -> "Browser Extensions" & "Software Extensions"); tanpa ini
+    artikel bisa gagal tersimpan (e2e staging Fase 10)."""
     first_per_id: dict[str, NormalizedTTP] = {}
     for t in ttps:
         n = t if isinstance(t, NormalizedTTP) else NormalizedTTP(t[0], t[1])
@@ -191,107 +232,87 @@ def _first_ttps(ttps: Sequence[TTPInput]) -> dict[str, NormalizedTTP]:
     return first_per_id
 
 
-def _first_ttp_names(ttps: Sequence[TTPInput]) -> dict[str, str]:
-    return {tid: n.ttp_name for tid, n in _first_ttps(ttps).items()}
+def _ttp_hits(ttps: Sequence[TTPInput]) -> list[MentionInput]:
+    """Teknik -> mention `attack-pattern` lewat id teknik (Ruling 7); teks asli LLM ke
+    `extracted`, kalimat bukti ke `evidence`."""
+    hits: list[MentionInput] = []
+    for tid, n in _first_ttps(ttps).items():
+        _check(n.source, _TTP_SOURCES, "ttp source")
+        raw = {"extracted_id": n.extracted_id, "extracted_name": n.extracted_name}
+        extracted = {k: v for k, v in raw.items() if v is not None} or None
+        hits.append(
+            MentionInput(
+                "attack-pattern",
+                n.ttp_name,
+                n.source,
+                tid,
+                evidence=n.evidence,
+                extracted=extracted,
+                external_id=tid,
+            )
+        )
+    return hits
 
 
-def _dedup_ttps(ttps: Sequence[TTPInput]) -> list[ArticleTTP]:
-    """DEDUP PER `ttp_id` (kunci `uq_article_ttp` = (article_id, ttp_id)),
-    BUKAN per tuple `(id, nama)`. LLM kadang ngembaliin ID yang SAMA dua kali
-    dgn nama beda ("T1176" -> "Browser Extensions" & "Software Extensions");
-    dedup per tuple meloloskan keduanya -> UniqueViolation -> SELURUH
-    transaksi (artikelnya) ke-rollback dan artikel HILANG. Ketemu di e2e
-    staging Fase 10 (1 dari 10 artikel). Nama pertama yang menang."""
-    return [ArticleTTP(ttp_id=tid, ttp_name=name) for tid, name in _first_ttp_names(ttps).items()]
+def _matched(name: str, aliases: EntityAliases) -> str:
+    return aliases.get(name.lower(), name)
 
 
-def _reconcile[T, K](
-    current: Iterable[T], wanted: Iterable[K], key_of: Callable[[T], K], make: Callable[[K], T]
-) -> list[T]:
-    """Daftar child baru: baris yang KUNCI-nya masih diinginkan dipakai ULANG
-    (instance yang sama), sisanya dibuat baru; yang tidak lagi diinginkan hilang
-    (delete-orphan).
-
-    Kenapa bukan "buang semua, bikin ulang" (yang dulu dipakai): unit-of-work
-    SQLAlchemy menjalankan INSERT sebelum DELETE di flush yang sama, jadi baris
-    baru berkunci SAMA dengan baris lama yang mau dihapus menabrak
-    `uq_article_*` (`UniqueViolation`). Persist ulang artikel yang sama -- dua
-    scraper meliput URL yang sama (dedup itu per-scraper), atau retry sesudah
-    persist -- gagal, dan artikel yang sehat dicatat `[enrichment_failed]`."""
-    by_key = {key_of(c): c for c in current}
-    return [by_key[k] if k in by_key else make(k) for k in wanted]
+def _actor_hits(names: Iterable[str], aliases: EntityAliases) -> list[MentionInput]:
+    hits = []
+    for name in dict.fromkeys(names):
+        hits.append(MentionInput("intrusion-set", name, "dictionary", _matched(name, aliases)))
+    return hits
 
 
-def _apply_enrichment(
-    article: Article,
+def _malware_hits(malware: Sequence[tuple[str, str]], aliases: EntityAliases) -> list[MentionInput]:
+    # nama sama beda kind: yang pertama menang (sama seperti kunci unik lama per nama)
+    kinds: dict[str, str] = {}
+    for name, kind in malware:
+        _check(kind, _MALWARE_KINDS, "malware kind")
+        kinds.setdefault(name, kind)
+    hits = []
+    for name, kind in kinds.items():
+        hits.append(MentionInput(kind, name, "dictionary", _matched(name, aliases)))
+    return hits
+
+
+def _sector_hits(industries: Iterable[str], method: str) -> list[MentionInput]:
+    return [h for label in dict.fromkeys(industries) if (h := sector_mention(label, method))]
+
+
+def _enrichment_hits(
     *,
     countries: Sequence[tuple[str, str]],
     industries: Sequence[str],
     threat_actors: Sequence[str],
     ttps: Sequence[TTPInput],
-    malware: Sequence[tuple[str, str]] = (),
-    industry_source: str = "llm",
-) -> None:
-    """Pasang hasil enrichment ke child rows -- idempoten (lihat `_reconcile`).
-    Dipakai versi sync DAN async, biar logikanya gak bisa drift."""
+    malware: Sequence[tuple[str, str]],
+    industry_source: str,
+    aliases: EntityAliases,
+) -> list[MentionInput]:
+    """Hasil satu enrichment -> mention. Negara datang dari classify LLM (+ NER regex untuk role
+    `mentioned`); semua dicatat method `llm` karena role-nya ditentukan dari jawaban LLM."""
     _check(industry_source, _INDUSTRY_SOURCES, "industry_source")
-    for _, kind in malware:
-        _check(kind, _MALWARE_KINDS, "malware kind")
-    article.countries = _reconcile(
-        article.countries,
-        dict.fromkeys(countries),
-        lambda c: (c.country_code, c.role),
-        lambda k: ArticleCountry(country_code=k[0], role=k[1]),
-    )
-    article.industries = _reconcile(
-        article.industries,
-        dict.fromkeys(industries),
-        lambda c: c.industry,
-        lambda k: ArticleIndustry(industry=k, source=industry_source),
-    )
-    for ind in article.industries:
-        ind.source = industry_source
-    article.threat_actors = _reconcile(
-        article.threat_actors,
-        dict.fromkeys(threat_actors),
-        lambda c: c.threat_actor,
-        lambda k: ArticleThreatActor(threat_actor=k, source="dictionary"),
-    )
-    # kunci unik = (article_id, name): dedup per nama (pertama menang), kind baris pakai-ulang
-    # ikut diperbarui -- kalau tidak, nama sama beda kind -> UniqueViolation dan artikel hilang.
-    kinds: dict[str, str] = {}
-    for name, kind in malware:
-        kinds.setdefault(name, kind)
-    article.malware = _reconcile(
-        article.malware,
-        kinds,
-        lambda c: c.name,
-        lambda k: ArticleMalware(name=k, kind=kinds[k], source="dictionary"),
-    )
-    for m in article.malware:
-        m.kind = kinds[m.name]
-    apply_ttps(article, ttps)
+    countries_hits = [
+        h for code, role in dict.fromkeys(countries) if (h := country_mention(code, role, "llm"))
+    ]
+    return [
+        *countries_hits,
+        *_sector_hits(industries, industry_source),
+        *_actor_hits(threat_actors, aliases),
+        *_malware_hits(malware, aliases),
+        *_ttp_hits(ttps),
+    ]
 
 
 def apply_ttps(article: Article, ttps: Sequence[TTPInput]) -> None:
-    """Pasang child `article_ttps` -- reuse baris ber-`ttp_id` sama (lihat
-    `_reconcile`). Dipakai `_apply_enrichment` dan remap TTP
-    (`cti_core.db.repositories.ttp_catalog.remap_article_ttps`)."""
-    kept = {t.ttp_id: t for t in article.ttps}
-    rows: list[ArticleTTP] = []
-    for tid, n in _first_ttps(ttps).items():
-        _check(n.source, _TTP_SOURCES, "ttp source")
-        row = kept.get(tid)
-        if row is None:
-            row = ArticleTTP(ttp_id=tid, ttp_name=n.ttp_name)
-        else:
-            row.ttp_name = n.ttp_name
-        row.extracted_id = n.extracted_id
-        row.extracted_name = n.extracted_name
-        row.source = n.source
-        row.evidence = n.evidence
-        rows.append(row)
-    article.ttps = rows
+    """Ganti mention teknik artikel dengan `ttps` (yang tidak ada lagi dihapus, yang ada
+    diperbarui method/bukti). Dipakai remap TTP (`ttp_catalog.remap_article_ttps`)."""
+    session = object_session(article)
+    if not isinstance(session, Session):
+        raise ValueError("apply_ttps butuh artikel yang terikat ke Session sync")
+    ArticleRepo(session).replace_mentions(article, _ttp_hits(ttps), ("attack-pattern",))
 
 
 class ArticleRepo:
@@ -366,32 +387,54 @@ class ArticleRepo:
         ttps: Sequence[TTPInput] = (),
         malware: Sequence[tuple[str, str]] = (),
         industry_source: str = "llm",
+        aliases: EntityAliases | None = None,
     ) -> Article:
-        """Ganti SEMUA child row (countries/industries/threat_actors/ttps)
-        dari SATU hasil enrichment -- Fase 5 (`cti_enrich.pipeline`), satu-
-        satunya caller. `countries`: `(country_code ISO alpha-2, role)`,
-        `role` salah satu `victim|actor|mentioned` (lihat `ArticleCountry`).
-        `ttps`: `(ttp_id, ttp_name)` atau `NormalizedTTP` (normalisasi ke
-        katalog ATT&CK itu tugas CALLER -- `cti_enrich.pipeline`, lihat
-        `cti_core.attack_ttp`; repo nyimpen apa adanya).
+        """Ganti SEMUA mention negara/sektor/aktor/malware/teknik artikel dari SATU hasil
+        enrichment (pipeline, `cti_enrich.stages.persist`). `countries`: `(kode ISO alpha-2,
+        role)`, role `victim|actor|mentioned`. `ttps`: `(ttp_id, ttp_name)` atau `NormalizedTTP`
+        (normalisasi ke katalog ATT&CK tugas CALLER). `aliases`: lihat `EntityAliases`.
 
-        Assign ulang list relationship (bukan merge/diff) -- `cascade="all,
-        delete-orphan"` (Fase 2) yang hapus baris lama, sama filosofi
-        `CveTrackerRepo.upsert`: hasil enrichment TERBARU kebenaran, bukan
-        delta yang ditumpuk. Dedup di sini (bukan percaya caller) karena
-        `UniqueConstraint` per (article, kolom[, role]) bakal nolak baris
-        kembar kalau caller kirim duplikat."""
-        _apply_enrichment(
-            article,
+        Nama di-resolve ke entitas (P7c, spec 4.3); hasil terbaru = kebenaran: mention bertipe
+        `ENRICHMENT_TYPES` yang tidak ada lagi dihapus, yang tetap diperbarui (method, alias,
+        bukti), idempoten saat replay. Dua ejaan satu entitas = satu mention (ejaan pertama)."""
+        hits = _enrichment_hits(
             countries=countries,
             industries=industries,
             threat_actors=threat_actors,
             ttps=ttps,
             malware=malware,
             industry_source=industry_source,
+            aliases=aliases or {},
         )
-        self.session.flush()
+        self.replace_mentions(article, hits, ENRICHMENT_TYPES)
         return article
+
+    def replace_mentions(
+        self, article: Article, hits: Sequence[MentionInput], types: Sequence[str]
+    ) -> None:
+        """Mention artikel bertipe `types` dibuat persis `hits` (lihat `set_enrichment`)."""
+        self.session.flush()
+        rows = mention_rows({"article_id": article.id}, resolve_all(self.session, hits))
+        keep = [(r["entity_id"], r["role"]) for r in rows]
+        self.session.execute(delete_other_mentions(article.id, types, keep))
+        if rows:
+            self.session.execute(insert_mentions(rows, update=True))
+        self.session.flush()
+        self.session.expire(article, ARTICLE_MENTION_ATTRS)
+
+    def add_mentions(self, article: Article, hits: Iterable[MentionInput]) -> int:
+        """ADD-ONLY dan idempoten (`ON CONFLICT DO NOTHING` di kunci unik mention): mention yang
+        sudah ada tidak diubah. Return jumlah mention baru."""
+        self.session.flush()
+        rows = mention_rows({"article_id": article.id}, resolve_all(self.session, hits))
+        added = len(self.session.execute(insert_mentions(rows, update=False)).all()) if rows else 0
+        self.session.flush()
+        self.session.expire(article, ARTICLE_MENTION_ATTRS)
+        return added
+
+    def touch_entity_seen(self, article: Article) -> None:
+        """`first_seen`/`last_seen` entitas yang disebut artikel, satu statement (spec 4.3)."""
+        touch_seen(self.session, article.id)
 
     def add_tier1(
         self,
@@ -401,52 +444,24 @@ class ArticleRepo:
         threat_actors: Sequence[str],
         malware: Sequence[tuple[str, str]],
         industries: Sequence[str],
+        aliases: EntityAliases | None = None,
     ) -> dict[str, int]:
-        """ADD-ONLY untuk backfill Tier 1: tidak pernah mengubah/menghapus baris yang ada
-        (TTP LLM tetap, TTP keyword dengan ID sama tidak ditambah). Industri `keyword` hanya
-        ditambah kalau industri sekarang persis `["General"]` (baris General lalu dibuang) --
-        industri spesifik dari LLM tidak boleh ditimpa tebakan keyword. Return jumlah baris
-        baru per jenis."""
-        counts = {"ttps": 0, "threat_actors": 0, "malware": 0, "industries": 0}
-        have_ttp = {t.ttp_id for t in article.ttps}
-        for n in ttps:
-            _check(n.source, _TTP_SOURCES, "ttp source")
-            if n.ttp_id in have_ttp:
-                continue
-            have_ttp.add(n.ttp_id)
-            article.ttps.append(
-                ArticleTTP(
-                    ttp_id=n.ttp_id,
-                    ttp_name=n.ttp_name,
-                    extracted_id=n.extracted_id,
-                    extracted_name=n.extracted_name,
-                    source=n.source,
-                    evidence=n.evidence,
-                )
-            )
-            counts["ttps"] += 1
-        have_actor = {a.threat_actor for a in article.threat_actors}
-        for name in dict.fromkeys(threat_actors):
-            if name not in have_actor:
-                article.threat_actors.append(
-                    ArticleThreatActor(threat_actor=name, source="dictionary")
-                )
-                counts["threat_actors"] += 1
-        have_mal = {m.name for m in article.malware}
-        for name, kind in malware:
-            _check(kind, _MALWARE_KINDS, "malware kind")
-            if name not in have_mal:
-                have_mal.add(name)
-                article.malware.append(ArticleMalware(name=name, kind=kind, source="dictionary"))
-                counts["malware"] += 1
-        if industries and [i.industry for i in article.industries] == ["General"]:
-            article.industries = [
-                ArticleIndustry(industry=name, source="keyword")
-                for name in dict.fromkeys(industries)
-            ]
-            counts["industries"] = len(article.industries)
-        self.session.flush()
-        return counts
+        """ADD-ONLY untuk backfill Tier 1: mention yang ada tidak pernah diubah/dihapus (teknik
+        LLM tetap; teknik keyword dengan ID sama, atau aktor yang alias-nya sudah tersebut, tidak
+        ditambah karena resolve ke entitas yang sama). Sektor `keyword` hanya ditambah kalau
+        artikel belum punya sektor sama sekali (dulu: industri persis `["General"]`; "General"
+        kini tidak menghasilkan mention) -- sektor dari LLM tidak boleh ditimpa tebakan keyword.
+        `aliases`: teks cocok Tier 1 untuk `matched_alias` (sama seperti `set_enrichment`).
+        Return jumlah mention baru per jenis."""
+        no_sector = not article.mentions_of("identity")
+        return {
+            "ttps": self.add_mentions(article, _ttp_hits(ttps)),
+            "threat_actors": self.add_mentions(article, _actor_hits(threat_actors, aliases or {})),
+            "malware": self.add_mentions(article, _malware_hits(malware, aliases or {})),
+            "industries": (
+                self.add_mentions(article, _sector_hits(industries, "keyword")) if no_sector else 0
+            ),
+        }
 
     def to_dict(self, article: Article) -> dict[str, Any]:
         """Field mesin + overrides tergabung, overrides menang. Ini yang
@@ -501,32 +516,48 @@ class AsyncArticleRepo:
         ttps: Sequence[TTPInput] = (),
         malware: Sequence[tuple[str, str]] = (),
         industry_source: str = "llm",
+        aliases: EntityAliases | None = None,
     ) -> Article:
-        """Logic sama persis `ArticleRepo.set_enrichment` -- dipakai test
-        integrasi Fase 7 (setup fixture artikel via jalur async), bukan
-        Fase 5 (itu tetap lewat `ArticleRepo` sync, Celery task).
-
-        `refresh()` 5 relationship dulu SEBELUM di-assign ulang -- ganti
-        koleksi (`article.countries = [...]`) di sesi ASYNC butuh state
-        koleksi LAMA buat ngitung diff (cascade delete-orphan), dan itu
-        lazy-load implisit yang gak bisa jalan sinkron di luar `await`
-        (`MissingGreenlet`). Versi sync (`ArticleRepo`) gak kena ini --
-        lazy-load implisit sinkron biasa jalan di sana."""
-        await self.session.refresh(
-            article,
-            attribute_names=["countries", "industries", "threat_actors", "ttps", "malware"],
-        )
-        _apply_enrichment(
-            article,
+        """Logic sama persis `ArticleRepo.set_enrichment` -- dipakai test integrasi (setup
+        fixture artikel lewat jalur async). Relasi baca di-`refresh()` sesudah tulis: lazy-load
+        implisit tidak bisa jalan di sesi async (`MissingGreenlet`)."""
+        hits = _enrichment_hits(
             countries=countries,
             industries=industries,
             threat_actors=threat_actors,
             ttps=ttps,
             malware=malware,
             industry_source=industry_source,
+            aliases=aliases or {},
         )
         await self.session.flush()
+        rows = mention_rows(
+            {"article_id": article.id},
+            await resolve_all_async(self.session, hits),
+        )
+        keep = [(r["entity_id"], r["role"]) for r in rows]
+        await self.session.execute(delete_other_mentions(article.id, ENRICHMENT_TYPES, keep))
+        if rows:
+            await self.session.execute(insert_mentions(rows, update=True))
+        await self._reload(article)
         return article
+
+    async def add_mentions(self, article: Article, hits: Iterable[MentionInput]) -> int:
+        """Kembaran async `ArticleRepo.add_mentions`."""
+        await self.session.flush()
+        rows = mention_rows(
+            {"article_id": article.id},
+            await resolve_all_async(self.session, hits),
+        )
+        added = 0
+        if rows:
+            added = len((await self.session.execute(insert_mentions(rows, update=False))).all())
+        await self._reload(article)
+        return added
+
+    async def _reload(self, article: Article) -> None:
+        await self.session.flush()
+        await self.session.refresh(article, attribute_names=list(ARTICLE_MENTION_ATTRS))
 
     async def get_by_url_hash(self, url_hash_value: str) -> Article | None:
         result = await self.session.execute(
@@ -587,7 +618,7 @@ class AsyncArticleRepo:
         (satu artikel bisa punya banyak baris industry/country/TA yang
         cocok, tanpa distinct dia muncul dobel di halaman).
 
-        `ttps` (Fase 7.3, router `pir`) filter `ArticleTTP.ttp_id` --
+        `ttps` (Fase 7.3, router `pir`) filter id teknik mention --
         ditambah di sini alih-alih duplikat query builder terpisah di
         `pir`, biar SATU sumber logic filter artikel (beda dari kode
         lama: `pir_service._build_query` DAN `export_pir_docx.py
@@ -700,13 +731,18 @@ class AsyncArticleRepo:
         """Port `article_service.get_filter_options()`. Distinct langsung
         dari kolom/tabel anak yang udah ternormalisasi -- gak butuh
         `col.distinct()` Mongo-style, ini query SQL biasa per tabel."""
+        sec = live_mentions(SECTOR)
         industries_q = (
-            select(ArticleIndustry.industry).distinct().order_by(ArticleIndustry.industry)
+            select(sec.c.name).where(sec.c.article_id.is_not(None)).distinct().order_by(sec.c.name)
         )
         # Role apa pun -- sama semantik sama filter `countries` (lihat
         # `_apply_list_filters`), biar opsi dropdown = negara yang bisa ketemu.
+        cty = live_mentions(COUNTRY)
         countries_q = (
-            select(ArticleCountry.country_code).distinct().order_by(ArticleCountry.country_code)
+            select(cty.c.external_id)
+            .where(cty.c.article_id.is_not(None), cty.c.external_id.is_not(None))
+            .distinct()
+            .order_by(cty.c.external_id)
         )
         sources_q = (
             select(Article.source).where(Article.source != "").distinct().order_by(Article.source)
@@ -717,10 +753,9 @@ class AsyncArticleRepo:
             .distinct()
             .order_by(Article.news_type)
         )
+        act = live_mentions(ACTOR)
         threat_actors_q = (
-            select(ArticleThreatActor.threat_actor)
-            .distinct()
-            .order_by(ArticleThreatActor.threat_actor)
+            select(act.c.name).where(act.c.article_id.is_not(None)).distinct().order_by(act.c.name)
         )
         date_range_q = select(func.min(Article.posted_on), func.max(Article.posted_on))
 

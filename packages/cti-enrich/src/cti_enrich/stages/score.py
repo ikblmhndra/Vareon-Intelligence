@@ -20,7 +20,7 @@ adanya -- lihat penjelasan tiap satu):
 
 - `country_list` = `pycountry.countries` (seluruh negara ISO 3166-1),
   GANTIIN Mongo `apac-country`+`global-country` (~150 nama kuratif). Dua
-  alasan sekaligus: (1) `ArticleCountry.country_code` (Fase 2) minta kode
+  alasan sekaligus: (1) mention negara (`external_id`, dulu kode Fase 2) minta kode
   ISO alpha-2, jadi konversi nama->kode WAJIB ada di suatu titik --
   `pycountry` ngasih itu gratis dari sumber yang sama; (2) daftar lama gak
   pernah di-port ke Postgres (lihat `db/models/threat_reference.py`), jadi

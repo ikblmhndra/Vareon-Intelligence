@@ -11,13 +11,11 @@ bentuk lama, sesuai plan §3/§5.6:
     ketimpa scraper. Baca lewat repository, bukan langsung ke kolom
     aslinya -- lihat ArticleRepo.
   - Array Mongo (impacted_industries, mentioned_countries+peran,
-    threat_actors, ttps) dinormalisasi jadi tabel anak, BUKAN Postgres
+    threat_actors, ttps) dinormalisasi jadi baris, BUKAN Postgres
     ARRAY -- supaya bisa di-query/index per nilai (mis. "semua artikel
-    yang nyebut Indonesia sebagai victim").
-
-Threat actor cuma nama string di sini (bukan FK ke tabel ThreatActor
-master) -- profil/watchlist TA itu scope Fase 7 (port ta_service), bukan
-Fase 2. Ditambahin FK-nya nanti kalau tabel master itu ada.
+    yang nyebut Indonesia sebagai victim"). Sejak P7c barisnya
+    `entity_mentions` -> `entities` (relasi `Article.mentions`); tabel
+    link per-tipe lama tinggal view kompatibilitas tanpa model ORM.
 """
 
 from __future__ import annotations
@@ -45,6 +43,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from cti_core.db.base import Base, TimestampMixin
+from cti_core.db.models.entity import EntityMention, live_entity_names, live_mentions
 
 
 class Article(TimestampMixin, Base):
@@ -120,137 +119,47 @@ class Article(TimestampMixin, Base):
     story_match: Mapped[str | None] = mapped_column(String(20))
     """Aturan yang menautkan: `lead`, `cve`, `title_exact`, `title`, `title_embedding`."""
 
-    countries: Mapped[list[ArticleCountry]] = relationship(
-        back_populates="article", cascade="all, delete-orphan", lazy="selectin"
+    mentions: Mapped[list[EntityMention]] = relationship(
+        cascade="all, delete-orphan", lazy="selectin", order_by="EntityMention.id"
     )
-    industries: Mapped[list[ArticleIndustry]] = relationship(
-        back_populates="article", cascade="all, delete-orphan", lazy="selectin"
-    )
-    threat_actors: Mapped[list[ArticleThreatActor]] = relationship(
-        back_populates="article", cascade="all, delete-orphan", lazy="selectin"
-    )
-    ttps: Mapped[list[ArticleTTP]] = relationship(
-        back_populates="article", cascade="all, delete-orphan", lazy="selectin"
-    )
-    malware: Mapped[list[ArticleMalware]] = relationship(
-        back_populates="article", cascade="all, delete-orphan", lazy="selectin"
-    )
+    """Sebutan entitas (P7c): negara, sektor, aktor, malware/tool, teknik, CVE. Ditulis lewat
+    `ArticleRepo` (Core INSERT), bukan append ke list ini. Pengganti relasi link lama
+    (`countries`/`industries`/`threat_actors`/`ttps`/`malware`, dihapus di Task 12).
+
+    `selectin` (bukan `raise_on_sql`): hampir semua pembaca ORM artikel (list/detail artikel,
+    PIR, newsletter, campaign, recap, STIX, dedup) menampilkan mention, dan satu SELECT IN per
+    batch artikel (entitas ikut lewat `joined`) menggantikan LIMA selectin relasi lama -- jadi
+    tidak ada N+1 dan beban per load turun. Pembaca agregat memakai `mention_rows()` SQL."""
+
+    def mentions_of(self, *types: str) -> list[EntityMention]:
+        """Mention ke entitas hidup (tidak suppressed, bukan tombstone) bertipe `types`
+        (kosong = semua), urut id mention. `identity` hanya sektor (kelas `class`), sama dengan
+        `repositories.entity.mention_rows`."""
+        return live_mentions(self.mentions, types)
+
+    def entity_names(self, *types: str) -> list[str]:
+        """Nama entitas (kanonik) dari `mentions_of`, tanpa duplikat, urut id mention."""
+        return live_entity_names(self.mentions, types)
+
+    def country_codes(self, role: str | None = None) -> list[str]:
+        """Kode ISO alpha-2 (`external_id`) negara yang disebut, tanpa duplikat, urut id mention;
+        `role` (victim | actor | mentioned) menyaring per peran, None = peran apa pun."""
+        return list(
+            dict.fromkeys(
+                m.entity.external_id
+                for m in self.mentions_of("location")
+                if m.entity.external_id and (role is None or m.role == role)
+            )
+        )
 
 
 class CountryRole(str):
-    """Bukan Enum Python biasa (lihat catatan di ArticleCountry.role) --
-    tetap didokumentasikan di sini sebagai daftar nilai yang sah."""
+    """Peran negara di mention `location` (`entity_mentions.role`). Bukan Enum Python biasa --
+    dicek di aplikasi, bukan Postgres CHECK; didokumentasikan di sini sebagai daftar nilai sah."""
 
     VICTIM = "victim"
     ACTOR = "actor"
     MENTIONED = "mentioned"
-
-
-class ArticleCountry(Base):
-    """Ganti array `victim_countries`/`actor_countries`/`mentioned_countries`
-    Mongo jadi satu tabel + kolom peran -- supaya "semua artikel yang
-    nyebut X sebagai victim" itu query index biasa, bukan array-contains.
-    """
-
-    __tablename__ = "article_countries"
-    __table_args__ = (
-        UniqueConstraint("article_id", "country_code", "role", name="uq_article_country_role"),
-        Index("ix_article_countries_country_role", "country_code", "role"),
-    )
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    article_id: Mapped[int] = mapped_column(
-        ForeignKey("articles.id", ondelete="CASCADE"), nullable=False
-    )
-    country_code: Mapped[str] = mapped_column(String(2), nullable=False)
-    """ISO 3166-1 alpha-2, uppercase."""
-    role: Mapped[str] = mapped_column(String(10), nullable=False)
-    """victim | actor | mentioned -- lihat CountryRole. Dicek di level
-    aplikasi (repository), bukan Postgres CHECK, biar gampang nambah nilai
-    baru tanpa migrasi kalau perlu."""
-
-    article: Mapped[Article] = relationship(back_populates="countries")
-
-
-class ArticleIndustry(Base):
-    __tablename__ = "article_industries"
-    __table_args__ = (UniqueConstraint("article_id", "industry", name="uq_article_industry"),)
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    article_id: Mapped[int] = mapped_column(
-        ForeignKey("articles.id", ondelete="CASCADE"), nullable=False
-    )
-    industry: Mapped[str] = mapped_column(String(150), nullable=False, index=True)
-    source: Mapped[str] = mapped_column(String(10), nullable=False, server_default="llm")
-    """llm | keyword (Tier 1). Dicek di repository, bukan Postgres CHECK."""
-
-    article: Mapped[Article] = relationship(back_populates="industries")
-
-
-class ArticleThreatActor(Base):
-    """String doang buat sekarang -- lihat catatan scope di docstring modul."""
-
-    __tablename__ = "article_threat_actors"
-    __table_args__ = (
-        UniqueConstraint("article_id", "threat_actor", name="uq_article_threat_actor"),
-    )
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    article_id: Mapped[int] = mapped_column(
-        ForeignKey("articles.id", ondelete="CASCADE"), nullable=False
-    )
-    threat_actor: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
-    source: Mapped[str] = mapped_column(String(10), nullable=False, server_default="dictionary")
-    """dictionary | llm | analyst. Dicek di repository, bukan Postgres CHECK."""
-
-    article: Mapped[Article] = relationship(back_populates="threat_actors")
-
-
-class ArticleTTP(Base):
-    """Ganti `ttps: [{id, name}]` Mongo."""
-
-    __tablename__ = "article_ttps"
-    __table_args__ = (UniqueConstraint("article_id", "ttp_id", name="uq_article_ttp"),)
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    article_id: Mapped[int] = mapped_column(
-        ForeignKey("articles.id", ondelete="CASCADE"), nullable=False
-    )
-    ttp_id: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
-    """Mis. "T1566.001"."""
-    ttp_name: Mapped[str] = mapped_column(String(300), nullable=False)
-    """Nama KANONIK ATT&CK buat `ttp_id` (hasil `cti_core.attack_ttp.
-    normalize_ttps`), bukan teks bebas LLM -- itu di `extracted_name`."""
-    extracted_id: Mapped[str | None] = mapped_column(String(50))
-    extracted_name: Mapped[str | None] = mapped_column(String(300))
-    """Pasangan `(technique_id, technique_name)` ASLI dari LLM sebelum
-    dinormalisasi (QA BUG-C01: LLM sering salah pasang ID/nama). Disimpan
-    buat audit + bahan remap ulang (`tools/ops/remap_article_ttps.py`).
-    NULL = baris lama sebelum kolom ini ada / ditulis tanpa normalisasi."""
-    source: Mapped[str] = mapped_column(String(10), nullable=False, server_default="llm")
-    """llm | explicit | keyword (Tier 1). Dicek di repository, bukan Postgres CHECK."""
-    evidence: Mapped[str | None] = mapped_column(Text)
-    """Kalimat bukti teknik (Tier 1); NULL = tidak ada."""
-
-    article: Mapped[Article] = relationship(back_populates="ttps")
-
-
-class ArticleMalware(Base):
-    """Malware/tool hasil kamus Tier 1 (`kind` malware | tool)."""
-
-    __tablename__ = "article_malware"
-    __table_args__ = (UniqueConstraint("article_id", "name", name="uq_article_malware"),)
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    article_id: Mapped[int] = mapped_column(
-        ForeignKey("articles.id", ondelete="CASCADE"), nullable=False
-    )
-    name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
-    kind: Mapped[str] = mapped_column(String(10), nullable=False)
-    """malware | tool. Dicek di repository, bukan Postgres CHECK."""
-    source: Mapped[str] = mapped_column(String(10), nullable=False, server_default="dictionary")
-
-    article: Mapped[Article] = relationship(back_populates="malware")
 
 
 class RejectedArticle(Base):

@@ -95,7 +95,9 @@ def test_ttp_json_failure_keeps_the_article_without_ttps(
 
     assert outcome.accepted and outcome.article_id is not None
     article = _article(session)
-    assert article is not None and article.ttps == []  # tersimpan TANPA TTP
+    assert (
+        article is not None and article.mentions_of("attack-pattern") == []
+    )  # tersimpan TANPA TTP
     assert len(alerts) == 1  # alert tetap keluar: artikelnya relevan
 
 

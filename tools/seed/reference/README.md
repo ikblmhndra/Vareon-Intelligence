@@ -18,3 +18,16 @@ Idempotent: re-running it does not duplicate rows and does not overwrite changes
 To add or update: replace the `.bson` file with a new `mongodump` output (keep its name and location).
 Other curated data (clients, techstack, monitored X accounts, PIRs, etc.) is NOT included -- it is entered
 through the UI, or through `tools/seed/fase10_reference_data.py` if you have an old Mongo dump.
+
+## MISP Galaxy snapshot (moved to `packages/cti-core/src/cti_core/entity/data/misp-galaxy/`)
+
+`threat-actor.json`, `ransomware.json` and `malpedia.json` from [MISP Galaxy](https://github.com/MISP/misp-galaxy)
+(CC0) are not in this folder: they ship as package data of `cti-core`, so the Docker images have
+them too. Upstream commit, date and local changes are in that folder's `SOURCE`. Input of
+`cti-entity merge-aliases`, which merges actor (`intrusion-set`) and malware/tool entities that a
+Galaxy cluster lists as synonyms and adds the synonyms as aliases of existing entities (clusters
+that match no entity create nothing). The weekly `entity.alias_sync` task stores a newer copy in
+`reference_snapshots`; the command prefers that copy and falls back to the package data;
+`--snapshot-dir DIR` overrides the package data. Run `--dry-run --csv <path>` first and review the
+CSV before `--apply`. To refresh: download the three files again, update `SOURCE`, and rerun gitleaks
+(`gitleaks dir packages/cti-core/src/cti_core/entity/data/misp-galaxy`).

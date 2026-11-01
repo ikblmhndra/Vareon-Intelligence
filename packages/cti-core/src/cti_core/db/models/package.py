@@ -35,7 +35,7 @@ diperbaiki di sini:
 `aliases`/`affected_version_ranges`/`references` (`PackageVuln`) dan
 `direct_deps`/`indirect_deps`/`scorecard_checks` (`PackageDepGraph`) --
 JSONB, bukan tabel anak ternormalisasi kayak `CveReference` dkk. Beda
-dari list artikel (`ArticleTTP` dst, di-query/index per nilai), list-list
+dari list artikel (`entity_mentions`, di-query/index per nilai), list-list
 ini gak pernah di-filter/join per elemen di kode lama -- dibaca+ditulis
 SELALU utuh bareng parent-nya, tampilan doang. Sama alasan kayak
 `PIRRequirement.criteria` (lihat docstring model itu): bag-of-strings ad

@@ -121,28 +121,28 @@ async def get_exec_dashboard(
         "confirmed_only": confirmed_only,
     }
 
-    sector_trend_all = await repo.monthly_industry_counts(**base)
-    sector_trend_raw = [r for r in sector_trend_all if r[0] != UNSPECIFIED_INDUSTRY]
-    sector_unspecified = sum(cnt for ind, _, cnt in sector_trend_all if ind == UNSPECIFIED_INDUSTRY)
+    sector_trend_raw = await repo.monthly_industry_counts(**base)
+    # P7c (Ruling 13): "General" bukan lagi mention sektor; arti v1 = artikel tanpa sektor.
+    unspecified_monthly = await repo.monthly_unspecified_counts(**base)
+    sector_unspecified = sum(cnt for _, cnt in unspecified_monthly)
     country_trend_raw = await repo.monthly_country_counts(**base)
     ta_raw = await repo.top_threat_actors(limit=10, **base)
     unique_ta_count = await repo.unique_threat_actor_count(**base)
     news_type_raw = await repo.news_type_breakdown(**base)
     prev_unique_ta_count = await repo.unique_threat_actor_count(**prev_base)
     # Dua-duanya TIDAK dibatasi top-8 (`active_sectors` dulu `len(top_sectors)` <= 8 vs
-    # `prev_active_sectors` tanpa batas, jadi trennya timpang) dan tanpa "General".
-    active_sectors = await repo.unique_industry_count(exclude_industry=UNSPECIFIED_INDUSTRY, **base)
-    prev_active_sectors = await repo.unique_industry_count(
-        exclude_industry=UNSPECIFIED_INDUSTRY, **prev_base
-    )
+    # `prev_active_sectors` tanpa batas, jadi trennya timpang); "General" bukan mention sektor
+    # sejak P7c (Ruling 13), jadi tidak perlu disaring lagi.
+    active_sectors = await repo.unique_industry_count(**base)
+    prev_active_sectors = await repo.unique_industry_count(**prev_base)
     total = await repo.count_articles(**base)
     prev_total = await repo.count_articles(**prev_base)
     prev_days_with_data = await repo.distinct_day_count(**prev_base)
     cve_raw = await repo.cve_tech_severity_breakdown(limit=10)
 
-    # Bulan diambil dari SEMUA baris (termasuk "General") supaya bulan yang isinya cuma artikel
-    # tanpa sektor spesifik tetap muncul di sumbu.
-    months_set = {mo for _, mo, _ in sector_trend_all}
+    # Bulan diambil dari SEMUA artikel (termasuk yang tanpa sektor) supaya bulan yang isinya cuma
+    # artikel tanpa sektor spesifik tetap muncul di sumbu.
+    months_set = {mo for _, mo, _ in sector_trend_raw} | {mo for mo, _ in unspecified_monthly}
     months = sorted(months_set)
 
     sector_map: dict[str, dict[str, int]] = {}

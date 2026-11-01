@@ -8,10 +8,11 @@ Korpus global seperti `articles` (bukan per klien). Anggota sebuah story adalah
 from __future__ import annotations
 
 import datetime
+import uuid
 from typing import Any
 
 from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, Integer, String, Text, func, text
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from cti_core.db.base import Base, TimestampMixin
@@ -22,6 +23,7 @@ class Story(TimestampMixin, Base):
     __table_args__ = (
         Index("ix_stories_cve_ids", "cve_ids", postgresql_using="gin"),
         Index("ix_stories_last_seen_at", "last_seen_at"),
+        Index("ix_stories_feed_changed_at_id", "feed_changed_at", "id"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -46,6 +48,19 @@ class Story(TimestampMixin, Base):
     last_seen_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+    feed_changed_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.clock_timestamp()
+    )
+    """Jam feed mesin (P7c); migrasi `entity_model` memasang `trg_stories_feed_bump` (title,
+    article_count) dan `trg_entity_mentions_feed_bump` (mention artikel masuk/keluar/pindah)."""
+    stix_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+        unique=True,
+        server_default=func.gen_random_uuid(),
+    )
+    """Id objek STIX `report--<stix_id>` (P7c Ruling 34): acak, diisi Postgres, tak pernah diubah.
+    Disimpan supaya lookup TAXII per id berindeks (uuid5 dari id story tak bisa dibalik)."""
     article_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default=text("0")
     )
