@@ -137,13 +137,11 @@ async def seed_graph(s: AsyncSession) -> Graph:
     for obj in (a, m, h, tomb, loc, ind, r1, r2, r3, r4, s1, s2, s3):
         await s.refresh(obj)
 
-    from cti_api.services.stix import report_stix_id
-
     ids = {
         "A": a.stix_id, "M": m.stix_id, "H": h.stix_id, "T": tomb.stix_id, "L": loc.stix_id,
         "I": f"indicator--{ind.stix_id}", "R1": r1.stix_id, "R2": r2.stix_id, "R3": r3.stix_id,
-        "R4": r4.stix_id, "S1": report_stix_id(s1.id), "S2": report_stix_id(s2.id),
-        "S3": report_stix_id(s3.id),
+        "R4": r4.stix_id, "S1": f"report--{s1.stix_id}", "S2": f"report--{s2.stix_id}",
+        "S3": f"report--{s3.stix_id}",
     }  # fmt: skip
     rows = {
         "A": a.id, "M": m.id, "H": h.id, "T": tomb.id, "L": loc.id, "I": ind.id, "R1": r1.id,

@@ -37,7 +37,7 @@ from cti_core.db.repositories.article import AsyncArticleRepo, all_country_codes
 from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from cti_core.db.repositories.pir import AsyncPIRRepo
 from cti_core.db.repositories.ta import AsyncTAProfileRepo
-from cti_core.entity import ENTITY_NAMESPACE, alias_norm, relationship_stix_id
+from cti_core.entity import alias_norm, relationship_stix_id
 from cti_core.indicator.stix_id import indicator_uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -344,8 +344,9 @@ def relationship_to_stix(r: Relationship, src_stix: str, dst_stix: str) -> dict[
     return obj
 
 
-def report_stix_id(story_id: int) -> str:
-    return f"report--{uuid.uuid5(ENTITY_NAMESPACE, f'report:story:{story_id}')}"
+def report_stix_id(story: Story) -> str:
+    """`report--<stories.stix_id>` (Ruling 34): id acak tersimpan, jadi lookup per id berindeks."""
+    return f"report--{story.stix_id}"
 
 
 def story_to_report(story: Story, refs: list[str], urls: list[str]) -> dict[str, Any] | None:
@@ -356,7 +357,7 @@ def story_to_report(story: Story, refs: list[str], urls: list[str]) -> dict[str,
         return None
     obj: dict[str, Any] = {
         "type": "report",
-        "id": report_stix_id(story.id),
+        "id": report_stix_id(story),
         "spec_version": _SPEC,
         "created": stix_ts(story.created_at),
         "modified": stix_ts(story.feed_changed_at),

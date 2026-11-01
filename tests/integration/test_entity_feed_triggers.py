@@ -298,3 +298,108 @@ def test_mention_update_bumps_old_and_new_story(story: tuple[Session, dict[str, 
         text("UPDATE entity_mentions SET entity_id = :e WHERE id = :i"), {"e": other, "i": mid}
     )
     assert _bumped(s, "stories", sid2)
+
+
+# ── Propagasi jam (Ruling 33, spec R7) ─────────────────────────────────────
+
+
+@pytest.fixture
+def graph(db_session: Session) -> Iterator[tuple[Session, dict[str, int]]]:
+    """Entitas `g-a` jadi sumber satu relasi dan target relasi lain, disebut artikel story `sid`;
+    relasi `other` dan story `sid2` tidak menyentuhnya."""
+    s = db_session
+    a = _entity(s, "intrusion-set", "g-a")
+    b = _entity(s, "malware", "g-b")
+    c = _entity(s, "tool", "g-c")
+    rels = {}
+    for name, src, dst in (("as_src", a, b), ("as_dst", c, a), ("other", c, b)):
+        rels[name] = s.execute(
+            text(
+                "INSERT INTO relationships (stix_id, relationship_type, source_entity_id,"
+                " target_entity_id, provenance) VALUES (:x, 'uses', :s, :d, 'analyst')"
+                " RETURNING id"
+            ),
+            {"x": f"relationship--{name}", "s": src, "d": dst},
+        ).scalar_one()
+    sid, sid2 = (
+        s.execute(
+            text("INSERT INTO stories (title, lead_source) VALUES (:t, 'src') RETURNING id"),
+            {"t": t},
+        ).scalar_one()
+        for t in ("g1", "g2")
+    )
+    arts = [
+        Article(url="http://g/1", url_hash="g1", title="a", source="src", story_id=sid),
+        Article(url="http://g/2", url_hash="g2", title="b", source="src", story_id=sid2),
+    ]
+    s.add_all(arts)
+    s.flush()
+    for art, ent in ((arts[0], a), (arts[1], b)):
+        s.execute(
+            text(
+                "INSERT INTO entity_mentions (article_id, entity_id, method, matched_alias)"
+                " VALUES (:a, :e, 'analyst', 'x')"
+            ),
+            {"a": art.id, "e": ent},
+        )
+    ids = {"a": a, "b": b, "sid": sid, "sid2": sid2, "aid": arts[0].id, **rels}
+    for rid in rels.values():
+        _age(s, "relationships", rid)
+    _age(s, "stories", sid)
+    _age(s, "stories", sid2)
+    yield s, ids
+
+
+@pytest.mark.parametrize(
+    "assignment",
+    [
+        "suppressed = true",
+        "tlp = 'amber'",
+        "merged_into_id = (SELECT id FROM entities WHERE name = 'g-b')",
+    ],
+)
+def test_entity_visibility_change_bumps_relationships_and_stories(
+    graph: tuple[Session, dict[str, int]], assignment: str
+) -> None:
+    s, ids = graph
+    s.execute(text(f"UPDATE entities SET {assignment} WHERE id = :i"), {"i": ids["a"]})
+    assert _bumped(s, "relationships", ids["as_src"])
+    assert _bumped(s, "relationships", ids["as_dst"])
+    assert _bumped(s, "stories", ids["sid"])
+    assert not _bumped(s, "relationships", ids["other"])
+    assert not _bumped(s, "stories", ids["sid2"])
+
+
+@pytest.mark.parametrize("assignment", ["name = 'g-a2'", "description = 'x'", "tlp = 'clear'"])
+def test_entity_other_change_does_not_propagate(
+    graph: tuple[Session, dict[str, int]], assignment: str
+) -> None:
+    s, ids = graph
+    s.execute(text(f"UPDATE entities SET {assignment} WHERE id = :i"), {"i": ids["a"]})
+    assert not _bumped(s, "relationships", ids["as_src"])
+    assert not _bumped(s, "stories", ids["sid"])
+
+
+def test_indicator_source_insert_and_delete_bump_story(
+    graph: tuple[Session, dict[str, int]],
+) -> None:
+    s, ids = graph
+    ind = s.execute(
+        text(
+            "INSERT INTO indicators (type, value, seen_count, tp_count, fp_count, auto_suppressed,"
+            " enrichment, confidence_score) VALUES ('domain', 'src.example', 1, 0, 0, false,"
+            " '{}', 50) RETURNING id"
+        )
+    ).scalar_one()
+    src = s.execute(
+        text(
+            "INSERT INTO indicator_sources (indicator_id, article_id, url, source_name)"
+            " VALUES (:n, :a, 'http://g/1', 'src') RETURNING id"
+        ),
+        {"n": ind, "a": ids["aid"]},
+    ).scalar_one()
+    assert _bumped(s, "stories", ids["sid"])
+    assert not _bumped(s, "stories", ids["sid2"])
+    _age(s, "stories", ids["sid"])
+    s.execute(text("DELETE FROM indicator_sources WHERE id = :i"), {"i": src})
+    assert _bumped(s, "stories", ids["sid"])

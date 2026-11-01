@@ -9,7 +9,10 @@ import httpx
 import pytest
 from cti_api import machine_auth
 from cti_api.routers.taxii import COLLECTION_ID, INTEL_COLLECTION_ID, TAXII_MEDIA
+from cti_api.services import feed
+from cti_core.db.models.entity import Entity
 from cti_core.db.repositories.auth import AsyncApiTokenRepo
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.integration.intel_support import (
@@ -240,3 +243,25 @@ async def test_rest_scope(api_client: httpx.AsyncClient, api_session: AsyncSessi
     assert (await api_client.get("/api/v2/relationships", headers=ind)).status_code == 403
     assert (await api_client.get("/api/v2/indicators", headers=intel)).status_code == 403
     assert (await api_client.get("/api/v2/entities", headers=intel)).status_code == 200
+
+
+async def test_suppress_resends_relationships_and_report(
+    api_client: httpx.AsyncClient, api_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ruling 33: suppress membump relasi dan story yang menyentuh entitas, jadi tarikan inkremental
+    membawa entitas revoked dan report tanpa entitas itu di `object_refs`."""
+    g = await seed_graph(api_session)
+    monkeypatch.setattr(feed, "FEED_SETTLE_SECONDS", -5)  # jam baru = clock_timestamp() > now()
+    await api_session.execute(
+        update(Entity).where(Entity.id == g.rows["A"]).values(suppressed=True)
+    )
+    await api_session.flush()
+    h = await _taxii(api_session)
+    objs = await _pull(api_client, h, limit=50, added_after=t(10).isoformat())
+    labels = _labels(g, objs)
+    assert labels[0] == "A" and labels[-1] == "S1"
+    assert sorted(labels) == ["A", "R1", "R3", "S1"]
+    by = {o["id"]: o for o in objs}
+    assert by[g.ids["A"]]["revoked"] is True
+    assert by[g.ids["S1"]]["object_refs"] == [g.ids["I"]]
+    assert_refs_resolve([*by.values(), {"id": g.ids["M"]}, {"id": g.ids["I"]}])

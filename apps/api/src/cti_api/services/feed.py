@@ -39,7 +39,6 @@ from cti_api.services.stix import (
     entity_to_stix,
     indicator_to_stix,
     relationship_to_stix,
-    report_stix_id,
     story_to_report,
 )
 
@@ -397,6 +396,19 @@ def decode_intel_cursor(cursor: str) -> tuple[datetime, str, int]:
     return changed_at, kind, row_id
 
 
+def _uuids(stix_ids: set[str], stix_type: str) -> list[uuid.UUID]:
+    """UUID dari id STIX bertipe `stix_type` (indikator dan report menyimpan id sebagai uuid)."""
+    out = []
+    for sid in stix_ids:
+        kind, _, rest = sid.partition("--")
+        if kind == stix_type:
+            try:
+                out.append(uuid.UUID(rest))
+            except ValueError:
+                continue
+    return out
+
+
 @dataclass
 class IntelPage:
     objects: list[dict[str, Any]]
@@ -447,14 +459,6 @@ async def _report_refs(
     for sid, url in url_rows.tuples():
         urls[sid].append(url)
     return refs, urls
-
-
-async def _report_ids_to_story_ids(session: AsyncSession, report_ids: set[str]) -> list[int]:
-    """Id report = uuid5(id story), tak bisa dibalik dan Postgres inti tidak punya uuid5
-    (Ruling 5), jadi lookup per id menghitung ulang id semua story. Hanya dipakai `match[id]` dan
-    objek per id."""
-    all_ids = (await session.execute(select(Story.id))).scalars().all()
-    return [sid for sid in all_ids if report_stix_id(sid) in report_ids]
 
 
 async def intel_feed_page(
@@ -529,24 +533,14 @@ async def intel_feed_page(
             )
         )
         if by_id:
-            uuids = []
-            for sid in ids:
-                kind, _, rest = sid.partition("--")
-                if kind == "indicator":
-                    try:
-                        uuids.append(uuid.UUID(rest))
-                    except ValueError:
-                        continue
-            stmt = stmt.where(Indicator.stix_id.in_(uuids))
+            stmt = stmt.where(Indicator.stix_id.in_(_uuids(ids, "indicator")))
         for i in (await session.execute(page(stmt, Indicator, "indicator"))).scalars():
             rows.append((i.feed_changed_at, _KIND_RANK["indicator"], i.id, i))
 
     if wanted({"report"}):
         stmt = select(Story).where(_story_has_refs(allowed))
         if by_id:
-            report_ids = {sid for sid in ids if sid.startswith("report--")}
-            story_ids = await _report_ids_to_story_ids(session, report_ids) if report_ids else []
-            stmt = stmt.where(Story.id.in_(story_ids))
+            stmt = stmt.where(Story.stix_id.in_(_uuids(ids, "report")))
         for st in (await session.execute(page(stmt, Story, "report"))).scalars():
             rows.append((st.feed_changed_at, _KIND_RANK["report"], st.id, st))
 

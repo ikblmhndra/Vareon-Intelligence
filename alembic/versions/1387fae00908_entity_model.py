@@ -319,9 +319,23 @@ def _create_tables() -> None:
         ),
     )
     op.create_index("ix_stories_feed_changed_at_id", "stories", ["feed_changed_at", "id"])
+    # id STIX report (Ruling 34): acak per story, diisi untuk baris lama oleh default volatil saat
+    # ADD COLUMN; lookup report per id jadi lookup berindeks
+    op.add_column(
+        "stories",
+        sa.Column(
+            "stix_id",
+            postgresql.UUID(as_uuid=True),
+            server_default=sa.text("gen_random_uuid()"),
+            nullable=False,
+        ),
+    )
+    op.create_unique_constraint(op.f("uq_stories_stix_id"), "stories", ["stix_id"])
 
 
 def _drop_tables() -> None:
+    op.drop_constraint(op.f("uq_stories_stix_id"), "stories", type_="unique")
+    op.drop_column("stories", "stix_id")
     op.drop_index("ix_stories_feed_changed_at_id", table_name="stories")
     op.drop_column("stories", "feed_changed_at")
     op.drop_table("reference_snapshots")
@@ -392,6 +406,8 @@ def _create_feed_triggers() -> None:
 
 
 _FEED_TRIGGERS = (
+    ("indicator_sources", "indicator_sources_feed_bump"),
+    ("entities", "entities_feed_propagate"),
     ("entity_mentions", "entity_mentions_feed_bump"),
     ("stories", "stories_feed_bump"),
     ("relationships", "relationships_feed_bump"),

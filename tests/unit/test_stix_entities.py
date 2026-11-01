@@ -4,6 +4,7 @@ pemanggilan identik; tombstone/suppressed terbit `revoked` dengan properti wajib
 from __future__ import annotations
 
 import datetime
+import uuid
 from typing import Any
 
 from cti_api.services.stix import (
@@ -219,6 +220,7 @@ def test_relationship_minimal_and_revoked() -> None:
 def _story(**kw: Any) -> Story:
     base: dict[str, Any] = {
         "id": 12,
+        "stix_id": uuid.UUID("0f4c2a9e-8d61-4b3a-9c7e-2e5d1f6a8b30"),
         "title": "APT41 menyerang",
         "first_seen_at": _CREATED,
         "created_at": _CREATED,
@@ -239,7 +241,7 @@ def test_report_sorts_dedups_and_shapes() -> None:
     )
     assert obj is not None
     assert obj["type"] == "report"
-    assert obj["id"].startswith("report--")
+    assert obj["id"] == "report--0f4c2a9e-8d61-4b3a-9c7e-2e5d1f6a8b30"
     assert obj["id"] == story_to_report(_story(), refs, [])["id"]  # type: ignore[index]
     assert obj["name"] == "APT41 menyerang"
     assert obj["published"] == "2026-10-01T01:02:03.456Z"

@@ -79,3 +79,40 @@ END $fn$;
 CREATE TRIGGER trg_entity_mentions_feed_bump
 AFTER INSERT OR DELETE OR UPDATE OF entity_id, article_id ON entity_mentions
 FOR EACH ROW EXECUTE FUNCTION entity_mentions_feed_bump();
+
+-- Propagasi jam (Ruling 33, spec R7): visibilitas relasi dan `object_refs` report bergantung pada
+-- suppressed/merge/TLP entitas ujung atau entitas yang disebut. Tanpa bump, konsumen inkremental
+-- menyimpan relasi yang kini tersembunyi dan report dengan ref basi. AFTER (bukan di BEFORE
+-- entities_feed_bump) karena menulis tabel lain; WHEN menyaring UPDATE yang tidak mengubah apa pun.
+CREATE FUNCTION entities_feed_propagate() RETURNS trigger LANGUAGE plpgsql AS $fn$
+BEGIN
+    UPDATE relationships SET feed_changed_at = clock_timestamp()
+    WHERE source_entity_id = NEW.id OR target_entity_id = NEW.id;
+    UPDATE stories SET feed_changed_at = clock_timestamp()
+    WHERE id IN (
+        SELECT a.story_id FROM entity_mentions m JOIN articles a ON a.id = m.article_id
+        WHERE m.entity_id = NEW.id AND a.story_id IS NOT NULL
+    );
+    RETURN NULL;
+END $fn$;
+
+CREATE TRIGGER trg_entities_feed_propagate
+AFTER UPDATE OF suppressed, merged_into_id, tlp ON entities
+FOR EACH ROW
+WHEN (OLD.suppressed IS DISTINCT FROM NEW.suppressed
+      OR OLD.merged_into_id IS DISTINCT FROM NEW.merged_into_id
+      OR OLD.tlp IS DISTINCT FROM NEW.tlp)
+EXECUTE FUNCTION entities_feed_propagate();
+
+-- Indikator artikel ikut `object_refs` report: sumber indikator masuk/keluar/pindah artikel
+-- membump story lama DAN baru (pola entity_mentions_feed_bump).
+CREATE FUNCTION indicator_sources_feed_bump() RETURNS trigger LANGUAGE plpgsql AS $fn$
+BEGIN
+    UPDATE stories SET feed_changed_at = clock_timestamp()
+    WHERE id IN (SELECT story_id FROM articles WHERE id IN (OLD.article_id, NEW.article_id));
+    RETURN NULL;
+END $fn$;
+
+CREATE TRIGGER trg_indicator_sources_feed_bump
+AFTER INSERT OR DELETE OR UPDATE OF article_id ON indicator_sources
+FOR EACH ROW EXECUTE FUNCTION indicator_sources_feed_bump();
