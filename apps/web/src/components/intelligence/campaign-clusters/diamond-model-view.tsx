@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 
+import { EntityChip, type EntityChipItem } from "@/components/entities/entity-chip";
 import type { DiamondModel } from "@/lib/api/loose-types";
+import { nameChips } from "@/lib/entities/name-chips";
 import { tint } from "@/lib/tint";
 
 const TACTIC_ORDER = [
@@ -21,22 +23,29 @@ const TACTIC_ORDER = [
   "other",
 ];
 
-function Chips({ items, color, limit }: { items: string[] | undefined; color: string; limit?: number }) {
+/** Item teks biasa, atau `EntityChipItem` untuk nama entity (tautan ke halaman entity). */
+type DiamondItem = string | EntityChipItem;
+
+function Chips({ items, color, limit }: { items: DiamondItem[] | undefined; color: string; limit?: number }) {
   if (!items || items.length === 0) return <span className="text-xs text-muted-foreground opacity-60">—</span>;
   const shown = items.slice(0, limit ?? 5);
   const more = items.length > (limit ?? 5) ? items.length - (limit ?? 5) : 0;
   return (
     <div className="flex flex-wrap gap-1">
-      {shown.map((v, i) => (
-        <span
-          key={i}
-          title={v}
-          className="max-w-[120px] truncate rounded-full border px-1 py-0.5 font-mono text-xs"
-          style={{ background: tint(color, 9), borderColor: tint(color, 27), color }}
-        >
-          {v}
-        </span>
-      ))}
+      {shown.map((v, i) =>
+        typeof v === "string" ? (
+          <span
+            key={i}
+            title={v}
+            className="max-w-[120px] truncate rounded-full border px-1 py-0.5 font-mono text-xs"
+            style={{ background: tint(color, 9), borderColor: tint(color, 27), color }}
+          >
+            {v}
+          </span>
+        ) : (
+          <EntityChip key={i} {...v} className="max-w-32" />
+        ),
+      )}
       {more > 0 && <span className="text-xs text-muted-foreground">+{more}</span>}
     </div>
   );
@@ -53,11 +62,24 @@ export function DiamondModelView({ clusterName, model }: { clusterName: string; 
   const vic = model.victim;
   const meta = model.meta;
 
-  const advItems = [...adv.threat_actors.slice(0, 3), ...adv.sponsoring_nations.map((n) => `${n}`), ...(adv.sophistication ? [`Soph: ${adv.sophistication}`] : [])];
+  const advItems: DiamondItem[] = [
+    ...nameChips("intrusion-set", adv.threat_actors.slice(0, 3)),
+    ...nameChips("location", adv.sponsoring_nations),
+    ...(adv.sophistication ? [`Soph: ${adv.sophistication}`] : []),
+  ];
   const allInfra = [...inf.domains, ...inf.ips, ...inf.urls];
   const allTechs = Object.values(cap.attack_techniques).flat();
-  const capItems = [...allTechs.slice(0, 3), ...cap.malware.slice(0, 2).map((m) => `${m}`), ...cap.tools.slice(0, 1).map((t) => `🔧 ${t}`), ...cap.cve_exploited.slice(0, 2)];
-  const vicItems = [...vic.industries, ...vic.countries, ...vic.organization_types.slice(0, 2)];
+  const capItems: DiamondItem[] = [
+    ...nameChips("attack-pattern", allTechs.slice(0, 3)),
+    ...nameChips("malware", cap.malware.slice(0, 2)),
+    ...nameChips("tool", cap.tools.slice(0, 1)),
+    ...nameChips("vulnerability", cap.cve_exploited.slice(0, 2)),
+  ];
+  const vicItems: DiamondItem[] = [
+    ...nameChips("identity", vic.industries),
+    ...nameChips("location", vic.countries),
+    ...vic.organization_types.slice(0, 2),
+  ];
 
   const confColor = meta.confidence === "high" ? "var(--success)" : meta.confidence === "medium" ? "var(--severity-medium)" : "var(--muted-foreground)";
 
@@ -104,9 +126,9 @@ export function DiamondModelView({ clusterName, model }: { clusterName: string; 
         <div className="mt-2 grid grid-cols-2 gap-3 rounded-xl border border-border bg-background p-2">
           <div>
             <div className="mb-1.5 text-xs font-bold text-warning">Adversary</div>
-            <FullSection title="Threat Actors" color="var(--severity-high)" items={adv.threat_actors} />
+            <FullSection title="Threat Actors" color="var(--severity-high)" items={adv.threat_actors} entity="intrusion-set" />
             <FullSection title="Actor Types" color="var(--severity-high)" items={adv.actor_types} />
-            <FullSection title="Sponsoring Nations" color="var(--severity-high)" items={adv.sponsoring_nations} />
+            <FullSection title="Sponsoring Nations" color="var(--severity-high)" items={adv.sponsoring_nations} entity="location" />
             {adv.sophistication && (
               <div className="font-mono text-xs text-muted-foreground">
                 Sophistication: <span className="text-warning">{adv.sophistication}</span>
@@ -124,16 +146,16 @@ export function DiamondModelView({ clusterName, model }: { clusterName: string; 
             {TACTIC_ORDER.map((tactic) => {
               const techs = cap.attack_techniques[tactic];
               if (!techs || techs.length === 0) return null;
-              return <FullSection key={tactic} title={tactic.replace(/_/g, " ")} color="var(--tag-violet)" items={techs} />;
+              return <FullSection key={tactic} title={tactic.replace(/_/g, " ")} color="var(--tag-violet)" items={techs} entity="attack-pattern" />;
             })}
-            <FullSection title="Malware" color="var(--tag-violet)" items={cap.malware} />
-            <FullSection title="Tools" color="var(--tag-violet)" items={cap.tools} />
-            <FullSection title="CVEs Exploited" color="var(--tag-violet)" items={cap.cve_exploited} />
+            <FullSection title="Malware" color="var(--tag-violet)" items={cap.malware} entity="malware" />
+            <FullSection title="Tools" color="var(--tag-violet)" items={cap.tools} entity="tool" />
+            <FullSection title="CVEs Exploited" color="var(--tag-violet)" items={cap.cve_exploited} entity="vulnerability" />
           </div>
           <div>
             <div className="mb-1.5 text-xs font-bold text-success">Victim</div>
-            <FullSection title="Industries" color="var(--success)" items={vic.industries} />
-            <FullSection title="Countries" color="var(--success)" items={vic.countries} />
+            <FullSection title="Industries" color="var(--success)" items={vic.industries} entity="identity" />
+            <FullSection title="Countries" color="var(--success)" items={vic.countries} entity="location" />
             <FullSection title="Org Types" color="var(--success)" items={vic.organization_types} />
           </div>
         </div>
@@ -142,17 +164,21 @@ export function DiamondModelView({ clusterName, model }: { clusterName: string; 
   );
 }
 
-function FullSection({ title, color, items }: { title: string; color: string; items: string[] }) {
+function FullSection({ title, color, items, entity }: { title: string; color: string; items: string[]; entity?: string }) {
   if (!items || items.length === 0) return null;
   return (
     <div className="mb-2">
       <div className="mb-1 text-sm font-semibold text-muted-foreground">{title}</div>
       <div className="flex flex-wrap gap-1">
-        {items.map((v, i) => (
-          <span key={i} className="rounded-full border px-1.5 py-0.5 font-mono text-xs" style={{ background: tint(color, 9), borderColor: tint(color, 27), color }}>
-            {v}
-          </span>
-        ))}
+        {items.map((v, i) =>
+          entity ? (
+            <EntityChip key={i} {...nameChips(entity, [v])[0]} className="max-w-40" />
+          ) : (
+            <span key={i} className="rounded-full border px-1.5 py-0.5 font-mono text-xs" style={{ background: tint(color, 9), borderColor: tint(color, 27), color }}>
+              {v}
+            </span>
+          ),
+        )}
       </div>
     </div>
   );

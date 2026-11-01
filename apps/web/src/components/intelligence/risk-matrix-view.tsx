@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api/client";
+import { EntityChip } from "@/components/entities/entity-chip";
+import { nameChip } from "@/lib/entities/name-chips";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
@@ -109,9 +111,8 @@ export function RiskMatrixView() {
                       <th
                         key={cty}
                         className="border border-border bg-surface px-2 py-1.5 whitespace-nowrap text-muted-foreground"
-                        title={cty}
                       >
-                        {cty.length > 12 ? cty.slice(0, 11) + "…" : cty}
+                        <EntityChip {...nameChip("location", cty)} className="max-w-32" />
                       </th>
                     ))}
                   </tr>
@@ -119,11 +120,8 @@ export function RiskMatrixView() {
                 <tbody>
                   {visIndustries.map((ind) => (
                     <tr key={ind}>
-                      <td
-                        className="max-w-[160px] truncate border border-border bg-surface px-2 py-1 whitespace-nowrap text-foreground"
-                        title={ind}
-                      >
-                        {ind}
+                      <td className="max-w-[200px] border border-border bg-surface px-2 py-1 whitespace-nowrap">
+                        <EntityChip type="identity" name={ind} />
                       </td>
                       {visCountries.map((cty) => {
                         const cell = cellMap.get(`${ind}||${cty}`);

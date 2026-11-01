@@ -10,6 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { cn } from "@/lib/utils";
+import { EntityChip } from "@/components/entities/entity-chip";
+import { nameChip } from "@/lib/entities/name-chips";
 import type { components } from "@/lib/api/schema";
 import { PirFormDialog } from "@/components/intelligence/pir/pir-form-dialog";
 import { PirArticlesDialog } from "@/components/intelligence/pir/pir-articles-dialog";
@@ -112,12 +114,13 @@ export function PirList() {
       <div className="space-y-3">
         {pirs.map((p) => {
           const c = p.criteria;
+          // Nama entity (aktor, industri, negara, TTP) jadi chip; kata kunci dan tipe berita tetap tag teks.
           const tags = [
-            ...c.threat_actors.map((x) => `TA:${x}`),
-            ...c.industries.map((x) => `IND:${x}`),
-            ...c.countries.map((x) => `CTY:${x}`),
+            ...c.threat_actors.map((x) => nameChip("intrusion-set", x)),
+            ...c.industries.map((x) => nameChip("identity", x)),
+            ...c.countries.map((x) => nameChip("location", x)),
             ...c.keywords.map((x) => `KW:${x}`),
-            ...c.ttps.map((x) => `TTP:${x}`),
+            ...c.ttps.map((x) => nameChip("attack-pattern", x)),
             ...c.news_types.map((x) => `TYPE:${x}`),
           ];
           const pct = Math.min(100, Math.round((p.coverage_count / maxCov) * 100));
@@ -142,11 +145,15 @@ export function PirList() {
                 {p.description && <p className="mt-0.5 text-xs text-muted-foreground">{p.description}</p>}
                 {tags.length > 0 && (
                   <div className="mt-1.5 flex flex-wrap gap-1">
-                    {tags.map((t, i) => (
-                      <span key={i} className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
-                        {t}
-                      </span>
-                    ))}
+                    {tags.map((t, i) =>
+                      typeof t === "string" ? (
+                        <span key={i} className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
+                          {t}
+                        </span>
+                      ) : (
+                        <EntityChip key={i} {...t} />
+                      ),
+                    )}
                   </div>
                 )}
                 <div className="mt-1.5 flex flex-wrap gap-3 font-mono text-xs text-muted-foreground">
