@@ -174,6 +174,21 @@ def test_apply_on_empty_db_creates_nothing(db_session: Session) -> None:
     assert _counts(s) == before
 
 
+def test_apply_repairs_tombstone_mentions_first(db_session: Session) -> None:
+    """Mention yang mendarat di tombstone (balapan enrichment vs merge) dipindah sebelum merge."""
+    s = db_session
+    tomb = _entity(s, "Tomb Actor", mentions=1)
+    live = _entity(s, "Live Actor")
+    tomb.merged_into_id = live.id
+    s.flush()
+    result = apply_plan(s, galaxy.GalaxyPlan())
+    assert result.mentions_repaired == 1
+    owners = s.scalars(
+        select(EntityMention.entity_id).where(EntityMention.matched_alias == "Tomb Actor")
+    ).all()
+    assert owners == [live.id]
+
+
 def test_galaxy_sources_snapshot_dir_override(db_session: Session, tmp_path: pathlib.Path) -> None:
     for name in galaxy.GALAXY_FILES:
         content = {"values": [{"uuid": name, "value": name}]}

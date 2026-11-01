@@ -614,3 +614,50 @@ async def test_split_async_wrapper(async_db_session: AsyncSession) -> None:
     new = await split_aliases_async(s, b.id, [other_id], actor="alice")
     assert new.name == "As other"
     assert [x.alias for x in new.aliases] == ["As other"]
+
+
+def test_repair_tombstone_mentions(db_session: Session) -> None:
+    """Enrichment yang balapan dengan merge bisa menulis mention ke tombstone (Ruling 36: FK KEY
+    SHARE tidak bentrok dengan NO KEY UPDATE). Repair memindahkannya ke ujung hidup rantai
+    `merged_into_id`, membuang duplikat, dan split tetap eksak lewat `matched_alias`."""
+    from cti_core.entity.merge import repair_tombstone_mentions
+
+    s = db_session
+    a = _make(s, "intrusion-set", "Rep Alpha")
+    b = _make(s, "intrusion-set", "Rep Beta")
+    c = _make(s, "intrusion-set", "Rep Gamma")
+    merge_entities(s, a.id, b.id, actor="t")
+    merge_entities(s, b.id, c.id, actor="t")  # rantai A -> B -> C
+    late, dup = _article(s), _article(s)
+    _mention(s, c, dup, "Rep Gamma")
+    # mention "terlambat" yang mendarat di tombstone
+    _mention(s, a, late, "Rep Alpha")
+    _mention(s, a, dup, "Rep Alpha")
+    _mention(s, b, dup, "Rep Beta")
+
+    assert repair_tombstone_mentions(s) == 3
+    on_tombs = s.scalar(
+        select(func.count())
+        .select_from(EntityMention)
+        .where(EntityMention.entity_id.in_([a.id, b.id]))
+    )
+    assert on_tombs == 0
+    assert _mentions(s, c) == {
+        (late, "dictionary", "Rep Alpha"),
+        (dup, "dictionary", "Rep Gamma"),
+    }
+    assert repair_tombstone_mentions(s) == 0  # idempoten
+
+    # split terbaru dulu (Ruling 17): B beserta alias A kembali dari C, mention ikut matched_alias
+    s.expire_all()
+    norms = [alias_norm("Rep Beta"), alias_norm("Rep Alpha")]
+    alias_ids = list(
+        s.scalars(
+            select(EntityAlias.id)
+            .where(EntityAlias.entity_id == c.id, EntityAlias.alias_norm.in_(norms))
+            .order_by(EntityAlias.alias_norm.desc())
+        )
+    )
+    back = split_aliases(s, c.id, alias_ids, actor="t")
+    assert back.id == b.id
+    assert (late, "dictionary", "Rep Alpha") in _mentions(s, back)

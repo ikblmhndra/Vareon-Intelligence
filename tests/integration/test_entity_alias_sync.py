@@ -6,7 +6,9 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-from cti_core.db.models.entity import Entity, EntityAlias, ReferenceSnapshot
+from cti_core.db.models.article import Article
+from cti_core.db.models.auth import AuditLogEntry
+from cti_core.db.models.entity import Entity, EntityAlias, EntityMention, ReferenceSnapshot
 from cti_core.entity import alias_norm
 from cti_core.entity.galaxy import GALAXY_FILES, snapshot_name
 from sqlalchemy import select
@@ -112,7 +114,74 @@ def test_all_rejected_without_stored_copy_skips_merge(session: Session) -> None:
     assert res.stored == [] and res.applied is None
 
 
+def _ent(session: Session, name: str) -> Entity:
+    e = Entity(type=IS, stix_id=f"{IS}--sync-{name}", name=name, source="dictionary")
+    session.add(e)
+    session.flush()
+    session.add(
+        EntityAlias(
+            entity_id=e.id,
+            entity_type=IS,
+            alias=name,
+            alias_norm=alias_norm(name),
+            source="dictionary",
+        )
+    )
+    session.flush()
+    return e
+
+
+def _gal(a: str, b: str) -> dict[str, Any]:
+    return {"values": [{"uuid": "g1", "value": a, "meta": {"synonyms": [b]}}]}
+
+
+def _open_gate(session: Session) -> None:
+    """Audit `entity_merge` oleh `system:galaxy` = `merge-aliases --apply` manual pernah jalan."""
+    session.add(
+        AuditLogEntry(
+            username="system:galaxy",
+            action="entity_merge",
+            target_id="0",
+            detail={},
+            ip_address=None,
+        )
+    )
+    session.flush()
+
+
+def test_gate_closed_stores_snapshots_without_merging(session: Session) -> None:
+    """Sebelum `merge-aliases --apply` manual pertama (review CSV dry-run), alias_sync hanya
+    menyimpan snapshot; mention di tombstone tetap diperbaiki."""
+    _prestore(session, 1)
+    a, b = _ent(session, "Gate Alpha"), _ent(session, "Gate Beta")
+    tomb, live = _ent(session, "Gate Tomb"), _ent(session, "Gate Live")
+    tomb.merged_into_id = live.id
+    art = Article(url="http://gate/1", url_hash="gate-1", title="t", source="src")
+    session.add(art)
+    session.flush()
+    session.add(
+        EntityMention(
+            article_id=art.id, entity_id=tomb.id, method="dictionary", matched_alias="Gate Tomb"
+        )
+    )
+    session.flush()
+    files = {"threat-actor": _gal("Gate Alpha", "Gate Beta"), "ransomware": _content(1),
+             "malpedia": _content(1)}  # fmt: skip
+    res = sync_galaxy(session, _fetcher(files))
+    assert sorted(res.stored) == sorted(GALAXY_FILES)
+    assert res.applied is None and res.merge_gate_closed and res.mentions_repaired == 1
+    session.expire_all()
+    assert session.get(Entity, a.id).merged_into_id is None  # type: ignore[union-attr]
+    assert session.get(Entity, b.id).merged_into_id is None  # type: ignore[union-attr]
+    assert (
+        session.scalar(select(EntityMention.entity_id).where(EntityMention.article_id == art.id))
+        == live.id
+    )
+
+
 def test_success_stores_and_applies(session: Session) -> None:
+    _open_gate(session)
+
     def ent(name: str) -> Entity:
         e = Entity(type=IS, stix_id=f"{IS}--sync-{name}", name=name, source="dictionary")
         session.add(e)

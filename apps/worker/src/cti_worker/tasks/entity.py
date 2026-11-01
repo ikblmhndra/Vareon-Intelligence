@@ -3,7 +3,12 @@
 
 Satu file yang ditolak (HTTP gagal, skema rusak, menyusut >20 %) mempertahankan salinan lamanya;
 dua file lain tetap diperbarui. Cluster Galaxy tanpa entitas yang cocok tidak membuat apa pun
-(Ruling 19)."""
+(Ruling 19).
+
+Gerbang merge (Ruling 38): merge otomatis baru jalan sesudah analis mereview CSV dry-run dan
+menjalankan `cti-entity merge-aliases --apply` sekali, ditandai baris audit `entity_merge` oleh
+`system:galaxy`. Sebelum itu task ini hanya menyimpan snapshot (dan memperbaiki mention yang
+mendarat di tombstone), supaya jadwal mingguan pertama sesudah deploy tidak mendahului review."""
 
 from __future__ import annotations
 
@@ -16,8 +21,10 @@ from typing import Any
 import httpx
 import structlog
 from cti_core.config import get_settings
+from cti_core.db.models.auth import AuditLogEntry
 from cti_core.db.models.entity import ReferenceSnapshot
 from cti_core.entity.galaxy import (
+    GALAXY_ACTOR,
     GALAXY_FILES,
     GalaxyResult,
     apply_plan,
@@ -26,6 +33,7 @@ from cti_core.entity.galaxy import (
     plan_merges,
     snapshot_name,
 )
+from cti_core.entity.merge import repair_tombstone_mentions
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -58,11 +66,24 @@ class SyncResult:
     stored: list[str] = field(default_factory=list)
     rejected: dict[str, str] = field(default_factory=dict)
     applied: GalaxyResult | None = None
+    merge_gate_closed: bool = False
+    """True = belum ada `merge-aliases --apply` manual; merge tidak dijalankan."""
+    mentions_repaired: int = 0
 
 
 def _previous_count(session: Session, name: str) -> int:
     """Jumlah cluster salinan tersimpan, atau snapshot bawaan paket bila belum ada."""
     return len(load_galaxy(name, galaxy_sources(session)[name]))
+
+
+def merge_gate_open(session: Session) -> bool:
+    """Sudah pernah ada merge oleh `system:galaxy` (= `merge-aliases --apply` manual)."""
+    row = session.scalars(
+        select(AuditLogEntry.id)
+        .where(AuditLogEntry.username == GALAXY_ACTOR, AuditLogEntry.action == "entity_merge")
+        .limit(1)
+    ).first()
+    return row is not None
 
 
 def sync_galaxy(session: Session, fetch: Callable[[str], dict[str, Any]]) -> SyncResult:
@@ -91,10 +112,21 @@ def sync_galaxy(session: Session, fetch: Callable[[str], dict[str, Any]]) -> Syn
             ReferenceSnapshot.name.in_([snapshot_name(n) for n in GALAXY_FILES])
         )
     ).first()
+    if not merge_gate_open(session):
+        result.merge_gate_closed = True
+        result.mentions_repaired = repair_tombstone_mentions(session)
+        log.warning(
+            "galaxy_merge_gate_closed",
+            hint="jalankan `cti-entity merge-aliases` (dry-run, review CSV) lalu --apply sekali",
+        )
+        return result
     if result.stored or has_copy:
         sources = galaxy_sources(session)
         clusters = [c for n, content in sources.items() for c in load_galaxy(n, content)]
         result.applied = apply_plan(session, plan_merges(session, clusters))
+        result.mentions_repaired = result.applied.mentions_repaired
+    else:
+        result.mentions_repaired = repair_tombstone_mentions(session)
     return result
 
 
@@ -115,6 +147,8 @@ def alias_sync() -> dict[str, Any]:
         "merged": applied.merged if applied else 0,
         "aliases_added": applied.aliases_added if applied else 0,
         "merge_errors": len(applied.errors) if applied else 0,
+        "merge_gate_closed": res.merge_gate_closed,
+        "mentions_repaired": res.mentions_repaired,
     }
     log.info("entity_alias_synced", **out)
     return out

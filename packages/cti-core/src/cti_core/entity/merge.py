@@ -25,6 +25,7 @@ import uuid
 from dataclasses import asdict, dataclass
 from typing import Any
 
+import structlog
 from sqlalchemy import func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -33,6 +34,8 @@ from cti_core.db.models.auth import AuditLogEntry
 from cti_core.db.models.entity import Entity, EntityAlias, Relationship
 from cti_core.entity import alias_norm, entity_stix_id
 from cti_core.entity.resolve import TECHNIQUE
+
+log = structlog.get_logger()
 
 
 class EntityMergeError(ValueError):
@@ -434,6 +437,80 @@ def set_suppressed(session: Session, entity_id: int, suppressed: bool, *, actor:
     )
     session.refresh(ent)
     return ent
+
+
+# Tombstone yang punya mention -> ujung hidup rantai `merged_into_id` (maks 20 lompatan, sama dengan
+# resolver). Rantai siklik / terlalu panjang tidak punya ujung hidup dan dilewati.
+_TOMBSTONE_ENDS = """
+WITH RECURSIVE tomb AS (
+    SELECT e.id AS tomb_id, e.merged_into_id AS cur, 1 AS hops
+      FROM entities e
+     WHERE e.merged_into_id IS NOT NULL
+       AND EXISTS (SELECT 1 FROM entity_mentions m WHERE m.entity_id = e.id)
+    UNION ALL
+    SELECT t.tomb_id, e.merged_into_id, t.hops + 1
+      FROM tomb t JOIN entities e ON e.id = t.cur
+     WHERE e.merged_into_id IS NOT NULL AND t.hops < 20
+)
+SELECT t.tomb_id, t.cur FROM tomb t JOIN entities e ON e.id = t.cur
+ WHERE e.merged_into_id IS NULL
+"""
+
+_SAME_SUBJECT = """x.article_id IS NOT DISTINCT FROM c.article_id
+       AND x.indicator_id IS NOT DISTINCT FROM c.indicator_id
+       AND x.cve_tracker_id IS NOT DISTINCT FROM c.cve_tracker_id
+       AND x.role IS NOT DISTINCT FROM c.role"""
+
+_MAP = (
+    "SELECT * FROM unnest(CAST(:tombs AS bigint[]), CAST(:lives AS bigint[]))"
+    " AS u(tomb_id, live_id)"
+)
+
+_DROP_DUPLICATES = f"""
+WITH map AS ({_MAP}),
+cand AS (
+    SELECT m.id, map.live_id, m.article_id, m.indicator_id, m.cve_tracker_id, m.role
+      FROM entity_mentions m JOIN map ON map.tomb_id = m.entity_id
+)
+DELETE FROM entity_mentions d USING cand c
+ WHERE d.id = c.id
+   AND (EXISTS (SELECT 1 FROM entity_mentions x WHERE x.entity_id = c.live_id AND {_SAME_SUBJECT})
+        OR EXISTS (SELECT 1 FROM cand x WHERE x.live_id = c.live_id AND x.id < c.id
+                   AND {_SAME_SUBJECT}))
+RETURNING d.id
+"""
+
+_REPOINT = f"""
+WITH map AS ({_MAP})
+UPDATE entity_mentions c SET entity_id = map.live_id FROM map
+ WHERE c.entity_id = map.tomb_id
+   AND NOT EXISTS (SELECT 1 FROM entity_mentions x WHERE x.entity_id = map.live_id
+                   AND {_SAME_SUBJECT})
+RETURNING c.id
+"""
+
+
+def repair_tombstone_mentions(session: Session) -> int:
+    """Pindahkan mention yang mendarat di tombstone ke ujung hidup rantai merge; duplikat (kunci
+    unik mention sudah ada di ujung hidup) dibuang. Mengembalikan jumlah mention yang disentuh.
+
+    Kenapa ada: enrichment yang balapan dengan merge bisa menulis mention ke entitas yang sedang
+    di-merge. FK mention mengambil KEY SHARE yang tidak bentrok dengan FOR NO KEY UPDATE milik
+    merge (Ruling 36), dan `UPDATE entity_mentions` milik merge tidak melihat insert yang belum
+    commit. Dijalankan di awal `galaxy.apply_plan` dan di `entity.alias_sync` (mingguan). Split
+    tetap eksak: ia memindahkan mention berdasarkan `matched_alias`, bukan entity_id asal.
+    Duplikat yang dibuang tidak dicatat di audit merge, jadi split tidak menghidupkannya lagi
+    (mention yang sama masih ada di ujung hidup)."""
+    pairs = session.execute(text(_TOMBSTONE_ENDS)).all()
+    if not pairs:
+        return 0
+    p = {"tombs": [r[0] for r in pairs], "lives": [r[1] for r in pairs]}
+    dropped = _ids(session, _DROP_DUPLICATES, p)
+    moved = _ids(session, _REPOINT, p)
+    if dropped or moved:
+        log.warning("tombstone_mentions_repaired", moved=len(moved), dropped=len(dropped))
+    session.expire_all()
+    return len(dropped) + len(moved)
 
 
 async def merge_entities_async(

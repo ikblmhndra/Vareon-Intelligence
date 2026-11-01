@@ -51,7 +51,7 @@ from sqlalchemy.orm import Session
 from cti_core.db.models.entity import EntityAlias, ReferenceSnapshot
 from cti_core.entity import ALIAS_SOURCES, alias_norm, collapse_ws
 from cti_core.entity.ambiguous import AMBIGUOUS, WINDOWS_UTILITY_NAMES, is_single_token
-from cti_core.entity.merge import EntityMergeError, merge_entities
+from cti_core.entity.merge import EntityMergeError, merge_entities, repair_tombstone_mentions
 from cti_core.logging import get_logger
 
 Kind = Literal["actor", "malware"]
@@ -473,6 +473,8 @@ def plan_merges(session: Session, clusters: list[GalaxyCluster]) -> GalaxyPlan:
 class GalaxyResult:
     merged: int = 0
     aliases_added: int = 0
+    mentions_repaired: int = 0
+    """Mention di tombstone yang dipindah/dibuang `repair_tombstone_mentions` sebelum merge."""
     errors: list[PlannedSkip] = field(default_factory=list)
     """Merge yang ditolak `EntityMergeError` (reason `error`); run tetap lanjut."""
 
@@ -499,9 +501,9 @@ def _add_alias(session: Session, entity_id: int, type: str, alias: str) -> bool:
 
 
 def apply_plan(session: Session, plan: GalaxyPlan, *, actor: str = GALAXY_ACTOR) -> GalaxyResult:
-    """Alias baru dulu (hanya ke entitas yang sudah ada), lalu merge sesuai urutan rencana.
-    Commit urusan pemanggil."""
-    result = GalaxyResult()
+    """Perbaiki mention di tombstone dulu (balapan enrichment vs merge), lalu alias baru (hanya
+    ke entitas yang sudah ada), lalu merge sesuai urutan rencana. Commit urusan pemanggil."""
+    result = GalaxyResult(mentions_repaired=repair_tombstone_mentions(session))
     for a in plan.new_aliases:
         result.aliases_added += _add_alias(session, a.target_id, a.type, a.alias)
     session.flush()
