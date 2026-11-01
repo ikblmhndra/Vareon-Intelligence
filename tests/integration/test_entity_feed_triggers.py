@@ -403,3 +403,37 @@ def test_indicator_source_insert_and_delete_bump_story(
     _age(s, "stories", ids["sid"])
     s.execute(text("DELETE FROM indicator_sources WHERE id = :i"), {"i": src})
     assert _bumped(s, "stories", ids["sid"])
+
+
+def test_indicator_source_move_bumps_old_and_new_story(
+    graph: tuple[Session, dict[str, int]],
+) -> None:
+    s, ids = graph
+    ind = s.execute(
+        text(
+            "INSERT INTO indicators (type, value, seen_count, tp_count, fp_count, auto_suppressed,"
+            " enrichment, confidence_score) VALUES ('domain', 'mv.example', 1, 0, 0, false,"
+            " '{}', 50) RETURNING id"
+        )
+    ).scalar_one()
+    # dua baris dalam satu statement: trigger level statement, story tetap ter-bump
+    s.execute(
+        text(
+            "INSERT INTO indicator_sources (indicator_id, article_id, url, source_name)"
+            " VALUES (:n, :a, 'http://g/1', 'src'), (:n, :a, 'http://g/1b', 'src')"
+        ),
+        {"n": ind, "a": ids["aid"]},
+    )
+    _age(s, "stories", ids["sid"])
+    s.execute(
+        text("UPDATE indicator_sources SET context = 'x' WHERE indicator_id = :n"), {"n": ind}
+    )
+    assert not _bumped(s, "stories", ids["sid"])  # article_id tidak berubah
+    aid2 = s.execute(
+        text("SELECT id FROM articles WHERE story_id = :s"), {"s": ids["sid2"]}
+    ).scalar_one()
+    s.execute(
+        text("UPDATE indicator_sources SET article_id = :a WHERE indicator_id = :n"),
+        {"a": aid2, "n": ind},
+    )
+    assert _bumped(s, "stories", ids["sid"]) and _bumped(s, "stories", ids["sid2"])

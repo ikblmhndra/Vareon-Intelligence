@@ -11,10 +11,13 @@ from cti_api import machine_auth
 from cti_api.routers.taxii import COLLECTION_ID, INTEL_COLLECTION_ID, TAXII_MEDIA
 from cti_api.services import feed
 from cti_core.db.models.entity import Entity
+from cti_core.db.models.indicator import Indicator
 from cti_core.db.repositories.auth import AsyncApiTokenRepo
+from cti_core.indicator.stix_id import indicator_uuid
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from tests.integration import intel_support
 from tests.integration.intel_support import (
     AFTER,
     CLEAR_ORDER,
@@ -265,3 +268,51 @@ async def test_suppress_resends_relationships_and_report(
     assert by[g.ids["A"]]["revoked"] is True
     assert by[g.ids["S1"]]["object_refs"] == [g.ids["I"]]
     assert_refs_resolve([*by.values(), {"id": g.ids["M"]}, {"id": g.ids["I"]}])
+
+
+async def test_hidden_relationships_and_vanishing_report(
+    api_client: httpx.AsyncClient, api_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Relasi tersembunyi oleh TLP-nya sendiri (kedua ujung clear), oleh sumber indikator di atas
+    TLP token, dan oleh sumber indikator tanpa pola STIX (`cve`); report yang satu-satunya ref
+    terlihatnya disembunyikan ikut hilang."""
+    g = await seed_graph(api_session)
+    monkeypatch.setattr(feed, "FEED_SETTLE_SECONDS", -5)
+    s = api_session
+    a = await s.get(Entity, g.rows["A"])
+    m = await s.get(Entity, g.rows["M"])
+    assert a is not None and m is not None
+    tool = await intel_support._entity(s, "tool", "Clear Tool")
+    own_tlp = await intel_support._rel(s, a, "uses", tool)
+    own_tlp.tlp = "amber"
+    amber_ind = Indicator(
+        type="domain", value="amber.example", stix_id=indicator_uuid("domain", "amber.example"),
+        tlp="amber",
+    )  # fmt: skip
+    cve_ind = Indicator(
+        type="cve", value="CVE-2020-0001", stix_id=indicator_uuid("cve", "CVE-2020-0001")
+    )
+    s.add_all([amber_ind, cve_ind])
+    await s.flush()
+    by_amber = await intel_support._rel(s, amber_ind, "indicates", m)
+    by_cve = await intel_support._rel(s, cve_ind, "indicates", m)
+    lone = await intel_support._entity(s, "malware", "Lone Worm")
+    story, _ = await intel_support._story(s, 9, "Lone story", [lone])
+    await s.flush()
+
+    clear = await _taxii(s)
+    red = await _taxii(s, max_tlp="red")
+    report_id = f"report--{story.stix_id}"
+    clear_ids = {o["id"] for o in await _pull(api_client, clear, limit=50)}
+    red_ids = {o["id"] for o in await _pull(api_client, red, limit=50)}
+    assert own_tlp.stix_id not in clear_ids and own_tlp.stix_id in red_ids
+    assert by_amber.stix_id not in clear_ids and by_amber.stix_id in red_ids
+    assert by_cve.stix_id not in clear_ids and by_cve.stix_id not in red_ids
+    assert report_id in clear_ids
+
+    await s.execute(update(Entity).where(Entity.id == lone.id).values(tlp="amber"))
+    await s.flush()
+    objs = await _pull(api_client, clear, limit=50)
+    assert report_id not in {o["id"] for o in objs}
+    assert lone.stix_id not in {o["id"] for o in objs}
+    assert_refs_resolve(objs)

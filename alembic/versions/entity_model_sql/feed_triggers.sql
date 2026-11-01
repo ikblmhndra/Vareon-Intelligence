@@ -105,14 +105,40 @@ WHEN (OLD.suppressed IS DISTINCT FROM NEW.suppressed
 EXECUTE FUNCTION entities_feed_propagate();
 
 -- Indikator artikel ikut `object_refs` report: sumber indikator masuk/keluar/pindah artikel
--- membump story lama DAN baru (pola entity_mentions_feed_bump).
+-- membump story lama DAN baru. Level statement dengan tabel transisi: ingest menulis banyak sumber
+-- untuk satu artikel sekaligus, jadi tiap story di-bump sekali per statement, bukan per baris.
+-- Postgres melarang tabel transisi pada trigger multi-event atau ber-daftar kolom, jadi tiga
+-- trigger berbagi satu fungsi; UPDATE hanya membump bila article_id benar-benar berubah.
 CREATE FUNCTION indicator_sources_feed_bump() RETURNS trigger LANGUAGE plpgsql AS $fn$
 BEGIN
-    UPDATE stories SET feed_changed_at = clock_timestamp()
-    WHERE id IN (SELECT story_id FROM articles WHERE id IN (OLD.article_id, NEW.article_id));
+    IF TG_OP = 'INSERT' THEN
+        UPDATE stories SET feed_changed_at = clock_timestamp()
+        WHERE id IN (SELECT a.story_id FROM articles a JOIN new_rows n ON a.id = n.article_id);
+    ELSIF TG_OP = 'DELETE' THEN
+        UPDATE stories SET feed_changed_at = clock_timestamp()
+        WHERE id IN (SELECT a.story_id FROM articles a JOIN old_rows o ON a.id = o.article_id);
+    ELSE
+        UPDATE stories SET feed_changed_at = clock_timestamp()
+        WHERE id IN (
+            SELECT a.story_id FROM articles a
+            WHERE a.id IN (
+                SELECT unnest(ARRAY[o.article_id, n.article_id])
+                FROM old_rows o JOIN new_rows n ON n.id = o.id
+                WHERE o.article_id IS DISTINCT FROM n.article_id
+            )
+        );
+    END IF;
     RETURN NULL;
 END $fn$;
 
-CREATE TRIGGER trg_indicator_sources_feed_bump
-AFTER INSERT OR DELETE OR UPDATE OF article_id ON indicator_sources
-FOR EACH ROW EXECUTE FUNCTION indicator_sources_feed_bump();
+CREATE TRIGGER trg_indicator_sources_feed_bump_ins AFTER INSERT ON indicator_sources
+REFERENCING NEW TABLE AS new_rows
+FOR EACH STATEMENT EXECUTE FUNCTION indicator_sources_feed_bump();
+
+CREATE TRIGGER trg_indicator_sources_feed_bump_del AFTER DELETE ON indicator_sources
+REFERENCING OLD TABLE AS old_rows
+FOR EACH STATEMENT EXECUTE FUNCTION indicator_sources_feed_bump();
+
+CREATE TRIGGER trg_indicator_sources_feed_bump_upd AFTER UPDATE ON indicator_sources
+REFERENCING OLD TABLE AS old_rows NEW TABLE AS new_rows
+FOR EACH STATEMENT EXECUTE FUNCTION indicator_sources_feed_bump();

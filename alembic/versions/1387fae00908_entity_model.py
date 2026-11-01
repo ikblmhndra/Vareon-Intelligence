@@ -309,27 +309,15 @@ def _create_tables() -> None:
         sa.PrimaryKeyConstraint("name", name=op.f("pk_reference_snapshots")),
     )
 
-    op.add_column(
-        "stories",
-        sa.Column(
-            "feed_changed_at",
-            sa.DateTime(timezone=True),
-            server_default=_FEED_DEFAULT,
-            nullable=False,
-        ),
+    # Dua kolom ber-default volatil dalam SATU ALTER TABLE: `stories` ditulis ulang sekali, bukan
+    # dua kali. stix_id = id STIX report (Ruling 34), acak per story, terisi untuk baris lama oleh
+    # default itu; lookup report per id jadi lookup berindeks.
+    op.execute(
+        "ALTER TABLE stories"
+        " ADD COLUMN feed_changed_at TIMESTAMP WITH TIME ZONE DEFAULT clock_timestamp() NOT NULL,"
+        " ADD COLUMN stix_id UUID DEFAULT gen_random_uuid() NOT NULL"
     )
     op.create_index("ix_stories_feed_changed_at_id", "stories", ["feed_changed_at", "id"])
-    # id STIX report (Ruling 34): acak per story, diisi untuk baris lama oleh default volatil saat
-    # ADD COLUMN; lookup report per id jadi lookup berindeks
-    op.add_column(
-        "stories",
-        sa.Column(
-            "stix_id",
-            postgresql.UUID(as_uuid=True),
-            server_default=sa.text("gen_random_uuid()"),
-            nullable=False,
-        ),
-    )
     op.create_unique_constraint(op.f("uq_stories_stix_id"), "stories", ["stix_id"])
 
 
@@ -406,7 +394,6 @@ def _create_feed_triggers() -> None:
 
 
 _FEED_TRIGGERS = (
-    ("indicator_sources", "indicator_sources_feed_bump"),
     ("entities", "entities_feed_propagate"),
     ("entity_mentions", "entity_mentions_feed_bump"),
     ("stories", "stories_feed_bump"),
@@ -417,6 +404,10 @@ _FEED_TRIGGERS = (
 
 
 def _drop_feed_triggers() -> None:
+    # trigger level statement: satu per event (tabel transisi tak boleh multi-event)
+    for event in ("ins", "del", "upd"):
+        op.execute(f"DROP TRIGGER trg_indicator_sources_feed_bump_{event} ON indicator_sources")
+    op.execute("DROP FUNCTION indicator_sources_feed_bump()")
     for table, fn in _FEED_TRIGGERS:
         op.execute(f"DROP TRIGGER trg_{fn} ON {table}")
         op.execute(f"DROP FUNCTION {fn}()")
