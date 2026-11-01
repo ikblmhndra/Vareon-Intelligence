@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 
+import { EntityChip } from "@/components/entities/entity-chip";
 import { cn } from "@/lib/utils";
 import { onTint, taConfidenceColor } from "@/lib/exec/format";
 import type { ExecDashboardV2 } from "@/lib/api/loose-types";
@@ -32,14 +33,10 @@ export function TaLeaderboard({ d }: { d: ExecDashboardV2 }) {
         const confColor = taConfidenceColor(conf);
         const pct = Math.round((ta.count / maxTa) * 100);
         return (
-          <button
-            key={ta.name}
-            className="flex w-full items-center gap-2 text-left"
-            title={`${toTitleCase(ta.name)} — Click to view in News Room\nSignal Quality: ${conf !== null ? conf + "% of mentions are incident-type articles" : "unknown"}`}
-            onClick={() => router.push("/newsroom")}
-          >
-            <span className="flex min-w-0 flex-1 items-center gap-1 truncate font-mono text-xs text-foreground">
-              {toTitleCase(ta.name)}
+          <div key={ta.name} className="flex w-full items-center gap-2">
+            {/* Chip di luar tombol: tautan tidak boleh bersarang di dalam tombol. */}
+            <span className="flex min-w-0 flex-1 items-center gap-1">
+              <EntityChip type="intrusion-set" name={ta.name} label={toTitleCase(ta.name)} />
               {showStatus && (
                 <span
                   className={cn(
@@ -51,17 +48,24 @@ export function TaLeaderboard({ d }: { d: ExecDashboardV2 }) {
                 </span>
               )}
             </span>
-            <div className="mx-2 h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-              <div className="h-full rounded-full bg-primary/60" style={{ width: `${pct}%` }} />
-            </div>
-            <span className="font-mono text-xs text-muted-foreground">{ta.count}</span>
-            <span
-              className={cn("ml-auto shrink-0 rounded px-1 py-0.5 font-mono text-xs", onTint(confColor), confColor.replace("text-", "bg-") + "/15")}
-              title="Signal quality: % of articles classified as incident type"
+            <button
+              className="flex flex-1 items-center gap-2 text-left"
+              aria-label={`Open News Room (${toTitleCase(ta.name)})`}
+              title={`${toTitleCase(ta.name)} — Click the bar to open News Room\nSignal Quality: ${conf !== null ? conf + "% of mentions are incident-type articles" : "unknown"}`}
+              onClick={() => router.push("/newsroom")}
             >
-              {conf === null ? "?" : `${conf}%`}
-            </span>
-          </button>
+              <div className="mx-2 h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                <div className="h-full rounded-full bg-primary/60" style={{ width: `${pct}%` }} />
+              </div>
+              <span className="font-mono text-xs text-muted-foreground">{ta.count}</span>
+              <span
+                className={cn("ml-auto shrink-0 rounded px-1 py-0.5 font-mono text-xs", onTint(confColor), confColor.replace("text-", "bg-") + "/15")}
+                title="Signal quality: % of articles classified as incident type"
+              >
+                {conf === null ? "?" : `${conf}%`}
+              </span>
+            </button>
+          </div>
         );
       })}
     </div>

@@ -7,6 +7,8 @@ import { api } from "@/lib/api/client";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { EntityChip } from "@/components/entities/entity-chip";
+import { nameChip } from "@/lib/entities/name-chips";
 import { SeverityBadge, TrendArrow, VelocityBadge } from "@/components/intelligence/campaign-clusters/cluster-badges";
 import { CampaignExpandedPanel } from "@/components/intelligence/campaign-clusters/campaign-expanded-panel";
 import { GeopoliticalPanel } from "@/components/intelligence/campaign-clusters/geopolitical-panel";
@@ -232,17 +234,17 @@ function CampaignRow({
         <td className="px-2 py-1.5 font-mono text-xs text-muted-foreground">{c.first_seen}</td>
         <td className="px-2 py-1.5 font-mono text-xs text-muted-foreground">{c.last_seen}</td>
         <td className="max-w-[160px] px-2 py-1.5">
-          <ChipList items={c.dominant_tas} color="var(--severity-high)" />
+          <ChipList items={c.dominant_tas} color="var(--severity-high)" entity="intrusion-set" />
         </td>
         <td className="max-w-[160px] px-2 py-1.5">
-          <ChipList items={c.dominant_industries} color="var(--info)" />
+          <ChipList items={c.dominant_industries} color="var(--info)" entity="identity" />
         </td>
         <td className="max-w-[120px] px-2 py-1.5">
-          <ChipList items={c.dominant_countries} color="var(--info)" />
+          <ChipList items={c.dominant_countries} color="var(--info)" entity="location" />
         </td>
         <td className="max-w-[200px] px-2 py-1.5">
           <div className="flex flex-wrap items-center gap-1">
-            <ChipList items={c.attack_techniques.slice(0, 5)} color="var(--tag-violet)" />
+            <ChipList items={c.attack_techniques.slice(0, 5)} color="var(--tag-violet)" entity="attack-pattern" />
             {c.kill_chain.completeness_label && <span className="font-mono text-xs text-muted-foreground">{c.kill_chain.completeness_score}%</span>}
           </div>
         </td>
@@ -263,15 +265,19 @@ function CampaignRow({
   );
 }
 
-function ChipList({ items, color }: { items: string[]; color: string }) {
+function ChipList({ items, color, entity }: { items: string[]; color: string; entity?: string }) {
   if (items.length === 0) return <span className="font-mono text-xs text-muted-foreground">—</span>;
   return (
     <div className="flex flex-wrap gap-1">
-      {items.map((v) => (
-        <span key={v} className="rounded-full border px-1.5 py-0.5 font-mono text-xs" style={{ background: tint(color, 9), borderColor: tint(color, 27), color }}>
-          {v}
-        </span>
-      ))}
+      {items.map((v) =>
+        entity ? (
+          <EntityChip key={v} {...nameChip(entity, v)} className="max-w-36" />
+        ) : (
+          <span key={v} className="rounded-full border px-1.5 py-0.5 font-mono text-xs" style={{ background: tint(color, 9), borderColor: tint(color, 27), color }}>
+            {v}
+          </span>
+        ),
+      )}
     </div>
   );
 }

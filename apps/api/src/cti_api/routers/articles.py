@@ -44,6 +44,7 @@ from cti_api.deps import (
 )
 from cti_api.schemas.article import (
     TTP,
+    ArticleEntityRef,
     ArticleListResponse,
     ArticleOut,
     CredibilityOverrideIn,
@@ -164,6 +165,16 @@ def _serialize(
             else None
         ),
         classify_inherited_from=lead_id if isinstance(lead_id, int) else None,
+        entities=[
+            ArticleEntityRef(
+                id=m.entity.id,
+                type=m.entity.type,
+                name=m.entity.name,
+                external_id=m.entity.external_id,
+                role=m.role,
+            )
+            for m in article.mentions_of()
+        ],
     )
 
 

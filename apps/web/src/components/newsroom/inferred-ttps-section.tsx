@@ -4,7 +4,7 @@ import { ChevronRightIcon } from "lucide-react";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { Badge } from "@/components/ui/badge";
+import { EntityChip, EntityChipList } from "@/components/entities/entity-chip";
 import { api } from "@/lib/api/client";
 
 /**
@@ -50,15 +50,23 @@ export function InferredTtpsSection({ articleId }: { articleId: number }) {
           )}
           {query.data?.map((e) => (
             <div key={`${e.kind}-${e.entity}`}>
-              <div className="mb-1 text-xs font-semibold text-foreground">Known TTPs of {e.entity}</div>
-              <div className="flex flex-wrap gap-1.5">
-                {e.techniques.map((t) => (
-                  <Badge key={t.id} variant="outline" className="text-xs">
-                    <span className="font-code">{t.id}</span>
-                    <span className="ml-1">{t.name}</span>
-                  </Badge>
-                ))}
+              <div className="mb-1 flex flex-wrap items-center gap-1.5 text-xs font-semibold text-foreground">
+                <span>Known TTPs of</span>
+                <EntityChip
+                  type={e.kind === "actor" ? "intrusion-set" : e.kind}
+                  name={e.entity}
+                  id={e.entity_id}
+                />
               </div>
+              <EntityChipList
+                max={12}
+                items={e.techniques.map((t) => ({
+                  type: "attack-pattern",
+                  name: t.id,
+                  id: t.entity_id,
+                  label: `${t.id} ${t.name}`,
+                }))}
+              />
             </div>
           ))}
         </div>

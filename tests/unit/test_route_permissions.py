@@ -124,6 +124,7 @@ def test_admin_has_manage_api_tokens() -> None:
 # Spec P7c 5.2: permission per endpoint entitas (persis tabel spec).
 _ENTITY_PERMS: dict[tuple[str, str], str] = {
     ("GET", "/api/entities"): "view_ta",
+    ("GET", "/api/entities/resolve"): "view_ta",
     ("GET", "/api/entities/{entity_id}"): "view_ta",
     ("GET", "/api/entities/{entity_id}/relationships"): "view_ta",
     ("GET", "/api/entities/{entity_id}/stories"): "view_ta",

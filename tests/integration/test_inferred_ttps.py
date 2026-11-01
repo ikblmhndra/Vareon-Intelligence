@@ -13,6 +13,7 @@ from cti_core.db.models.attack import (
     AttackSoftware,
     AttackTechnique,
 )
+from cti_core.db.models.entity import Entity
 from cti_core.db.repositories.article import AsyncArticleRepo, MentionInput
 from cti_core.db.repositories.auth import AsyncClientRepo
 from httpx import AsyncClient
@@ -105,17 +106,18 @@ async def test_inferred_ttps_for_attack_actor(
     aid = await _article(api_session, actors=("Apt29",))
     resp = await api_client.get(f"/api/articles/{aid}/inferred-ttps", headers=auth_header())
     assert resp.status_code == 200
-    assert resp.json() == [
-        {
-            "entity": "Apt29",
-            "kind": "actor",
-            "attack_id": "G0016",
-            "techniques": [
-                {"id": "T1059", "name": "Command and Scripting Interpreter"},
-                {"id": "T1566", "name": "Phishing"},
-            ],
-        }
-    ]
+    [got] = resp.json()
+    # `entity_id` aditif: aktor ada entitasnya (dari mention), teknik ATT&CK seed ini tidak.
+    assert isinstance(got.pop("entity_id"), int)
+    assert got == {
+        "entity": "Apt29",
+        "kind": "actor",
+        "attack_id": "G0016",
+        "techniques": [
+            {"id": "T1059", "name": "Command and Scripting Interpreter", "entity_id": None},
+            {"id": "T1566", "name": "Phishing", "entity_id": None},
+        ],
+    }
 
 
 async def test_inferred_ttps_alias_and_malware(
@@ -130,7 +132,9 @@ async def test_inferred_ttps_alias_and_malware(
     by_kind = {e["kind"]: e for e in body}
     assert by_kind["actor"]["attack_id"] == "G0016"
     assert by_kind["tool"]["attack_id"] == "S0002"
-    assert by_kind["tool"]["techniques"] == [{"id": "T1003", "name": "OS Credential Dumping"}]
+    assert by_kind["tool"]["techniques"] == [
+        {"id": "T1003", "name": "OS Credential Dumping", "entity_id": None}
+    ]
 
 
 async def test_inferred_ttps_unknown_entity_omitted(
@@ -152,3 +156,41 @@ async def test_inferred_ttps_404(
 ) -> None:
     resp = await api_client.get("/api/articles/999999/inferred-ttps", headers=auth_header())
     assert resp.status_code == 404
+
+
+async def test_inferred_entity_and_technique_ids(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+) -> None:
+    from sqlalchemy import select
+
+    await _seed_attack(api_session)
+    # Entitas teknik T1566 ada di katalog entitas; T1059 sengaja tidak (id harus `None`).
+    api_session.add(
+        Entity(
+            type="attack-pattern",
+            stix_id="attack-pattern--t1566",
+            name="Phishing",
+            source="attack",
+            external_id="T1566",
+        )
+    )
+    await api_session.flush()
+    aid = await _article(api_session, actors=("Apt29",), malware=(("mimikatz", "tool"),))
+    resp = await api_client.get(f"/api/articles/{aid}/inferred-ttps", headers=auth_header())
+    by_kind = {e["kind"]: e for e in resp.json()}
+
+    async def ent(type_: str, **kw: str) -> int:
+        stmt = select(Entity.id).where(Entity.type == type_, Entity.merged_into_id.is_(None))
+        for k, v in kw.items():
+            stmt = stmt.where(getattr(Entity, k) == v)
+        return (await api_session.execute(stmt)).scalars().first()  # type: ignore[return-value]
+
+    assert by_kind["actor"]["entity_id"] == await ent("intrusion-set", name="Apt29")
+    assert by_kind["tool"]["entity_id"] == await ent("tool", name="mimikatz")
+    t1566 = await ent("attack-pattern", external_id="T1566")
+    techs = {t["id"]: t["entity_id"] for t in by_kind["actor"]["techniques"]}
+    assert techs["T1566"] == t1566
+    assert isinstance(t1566, int)
+    assert techs["T1059"] is None

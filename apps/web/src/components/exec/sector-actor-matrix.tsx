@@ -1,3 +1,4 @@
+import { EntityChip } from "@/components/entities/entity-chip";
 import type { ExecDashboardV2 } from "@/lib/api/loose-types";
 
 function toTitleCase(s: string): string {
@@ -18,8 +19,13 @@ export function SectorActorMatrix({ d }: { d: ExecDashboardV2 }) {
           <tr>
             <th />
             {sam.actors.map((a) => (
-              <th key={a} className="max-w-[60px] px-1 py-1 font-mono break-words text-muted-foreground" title={a}>
-                {toTitleCase(a).split(" ").slice(0, 2).join(" ")}
+              <th key={a} className="px-1 py-1 text-left font-normal">
+                <EntityChip
+                  type="intrusion-set"
+                  name={a}
+                  label={toTitleCase(a).split(" ").slice(0, 2).join(" ")}
+                  className="max-w-28"
+                />
               </th>
             ))}
           </tr>
@@ -27,8 +33,8 @@ export function SectorActorMatrix({ d }: { d: ExecDashboardV2 }) {
         <tbody>
           {sam.sectors.map((sector, si) => (
             <tr key={sector}>
-              <td className="max-w-[100px] px-2 py-1 font-mono whitespace-normal text-muted-foreground">
-                {toTitleCase(sector)}
+              <td className="px-2 py-1">
+                <EntityChip type="identity" name={sector} label={toTitleCase(sector)} className="max-w-28" />
               </td>
               {sam.matrix[si].map((count, ai) => {
                 const intensity = count / maxSam;

@@ -897,7 +897,7 @@ articles (pages of 500, one facts query per page).
 
 ---
 
-## 0.8.11 — P7a indicator lifecycle and TLP/PAP (`iocs` becomes `indicators`), P7b machine API, P7c-1 entity model
+## 0.8.11 — P7a indicator lifecycle and TLP/PAP (`iocs` becomes `indicators`), P7b machine API, P7c-1 entity model, P7c-2 entity web
 
 Release: not yet tagged (branch `nameless/p7-cti-model-165075`, merge to `origin/Dev` for the dev test, then PR to `main`).
 Spec: `docs/superpowers/specs/2026-10-28-p7a-indicator-lifecycle-design.md`. Progress record:
@@ -998,11 +998,11 @@ analyst vs superadmin), not on dev (the dev certificate is not trusted by the ch
   - **Readers.** Every v1 endpoint reads mentions. Response shapes do not change; names are entity names.
   - **Entity API** `/api/entities` and `/api/relationships` (web JWT, behind the web proxy). New permission
     `manage_entities` for `admin` and `analyst` (granted when `api` starts); reads need `view_ta`, watch `manage_pir`,
-    profiles `manage_intel`. Merge, split, suppress and analyst relationships are audit-logged. No web page uses it yet
-    (P7c-2); TA Room and ATT&CK DB keep working.
+    profiles `manage_intel`. Merge, split, suppress and analyst relationships are audit-logged. The web pages that use it arrive in
+    P7c-2 (below).
   - **Machine API.** New token scope `intel:read`; `GET /api/v2/entities`, `GET /api/v2/relationships` and a second
     TAXII collection `intel` (`c0b7e3d4-2f5a-4e91-8a6d-5b3c9f1e7a20`, entities, relationships, one `report` per story,
-    indicators). Existing tokens keep `indicators:read` only. The Admin page has no scope selector until P7c-2.
+    indicators). Existing tokens keep `indicators:read` only. The Admin scope selector arrives in P7c-2 (below).
   - **Weekly Galaxy sync.** Task `entity.alias_sync` (`maintenance` queue, Sunday 05:00 UTC; beat restarts on deploy)
     fetches the three MISP Galaxy files, rejects a broken file or one that shrank by more than 20 %, stores the copy in
     `reference_snapshots` and runs the Galaxy merge in apply mode. **Gate:** it applies merges only after a manual
@@ -1021,6 +1021,38 @@ analyst vs superadmin), not on dev (the dev certificate is not trusted by the ch
       and every past mention is hidden (kept, so unsuppress restores them).
     - PIR actor criteria are still stored as names but match through aliases ("apt36" matches "Transparent Tribe").
     - `python -m cti_enrich.canonicalise_actors` (0.8.8 one-off) is superseded: it prints that and writes nothing.
+
+- **P7c-2 entity web (0.8.11, fourth part; web plus small API additions, no migration, no new `.env` key).** The entity
+  pages replace TA Room and ATT&CK DB. Spec addendum: `docs/superpowers/specs/2026-11-01-p7c2-entity-web-design.md`.
+  - **New pages.** `/intelligence/entities` (tabs per type, alias search, Watched, suppressed, mention trend, New entity,
+    Navigator layer, and the ATT&CK sync card on the Techniques tab) and `/intelligence/entities/[id]` (hero with KPIs;
+    Overview with the LLM profile, a relationships preview and "Often mentioned together"; Relationships with Make
+    relationship and Revoke; Stories, Indicators, CVEs, Timeline and ATT&CK tabs; actions Edit, Aliases, Merge with
+    preview, Split with Undo merge, and Suppress). An id that was merged redirects to the surviving entity.
+  - **Retired pages (permanent redirects).** `/intelligence/threat-actor-room` goes to the Entities Actors tab and
+    `/intelligence/attack-db` to the Techniques tab. Bookmarks keep working.
+  - **Removed endpoints (nothing in the web or the tests calls them any more).** `GET/POST /api/ta/groups`,
+    `DELETE /api/ta/groups/{group_id}`, `GET /api/ta/whitelist`, `DELETE /api/ta/whitelist/{name}`,
+    `GET/POST /api/ta/watchlist`, `DELETE /api/ta/watchlist/{name}`, `GET /api/ta/{actor}/timeline`,
+    `GET /api/ta/profile/{name}`, `POST /api/ta/profile/generate`, and `GET /api/attack/techniques`, `/techniques/{attack_id}`,
+    `/tactics`, `/tactics/distinct`, `/mitigations`, `/groups`, `/groups/{group_id}`, `/software`, `/software/{software_id}`.
+    Kept: `/api/ta/stats`, `/api/ta/watchlist-names`, `/api/ta/watchlist/navigator-layer`, `/api/attack/status`,
+    `/api/attack/sync`, `/api/attack/sync/{domain_key}`, `/api/attack/navigator-layer`. Check that no external script
+    still calls a removed route (they now return 404/405); use `/api/entities` instead.
+  - **API additions.** `GET /api/entities/resolve` (alias, then external id, then a name fallback; follows merges).
+    `GET /api/entities` accepts a comma-separated `type` and `identity_class`; `EntityDetail` has `merged_from`. Entity ids
+    were added to `ArticleOut.entities`, inferred TTPs, trending and spikes (`entity_id`), and the MITRE heatmap
+    (`row_ids`, `ttps[].entity_id`). Existing fields are unchanged.
+  - **Entity chips.** Every actor, malware, tool, technique, CVE, sector and country name in the web (Newsroom,
+    dashboard, Exec, risk matrix, early warning, MITRE, IOC, CVE, recap, newsletter, campaign clusters, diamond model,
+    kill chain, geopolitical, PIR list) is a chip that opens the entity page. Two behaviours differ from before: the Exec
+    "Critical CVE" feed links the CVE to its entity page instead of `/cve`; on the dashboard CVE card and the TA
+    leaderboard the chip opens the entity page while the bar or row keeps its old navigation.
+  - **PIR `malware` criterion.** New criterion that matches malware and tool entities anywhere in the article's mentions
+    (not only the title). The PIR form uses entity autocomplete (the matched alias is shown; free text is still allowed;
+    country criteria are stored as ISO codes). PIR cross-reference (`crossref`) still matches PIRs by actor only.
+  - **Admin > API tokens.** Scope checkboxes `indicators:read` and `intel:read` (the console workaround of P7c-7 is no
+    longer needed).
 
 ### Migrations (revision ids, reversible or not, rough duration/row counts seen on dev)
 
@@ -1166,8 +1198,7 @@ consume the feed (host, TLS trust of the self-signed certificate, TLP ceiling) b
   SELECT name, added_date FROM ta_whitelist ORDER BY name;
   ```
 
-  Dev has 2 rows. If a row looks wrong, note it; after the deploy an analyst restores it in TA Room > Whitelist (still
-  there in P7c-1) or sends `PATCH /api/entities/{id}` with `{"suppressed": false}` (WRITE, needs approval), rather than
+  Dev has 2 rows. If a row looks wrong, note it; after the deploy an analyst restores it with Unsuppress on the entity page (Entities > suppressed) or sends `PATCH /api/entities/{id}` with `{"suppressed": false}` (WRITE, needs approval), rather than
   editing SQL.
 - **P7c-3. PIR baseline (UI).** Open the PIR page and note the result counts of the PIRs that have actor criteria; After
   deploy check P7c-6 compares them (they may rise: aliases now match).
@@ -1337,12 +1368,12 @@ Run SQL in the read-only `psql` session shown above.
   `SELECT a.id, count(m.id) FROM articles a JOIN entity_mentions m ON m.article_id = a.id GROUP BY 1 ORDER BY 1 DESC LIMIT 1;`.
 - **P7c-5. Entity API through the web.** Logged in as an analyst, open
   `https://<host>/api/proxy/entities?q=apt36` in the browser: one `intrusion-set` (Transparent Tribe, if ATT&CK is
-  synced on prod) with its aliases. TA Room, the Newsroom actor/industry columns and the dashboard still load (light and
-  dark). The entity pages themselves arrive with P7c-2.
+  synced on prod) with its aliases. The Newsroom actor/industry columns and the dashboard still load (light and
+  dark). The entity pages themselves are P7c-2 (check P7c-8).
 - **P7c-6. PIR results.** The PIRs with actor criteria from Before deploy check P7c-3 return the same or more results
   (aliases now match).
 - **P7c-7. TAXII `intel` pull** (**WRITE**: creates and revokes a throwaway token; needs the user's approval). The
-  Admin page cannot pick scopes until P7c-2, so create the token from the browser console of a logged-in admin:
+  Admin > API tokens page has scope checkboxes since P7c-2; the console call below does the same:
 
   ```js
   await (await fetch('/api/proxy/api-tokens', {method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -1362,6 +1393,13 @@ Run SQL in the read-only `psql` session shown above.
   objects of several types and a `more` flag; the REST page is JSON. Revoke the token in Admin > API tokens afterwards.
   On the dev copy a full `intel` pull through the service took 4.0 s for 38,258 objects (39 pages of 1,000, worst page
   0.30 s).
+- **P7c-8. Entity web** (read-only except the optional token). Logged in as an analyst: (a) open
+  `/intelligence/entities`, pick an actor and confirm the hero KPIs and the Overview, Relationships, Stories and
+  Indicators tabs load (light and dark); (b) click an actor or malware chip in Newsroom and land on its entity page;
+  (c) `/intelligence/threat-actor-room` lands on the Actors tab and `/intelligence/attack-db` on the Techniques tab;
+  (d) create a PIR with a `malware` criterion (pick a malware from the autocomplete) and confirm it lists matching
+  articles; (e) **WRITE**, needs approval: in Admin > API tokens create a throwaway token with `intel:read`, then revoke it.
+  Expected: no console errors and no 5xx in `docker compose -p niskala-intelligence logs api --since 10m`.
 
 ### One-off commands (recompute/backfills: exact command, `--dry-run` first, expected numbers from dev, how long; mark each as needing the user's approval)
 
@@ -1390,8 +1428,8 @@ replace the 0.8.8 `canonicalise_actors` step (now a no-op).
 
 1. **ATT&CK sync (NEEDS USER APPROVAL; WRITE: downloads the MITRE bundles from GitHub and upserts ATT&CK data,
    entities, aliases, relationships and campaigns).** The migration has no network, so `campaign` entities and anything
-   newer than prod's last ATT&CK sync only arrive with a sync. In the UI as a `manage_intel` user: ATT&CK DB page, sync
-   cards, "Sync All Domains". Wait until every domain card shows done (no `error`); a failed entity upsert marks the domain sync
+   newer than prod's last ATT&CK sync only arrive with a sync. In the UI as a `manage_intel` user: Entities > Techniques tab, ATT&CK
+   sync card, "Sync All Domains". Wait until every domain card shows done (no `error`); a failed entity upsert marks the domain sync
    as error on that card. Then, read-only: `SELECT count(*) FROM entities WHERE type = 'campaign';` is above 0.
    Duration: not measured (network bound). Running it first matters: the Galaxy merge anchors on ATT&CK entities and
    aliases.
@@ -1641,7 +1679,6 @@ replace the 0.8.8 `canonicalise_actors` step (now a no-op).
       s.commit()
   PY
   ```
-- **P7c follow-ups:** the P7c-2 web (entity pages, merge/split dialogs, token scope selector, TA Room and ATT&CK DB
-  retired); the dev data check of spec section 8 after merging to `origin/Dev` (CSV review, 10 sampled merges, PIR
+- **P7c follow-ups:** the dev data check of spec section 8 after merging to `origin/Dev` (CSV review, 10 sampled merges, PIR
   counts, `feed_changed_at` untouched by the 04:00 decay sweep, TAXII `intel` pull from outside the host); prod numbers
-  for After deploy checks P7c-1 to P7c-7.
+  for After deploy checks P7c-1 to P7c-8.

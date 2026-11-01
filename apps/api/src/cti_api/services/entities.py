@@ -209,13 +209,18 @@ async def list_entities(
     include_suppressed: bool,
     cursor: str | None,
     limit: int,
+    identity_class: str | None = None,
 ) -> EntityListResponse:
     sort_key = _sort_key()
     stmt = select(Entity, sort_key).where(Entity.merged_into_id.is_(None))
     if not include_suppressed:
         stmt = stmt.where(Entity.suppressed.is_(False))
     if type:
-        stmt = stmt.where(Entity.type == type)
+        # daftar dipisah koma ("malware,tool"); validasi tipe ada di router
+        stmt = stmt.where(Entity.type.in_([x for x in type.split(",") if x]))
+    if identity_class:
+        # hanya mempersempit `identity`; tipe lain tidak punya kelas dan tetap lolos
+        stmt = stmt.where(or_(Entity.type != "identity", Entity.identity_class == identity_class))
     if q and (norm := alias_norm(q)):
         pattern = "%" + norm.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
         stmt = stmt.where(
@@ -267,6 +272,63 @@ async def list_entities(
     )
 
 
+async def resolve_entity(
+    session: AsyncSession, types: Sequence[str], name: str
+) -> EntityRef | None:
+    """Nama teks -> entitas (untuk teks tanpa `entity_id` di baliknya, mis. aktor di recap LLM).
+
+    Alias dulu (alias entitas ter-merge sudah pindah ke target) tanpa `live_entity()`, jadi tanpa
+    saringan suppressed: halaman entitas menampilkan yang suppressed dengan badge. Lalu
+    `external_id` (T1566, CVE-..., kode negara `ID`) case-insensitive. Terakhir `Entity.name`
+    (trim, spasi dirapatkan, case-insensitive): alias technique cuma id-nya, jadi nama seperti
+    "Phishing" dari chip kluster baru ketemu lewat sini; alias dan external_id selalu menang.
+    Yang hidup didahulukan dari tombstone, id terkecil dulu; tombstone diikuti ke ujung hidupnya."""
+    stmt = (
+        select(Entity.id)
+        .join(EntityAlias, EntityAlias.entity_id == Entity.id)
+        .where(
+            EntityAlias.entity_type.in_(list(types)),
+            EntityAlias.alias_norm == alias_norm(name),
+            Entity.merged_into_id.is_(None),
+        )
+    )
+    ids = list((await session.scalars(stmt.order_by(Entity.id))).all())
+    if not ids and name.strip():
+        ids = list(
+            (
+                await session.scalars(
+                    select(Entity.id)
+                    .where(
+                        Entity.type.in_(list(types)),
+                        func.lower(Entity.external_id) == name.strip().lower(),
+                    )
+                    .order_by(Entity.merged_into_id.is_not(None), Entity.id)
+                )
+            ).all()
+        )
+    if not ids and name.strip():
+        ids = list(
+            (
+                await session.scalars(
+                    select(Entity.id)
+                    .where(
+                        Entity.type.in_(list(types)),
+                        func.entity_alias_norm(Entity.name) == alias_norm(name),
+                    )
+                    .order_by(Entity.merged_into_id.is_not(None), Entity.id)
+                )
+            ).all()
+        )
+    if not ids:
+        return None
+    ent = await session.get(Entity, ids[0])
+    seen: set[int] = set()
+    while ent is not None and ent.merged_into_id is not None and ent.id not in seen:
+        seen.add(ent.id)
+        ent = await session.get(Entity, ent.merged_into_id)
+    return None if ent is None else _ref(ent)
+
+
 async def entity_detail(session: AsyncSession, entity_id: int, client_id: str) -> EntityDetail:
     """Tombstone dikembalikan apa adanya dengan `merged_into_id` terisi (web mengalihkan)."""
     ent = await _get(session, entity_id)
@@ -275,6 +337,13 @@ async def entity_detail(session: AsyncSession, entity_id: int, client_id: str) -
     profile = (
         await session.scalars(select(EntityProfile).where(EntityProfile.entity_id == ent.id))
     ).one_or_none()
+    tombs = (
+        await session.scalars(
+            select(Entity)
+            .where(Entity.merged_into_id == ent.id)
+            .order_by(Entity.feed_changed_at.desc(), Entity.id.desc())  # jam bump saat di-merge
+        )
+    ).all()
     return EntityDetail(
         id=ent.id,
         type=ent.type,
@@ -297,6 +366,7 @@ async def entity_detail(session: AsyncSession, entity_id: int, client_id: str) -
         ],
         profile=None if profile is None else profile.profile,
         profile_generated_at=None if profile is None else profile.generated_at,
+        merged_from=[_ref(x) for x in tombs],
     )
 
 

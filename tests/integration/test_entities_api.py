@@ -719,3 +719,229 @@ async def test_cursor_uses_sql_sort_key_for_non_ascii_names(
         if cursor is None:
             break
     assert seen == ids
+
+
+async def test_list_type_comma_list(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Header
+) -> None:
+    s = api_session
+    mal = await _make(s, "malware", "CommaLoader")
+    tool = await _make(s, "tool", "CommaTool")
+    await _make(s, "intrusion-set", "CommaActor")
+    await s.commit()
+    r = await api_client.get(
+        "/api/entities", params={"type": "malware,tool", "q": "comma"}, headers=auth_header()
+    )
+    assert r.status_code == 200, r.text
+    assert {i["id"] for i in r.json()["items"]} == {mal.id, tool.id}
+    bad = await api_client.get(
+        "/api/entities", params={"type": "malware,nope"}, headers=auth_header()
+    )
+    assert bad.status_code == 422
+
+
+async def test_list_identity_class(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Header
+) -> None:
+    s = api_session
+    await _make(s, "identity", "Banking Sector", identity_class="class")
+    victim = await _make(s, "identity", "Bank Victim Ltd", identity_class="organization")
+    await s.commit()
+    r = await api_client.get(
+        "/api/entities",
+        params={"type": "identity", "identity_class": "organization"},
+        headers=auth_header(),
+    )
+    assert r.status_code == 200, r.text
+    assert [i["id"] for i in r.json()["items"]] == [victim.id]
+
+
+async def _resolve(api_client: AsyncClient, h: dict[str, str], type_: str, name: str) -> Any:
+    return await api_client.get(
+        "/api/entities/resolve", params={"type": type_, "name": name}, headers=h
+    )
+
+
+async def test_resolve_by_alias(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Header
+) -> None:
+    apt29 = await _make(api_session, "intrusion-set", "APT29", "Cozy Bear")
+    await api_session.commit()
+    r = await _resolve(api_client, auth_header(), "intrusion-set", "cozy  BEAR")
+    assert r.status_code == 200, r.text
+    assert r.json() == {
+        "id": apt29.id,
+        "name": "APT29",
+        "type": "intrusion-set",
+        "external_id": None,
+    }
+
+
+async def test_resolve_follows_merge(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Header
+) -> None:
+    apt29 = await _make(api_session, "intrusion-set", "APT29")
+    duke = await _make(api_session, "intrusion-set", "Cozy Duke")
+    await api_session.commit()
+    h = auth_header()
+    m = await api_client.post(
+        f"/api/entities/{duke.id}/merge", json={"into_id": apt29.id}, headers=h
+    )
+    assert m.status_code == 200, m.text
+    r = await _resolve(api_client, h, "intrusion-set", "Cozy Duke")
+    assert r.status_code == 200, r.text
+    assert r.json()["id"] == apt29.id
+
+
+async def test_resolve_external_id(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Header
+) -> None:
+    s = api_session
+    tech = await _make(s, "attack-pattern", "Phishing", external_id="T1566")
+    cve = await _make(s, "vulnerability", "Palo Alto PAN-OS Bug", external_id="CVE-2024-3400")
+    await s.commit()
+    h = auth_header()
+    r = await _resolve(api_client, h, "attack-pattern", "t1566")
+    assert r.status_code == 200, r.text
+    assert r.json()["id"] == tech.id
+    r = await _resolve(api_client, h, "vulnerability", "cve-2024-3400")
+    assert r.status_code == 200, r.text
+    assert r.json()["id"] == cve.id
+
+
+async def test_resolve_technique_by_name(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Header
+) -> None:
+    # alias technique cuma id-nya; nama ("Phishing") harus tetap menemukannya (chip kluster)
+    tech = await _make(api_session, "attack-pattern", "Phishing", external_id="T1566")
+    await api_session.commit()
+    r = await _resolve(api_client, auth_header(), "attack-pattern", "  phishing ")
+    assert r.status_code == 200, r.text
+    assert r.json()["id"] == tech.id
+    assert r.json()["external_id"] == "T1566"
+
+
+async def test_resolve_name_fallback_after_alias(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Header
+) -> None:
+    # entitas B (id lebih kecil) bernama "Zeta" tanpa alias; A punya alias "Zeta": alias menang
+    s = api_session
+    by_name = Entity(
+        type="intrusion-set", stix_id="intrusion-set--t13-zeta", name="Zeta", source="analyst"
+    )
+    s.add(by_name)
+    await s.flush()
+    by_alias = await _make(s, "intrusion-set", "Alpha", "Zeta")
+    await s.commit()
+    assert by_name.id < by_alias.id
+    r = await _resolve(api_client, auth_header(), "intrusion-set", "zeta")
+    assert r.status_code == 200, r.text
+    assert r.json()["id"] == by_alias.id
+
+
+async def test_resolve_country_code(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Header
+) -> None:
+    # Indonesia sudah di-seed (bootstrap lokasi); pastikan bentuknya, jangan buat ulang
+    indo = (
+        await api_session.scalars(
+            select(Entity).where(Entity.type == "location", Entity.external_id == "ID")
+        )
+    ).one()
+    assert indo.name == "Indonesia"
+    r = await _resolve(api_client, auth_header(), "location", "id")
+    assert r.status_code == 200, r.text
+    assert r.json()["id"] == indo.id
+
+
+async def test_resolve_special_chars(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Header
+) -> None:
+    play = await _make(api_session, "intrusion-set", "#play")
+    await api_session.commit()
+    r = await api_client.get(
+        "/api/entities/resolve?type=intrusion-set&name=%23play", headers=auth_header()
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["id"] == play.id
+
+
+async def test_resolve_unknown_404(api_client: AsyncClient, auth_header: Header) -> None:
+    r = await _resolve(api_client, auth_header(), "intrusion-set", "nope")
+    assert r.status_code == 404
+    assert r.json() == {"detail": "no entity named nope"}
+    bad = await _resolve(api_client, auth_header(), "bogus", "nope")
+    assert bad.status_code == 422
+
+
+async def test_resolve_suppressed_still_resolves(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Header
+) -> None:
+    hid = await _make(api_session, "intrusion-set", "Hidden Actor", suppressed=True)
+    await api_session.commit()
+    r = await _resolve(api_client, auth_header(), "intrusion-set", "hidden actor")
+    assert r.status_code == 200, r.text
+    assert r.json()["id"] == hid.id
+
+
+async def test_detail_merged_from(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Header
+) -> None:
+    apt29 = await _make(api_session, "intrusion-set", "APT29")
+    duke = await _make(api_session, "intrusion-set", "Cozy Duke")
+    await api_session.commit()
+    h = auth_header()
+    assert (await api_client.get(f"/api/entities/{apt29.id}", headers=h)).json()[
+        "merged_from"
+    ] == []
+    await api_client.post(f"/api/entities/{duke.id}/merge", json={"into_id": apt29.id}, headers=h)
+    body = (await api_client.get(f"/api/entities/{apt29.id}", headers=h)).json()
+    assert body["merged_from"] == [
+        {"id": duke.id, "name": "Cozy Duke", "type": "intrusion-set", "external_id": None}
+    ]
+    own = [a["id"] for a in body["aliases"] if a["alias"] == "Cozy Duke"]
+    r = await api_client.post(f"/api/entities/{apt29.id}/split", json={"alias_ids": own}, headers=h)
+    assert r.status_code == 200, r.text
+    body = (await api_client.get(f"/api/entities/{apt29.id}", headers=h)).json()
+    assert body["merged_from"] == []
+
+
+async def test_split_restores_dropped_mentions_under_asyncpg(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Header
+) -> None:
+    """Bug P7c-1 (PR #82): `created_at` mention yang dibuang saat merge tersimpan sebagai string
+    ISO di audit; psycopg menerimanya tapi asyncpg (jalur API) menolak (`DataError`, 500)."""
+    apt29 = await _make(api_session, "intrusion-set", "APT29")
+    duke = await _make(api_session, "intrusion-set", "Cozy Duke")
+    art = await _article(api_session)
+    await _mention(api_session, apt29, art)
+    # subjek sama: mention duke dibuang saat merge; `extracted` jsonb ikut diuji di jalur asyncpg
+    api_session.add(
+        EntityMention(
+            article_id=art.id,
+            entity_id=duke.id,
+            method="dictionary",
+            matched_alias="Cozy Duke",
+            extracted={"k": 1},
+        )
+    )
+    await api_session.commit()
+    h = auth_header()
+    r = await api_client.post(
+        f"/api/entities/{duke.id}/merge", json={"into_id": apt29.id}, headers=h
+    )
+    assert r.status_code == 200, r.text
+    body = (await api_client.get(f"/api/entities/{apt29.id}", headers=h)).json()
+    own = [a["id"] for a in body["aliases"] if a["alias"] == "Cozy Duke"]
+    r = await api_client.post(f"/api/entities/{apt29.id}/split", json={"alias_ids": own}, headers=h)
+    assert r.status_code == 200, r.text
+    restored = (
+        await api_session.execute(
+            select(EntityMention.created_at, EntityMention.extracted)
+            .where(EntityMention.entity_id == duke.id, EntityMention.article_id == art.id)
+            .execution_options(populate_existing=True)
+        )
+    ).all()
+    assert len(restored) == 1
+    assert restored[0].created_at is not None
+    assert restored[0].extracted == {"k": 1}

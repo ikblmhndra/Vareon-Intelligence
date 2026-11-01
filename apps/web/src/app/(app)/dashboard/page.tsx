@@ -227,7 +227,11 @@ export default function DashboardPage() {
               <BreakdownList
                 items={stats.top_industries
                   .filter((x) => x.name.toLowerCase() !== "general")
-                  .map((x) => ({ label: toTitleCase(x.name), count: x.count }))}
+                  .map((x) => ({
+                    label: toTitleCase(x.name),
+                    count: x.count,
+                    chip: { type: "identity", name: x.name },
+                  }))}
                 limit={8}
               />
             </MapCard>

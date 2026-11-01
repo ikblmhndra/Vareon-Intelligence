@@ -128,3 +128,61 @@ async def test_ioc_ta_links_uses_entity_names(async_db_session: AsyncSession) ->
         (t["name"], t["article_count"], t["source"], t["is_watched"])
         for t in result["threat_actors"]
     ] == [("Transparent Tribe", 1, "both", True)]
+
+
+async def test_malware_criterion_via_alias(async_db_session: AsyncSession) -> None:
+    """Kriteria malware "lumma" menemukan artikel yang menyebut "Lumma Stealer" lewat alias."""
+    s = async_db_session
+    await AsyncClientRepo(s).ensure_default()
+    await s.run_sync(
+        lambda sync: seed_entity(sync, "malware", "Lumma Stealer", "Lumma", source="attack")
+    )
+    article_repo = AsyncArticleRepo(s)
+    article = await article_repo.upsert(
+        url="https://example.com/pir-malware-alias",
+        title="Infostealer campaign",
+        source="S",
+        posted_on=datetime.date.today(),
+    )
+    await article_repo.set_enrichment(article, malware=[("Lumma Stealer", "malware")])
+    await article_repo.upsert(
+        url="https://example.com/pir-malware-other",
+        title="Unrelated",
+        source="S",
+        posted_on=datetime.date.today(),
+    )
+    pir = await AsyncPIRRepo(s).create(
+        {"title": "Track Lumma", "criteria": {"malware": ["lumma"]}}, client_id="default"
+    )
+    articles, total = await AsyncPIRRepo(s).list_articles_for_pir(
+        pir, article_repo, page=1, page_size=10
+    )
+    assert total == 1 and [a.id for a in articles] == [article.id]
+
+
+async def test_pir_malware_criterion_matches_campaign_cluster(
+    async_db_session: AsyncSession,
+) -> None:
+    """Kriteria malware "lumma" cocok dengan cluster yang artikelnya menyebut "Lumma Stealer"
+    (lewat alias); cluster dengan malware lain tidak cocok."""
+    s = async_db_session
+    await AsyncClientRepo(s).ensure_default()
+    await s.run_sync(
+        lambda sync: seed_entity(sync, "malware", "Lumma Stealer", "Lumma", source="attack")
+    )
+    pir = await AsyncPIRRepo(s).create(
+        {"title": "Track Lumma", "criteria": {"malware": ["lumma"]}}, client_id="default"
+    )
+    base: dict[str, object] = {
+        "dominant_tas": [],
+        "dominant_industries": [],
+        "dominant_countries": [],
+    }
+    clusters: list[dict[str, object]] = [
+        {**base, "_malware": ["Lumma Stealer"]},
+        {**base, "_malware": ["Emotet"]},
+    ]
+    await campaign_service._match_pirs(s, clusters, "default")  # type: ignore[arg-type]
+    assert [p["id"] for p in clusters[0]["matched_pirs"]] == [pir.id]  # type: ignore[index]
+    assert clusters[1]["matched_pirs"] == []
+    assert "_malware" not in clusters[0]

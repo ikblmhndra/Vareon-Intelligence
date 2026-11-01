@@ -84,7 +84,7 @@ async def test_get_heatmap_by_industry(async_db_session: AsyncSession) -> None:
 async def test_get_heatmap_empty_returns_empty_shape(async_db_session: AsyncSession) -> None:
     repo = AsyncMitreHeatmapRepo(async_db_session)
     heatmap = await repo.get_heatmap(view="ta", days=90)
-    assert heatmap == {"rows": [], "ttps": [], "matrix": [], "max_val": 0}
+    assert heatmap == {"rows": [], "row_ids": [], "ttps": [], "matrix": [], "max_val": 0}
 
 
 async def test_get_navigator_layer_scores_relative_to_max(async_db_session: AsyncSession) -> None:

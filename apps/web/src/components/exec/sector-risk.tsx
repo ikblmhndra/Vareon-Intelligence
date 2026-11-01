@@ -1,3 +1,4 @@
+import { EntityChip } from "@/components/entities/entity-chip";
 import { cn } from "@/lib/utils";
 import { onTint, riskTier, sectorPeerBenchmark } from "@/lib/exec/format";
 import type { ExecDashboardV2 } from "@/lib/api/loose-types";
@@ -18,7 +19,9 @@ export function SectorRiskMatrix({ d }: { d: ExecDashboardV2 }) {
         const bench = sectorPeerBenchmark(d.sector_trend, sr.sector);
         return (
           <div key={sr.sector} className="flex items-center gap-2.5" title={RISK_FORMULA_TITLE}>
-            <div className="min-w-[140px] truncate font-mono text-xs text-foreground">{toTitleCase(sr.sector)}</div>
+            <div className="min-w-[140px]">
+              <EntityChip type="identity" name={sr.sector} label={toTitleCase(sr.sector)} />
+            </div>
             <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
               <div
                 className={cn("h-full rounded-full", tier.colorClass.replace("text-", "bg-"))}

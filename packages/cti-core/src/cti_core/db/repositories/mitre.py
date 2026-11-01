@@ -22,7 +22,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_core.config import platform_name
 from cti_core.db.models.article import Article
-from cti_core.db.repositories.entity import ACTOR, SECTOR, TECHNIQUE, mention_rows
+from cti_core.db.repositories.entity import (
+    ACTOR,
+    SECTOR,
+    TECHNIQUE,
+    entity_ids_by_external_id_async,
+    mention_rows,
+    name_keys_async,
+)
 from cti_core.db.repositories.ttp_catalog import canonical_ttp_name
 
 
@@ -76,7 +83,7 @@ class AsyncMitreHeatmapRepo:
         ttp_ids = [t["id"] for t in ttp_list]
 
         if not row_names or not ttp_ids:
-            return {"rows": [], "ttps": [], "matrix": [], "max_val": 0}
+            return {"rows": [], "row_ids": [], "ttps": [], "matrix": [], "max_val": 0}
 
         co_stmt = (
             select(r.c.name, t.c.external_id, count_articles)
@@ -97,7 +104,20 @@ class AsyncMitreHeatmapRepo:
         matrix = [[co_map.get((row, tid), 0) for tid in ttp_ids] for row in row_names]
         max_val = max((max(row) for row in matrix if row), default=0)
 
-        return {"rows": row_names, "ttps": ttp_list, "matrix": matrix, "max_val": max_val}
+        # Id entitas dicari SESUDAH agregasi (tidak ikut GROUP BY, jadi hitungan tidak bergeser):
+        # `row_ids` sejajar `rows`; `entity_id` per teknik lewat `external_id`.
+        row_keys = await name_keys_async(self.session, _row_type(view), row_names)
+        technique_ids = await entity_ids_by_external_id_async(self.session, TECHNIQUE, ttp_ids)
+        for item in ttp_list:
+            item["entity_id"] = technique_ids.get(item["id"])
+
+        return {
+            "rows": row_names,
+            "row_ids": [row_keys.entity_id(n) for n in row_names],
+            "ttps": ttp_list,
+            "matrix": matrix,
+            "max_val": max_val,
+        }
 
     async def get_navigator_layer(self, *, view: str, days: int) -> dict[str, Any]:
         cutoff = datetime.date.today() - datetime.timedelta(days=days)

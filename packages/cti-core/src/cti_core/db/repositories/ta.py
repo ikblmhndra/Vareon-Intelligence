@@ -8,7 +8,7 @@ kenapa gak ada tabel baru terpisah buat itu.
 
 P7c (Task 11): whitelist = entitas aktor `suppressed`, watchlist = `entity_watches`, profil =
 `entity_profiles`. Tanda tangan method publik tetap; baris yang dikembalikan kini dataclass
-(`WhitelistRow`, `WatchlistRow`, `TAProfileRow`) dengan atribut yang sama seperti baris ORM
+(`WhitelistRow`, `TAProfileRow`) dengan atribut yang sama seperti baris ORM
 lama. Nama dari pengguna di-resolve lewat `entity_aliases` ("apt36" = "Transparent Tribe");
 nama yang dikembalikan = `entities.name`."""
 
@@ -58,14 +58,6 @@ class WhitelistRow:
     id: int
     name: str
     added_date: datetime.datetime
-
-
-@dataclass(frozen=True)
-class WatchlistRow:
-    id: int
-    name: str
-    client_id: str
-    created_at: datetime.datetime
 
 
 @dataclass(frozen=True)
@@ -321,35 +313,6 @@ class AsyncTARepo:
             return False
         await set_suppressed_async(self.session, ent.id, False, actor=actor)
         return True
-
-    async def list_watchlist(
-        self,
-        *,
-        client_id: str,
-        search: str | None = None,
-        page: int = 1,
-        page_size: int = 50,
-        sort_by: str = "name",
-        sort_dir: str = "asc",
-    ) -> tuple[list[WatchlistRow], int]:
-        stmt = (
-            select(EntityWatch.id, Entity.name, EntityWatch.client_id, EntityWatch.created_at)
-            .join(Entity, Entity.id == EntityWatch.entity_id)
-            .where(EntityWatch.client_id == client_id, Entity.type == ACTOR)
-        )
-        if search:
-            stmt = stmt.where(Entity.name.ilike(f"%{search}%"))
-        total = (
-            await self.session.execute(select(func.count()).select_from(stmt.subquery()))
-        ).scalar_one()
-        order_col = _WATCHLIST_SORT_FIELDS.get(sort_by, Entity.name)
-        order = order_col.desc() if sort_dir == "desc" else order_col.asc()
-        rows = (
-            await self.session.execute(
-                stmt.order_by(order, EntityWatch.id).offset((page - 1) * page_size).limit(page_size)
-            )
-        ).all()
-        return [WatchlistRow(id=i, name=n, client_id=c, created_at=d) for i, n, c, d in rows], total
 
     async def get_watchlist_names(self, client_id: str) -> list[str]:
         result = await self.session.execute(

@@ -4,8 +4,10 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api/client";
+import { EntityChip, EntityChipList } from "@/components/entities/entity-chip";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { ExecDashboardV2 } from "@/lib/api/loose-types";
+import { actorChips } from "@/lib/entities/article-refs";
 
 function toTitleCase(s: string): string {
   return s.replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1));
@@ -41,8 +43,8 @@ export function SectorHeatmap({ d }: { d: ExecDashboardV2 }) {
           <tbody>
             {d.sector_heatmap.map((row) => (
               <tr key={row.sector}>
-                <td className="px-2 py-1 font-mono whitespace-nowrap text-muted-foreground">
-                  {toTitleCase(row.sector)}
+                <td className="px-2 py-1 whitespace-nowrap">
+                  <EntityChip type="identity" name={row.sector} label={toTitleCase(row.sector)} className="max-w-40" />
                 </td>
                 {row.months.map((cell) => {
                   const intensity = hmax > 0 ? cell.count / hmax : 0;
@@ -116,10 +118,12 @@ function DrillModal({ drill, onClose }: { drill: { sector: string; month: string
                 <span>{a.posted_on}</span>
                 <span>{a.source}</span>
                 {a.news_type && <span className="text-primary">{a.news_type}</span>}
-                {a.threat_actors.length > 0 && (
-                  <span className="text-warning">{a.threat_actors.slice(0, 3).map(toTitleCase).join(", ")}</span>
-                )}
               </div>
+              {a.threat_actors.length > 0 && (
+                <div className="mt-1.5">
+                  <EntityChipList items={actorChips(a).slice(0, 3)} />
+                </div>
+              )}
             </div>
           ))}
         </div>

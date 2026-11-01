@@ -5,6 +5,8 @@ import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api/client";
 import { Badge } from "@/components/ui/badge";
+import { EntityChip } from "@/components/entities/entity-chip";
+import { countryName } from "@/lib/countries";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
@@ -13,6 +15,13 @@ import type { SpikeEntry, SpikesResponse } from "@/lib/api/loose-types";
 interface CategorizedSpike extends SpikeEntry {
   category: string;
 }
+
+/** Tipe entity per kategori spike; "Overall Volume" tidak punya entity di baliknya. */
+const SPIKE_TYPE: Record<string, string> = {
+  "Threat Actor": "intrusion-set",
+  Country: "location",
+  Industry: "identity",
+};
 
 /** Port `loadSpikes()` (`intel.js:177-223`) -- gabung 4 kategori
  * (`overall`→"Overall Volume", `threat_actors`, `countries`,
@@ -93,7 +102,16 @@ export function EarlyWarningView() {
           <div className="space-y-1.5">
             {spikes.map((s, i) => (
               <div key={i} className="flex flex-wrap items-center gap-2.5 rounded-xl border border-border bg-background px-3 py-1.5">
-                <span className="min-w-[100px] font-mono text-xs text-foreground">{s.entity || "Overall"}</span>
+                {SPIKE_TYPE[s.category] && s.entity ? (
+                  <EntityChip
+                    type={SPIKE_TYPE[s.category]}
+                    name={s.entity}
+                    id={s.entity_id}
+                    label={s.category === "Country" ? countryName(s.entity) : undefined}
+                  />
+                ) : (
+                  <span className="min-w-[100px] font-mono text-xs text-foreground">{s.entity || "Overall"}</span>
+                )}
                 <span className="font-mono text-xs text-muted-foreground">date: {s.date}</span>
                 <span className="font-mono text-xs text-muted-foreground">
                   count: <strong className="text-foreground">{s.count}</strong>

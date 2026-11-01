@@ -5,21 +5,28 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { EntityChip } from "@/components/entities/entity-chip";
+import { nameChip } from "@/lib/entities/name-chips";
 import { PirArticlesDialog } from "@/components/intelligence/pir/pir-articles-dialog";
 import type { MatchedPir } from "@/lib/api/loose-types";
 import type { components } from "@/lib/api/schema";
 
 type PIROut = components["schemas"]["PIROut"];
 
-function Chips({ items }: { items: string[] | undefined }) {
+/** `entity` mengubah nilai kriteria jadi chip entity (kata kunci tetap teks biasa). */
+function Chips({ items, entity }: { items: string[] | undefined; entity?: string }) {
   if (!items || items.length === 0) return <span className="font-mono text-xs text-muted-foreground">—</span>;
   return (
     <div className="flex flex-wrap gap-1.5">
-      {items.map((v, i) => (
-        <span key={i} className="rounded-full border border-primary/25 bg-primary/8 px-1.5 py-0.5 font-mono text-xs text-primary-text">
-          {v}
-        </span>
-      ))}
+      {items.map((v, i) =>
+        entity ? (
+          <EntityChip key={i} {...nameChip(entity, v)} />
+        ) : (
+          <span key={i} className="rounded-full border border-primary/25 bg-primary/8 px-1.5 py-0.5 font-mono text-xs text-primary-text">
+            {v}
+          </span>
+        ),
+      )}
     </div>
   );
 }
@@ -55,19 +62,25 @@ export function ClusterPirDialog({ pir, onClose }: { pir: MatchedPir | null; onC
                 {(pir.criteria.threat_actors?.length ?? 0) > 0 && (
                   <div>
                     <div className="mb-1 text-sm font-semibold text-muted-foreground">Threat Actors</div>
-                    <Chips items={pir.criteria.threat_actors} />
+                    <Chips items={pir.criteria.threat_actors} entity="intrusion-set" />
+                  </div>
+                )}
+                {(pir.criteria.malware?.length ?? 0) > 0 && (
+                  <div>
+                    <div className="mb-1 text-sm font-semibold text-muted-foreground">Malware and Tools</div>
+                    <Chips items={pir.criteria.malware} entity="malware,tool" />
                   </div>
                 )}
                 {(pir.criteria.industries?.length ?? 0) > 0 && (
                   <div>
                     <div className="mb-1 text-sm font-semibold text-muted-foreground">Industries</div>
-                    <Chips items={pir.criteria.industries} />
+                    <Chips items={pir.criteria.industries} entity="identity" />
                   </div>
                 )}
                 {(pir.criteria.countries?.length ?? 0) > 0 && (
                   <div>
                     <div className="mb-1 text-sm font-semibold text-muted-foreground">Countries</div>
-                    <Chips items={pir.criteria.countries} />
+                    <Chips items={pir.criteria.countries} entity="location" />
                   </div>
                 )}
                 {(pir.criteria.keywords?.length ?? 0) > 0 && (
@@ -79,7 +92,7 @@ export function ClusterPirDialog({ pir, onClose }: { pir: MatchedPir | null; onC
                 {(pir.criteria.ttps?.length ?? 0) > 0 && (
                   <div>
                     <div className="mb-1 text-sm font-semibold text-muted-foreground">TTPs</div>
-                    <Chips items={pir.criteria.ttps} />
+                    <Chips items={pir.criteria.ttps} entity="attack-pattern" />
                   </div>
                 )}
               </div>

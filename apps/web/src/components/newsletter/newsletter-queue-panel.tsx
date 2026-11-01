@@ -6,6 +6,8 @@ import { TriangleAlertIcon, XIcon } from "lucide-react";
 import { DestinationMenu, ReasonChips } from "@/components/newsletter/article-parts";
 import type { PoolEntry } from "@/components/newsletter/newsletter-composer-sections";
 import { Badge } from "@/components/ui/badge";
+import { EntityChip } from "@/components/entities/entity-chip";
+import { actorChips, countryChip } from "@/lib/entities/article-refs";
 import { Button } from "@/components/ui/button";
 import type { NewsletterSourceHint } from "@/lib/api/loose-types";
 import type { components } from "@/lib/api/schema";
@@ -120,7 +122,8 @@ function PoolCard({
   // Satu negara bisa ada di victim DAN mentioned (Indonesia di artikel insiden lokal): satu badge saja,
   // kalau tidak key-nya kembar.
   const countries = [...new Set([...(a.victim_countries ?? []), ...(a.mentioned_countries ?? [])])].slice(0, 3);
-  const actors = (a.threat_actors ?? []).slice(0, 2);
+  // Salinan antrean lama (localStorage) tak punya `entities`: helper jatuh ke chip tanpa id (resolve by name).
+  const actors = actorChips(a).slice(0, 2);
   return (
     <div className="rounded-xl border border-border bg-background p-2.5">
       <div className="flex items-start gap-2">
@@ -136,14 +139,10 @@ function PoolCard({
               </Badge>
             )}
             {countries.map((c) => (
-              <Badge key={c} variant="outline" className="text-xs">
-                {c}
-              </Badge>
+              <EntityChip key={c} {...countryChip(a, c)} />
             ))}
             {actors.map((t) => (
-              <Badge key={t} variant="destructive" className="text-xs">
-                {t}
-              </Badge>
+              <EntityChip key={t.name} {...t} />
             ))}
             {paywall && (
               <Badge

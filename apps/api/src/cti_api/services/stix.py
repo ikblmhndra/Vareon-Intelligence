@@ -569,6 +569,8 @@ def _build_course_of_action(pir: PIRRequirement, ts: str) -> dict[str, Any]:
     if criteria:
         if criteria.get("threat_actors"):
             desc_parts.append(f"Threat Actors: {', '.join(criteria['threat_actors'])}")
+        if criteria.get("malware"):
+            desc_parts.append(f"Malware and tools: {', '.join(criteria['malware'])}")
         if criteria.get("industries"):
             desc_parts.append(f"Industries: {', '.join(criteria['industries'])}")
         if criteria.get("countries"):

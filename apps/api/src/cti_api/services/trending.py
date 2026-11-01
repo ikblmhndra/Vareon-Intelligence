@@ -21,6 +21,12 @@ from dataclasses import asdict, dataclass, replace
 from typing import Any, Literal
 
 from cti_core.db.repositories.dashboard import AsyncDashboardRepo
+from cti_core.db.repositories.entity import (
+    ACTOR,
+    TECHNIQUE,
+    entity_ids_by_external_id_async,
+    name_keys_async,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_api.services.exec_dashboard import PREV_MIN_DAY_COVERAGE
@@ -45,6 +51,8 @@ class TrendItem:
     change_pct: int | None
     is_new: bool
     daily: list[int]
+    entity_id: int | None = None
+    """Id entitas aktor/teknik; diisi SESUDAH ranking (`_attach_entity_ids`), bukan agregasi."""
 
 
 def rank_trends(
@@ -77,6 +85,23 @@ def rank_trends(
         )
     items.sort(key=lambda i: (-(i.count - i.prev_count), -i.count, i.name))
     return items[:limit]
+
+
+async def _attach_entity_ids(session: AsyncSession, items: list[TrendItem]) -> list[TrendItem]:
+    """Satu query per tipe untuk item yang sudah terpilih; hitungan tidak tersentuh."""
+    actors = await name_keys_async(session, ACTOR, [i.name for i in items if i.kind == "actor"])
+    techniques = await entity_ids_by_external_id_async(
+        session, TECHNIQUE, [i.ttp_id for i in items if i.kind == "ttp" and i.ttp_id]
+    )
+    return [
+        replace(
+            i,
+            entity_id=actors.entity_id(i.name)
+            if i.kind == "actor"
+            else techniques.get(i.ttp_id or ""),
+        )
+        for i in items
+    ]
 
 
 def _split_ttp(entity: str) -> tuple[str, str]:
@@ -157,7 +182,7 @@ async def get_trending(
         await repo.distinct_day_count(posted_on_start=prev_start, posted_on_end=cur_start)
         >= window * PREV_MIN_DAY_COVERAGE
     )
-    ranked = rank_trends(current, previous, limit=limit)
+    ranked = await _attach_entity_ids(session, rank_trends(current, previous, limit=limit))
     if not baseline_reliable:
         ranked = [replace(i, is_new=False, change_pct=None) for i in ranked]
         label = f"{window} hari terakhir (pembanding belum cukup data)"

@@ -11,6 +11,8 @@
         ]),
         'keywords': list([
         ]),
+        'malware': list([
+        ]),
         'news_types': list([
         ]),
         'threat_actors': list([
@@ -91,6 +93,8 @@
         ]),
         'keywords': list([
         ]),
+        'malware': list([
+        ]),
         'news_types': list([
         ]),
         'threat_actors': list([
@@ -130,6 +134,8 @@
     ]),
     'industries': list([
     ]),
+    'malware': list([
+    ]),
     'news_types': list([
       'apac',
     ]),
@@ -159,6 +165,8 @@
       'industries': list([
       ]),
       'keywords': list([
+      ]),
+      'malware': list([
       ]),
       'news_types': list([
       ]),
@@ -192,6 +200,8 @@
       'industries': list([
       ]),
       'keywords': list([
+      ]),
+      'malware': list([
       ]),
       'news_types': list([
       ]),

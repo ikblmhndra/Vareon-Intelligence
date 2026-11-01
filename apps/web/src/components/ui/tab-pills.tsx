@@ -7,6 +7,8 @@ import { cn } from "@/lib/utils";
 export interface TabPillItem<T extends string> {
   value: T;
   label: string;
+  /** Lencana jumlah di samping label; kosong/undefined = tidak ditampilkan (mis. masih memuat). */
+  count?: number;
   /** `destructive` = tab untuk konten "di luar cakupan" (mis. Newsroom > Not Related Cyber). */
   tone?: "default" | "destructive";
 }
@@ -80,6 +82,11 @@ export function TabPills<T extends string>({
             className={tabPillClass(active, item.tone)}
           >
             {item.label}
+            {item.count != null && (
+              <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 font-code text-2xs text-muted-foreground">
+                {item.count}
+              </span>
+            )}
           </button>
         );
       })}

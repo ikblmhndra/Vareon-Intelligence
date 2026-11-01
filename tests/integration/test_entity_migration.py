@@ -79,6 +79,16 @@ def test_trigger_sets_alias_entity_type(db_session: Session) -> None:
     assert got == "malware"
 
 
+def test_entity_type_change_updates_alias_entity_type(db_session: Session) -> None:
+    eid = _entity(db_session, "malware", "Cobalt Strike")
+    _alias(db_session, eid, "cobalt strike")
+    db_session.execute(text("UPDATE entities SET type = 'tool' WHERE id = :e"), {"e": eid})
+    got = db_session.execute(
+        text("SELECT entity_type FROM entity_aliases WHERE entity_id = :e"), {"e": eid}
+    ).scalar_one()
+    assert got == "tool"
+
+
 def test_alias_unique_per_type_not_across_types(db_session: Session) -> None:
     actor = _entity(db_session, "intrusion-set", "Lazarus")
     other = _entity(db_session, "intrusion-set", "Lazarus Group")

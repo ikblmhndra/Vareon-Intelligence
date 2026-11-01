@@ -83,6 +83,8 @@
           'confidence_score': 85,
           'confirmed_incident': False,
           'credibility': None,
+          'entities': list([
+          ]),
           'grade_origin': None,
           'id': int,
           'impacted_industries': list([
@@ -150,6 +152,22 @@
           'confidence_score': 90,
           'confirmed_incident': True,
           'credibility': None,
+          'entities': list([
+            dict({
+              'external_id': 'ID',
+              'id': int,
+              'name': 'Indonesia',
+              'role': 'victim',
+              'type': 'location',
+            }),
+            dict({
+              'external_id': 'ID',
+              'id': int,
+              'name': 'Indonesia',
+              'role': 'mentioned',
+              'type': 'location',
+            }),
+          ]),
           'grade_origin': None,
           'id': int,
           'impacted_industries': list([
@@ -219,6 +237,15 @@
           'confidence_score': 75,
           'confirmed_incident': False,
           'credibility': None,
+          'entities': list([
+            dict({
+              'external_id': 'JP',
+              'id': int,
+              'name': 'Japan',
+              'role': 'victim',
+              'type': 'location',
+            }),
+          ]),
           'grade_origin': None,
           'id': int,
           'impacted_industries': list([
@@ -283,6 +310,8 @@
           'confidence_score': 60,
           'confirmed_incident': False,
           'credibility': None,
+          'entities': list([
+          ]),
           'grade_origin': None,
           'id': int,
           'impacted_industries': list([

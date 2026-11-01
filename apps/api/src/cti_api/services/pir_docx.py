@@ -58,6 +58,7 @@ def build_docx(data: dict[str, Any]) -> bytes:
     criteria = pir.get("criteria", {})
     for label, key in [
         ("Threat Actors", "threat_actors"),
+        ("Malware and tools", "malware"),
         ("Industries", "industries"),
         ("Countries", "countries"),
         ("News Types", "news_types"),

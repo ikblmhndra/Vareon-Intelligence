@@ -28,6 +28,14 @@ import { GradeChip } from "@/components/newsroom/grade-chip";
 import { gradeLines } from "@/components/newsroom/score-reasons";
 import { useCan } from "@/lib/auth/permissions";
 import { addToQueue } from "@/lib/newsletter/queue";
+import { EntityChip, EntityChipList } from "@/components/entities/entity-chip";
+import {
+  actorChips,
+  countryChip,
+  malwareChips,
+  sectorChips,
+  techniqueChips,
+} from "@/lib/entities/article-refs";
 
 type Article = components["schemas"]["ArticleOut"];
 
@@ -60,37 +68,6 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 }
 
 const TTP_SOURCE_BADGE: Record<string, string> = { explicit: "ID", keyword: "KW", llm: "LLM" };
-
-function Tags({
-  items,
-  after,
-}: {
-  items: { label: string; suffix?: string; variant?: "outline" | "destructive"; tip?: string }[];
-  after?: ReactNode;
-}) {
-  if (!items.length) return <span className="text-xs text-muted-foreground">—</span>;
-  return (
-    <div className="flex flex-wrap gap-1.5">
-      {items.map((it, i) => {
-        const badge = (
-          <Badge variant={it.variant ?? "outline"} className="text-xs">
-            {it.label}
-            {it.suffix && <span className="ml-1 text-xs opacity-70">{it.suffix}</span>}
-          </Badge>
-        );
-        return it.tip ? (
-          <Tooltip key={`${it.label}-${i}`}>
-            <TooltipTrigger render={<span tabIndex={0} />}>{badge}</TooltipTrigger>
-            <TooltipContent>{it.tip}</TooltipContent>
-          </Tooltip>
-        ) : (
-          <span key={`${it.label}-${i}`}>{badge}</span>
-        );
-      })}
-      {after}
-    </div>
-  );
-}
 
 function exportIocsCsv(a: Article) {
   const fieldToType: Record<string, string> = {
@@ -143,12 +120,14 @@ export function ArticleModal({ article, onOpenChange }: { article: Article | nul
   const actorCountries = a.actor_countries ?? [];
   const mentionedCountries = a.mentioned_countries ?? [];
   const hasRoles = victimCountries.length > 0 || actorCountries.length > 0;
-  const countryTags = hasRoles
+  // Negara: chip entity + penanda peran (VICTIM/ORIGIN) di sebelahnya bila ada peran.
+  const countryItems = hasRoles
     ? [
-        ...victimCountries.map((c) => ({ label: c, suffix: "VICTIM" })),
-        ...actorCountries.map((c) => ({ label: c, suffix: "ORIGIN", variant: "destructive" as const })),
+        ...victimCountries.map((c) => ({ chip: countryChip(a, c, "victim"), role: "VICTIM", k: `v-${c}` })),
+        ...actorCountries.map((c) => ({ chip: countryChip(a, c, "actor"), role: "ORIGIN", k: `a-${c}` })),
       ]
-    : mentionedCountries.map((c) => ({ label: c }));
+    : mentionedCountries.map((c) => ({ chip: countryChip(a, c, "mentioned"), role: undefined, k: `m-${c}` }));
+  const ttpChips = techniqueChips(a);
 
   const iocEntries = Object.entries(a.iocs ?? {}).filter(
     ([, v]) => Array.isArray(v) && v.length > 0,
@@ -211,32 +190,49 @@ export function ArticleModal({ article, onOpenChange }: { article: Article | nul
           )}
 
           <Section title="Impacted Industries">
-            <Tags
-              items={(a.impacted_industries ?? []).map((i) => ({ label: i }))}
-              after={
-                a.industry_source === "keyword" ? (
-                  <Tooltip>
-                    <TooltipTrigger render={<span tabIndex={0} />}>
-                      <Badge variant="secondary" className="text-xs">KW</Badge>
-                    </TooltipTrigger>
-                    <TooltipContent>Industries matched by keyword</TooltipContent>
-                  </Tooltip>
-                ) : null
-              }
-            />
+            <div className="flex flex-wrap items-center gap-1.5">
+              {sectorChips(a).length ? (
+                <EntityChipList items={sectorChips(a)} max={12} />
+              ) : (
+                <span className="text-xs text-muted-foreground">—</span>
+              )}
+              {a.industry_source === "keyword" && (
+                <Tooltip>
+                  <TooltipTrigger render={<span tabIndex={0} />}>
+                    <Badge variant="secondary" className="text-xs">KW</Badge>
+                  </TooltipTrigger>
+                  <TooltipContent>Industries matched by keyword</TooltipContent>
+                </Tooltip>
+              )}
+            </div>
           </Section>
 
           <Section title="Countries">
-            <Tags items={countryTags} />
+            {countryItems.length ? (
+              <div className="flex flex-wrap gap-1.5">
+                {countryItems.map((c) => (
+                  <span key={c.k} className="inline-flex items-center gap-1">
+                    <EntityChip {...c.chip} />
+                    {c.role && <span className="text-2xs text-muted-foreground">{c.role}</span>}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <span className="text-xs text-muted-foreground">—</span>
+            )}
           </Section>
 
           <Section title="Threat Actors">
-            <Tags items={(a.threat_actors ?? []).map((t) => ({ label: t, variant: "destructive" as const }))} />
+            {actorChips(a).length ? (
+              <EntityChipList items={actorChips(a)} max={12} />
+            ) : (
+              <span className="text-xs text-muted-foreground">—</span>
+            )}
           </Section>
 
           {(a.malware ?? []).length > 0 && (
             <Section title="Malware / Tools">
-              <Tags items={a.malware.map((m) => ({ label: m.name, tip: m.kind }))} />
+              <EntityChipList items={malwareChips(a)} max={12} />
             </Section>
           )}
 
@@ -252,9 +248,11 @@ export function ArticleModal({ article, onOpenChange }: { article: Article | nul
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {a.ttps.map((t) => (
+                  {a.ttps.map((t, i) => (
                     <TableRow key={t.id}>
-                      <TableCell className="font-code text-xs text-primary">{t.id}</TableCell>
+                      <TableCell>
+                        <EntityChip {...ttpChips[i]} />
+                      </TableCell>
                       <TableCell className="text-xs whitespace-normal">{t.name}</TableCell>
                       <TableCell>
                         {t.evidence ? (

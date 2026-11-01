@@ -1,4 +1,6 @@
+import { EntityChip } from "@/components/entities/entity-chip";
 import type { KillChain } from "@/lib/api/loose-types";
+import { nameChip } from "@/lib/entities/name-chips";
 import { tint } from "@/lib/tint";
 
 const LABEL_COLOR: Record<string, string> = { full_chain: "var(--severity-critical)", partial_chain: "var(--severity-high)", limited: "var(--muted-foreground)" };
@@ -46,9 +48,7 @@ export function KillChainView({ killChain: kc }: { killChain: KillChain }) {
               <span className="w-[100px] flex-shrink-0 pt-px font-mono text-xs text-muted-foreground">{p.phase.replace(/_/g, " ")}</span>
               <div className="flex flex-wrap gap-1">
                 {p.techniques.map((t, i) => (
-                  <span key={i} className="rounded-full border border-tag-violet/30 bg-tag-violet/15 px-1 py-0.5 font-mono text-xs text-tag-violet-text">
-                    {t}
-                  </span>
+                  <EntityChip key={i} {...nameChip("attack-pattern", t)} className="max-w-48" />
                 ))}
               </div>
             </div>

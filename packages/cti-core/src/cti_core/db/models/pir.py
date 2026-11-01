@@ -38,6 +38,7 @@ from cti_core.db.base import Base, TimestampMixin
 
 _EMPTY_CRITERIA: dict[str, list[str]] = {
     "threat_actors": [],
+    "malware": [],
     "industries": [],
     "countries": [],
     "news_types": [],

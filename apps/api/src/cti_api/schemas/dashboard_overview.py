@@ -42,6 +42,7 @@ class TrendItemOut(BaseModel):
     kind: Literal["actor", "ttp"]
     name: str
     ttp_id: str | None = None
+    entity_id: int | None = None
     count: int
     prev_count: int
     change_pct: int | None = None
