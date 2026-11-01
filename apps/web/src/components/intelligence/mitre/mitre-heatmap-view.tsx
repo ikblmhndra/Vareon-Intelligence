@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import { getActiveClientId } from "@/lib/auth/client-id";
 import { Button } from "@/components/ui/button";
+import { EntityChip } from "@/components/entities/entity-chip";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { MitreHeatmapResponse } from "@/lib/api/loose-types";
@@ -127,7 +128,7 @@ export function MitreHeatmapView() {
                     className="border border-border bg-surface px-1.5 py-1.5 font-mono text-muted-foreground"
                     title={`${t.id} — ${t.name}`}
                   >
-                    {t.id}
+                    <EntityChip type="attack-pattern" name={t.id} id={t.entity_id} />
                   </th>
                 ))}
               </tr>
@@ -135,8 +136,13 @@ export function MitreHeatmapView() {
             <tbody>
               {d.rows.map((row, ri) => (
                 <tr key={row}>
-                  <td className="max-w-[160px] truncate border border-border bg-surface px-2 py-1 whitespace-nowrap text-foreground" title={row}>
-                    {row}
+                  <td className="max-w-[200px] border border-border bg-surface px-2 py-1 whitespace-nowrap text-foreground">
+                    <EntityChip
+                      type={view === "ta" ? "intrusion-set" : "identity"}
+                      name={row}
+                      id={d.row_ids?.[ri]}
+                      className="max-w-44"
+                    />
                   </td>
                   {d.matrix[ri].map((val, ci) => {
                     const t = d.ttps[ci];
@@ -151,7 +157,15 @@ export function MitreHeatmapView() {
                           cursor: val > 0 ? "pointer" : undefined,
                         }}
                         title={`${row} × ${t.id}: ${val} articles`}
-                        onClick={() => val > 0 && setDrillTarget({ ttpId: t.id, ttpName: t.name, row, view, days })}
+                        onClick={() => val > 0 && setDrillTarget({
+                          ttpId: t.id,
+                          ttpName: t.name,
+                          ttpEntityId: t.entity_id,
+                          row,
+                          rowEntityId: d.row_ids?.[ri],
+                          view,
+                          days,
+                        })}
                       >
                         {val || ""}
                       </td>

@@ -5,6 +5,8 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
+import { EntityChip } from "@/components/entities/entity-chip";
+import { actorChips } from "@/lib/entities/article-refs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api/client";
 import type { CampaignsResponse } from "@/lib/api/loose-types";
@@ -117,7 +119,7 @@ export function MustReadCard({ days, className }: { days: number | null; classNa
                   <span aria-hidden>·</span>
                   <span>{dateFmt.format(new Date(a.posted_on))}</span>
                   <Badge variant="secondary">{a.news_type}</Badge>
-                  {a.threat_actors[0] && <Badge variant="outline">{a.threat_actors[0]}</Badge>}
+                  {actorChips(a)[0] && <EntityChip {...actorChips(a)[0]} />}
                 </div>
                 {/* "Why it matters" (spec 4.1): insiden, confidence, cocok watchlist/tech stack. */}
                 {(a.confirmed_incident || a.admiralty_code != null || m.watchlist || m.techstack) && (
@@ -159,13 +161,16 @@ export function TrendingCard({ days, className }: { days: number | null; classNa
               <span className="w-12 shrink-0 text-xs text-muted-foreground">
                 {it.kind === "actor" ? "Aktor" : "TTP"}
               </span>
-              <span className="min-w-0 flex-1 truncate text-foreground">
+              <span className="min-w-0 flex-1">
                 {it.ttp_id ? (
-                  <>
-                    <span className="font-code">{it.ttp_id}</span> {it.name}
-                  </>
+                  <EntityChip
+                    type="attack-pattern"
+                    name={it.ttp_id}
+                    id={it.entity_id}
+                    label={`${it.ttp_id} ${it.name}`}
+                  />
                 ) : (
-                  it.name
+                  <EntityChip type="intrusion-set" name={it.name} id={it.entity_id} />
                 )}
               </span>
               <span className="font-code text-muted-foreground tabular-nums">{it.count}</span>

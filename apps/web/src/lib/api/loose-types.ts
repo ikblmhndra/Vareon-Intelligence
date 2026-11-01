@@ -612,6 +612,8 @@ export interface IocFeedbackResponse {
  */
 export interface SpikeEntry {
   entity: string;
+  /** Id entity di balik nama (P7c); null/absen = nama tanpa entity (mis. "Overall"). */
+  entity_id?: number | null;
   date: string;
   count: number;
   baseline_mean: number;
@@ -698,10 +700,14 @@ export interface DeletedResult {
 export interface MitreHeatmapTtp {
   id: string;
   name: string;
+  /** Id entity teknik (P7c); null = belum ada di katalog entity. */
+  entity_id?: number | null;
 }
 
 export interface MitreHeatmapResponse {
   rows: string[];
+  /** Id entity aktor per baris, urutan sama dengan `rows`. */
+  row_ids?: (number | null)[];
   ttps: MitreHeatmapTtp[];
   matrix: number[][];
   max_val: number;

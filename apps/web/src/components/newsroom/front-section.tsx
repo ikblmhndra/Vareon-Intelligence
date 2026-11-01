@@ -3,6 +3,8 @@
 import type { components } from "@/lib/api/schema";
 import type { NewsroomFilters } from "@/lib/newsroom/filters";
 import { Badge } from "@/components/ui/badge";
+import { EntityChipList } from "@/components/entities/entity-chip";
+import { actorChips, countryChip, techniqueChips } from "@/lib/entities/article-refs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatPostedOn } from "@/lib/newsroom/dates";
 import { GradeChip } from "@/components/newsroom/grade-chip";
@@ -32,22 +34,16 @@ export function useFrontQuery(filters: NewsroomFilters) {
 }
 
 function Chips({ a }: { a: Article }) {
-  const chips = [
-    ...a.threat_actors.slice(0, 3).map((t) => ({ k: `a-${t}`, label: t, code: false })),
-    ...a.ttps.slice(0, 3).map((t) => ({ k: `t-${t.id}`, label: t.id, code: true })),
-    ...a.mentioned_countries.slice(0, 3).map((c) => ({ k: `c-${c}`, label: c, code: false })),
+  const items = [
+    ...actorChips(a).slice(0, 3),
+    ...techniqueChips(a).slice(0, 3),
+    ...a.mentioned_countries.slice(0, 3).map((c) => countryChip(a, c, "mentioned")),
   ];
-  if (chips.length === 0) return null;
+  if (items.length === 0) return null;
   return (
-    <ul className="mt-2 flex flex-wrap gap-1.5">
-      {chips.map((c) => (
-        <li key={c.k}>
-          <Badge variant="outline" className={c.code ? "font-code" : undefined}>
-            {c.label}
-          </Badge>
-        </li>
-      ))}
-    </ul>
+    <div className="mt-2">
+      <EntityChipList items={items} max={9} />
+    </div>
   );
 }
 
