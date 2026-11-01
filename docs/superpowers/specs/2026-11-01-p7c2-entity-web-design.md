@@ -74,7 +74,7 @@ detail; the list's trend arrow compares `mentions_30d` with `mentions_90d / 3` (
 
 As parent spec 7.1, with these specifics:
 
-- **`/intelligence/entities`**: tabs as `TabPills` with the tab in the URL (`?type=`), search
+- **`/intelligence/entities`**: tabs as `TabPills` with the tab in the URL (`?tab=`: `actors`, `malware`, `techniques`, ...), search
   `?q=` (aliases, debounced), Watched toggle (`?watched=1`), table columns name (chip), aliases
   (first 3 + count), source, 30 d / 90 d mentions, last seen; cursor paging ("Load more"). Tabs map
   to types: Actors `intrusion-set`, Malware & tools `malware,tool`, Techniques `attack-pattern`,
@@ -111,8 +111,8 @@ As parent spec 7.1, with these specifics:
 - Removed web: `app/(app)/intelligence/threat-actor-room`, `app/(app)/intelligence/attack-db`,
   `components/intelligence/threat-actor-room/*`, `components/intelligence/attack-db/*` (the sync
   card moves to `components/entities/`).
-- Redirects: `/intelligence/threat-actor-room` -> `/intelligence/entities?type=intrusion-set`,
-  `/intelligence/attack-db` -> `/intelligence/entities?type=attack-pattern` (permanent redirects
+- Redirects: `/intelligence/threat-actor-room` -> `/intelligence/entities?tab=actors`,
+  `/intelligence/attack-db` -> `/intelligence/entities?tab=techniques` (permanent redirects
   in `next.config`, following the Next.js 16 docs in `node_modules/next/dist/docs/`).
 - Removed API (only these two pages used them; checked again by grep in the plan, web and
   Python): `/api/ta/groups` (GET, POST), `/api/ta/groups/{id}` (DELETE), `/api/ta/watchlist`
