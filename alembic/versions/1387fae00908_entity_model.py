@@ -126,6 +126,22 @@ def _create_tables() -> None:
         "CREATE TRIGGER trg_entity_aliases_sync_type BEFORE INSERT OR UPDATE ON entity_aliases"
         " FOR EACH ROW EXECUTE FUNCTION entity_aliases_sync_type()"
     )
+    # Sisi sebaliknya: tipe entitas berubah -> salinan tipe di alias ikut (aturan unik per tipe
+    # tetap berlaku; bentrok alias di tipe baru gagal di sini, bukan diam-diam).
+    op.execute(
+        """
+        CREATE FUNCTION entities_sync_alias_type() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+            UPDATE entity_aliases SET entity_type = NEW.type WHERE entity_id = NEW.id;
+            RETURN NULL;
+        END $$
+        """
+    )
+    op.execute(
+        "CREATE TRIGGER trg_entities_sync_alias_type AFTER UPDATE OF type ON entities"
+        " FOR EACH ROW WHEN (OLD.type IS DISTINCT FROM NEW.type)"
+        " EXECUTE FUNCTION entities_sync_alias_type()"
+    )
 
     op.create_table(
         "relationships",
@@ -335,6 +351,8 @@ def _drop_tables() -> None:
     op.drop_table("entity_watches")
     op.drop_table("entity_mentions")
     op.drop_table("relationships")
+    op.execute("DROP TRIGGER trg_entities_sync_alias_type ON entities")
+    op.execute("DROP FUNCTION entities_sync_alias_type()")
     op.execute("DROP TRIGGER trg_entity_aliases_sync_type ON entity_aliases")
     op.execute("DROP FUNCTION entity_aliases_sync_type()")
     op.drop_table("entity_aliases")
