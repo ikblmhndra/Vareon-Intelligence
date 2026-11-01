@@ -458,12 +458,15 @@ _ANALYZE = (
 
 def upgrade() -> None:
     op.execute("SET LOCAL lock_timeout = '10s'")
+    _create_tables()
     # Kunci EXCLUSIVE tabel lama SEBELUM backfill membacanya: kode 0.8.2 yang masih jalan selama
     # migrate tetap bisa membaca, tapi tulisannya menunggu sampai rename/view selesai, bukan masuk
-    # ke tabel yang sudah selesai disalin (lalu hilang di `_legacy_*`). Bila lock_timeout habis
-    # (transaksi panjang di tabel itu), migrasi gagal utuh dan `make deploy` cukup diulang.
+    # ke tabel yang sudah selesai disalin (lalu hilang di `_legacy_*`). Sengaja SESUDAH
+    # `_create_tables()`: FK `entity_mentions` mengunci articles/indicators/cve_tracker dulu, urutan
+    # yang sama dengan worker lama (induk dulu, baru tabel link), jadi tidak ada siklus deadlock.
+    # Bila lock_timeout habis (transaksi panjang di tabel itu), migrasi gagal utuh dan
+    # `make deploy` cukup diulang.
     op.execute(f"LOCK TABLE {', '.join(_COMPAT)} IN EXCLUSIVE MODE")
-    _create_tables()
     _create_resolve()
     _backfill()
     _create_compat_views()

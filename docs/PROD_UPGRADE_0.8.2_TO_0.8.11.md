@@ -1499,7 +1499,7 @@ replace the 0.8.8 `canonicalise_actors` step (now a no-op).
   restores the aliases and mentions exactly and revives the tombstone. Watches, profile and relationships stay on the
   target and are listed for the analyst. A merge undone this way is never redone by the weekly sync.
 - **`cti-entity merge-aliases --apply` failed with a DB error:** nothing was written (one transaction). Re-run it.
-- **`migrate` failed with `canceling statement due to lock timeout`:** a long transaction held one of the old link/TA
+- **`migrate` failed with `canceling statement due to lock timeout` or `deadlock detected`:** a long transaction held one of the old link/TA
   tables (or another table the migration touches) for more than 10 s. The migration rolled back completely and
   `deploy.sh` restored the `:prev` images; re-run `make deploy` (preferably outside an enrichment burst).
 
@@ -1606,7 +1606,8 @@ replace the 0.8.8 `canonicalise_actors` step (now a no-op).
   merge's row lock (R7), and the merge's repoint cannot see the uncommitted insert. Such a mention is hidden from
   readers (tombstones are not live). `repair_tombstone_mentions` moves these mentions to the live end of the merge chain
   (dropping duplicates) at the start of every Galaxy apply and in the weekly `entity.alias_sync` (log
-  `tombstone_mentions_repaired`), so they stay hidden for at most a week. Split stays exact (it moves mentions by
+  `tombstone_mentions_repaired`), so with `ENTITY__ALIAS_SYNC_ENABLED` on they stay hidden for at most a week; with it off,
+  only a manual `cti-entity merge-aliases --apply` repairs them. Split stays exact (it moves mentions by
   `matched_alias`). Read-only check, normally 0: `SELECT count(*) FROM entity_mentions m JOIN entities e
   ON e.id = m.entity_id WHERE e.merged_into_id IS NOT NULL;`
 - **P7c R20: long transactions can outrun the 60 s settle lag.** `cti-entity merge-aliases --apply`, the weekly
