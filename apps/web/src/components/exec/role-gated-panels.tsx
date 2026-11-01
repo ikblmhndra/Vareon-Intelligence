@@ -159,9 +159,9 @@ export function FpQueue({ d }: { d: ExecDashboardV2 }) {
 /** Port Critical CVE Feed role-gated (`exec.js:536-559`). `epss_score`/
  * `first_seen` DIHAPUS -- gak ada di response (`_get_critical_cves()`
  * cuma filter `cisa_kev`, kolom `epss_score` gak ada di `CveTracker`,
- * lihat docstring `exec_dashboard.py`). Klik CVE ID -> `/cve` (link
- * polos, BUKAN auto-buka modal -- butuh row `CveOut` lengkap yang cuma
- * ada di query list `/cve`, sama pola defer kayak Grup E). */
+ * lihat docstring `exec_dashboard.py`). CVE ID tampil sebagai
+ * `EntityChip` (tautan ke halaman entity vulnerability lewat resolve by name), BUKAN auto-buka
+ * modal CVE -- modal butuh row `CveOut` lengkap yang cuma ada di query list `/cve`. */
 export function CriticalCveFeed({ d }: { d: ExecDashboardV2 }) {
   if (d.critical_cves.length === 0) return <EmptyNote />;
   return (

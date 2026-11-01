@@ -50,7 +50,7 @@ export function TaLeaderboard({ d }: { d: ExecDashboardV2 }) {
             </span>
             <button
               className="flex flex-1 items-center gap-2 text-left"
-              title={`${toTitleCase(ta.name)} — Click to view in News Room\nSignal Quality: ${conf !== null ? conf + "% of mentions are incident-type articles" : "unknown"}`}
+              title={`${toTitleCase(ta.name)} — Click the bar to open News Room\nSignal Quality: ${conf !== null ? conf + "% of mentions are incident-type articles" : "unknown"}`}
               onClick={() => router.push("/newsroom")}
             >
               <div className="mx-2 h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
