@@ -22,6 +22,9 @@ class FakeRedis:
         self.keys[key] = (value, ex)
         return True
 
+    def delete(self, key: str) -> int:
+        return 1 if self.keys.pop(key, None) is not None else 0
+
 
 @pytest.fixture
 def mod(monkeypatch: pytest.MonkeyPatch) -> Any:
@@ -123,3 +126,30 @@ def test_enrich_llm_task_wires_the_failed_job_alert(
 
     assert enrich.enrich_llm.run(job_id=7) == "failed"
     assert seen["on_failed"] is mod.alert_job_failed
+
+
+def test_a_failed_telegram_send_does_not_silence_the_cooldown_window(
+    mod: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Kunci dedupe dihapus lagi kalau kirimnya gagal: Telegram yang sempat down tidak boleh
+    membungkam alert sepanjang jendela cooldown."""
+    import redis
+    from cti_alerts import telegram
+
+    fake, sent = FakeRedis(), []
+    down = [True]
+
+    def send(topic: str, text: str, **_k: object) -> None:
+        if down[0]:
+            raise ConnectionError("telegram unreachable")
+        sent.append((topic, text))
+
+    monkeypatch.setattr(redis.Redis, "from_url", lambda *_a, **_k: fake)
+    monkeypatch.setattr(telegram, "send_alert", send)
+
+    mod.alert_llm_down(3)
+    assert fake.keys == {}
+    down[0] = False
+    mod.alert_llm_down(3)
+
+    assert len(sent) == 1

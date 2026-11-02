@@ -22,7 +22,7 @@ from cti_core.db.models.enrich_job import EnrichJob
 from cti_core.db.models.llm_call import LlmCall
 from cti_core.db.repositories.enrich_job import EnrichJobRepo
 from cti_core.db.repositories.llm_call import LlmCallRepo
-from cti_core.llm.breaker import BREAKER_TASKS, OPEN_AFTER, RECENT_CALLS, breaker_state
+from cti_core.llm.breaker import BREAKER_TASKS, LEASE, OPEN_AFTER, RECENT_CALLS, breaker_state
 from cti_enrich import jobs, pipeline
 from cti_enrich.stages.classify import ClassifyResult
 from cti_enrich.stages.extract_ttps import TtpResult
@@ -43,6 +43,11 @@ _REQ = httpx.Request("POST", "http://gw/v1/chat/completions")
 @pytest.fixture
 def session(_migrated_schema: None, monkeypatch: pytest.MonkeyPatch) -> Iterator[Session]:
     import cti_core.db.engine as engine
+
+    # Impor worker (dan semua modul task-nya) SEBELUM `sync_session` diganti: modul yang
+    # mengimpor `sync_session` di level modul akan menyimpan versi palsu yang terikat ke koneksi
+    # test ini, lalu gagal di test lain sesudah koneksinya ditutup.
+    import cti_worker.celery_app  # noqa: F401
 
     connection = engine.get_sync_engine().connect()
     connection.begin()
@@ -93,7 +98,12 @@ class Wire:
 
 
 @pytest.fixture
-def wire(mod: Any, monkeypatch: pytest.MonkeyPatch) -> Wire:
+def wire(mod: Any, monkeypatch: pytest.MonkeyPatch, redis_client: Any) -> Wire:
+    import redis
+
+    # Penanda canary disimpan di Redis efemeral beneran.
+    redis_client.flushall()
+    monkeypatch.setattr(redis.Redis, "from_url", lambda *_a, **_k: redis_client)
     w = Wire()
     monkeypatch.setattr("cti_core.celery_client.send_enrich_llm", w.send)
     monkeypatch.setattr(pipeline, "send_enrich_llm", w.send)
@@ -191,6 +201,27 @@ def test_half_open_sends_exactly_one_canary(session: Session, mod: Any, wire: Wi
     assert wire.down_alerts == []
 
 
+def test_half_open_sends_no_second_canary_while_the_first_is_in_flight(
+    session: Session, mod: Any, wire: Wire
+) -> None:
+    """Canary lambat (> 1 menit): selama belum ada baris `llm_calls` baru, putaran berikutnya
+    tidak mengirim canary kedua (spec 4.4: tepat satu)."""
+    now = _now()
+    _jobs(session, 5)
+    _calls(session, ["error"] * 3, now - datetime.timedelta(minutes=3))
+
+    assert mod.dispatch(now)["sent"] == 1
+    assert mod.dispatch(now + datetime.timedelta(minutes=1))["sent"] == 0
+    assert mod.dispatch(now + datetime.timedelta(minutes=2))["sent"] == 0
+    assert len(wire.sent) == 1
+
+    # Canary-nya gagal (baris baru), cooldown n=4 (4 mnt) lewat: canary berikutnya boleh.
+    later = now + datetime.timedelta(minutes=3)
+    _calls(session, ["error"], later)
+    assert mod.dispatch(later + datetime.timedelta(minutes=5))["sent"] == 1
+    assert len(wire.sent) == 2
+
+
 def test_open_sends_nothing_and_alerts_with_the_waiting_count(
     session: Session, mod: Any, wire: Wire
 ) -> None:
@@ -276,8 +307,49 @@ def test_new_ttp_job_is_sent_at_once_when_closed(
     assert ttp is not None and wire.sent == [ttp.id]
 
 
+def test_an_immediately_sent_job_is_leased_against_the_dispatcher(
+    session: Session, mod: Any, wire: Wire, stages: None
+) -> None:
+    """Kiriman langsung ikut menyewa job (`LEASE`) di transaksi yang membuatnya: putaran dispatcher
+    berikutnya tidak mengirimnya lagi selagi worker mungkin masih memprosesnya; kalau job itu tidak
+    pernah jalan, dispatcher mengirimnya sesudah sewa habis."""
+    now = _now()
+    outcome = _arrive(session, 1)
+    job_id = outcome.pending_job_id
+    assert job_id is not None and wire.sent == [job_id]
+
+    assert mod.dispatch(now + datetime.timedelta(minutes=1))["sent"] == 0
+    assert mod.dispatch(now + LEASE + datetime.timedelta(minutes=1))["sent"] == 1
+    assert wire.sent == [job_id, job_id]
+
+
+def test_an_immediately_sent_ttp_job_is_leased(
+    session: Session, mod: Any, wire: Wire, stages: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(jobs, "classify", lambda title: VERDICT)
+    now = _now()
+    _arrive(session, 1)
+    assert jobs.run_job(wire.sent.pop()) == "done"
+    ttp = session.scalar(select(EnrichJob).where(EnrichJob.kind == "ttp"))
+    assert ttp is not None and wire.sent == [ttp.id]
+
+    assert mod.dispatch(now + datetime.timedelta(minutes=1))["sent"] == 0
+
+
+def test_a_closed_breaker_read_leaves_unsent_jobs_due_when_open(
+    session: Session, mod: Any, wire: Wire, stages: None
+) -> None:
+    """Breaker terbuka: job baru TIDAK disewa, jadi dispatcher (canary) bisa mengambilnya."""
+    now = _now()
+    _calls(session, ["error"] * OPEN_AFTER, now - datetime.timedelta(minutes=3))
+    outcome = _arrive(session, 1)
+    assert wire.sent == []
+    job = session.get(EnrichJob, outcome.pending_job_id)
+    assert job is not None and job.next_attempt_at <= now
+
+
 def test_a_failing_send_never_breaks_the_pipeline(
-    session: Session, wire: Wire, stages: None
+    session: Session, mod: Any, wire: Wire, stages: None
 ) -> None:
     wire.fail_send = True
 
@@ -285,6 +357,8 @@ def test_a_failing_send_never_breaks_the_pipeline(
 
     assert outcome.pending_job_id is not None
     assert session.get(EnrichJob, outcome.pending_job_id) is not None  # dispatcher yang kirim
+    wire.fail_send = False
+    assert mod.dispatch(_now() + LEASE)["sent"] == 1  # sesudah sewanya habis
 
 
 # ── simulasi gangguan gateway ────────────────────────────────────────────────────────

@@ -21,6 +21,7 @@ import datetime
 import html
 
 import structlog
+from cti_core.llm.breaker import LEASE
 
 from cti_worker.celery_app import app
 from cti_worker.queues import QUEUE_MAINTENANCE
@@ -29,6 +30,43 @@ log = structlog.get_logger()
 
 _DOWN_ALERT_KEY = "cti:enrich:llm_down_alerted"
 _FAILED_ALERT_KEY = "cti:enrich:job_failed_alerted"
+_CANARY_KEY = "cti:enrich:canary_at"
+"""Cap waktu klaim canary setengah terbuka terakhir (TTL `LEASE`)."""
+
+
+def _canary_in_flight(last_call_at: datetime.datetime, now: datetime.datetime) -> bool:
+    """Canary terakhir belum punya hasil: diklaim SESUDAH baris `llm_calls` terbaru (hasilnya
+    sendiri tercatat sesudah klaim) dan sewanya belum habis (dicek dari `now` dan TTL kunci, jadi
+    canary yang tidak pernah memanggil LLM, mis. duplikat, hanya menahan selama satu sewa).
+    Canary lambat (> 1 menit) tanpa ini memicu canary kedua di putaran berikutnya, padahal spec
+    4.4 bilang tepat satu. Redis tak terjangkau -> False (kirim saja, paling buruk satu canary
+    ekstra per menit, seperti sebelum penanda ini ada)."""
+    try:
+        import redis
+        from cti_core.config import get_settings
+
+        raw = redis.Redis.from_url(get_settings().redis.url).get(_CANARY_KEY)
+        if raw is None:
+            return False
+        claimed_at = datetime.datetime.fromisoformat(
+            raw.decode() if isinstance(raw, bytes) else str(raw)
+        )
+        return claimed_at > last_call_at and now < claimed_at + LEASE
+    except Exception as e:
+        log.warning("llm_canary_marker_read_failed", error=str(e)[:200])
+        return False
+
+
+def _mark_canary(now: datetime.datetime) -> None:
+    try:
+        import redis
+        from cti_core.config import get_settings
+
+        redis.Redis.from_url(get_settings().redis.url).set(
+            _CANARY_KEY, now.isoformat(), ex=int(LEASE.total_seconds())
+        )
+    except Exception as e:
+        log.warning("llm_canary_marker_write_failed", error=str(e)[:200])
 
 
 def _alert_once(key: str, text: str) -> None:
@@ -44,7 +82,13 @@ def _alert_once(key: str, text: str) -> None:
         cooldown_s = settings.worker.enrich_failure_alert_cooldown_min * 60
         if not client.set(key, "1", nx=True, ex=cooldown_s):
             return
-        send_alert("scraper_health", text)
+        try:
+            send_alert("scraper_health", text)
+        except Exception:
+            # Kunci dilepas lagi: Telegram yang sempat down tidak boleh membungkam alert ini
+            # sepanjang jendela cooldown.
+            client.delete(key)
+            raise
     except Exception as alert_error:
         log.error("enrich_alert_failed", key=key, error=str(alert_error)[:200])
 
@@ -81,7 +125,6 @@ def dispatch(now: datetime.datetime) -> dict[str, int]:
     from cti_core.db.repositories.llm_call import LlmCallRepo
     from cti_core.llm.breaker import (
         BREAKER_TASKS,
-        LEASE,
         RECENT_CALLS,
         breaker_state,
         dispatch_limit,
@@ -97,12 +140,16 @@ def dispatch(now: datetime.datetime) -> dict[str, int]:
             queue_depth=enrich_queue_depth(),
             max_depth=get_settings().scraper.enrich_queue_max_depth,
         )
+        if breaker.state == "half_open" and _canary_in_flight(recent[0].at, now):
+            limit = 0
         repo = EnrichJobRepo(session)
         if breaker.state == "open":
             counts = repo.counts()
             waiting = counts.pending_classify + counts.pending_ttp
         job_ids = [j.id for j in repo.claim_due(now, limit=limit, lease=LEASE)] if limit else []
         session.commit()
+    if breaker.state == "half_open" and job_ids:
+        _mark_canary(now)
 
     if waiting:
         # Tanpa job yang menunggu tidak ada canary yang bisa menutup breaker, jadi alert-nya
