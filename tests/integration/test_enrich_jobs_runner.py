@@ -21,6 +21,7 @@ from typing import Any
 import httpx
 import openai
 import pytest
+import sqlalchemy.exc
 from cti_core.db.models.article import Article, RejectedArticle
 from cti_core.db.models.attack import AttackTechnique
 from cti_core.db.models.enrich_job import EnrichJob
@@ -410,11 +411,13 @@ def test_ttp_job_merges_and_keeps_analyst(
                 ("T1059", "Command and Scripting Interpreter"),
                 ("T1566", "Phishing"),
                 ("T1027", "Obfuscated Files or Information"),
+                ("T1105", "Ingress Tool Transfer"),
             ]
         ]
     )
     seed_entity(session, "attack-pattern", "Command and Scripting Interpreter", external_id="T1059")
     seed_entity(session, "attack-pattern", "Phishing", external_id="T1566")
+    seed_entity(session, "attack-pattern", "Ingress Tool Transfer", external_id="T1105")
     repo = ArticleRepo(session)
     article = repo.upsert(url=URL, title=TITLE, source="Test", llm_ttp_status="pending")
     repo.add_mentions(
@@ -424,9 +427,17 @@ def test_ttp_job_merges_and_keeps_analyst(
                 "attack-pattern",
                 "Command and Scripting Interpreter",
                 "analyst",
-                "T1059",
+                "PowerShell loader",  # alias khusus analis, BUKAN ID teknik
                 evidence="analyst note",
                 external_id="T1059",
+            ),
+            MentionInput(
+                "attack-pattern",
+                "Ingress Tool Transfer",
+                "legacy",
+                "T1105",
+                evidence="legacy row",
+                external_id="T1105",
             ),
             MentionInput(
                 "attack-pattern",
@@ -461,21 +472,36 @@ def test_ttp_job_merges_and_keeps_analyst(
                 Technique("T1566", "Phishing", evidence="sent spear-phishing emails"),
                 Technique("T1027", "Obfuscated Files or Information", evidence="packed with UPX"),
                 Technique("T1059", "Command and Scripting Interpreter", evidence="PowerShell"),
+                Technique("T1105", "Ingress Tool Transfer", evidence="PowerShell loader"),
             ],
         ),
     )
 
+    def rows() -> dict[str, tuple[Any, ...]]:
+        session.expire(article)
+        return {
+            m.entity.external_id: (m.id, m.method, m.matched_alias, m.evidence, m.extracted)
+            for m in article.mentions_of("attack-pattern")
+        }
+
+    before = rows()
+
     assert jobs.run_job(job.id, now=NOW) == "done"
 
     assert _job(session, job.id) is None
+    after = rows()
+    # Mention analis dan legacy tidak disentuh sama sekali (id, alias, method, bukti tetap),
+    # walau LLM mengusulkan ID yang sama dengan bukti yang valid.
+    assert after["T1059"] == before["T1059"]
+    assert after["T1059"][1:4] == ("analyst", "PowerShell loader", "analyst note")
+    assert after["T1105"] == before["T1105"]
+    assert {tid: row[1] for tid, row in after.items()} == {
+        "T1059": "analyst",
+        "T1105": "legacy",
+        "T1566": "llm",
+    }
+    assert after["T1566"][3] == "sent spear-phishing emails"
     session.refresh(article)
-    ttps = {
-        m.entity.external_id: (m.method, m.evidence) for m in article.mentions_of("attack-pattern")
-    }
-    assert ttps == {
-        "T1059": ("analyst", "analyst note"),
-        "T1566": ("llm", "sent spear-phishing emails"),
-    }
     assert article.llm_ttp_status == "done"
     assert article.priority_score is not None
     assert article.score_reasons is not None
@@ -632,3 +658,25 @@ def test_decision_on_a_ttp_job_is_refused_without_failing_it(
 
     after = _job(session, job.id)
     assert after is not None and after.state == "pending" and after.last_error is None
+
+
+def test_db_error_reschedules_like_gateway(
+    session: Session, alerts: list[object], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R9: putus DB/jaringan bukan bug per job: dijadwalkan ulang, tidak `failed`, tanpa alert."""
+    job_id = _classify_job(session, input_text=None, context={})
+    failed: list[tuple[str, str]] = []
+
+    def db_down(url: str) -> str:
+        raise sqlalchemy.exc.OperationalError("SELECT 1", {}, Exception("server closed"))
+
+    monkeypatch.setattr(pipeline, "fetch_text", db_down)
+    monkeypatch.setattr(jobs, "classify", no_llm)
+
+    assert jobs.run_job(job_id, now=NOW, on_failed=lambda *a: failed.append(a)) == "retry"
+
+    job = _job(session, job_id)
+    assert job is not None
+    assert (job.state, job.attempts, job.input_text) == ("pending", 1, None)
+    assert job.last_error is not None and job.last_error.startswith("OperationalError: ")
+    assert failed == []

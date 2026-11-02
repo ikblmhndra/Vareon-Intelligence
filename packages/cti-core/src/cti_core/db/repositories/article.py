@@ -48,9 +48,7 @@ from cti_core.urlkit import url_hash as compute_url_hash
 
 _RESERVED_OVERRIDE_KEYS = frozenset({"_meta"})
 
-_TTP_SOURCES = frozenset({"llm", "explicit", "keyword", "analyst"})
-"""`analyst` ikut supaya job `ttp` (P7g) bisa menulis ulang mention teknik lewat `apply_ttps`
-sambil MEMPERTAHANKAN mention analis apa adanya (method tidak ditimpa)."""
+_TTP_SOURCES = frozenset({"llm", "explicit", "keyword"})
 _ACTOR_SOURCES = frozenset({"dictionary", "llm", "analyst"})
 _INDUSTRY_SOURCES = frozenset({"llm", "keyword"})
 _MALWARE_KINDS = frozenset({"malware", "tool"})
@@ -314,13 +312,21 @@ def _enrichment_hits(
     ]
 
 
-def apply_ttps(article: Article, ttps: Sequence[TTPInput]) -> None:
+def apply_ttps(
+    article: Article, ttps: Sequence[TTPInput], *, only_methods: Sequence[str] | None = None
+) -> None:
     """Ganti mention teknik artikel dengan `ttps` (yang tidak ada lagi dihapus, yang ada
-    diperbarui method/bukti). Dipakai remap TTP (`ttp_catalog.remap_article_ttps`)."""
+    diperbarui method/bukti). Dipakai remap TTP (`ttp_catalog.remap_article_ttps`).
+
+    `only_methods` (job `ttp` P7g): hanya mention dengan method itu yang boleh dihapus; mention
+    lain (`analyst`, `legacy`) dibiarkan utuh. Pemanggil wajib tidak mengirim teknik yang ID-nya
+    dimiliki mention yang dibiarkan, karena upsert akan menimpanya."""
     session = object_session(article)
     if not isinstance(session, Session):
         raise ValueError("apply_ttps butuh artikel yang terikat ke Session sync")
-    ArticleRepo(session).replace_mentions(article, _ttp_hits(ttps), ("attack-pattern",))
+    ArticleRepo(session).replace_mentions(
+        article, _ttp_hits(ttps), ("attack-pattern",), only_methods=only_methods
+    )
 
 
 class ArticleRepo:
@@ -418,13 +424,21 @@ class ArticleRepo:
         return article
 
     def replace_mentions(
-        self, article: Article, hits: Sequence[MentionInput], types: Sequence[str]
+        self,
+        article: Article,
+        hits: Sequence[MentionInput],
+        types: Sequence[str],
+        *,
+        only_methods: Sequence[str] | None = None,
     ) -> None:
-        """Mention artikel bertipe `types` dibuat persis `hits` (lihat `set_enrichment`)."""
+        """Mention artikel bertipe `types` dibuat persis `hits` (lihat `set_enrichment`);
+        `only_methods` membatasi baris lama yang boleh dihapus (`delete_other_mentions`)."""
         self.session.flush()
         rows = mention_rows({"article_id": article.id}, resolve_all(self.session, hits))
         keep = [(r["entity_id"], r["role"]) for r in rows]
-        self.session.execute(delete_other_mentions(article.id, types, keep))
+        self.session.execute(
+            delete_other_mentions(article.id, types, keep, only_methods=only_methods)
+        )
         if rows:
             self.session.execute(insert_mentions(rows, update=True))
         self.session.flush()

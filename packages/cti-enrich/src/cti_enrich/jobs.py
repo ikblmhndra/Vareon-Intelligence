@@ -31,13 +31,13 @@ import json
 from collections.abc import Callable
 from typing import Literal, cast
 
+import httpx
 import openai
+import sqlalchemy.exc
 import structlog
-from cti_core.attack_ttp import NormalizedTTP
 from cti_core.db.engine import sync_session
 from cti_core.db.models.article import Article
 from cti_core.db.models.enrich_job import EnrichJob
-from cti_core.db.models.entity import EntityMention
 from cti_core.db.repositories.article import ArticleRepo, apply_ttps
 from cti_core.db.repositories.assessment import apply_assessments
 from cti_core.db.repositories.enrich_job import EnrichJobRepo
@@ -86,6 +86,14 @@ GATEWAY_ERRORS: tuple[type[BaseException], ...] = (
 )
 """Error gateway LLM: dijadwalkan ulang tanpa batas (`record_gateway_failure`)."""
 
+RESCHEDULE_ERRORS: tuple[type[BaseException], ...] = (
+    sqlalchemy.exc.OperationalError,  # koneksi DB putus / server restart
+    sqlalchemy.exc.InterfaceError,
+    httpx.TransportError,  # jaringan saat fetch (`prepare`)
+)
+"""Error DB/jaringan (R9): dijadwalkan ulang seperti gateway, bukan `failed` -- bukan bug per
+job. Kalau DB masih mati saat mencatatnya, task raise dan lease dispatcher mengirim ulang."""
+
 _ANALYST = "analyst"
 
 
@@ -111,7 +119,7 @@ def run_job(
     now = now or datetime.datetime.now(datetime.UTC)
     try:
         return _run(job_id, decision, now, relevance_for)
-    except GATEWAY_ERRORS as e:
+    except (*GATEWAY_ERRORS, *RESCHEDULE_ERRORS) as e:
         return _record_failure(job_id, now, e, "gateway", on_failed)
     except json.JSONDecodeError as e:
         return _record_failure(job_id, now, e, "json", on_failed)
@@ -299,22 +307,12 @@ def _finish_classify(
 # ── ttp ──────────────────────────────────────────────────────────────────────────────────
 
 
-def _analyst_ttp(m: EntityMention) -> NormalizedTTP:
-    extracted = m.extracted or {}
-    return NormalizedTTP(
-        cast(str, m.entity.external_id),
-        m.entity.name,
-        extracted.get("extracted_id"),
-        extracted.get("extracted_name"),
-        source=_ANALYST,
-        evidence=m.evidence,
-    )
-
-
 def _finish_ttp(job_id: int, text: str) -> JobOutcome:
-    """LLM TTP tanpa sesi, lalu gabung ke mention artikel: `analyst` tidak disentuh, sisanya
-    digabung `merge_ttps` (explicit > llm > keyword) dan ditulis `apply_ttps` (P7c). P6 dihitung
-    ulang (poin prioritas menghitung TTP LLM). Tanpa alert: alert sudah keluar saat persist."""
+    """LLM TTP tanpa sesi, lalu gabung ke mention artikel. Mention di luar `explicit`/`keyword`/
+    `llm` (`analyst`, `legacy`) TIDAK ditulis sama sekali: barisnya tidak dihapus
+    (`only_methods`) dan ID-nya tidak dikirim ke upsert (yang akan menimpa method/alias/bukti).
+    Sisanya digabung `merge_ttps` (explicit > llm > keyword) dan ditulis `apply_ttps` (P7c). P6
+    dihitung ulang (poin prioritas menghitung TTP LLM). Tanpa alert: alert sudah keluar."""
     result = extract_ttps(text)
     with sync_session() as session:
         repo = EnrichJobRepo(session)
@@ -330,8 +328,7 @@ def _finish_ttp(job_id: int, text: str) -> JobOutcome:
             result = normalize_ttp_result(result, load_catalog(session))
             result = verify_evidence(result, text)
         current = [m for m in article.mentions_of("attack-pattern") if m.entity.external_id]
-        analyst = [_analyst_ttp(m) for m in current if m.method == _ANALYST]
-        kept = {t.ttp_id for t in analyst}
+        untouched = {m.entity.external_id for m in current if m.method not in _MERGED_SOURCES}
         tier1 = [
             SourcedTechnique(
                 cast(str, m.entity.external_id),
@@ -342,8 +339,8 @@ def _finish_ttp(job_id: int, text: str) -> JobOutcome:
             for m in current
             if m.method in _MERGED_SOURCES
         ]
-        merged = [t for t in merge_ttps(result, tier1) if t.ttp_id not in kept]
-        apply_ttps(article, [*merged, *analyst])
+        merged = [t for t in merge_ttps(result, tier1) if t.ttp_id not in untouched]
+        apply_ttps(article, merged, only_methods=_MERGED_SOURCES)
         ArticleRepo(session).touch_entity_seen(article)
         article.llm_ttp_status = "done"
         session.flush()
