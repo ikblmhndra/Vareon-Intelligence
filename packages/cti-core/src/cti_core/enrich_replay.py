@@ -16,11 +16,14 @@ import datetime
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from cti_core.llm.breaker import ALERT_WINDOW, is_fresh
+
+__all__ = ["ALERT_WINDOW", "is_fresh"]
+
 BATCH = 20
 MAX_ATTEMPTS = 3
 BACKOFF_BASE = datetime.timedelta(minutes=30)
 """Jeda minimal sebelum percobaan berikutnya: `BACKOFF_BASE * 2 ** auto_replay_count`."""
-ALERT_WINDOW = datetime.timedelta(hours=24)
 
 
 @dataclass(frozen=True)
@@ -33,14 +36,6 @@ class ReplayCandidate:
     posted_on: datetime.date | None
     auto_replay_count: int
     last_auto_replay_at: datetime.datetime | None
-
-
-def is_fresh(posted_on: datetime.date | None, now: datetime.datetime) -> bool:
-    """Artikel masih layak di-alert Telegram. `posted_on` hanya berupa tanggal, jadi "dalam 24 jam"
-    ditafsirkan `posted_on >= (now - 24 jam).date()` (kemarin dan hari ini); None -> False."""
-    if posted_on is None:
-        return False
-    return posted_on >= (now - ALERT_WINDOW).date()
 
 
 def plan_auto_replay(
