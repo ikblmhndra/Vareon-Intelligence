@@ -809,9 +809,6 @@ class AsyncArticleRepo:
         }
 
 
-AUTO_REPLAY_KINDS = ("transient", "config", "json")
-
-
 class RejectedArticleRepo:
     """Sync -- dipakai `cti_enrich.stages.persist.persist_rejected()`
     (Celery task `enrich.article`, sama proses tulis kayak `ArticleRepo`)."""

@@ -171,9 +171,9 @@ def enrich_article(
     replay: bool = False,
     alert: bool | None = None,
 ) -> dict[str, object]:
-    """`replay=True` (artikel yang gagal di-enrich dikirim ulang, `send_enrich_task`): disimpan
-    tanpa alert Telegram. `alert` (bila bukan None) menimpa bawaan itu, mis. replay otomatis yang
-    masih segar. Keduanya hanya dikirim bila perlu, jadi pesan lama di antrian tetap valid."""
+    """`replay=True`: disimpan tanpa alert Telegram. `alert` (bila bukan None) menimpa bawaan itu.
+    Pengirim replay (`send_enrich_task`, replay otomatis) sudah pensiun di P7g, tapi pesan lama
+    yang masih di antrian membawa kedua argumen ini, jadi tanda tangannya dipertahankan."""
     from cti_core.db.engine import sync_session
     from cti_enrich.pipeline import run_pipeline
 

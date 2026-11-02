@@ -52,7 +52,7 @@ const URL_PERIODS = new Set(["1", "7", "30"]);
  */
 function NewsroomContent() {
   const can = useCan();
-  // Tab Filtered Articles hanya berguna bagi yang boleh Restore atau Replay.
+  // Tab Filtered Articles hanya berguna bagi yang boleh Restore, Accept atau Retry.
   const isAdmin = can("manage_sources") || can("manage_scraper");
   const searchParams = useSearchParams();
 

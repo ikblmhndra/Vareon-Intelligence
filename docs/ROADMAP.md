@@ -1558,7 +1558,7 @@ Commits, in order (each one keeps `main` green; one migration):
    key on the prod host) with the error class, the first 200 escaped characters and the number of failures still waiting for a replay.
    New setting `worker.enrich_failure_alert_cooldown_min` (default 60) with `.env.example`, `.env.prod.template` and the two env
    tests updated in the same commit; the existing task-failure tests get an autouse stub for Redis and Telegram.
-3. **Replay tool.** `tools/ops/replay_failed_enrichment.py` (+ a Makefile target and `tests/unit/test_ops_makefile.py`), report-only by
+3. **Replay tool** (*retired in 0.8.11 by P7g: parked articles are `enrich_jobs` now and drain on their own; see `docs/superpowers/specs/2026-11-02-p7g-persist-first-design.md`. Items 3 and 4 below, and the Replay button, describe the 0.8.0 design as shipped then*). `tools/ops/replay_failed_enrichment.py` (+ a Makefile target and `tests/unit/test_ops_makefile.py`), report-only by
    default, `--apply` to enqueue. Filters `--kind`, `--since`, `--source`, `--limit`, `--rate` (messages per minute). It enqueues
    `enrich.article` with the five keyword arguments the sink sends (`title`, `url`, `posted_on` ISO or `None`, `source`, `scraper_id`),
    after `ensure_enrich_capacity`. Plan categories: `enqueue`, `skip_article_exists`, `stub_restored` (an analyst already restored it,

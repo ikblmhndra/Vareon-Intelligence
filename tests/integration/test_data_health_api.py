@@ -1,6 +1,6 @@
 """`GET /api/data-health` (ROADMAP #24 PR-B): angka halaman Data health sama dengan query
-reproduksi audit -- kegagalan enrichment yang menunggu replay, antrian `enrich`, kesegaran sumber,
-dan cakupan enrichment IOC (kartu `skipped` tidak dihitung)."""
+reproduksi audit -- antrian job enrichment (`enrich_jobs`) dan breaker LLM, kedalaman antrian
+`enrich`, kesegaran sumber, dan cakupan enrichment IOC (kartu `skipped` tidak dihitung)."""
 
 from __future__ import annotations
 
