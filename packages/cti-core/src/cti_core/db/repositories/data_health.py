@@ -3,9 +3,9 @@ enrichment, kesegaran sumber, dan cakupan enrichment IOC. Hanya hitungan dan cap
 pernah isi baris (pesan error bisa memuat potongan respons vendor).
 
 "Menunggu replay" = baris `rejected_articles` dengan `failure_kind` terisi: replay yang berhasil
-menghapus barisnya (`tools/ops/replay_failed_enrichment.py`), jadi semua yang tersisa memang belum
-pulang. IOC dianggap "enriched" kalau punya minimal satu kartu provider yang bukan kartu `skipped`
-(`ioc_providers.skipped_card`: IP non-publik dan sejenisnya, provider tidak pernah ditanya)."""
+menghapus barisnya, jadi semua yang tersisa memang belum pulang. IOC dianggap "enriched" kalau
+punya minimal satu kartu provider yang bukan kartu `skipped` (`ioc_providers.skipped_card`: IP
+non-publik dan sejenisnya, provider tidak pernah ditanya)."""
 
 from __future__ import annotations
 
@@ -19,7 +19,6 @@ from cti_core.db.models.article import Article, RejectedArticle
 from cti_core.db.models.indicator import Indicator
 from cti_core.db.models.tweet import Tweet
 from cti_core.db.repositories.article import AUTO_REPLAY_KINDS
-from cti_core.enrich_replay import MAX_ATTEMPTS
 
 # Kartu yang benar-benar dicek provider: `raw.skipped` kosong. Ditulis sebagai SQL mentah
 # karena `jsonb_array_elements` di FROM; tanpa operator `?` (bentrok dengan bind param `text()`).
@@ -28,6 +27,11 @@ _ENRICHED_IOC = text(
     "COALESCE(indicators.enrichment -> 'providers', '[]'::jsonb)) AS card "
     "WHERE card -> 'raw' -> 'skipped' IS NULL)"
 )
+
+
+_MAX_AUTO_ATTEMPTS = 3
+"""Batas percobaan replay otomatis lama (modulnya sudah dihapus P7g); hanya dipakai `parked_counts`,
+yang ikut hilang begitu /data-health membaca `enrich_jobs`."""
 
 
 @dataclass(frozen=True)
@@ -59,7 +63,7 @@ class AsyncDataHealthRepo:
 
     async def parked_counts(self, now: datetime.datetime) -> ParkedCounts:
         eligible = RejectedArticle.failure_kind.in_(AUTO_REPLAY_KINDS) & (
-            RejectedArticle.auto_replay_count < MAX_ATTEMPTS
+            RejectedArticle.auto_replay_count < _MAX_AUTO_ATTEMPTS
         )
         stmt = select(
             func.count(),

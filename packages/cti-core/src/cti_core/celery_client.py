@@ -41,9 +41,9 @@ def send_enrich_task(
     replay: bool = False,
     alert: bool | None = None,
 ) -> None:
-    """Kirim ulang satu artikel ke `enrich.article` (replay artikel yang gagal di-enrich: tool
-    `replay_failed_enrichment` dan endpoint replay di API). Argumennya sama dengan yang dikirim
-    `cti_scraper.sinks._article_sink`; `replay=True` membuat pipeline TIDAK mengirim alert Telegram
+    """Kirim ulang satu artikel ke `enrich.article` (endpoint replay di API). Argumennya sama
+    dengan yang dikirim `cti_scraper.sinks._article_sink`; `replay=True` membuat pipeline TIDAK
+    mengirim alert Telegram
     (beritanya sudah basi). `replay` hanya ikut dikirim bila True: pesan biasa tidak berubah.
     `alert` (bukan None) menimpa bawaan `not replay`; None = tidak dikirim."""
     kwargs: dict[str, object] = {

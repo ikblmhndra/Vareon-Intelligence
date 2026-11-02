@@ -80,13 +80,16 @@ from dataclasses import dataclass
 from typing import Any
 
 import structlog
+from cti_core.celery_client import send_enrich_llm
 from cti_core.config import get_settings
 from cti_core.db.models.article import Article
 from cti_core.db.models.enrich_job import EnrichJob
 from cti_core.db.models.report_state import SCOPE_NEWS
 from cti_core.db.repositories.article import ArticleRepo
 from cti_core.db.repositories.enrich_job import EnrichJobRepo
+from cti_core.db.repositories.llm_call import LlmCallRepo
 from cti_core.db.repositories.report_state import CveMentionRepo
+from cti_core.llm.breaker import BREAKER_TASKS, RECENT_CALLS, breaker_state
 from cti_core.urlkit import url_hash
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -147,6 +150,25 @@ _URL_LOCK_NAMESPACE = 7_311_001
 Ruang kunci dua-int TIDAK bertabrakan dengan kunci satu-bigint di tempat lain (bootstrap API,
 `/auth/init`, nomor ticket, mirror CVE). Tabrakan `hashtext` antar URL berbeda hanya membuat
 dua task saling menunggu sebentar, tidak salah hasil."""
+
+
+def _send_now(session: Session, job_id: int) -> None:
+    """Job baru langsung dikirim ke `enrich.llm` kalau breaker TERTUTUP (spec 4.5), supaya latensi
+    normal tetap detik, bukan menunggu putaran dispatcher berikutnya. Dipanggil SESUDAH commit yang
+    membuat job-nya (worker harus bisa melihat barisnya). Breaker terbuka/setengah terbuka: job
+    dibiarkan untuk dispatcher, yang membatasi lajunya. Satu query `llm_calls` yang murah.
+
+    BEST-EFFORT: gagal baca/kirim cukup di-log, dispatcher mengambil job-nya nanti (klaim lewat
+    `next_attempt_at`, jadi job ini bisa terkirim dua kali; `run_job` idempoten)."""
+    try:
+        recent = LlmCallRepo(session).recent_for_tasks(BREAKER_TASKS, limit=RECENT_CALLS)
+        if breaker_state(recent, datetime.datetime.now(datetime.UTC)).state != "closed":
+            return
+        send_enrich_llm(job_id)
+    except Exception:
+        log.warning("enrich_job_send_now_failed", job_id=job_id, exc_info=True)
+        # Baca yang gagal meninggalkan transaksi rusak; sesudah commit tidak ada yang hilang.
+        session.rollback()
 
 
 def _known_article(session: Session, url: str) -> Article | None:
@@ -518,6 +540,7 @@ def complete(
         pap=prepared.pap,
         llm_ttp_status="pending" if llm_ttp else "skipped",
     )
+    ttp_job: EnrichJob | None = None
     if llm_ttp:
         # Transaksi yang sama dengan artikelnya: tidak ada artikel `pending` tanpa job.
         ttp_job = EnrichJobRepo(session).create(
@@ -540,6 +563,8 @@ def complete(
     # Telegram yang gagal (bot mati, chat salah, jaringan) ikut MEMBATALKAN artikel
     # yang sudah ke-persist -- artikel hilang cuma karena notifikasinya gagal.
     session.commit()
+    if ttp_job is not None:
+        _send_now(session, ttp_job.id)
     _track_cve_mentions(session, article, score_result)
     if alert:
         route_alerts(result)
@@ -607,4 +632,5 @@ def run_pipeline(
         # Tidak terjadi selama `has_classify` diperiksa di bawah kunci URL; dijaga saja.
         return PipelineOutcome(accepted=False, duplicate=True)
     log.info("enrich_classify_deferred", url=url, job_id=job.id, source=source)
+    _send_now(session, job.id)
     return PipelineOutcome(accepted=False, pending_job_id=job.id)

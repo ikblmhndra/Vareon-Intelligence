@@ -62,11 +62,13 @@ def mod(_migrated_schema: None):
 
 
 @pytest.fixture(autouse=True)
-def alerts(mod, monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str, int]]:
-    """Alert enrichment gagal dicatat, bukan dikirim (Redis + Telegram nyata tidak ada di sini).
-    Sejak P7g `enrich.article` tidak mengirimnya lagi (Task 5 memindahkannya ke dispatcher)."""
-    seen: list[tuple[str, str, int]] = []
-    monkeypatch.setattr(mod, "_alert_enrichment_failure", lambda *a: seen.append(a))
+def alerts(mod, monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str]]:
+    """Alert "job gagal" (`llm_dispatch.alert_job_failed`) dicatat, bukan dikirim (Redis +
+    Telegram nyata tidak ada di sini)."""
+    from cti_worker.tasks import llm_dispatch
+
+    seen: list[tuple[str, str]] = []
+    monkeypatch.setattr(llm_dispatch, "alert_job_failed", lambda *a: seen.append(a))
     return seen
 
 
@@ -133,7 +135,8 @@ def test_persistent_transient_error_is_retried_6_times_then_recorded(
     assert job is not None and job.state == "failed" and job.input_text is None
     assert (job.last_error or "").startswith("ConnectError: refused")
     assert rejected_reason() is None  # bukan lagi baris `[enrichment_failed]`
-    assert alerts == []  # alert kegagalan pindah ke dispatcher (Task 5)
+    # Job `failed` baru = satu alert (dedupe per jendela ada di `alert_job_failed`).
+    assert alerts == [(KWARGS["title"], job.last_error)]
 
 
 def test_replay_flag_silences_the_alerts_and_plain_messages_do_not(mod, monkeypatch) -> None:

@@ -19,7 +19,8 @@ gateway LLM tidak pernah sampai ke sini; itu urusan job runner (`enrich.llm`). T
 2. **Gagal final** (retry habis, atau error lain/bug): `on_failure` menulis job `classify`
    ber-`state='failed'` dengan `input_text=NULL` (bagian depan pipeline diulang saat job
    dijalankan lagi) dan `last_error` -> muncul di antrean enrichment Newsroom, analis bisa
-   retry/terima/tolak. Kalau artikelnya SUDAH tersimpan (gagal SESUDAH `persist`, mis. Telegram
+   retry/terima/tolak, plus satu alert Telegram per jendela cooldown (`alert_job_failed`).
+   Kalau artikelnya SUDAH tersimpan (gagal SESUDAH `persist`, mis. Telegram
    down) gak ada yang dicatat -- gak ada yang hilang."""
 
 from __future__ import annotations
@@ -78,37 +79,6 @@ def _scrub_secrets(text: str) -> str:
     return scrub_secrets(text)
 
 
-_FAILURE_ALERT_KEY = "cti:enrich:failed_alerted"
-
-
-def _alert_enrichment_failure(error_type: str, message: str, waiting: int) -> None:
-    """Satu alert Telegram per jendela cooldown: kegagalan massal (model salah, kuota habis,
-    gateway mati) = ratusan task, dan sebelum ini tidak ada sinyal selain laporan harian 23:55.
-    Dedupe lintas proses worker-nlp lewat Redis (pola `beat_watchdog`). BEST-EFFORT: tidak
-    pernah menutupi kegagalan aslinya."""
-    try:
-        import html
-
-        import redis
-        from cti_alerts.telegram import send_alert
-        from cti_core.config import get_settings
-
-        settings = get_settings()
-        client = redis.Redis.from_url(settings.redis.url)
-        cooldown_s = settings.worker.enrich_failure_alert_cooldown_min * 60
-        if not client.set(_FAILURE_ALERT_KEY, "1", nx=True, ex=cooldown_s):
-            return
-        send_alert(
-            "scraper_health",
-            "<b>Enrichment artikel GAGAL</b> -- artikelnya belum diproses.\n"
-            f"<code>{html.escape(error_type)}</code>: {html.escape(message)}\n"
-            f"Menunggu replay: {waiting} artikel. Perbaiki penyebabnya dulu, lalu replay dari "
-            "Newsroom > Failed enrichment.",
-        )
-    except Exception as alert_error:
-        log.error("enrich_failure_alert_failed", error=str(alert_error)[:200])
-
-
 def _record_failed_job(kwargs: dict[str, Any], exc: BaseException, error_type: str) -> None:
     """Catat artikel yang gagal di-enrich sebagai job `classify` `failed` (P7g, menggantikan
     baris `[enrichment_failed]` di `rejected_articles`). `input_text=NULL`: job runner menjalankan
@@ -157,6 +127,10 @@ def _record_failed_job(kwargs: dict[str, Any], exc: BaseException, error_type: s
             error_type=error_type,
             job_id=job.id if job is not None else None,
         )
+        if job is not None:
+            from cti_worker.tasks.llm_dispatch import alert_job_failed
+
+            alert_job_failed(job.title, job.last_error or error_type)
     except Exception as record_error:
         log.error(
             "enrich_failure_record_failed",
@@ -252,9 +226,12 @@ def enrich_llm(job_id: int, decision: str | None = None) -> str:
     Return outcome `run_job` (`done`/`duplicate`/`gone`/`retry`/`failed`)."""
     from cti_enrich.jobs import run_job
 
+    from cti_worker.tasks.llm_dispatch import alert_job_failed
+
     outcome = run_job(
         job_id,
         decision=cast(Literal["accept", "reject"] | None, decision),
+        on_failed=alert_job_failed,
         relevance_for=_relevance_for,
     )
     log.info("enrich_llm_done", job_id=job_id, decision=decision, outcome=outcome)

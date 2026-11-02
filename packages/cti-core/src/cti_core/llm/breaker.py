@@ -23,6 +23,9 @@ LEASE = datetime.timedelta(minutes=15)
 """Sewa `next_attempt_at` saat job diklaim: crash antara commit dan send tidak membuat kirim ulang
 tanpa henti."""
 ALERT_WINDOW = datetime.timedelta(hours=24)
+RECENT_CALLS = 12
+"""Berapa baris `llm_calls` terbaru yang dibaca untuk `breaker_state`. Cooldown sudah mentok di
+batas 30 menit pada n=7 (2 mnt * 2^4 = 32), jadi 12 baris cukup dan bacanya tetap murah."""
 
 _COOLDOWN_BASE = datetime.timedelta(minutes=2)
 _COOLDOWN_MAX = datetime.timedelta(minutes=30)
