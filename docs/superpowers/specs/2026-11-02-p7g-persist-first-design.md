@@ -39,7 +39,7 @@ Success criteria:
 | D1 | Alert for an accepted article whose LLM TTPs are pending | Send now with Tier 1 TTPs (explicit/keyword). LLM TTPs reach DB/UI later; no second Telegram message. |
 | D2 | Title that needs the LLM classify during an outage | Wait with no attempt cap; re-sent when the breaker allows; visible in the UI with the local model probability; analyst can accept or reject. A late decision alerts only if the article is still fresh (`is_fresh`, P1 rule: posted today or yesterday). |
 | D3 | Approach | New work table `enrich_jobs` plus `articles.llm_ttp_status`; readers of `articles` unchanged (approach 1 of 3; "articles-first with a visibility state" and "keep parking, fix recovery" rejected). |
-| D4 | Rollback lever | No mode flag, one code path. Rollback = previous image + one-off `python -m cti_enrich.requeue_jobs`. |
+| D4 | Rollback lever | No mode flag, one code path. Rollback = previous image + host-side `tools/ops/requeue_enrich_jobs.py` (section 4.9). |
 | D5 | UI | The Newsroom > Filtered tab "Failed enrichment" is renamed **"Enrichment queue"** and shows `enrich_jobs`; no new tab. |
 | D6 | Scope | Token budget, prompt cache and story-level LLM summaries are out of scope. |
 
@@ -158,7 +158,8 @@ The migration moves every `rejected_articles` row with `failure_kind IS NOT NULL
 `permanent` as `failed` (reason kept in `last_error`), then deletes those rows. Afterwards
 `rejected_articles` holds classification rejects only. `failure_kind`, `auto_replay_count` and
 `last_auto_replay_at` become unused (left in place, removal is a later cleanup).
-`cti_core.enrich_replay` and `enrich.auto_replay` are removed.
+`cti_core.enrich_replay`, `enrich.auto_replay`, `tools/ops/replay_failed_enrichment.py` and its
+`make replay-failed-enrichment` target are removed (nothing is left for them to replay).
 
 ### 4.7 API
 
@@ -182,11 +183,14 @@ The migration moves every `rejected_articles` row with `failure_kind IS NOT NULL
 - Article modal: a "LLM TTPs pending" note when `llm_ttp_status='pending'`.
 - Data health: breaker and queue figures instead of parked articles.
 
-### 4.9 Rollback (`python -m cti_enrich.requeue_jobs`)
+### 4.9 Rollback (`tools/ops/requeue_enrich_jobs.py`)
 
-With the previous image running on the new schema (the migration is additive except for the moved
-rows): sends every `classify` job to the old `enrich.article` and deletes it; drops `ttp` jobs
-(articles keep their Tier 1 TTPs). `--dry-run` prints counts. Documented in the runbook.
+After an image rollback the old code has no module for this, so the tool is a host-side script in
+the repository checkout (which stays on the new commit), using only the database: it moves every
+`classify` job back into `rejected_articles` as `failure_kind='transient'`, `auto_replay_count=0`
+(reason `[enrichment_failed] requeued after rollback`), so the old `enrich.auto_replay` drains
+them, and deletes all `ttp` jobs (articles keep their Tier 1 TTPs). Default is a report;
+`--apply` writes. Documented in the runbook.
 
 ## 5. Interaction with other phases
 
