@@ -14,9 +14,11 @@ from typing import Literal
 
 from cti_core.config import get_settings
 from cti_core.db.repositories.data_health import AsyncDataHealthRepo
+from cti_core.db.repositories.enrich_job import AsyncEnrichJobRepo
 from cti_core.db.repositories.llm_call import AsyncLlmCallRepo, TaskUsage
 from cti_core.db.repositories.relevance import AsyncRelevanceModelRepo
 from cti_core.db.repositories.story import AsyncStoryRepo, StoryStats
+from cti_core.llm.breaker import BREAKER_TASKS, RECENT_CALLS, breaker_state
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,7 +28,7 @@ from cti_api.schemas.data_health import (
     IocEnrichmentTypeOut,
     LlmErrorOut,
     LlmHealthOut,
-    LlmParkedOut,
+    LlmQueueOut,
     LlmTaskUsageOut,
     QueueHealthOut,
     RelevanceHealthOut,
@@ -101,7 +103,8 @@ async def _llm_health(
     if latest is not None:
         status = "ok" if latest.status == "ok" else "failing"
     error = await calls.latest_failure(_STATUS_TASKS)
-    parked = await repo.parked_counts(now)
+    breaker = breaker_state(await calls.recent_for_tasks(BREAKER_TASKS, RECENT_CALLS), now)
+    jobs = await AsyncEnrichJobRepo(session).counts()
     stories = AsyncStoryRepo(session)
     return LlmHealthOut(
         status=status,
@@ -118,10 +121,13 @@ async def _llm_health(
             if error is not None
             else None
         ),
-        parked=LlmParkedOut(
-            total=parked.total,
-            auto_eligible=parked.auto_eligible,
-            auto_replays_24h=parked.auto_replays_24h,
+        queue=LlmQueueOut(
+            breaker=breaker.state,
+            retry_at=_iso(breaker.retry_at),
+            pending_classify=jobs.pending_classify,
+            pending_ttp=jobs.pending_ttp,
+            failed=jobs.failed,
+            oldest_pending_at=_iso(jobs.oldest_pending_at),
         ),
         usage_24h=_usage_out(await calls.usage_by_task(now - datetime.timedelta(hours=24))),
         usage_7d=_usage_out(await calls.usage_by_task(now - datetime.timedelta(days=7))),

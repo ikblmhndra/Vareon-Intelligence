@@ -15,7 +15,7 @@ class RejectedArticleOut(BaseModel):
     posted_on: str | None = None
     reason: str | None = None
     failure_kind: str | None = None
-    """None = ditolak klasifikasi; `transient`/`json`/`permanent` = enrichment GAGAL (replay)."""
+    """None = ditolak klasifikasi; terisi hanya pada baris gagal-enrich peninggalan sebelum P7g."""
     rejected_at: str
 
 

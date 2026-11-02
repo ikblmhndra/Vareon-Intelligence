@@ -165,6 +165,7 @@ def _serialize(
             else None
         ),
         classify_inherited_from=lead_id if isinstance(lead_id, int) else None,
+        llm_ttp_status=article.llm_ttp_status,
         entities=[
             ArticleEntityRef(
                 id=m.entity.id,

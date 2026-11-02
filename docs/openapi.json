@@ -537,6 +537,17 @@
             "title": "Iocs",
             "type": "object"
           },
+          "llm_ttp_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Llm Ttp Status"
+          },
           "malware": {
             "default": [],
             "items": {
@@ -2644,6 +2655,131 @@
         "title": "DraftEmailBody",
         "type": "object"
       },
+      "EnrichJobListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EnrichJobOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "EnrichJobListResponse",
+        "type": "object"
+      },
+      "EnrichJobOut": {
+        "properties": {
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "classify",
+              "ttp"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "next_attempt_at": {
+            "title": "Next Attempt At",
+            "type": "string"
+          },
+          "p_threat_news": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P Threat News"
+          },
+          "posted_on": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Posted On"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "url",
+          "title",
+          "source",
+          "state",
+          "attempts",
+          "created_at",
+          "next_attempt_at"
+        ],
+        "title": "EnrichJobOut",
+        "type": "object"
+      },
       "EnrichmentHealthOut": {
         "properties": {
           "failed_24h": {
@@ -4059,8 +4195,8 @@
             ],
             "title": "Last Ok At"
           },
-          "parked": {
-            "$ref": "#/components/schemas/LlmParkedOut"
+          "queue": {
+            "$ref": "#/components/schemas/LlmQueueOut"
           },
           "status": {
             "enum": [
@@ -4097,7 +4233,7 @@
           "last_call_at",
           "last_ok_at",
           "last_error",
-          "parked",
+          "queue",
           "usage_24h",
           "usage_7d",
           "stories_24h",
@@ -4106,27 +4242,62 @@
         "title": "LlmHealthOut",
         "type": "object"
       },
-      "LlmParkedOut": {
+      "LlmQueueOut": {
+        "description": "Antrean kerja LLM (`enrich_jobs`) dan circuit breaker-nya (P7g).",
         "properties": {
-          "auto_eligible": {
-            "title": "Auto Eligible",
+          "breaker": {
+            "enum": [
+              "closed",
+              "open",
+              "half_open"
+            ],
+            "title": "Breaker",
+            "type": "string"
+          },
+          "failed": {
+            "title": "Failed",
             "type": "integer"
           },
-          "auto_replays_24h": {
-            "title": "Auto Replays 24H",
+          "oldest_pending_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest Pending At"
+          },
+          "pending_classify": {
+            "title": "Pending Classify",
             "type": "integer"
           },
-          "total": {
-            "title": "Total",
+          "pending_ttp": {
+            "title": "Pending Ttp",
             "type": "integer"
+          },
+          "retry_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry At"
           }
         },
         "required": [
-          "total",
-          "auto_eligible",
-          "auto_replays_24h"
+          "breaker",
+          "retry_at",
+          "pending_classify",
+          "pending_ttp",
+          "failed",
+          "oldest_pending_at"
         ],
-        "title": "LlmParkedOut",
+        "title": "LlmQueueOut",
         "type": "object"
       },
       "LlmTaskUsageOut": {
@@ -16463,6 +16634,321 @@
         ]
       }
     },
+    "/api/enrich-jobs": {
+      "get": {
+        "operationId": "list_jobs_api_enrich_jobs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "classify",
+                    "ttp"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "pending",
+                    "failed"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Page Size",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnrichJobListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Jobs",
+        "tags": [
+          "enrich-jobs"
+        ]
+      }
+    },
+    "/api/enrich-jobs/{job_id}/accept": {
+      "post": {
+        "operationId": "accept_job_api_enrich_jobs__job_id__accept_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Accept Job Api Enrich Jobs  Job Id  Accept Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Accept Job",
+        "tags": [
+          "enrich-jobs"
+        ]
+      }
+    },
+    "/api/enrich-jobs/{job_id}/reject": {
+      "post": {
+        "operationId": "reject_job_api_enrich_jobs__job_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Reject Job Api Enrich Jobs  Job Id  Reject Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reject Job",
+        "tags": [
+          "enrich-jobs"
+        ]
+      }
+    },
+    "/api/enrich-jobs/{job_id}/retry": {
+      "post": {
+        "description": "`failed` -> `pending`, jatuh tempo sekarang, `json_failures=0`; dispatcher yang mengirim.",
+        "operationId": "retry_job_api_enrich_jobs__job_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Retry Job Api Enrich Jobs  Job Id  Retry Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retry Job",
+        "tags": [
+          "enrich-jobs"
+        ]
+      }
+    },
     "/api/entities": {
       "get": {
         "operationId": "list_entities_api_entities_get",
@@ -18215,7 +18701,7 @@
     },
     "/api/filtered-articles": {
       "get": {
-        "description": "`kind=unrelated`: ditolak klasifikasi LLM; `kind=failed`: enrichment GAGAL (replay).",
+        "description": "`kind=unrelated`: ditolak klasifikasi LLM. `kind=failed` dan replay dihapus (P7g): kerja LLM\nyang gagal kini antrean `enrich_jobs` (`/api/enrich-jobs`), bukan baris `rejected_articles`.",
         "operationId": "list_filtered_api_filtered_articles_get",
         "parameters": [
           {
@@ -18265,8 +18751,7 @@
               "default": "all",
               "enum": [
                 "all",
-                "unrelated",
-                "failed"
+                "unrelated"
               ],
               "title": "Kind",
               "type": "string"
@@ -18312,69 +18797,6 @@
           }
         },
         "summary": "List Filtered",
-        "tags": [
-          "filtered-articles"
-        ]
-      }
-    },
-    "/api/filtered-articles/{article_id}/replay": {
-      "post": {
-        "description": "Kirim ulang artikel yang GAGAL di-enrich ke pipeline (senyap, tanpa alert Telegram). Admin:\nmemakai kuota LLM. Baris gagalnya hilang sendiri begitu artikelnya berhasil diproses.",
-        "operationId": "replay_article_api_filtered_articles__article_id__replay_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "article_id",
-            "required": true,
-            "schema": {
-              "title": "Article Id",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "header",
-            "name": "authorization",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Authorization"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": {
-                    "type": "boolean"
-                  },
-                  "title": "Response Replay Article Api Filtered Articles  Article Id  Replay Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Replay Article",
         "tags": [
           "filtered-articles"
         ]

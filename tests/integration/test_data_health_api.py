@@ -7,11 +7,13 @@ from __future__ import annotations
 import datetime
 
 from cti_core.db.models.article import RejectedArticle
+from cti_core.db.models.enrich_job import EnrichJob
 from cti_core.db.models.indicator import Indicator
 from cti_core.db.models.llm_call import LlmCall
 from cti_core.db.models.story import Story
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.story import AsyncStoryRepo
+from cti_core.urlkit import url_hash
 from httpx import AsyncClient
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,6 +31,19 @@ def _rejected(n: int, kind: str | None, age: datetime.timedelta) -> RejectedArti
     )
 
 
+def _job(n: int, kind: str, state: str, age: datetime.timedelta) -> EnrichJob:
+    url = f"https://example.com/j{n}"
+    return EnrichJob(
+        kind=kind,
+        url=url,
+        url_hash=url_hash(url),
+        title=f"Job {n}",
+        source="S",
+        state=state,
+        created_at=datetime.datetime.now(datetime.UTC) - age,
+    )
+
+
 def _ioc(value: str, type_: str, providers: list[dict[str, object]]) -> Indicator:
     return Indicator(
         type=type_, value=value, enrichment={"providers": providers} if providers else {}
@@ -39,12 +54,16 @@ async def test_data_health_reports_failures_queue_freshness_and_ioc_coverage(
     api_client: AsyncClient, api_session: AsyncSession, auth_header, fake_redis
 ) -> None:
     h = datetime.timedelta(hours=1)
+    await api_session.execute(delete(EnrichJob))
+    await api_session.execute(delete(RejectedArticle))
     api_session.add_all(
         [
-            _rejected(1, "transient", 2 * h),
-            _rejected(2, "permanent", 72 * h),
-            _rejected(3, "permanent", 24 * 10 * h),  # di luar 7 hari, tetap menunggu replay
-            _rejected(4, None, 3 * h),  # ditolak klasifikasi: bukan kegagalan
+            _job(1, "classify", "failed", 2 * h),
+            _job(2, "ttp", "failed", 72 * h),
+            _job(3, "classify", "failed", 24 * 10 * h),  # di luar 7 hari, tetap menunggu analis
+            _job(4, "classify", "pending", 3 * h),  # belum gagal: tidak dihitung
+            _rejected(1, None, 2 * h),
+            _rejected(2, None, 3 * h),  # ditolak klasifikasi: ikut penyebut, bukan kegagalan
         ]
     )
     await AsyncArticleRepo(api_session).upsert(
@@ -75,7 +94,7 @@ async def test_data_health_reports_failures_queue_freshness_and_ioc_coverage(
     assert enrichment["failed_24h"] == 1
     assert enrichment["failed_7d"] == 2
     assert enrichment["pending_replay"] == 3
-    assert enrichment["processed_7d"] == 4  # 1 artikel + 3 baris rejected dalam 7 hari
+    assert enrichment["processed_7d"] == 3  # 1 artikel + 2 baris rejected dalam 7 hari
     assert enrichment["last_failure_at"] is not None
 
     assert body["queues"]["enrich_depth"] == 7
@@ -131,15 +150,14 @@ def _call(
     )
 
 
-async def test_data_health_llm_block_failing_with_parked_and_usage(
+async def test_data_health_llm_block_failing_with_queue_and_usage(
     api_client: AsyncClient, api_session: AsyncSession, auth_header, fake_redis
 ) -> None:
-    # Isolasi: baris llm_calls / rejected_articles milik test lain di DB bersama dibuang di
+    # Isolasi: baris llm_calls / enrich_jobs milik test lain di DB bersama dibuang di
     # transaksi test ini (di-rollback saat teardown).
     await api_session.execute(delete(LlmCall))
-    await api_session.execute(delete(RejectedArticle))
+    await api_session.execute(delete(EnrichJob))
     h = datetime.timedelta(hours=1)
-    now = datetime.datetime.now(datetime.UTC)
     api_session.add_all(
         [
             _call("classify", "ok", 2 * h),
@@ -154,17 +172,14 @@ async def test_data_health_llm_block_failing_with_parked_and_usage(
             _call("classify", "ok", 3 * 24 * h),
         ]
     )
-    r_ok = _rejected(1, "transient", h)
-    r_cap = _rejected(2, "config", h)
-    r_cap.auto_replay_count = 3
-    r_perm = _rejected(3, "permanent", h)
-    r_replayed = _rejected(4, "json", h)
-    r_replayed.auto_replay_count = 1
-    r_replayed.last_auto_replay_at = now - 2 * h
-    r_old_replay = _rejected(5, "transient", h)
-    r_old_replay.auto_replay_count = 2
-    r_old_replay.last_auto_replay_at = now - 30 * h
-    api_session.add_all([r_ok, r_cap, r_perm, r_replayed, r_old_replay, _rejected(6, None, h)])
+    api_session.add_all(
+        [
+            _job(1, "classify", "pending", 5 * h),
+            _job(2, "classify", "pending", 2 * h),
+            _job(3, "ttp", "pending", 3 * h),
+            _job(4, "ttp", "failed", 9 * h),  # failed tidak ikut `oldest_pending_at`
+        ]
+    )
     await api_session.flush()
 
     resp = await api_client.get("/api/data-health", headers=auth_header(role="analyst"))
@@ -180,7 +195,12 @@ async def test_data_health_llm_block_failing_with_parked_and_usage(
     assert err["http_status"] == 400
     assert err["at"] is not None
 
-    assert llm["parked"] == {"total": 5, "auto_eligible": 3, "auto_replays_24h": 1}
+    # 1 error terbaru saja: breaker tertutup (butuh 3 beruntun)
+    queue = llm["queue"]
+    assert (queue["breaker"], queue["retry_at"]) == ("closed", None)
+    assert (queue["pending_classify"], queue["pending_ttp"], queue["failed"]) == (2, 1, 1)
+    assert queue["oldest_pending_at"] is not None
+    assert "parked" not in llm
 
     u24 = {u["task"]: u for u in llm["usage_24h"]}
     assert set(u24) == {"classify", "ttp"}
@@ -279,3 +299,27 @@ async def test_data_health_story_stats(
         assert got["followups"] == before[h].followups + 1
         assert got["inherited"] == before[h].inherited + 1
         assert got["llm_calls_avoided"] == got["inherited"] * 2
+
+
+async def test_data_health_queue_reports_open_and_half_open_breaker(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header, fake_redis
+) -> None:
+    from cti_api.services import data_health as service
+
+    m = datetime.timedelta(minutes=1)
+    await api_session.execute(delete(LlmCall))
+    await api_session.execute(delete(EnrichJob))
+    # 3 kegagalan beruntun, terbaru 1 menit lalu: cooldown 2 menit belum lewat -> terbuka
+    api_session.add_all([_call("classify", "error", n * m) for n in (1, 2, 3)])
+    await api_session.flush()
+    queue = (await api_client.get("/api/data-health", headers=auth_header())).json()["llm"]["queue"]
+    assert queue["breaker"] == "open" and queue["retry_at"] is not None
+    assert (queue["pending_classify"], queue["pending_ttp"], queue["failed"]) == (0, 0, 0)
+    assert queue["oldest_pending_at"] is None
+
+    service._cache = None
+    await api_session.execute(delete(LlmCall))
+    api_session.add_all([_call("ttp", "empty", n * m) for n in (10, 11, 12)])
+    await api_session.flush()
+    queue = (await api_client.get("/api/data-health", headers=auth_header())).json()["llm"]["queue"]
+    assert queue["breaker"] == "half_open"
