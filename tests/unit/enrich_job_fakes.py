@@ -34,8 +34,10 @@ class FakeJobRepo:
         self.jobs.append(job)
         return job
 
-    def has_classify(self, h: str) -> bool:
-        return any(j.kind == "classify" and j.url_hash == h for j in self.jobs)
+    def has_classify(self, h: str, *, exclude_id: int | None = None) -> bool:
+        return any(
+            j.kind == "classify" and j.url_hash == h and j.id != exclude_id for j in self.jobs
+        )
 
     def of_kind(self, kind: str) -> list[EnrichJob]:
         return [j for j in self.jobs if j.kind == kind]

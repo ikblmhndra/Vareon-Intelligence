@@ -93,15 +93,15 @@ class EnrichJobRepo:
             self.session.refresh(job)
         return job
 
-    def has_classify(self, url_hash: str) -> bool:
-        return (
-            self.session.execute(
-                select(EnrichJob.id).where(
-                    EnrichJob.kind == "classify", EnrichJob.url_hash == url_hash
-                )
-            ).first()
-            is not None
+    def has_classify(self, url_hash: str, *, exclude_id: int | None = None) -> bool:
+        """`exclude_id`: job runner yang menjalankan `prepare` untuk job-nya sendiri (baris
+        `input_text IS NULL`) tidak boleh berhenti karena job itu."""
+        stmt = select(EnrichJob.id).where(
+            EnrichJob.kind == "classify", EnrichJob.url_hash == url_hash
         )
+        if exclude_id is not None:
+            stmt = stmt.where(EnrichJob.id != exclude_id)
+        return self.session.execute(stmt).first() is not None
 
     def get_for_update(self, job_id: int) -> EnrichJob | None:
         return self.session.execute(

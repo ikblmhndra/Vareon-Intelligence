@@ -18,7 +18,7 @@ from cti_enrich.stages.score import ScoreResult
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from tests.integration.enrich_job_support import job_for, run_with_verdict
+from tests.integration.enrich_job_support import job_for, run_with_verdict, share_session
 from tests.integration.entity_support import seed_entity
 
 URL = "https://example.com/tier1-pipeline"
@@ -157,12 +157,12 @@ def test_pipeline_writes_sources(session: Session) -> None:
     assert job is not None and job.article_id == article.id and job.input_text == BODY
 
 
-@pytest.mark.xfail(strict=True, reason="Task 4: run_job")
 def test_ttp_job_adds_llm_technique(session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
     """Sesudah job `ttp` jalan: T1190 bersumber `llm` (bukti ada di teks), poin prioritas TTP
-    explicit + llm (2 x 3), status `done`. Task 4 menyesuaikan sesi/patch-nya ke `run_job`."""
-    from cti_enrich import jobs  # type: ignore[attr-defined]  # dibuat Task 4
+    explicit + llm (2 x 3), status `done`. `run_job` memakai sesi test (`share_session`)."""
+    from cti_enrich import jobs
 
+    share_session(monkeypatch, session)
     _seed(session)
     _run(session)
     job = job_for(session, URL, "ttp")

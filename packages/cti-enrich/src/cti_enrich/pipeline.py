@@ -98,7 +98,7 @@ from cti_enrich.stages.alert import build_message_base, route_alerts
 from cti_enrich.stages.classify import ClassifyResult
 from cti_enrich.stages.extract_ttps import TTP_TEXT_CAP, TtpResult
 from cti_enrich.stages.fetch_text import fetch_text
-from cti_enrich.stages.persist import persist, persist_rejected
+from cti_enrich.stages.persist import RULE_INCIDENT, persist, persist_rejected
 from cti_enrich.stages.relevance import RelevanceResult, gated_classify, run_relevance
 from cti_enrich.stages.score import ScoreResult
 from cti_enrich.stages.summarize import summarize
@@ -245,6 +245,15 @@ class Prepared:
         )
 
 
+def tier0_classify(content_kind: str | None) -> ClassifyResult:
+    """Classify sintetis sumber terstruktur (`default_relevance="always"`, Tier 0): tanpa LLM."""
+    return ClassifyResult(
+        related_cyber=True,
+        reason=f"structured source: {content_kind}",
+        audit={"skipped": "default_relevance=always", "content_kind": content_kind},
+    )
+
+
 def prepare(
     *,
     title: str,
@@ -257,9 +266,13 @@ def prepare(
     default_relevance: str = "classify",
     tlp: str = "clear",
     pap: str = "clear",
+    resume_job_id: int | None = None,
 ) -> Prepared | PipelineOutcome:
     """Bagian depan pipeline, TANPA LLM. `PipelineOutcome(duplicate=True)` kalau URL ini sudah
     jadi artikel atau sudah punya job `classify`; selain itu `Prepared`.
+
+    `resume_job_id`: job runner menjalankan bagian depan untuk job `classify` tanpa teks (baris
+    migrasi, `on_failure`); job itu sendiri tidak dihitung sebagai "sudah punya job classify".
 
     `default_relevance="always"` (dari `ScraperMeta`, dicari task worker; `cti_enrich` tidak boleh
     mengimpor `cti_scraper`) untuk sumber terstruktur (KEV, exploit, advisory): pasti relevan,
@@ -283,7 +296,7 @@ def prepare(
         return PipelineOutcome(
             accepted=True, article_id=known.id, news_type=known.news_type, duplicate=True
         )
-    if EnrichJobRepo(session).has_classify(url_hash(url)):
+    if EnrichJobRepo(session).has_classify(url_hash(url), exclude_id=resume_job_id):
         # Review Focus 1: URL yang sama (feed lain, judul lain) selagi job classify-nya menunggu.
         # Diperiksa di bawah kunci URL yang sama, jadi dua kedatangan bersamaan tidak lolos dua-dua.
         log.info("enrich_skipped_pending_classify", url=url, source=source)
@@ -306,11 +319,7 @@ def prepare(
     if default_relevance == "always":
         # Tier 0 tetap classify sintetis walau story-nya punya classify: sumber terstruktur
         # dinilai dari jenisnya, dan penanda `skipped` menjaga Tier 0 tidak mengisi story.
-        classify_result = ClassifyResult(
-            related_cyber=True,
-            reason=f"structured source: {content_kind}",
-            audit={"skipped": "default_relevance=always", "content_kind": content_kind},
-        )
+        classify_result = tier0_classify(content_kind)
     elif story is not None and story.inherited is not None:
         classify_result = classify_from_story(
             story.inherited,
@@ -377,8 +386,9 @@ def complete(
         victim_name=classify_result.victim_name,
         techniques=not classify_result.security_tech_best_practice,
     )
-    if classify_result.audit.get("skipped") == "relevance_gate" and tier1.incident is not None:
-        # LLM classify dilewati: vonis insiden + korban dari aturan (`incident_source="rule"`).
+    if classify_result.audit.get("skipped") in RULE_INCIDENT and tier1.incident is not None:
+        # LLM classify dilewati (gate relevansi, atau analis menerima job `classify`): vonis
+        # insiden + korban dari aturan (`incident_source="rule"`).
         classify_result.confirmed_incident = tier1.incident.confirmed
         if tier1.incident.confirmed:
             classify_result.victim_name = tier1.incident.victim
@@ -510,7 +520,7 @@ def complete(
     )
     if llm_ttp:
         # Transaksi yang sama dengan artikelnya: tidak ada artikel `pending` tanpa job.
-        EnrichJobRepo(session).create(
+        ttp_job = EnrichJobRepo(session).create(
             kind="ttp",
             url=url,
             title=title,
@@ -521,6 +531,10 @@ def complete(
             context={},
             article_id=article.id,
         )
+        if ttp_job is None:
+            # Unik per URL dan job ikut terhapus bersama artikelnya, jadi seharusnya tidak
+            # terjadi; kalau terjadi, artikel `pending` tanpa job harus kelihatan di log.
+            log.warning("enrich_ttp_job_conflict", url=url, article_id=article.id)
     # COMMIT dulu sebelum alert: `persist` + `route_alerts` satu sesi/transaksi,
     # dan `sync_session()` ROLLBACK kalau ada exception. Tanpa commit ini, alert
     # Telegram yang gagal (bot mati, chat salah, jaringan) ikut MEMBATALKAN artikel

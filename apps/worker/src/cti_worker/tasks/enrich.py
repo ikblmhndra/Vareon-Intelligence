@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import datetime
 import random
-from typing import Any
+from typing import Any, Literal, cast
 
 import httpx
 import sqlalchemy.exc
@@ -70,17 +70,12 @@ def _relevance_for(scraper_id: str | None) -> tuple[str | None, str, str, str]:
 
 
 def _scrub_secrets(text: str) -> str:
-    """Buang secret yang DIKONFIGURASI dari teks error sebelum masuk DB/UI:
-    provider kadang ngecho (sebagian) API key di pesan errornya."""
-    try:
-        from cti_core.runtime_secrets.overlay import scrub_candidates
+    """Buang secret yang DIKONFIGURASI dari teks error sebelum masuk DB/UI: provider kadang
+    ngecho (sebagian) API key di pesan errornya. Implementasinya satu, dipakai juga job runner
+    `cti_enrich.jobs` (`cti_core.runtime_secrets.overlay.scrub_secrets`, tidak pernah raise)."""
+    from cti_core.runtime_secrets.overlay import scrub_secrets
 
-        secrets = scrub_candidates()
-    except Exception:  # settings gak bisa dimuat: jangan sampai gagal nyatet gara-gara ini
-        return text
-    for secret in secrets:
-        text = text.replace(secret, "***")
-    return text
+    return scrub_secrets(text)
 
 
 _FAILURE_ALERT_KEY = "cti:enrich:failed_alerted"
@@ -247,3 +242,20 @@ def enrich_article(
         pending_job_id=outcome.pending_job_id,
     )
     return {"accepted": outcome.accepted, "news_type": outcome.news_type}
+
+
+@app.task(name="enrich.llm", queue="enrich", max_retries=0)
+def enrich_llm(job_id: int, decision: str | None = None) -> str:
+    """Satu job `enrich_jobs` (P7g): LLM classify/TTP yang tertunda, atau keputusan analis
+    (`decision="accept"|"reject"`). TANPA retry Celery: kegagalan dicatat di baris job (jadwal
+    ulang gateway, batas JSON, `failed`) dan dispatcher mengirimnya lagi saat jatuh tempo.
+    Return outcome `run_job` (`done`/`duplicate`/`gone`/`retry`/`failed`)."""
+    from cti_enrich.jobs import run_job
+
+    outcome = run_job(
+        job_id,
+        decision=cast(Literal["accept", "reject"] | None, decision),
+        relevance_for=_relevance_for,
+    )
+    log.info("enrich_llm_done", job_id=job_id, decision=decision, outcome=outcome)
+    return outcome

@@ -117,6 +117,11 @@ def _audit_fields(classify_result: ClassifyResult) -> dict[str, dict[str, object
     return {"raw_enrichment": {"classify": classify_result.audit}} if classify_result.audit else {}
 
 
+RULE_INCIDENT = ("relevance_gate", "analyst")
+"""Penanda `audit["skipped"]` yang vonis insiden + korbannya datang dari aturan Tier 1 (P5 gate,
+atau analis menerima job `classify`, P7g): LLM classify tidak pernah memberi vonis artikel ini."""
+
+
 def _with_relevance(
     audit: dict[str, dict[str, object]],
     relevance: RelevanceResult | None,
@@ -127,7 +132,7 @@ def _with_relevance(
     if relevance is None:
         return audit
     entry: dict[str, object] = relevance.to_audit()
-    if classify_result.audit.get("skipped") == "relevance_gate":
+    if classify_result.audit.get("skipped") in RULE_INCIDENT:
         entry["incident_source"] = "rule"
     return {"raw_enrichment": {**audit.get("raw_enrichment", {}), "relevance": entry}}
 

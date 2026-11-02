@@ -48,7 +48,9 @@ from cti_core.urlkit import url_hash as compute_url_hash
 
 _RESERVED_OVERRIDE_KEYS = frozenset({"_meta"})
 
-_TTP_SOURCES = frozenset({"llm", "explicit", "keyword"})
+_TTP_SOURCES = frozenset({"llm", "explicit", "keyword", "analyst"})
+"""`analyst` ikut supaya job `ttp` (P7g) bisa menulis ulang mention teknik lewat `apply_ttps`
+sambil MEMPERTAHANKAN mention analis apa adanya (method tidak ditimpa)."""
 _ACTOR_SOURCES = frozenset({"dictionary", "llm", "analyst"})
 _INDUSTRY_SOURCES = frozenset({"llm", "keyword"})
 _MALWARE_KINDS = frozenset({"malware", "tool"})

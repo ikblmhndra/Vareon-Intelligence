@@ -37,7 +37,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from tests.integration.enrich_job_support import job_for, run_with_verdict
+from tests.integration.enrich_job_support import job_for, run_with_verdict, share_session
 from tests.integration.entity_support import seed_entity
 
 _TECHNIQUES = [
@@ -245,7 +245,6 @@ def pipeline_session(_migrated_schema: None) -> Iterator[Session]:
         connection.close()
 
 
-@pytest.mark.xfail(strict=True, reason="Task 4: run_job")
 def test_ttp_job_persists_normalized_ttps(
     pipeline_session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -285,8 +284,9 @@ def test_ttp_job_persists_normalized_ttps(
     job = job_for(pipeline_session, url, "ttp")
     assert job is not None
 
-    from cti_enrich import jobs  # type: ignore[attr-defined]  # dibuat Task 4
+    from cti_enrich import jobs
 
+    share_session(monkeypatch, pipeline_session)
     monkeypatch.setattr(
         jobs,
         "extract_ttps",

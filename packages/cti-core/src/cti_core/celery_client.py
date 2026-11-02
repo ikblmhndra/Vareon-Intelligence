@@ -60,6 +60,15 @@ def send_enrich_task(
     get_celery_client().send_task("enrich.article", kwargs=kwargs, queue="enrich")
 
 
+def send_enrich_llm(job_id: int, decision: str | None = None) -> None:
+    """Kirim satu job `enrich_jobs` ke task `enrich.llm` (P7g; dispatcher dan aksi analis).
+    `decision` (`accept`/`reject`, keputusan analis) hanya ikut dikirim bila ada."""
+    kwargs: dict[str, object] = {"job_id": job_id}
+    if decision is not None:
+        kwargs["decision"] = decision
+    get_celery_client().send_task("enrich.llm", kwargs=kwargs, queue="enrich")
+
+
 def send_recompute_source(source_name: str) -> None:
     """Minta worker menghitung ulang `confidence_score` artikel satu sumber (grade sumber baru
     dibuat atau diubah, rilis 0.8.6). Antrian `maintenance`."""

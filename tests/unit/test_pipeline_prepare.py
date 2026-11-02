@@ -186,6 +186,25 @@ def test_duplicate_when_classify_job_pending(rec: dict[str, Any]) -> None:
     assert rec["persist"] == [] and rec["alerts"] == []
 
 
+def test_resume_job_is_not_its_own_duplicate(rec: dict[str, Any]) -> None:
+    """R6: job runner menjalankan `prepare` untuk job tanpa teks; job itu sendiri tidak membuatnya
+    berhenti sebagai duplikat."""
+    job_id = _run().pending_job_id
+    assert job_id is not None
+
+    prepared = pipeline.prepare(
+        title="Acme Corp confirms data breach",
+        url=URL,
+        posted_on=None,
+        source="Example",
+        scraper_id="example",
+        session=MagicMock(),
+        resume_job_id=job_id,
+    )
+
+    assert isinstance(prepared, pipeline.Prepared) and prepared.text == BODY
+
+
 def test_prepared_context_round_trip() -> None:
     prepared = pipeline.Prepared(
         title="T",
