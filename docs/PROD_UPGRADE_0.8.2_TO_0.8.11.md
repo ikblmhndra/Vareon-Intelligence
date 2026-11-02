@@ -1627,17 +1627,26 @@ no longer exists. The only P7g command is the rollback helper (below), used **on
   tables (or another table the migration touches) for more than 10 s. The migration rolled back completely and
   `deploy.sh` restored the `:prev` images; re-run `make deploy` (preferably outside an enrichment burst).
 
-- **P7g: rolling the images back past 0.8.11.** The old code has no `enrich_jobs` and its `enrich.auto_replay` reads
-  `rejected_articles`, so first move the waiting work back. From the host checkout (which stays on the new commit), with the
-  app `.env` supplying `DATABASE__SYNC_URL`:
+- **P7g: rolling the images back past 0.8.11.** The old code has no `enrich_jobs`, so the waiting work must go back
+  into `rejected_articles`. Run this **after** the image rollback (the old workers and beat are up, the 0.8.11 `worker`,
+  `worker-nlp`, `beat` and `api` are gone, so nothing creates new jobs behind the tool): report first, then `--apply`. If it
+  must run before the rollback, stop `worker`, `worker-nlp`, `beat` and `api` first. From the host checkout (which stays on
+  the new commit), with the app `.env` supplying `DATABASE__SYNC_URL` (the tool prints the host and database it connects to,
+  never the password; check it is the right environment):
   ```bash
   uv run python tools/ops/requeue_enrich_jobs.py            # report: counts per kind and state, writes nothing
   uv run python tools/ops/requeue_enrich_jobs.py --apply    # WRITE, needs approval
   ```
   `--apply` moves every `classify` job back into `rejected_articles` as `failure_kind='transient'`, `auto_replay_count=0`,
-  reason `[enrichment_failed] requeued after rollback`, so the old `enrich.auto_replay` drains them, and deletes the `ttp`
-  jobs (those articles keep their Tier 1 TTPs; the LLM TTPs are lost). One transaction; a second run moves nothing.
-  Run it before the image rollback or right after it; the script uses only the database.
+  reason `[enrichment_failed] requeued after rollback`, and deletes the `ttp` jobs (those articles keep their Tier 1 TTPs;
+  the LLM TTPs are lost). One transaction; a second run moves nothing; the script uses only the database. What happens next
+  depends on the image you rolled back to:
+  - **0.8.5 to 0.8.10 images:** the old `enrich.auto_replay` (beat, every 10 min) drains the requeued rows by itself once the
+    LLM is healthy.
+  - **0.8.2 images (prod's auto-rollback target):** there is no `enrich.auto_replay` (it arrived in 0.8.5), so the rows stay
+    parked as `[enrichment_failed]` rows. Once the LLM is healthy an admin replays them by hand with the old Replay button
+    (Newsroom > Filtered > Failed enrichment, `POST /api/filtered-articles/{id}/replay`; both exist in the 0.8.2 tag,
+    admin only), row by row. `tools/ops/replay_failed_enrichment.py` is not in these images either: do not look for it.
 - **Gateway down for hours:** not a rollback case. Jobs wait, the breaker holds the model to one canary per cooldown, and the
   Telegram alert says how many are waiting. Do not restart workers to "push" the queue.
 

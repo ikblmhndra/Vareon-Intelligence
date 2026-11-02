@@ -74,7 +74,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     from cti_core.db.engine import get_sync_engine
 
-    with Session(get_sync_engine()) as session:
+    engine = get_sync_engine()
+    url = engine.url
+    print(f"Database: {url.host}:{url.port or '-'}/{url.database}")
+    with Session(engine) as session:
         if args.apply:
             s = requeue(session)
             session.commit()
