@@ -1,5 +1,7 @@
 """`run_pipeline` + Tier 1 terhadap Postgres REAL (P4 Task 7): sumber TTP, malware, industri
-keyword, dan audit `raw_enrichment["tier1"]` tersimpan; `persist`/`routing` ASLI, LLM di-stub."""
+keyword, dan audit `raw_enrichment["tier1"]` tersimpan; `persist`/`routing` ASLI, LLM di-stub.
+P7g: vonis classify lewat job (`enrich_job_support`); TTP LLM = job `ttp` yang digabung job
+runner (Task 4), jadi artikel awalnya hanya berisi teknik Tier 1."""
 
 from __future__ import annotations
 
@@ -11,11 +13,12 @@ from cti_core.db.models.attack import AttackSoftware, AttackTechnique
 from cti_core.urlkit import url_hash
 from cti_enrich import pipeline
 from cti_enrich.stages.classify import ClassifyResult
-from cti_enrich.stages.extract_ttps import Technique
+from cti_enrich.stages.extract_ttps import Technique, TtpResult
 from cti_enrich.stages.score import ScoreResult
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from tests.integration.enrich_job_support import job_for, run_with_verdict
 from tests.integration.entity_support import seed_entity
 
 URL = "https://example.com/tier1-pipeline"
@@ -43,38 +46,32 @@ def session(_migrated_schema: None) -> Iterator[Session]:
         connection.close()
 
 
+VERDICT = ClassifyResult(
+    related_cyber=True,
+    confidence=0.9,
+    reason="intrusion",
+    industries_impacted=["General"],
+    audit={"model": "stub"},
+)
+LLM_TTPS = TtpResult(
+    has_techniques=True,
+    techniques=[
+        Technique(
+            "T1190",
+            "Exploit Public-Facing Application",
+            evidence="exploited a public-facing VPN appliance",
+        )
+    ],
+)
+
+
 @pytest.fixture(autouse=True)
 def _stages(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        pipeline,
-        "classify",
-        lambda title: ClassifyResult(
-            related_cyber=True,
-            confidence=0.9,
-            reason="intrusion",
-            industries_impacted=["General"],
-            audit={"model": "stub"},
-        ),
-    )
     monkeypatch.setattr(pipeline, "fetch_text", lambda url: BODY)
     monkeypatch.setattr(pipeline, "summarize", lambda text: "Ringkasan.")
     monkeypatch.setattr(pipeline.extract_iocs_stage, "extract_iocs", lambda *a, **k: {})
     monkeypatch.setattr(pipeline.extract_iocs_stage, "check_c2_hit", lambda *a, **k: False)
     monkeypatch.setattr(pipeline.score_stage, "score", lambda *a, **k: ScoreResult())
-    monkeypatch.setattr(
-        pipeline,
-        "extract_ttps",
-        lambda sent: pipeline.TtpResult(
-            has_techniques=True,
-            techniques=[
-                Technique(
-                    "T1190",
-                    "Exploit Public-Facing Application",
-                    evidence="exploited a public-facing VPN appliance",
-                )
-            ],
-        ),
-    )
     monkeypatch.setattr(pipeline, "route_alerts", lambda result: None)
 
 
@@ -114,17 +111,22 @@ def _seed(session: Session) -> None:
     session.flush()
 
 
-def test_pipeline_writes_sources(session: Session) -> None:
-    _seed(session)
-
-    outcome = pipeline.run_pipeline(
+def _run(session: Session) -> pipeline.PipelineOutcome:
+    return run_with_verdict(
+        session,
+        VERDICT,
         title="Intrusion disclosed after VPN compromise",
         url=URL,
         posted_on=None,
         source="Test",
         scraper_id="t",
-        session=session,
     )
+
+
+def test_pipeline_writes_sources(session: Session) -> None:
+    _seed(session)
+
+    outcome = _run(session)
 
     assert outcome.accepted and outcome.article_id is not None
     article = session.scalar(select(Article).where(Article.url_hash == url_hash(URL)))
@@ -133,9 +135,8 @@ def test_pipeline_writes_sources(session: Session) -> None:
     assert {tid: t.method for tid, t in ttps.items()} == {
         "T1059.001": "explicit",
         "T1505.003": "keyword",
-        "T1190": "llm",
+        "T1190": "keyword",  # job `ttp` menaikkannya ke `llm` (explicit > llm > keyword)
     }
-    assert ttps["T1190"].evidence == "exploited a public-facing VPN appliance"
     assert "T1059.001" in (ttps["T1059.001"].evidence or "")
     assert [(m.entity.name, m.entity.type) for m in article.mentions_of("malware", "tool")] == [
         ("Cobalt Strike", "tool")
@@ -146,8 +147,40 @@ def test_pipeline_writes_sources(session: Session) -> None:
     assert set(article.raw_enrichment) >= {"classify", "tier1"}
     assert article.raw_enrichment["classify"] == {"model": "stub"}
     assert any(h["canonical"] == "Cobalt Strike" for h in article.raw_enrichment["tier1"]["hits"])
-    # Sumber tanpa rating: F6 = 50. Poin TTP prioritas hanya explicit + llm (2 x 3), keyword
-    # tidak (P4).
+    # Sumber tanpa rating: F6 = 50. Poin TTP prioritas hanya explicit + llm, keyword tidak (P4);
+    # TTP LLM baru datang lewat job `ttp`, jadi sekarang hanya explicit (1 x 3).
     assert article.confidence_score == 50
     assert article.score_reasons is not None
+    assert {"code": "ttps", "points": 3} in article.score_reasons["priority"]
+    assert article.llm_ttp_status == "pending"
+    job = job_for(session, URL, "ttp")
+    assert job is not None and job.article_id == article.id and job.input_text == BODY
+
+
+@pytest.mark.xfail(strict=True, reason="Task 4: run_job")
+def test_ttp_job_adds_llm_technique(session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sesudah job `ttp` jalan: T1190 bersumber `llm` (bukti ada di teks), poin prioritas TTP
+    explicit + llm (2 x 3), status `done`. Task 4 menyesuaikan sesi/patch-nya ke `run_job`."""
+    from cti_enrich import jobs  # type: ignore[attr-defined]  # dibuat Task 4
+
+    _seed(session)
+    _run(session)
+    job = job_for(session, URL, "ttp")
+    assert job is not None
+    monkeypatch.setattr(jobs, "extract_ttps", lambda sent: LLM_TTPS)
+
+    assert jobs.run_job(job.id) == "done"
+
+    article = session.scalar(select(Article).where(Article.url_hash == url_hash(URL)))
+    assert article is not None
+    session.refresh(article)
+    ttps = {m.entity.external_id: m for m in article.mentions_of("attack-pattern")}
+    assert {tid: t.method for tid, t in ttps.items()} == {
+        "T1059.001": "explicit",
+        "T1505.003": "keyword",
+        "T1190": "llm",
+    }
+    assert ttps["T1190"].evidence == "exploited a public-facing VPN appliance"
+    assert article.score_reasons is not None
     assert {"code": "ttps", "points": 6} in article.score_reasons["priority"]
+    assert article.llm_ttp_status == "done"

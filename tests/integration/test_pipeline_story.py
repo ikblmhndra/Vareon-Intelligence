@@ -4,7 +4,10 @@ NLP berat (summarize/score) dan ekstraksi IOC juga diganti seperti
 `test_enrich_cross_source_dedup.py`.
 
 Sesi pipeline di sini `sync_session()` sungguhan (commit), karena `resolve_story` meng-commit
-story di koneksinya sendiri; tiap test membersihkan baris yang ia buat."""
+story di koneksinya sendiri; tiap test membersihkan baris yang ia buat.
+
+P7g: vonis LLM classify datang dari job `classify`. `_run` menyelesaikannya dengan vonis palsu
+(`enrich_job_support`), kecuali `rec["fail"]` (gateway mati: job dibiarkan menunggu)."""
 
 from __future__ import annotations
 
@@ -14,12 +17,15 @@ from typing import Any
 import pytest
 from cti_core.db.engine import sync_session
 from cti_core.db.models.article import Article
+from cti_core.db.models.enrich_job import EnrichJob
 from cti_core.db.models.story import Story
 from cti_core.urlkit import url_hash
 from cti_enrich import pipeline
 from cti_enrich.stages.classify import ClassifyResult
 from cti_enrich.stages.score import ScoreResult
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
+
+from tests.integration.enrich_job_support import finish_classify
 
 LEAD_URL = "https://example.com/p3-lead"
 FOLLOW_URL = "https://example.org/p3-follow"
@@ -29,29 +35,11 @@ REPLAY_TITLE = "Zyxelion router botnet hijacks thousands of devices"
 
 @pytest.fixture
 def rec(_migrated_schema: None, monkeypatch: pytest.MonkeyPatch) -> Iterator[dict[str, Any]]:
-    r: dict[str, Any] = {"classify": 0, "ttp": 0, "alerts": 0, "fail": False}
-
-    def fake_classify(title: str) -> ClassifyResult:
-        r["classify"] += 1
-        if r["fail"]:
-            raise RuntimeError("LLM 503")
-        return ClassifyResult(
-            related_cyber=True,
-            confidence=0.9,
-            reason="vuln",
-            industries_impacted=["Finance"],
-            audit={"model": "fake"},
-        )
-
-    def fake_ttp(sent: str) -> pipeline.TtpResult:
-        r["ttp"] += 1
-        return pipeline.TtpResult(has_techniques=False)
+    r: dict[str, Any] = {"classify": 0, "alerts": 0, "fail": False}
 
     def fake_alerts(result: object) -> None:
         r["alerts"] += 1
 
-    monkeypatch.setattr(pipeline, "classify", fake_classify)
-    monkeypatch.setattr(pipeline, "extract_ttps", fake_ttp)
     monkeypatch.setattr(pipeline, "route_alerts", fake_alerts)
     monkeypatch.setattr(
         pipeline,
@@ -71,6 +59,7 @@ def rec(_migrated_schema: None, monkeypatch: pytest.MonkeyPatch) -> Iterator[dic
     finally:
         with sync_session() as s:
             hashes = [url_hash(u) for u in (LEAD_URL, FOLLOW_URL, REPLAY_URL)]
+            s.execute(delete(EnrichJob).where(EnrichJob.url_hash.in_(hashes)))
             story_ids = s.scalars(select(Article.story_id).where(Article.url_hash.in_(hashes)))
             ids = {i for i in story_ids if i is not None}
             s.execute(delete(Article).where(Article.url_hash.in_(hashes)))
@@ -84,19 +73,50 @@ def rec(_migrated_schema: None, monkeypatch: pytest.MonkeyPatch) -> Iterator[dic
 _LEAD_TITLE = "Acme VPN zero-day chain under active exploitation"
 
 
-def _run(url: str, title: str, source: str) -> pipeline.PipelineOutcome:
+VERDICT = ClassifyResult(
+    related_cyber=True,
+    confidence=0.9,
+    reason="vuln",
+    industries_impacted=["Finance"],
+    audit={"model": "fake"},
+)
+
+
+def _finish(rec: dict[str, Any], url: str) -> pipeline.PipelineOutcome:
+    rec["classify"] += 1
     with sync_session() as s:
-        return pipeline.run_pipeline(
+        return finish_classify(s, url, VERDICT)
+
+
+def _run(rec: dict[str, Any], url: str, title: str, source: str) -> pipeline.PipelineOutcome:
+    with sync_session() as s:
+        outcome = pipeline.run_pipeline(
             title=title, url=url, posted_on=None, source=source, scraper_id=None, session=s
+        )
+    if outcome.pending_job_id is None or rec["fail"]:
+        return outcome
+    return _finish(rec, url)
+
+
+def _ttp_jobs() -> int:
+    hashes = [url_hash(LEAD_URL), url_hash(FOLLOW_URL)]
+    with sync_session() as s:
+        return int(
+            s.scalar(
+                select(func.count())
+                .select_from(EnrichJob)
+                .where(EnrichJob.kind == "ttp", EnrichJob.url_hash.in_(hashes))
+            )
+            or 0
         )
 
 
 def test_follow_up_sharing_cves_inherits(rec: dict[str, Any]) -> None:
-    lead = _run(LEAD_URL, _LEAD_TITLE, "Vendor Blog")
-    follow = _run(FOLLOW_URL, "Patch now: Acme fixes two VPN bugs", "Aggregator")
+    lead = _run(rec, LEAD_URL, _LEAD_TITLE, "Vendor Blog")
+    follow = _run(rec, FOLLOW_URL, "Patch now: Acme fixes two VPN bugs", "Aggregator")
 
     assert lead.story_id is not None and follow.story_id == lead.story_id
-    assert rec["classify"] == 1 and rec["ttp"] == 1  # LLM hanya untuk lead
+    assert rec["classify"] == 1 and _ttp_jobs() == 1  # LLM hanya untuk lead
     assert rec["alerts"] == 2  # alert tetap per artikel
     with sync_session() as s:
         story = s.get(Story, lead.story_id)
@@ -124,16 +144,17 @@ def test_follow_up_sharing_cves_inherits(rec: dict[str, Any]) -> None:
         assert audit["lead_article_id"] == lead.article_id
 
 
-def test_replay_reuses_empty_story(rec: dict[str, Any]) -> None:
+def test_waiting_job_reuses_its_story(rec: dict[str, Any]) -> None:
+    """Gateway mati: story (kosong) sudah dibuat resolver dan ikut di `context` job; saat vonisnya
+    datang, artikel menempel ke story yang SAMA tanpa resolve ulang."""
     rec["fail"] = True
-    with pytest.raises(RuntimeError):
-        _run(REPLAY_URL, REPLAY_TITLE, "Vendor Blog")
+    waiting = _run(rec, REPLAY_URL, REPLAY_TITLE, "Vendor Blog")
+    assert waiting.pending_job_id is not None
     with sync_session() as s:  # story sudah dibuat resolver, artikelnya belum ada
         empty = s.scalars(select(Story).where(Story.title == REPLAY_TITLE)).all()
         assert len(empty) == 1 and empty[0].article_count == 0
 
-    rec["fail"] = False
-    outcome = _run(REPLAY_URL, REPLAY_TITLE, "Vendor Blog")
+    outcome = _finish(rec, REPLAY_URL)
     assert outcome.accepted and outcome.story_id == empty[0].id
     with sync_session() as s:
         stories = s.scalars(select(Story).where(Story.title == REPLAY_TITLE)).all()
@@ -142,14 +163,16 @@ def test_replay_reuses_empty_story(rec: dict[str, Any]) -> None:
         assert article is not None and article.story_match == "lead"
 
 
-def test_other_article_matching_empty_story_keeps_its_rule(rec: dict[str, Any]) -> None:
-    """Story kosong milik percobaan gagal artikel lain: artikel BEDA (sumber lain) yang cocok
-    ke sana tetap dicatat dengan aturan resolver aslinya, bukan `lead`."""
+def test_follow_up_of_a_waiting_lead_waits_too(rec: dict[str, Any]) -> None:
+    """Spec 5 (P3): lead yang menunggu job `classify` membiarkan `stories.classify` kosong, jadi
+    artikel BEDA (sumber lain) yang cocok ke story itu juga jadi job, dan tetap dicatat dengan
+    aturan resolver aslinya, bukan `lead`."""
     rec["fail"] = True
-    with pytest.raises(RuntimeError):
-        _run(REPLAY_URL, REPLAY_TITLE, "Vendor Blog")
-    rec["fail"] = False
-    outcome = _run(FOLLOW_URL, REPLAY_TITLE, "Aggregator")
+    _run(rec, REPLAY_URL, REPLAY_TITLE, "Vendor Blog")
+    follow = _run(rec, FOLLOW_URL, REPLAY_TITLE, "Aggregator")
+    assert follow.pending_job_id is not None  # tidak ada classify untuk diwarisi
+
+    outcome = _finish(rec, FOLLOW_URL)
     assert outcome.accepted
     with sync_session() as s:
         article = s.scalar(select(Article).where(Article.url_hash == url_hash(FOLLOW_URL)))

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 from cti_enrich import pipeline
 from cti_enrich.stages import extract_ttps as ttp_mod
 from cti_enrich.stages.extract_ttps import Technique, TtpResult, verify_evidence
@@ -44,16 +43,9 @@ def test_all_dropped_means_no_techniques() -> None:
     assert out.techniques == [] and out.has_techniques is False
 
 
-def test_pipeline_uses_text_then_summary(monkeypatch: pytest.MonkeyPatch) -> None:
-    seen: list[str] = []
-
-    def fake(s: str) -> TtpResult:
-        seen.append(s)
-        return TtpResult(has_techniques=False)
-
-    monkeypatch.setattr(pipeline, "extract_ttps", fake)
+def test_ttp_job_input_uses_text_then_summary() -> None:
+    """Teks job `ttp` (P7g) = teks artikel dipotong `TTP_TEXT_CAP`, atau ringkasan kalau kosong."""
     long_text = "a" * 7000
-    pipeline._extract_ttps_or_empty("u", long_text, "the summary")
-    pipeline._extract_ttps_or_empty("u", "", "the summary")
-    assert seen == ["a" * pipeline.TTP_TEXT_CAP, "the summary"]
+    assert pipeline.ttp_job_input(long_text, "the summary") == "a" * pipeline.TTP_TEXT_CAP
+    assert pipeline.ttp_job_input("", "the summary") == "the summary"
     assert pipeline.TTP_TEXT_CAP == 6000

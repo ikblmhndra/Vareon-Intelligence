@@ -173,8 +173,12 @@ def persist(
     relevance: RelevanceResult | None = None,
     tlp: str = "clear",
     pap: str = "clear",
+    llm_ttp_status: str | None = None,
 ) -> Article:
-    """`story` (P3) menempelkan artikel ke story-nya di transaksi yang sama: `story_id`/
+    """`llm_ttp_status` (P7g): `pending` = job `ttp` dibuat pemanggil di transaksi yang sama,
+    `skipped` = jalur tanpa LLM TTP. `None` tidak menulis kolomnya (pemanggil lama).
+
+    `story` (P3) menempelkan artikel ke story-nya di transaksi yang sama: `story_id`/
     `story_match` ikut di-upsert (di-flush), BARU `StoryRepo.attach` -- `source_count` dihitung
     ulang dari `articles WHERE story_id`. `None` (P3 mati) = tidak ada tulisan story sama sekali.
 
@@ -187,6 +191,7 @@ def persist(
     Marking (P7a): `tlp`/`pap` bawaan sumber diteruskan ke tiap upsert indikator."""
     article_repo = ArticleRepo(session)
     story_fields = {"story_id": story.story_id, "story_match": story.rule} if story else {}
+    ttp_status = {"llm_ttp_status": llm_ttp_status} if llm_ttp_status is not None else {}
     article = article_repo.upsert(
         url=url,
         title=title,
@@ -208,6 +213,7 @@ def persist(
             _with_relevance(_audit_fields(classify_result), relevance, classify_result), tier1
         ),
         **story_fields,
+        **ttp_status,
     )
     if story is not None:
         StoryRepo(session).attach(

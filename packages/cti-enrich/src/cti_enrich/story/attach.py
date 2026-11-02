@@ -46,6 +46,27 @@ class StoryLink:
     """CVE KUNCI artikel (`key_cves`), bukan semua CVE-nya: roundup tidak boleh menggabungkan
     daftar CVE panjangnya ke story."""
 
+    def to_context(self) -> dict[str, Any]:
+        """Bentuk JSON untuk `enrich_jobs.context` (P7g): job `classify` melanjutkan artikel ke
+        story yang SAMA tanpa fetch dan resolve ulang."""
+        return {
+            "story_id": self.story_id,
+            "rule": self.rule,
+            "inherited": self.inherited,
+            "lead_article_id": self.lead_article_id,
+            "cve_ids": sorted(self.cve_ids),
+        }
+
+    @classmethod
+    def from_context(cls, d: dict[str, Any]) -> StoryLink:
+        return cls(
+            story_id=int(d["story_id"]),
+            rule=d["rule"],
+            inherited=d.get("inherited"),
+            lead_article_id=d.get("lead_article_id"),
+            cve_ids=frozenset(d.get("cve_ids") or ()),
+        )
+
 
 def resolve_story(
     *, title: str, source: str, text: str, now: datetime, cfg: StorySettings

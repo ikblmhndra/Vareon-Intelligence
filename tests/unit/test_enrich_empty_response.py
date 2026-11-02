@@ -1,5 +1,6 @@
 """Respons 200 tanpa `choices` dari gateway (model `openrouter/free`) = kegagalan TRANSIEN, bukan
-`TypeError` yang menghilangkan artikel (prod 2026-10-20/21: 3 artikel, tidak di-retry)."""
+`TypeError` yang menghilangkan artikel (prod 2026-10-20/21: 3 artikel, tidak di-retry). Sejak
+P7g yang menanganinya job runner `enrich.llm`, bukan retry task `enrich.article`."""
 
 from __future__ import annotations
 
@@ -54,7 +55,9 @@ def test_stages_raise_empty_response_not_typeerror(
         call()
 
 
-def test_the_enrich_task_retries_an_empty_response(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_the_enrich_task_does_not_retry_llm_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    """P7g: `enrich.article` tidak memanggil LLM lagi; respons kosong ditangani job runner
+    (`enrich.llm`) dengan backoff tanpa batas, bukan retry Celery."""
     # `cti_worker.celery_app` memuat Settings saat diimpor, jadi env minimal dipasang dulu.
     monkeypatch.setenv("DATABASE__URL", "postgresql+asyncpg://x:x@127.0.0.1:1/x")
     monkeypatch.setenv("DATABASE__SYNC_URL", "postgresql+psycopg://x:x@127.0.0.1:1/x")
@@ -62,4 +65,4 @@ def test_the_enrich_task_retries_an_empty_response(monkeypatch: pytest.MonkeyPat
     monkeypatch.setenv("AUTH__SESSION_SECRET_KEY", "test-session")
     from cti_worker.tasks.enrich import _TRANSIENT_ERRORS
 
-    assert issubclass(EmptyLLMResponse, _TRANSIENT_ERRORS)
+    assert not issubclass(EmptyLLMResponse, _TRANSIENT_ERRORS)

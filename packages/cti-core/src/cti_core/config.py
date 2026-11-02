@@ -221,8 +221,8 @@ class StorySettings(_StrictModel):
     default, jadi tidak ada key `.env` baru yang wajib; ganti nilai butuh restart worker."""
 
     enabled: bool = True
-    """`false` = pipeline persis 0.8.6 (classify sebelum fetch, tanpa tulisan ke `stories`).
-    Mematikan P3 = `STORY__ENABLED=false` + restart worker."""
+    """`false` = tanpa resolve/tulisan ke `stories` (sejak P7g fetch tetap di depan classify:
+    job `classify` membawa teksnya). Mematikan P3 = `STORY__ENABLED=false` + restart worker."""
     window_hours: int = 72
     """Jendela waktu pencocokan: artikel hanya digabung ke story yang aktivitas terakhirnya masih
     dalam rentang ini."""

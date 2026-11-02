@@ -37,6 +37,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
+from tests.integration.enrich_job_support import job_for, run_with_verdict
 from tests.integration.entity_support import seed_entity
 
 _TECHNIQUES = [
@@ -244,20 +245,16 @@ def pipeline_session(_migrated_schema: None) -> Iterator[Session]:
         connection.close()
 
 
-def test_pipeline_persists_normalized_ttps_and_alert_uses_canonical_names(
+@pytest.mark.xfail(strict=True, reason="Task 4: run_job")
+def test_ttp_job_persists_normalized_ttps(
     pipeline_session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """P7g: TTP LLM datang lewat job `ttp`, jadi normalisasi katalog terjadi di job runner. Alert
+    keluar lebih dulu dengan TTP Tier 1 saja (D1); di sini Tier 1 tidak menemukan apa pun."""
     pipeline_session.add_all(_catalog_rows())
     pipeline_session.flush()
     sent: list[object] = []
     monkeypatch.setattr(pipeline, "route_alerts", lambda result: sent.append(result))
-    monkeypatch.setattr(
-        pipeline,
-        "classify",
-        lambda title: ClassifyResult(
-            related_cyber=True, confidence=0.9, reason="x", industries_impacted=["General"]
-        ),
-    )
     monkeypatch.setattr(pipeline, "fetch_text", lambda url: "Isi artikel. " * 40)
     monkeypatch.setattr(pipeline, "summarize", lambda text: "Ringkasan.")
     monkeypatch.setattr(pipeline.extract_iocs_stage, "extract_iocs", lambda *a, **k: {})
@@ -271,8 +268,27 @@ def test_pipeline_persists_normalized_ttps_and_alert_uses_canonical_names(
         return real_route(inp)
 
     monkeypatch.setattr(pipeline.routing, "route", spy_route)
+    url = "https://example.com/new-article"
+    outcome = run_with_verdict(
+        pipeline_session,
+        ClassifyResult(
+            related_cyber=True, confidence=0.9, reason="x", industries_impacted=["General"]
+        ),
+        title="t",
+        url=url,
+        posted_on=None,
+        source="s",
+        scraper_id="t",
+    )
+    assert outcome.accepted and len(sent) == 1
+    assert captured["ttp_string"] == ""
+    job = job_for(pipeline_session, url, "ttp")
+    assert job is not None
+
+    from cti_enrich import jobs  # type: ignore[attr-defined]  # dibuat Task 4
+
     monkeypatch.setattr(
-        pipeline,
+        jobs,
         "extract_ttps",
         lambda s: TtpResult(
             has_techniques=True,
@@ -283,13 +299,11 @@ def test_pipeline_persists_normalized_ttps_and_alert_uses_canonical_names(
             ],
         ),
     )
-    url = "https://example.com/new-article"
-    outcome = pipeline.run_pipeline(
-        title="t", url=url, posted_on=None, source="s", scraper_id="t", session=pipeline_session
-    )
-    assert outcome.accepted
+    assert jobs.run_job(job.id) == "done"
+
     article = pipeline_session.scalar(select(Article).where(Article.url_hash == url_hash(url)))
     assert article is not None
+    pipeline_session.refresh(article)
     assert sorted(
         (m.entity.external_id, m.entity.name, (m.extracted or {}).get("extracted_name"))
         for m in article.mentions_of("attack-pattern")
@@ -297,9 +311,7 @@ def test_pipeline_persists_normalized_ttps_and_alert_uses_canonical_names(
         ("T1003", "OS Credential Dumping", "Credential Dumping"),
         ("T1203", "Exploitation for Client Execution", "Remote Code Execution"),
     ]
-    assert captured["ttp_string"] == (
-        "OS Credential Dumping (T1003), Exploitation for Client Execution (T1203)"
-    )
+    assert len(sent) == 1  # job `ttp` tidak mengirim alert
 
 
 # ── katalog ATT&CK: revoked, search ID, deskripsi bersih ─────────────────────
