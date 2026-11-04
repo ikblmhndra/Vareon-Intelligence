@@ -13,11 +13,15 @@ import time
 from typing import Literal
 
 from cti_core.config import get_settings
+from cti_core.db.models import SigmaRule
+from cti_core.db.models.entity import ReferenceSnapshot
 from cti_core.db.repositories.data_health import AsyncDataHealthRepo
 from cti_core.db.repositories.llm_call import AsyncLlmCallRepo, TaskUsage
 from cti_core.db.repositories.relevance import AsyncRelevanceModelRepo
 from cti_core.db.repositories.story import AsyncStoryRepo, StoryStats
+from cti_core.hunt.sigma import SIGMA_SNAPSHOT
 from redis.asyncio import Redis
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_api.schemas.data_health import (
@@ -30,6 +34,7 @@ from cti_api.schemas.data_health import (
     LlmTaskUsageOut,
     QueueHealthOut,
     RelevanceHealthOut,
+    SigmaHealthOut,
     SourceFreshnessOut,
     StoryHealthOut,
 )
@@ -162,6 +167,27 @@ async def _relevance_health(session: AsyncSession, now: datetime.datetime) -> Re
     )
 
 
+_SIGMA_STALE_DAYS = 60
+
+
+async def _sigma_health(session: AsyncSession, now: datetime.datetime) -> SigmaHealthOut:
+    snap = await session.get(ReferenceSnapshot, SIGMA_SNAPSHOT)
+    rules = await session.scalar(select(func.count()).select_from(SigmaRule)) or 0
+    content = snap.content if snap is not None else {}
+    last_error = content.get("last_error")
+    stale = snap is None or now - snap.fetched_at > datetime.timedelta(days=_SIGMA_STALE_DAYS)
+    status: Literal["ok", "amber", "red"] = (
+        "red" if rules == 0 else "amber" if stale or last_error else "ok"
+    )
+    return SigmaHealthOut(
+        release=content.get("release"),
+        rules=rules,
+        fetched_at=_iso(snap.fetched_at) if snap is not None else None,
+        last_error=last_error,
+        status=status,
+    )
+
+
 async def _build(session: AsyncSession, redis: Redis, now: datetime.datetime) -> DataHealthOut:
     repo = AsyncDataHealthRepo(session)
     # Sekuensial: satu `AsyncSession` tidak aman dipakai concurrent.
@@ -193,4 +219,5 @@ async def _build(session: AsyncSession, redis: Redis, now: datetime.datetime) ->
         ],
         llm=await _llm_health(session, repo, now),
         relevance=await _relevance_health(session, now),
+        sigma=await _sigma_health(session, now),
     )

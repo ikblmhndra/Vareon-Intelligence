@@ -5023,6 +5023,7 @@ export interface components {
             queues: components["schemas"]["QueueHealthOut"];
             relevance: components["schemas"]["RelevanceHealthOut"];
             scrapers: components["schemas"]["ScraperHealthSummary"];
+            sigma: components["schemas"]["SigmaHealthOut"];
             sources: components["schemas"]["SourceFreshnessOut"];
         };
         /** DraftEmailBody */
@@ -7369,6 +7370,25 @@ export interface components {
             mttr: components["schemas"]["MetricStat"];
             /** Severity */
             severity: string;
+        };
+        /**
+         * SigmaHealthOut
+         * @description Snapshot SigmaHQ (P7e). `red` = 0 aturan; `amber` = snapshot >60 hari atau `last_error`.
+         */
+        SigmaHealthOut: {
+            /** Fetched At */
+            fetched_at: string | null;
+            /** Last Error */
+            last_error: string | null;
+            /** Release */
+            release: string | null;
+            /** Rules */
+            rules: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "amber" | "red";
         };
         /** SlowestCve */
         SlowestCve: {
