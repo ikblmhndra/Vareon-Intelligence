@@ -94,15 +94,22 @@ export function HuntPanel({ anchorType, anchorId }: { anchorType: AnchorType; an
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(text);
       } else {
+        const prev = document.activeElement as HTMLElement | null;
         const ta = document.createElement("textarea");
         ta.value = text;
         ta.setAttribute("readonly", "");
-        ta.style.position = "fixed";
-        ta.style.opacity = "0";
+        // Di pojok viewport + preventScroll supaya select() tidak menggulir halaman.
+        Object.assign(ta.style, { position: "fixed", top: "0", left: "0", opacity: "0", pointerEvents: "none" });
         document.body.appendChild(ta);
-        ta.select();
-        const ok = document.execCommand("copy");
-        ta.remove();
+        let ok = false;
+        try {
+          ta.focus({ preventScroll: true });
+          ta.select();
+          ok = document.execCommand("copy");
+        } finally {
+          ta.remove();
+          prev?.focus({ preventScroll: true });
+        }
         if (!ok) throw new Error("execCommand failed");
       }
       toast.success("Copied to clipboard");
