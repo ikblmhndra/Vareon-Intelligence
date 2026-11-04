@@ -54,3 +54,16 @@ def test_record_error(db_session):
     load_sigma_zip(db_session, _zip_n(1200), release="r1", source_url="u")
     record_sigma_error(db_session, "HTTPError: 503")
     assert db_session.get(ReferenceSnapshot, "sigma").content["last_error"] == "HTTPError: 503"
+
+
+def test_load_min_counts_unique_ids(db_session):
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        for i in range(1000):
+            uid = uuid.UUID(int=i % 900 + 1)
+            z.writestr(
+                f"rules/w/r{i}.yml",
+                f"title: R{i}\nid: {uid}\nstatus: test\nlevel: high\nlogsource:\n  product: w\n",
+            )
+    with pytest.raises(SigmaLoadError):
+        load_sigma_zip(db_session, buf.getvalue(), release="r1", source_url="u")

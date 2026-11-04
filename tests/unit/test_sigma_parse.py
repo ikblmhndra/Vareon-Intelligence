@@ -61,3 +61,24 @@ def test_parse_strips_top_folder():
 def test_parse_not_a_zip():
     with pytest.raises(SigmaLoadError):
         parse_sigma_zip(b"nope")
+
+
+def test_parse_skips_unsupported_values_and_folders():
+    p = parse_sigma_zip(
+        _zip(
+            {
+                "rules/a/ok.yml": _rule(U1, []),
+                "rules/a/s.yml": _rule(U2, [], status="weird"),
+                "rules/a/l.yml": _rule(U3, [], level="x" * 40),
+                "rules/windows/deprecated/x.yml": _rule(uuid.UUID(int=4), []),
+                "rules/windows/unsupported/x.yml": _rule(uuid.UUID(int=5), []),
+            }
+        )
+    )
+    assert [r.id for r in p.rules] == [U1]
+    assert set(p.skipped) == {
+        "rules/a/s.yml",
+        "rules/a/l.yml",
+        "rules/windows/deprecated/x.yml",
+        "rules/windows/unsupported/x.yml",
+    }

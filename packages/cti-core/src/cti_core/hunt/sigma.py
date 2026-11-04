@@ -29,6 +29,9 @@ MIN_RULES = 1000
 MAX_SHRINK = 0.2
 _BATCH = 500
 _ROOTS = ("rules-emerging-threats", "rules")
+_STATUSES = {"stable", "test", "experimental"}
+_LEVELS = {"informational", "low", "medium", "high", "critical"}
+_SKIP_DIRS = {"deprecated", "unsupported"}
 _TECHNIQUE = re.compile(r"^attack\.(t\d{4}(?:\.\d{3})?)$", re.IGNORECASE)
 
 
@@ -97,8 +100,14 @@ def parse_sigma_zip(data: bytes) -> ParsedSigma:
                 doc = yaml.safe_load(text)
                 if not isinstance(doc, dict):
                     raise ValueError("bukan mapping")
-                if doc.get("status") == "deprecated":
-                    skipped[path] = "deprecated"
+                if _SKIP_DIRS & set(path.split("/")):
+                    skipped[path] = "deprecated/unsupported folder"
+                    continue
+                if doc.get("status") not in _STATUSES:
+                    skipped[path] = f"status tidak didukung: {str(doc.get('status'))[:40]}"
+                    continue
+                if doc.get("level") not in _LEVELS:
+                    skipped[path] = f"level tidak didukung: {str(doc.get('level'))[:40]}"
                     continue
                 rule_id = uuid.UUID(str(doc["id"]))
                 logsource = doc.get("logsource") or {}
@@ -126,12 +135,16 @@ def load_sigma_zip(
     session: Session, data: bytes, *, release: str, source_url: str
 ) -> SigmaLoadResult:
     parsed = parse_sigma_zip(data)
-    n = len(parsed.rules)
-    if n < MIN_RULES:
-        raise SigmaLoadError(f"hanya {n} aturan (minimum {MIN_RULES})")
-    # id duplikat di zip akan melanggar PK; ambil yang terakhir
-    unique = {r.id: r for r in parsed.rules}
+    # id duplikat di zip akan melanggar PK; yang pertama dipakai, sisanya masuk skipped
+    unique: dict[uuid.UUID, ParsedRule] = {}
+    for r in parsed.rules:
+        if r.id in unique:
+            parsed.skipped[r.path] = "duplicate id"
+        else:
+            unique[r.id] = r
     n = len(unique)
+    if n < MIN_RULES:
+        raise SigmaLoadError(f"hanya {n} aturan unik (minimum {MIN_RULES})")
     current = session.scalar(select(func.count()).select_from(SigmaRule)) or 0
     if current and n < current * (1 - MAX_SHRINK):
         raise SigmaLoadError(f"menyusut {current} -> {n} aturan (batas {MAX_SHRINK:.0%})")
