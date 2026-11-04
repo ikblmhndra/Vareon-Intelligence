@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from cti_api.services import inferred_ttps
+from cti_api.services.feed import _entity_visible, _relationship_visible
 from cti_api.services.hunt_builder import (
     AnchorIn,
     HuntPack,
@@ -119,6 +120,9 @@ async def collect_entity(
         raise AnchorNotFound(f"entity {entity_id}")
     if ent.merged_into_id is not None:
         raise AnchorMerged(ent.merged_into_id)
+    allowed = tlp_allowed(max_tlp) if max_tlp is not None else None
+    if allowed is not None and ent.tlp not in allowed:
+        raise AnchorNotFound(f"entity {entity_id}")
     anchor = AnchorIn("entity", ent.id, ent.name, ent.type)
     if ent.type == "attack-pattern":
         # pack Sigma saja: teknik itu sendiri, tanpa indikator
@@ -126,7 +130,7 @@ async def collect_entity(
         return Collected(anchor, own, [], truncated=False)
 
     target = aliased(Entity)
-    tech_rows = await session.execute(
+    tech_stmt = (
         select(target.external_id, target.name)
         .join(Relationship, Relationship.target_entity_id == target.id)
         .where(
@@ -140,6 +144,12 @@ async def collect_entity(
             target.external_id.is_not(None),
         )
     )
+    if allowed is not None:
+        # semantik sama dengan feed STIX (spec 5.3): relasi dan ujungnya harus terlihat token
+        tech_stmt = tech_stmt.where(
+            _relationship_visible(allowed, stix=False), _entity_visible(target, allowed, stix=False)
+        )
+    tech_rows = await session.execute(tech_stmt)
     techniques = [TechniqueIn(r.external_id, r.name, "primary") for r in tech_rows]
 
     now = datetime.datetime.now(datetime.UTC)
@@ -165,6 +175,8 @@ async def collect_entity(
         Relationship.revoked_at.is_(None),
         Relationship.source_indicator_id.is_not(None),
     )
+    if allowed is not None:
+        from_relationships = from_relationships.where(_relationship_visible(allowed, stix=False))
     rows = (
         await session.execute(
             _indicator_select(max_tlp)
@@ -238,7 +250,9 @@ async def get_pack(
     else:
         c = await collect_entity(session, anchor_id, days=days, max_tlp=max_tlp)
     snap = await session.get(ReferenceSnapshot, SIGMA_SNAPSHOT)
-    release = snap.content.get("release") if snap is not None else None
+    # baris snapshot bisa rusak (JSONB bebas), sama dengan `data_health._sigma_health`
+    content = snap.content if snap is not None and isinstance(snap.content, dict) else {}
+    release = content.get("release")
     return build_pack(
         c.anchor,
         c.techniques,
