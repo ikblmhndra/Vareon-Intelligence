@@ -92,3 +92,30 @@ async def test_data_health_sigma_no_snapshot(
     assert body["sigma"]["status"] == "red"
     assert body["sigma"]["release"] is None
     assert body["sigma"]["fetched_at"] is None
+
+
+@pytest.mark.parametrize(
+    ("content", "release", "last_error", "status"),
+    [
+        ([], None, None, "ok"),
+        ({"release": 7, "last_error": 123}, "7", "123", "amber"),
+        ({"last_error": {"a": 1}}, None, "{'a': 1}", "amber"),
+    ],
+)
+async def test_data_health_sigma_malformed_snapshot(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header,
+    content,
+    release,
+    last_error,
+    status,
+) -> None:
+    await _seed(api_session, rules=2)
+    snap = await api_session.get(ReferenceSnapshot, "sigma")
+    snap.content = content
+    await api_session.flush()
+    resp = await api_client.get("/api/data-health", headers=auth_header(role="analyst"))
+    assert resp.status_code == 200
+    sg = resp.json()["sigma"]
+    assert (sg["release"], sg["last_error"], sg["status"]) == (release, last_error, status)
