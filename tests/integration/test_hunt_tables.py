@@ -12,9 +12,10 @@ from sqlalchemy.orm import Session
 
 
 def test_hunt_tables_roundtrip(db_session: Session) -> None:
+    rule_id = uuid.uuid4()
     db_session.add(
         SigmaRule(
-            id=uuid.uuid4(),
+            id=rule_id,
             title="t",
             author="a",
             level="high",
@@ -28,11 +29,15 @@ def test_hunt_tables_roundtrip(db_session: Session) -> None:
         )
     )
     db_session.add(
-        HuntHypothesis(anchor_type="story", anchor_id=1, text="h", model="m", generated_by="u")
+        HuntHypothesis(
+            anchor_type="story", anchor_id=987654321, text="h", model="m", generated_by="u"
+        )
     )
     db_session.flush()
     rows = db_session.execute(
-        select(SigmaRule.id).where(SigmaRule.techniques.contains(["T1059.001"]))
+        select(SigmaRule.id).where(
+            SigmaRule.id == rule_id, SigmaRule.techniques.contains(["T1059.001"])
+        )
     ).all()
     assert len(rows) == 1
 

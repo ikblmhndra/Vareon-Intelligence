@@ -64,7 +64,11 @@ async def test_regenerate_replaces(
         monkeypatch.setattr(hunt_hypothesis, "_call_llm", lambda _m, t=text: t)
         r = await api_client.post(_url(seeded_story), headers=auth_header(role="admin"))
         assert r.json()["text"] == text
-    count = await api_session.scalar(select(func.count()).select_from(HuntHypothesis))
+    count = await api_session.scalar(
+        select(func.count())
+        .select_from(HuntHypothesis)
+        .where(HuntHypothesis.anchor_type == "story", HuntHypothesis.anchor_id == seeded_story.id)
+    )
     assert count == 1
 
 
