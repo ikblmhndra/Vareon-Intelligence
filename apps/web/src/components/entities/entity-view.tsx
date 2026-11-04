@@ -14,6 +14,7 @@ import { EntityOverviewTab, useEntityTimeline } from "@/components/entities/enti
 import { EntityRelationshipsTab, useEntityRelationships } from "@/components/entities/entity-relationships-tab";
 import { EntityStoriesTab } from "@/components/entities/entity-stories-tab";
 import { EntityTimelineChart } from "@/components/entities/entity-timeline-chart";
+import { HuntPanel } from "@/components/hunt/hunt-panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TabPills, type TabPillItem } from "@/components/ui/tab-pills";
 import { api } from "@/lib/api/client";
@@ -22,10 +23,13 @@ import { ENTITY_TABS, entityTypeMeta } from "@/lib/entities/types";
 
 type EntityDetail = components["schemas"]["EntityDetail"];
 
-type TabKey = "overview" | "relationships" | "stories" | "indicators" | "cves" | "timeline" | "attack";
+type TabKey = "overview" | "relationships" | "stories" | "indicators" | "cves" | "timeline" | "attack" | "hunt";
 
 /** Tab ATT&CK hanya untuk tipe yang punya pemetaan teknik. */
 const ATTACK_TYPES = new Set(["intrusion-set", "malware", "tool", "attack-pattern"]);
+
+/** Tab Hunt (P7e): tipe yang bisa menjadi anchor hunting pack. */
+const HUNT_TYPES = new Set(["intrusion-set", "malware", "tool", "campaign", "attack-pattern"]);
 
 function TimelineTab({ entity }: { entity: EntityDetail }) {
   const timeline = useEntityTimeline(entity.id);
@@ -107,6 +111,7 @@ export function EntityView({ id }: { id: number }) {
       { value: "timeline", label: "Timeline" },
     ];
     if (entity && ATTACK_TYPES.has(entity.type)) items.push({ value: "attack", label: "ATT&CK" });
+    if (entity && HUNT_TYPES.has(entity.type)) items.push({ value: "hunt", label: "Hunt" });
     return items;
   }, [entity, relCount, totals.data]);
 
@@ -186,6 +191,7 @@ export function EntityView({ id }: { id: number }) {
         {tab === "cves" && <EntityCvesTab entity={entity} />}
         {tab === "timeline" && <TimelineTab entity={entity} />}
         {tab === "attack" && <EntityAttackTab entity={entity} />}
+        {tab === "hunt" && <HuntPanel anchorType="entity" anchorId={entity.id} />}
       </div>
     </div>
   );
