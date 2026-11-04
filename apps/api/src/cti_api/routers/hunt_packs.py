@@ -6,13 +6,18 @@ from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from cti_core.db.models.hunt import HuntHypothesis
+from cti_core.db.repositories.auth import AsyncAuditLogRepo
+from cti_core.logging import get_logger
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_api.deps import get_db, require_permission
-from cti_api.schemas.hunt import HuntPackOut
-from cti_api.services import hunt_pack
+from cti_api.deps import AuthedUser, get_db, request_ip, require_permission
+from cti_api.schemas.hunt import HuntHypothesisOut, HuntPackOut
+from cti_api.services import hunt_hypothesis, hunt_pack
 
+log = get_logger()
 router = APIRouter(prefix="/api/hunt-packs", tags=["hunt-packs"])
 
 AnchorType = Literal["story", "entity"]
@@ -78,3 +83,53 @@ async def get_hunt_pack(
     return await pack_response(
         session, anchor_type, anchor_id, include=include, days=days, format_=format_, max_tlp=None
     )
+
+
+@router.get(
+    "/{anchor_type}/{anchor_id}/hypothesis",
+    response_model=HuntHypothesisOut,
+    dependencies=[Depends(require_permission("view_ioc"))],
+)
+async def get_hypothesis(
+    anchor_type: AnchorType, anchor_id: int, session: AsyncSession = Depends(get_db)
+) -> HuntHypothesis:
+    row = await session.scalar(
+        select(HuntHypothesis).where(
+            HuntHypothesis.anchor_type == anchor_type, HuntHypothesis.anchor_id == anchor_id
+        )
+    )
+    if row is None:
+        raise HTTPException(404, "No hypothesis generated yet")
+    return row
+
+
+@router.post("/{anchor_type}/{anchor_id}/hypothesis", response_model=HuntHypothesisOut)
+async def generate_hypothesis(
+    anchor_type: AnchorType,
+    anchor_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+    user: AuthedUser = Depends(require_permission("manage_intel")),
+) -> HuntHypothesis:
+    try:
+        row = await hunt_hypothesis.generate_hypothesis(
+            session, anchor_type, anchor_id, username=user["username"]
+        )
+    except hunt_pack.AnchorNotFound:
+        raise HTTPException(404, "Hunting pack anchor not found") from None
+    except hunt_pack.AnchorMerged as e:
+        raise HTTPException(
+            404, {"message": "Entity was merged", "merged_into_id": e.into_id}
+        ) from None
+    except Exception as exc:  # kegagalan LLM -> 502; detail generik, rinciannya ke log
+        log.exception("hunt_hypothesis_failed", anchor_type=anchor_type, anchor_id=anchor_id)
+        raise HTTPException(502, "hypothesis generation failed") from exc
+    await AsyncAuditLogRepo(session).write(
+        username=user["username"],
+        action="hunt_hypothesis_generate",
+        target_id=f"{anchor_type}:{anchor_id}",
+        detail={"anchor_type": anchor_type, "anchor_id": anchor_id, "model": row.model},
+        ip_address=request_ip(request),
+    )
+    await session.commit()
+    return row

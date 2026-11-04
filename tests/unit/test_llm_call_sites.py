@@ -25,6 +25,7 @@ EXPECTED_TASKS = {
     "ta_profile",
     "exec_brief",
     "news_of_the_day",
+    "hunt_hypothesis",
 }
 
 

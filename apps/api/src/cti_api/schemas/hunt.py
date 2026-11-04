@@ -64,3 +64,10 @@ class HuntPackOut(_Attrs):
     counts: dict[str, int]
     truncated: bool
     include: list[str]
+
+
+class HuntHypothesisOut(_Attrs):
+    text: str
+    model: str
+    generated_at: datetime.datetime
+    generated_by: str
