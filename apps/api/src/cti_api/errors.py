@@ -31,7 +31,7 @@ def _format(
     kind: str,
     status: int,
     message: str,
-    details: list[Any] | None,
+    details: list[Any] | dict[str, Any] | None,
     headers: dict[str, str] | None,
 ) -> Response:
     phrase = HTTPStatus(status).phrase if status in HTTPStatus._value2member_map_ else "Error"
@@ -50,6 +50,12 @@ async def http_error(request: Request, exc: Exception) -> Response:
     kind = _prefix(request)
     if kind is None:
         return await http_exception_handler(request, exc)
+    if isinstance(exc.detail, dict):
+        # detail `{"message": ..., <field>: ...}` -> message + sisa field sebagai `details`
+        details = {k: v for k, v in exc.detail.items() if k != "message"}
+        return _format(
+            kind, exc.status_code, str(exc.detail.get("message", "")), details, exc.headers
+        )
     return _format(kind, exc.status_code, str(exc.detail), None, exc.headers)
 
 
