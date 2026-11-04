@@ -162,6 +162,31 @@ def test_classify_job_accepts_and_alerts_if_fresh(
     assert article.llm_ttp_status == "pending"
 
 
+@pytest.mark.parametrize(
+    ("age_days", "alerted"), [(0, 1), (3, 0)], ids=["created-now", "created-3-days-ago"]
+)
+def test_dateless_classify_job_freshness_follows_created_at(
+    session: Session,
+    alerts: list[object],
+    monkeypatch: pytest.MonkeyPatch,
+    age_days: int,
+    alerted: int,
+) -> None:
+    """R13: tanpa `posted_on`, kesegaran = `created_at` job (kedatangan live alert, baris migrasi
+    dengan `created_at` lama = `rejected_at` tidak)."""
+    job_id = _classify_job(session, posted_on=None)
+    job = _job(session, job_id)
+    assert job is not None
+    job.created_at = NOW - datetime.timedelta(days=age_days)
+    session.commit()
+    monkeypatch.setattr(jobs, "classify", lambda title: VERDICT)
+
+    assert jobs.run_job(job_id, now=NOW) == "done"
+
+    assert _article(session) is not None
+    assert len(alerts) == alerted
+
+
 def test_classify_job_rejects_to_rejected_articles(
     session: Session, alerts: list[object], monkeypatch: pytest.MonkeyPatch
 ) -> None:

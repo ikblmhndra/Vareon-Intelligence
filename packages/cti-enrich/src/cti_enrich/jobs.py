@@ -190,6 +190,9 @@ def _start_classify(
 ) -> JobOutcome | tuple[Prepared, ClassifyResult | None]:
     """Sesi 1. Return outcome akhir, atau `(Prepared, vonis)` dengan vonis `None` = perlu LLM."""
     if job.input_text is None:
+        # SKIP LOCKED: baris yang terkunci sebentar (klaim dispatcher, pencatatan gagal paralel)
+        # terbaca "gone" dan vonis LLM yang sudah jadi dibuang; job jalan lagi setelah lease habis,
+        # biayanya satu panggilan LLM.
         locked = EnrichJobRepo(session).get_for_update(job.id)
         if locked is None:
             return "gone"
@@ -207,6 +210,12 @@ def _start_classify(
             pap=pap,
         )
     return prepared, _verdict_without_llm(session, prepared, decision)
+
+
+def _fresh(job: EnrichJob, now: datetime.datetime) -> bool:
+    """Layak alert? Tanpa `posted_on` pakai `created_at` job (kedatangan live = baru, baris migrasi
+    membawa `rejected_at` lamanya = basi); sebelum P7g artikel tanpa tanggal selalu di-alert."""
+    return is_fresh(job.posted_on or job.created_at.date(), now)
 
 
 def _prepare_first(
@@ -247,9 +256,7 @@ def _prepare_first(
         return "duplicate"
     if result.classify_result is not None and decision is None:
         repo.delete(job)
-        complete(
-            result, result.classify_result, session=session, alert=is_fresh(result.posted_on, now)
-        )
+        complete(result, result.classify_result, session=session, alert=_fresh(job, now))
         log.info("enrich_job_done", job_id=job.id, kind="classify", llm=False)
         return "done"
     job.input_text = result.text
@@ -299,7 +306,7 @@ def _finish_classify(
             log.info("enrich_job_duplicate", job_id=job_id, url=prepared.url)
             return "duplicate"
         repo.delete(job)
-        complete(prepared, verdict, session=session, alert=is_fresh(prepared.posted_on, now))
+        complete(prepared, verdict, session=session, alert=_fresh(job, now))
     log.info("enrich_job_done", job_id=job_id, kind="classify", accepted=verdict.related_cyber)
     return "done"
 

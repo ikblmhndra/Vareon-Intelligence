@@ -5,7 +5,8 @@ Image lama tidak kenal tabel `enrich_jobs`: job `classify` yang menunggu akan te
 (host-side, hanya lewat database, checkout repo tetap di commit baru) memindahkan SEMUA job
 `classify` kembali ke `rejected_articles` sebagai `failure_kind='transient'`,
 `auto_replay_count=0`, alasan `[enrichment_failed] requeued after rollback`, supaya
-`enrich.auto_replay` lama menguras-nya. Job `ttp` dihapus (artikelnya tetap membawa TTP Tier 1).
+`enrich.auto_replay` lama menguras-nya (image 0.8.2 belum punya auto-replay: barisnya tetap
+parkir menunggu Replay manual). Job `ttp` dihapus (artikelnya tetap membawa TTP Tier 1).
 Satu transaksi; idempoten (jalan kedua = tidak ada yang dipindah).
 
 Default = LAPORAN (tidak menulis). `--apply` menulis.
