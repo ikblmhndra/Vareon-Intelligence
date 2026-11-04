@@ -62,19 +62,37 @@ numbers below refer to it).
 
 ```python
 async def test_hunt_tables_roundtrip(db_session):
-    db_session.add(SigmaRule(id=uuid.uuid4(), title="t", author="a", level="high",
-        status="test", ruleset="core", logsource={"product": "windows"},
-        techniques=["T1059.001"], path="rules/x.yml", release="r2026-07-01", yaml="title: t"))
-    db_session.add(HuntHypothesis(anchor_type="story", anchor_id=1, text="h", model="m",
-        generated_by="u"))
+    db_session.add(
+        SigmaRule(
+            id=uuid.uuid4(),
+            title="t",
+            author="a",
+            level="high",
+            status="test",
+            ruleset="core",
+            logsource={"product": "windows"},
+            techniques=["T1059.001"],
+            path="rules/x.yml",
+            release="r2026-07-01",
+            yaml="title: t",
+        )
+    )
+    db_session.add(
+        HuntHypothesis(anchor_type="story", anchor_id=1, text="h", model="m", generated_by="u")
+    )
     await db_session.flush()
-    rows = (await db_session.execute(
-        select(SigmaRule.id).where(SigmaRule.techniques.contains(["T1059.001"])))).all()
+    rows = (
+        await db_session.execute(
+            select(SigmaRule.id).where(SigmaRule.techniques.contains(["T1059.001"]))
+        )
+    ).all()
     assert len(rows) == 1
 
+
 async def test_hunt_hypothesis_anchor_type_check(db_session):
-    db_session.add(HuntHypothesis(anchor_type="article", anchor_id=1, text="h", model="m",
-        generated_by="u"))
+    db_session.add(
+        HuntHypothesis(anchor_type="article", anchor_id=1, text="h", model="m", generated_by="u")
+    )
     with pytest.raises(IntegrityError):
         await db_session.flush()
 ```
@@ -111,23 +129,34 @@ Paths: replace `\` with `/`, strip everything before the first `rules/` or `rule
 
 ```python
 def test_techniques_from_tags():
-    assert techniques_from_tags(["attack.execution", "attack.t1059.001", "attack.T1059",
-                                 "attack.g0016", "cve.2021-1"]) == ["T1059", "T1059.001"]
+    assert techniques_from_tags(
+        ["attack.execution", "attack.t1059.001", "attack.T1059", "attack.g0016", "cve.2021-1"]
+    ) == ["T1059", "T1059.001"]
+
 
 def test_parse_good_and_skipped():
-    p = parse_sigma_zip(_zip({"rules/windows/a.yml": _rule(U1, ["attack.t1059.001"]),
-        "rules/windows/b.yml": "title: no id\nlogsource: {}\nlevel: high\nstatus: test\n",
-        "deprecated/windows/c.yml": _rule(U2, []),
-        "rules/windows/d.yml": _rule(U3, [], status="deprecated")}))
+    p = parse_sigma_zip(
+        _zip(
+            {
+                "rules/windows/a.yml": _rule(U1, ["attack.t1059.001"]),
+                "rules/windows/b.yml": "title: no id\nlogsource: {}\nlevel: high\nstatus: test\n",
+                "deprecated/windows/c.yml": _rule(U2, []),
+                "rules/windows/d.yml": _rule(U3, [], status="deprecated"),
+            }
+        )
+    )
     assert [r.id for r in p.rules] == [U1]
     assert p.rules[0].ruleset == "core" and p.rules[0].techniques == ["T1059.001"]
     assert set(p.skipped) == {"rules/windows/b.yml", "rules/windows/d.yml"}
 
+
 def test_parse_strips_top_folder():
-    p = parse_sigma_zip(_zip({"sigma_all_rules\\rules-emerging-threats\\2024\\x.yml":
-                              _rule(U1, ["attack.t1190"])}))
+    p = parse_sigma_zip(
+        _zip({"sigma_all_rules\\rules-emerging-threats\\2024\\x.yml": _rule(U1, ["attack.t1190"])})
+    )
     assert p.rules[0].path == "rules-emerging-threats/2024/x.yml"
     assert p.rules[0].ruleset == "emerging-threats"
+
 
 def test_parse_not_a_zip():
     with pytest.raises(SigmaLoadError):
@@ -147,15 +176,18 @@ def test_load_replaces_rows(sync_db):
     snap = sync_db.get(ReferenceSnapshot, "sigma")
     assert snap.content["release"] == "r1" and snap.content["last_error"] is None
 
+
 def test_load_refuses_below_minimum(sync_db):
     with pytest.raises(SigmaLoadError):
         load_sigma_zip(sync_db, _zip_n(999), release="r1", source_url="u")
+
 
 def test_load_refuses_shrink_and_keeps_rows(sync_db):
     load_sigma_zip(sync_db, _zip_n(2000), release="r1", source_url="u")
     with pytest.raises(SigmaLoadError):
         load_sigma_zip(sync_db, _zip_n(1500), release="r2", source_url="u")
     assert sync_db.scalar(select(func.count()).select_from(SigmaRule)) == 2000
+
 
 def test_record_error(sync_db):
     load_sigma_zip(sync_db, _zip_n(1200), release="r1", source_url="u")
@@ -191,6 +223,7 @@ def test_committed_snapshot_matches_source():
     data = (SNAPSHOT_DIR / "sigma_all_rules.zip").read_bytes()
     assert hashlib.sha256(data).hexdigest() == src["sha256"]
     assert len(parse_sigma_zip(data).rules) >= MIN_RULES
+
 
 async def test_bootstrap_sigma_idempotent(db_session):
     await bootstrap_reference_rows(db_session)
@@ -228,11 +261,13 @@ def test_sync_unchanged(sync_db):
     out = sync_sigma(sync_db, lambda u: {"tag_name": "r1", "assets": []}, _boom)
     assert out["status"] == "unchanged"
 
+
 def test_sync_loads_new_release(sync_db):
     load_sigma_zip(sync_db, _zip_n(1200), release="r1", source_url="u")
     rel = {"tag_name": "r2", "assets": [{"name": ASSET_NAME, "browser_download_url": "z"}]}
     out = sync_sigma(sync_db, lambda u: rel, lambda u: _zip_n(1300))
     assert out == {"status": "loaded", "release": "r2", "rules": 1300}
+
 
 def test_sync_failure_keeps_rows_and_records_error(sync_db):
     load_sigma_zip(sync_db, _zip_n(1200), release="r1", source_url="u")
@@ -241,8 +276,11 @@ def test_sync_failure_keeps_rows_and_records_error(sync_db):
     assert sync_db.get(ReferenceSnapshot, "sigma").content["last_error"]
     assert sync_db.scalar(select(func.count()).select_from(SigmaRule)) == 1200
 
+
 def test_task_disabled(monkeypatch):
-    monkeypatch.setenv("SIGMA__SYNC_ENABLED", "false")  # plus settings cache reset as other tests do
+    monkeypatch.setenv(
+        "SIGMA__SYNC_ENABLED", "false"
+    )  # plus settings cache reset as other tests do
     assert sigma_task.sync() == {"skipped": "disabled"}
 ```
 
@@ -291,43 +329,57 @@ def test_spl_chunks_at_200():
     assert "All_Traffic.src IN (" in searches[0].query
     assert "All_Traffic.dest IN (" in searches[0].query
 
+
 def test_spl_quotes_ipv6_and_spaces():
     assert spl_quote('a"b\\c') == '"a\\"b\\\\c"'
     assert spl_quote("2001:db8::1") == '"2001:db8::1"'
     assert spl_quote("http://x/a b") == '"http://x/a b"'
     assert spl_quote("http://x/*") is None and spl_quote("a\nb") is None
 
+
 def test_skipped_values_counted():
     _, skipped = build_spl([IndicatorIn("url", "http://x/*", None, "clear")])
     assert skipped == 1
+
 
 def test_domain_goes_to_dns_and_web():
     s, _ = build_spl([IndicatorIn("domain", "evil.example", None, "clear")])
     assert {x.dataset for x in s} == {"dns", "web_domain"}
 
+
 def test_hashes_go_to_both_endpoint_datasets():
     s, _ = build_spl([IndicatorIn("sha256", "a" * 64, None, "clear")])
     assert {x.dataset for x in s} == {"endpoint_processes", "endpoint_filesystem"}
+
 
 def test_unmapped_type_goes_to_other():
     ind = IndicatorIn("mutex", "x", None, "clear")
     assert group_iocs([ind]) == {"other": [ind]}
     assert build_spl([ind]) == ([], 0)
 
+
 def test_merge_tiers_keeps_strongest():
     out = merge_tiers([TechniqueIn("T1059", "x", "llm"), TechniqueIn("T1059", "x", "primary")])
     assert out == [TechniqueIn("T1059", "x", "primary")]
 
+
 def test_select_sigma_match_kinds_and_order():
-    t = [TechniqueIn("T1059", "", "primary"), TechniqueIn("T1566.001", "", "primary"),
-         TechniqueIn("T1190", "", "llm")]
-    rules = [_sig("a", ["T1059.001"], level="medium"), _sig("b", ["T1566"], level="high"),
-             _sig("c", ["T1059"], level="critical", ruleset="emerging-threats"),
-             _sig("d", ["T1190"], level="critical")]
+    t = [
+        TechniqueIn("T1059", "", "primary"),
+        TechniqueIn("T1566.001", "", "primary"),
+        TechniqueIn("T1190", "", "llm"),
+    ]
+    rules = [
+        _sig("a", ["T1059.001"], level="medium"),
+        _sig("b", ["T1566"], level="high"),
+        _sig("c", ["T1059"], level="critical", ruleset="emerging-threats"),
+        _sig("d", ["T1190"], level="critical"),
+    ]
     got = select_sigma(t, rules, include=set())
     assert [(m.id, m.match) for m in got] == [("b", "parent"), ("a", "sub"), ("c", "exact")]
     assert "d" in [m.id for m in select_sigma(t, rules, include={"llm"})]
     assert got[0].link == "https://github.com/SigmaHQ/sigma/blob/r1/rules/b.yml"
+
 
 def test_pack_zip_members_and_attribution():
     z = zipfile.ZipFile(io.BytesIO(pack_zip(_pack(), {"a": "title: a"}, "DRL TEXT")))
@@ -336,6 +388,7 @@ def test_pack_zip_members_and_attribution():
     assert any(n.startswith("spl/") for n in names) and any(n.startswith("iocs/") for n in names)
     readme = z.read("README.md").decode()
     assert "Detection Rule License 1.1" in readme and "author" in readme.lower()
+
 
 def test_build_pack_is_deterministic():
     assert build_pack(**_args()) == build_pack(**_args())
