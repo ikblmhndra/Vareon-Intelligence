@@ -58,14 +58,24 @@ def sync_sigma(
 ) -> dict[str, Any]:
     """Tidak commit; pemanggil yang commit. Galat apa pun menjadi `failed` + `last_error`."""
     snap = session.get(ReferenceSnapshot, SIGMA_SNAPSHOT)
-    stored = snap.content.get("release") if snap is not None else None
+    # baris snapshot bisa rusak (JSONB bebas); jangan crash sebelum `last_error` tercatat
+    content = snap.content if snap is not None and isinstance(snap.content, dict) else {}
+    stored = content.get("release")
     release: str | None = None
     try:
         rel = get_json(RELEASES_URL)
         release = str(rel["tag_name"])
         if release == stored:
+            if content.get("last_error") is not None and snap is not None:
+                # galat sementara sebelumnya sudah lewat: Data health kembali ok
+                snap.content = {**content, "last_error": None}
+                session.flush()
             return {"status": "unchanged", "release": release}
-        url = next(a["browser_download_url"] for a in rel["assets"] if a["name"] == ASSET_NAME)
+        url = next(
+            (a["browser_download_url"] for a in rel["assets"] if a["name"] == ASSET_NAME), None
+        )
+        if url is None:
+            raise ValueError(f"asset {ASSET_NAME} missing from release {release}")
         data = get_bytes(url)
         # savepoint: load yang ditolak di tengah jalan tidak boleh meninggalkan baris separuh
         with session.begin_nested():
