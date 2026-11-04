@@ -41,6 +41,7 @@ from cti_api.services.hunt_builder import (
 )
 
 ENTITY_ANCHOR_TYPES = ("intrusion-set", "malware", "tool", "campaign", "attack-pattern")
+PRIMARY_METHODS = frozenset({"explicit", "keyword", "analyst"})
 ENTITY_INDICATOR_CAP = 2000
 LICENSE_FILE = SNAPSHOT_DIR / "LICENSE.Detection.Rules.md"
 
@@ -88,7 +89,10 @@ async def collect_story(session: AsyncSession, story_id: int, *, max_tlp: str | 
     for a in articles:
         for m in a.mentions_of("attack-pattern"):
             if m.entity.external_id:
-                tier: Literal["primary", "llm"] = "llm" if m.method == "llm" else "primary"
+                # primary = persis explicit/keyword/analyst; `legacy` dan metode lain tak terjamin
+                tier: Literal["primary", "llm"] = (
+                    "primary" if m.method in PRIMARY_METHODS else "llm"
+                )
                 techniques.append(TechniqueIn(m.entity.external_id, m.entity.name, tier))
         for inferred in await inferred_ttps.for_article(session, a):
             techniques += [TechniqueIn(t.id, t.name, "inferred") for t in inferred.techniques]
@@ -111,7 +115,7 @@ async def collect_entity(
     session: AsyncSession, entity_id: int, *, days: int, max_tlp: str | None
 ) -> Collected:
     ent = await session.get(Entity, entity_id)
-    if ent is None or ent.type not in ENTITY_ANCHOR_TYPES:
+    if ent is None or ent.suppressed or ent.type not in ENTITY_ANCHOR_TYPES:
         raise AnchorNotFound(f"entity {entity_id}")
     if ent.merged_into_id is not None:
         raise AnchorMerged(ent.merged_into_id)
@@ -132,6 +136,7 @@ async def collect_entity(
             Relationship.provenance.in_(("attack", "analyst")),
             target.type == "attack-pattern",
             target.merged_into_id.is_(None),
+            target.suppressed.is_(False),
             target.external_id.is_not(None),
         )
     )

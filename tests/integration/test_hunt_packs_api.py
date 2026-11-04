@@ -390,3 +390,56 @@ async def test_zip_format(
     names = zipfile.ZipFile(io.BytesIO(r.content)).namelist()
     assert "sigma/" in "".join(names)
     assert "LICENSE.Detection.Rules.md" in names
+
+
+async def test_suppressed_entity_anchor_404(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Header
+) -> None:
+    ent = await _entity(api_session, "intrusion-set", "HuntSuppressed", suppressed=True)
+    h = await _token(api_session)
+    await api_session.commit()
+    r = await api_client.get(f"/api/hunt-packs/entity/{ent.id}", headers=auth_header())
+    assert r.status_code == 404
+    assert (
+        await api_client.get(f"/api/v2/hunt-packs/entity/{ent.id}", headers=h)
+    ).status_code == 404
+
+
+async def test_entity_uses_excludes_suppressed_technique(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Header
+) -> None:
+    s = api_session
+    actor = await _entity(s, "malware", "HuntSuppUses")
+    live = await _entity(s, "attack-pattern", "Live", external_id="T1059")
+    hidden = await _entity(s, "attack-pattern", "Hidden", external_id="T1001", suppressed=True)
+    for i, t in enumerate((live, hidden)):
+        s.add(
+            Relationship(
+                stix_id=f"relationship--hsu{i}",
+                relationship_type="uses",
+                source_entity_id=actor.id,
+                target_entity_id=t.id,
+                provenance="attack",
+            )
+        )
+    await s.commit()
+    body = (
+        await api_client.get(f"/api/hunt-packs/entity/{actor.id}", headers=auth_header())
+    ).json()
+    assert [t["attack_id"] for t in body["techniques"]] == ["T1059"]
+
+
+async def test_story_legacy_mention_is_llm_tier(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Header
+) -> None:
+    s = api_session
+    st = await _story(s, "Legacy story")
+    a = await _article(s, st)
+    await _mention(s, await _entity(s, "attack-pattern", "Old", external_id="T1027"), a, "legacy")
+    await _mention(s, await _entity(s, "attack-pattern", "Kw", external_id="T1059"), a, "keyword")
+    await s.commit()
+    body = (await api_client.get(f"/api/hunt-packs/story/{st.id}", headers=auth_header())).json()
+    assert {t["attack_id"]: t["tier"] for t in body["techniques"]} == {
+        "T1059": "primary",
+        "T1027": "llm",
+    }
