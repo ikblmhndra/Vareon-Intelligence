@@ -130,7 +130,8 @@ migration's downgrade drops them.
   `unsupported` are skipped.
 - Parses each file with `yaml.safe_load`. Required: `id` (UUID), `title`, `logsource`, `level`,
   `status` in `stable, test, experimental`. A file that fails is counted as `skipped` with a reason;
-  it does not fail the load.
+  it does not fail the load. PyYAML is already in `uv.lock` as a transitive dependency (6.0.3); it is
+  declared as a direct dependency of `cti-core` (no new package).
 - **Guards** (the whole load is refused, the table untouched): the zip cannot be opened; fewer than
   1,000 valid rules; fewer than 80% of the rule count currently stored.
 - Replaces the table content in one transaction (`DELETE` + bulk `INSERT`).
