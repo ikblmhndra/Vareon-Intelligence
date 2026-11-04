@@ -44,8 +44,11 @@ def test_claim_due_orders_classify_first_and_sets_lease(db_session: Session) -> 
     c2 = _make(repo, "https://example.com/c2")
     assert ttp and c1 and c2
     ttp.created_at = NOW - datetime.timedelta(hours=3)
+    ttp.next_attempt_at = NOW - datetime.timedelta(minutes=1)  # jatuh tempo relatif NOW
     c1.created_at = NOW - datetime.timedelta(hours=2)
+    c1.next_attempt_at = NOW - datetime.timedelta(minutes=1)  # jatuh tempo relatif NOW
     c2.created_at = NOW - datetime.timedelta(hours=1)
+    c2.next_attempt_at = NOW - datetime.timedelta(minutes=1)  # jatuh tempo relatif NOW
     db_session.flush()
     lease = datetime.timedelta(minutes=15)
 
