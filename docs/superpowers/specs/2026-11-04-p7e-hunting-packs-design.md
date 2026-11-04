@@ -1,6 +1,6 @@
 # P7e: hunting packs (design)
 
-Status: **design, awaiting review** (2026-11-04). Part of release **0.8.11** (no version bump; the
+Status: **approved, built for 0.8.11** (2026-11-04). Part of release **0.8.11** (no version bump; the
 release rule of 2026-10-29: all P7 work ships as one release, one PR per sub-project). Branch
 `claude/p7e-hunting-packs` on `main` `0b26f7c` (P6, P7a, P7b, P7c-1, P7c-2).
 
@@ -173,7 +173,7 @@ table is empty.
 **Story** `collect_story(session, story_id)`:
 
 - Techniques: `entity_mentions` of type `attack-pattern` on the member articles, tier by method:
-  `explicit`/`keyword`/`analyst` -> `primary`, `llm` -> `llm`; plus `inferred_ttps.for_article` per
+  `explicit`/`keyword`/`analyst` -> `primary`; `llm` and any other method (for example `legacy`) -> `llm`; plus `inferred_ttps.for_article` per
   member article -> `inferred`. A technique in several tiers keeps the strongest
   (`primary` > `inferred` > `llm`).
 - Indicators: `indicator_sources.article_id` in the member articles.
@@ -184,9 +184,12 @@ table is empty.
 - Techniques: non-revoked `relationships` `uses` from the entity to `attack-pattern` entities
   (provenance `attack` or `analyst`), all `primary`.
 - Indicators: those linked to stories that mention the entity with `last_seen_at` within `days`,
-  plus non-revoked `indicates` relationships to the entity. Capped at **2,000**, newest `last_seen`
+  plus non-revoked `indicates` relationships to the entity. Indicators of articles without a story
+  use the article date `coalesce(posted_on, created_at::date)`. Suppressed `attack-pattern` targets
+  are excluded. Capped at **2,000**, newest `last_seen`
   first; the pack reports `truncated: true` when the cap cut.
 - An `attack-pattern` entity gets a Sigma-only pack (its own technique). Other types: 404.
+- A suppressed anchor entity: 404.
 - A merged entity (`merged_into_id` set): 404 with the target id in the error details (the web
   redirects, as the entity page does).
 
@@ -251,7 +254,8 @@ CIM assumptions, attribution and DRL 1.1 notice), `LICENSE.Detection.Rules.md`,
 unchanged; the token form lists the new scope). Parameters: `include` (repeatable, `inferred`,
 `llm`), `days` (entity only, 1-365, default 90), `format` `json` (default) or `zip`. TLP filter by
 the token's `max_tlp`. Errors in the v2 shape `{error: {code, message, details}}`: unknown anchor or
-unsupported entity type 404, merged entity 404 with `details.merged_into_id`, bad parameter 400.
+unsupported entity type 404, merged entity 404 with `details.merged_into_id`, invalid parameter 422
+(the existing `/api/v2` validation handler).
 `test_route_permissions` already requires `require_token` on `/api/v2/*`.
 
 ### 6.2 Web: `/api/hunt-packs/{anchor_type}/{anchor_id}`
@@ -266,6 +270,7 @@ Typed schemas; `docs/openapi.json` and `apps/web/src/lib/api/schema.d.ts` regene
 
 ### 7.1 Web
 
+- The API token form lives in `apps/web/src/components/admin/api-tokens-section.tsx`.
 - **Entity page** (`intelligence/entities/[id]`): new tab **Hunt** for the supported types.
 - **Newsroom article detail**: a **Hunt** section for the article's story (hidden when the story has
   neither techniques nor indicators).
@@ -281,7 +286,7 @@ Typed schemas; `docs/openapi.json` and `apps/web/src/lib/api/schema.d.ts` regene
 ### 7.2 Hypothesis generation
 
 `services/hunt_hypothesis.py`, `get_llm_client(task="hunt_hypothesis")`. Input: anchor title, story
-summary or entity description (truncated), `primary` techniques (id + name), and the dataset names
+summary (`Story.classify["reason"]`; articles have no summary column) or entity description (truncated), `primary` techniques (id + name), and the dataset names
 that have indicators. **No indicator values** are sent. The prompt asks for 3-5 hypotheses, each
 with the behaviour to look for, the data needed and the technique id; plain text output, stored
 as-is. Logged in `llm_calls` by the existing client wrapper. An LLM error returns 502 and keeps the
