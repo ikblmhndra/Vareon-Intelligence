@@ -173,14 +173,18 @@ _SIGMA_STALE_DAYS = 60
 async def _sigma_health(session: AsyncSession, now: datetime.datetime) -> SigmaHealthOut:
     snap = await session.get(ReferenceSnapshot, SIGMA_SNAPSHOT)
     rules = await session.scalar(select(func.count()).select_from(SigmaRule)) or 0
-    content = snap.content if snap is not None else {}
+    # Baris snapshot bisa rusak (JSONB bebas): jangan sampai /data-health 500.
+    content = snap.content if snap is not None and isinstance(snap.content, dict) else {}
+    release = content.get("release")
+    release = str(release) if release is not None else None
     last_error = content.get("last_error")
+    last_error = str(last_error) if last_error is not None else None
     stale = snap is None or now - snap.fetched_at > datetime.timedelta(days=_SIGMA_STALE_DAYS)
     status: Literal["ok", "amber", "red"] = (
         "red" if rules == 0 else "amber" if stale or last_error else "ok"
     )
     return SigmaHealthOut(
-        release=content.get("release"),
+        release=release,
         rules=rules,
         fetched_at=_iso(snap.fetched_at) if snap is not None else None,
         last_error=last_error,
