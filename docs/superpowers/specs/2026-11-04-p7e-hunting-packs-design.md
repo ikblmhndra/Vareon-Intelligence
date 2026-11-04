@@ -271,7 +271,7 @@ Typed schemas; `docs/openapi.json` and `apps/web/src/lib/api/schema.d.ts` regene
   neither techniques nor indicators).
 - Content: techniques grouped by tier with `inferred`/`llm` checkboxes (refetch with `include`);
   one card per SPL search with a copy button; Sigma table (title, level, status, author, link,
-  "view YAML" dialog); buttons *Download pack (zip)* and per-dataset CSV; the line "Sigma rules by
+  logsource; the YAML itself is only in the zip, the JSON pack stays small); buttons *Download pack (zip)* and per-dataset CSV; the line "Sigma rules by
   their authors, Detection Rule License 1.1" with links; a `truncated` note for entities.
 - **Hypothesis panel**: shows the stored draft with an "LLM draft" badge, model and time;
   *Draft hypothesis* / *Regenerate* button for `manage_intel`.
