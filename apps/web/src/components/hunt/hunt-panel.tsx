@@ -38,7 +38,7 @@ function saveBlob(blob: Blob, filename: string) {
   a.href = url;
   a.download = filename;
   a.click();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 function iocsCsv(rows: HuntIoc[]): string {
@@ -88,11 +88,27 @@ export function HuntPanel({ anchorType, anchorId }: { anchorType: AnchorType; an
     }
   }
 
-  function copy(text: string) {
-    navigator.clipboard.writeText(text).then(
-      () => toast.success("Copied to clipboard"),
-      () => toast.error("Could not copy to clipboard"),
-    );
+  async function copy(text: string) {
+    try {
+      // `navigator.clipboard` tidak ada di origin non-secure (dev http://172.25.1.77): pakai textarea + execCommand.
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.setAttribute("readonly", "");
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand("copy");
+        ta.remove();
+        if (!ok) throw new Error("execCommand failed");
+      }
+      toast.success("Copied to clipboard");
+    } catch {
+      toast.error("Could not copy to clipboard. Select the query text and copy it manually.");
+    }
   }
 
   if (pack.isPending) return isStory ? null : <Skeleton className="h-48 w-full" />;
@@ -200,7 +216,7 @@ export function HuntPanel({ anchorType, anchorId }: { anchorType: AnchorType; an
                   size="icon-sm"
                   className="max-sm:size-11"
                   aria-label={`Copy SPL for ${s.dataset}`}
-                  onClick={() => copy(s.query)}
+                  onClick={() => void copy(s.query)}
                 >
                   <Copy aria-hidden />
                 </Button>
