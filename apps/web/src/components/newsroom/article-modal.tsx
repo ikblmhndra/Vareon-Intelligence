@@ -23,6 +23,7 @@ import {
 import type { components } from "@/lib/api/schema";
 import { D3fendToggle } from "@/components/newsroom/d3fend-toggle";
 import { InferredTtpsSection } from "@/components/newsroom/inferred-ttps-section";
+import { HuntPanel } from "@/components/hunt/hunt-panel";
 import { CredibilityOverride } from "@/components/newsroom/credibility-override";
 import { GradeChip } from "@/components/newsroom/grade-chip";
 import { gradeLines } from "@/components/newsroom/score-reasons";
@@ -281,6 +282,8 @@ export function ArticleModal({ article, onOpenChange }: { article: Article | nul
           {((a.threat_actors ?? []).length > 0 || (a.malware ?? []).length > 0) && (
             <InferredTtpsSection articleId={a.id} />
           )}
+
+          {a.story && <HuntPanel key={a.story.id} anchorType="story" anchorId={a.story.id} />}
 
           {iocEntries.length > 0 && (
             <Section title="Indicators of Compromise">
