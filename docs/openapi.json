@@ -3744,6 +3744,302 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "HuntAnchorOut": {
+        "properties": {
+          "entity_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Type"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "story",
+              "entity"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "id",
+          "title",
+          "entity_type"
+        ],
+        "title": "HuntAnchorOut",
+        "type": "object"
+      },
+      "HuntIocOut": {
+        "properties": {
+          "tlp": {
+            "title": "Tlp",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "valid_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid Until"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "value",
+          "valid_until",
+          "tlp"
+        ],
+        "title": "HuntIocOut",
+        "type": "object"
+      },
+      "HuntPackOut": {
+        "properties": {
+          "anchor": {
+            "$ref": "#/components/schemas/HuntAnchorOut"
+          },
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "object"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "include": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Include",
+            "type": "array"
+          },
+          "iocs": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/HuntIocOut"
+              },
+              "type": "array"
+            },
+            "title": "Iocs",
+            "type": "object"
+          },
+          "sigma": {
+            "items": {
+              "$ref": "#/components/schemas/HuntSigmaOut"
+            },
+            "title": "Sigma",
+            "type": "array"
+          },
+          "sigma_release": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sigma Release"
+          },
+          "spl": {
+            "items": {
+              "$ref": "#/components/schemas/HuntSplOut"
+            },
+            "title": "Spl",
+            "type": "array"
+          },
+          "techniques": {
+            "items": {
+              "$ref": "#/components/schemas/HuntTechniqueOut"
+            },
+            "title": "Techniques",
+            "type": "array"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "anchor",
+          "generated_at",
+          "sigma_release",
+          "techniques",
+          "spl",
+          "sigma",
+          "iocs",
+          "counts",
+          "truncated",
+          "include"
+        ],
+        "title": "HuntPackOut",
+        "type": "object"
+      },
+      "HuntSigmaOut": {
+        "properties": {
+          "author": {
+            "title": "Author",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "level": {
+            "title": "Level",
+            "type": "string"
+          },
+          "link": {
+            "title": "Link",
+            "type": "string"
+          },
+          "logsource": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Logsource",
+            "type": "object"
+          },
+          "match": {
+            "enum": [
+              "exact",
+              "sub",
+              "parent"
+            ],
+            "title": "Match",
+            "type": "string"
+          },
+          "ruleset": {
+            "title": "Ruleset",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "techniques": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Techniques",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "via_technique": {
+            "title": "Via Technique",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "level",
+          "status",
+          "author",
+          "ruleset",
+          "link",
+          "techniques",
+          "logsource",
+          "match",
+          "via_technique"
+        ],
+        "title": "HuntSigmaOut",
+        "type": "object"
+      },
+      "HuntSplOut": {
+        "properties": {
+          "chunk": {
+            "title": "Chunk",
+            "type": "integer"
+          },
+          "dataset": {
+            "title": "Dataset",
+            "type": "string"
+          },
+          "query": {
+            "title": "Query",
+            "type": "string"
+          },
+          "value_count": {
+            "title": "Value Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "dataset",
+          "chunk",
+          "value_count",
+          "query"
+        ],
+        "title": "HuntSplOut",
+        "type": "object"
+      },
+      "HuntTechniqueOut": {
+        "properties": {
+          "attack_id": {
+            "title": "Attack Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "sigma_count": {
+            "title": "Sigma Count",
+            "type": "integer"
+          },
+          "tier": {
+            "enum": [
+              "primary",
+              "inferred",
+              "llm"
+            ],
+            "title": "Tier",
+            "type": "string"
+          }
+        },
+        "required": [
+          "attack_id",
+          "name",
+          "tier",
+          "sigma_count"
+        ],
+        "title": "HuntTechniqueOut",
+        "type": "object"
+      },
       "IndicatorFeedItem": {
         "properties": {
           "changed_at": {
@@ -18491,6 +18787,126 @@
         ]
       }
     },
+    "/api/hunt-packs/{anchor_type}/{anchor_id}": {
+      "get": {
+        "operationId": "get_hunt_pack_api_hunt_packs__anchor_type___anchor_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "anchor_type",
+            "required": true,
+            "schema": {
+              "enum": [
+                "story",
+                "entity"
+              ],
+              "title": "Anchor Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "anchor_id",
+            "required": true,
+            "schema": {
+              "title": "Anchor Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "enum": [
+                  "inferred",
+                  "llm"
+                ],
+                "type": "string"
+              },
+              "title": "Include",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 90,
+              "maximum": 365,
+              "minimum": 1,
+              "title": "Days",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "json",
+              "enum": [
+                "json",
+                "zip"
+              ],
+              "title": "Format",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HuntPackOut"
+                }
+              },
+              "application/zip": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Hunt Pack",
+        "tags": [
+          "hunt-packs"
+        ]
+      }
+    },
     "/api/intelligence/geopolitical": {
       "get": {
         "operationId": "geopolitical_summary_api_intelligence_geopolitical_get",
@@ -27947,6 +28363,131 @@
           }
         ],
         "summary": "List Entities",
+        "tags": [
+          "machine-api"
+        ]
+      }
+    },
+    "/api/v2/hunt-packs/{anchor_type}/{anchor_id}": {
+      "get": {
+        "operationId": "get_hunt_pack_v2_api_v2_hunt_packs__anchor_type___anchor_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "anchor_type",
+            "required": true,
+            "schema": {
+              "enum": [
+                "story",
+                "entity"
+              ],
+              "title": "Anchor Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "anchor_id",
+            "required": true,
+            "schema": {
+              "title": "Anchor Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "enum": [
+                  "inferred",
+                  "llm"
+                ],
+                "type": "string"
+              },
+              "title": "Include",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 90,
+              "maximum": 365,
+              "minimum": 1,
+              "title": "Days",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "json",
+              "enum": [
+                "json",
+                "zip"
+              ],
+              "title": "Format",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HuntPackOut"
+                }
+              },
+              "application/zip": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          }
+        ],
+        "summary": "Get Hunt Pack V2",
         "tags": [
           "machine-api"
         ]
