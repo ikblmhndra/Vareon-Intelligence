@@ -2606,6 +2606,9 @@
           "scrapers": {
             "$ref": "#/components/schemas/ScraperHealthSummary"
           },
+          "sigma": {
+            "$ref": "#/components/schemas/SigmaHealthOut"
+          },
           "sources": {
             "$ref": "#/components/schemas/SourceFreshnessOut"
           }
@@ -2618,7 +2621,8 @@
           "sources",
           "ioc_enrichment",
           "llm",
-          "relevance"
+          "relevance",
+          "sigma"
         ],
         "title": "DataHealthOut",
         "type": "object"
@@ -9140,6 +9144,66 @@
           "mttr"
         ],
         "title": "SeverityMetrics",
+        "type": "object"
+      },
+      "SigmaHealthOut": {
+        "description": "Snapshot SigmaHQ (P7e). `red` = 0 aturan; `amber` = snapshot >60 hari atau `last_error`.",
+        "properties": {
+          "fetched_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fetched At"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "release": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release"
+          },
+          "rules": {
+            "title": "Rules",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "amber",
+              "red"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "release",
+          "rules",
+          "fetched_at",
+          "last_error",
+          "status"
+        ],
+        "title": "SigmaHealthOut",
         "type": "object"
       },
       "SlowestCve": {
