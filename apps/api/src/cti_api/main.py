@@ -21,6 +21,7 @@ from cti_core.db.models.article import Article
 from cti_core.db.models.report_state import JobState
 from cti_core.db.repositories.auth import AsyncClientRepo
 from cti_core.db.repositories.source_reliability import AsyncSourceReliabilityRepo
+from cti_core.hunt.sigma import ensure_sigma_rules
 from cti_core.indicator.validity import ttl_fingerprint
 from cti_core.logging import configure_logging, get_logger
 from fastapi import FastAPI, Request
@@ -118,6 +119,14 @@ async def bootstrap_reference_rows(session: AsyncSession) -> list[str]:
     await session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": _BOOTSTRAP_LOCK_KEY})
     await AsyncClientRepo(session).ensure_default()
     inserted = await AsyncSourceReliabilityRepo(session).ensure_defaults(source_kinds)
+    try:
+        await session.run_sync(ensure_sigma_rules)  # P7e: snapshot bawaan hanya bila tabel kosong
+    except Exception:
+        await session.rollback()  # lock lepas; startup lanjut tanpa aturan (CLI/sync bisa memuat)
+        log.error("sigma_bootstrap_failed", exc_info=True)
+        await session.execute(
+            text("SELECT pg_advisory_xact_lock(:key)"), {"key": _BOOTSTRAP_LOCK_KEY}
+        )
     await ensure_system_roles(session)  # commit di akhir -> lock dilepas
     return inserted
 

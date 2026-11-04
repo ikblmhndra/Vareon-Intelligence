@@ -22,6 +22,7 @@ dependencies = [
 
 [project.scripts]
 cti-entity = "cti_core.entity.cli:main"
+cti-sigma = "cti_core.hunt.cli:main"
 
 [build-system]
 requires = ["hatchling"]

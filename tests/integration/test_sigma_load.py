@@ -10,7 +10,7 @@ import pytest
 from cti_core.db.models import SigmaRule
 from cti_core.db.models.entity import ReferenceSnapshot
 from cti_core.hunt.sigma import SigmaLoadError, load_sigma_zip, record_sigma_error
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 
 
 def _zip_n(n: int) -> bytes:
@@ -24,6 +24,12 @@ def _zip_n(n: int) -> bytes:
                 "tags: [attack.t1059]\nlogsource:\n  product: windows\n",
             )
     return buf.getvalue()
+
+
+@pytest.fixture(autouse=True)
+def _empty_sigma_rules(db_session):
+    # lifespan/bootstrap test lain meng-commit snapshot bawaan; guard shrink butuh tabel kosong
+    db_session.execute(delete(SigmaRule))
 
 
 def _count(s) -> int:

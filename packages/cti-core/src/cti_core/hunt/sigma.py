@@ -15,6 +15,7 @@ import re
 import uuid
 import zipfile
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import yaml
@@ -23,8 +24,10 @@ from sqlalchemy.orm import Session
 
 from cti_core.db.models import SigmaRule
 from cti_core.db.models.entity import ReferenceSnapshot
+from cti_core.logging import get_logger
 
 SIGMA_SNAPSHOT = "sigma"
+SNAPSHOT_DIR = Path(__file__).parent / "data" / "sigma"
 MIN_RULES = 1000
 MAX_SHRINK = 0.2
 _BATCH = 500
@@ -32,6 +35,7 @@ _ROOTS = ("rules-emerging-threats", "rules")
 _STATUSES = {"stable", "test", "experimental"}
 _LEVELS = {"informational", "low", "medium", "high", "critical"}
 _SKIP_DIRS = {"deprecated", "unsupported"}
+log = get_logger(component="hunt.sigma")
 _TECHNIQUE = re.compile(r"^attack\.(t\d{4}(?:\.\d{3})?)$", re.IGNORECASE)
 
 
@@ -192,3 +196,25 @@ def record_sigma_error(session: Session, error: str) -> None:
     if snap is not None:
         snap.content = {**snap.content, "last_error": error}
         session.flush()
+
+
+def read_source() -> dict[str, str]:
+    """`SOURCE` snapshot: baris `key: value` (release, url, sha256, downloaded)."""
+    out: dict[str, str] = {}
+    for line in (SNAPSHOT_DIR / "SOURCE").read_text(encoding="utf-8").splitlines():
+        key, sep, value = line.partition(":")
+        if sep:
+            out[key.strip()] = value.strip()
+    return out
+
+
+def ensure_sigma_rules(session: Session) -> SigmaLoadResult | None:
+    """Muat zip bawaan paket hanya bila `sigma_rules` kosong; tabel berisi dibiarkan (sync/CLI
+    yang mengganti). Tidak commit: dipanggil di dalam transaksi bootstrap."""
+    if session.scalar(select(func.count()).select_from(SigmaRule)):
+        return None
+    src = read_source()
+    data = (SNAPSHOT_DIR / "sigma_all_rules.zip").read_bytes()
+    result = load_sigma_zip(session, data, release=src["release"], source_url=src["url"])
+    log.info("sigma_snapshot_loaded", release=result.release, rules=result.rules)
+    return result
