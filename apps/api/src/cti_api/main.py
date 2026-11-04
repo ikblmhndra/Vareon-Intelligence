@@ -120,13 +120,10 @@ async def bootstrap_reference_rows(session: AsyncSession) -> list[str]:
     await AsyncClientRepo(session).ensure_default()
     inserted = await AsyncSourceReliabilityRepo(session).ensure_defaults(source_kinds)
     try:
-        await session.run_sync(ensure_sigma_rules)  # P7e: snapshot bawaan hanya bila tabel kosong
+        async with session.begin_nested():  # savepoint: gagal Sigma tidak membatalkan client/grade
+            await session.run_sync(ensure_sigma_rules)  # P7e: snapshot hanya bila tabel kosong
     except Exception:
-        await session.rollback()  # lock lepas; startup lanjut tanpa aturan (CLI/sync bisa memuat)
         log.error("sigma_bootstrap_failed", exc_info=True)
-        await session.execute(
-            text("SELECT pg_advisory_xact_lock(:key)"), {"key": _BOOTSTRAP_LOCK_KEY}
-        )
     await ensure_system_roles(session)  # commit di akhir -> lock dilepas
     return inserted
 
