@@ -15,7 +15,7 @@ import pytest
 from cti_api import machine_auth
 from cti_core.db.models.article import Article
 from cti_core.db.models.attack import AttackGroup, AttackRelationship, AttackTechnique
-from cti_core.db.models.entity import Entity, EntityMention, Relationship
+from cti_core.db.models.entity import Entity, EntityMention, ReferenceSnapshot, Relationship
 from cti_core.db.models.hunt import SigmaRule
 from cti_core.db.models.indicator import Indicator, IndicatorSource
 from cti_core.db.models.story import Story
@@ -443,3 +443,97 @@ async def test_story_legacy_mention_is_llm_tier(
         "T1059": "primary",
         "T1027": "llm",
     }
+
+
+async def test_v2_entity_anchor_above_token_tlp_404(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Header
+) -> None:
+    ent = await _entity(api_session, "intrusion-set", "HuntAmberGroup", tlp="amber")
+    h = await _token(api_session, max_tlp="clear")
+    await api_session.commit()
+    r = await api_client.get(f"/api/v2/hunt-packs/entity/{ent.id}", headers=h)
+    assert r.status_code == 404
+    # jalur web (R1) tidak memfilter TLP
+    r = await api_client.get(f"/api/hunt-packs/entity/{ent.id}", headers=auth_header())
+    assert r.status_code == 200
+
+
+async def test_v2_entity_relationships_respect_token_tlp(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Header
+) -> None:
+    """Token `clear`: relasi `uses`/`indicates` amber, dan teknik target amber, tidak ikut."""
+    s = api_session
+    actor = await _entity(s, "malware", "HuntTlpRel")
+    ok_tech = await _entity(s, "attack-pattern", "Ok", external_id="T1059")
+    amber_rel_tech = await _entity(s, "attack-pattern", "AmberRel", external_id="T1001")
+    amber_tech = await _entity(s, "attack-pattern", "AmberTech", external_id="T1002", tlp="amber")
+    for i, (t, tlp) in enumerate(
+        ((ok_tech, "clear"), (amber_rel_tech, "amber"), (amber_tech, "clear"))
+    ):
+        s.add(
+            Relationship(
+                stix_id=f"relationship--htlp-u{i}",
+                relationship_type="uses",
+                source_entity_id=actor.id,
+                target_entity_id=t.id,
+                provenance="attack",
+                tlp=tlp,
+            )
+        )
+    ok_ind = await _indicator(s, "domain", "tlp-ok.example")
+    amber_ind = await _indicator(s, "domain", "tlp-amber-rel.example")
+    for i, (ind, tlp) in enumerate(((ok_ind, "clear"), (amber_ind, "amber"))):
+        s.add(
+            Relationship(
+                stix_id=f"relationship--htlp-i{i}",
+                relationship_type="indicates",
+                source_indicator_id=ind.id,
+                target_entity_id=actor.id,
+                provenance="analyst",
+                tlp=tlp,
+            )
+        )
+    h = await _token(s, max_tlp="clear")
+    await s.commit()
+
+    body = (await api_client.get(f"/api/v2/hunt-packs/entity/{actor.id}", headers=h)).json()
+    assert [t["attack_id"] for t in body["techniques"]] == ["T1059"]
+    assert {i["value"] for v in body["iocs"].values() for i in v} == {"tlp-ok.example"}
+    # jalur web tidak berubah
+    body = (
+        await api_client.get(f"/api/hunt-packs/entity/{actor.id}", headers=auth_header())
+    ).json()
+    assert {t["attack_id"] for t in body["techniques"]} == {"T1059", "T1001", "T1002"}
+    assert {i["value"] for v in body["iocs"].values() for i in v} == {
+        "tlp-ok.example",
+        "tlp-amber-rel.example",
+    }
+
+
+async def test_v2_zip_omits_indicator_above_token_tlp(
+    api_client: AsyncClient, api_session: AsyncSession, seeded_story: Seeded
+) -> None:
+    await _indicator(api_session, "ip", "203.0.113.77", seeded_story.article, tlp="amber")
+    h = await _token(api_session, max_tlp="clear")
+    await api_session.commit()
+    r = await api_client.get(f"/api/v2/hunt-packs/story/{seeded_story.id}?format=zip", headers=h)
+    assert r.status_code == 200, r.text
+    zf = zipfile.ZipFile(io.BytesIO(r.content))
+    members = {n: zf.read(n).decode("utf-8") for n in zf.namelist()}
+    assert any("198.51.100.7" in body for body in members.values())
+    assert not [n for n, body in members.items() if "203.0.113.77" in body]
+
+
+@pytest.mark.parametrize("content", [["x"], "x", 7])
+async def test_pack_tolerates_malformed_sigma_snapshot(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Header,
+    seeded_story: Seeded,
+    content: object,
+) -> None:
+    await api_session.merge(ReferenceSnapshot(name="sigma", sha256="0" * 64, content=content))
+    await api_session.commit()
+    r = await api_client.get(f"/api/hunt-packs/story/{seeded_story.id}", headers=auth_header())
+    assert r.status_code == 200, r.text
+    assert r.json()["sigma_release"] is None
