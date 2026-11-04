@@ -18,6 +18,7 @@ import { HuntPanel } from "@/components/hunt/hunt-panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TabPills, type TabPillItem } from "@/components/ui/tab-pills";
 import { api } from "@/lib/api/client";
+import { useCan } from "@/lib/auth/permissions";
 import type { components } from "@/lib/api/schema";
 import { ENTITY_TABS, entityTypeMeta } from "@/lib/entities/types";
 
@@ -59,6 +60,7 @@ export function EntityView({ id }: { id: number }) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
+  const can = useCan();
 
   const detail = useQuery({
     queryKey: ["entity", id],
@@ -111,9 +113,10 @@ export function EntityView({ id }: { id: number }) {
       { value: "timeline", label: "Timeline" },
     ];
     if (entity && ATTACK_TYPES.has(entity.type)) items.push({ value: "attack", label: "ATT&CK" });
-    if (entity && HUNT_TYPES.has(entity.type)) items.push({ value: "hunt", label: "Hunt" });
+    // pack berisi IOC: tab Hunt hanya untuk yang boleh melihat indikator
+    if (entity && HUNT_TYPES.has(entity.type) && can("view_ioc")) items.push({ value: "hunt", label: "Hunt" });
     return items;
-  }, [entity, relCount, totals.data]);
+  }, [entity, relCount, totals.data, can]);
 
   if (detail.isPending || mergedInto != null) {
     return (
@@ -191,7 +194,7 @@ export function EntityView({ id }: { id: number }) {
         {tab === "cves" && <EntityCvesTab entity={entity} />}
         {tab === "timeline" && <TimelineTab entity={entity} />}
         {tab === "attack" && <EntityAttackTab entity={entity} />}
-        {tab === "hunt" && <HuntPanel anchorType="entity" anchorId={entity.id} />}
+        {tab === "hunt" && <HuntPanel key={entity.id} anchorType="entity" anchorId={entity.id} />}
       </div>
     </div>
   );
