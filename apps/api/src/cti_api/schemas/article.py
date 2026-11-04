@@ -112,6 +112,8 @@ class ArticleOut(BaseModel):
     story: StoryRef | None = None
     classify_inherited_from: int | None = None
     """Id artikel lead kalau klasifikasi artikel ini diwarisi dari story-nya (audit classify)."""
+    llm_ttp_status: str | None = None
+    """P7g: `pending` (job TTP menunggu) | `done` | `skipped` | `failed`; `None` = artikel lama."""
     entities: list[ArticleEntityRef] = []
     """Entitas hidup yang disebut artikel, satu per (entitas, peran), urut mention. Aditif:
     field nama di atas tetap; UI memakai ini untuk tautan ke halaman entitas."""

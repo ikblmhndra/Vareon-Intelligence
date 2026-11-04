@@ -1,10 +1,13 @@
-"""Task Celery `enrich.article` -- kebijakan kegagalan (Fase 10.A2).
+"""Task Celery `enrich.article` -- kebijakan kegagalan (Fase 10.A2, diubah P7g).
 
 Latar: di e2e staging 3 dari 30 artikel HILANG tanpa jejak, karena artikel yang
 sudah lolos dedup (`scraper_seen` di-commit pas `send_task`) dan gagal di
 pipeline cuma ninggalin baris log. Prinsip yang dikunci di sini: artikel gak
-boleh hilang tanpa catatan -- entah di-retry sampai berhasil, atau dicatat ke
-`rejected_articles` ([enrichment_failed]) buat direview/di-restore analis.
+boleh hilang tanpa catatan -- entah di-retry sampai berhasil, atau dicatat sebagai
+job `classify` `failed` di `enrich_jobs` buat di-retry/diputuskan analis.
+
+Sejak P7g task ini tidak memanggil LLM; yang di-retry Celery hanya error DB/jaringan. Error
+gateway LLM (5xx, 429, respons kosong, JSON rusak, 401) ditangani job runner `enrich.llm`.
 
 Task dijalankan lewat `apply()` (eager, sinkron): `self.retry()` langsung
 ngeulang tanpa nunggu countdown, jadi jumlah percobaan bisa dihitung tepat.
@@ -14,7 +17,6 @@ dibersihin manual biar gak bocor ke test lain.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Iterator
 from types import SimpleNamespace
 
@@ -23,6 +25,7 @@ import openai
 import pytest
 from cti_core.db.engine import sync_session
 from cti_core.db.models.article import Article, RejectedArticle
+from cti_core.db.models.enrich_job import EnrichJob
 from cti_core.urlkit import url_hash
 from sqlalchemy import delete, select
 
@@ -41,6 +44,7 @@ _REQ = httpx.Request("POST", "http://gw/v1/chat/completions")
 def _clean(_migrated_schema: None) -> Iterator[None]:
     def wipe() -> None:
         with sync_session() as s:
+            s.execute(delete(EnrichJob).where(EnrichJob.url_hash == url_hash(URL)))
             s.execute(delete(RejectedArticle).where(RejectedArticle.url_hash == url_hash(URL)))
             s.execute(delete(Article).where(Article.url_hash == url_hash(URL)))
 
@@ -58,10 +62,13 @@ def mod(_migrated_schema: None):
 
 
 @pytest.fixture(autouse=True)
-def alerts(mod, monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str, int]]:
-    """Alert enrichment gagal dicatat, bukan dikirim (Redis + Telegram nyata tidak ada di sini)."""
-    seen: list[tuple[str, str, int]] = []
-    monkeypatch.setattr(mod, "_alert_enrichment_failure", lambda *a: seen.append(a))
+def alerts(mod, monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str]]:
+    """Alert "job gagal" (`llm_dispatch.alert_job_failed`) dicatat, bukan dikirim (Redis +
+    Telegram nyata tidak ada di sini)."""
+    from cti_worker.tasks import llm_dispatch
+
+    seen: list[tuple[str, str]] = []
+    monkeypatch.setattr(llm_dispatch, "alert_job_failed", lambda *a: seen.append(a))
     return seen
 
 
@@ -75,10 +82,22 @@ def stub_pipeline(monkeypatch: pytest.MonkeyPatch, *outcomes: BaseException | No
         item = outcomes[min(len(calls), len(outcomes)) - 1]
         if item is not None:
             raise item
-        return SimpleNamespace(accepted=True, news_type="global", article_id=1)
+        return SimpleNamespace(accepted=True, news_type="global", article_id=1, pending_job_id=None)
 
     monkeypatch.setattr("cti_enrich.pipeline.run_pipeline", fake)
     return calls
+
+
+def failed_job() -> EnrichJob | None:
+    with sync_session() as s:
+        job = s.scalar(
+            select(EnrichJob).where(
+                EnrichJob.kind == "classify", EnrichJob.url_hash == url_hash(URL)
+            )
+        )
+        if job is not None:
+            s.expunge(job)
+        return job
 
 
 def rejected_reason() -> str | None:
@@ -88,27 +107,20 @@ def rejected_reason() -> str | None:
         )
 
 
-def rejected_kind() -> str | None:
-    with sync_session() as s:
-        return s.scalar(
-            select(RejectedArticle.failure_kind).where(RejectedArticle.url_hash == url_hash(URL))
-        )
-
-
-def conn_error() -> openai.APIConnectionError:
-    return openai.APIConnectionError(request=_REQ)
+def conn_error() -> httpx.ConnectError:
+    return httpx.ConnectError("refused")
 
 
 # --- retry ------------------------------------------------------------------
 
 
-def test_transient_llm_errors_are_retried_until_success(mod, monkeypatch) -> None:
+def test_transient_errors_are_retried_until_success(mod, monkeypatch) -> None:
     calls = stub_pipeline(monkeypatch, conn_error(), conn_error(), None)
 
     result = mod.enrich_article.apply(kwargs=KWARGS)
 
     assert result.successful() and len(calls) == 3
-    assert rejected_reason() is None  # sukses -> gak ada catatan gagal
+    assert failed_job() is None  # sukses -> gak ada catatan gagal
 
 
 def test_persistent_transient_error_is_retried_6_times_then_recorded(
@@ -119,11 +131,12 @@ def test_persistent_transient_error_is_retried_6_times_then_recorded(
     result = mod.enrich_article.apply(kwargs=KWARGS)
 
     assert result.failed() and len(calls) == 1 + 6  # percobaan awal + 6 retry
-    reason = rejected_reason()
-    assert reason and reason.startswith("[enrichment_failed] APIConnectionError")
-    assert rejected_kind() == "transient"
-    [(error_type, _message, waiting)] = alerts  # SATU alert, di kegagalan final saja
-    assert error_type == "APIConnectionError" and waiting >= 1
+    job = failed_job()
+    assert job is not None and job.state == "failed" and job.input_text is None
+    assert (job.last_error or "").startswith("ConnectError: refused")
+    assert rejected_reason() is None  # bukan lagi baris `[enrichment_failed]`
+    # Job `failed` baru = satu alert (dedupe per jendela ada di `alert_job_failed`).
+    assert alerts == [(KWARGS["title"], job.last_error)]
 
 
 def test_replay_flag_silences_the_alerts_and_plain_messages_do_not(mod, monkeypatch) -> None:
@@ -131,7 +144,7 @@ def test_replay_flag_silences_the_alerts_and_plain_messages_do_not(mod, monkeypa
 
     def fake(**kw: object) -> SimpleNamespace:
         seen.update(kw)
-        return SimpleNamespace(accepted=True, news_type="global", article_id=1)
+        return SimpleNamespace(accepted=True, news_type="global", article_id=1, pending_job_id=None)
 
     monkeypatch.setattr("cti_enrich.pipeline.run_pipeline", fake)
 
@@ -139,30 +152,6 @@ def test_replay_flag_silences_the_alerts_and_plain_messages_do_not(mod, monkeypa
     assert seen["alert"] is False
     assert mod.enrich_article.apply(kwargs=KWARGS).successful()  # pesan lama tanpa `replay`
     assert seen["alert"] is True
-
-
-def test_empty_llm_response_is_retried_like_a_5xx(mod, monkeypatch) -> None:
-    from cti_core.llm.client import EmptyLLMResponse
-
-    calls = stub_pipeline(monkeypatch, EmptyLLMResponse("LLM membalas tanpa choices: None"), None)
-
-    assert mod.enrich_article.apply(kwargs=KWARGS).successful()
-    assert len(calls) == 2
-
-
-@pytest.mark.parametrize(
-    "error",
-    [
-        openai.InternalServerError("boom", response=httpx.Response(502, request=_REQ), body=None),
-        openai.RateLimitError("slow down", response=httpx.Response(429, request=_REQ), body=None),
-        httpx.ConnectError("refused"),
-    ],
-)
-def test_each_transient_category_is_retried(mod, monkeypatch, error: Exception) -> None:
-    calls = stub_pipeline(monkeypatch, error, None)
-
-    assert mod.enrich_article.apply(kwargs=KWARGS).successful()
-    assert len(calls) == 2
 
 
 def test_db_connection_drop_is_retried(mod, monkeypatch) -> None:
@@ -175,66 +164,56 @@ def test_db_connection_drop_is_retried(mod, monkeypatch) -> None:
     assert len(calls) == 2
 
 
-def test_json_errors_get_only_two_retries(mod, monkeypatch) -> None:
-    calls = stub_pipeline(monkeypatch, json.JSONDecodeError("Expecting value", "prosa", 0))
+@pytest.mark.parametrize(
+    "error",
+    [
+        openai.InternalServerError("boom", response=httpx.Response(502, request=_REQ), body=None),
+        openai.AuthenticationError("bad", response=httpx.Response(401, request=_REQ), body=None),
+    ],
+)
+def test_llm_errors_are_not_retried_by_this_task(mod, monkeypatch, error: Exception) -> None:
+    """Pipeline tidak memanggil LLM lagi; kalaupun error LLM sampai sini (bug), retry Celery tidak
+    akan menyembuhkannya: langsung dicatat sebagai job `failed`."""
+    calls = stub_pipeline(monkeypatch, error)
 
     result = mod.enrich_article.apply(kwargs=KWARGS)
 
-    assert result.failed() and len(calls) == 1 + 2
-    assert "[enrichment_failed] JSONDecodeError" in (rejected_reason() or "")
-    assert rejected_kind() == "json"
+    assert result.failed() and len(calls) == 1
+    job = failed_job()
+    assert job is not None and (job.last_error or "").startswith(type(error).__name__)
 
 
 # --- tanpa retry, langsung dicatat ----------------------------------------------
 
 
-def test_auth_error_is_not_retried_and_is_recorded(mod, monkeypatch) -> None:
-    err = openai.AuthenticationError(
-        "bad key", response=httpx.Response(401, request=_REQ), body=None
-    )
-    calls = stub_pipeline(monkeypatch, err)
-
-    result = mod.enrich_article.apply(kwargs=KWARGS)
-
-    assert (
-        result.failed() and len(calls) == 1
-    )  # retry cuma buang waktu: key salah gak sembuh sendiri
-    assert "AuthenticationError" in (rejected_reason() or "")
-    assert rejected_kind() == "config"
-
-
-def test_quota_exhausted_is_not_retried_and_is_recorded(mod, monkeypatch) -> None:
-    from cti_enrich.stages.classify import OpenAIQuotaExhausted
-
-    calls = stub_pipeline(monkeypatch, OpenAIQuotaExhausted("credit exhausted"))
-
-    result = mod.enrich_article.apply(kwargs=KWARGS)
-
-    assert result.failed() and len(calls) == 1
-    assert "OpenAIQuotaExhausted" in (rejected_reason() or "")
-
-
-def test_recorded_row_carries_the_article_metadata(mod, monkeypatch) -> None:
+def test_recorded_job_carries_the_article_metadata(mod, monkeypatch) -> None:
     stub_pipeline(monkeypatch, RuntimeError("bug tak terduga"))
 
     mod.enrich_article.apply(kwargs=KWARGS)
 
-    with sync_session() as s:
-        row = s.scalar(select(RejectedArticle).where(RejectedArticle.url_hash == url_hash(URL)))
-        assert row is not None
-        assert (row.title, row.source, row.scraper_id) == (KWARGS["title"], "Test", "t")
-        assert str(row.posted_on) == "2026-09-20"
+    job = failed_job()
+    assert job is not None
+    assert (job.title, job.source, job.scraper_id) == (KWARGS["title"], "Test", "t")
+    assert str(job.posted_on) == "2026-09-20"
+    assert job.last_error == "RuntimeError: bug tak terduga"
+    # `t` tidak terdaftar di registry: bawaan `_relevance_for`, ikut di context untuk job runner.
+    assert job.context == {
+        "content_kind": None,
+        "default_relevance": "classify",
+        "tlp": "clear",
+        "pap": "clear",
+    }
 
 
 def test_failing_to_record_never_hides_the_original_failure(mod, monkeypatch) -> None:
-    from cti_core.db.repositories.article import RejectedArticleRepo
+    from cti_core.db.repositories.enrich_job import EnrichJobRepo
 
     stub_pipeline(monkeypatch, RuntimeError("bug tak terduga"))
 
-    def broken_upsert(self: object, **_kw: object) -> None:
+    def broken_create(self: object, **_kw: object) -> None:
         raise ConnectionError("db mati")
 
-    monkeypatch.setattr(RejectedArticleRepo, "upsert", broken_upsert)
+    monkeypatch.setattr(EnrichJobRepo, "create", broken_create)
 
     result = mod.enrich_article.apply(kwargs=KWARGS)
 
@@ -247,20 +226,13 @@ def test_failing_to_record_never_hides_the_original_failure(mod, monkeypatch) ->
 def test_alert_failure_does_not_roll_back_the_persisted_article(mod, monkeypatch, alerts) -> None:
     """`persist` + `route_alerts` satu transaksi; exception dari alert bikin
     `sync_session()` ROLLBACK. Dulu artikel yang sudah ke-persist ikut batal
-    cuma karena notifikasi Telegram-nya gagal."""
+    cuma karena notifikasi Telegram-nya gagal. Jalur tanpa LLM: Tier 0 (`always`)."""
     from cti_enrich import pipeline
-    from cti_enrich.stages.classify import ClassifyResult
     from cti_enrich.stages.score import ScoreResult
 
-    relevant = ClassifyResult(
-        related_cyber=True, confidence=0.9, reason="r", industries_impacted=["General"]
-    )
-    monkeypatch.setattr(pipeline, "classify", lambda t: relevant)
+    monkeypatch.setattr(mod, "_relevance_for", lambda sid: ("kev", "always", "clear", "clear"))
     monkeypatch.setattr(pipeline, "fetch_text", lambda u: "Isi artikel. " * 40)
     monkeypatch.setattr(pipeline, "summarize", lambda t: "Ringkasan.")
-    monkeypatch.setattr(
-        pipeline, "extract_ttps", lambda s: pipeline.TtpResult(has_techniques=False)
-    )
     monkeypatch.setattr(pipeline.extract_iocs_stage, "extract_iocs", lambda *a, **k: {})
     monkeypatch.setattr(pipeline.extract_iocs_stage, "check_c2_hit", lambda *a, **k: False)
     monkeypatch.setattr(pipeline.score_stage, "score", lambda *a, **k: ScoreResult())
@@ -276,13 +248,13 @@ def test_alert_failure_does_not_roll_back_the_persisted_article(mod, monkeypatch
     with sync_session() as s:
         saved = s.scalar(select(Article.id).where(Article.url_hash == url_hash(URL)))
     assert saved is not None  # ... tapi ARTIKELNYA SELAMAT
-    assert rejected_reason() is None  # dan gak salah dicatat sbg hilang
+    assert failed_job() is None  # dan gak salah dicatat sbg hilang
     assert alerts == []  # dan tidak ada alert "enrichment gagal" palsu
 
 
 def test_failure_reason_never_contains_configured_secrets(mod, monkeypatch) -> None:
-    """Pesan error provider bisa ngecho (sebagian) API key; `reason` masuk DB dan
-    tampil di UI Filtered Articles -- secret yang dikonfigurasi harus di-scrub."""
+    """Pesan error provider bisa ngecho (sebagian) API key; `last_error` masuk DB dan
+    tampil di UI antrean enrichment -- secret yang dikonfigurasi harus di-scrub."""
     from cti_core.config import get_settings
 
     secret = "sk-SUPER-SECRET-KEY-1234567890"
@@ -293,8 +265,18 @@ def test_failure_reason_never_contains_configured_secrets(mod, monkeypatch) -> N
     )
 
     mod.enrich_article.apply(kwargs=KWARGS)
-    reason = rejected_reason() or ""
+    job = failed_job()
     get_settings.cache_clear()
 
-    assert "[enrichment_failed]" in reason and "Incorrect API key provided" in reason
-    assert secret not in reason and "***" in reason
+    error = (job.last_error if job else None) or ""
+    assert error.startswith("RuntimeError: Incorrect API key provided")
+    assert secret not in error and "***" in error
+
+
+def test_long_error_is_cut_to_300_chars(mod, monkeypatch) -> None:
+    stub_pipeline(monkeypatch, RuntimeError("x" * 1000))
+
+    mod.enrich_article.apply(kwargs=KWARGS)
+
+    job = failed_job()
+    assert job is not None and len(job.last_error or "") == 300

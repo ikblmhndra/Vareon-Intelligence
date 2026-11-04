@@ -292,7 +292,8 @@ async def resolve_entity(
             Entity.merged_into_id.is_(None),
         )
     )
-    ids = list((await session.scalars(stmt.order_by(Entity.id))).all())
+    # Hanya kandidat pertama yang dipakai, jadi tiap langkah dibatasi satu baris.
+    ids = list((await session.scalars(stmt.order_by(Entity.id).limit(1))).all())
     if not ids and name.strip():
         ids = list(
             (
@@ -303,6 +304,7 @@ async def resolve_entity(
                         func.lower(Entity.external_id) == name.strip().lower(),
                     )
                     .order_by(Entity.merged_into_id.is_not(None), Entity.id)
+                    .limit(1)
                 )
             ).all()
         )
@@ -316,6 +318,7 @@ async def resolve_entity(
                         func.entity_alias_norm(Entity.name) == alias_norm(name),
                     )
                     .order_by(Entity.merged_into_id.is_not(None), Entity.id)
+                    .limit(1)
                 )
             ).all()
         )

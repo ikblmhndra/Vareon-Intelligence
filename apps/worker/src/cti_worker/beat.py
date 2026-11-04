@@ -204,9 +204,11 @@ def _periodic_schedule() -> dict[str, dict[str, object]]:
             "schedule": crontab(hour=3, minute=30),
             "options": {"queue": QUEUE_MAINTENANCE},
         },
-        "enrich-auto-replay": {
-            "task": "enrich.auto_replay",
-            "schedule": crontab(minute="*/10"),
+        "enrich-llm-dispatch": {
+            # P7g: job LLM yang jatuh tempo dikirim di balik circuit breaker (menggantikan replay
+            # otomatis tiap 10 menit). Tiap menit: canary setengah terbuka tidak menunggu lama.
+            "task": "enrich.llm_dispatch",
+            "schedule": crontab(minute="*"),
             "options": {"queue": QUEUE_MAINTENANCE},
         },
         "llm-purge-calls": {

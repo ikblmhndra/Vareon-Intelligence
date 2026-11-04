@@ -17,35 +17,57 @@ import { useCan } from "@/lib/auth/permissions";
 const PAGE_SIZE = 20;
 const QUERY_KEY = ["newsroom", "filtered"] as const;
 
-type Kind = "unrelated" | "failed";
+type Kind = "unrelated" | "queue";
 
 const KIND_TABS: TabPillItem<Kind>[] = [
   { value: "unrelated", label: "Not cyber-related" },
-  { value: "failed", label: "Failed enrichment", tone: "destructive" },
+  { value: "queue", label: "Enrichment queue", tone: "destructive" },
 ];
 
 const HINT: Record<Kind, string> = {
   unrelated:
     "Articles the LLM classified as not cyber-related. Restore adds one to the news feed without enrichment (no countries, actors or TTPs).",
-  failed:
-    "Articles that could not be processed (LLM or network error), so they are not in the news feed yet. Fix the cause, then Replay re-runs the full pipeline; the row disappears once the article is processed.",
+  queue:
+    "Articles waiting for the LLM to classify them, so they are not in the news feed yet. Pending jobs are retried automatically once the model works; failed jobs need a Retry. Accept adds the article to the feed, Reject drops it.",
 };
 
-/** Sub-view admin "Filtered Articles" (`rejected_articles`): dua jenis baris yang dulu bercampur --
- * ditolak klasifikasi LLM (`failure_kind` null, bisa Restore) dan enrichment GAGAL (bisa Replay).
- * Di-gate admin di halaman (`page.tsx`); Replay juga admin-only di API. */
+/** Umur ringkas ("5m", "3h", "2d") dari ISO; "—" kalau kosong/tidak valid. */
+function age(iso: string | null | undefined): string {
+  const ms = iso ? Date.parse(iso) : Number.NaN;
+  if (Number.isNaN(ms)) return "—";
+  const m = Math.max(0, Math.floor((Date.now() - ms) / 60_000));
+  return m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h` : `${Math.floor(m / 1440)}d`;
+}
+
+/** Sub-view admin "Filtered Articles": dua jenis baris -- ditolak klasifikasi LLM (`rejected_articles`,
+ * bisa Restore) dan antrean enrichment (`enrich_jobs` kind classify: artikel yang menunggu LLM, P7g).
+ * Di-gate admin di halaman (`page.tsx`); Accept/Reject butuh `manage_sources`, Retry `manage_scraper`. */
 export function FilteredView() {
   const queryClient = useQueryClient();
   const [kind, setKind] = useState<Kind>("unrelated");
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounced(search);
   const [page, setPage] = usePageResetOn(`${kind}|${debouncedSearch}`);
+  const can = useCan();
 
-  const query = useQuery({
-    queryKey: [...QUERY_KEY, kind, debouncedSearch, page],
+  const unrelated = useQuery({
+    queryKey: [...QUERY_KEY, "unrelated", debouncedSearch, page],
+    enabled: kind === "unrelated",
     queryFn: async () => {
       const { data, error } = await api.GET("/api/filtered-articles", {
-        params: { query: { page, page_size: PAGE_SIZE, search: debouncedSearch || undefined, kind } },
+        params: { query: { page, page_size: PAGE_SIZE, search: debouncedSearch || undefined, kind: "unrelated" } },
+      });
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const jobs = useQuery({
+    queryKey: [...QUERY_KEY, "queue", debouncedSearch, page],
+    enabled: kind === "queue",
+    queryFn: async () => {
+      const { data, error } = await api.GET("/api/enrich-jobs", {
+        params: { query: { kind: "classify", page, page_size: PAGE_SIZE, search: debouncedSearch || undefined } },
       });
       if (error) throw error;
       return data;
@@ -66,25 +88,34 @@ export function FilteredView() {
     onError: (e: Error) => toast.error(`Restore failed: ${e.message}`),
   });
 
-  const replayMutation = useMutation({
-    mutationFn: async (id: number) => {
-      const { error, response } = await api.POST("/api/filtered-articles/{article_id}/replay", {
-        params: { path: { article_id: id } },
-      });
+  const jobMutation = useMutation({
+    mutationFn: async ({ id, action }: { id: number; action: "accept" | "reject" | "retry" }) => {
+      const path = { params: { path: { job_id: id } } };
+      const { error, response } =
+        action === "accept"
+          ? await api.POST("/api/enrich-jobs/{job_id}/accept", path)
+          : action === "reject"
+            ? await api.POST("/api/enrich-jobs/{job_id}/reject", path)
+            : await api.POST("/api/enrich-jobs/{job_id}/retry", path);
       if (!response.ok) throw new Error(errorMessage(error));
     },
-    onSuccess: () => {
-      toast.success("Replay queued. The article appears in the news feed once processed.");
+    onSuccess: (_d, { action }) => {
+      toast.success(
+        action === "accept" ? "Accepted. The article is processed into the news feed." : action === "reject" ? "Rejected" : "Retry queued",
+      );
       void queryClient.invalidateQueries({ queryKey: QUERY_KEY });
     },
-    onError: (e: Error) => toast.error(`Replay failed: ${e.message}`),
+    onError: (e: Error, { action }) => toast.error(`${action[0].toUpperCase()}${action.slice(1)} failed: ${e.message}`),
   });
 
-  const totalPages = query.data ? Math.ceil(query.data.total / PAGE_SIZE) : 0;
-  const mutation = kind === "failed" ? replayMutation : restoreMutation;
-  const actionLabel = kind === "failed" ? "Replay" : "Restore";
-  const can = useCan();
-  const canAct = kind === "failed" ? can("manage_scraper") : can("manage_sources");
+  const active = kind === "queue" ? jobs : unrelated;
+  const total = active.data?.total;
+  const totalPages = total !== undefined ? Math.ceil(total / PAGE_SIZE) : 0;
+  const canRestore = can("manage_sources");
+  const canDecide = can("manage_sources");
+  const canRetry = can("manage_scraper");
+  const busy = (id: number, action: string) =>
+    jobMutation.isPending && jobMutation.variables?.id === id && jobMutation.variables.action === action;
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -92,10 +123,10 @@ export function FilteredView() {
       <h1 className="sr-only">Filtered Articles</h1>
       <TabPills aria-label="Filtered article kinds" className="mb-3" items={KIND_TABS} value={kind} onChange={setKind} />
       <PanelShell
-        title={kind === "failed" ? "Failed enrichment" : "Not Related Cyber"}
-        count={query.data?.total}
-        onRefresh={() => query.refetch()}
-        isRefreshing={query.isFetching}
+        title={kind === "queue" ? "Enrichment queue" : "Not Related Cyber"}
+        count={total}
+        onRefresh={() => active.refetch()}
+        isRefreshing={active.isFetching}
         footer={<SimplePager page={page} totalPages={totalPages} onPageChange={setPage} />}
       >
         <div className="mb-2 flex items-center gap-2">
@@ -109,14 +140,14 @@ export function FilteredView() {
         </div>
         <p className="mb-2 border-b border-border pb-2 text-xs text-muted-foreground">{HINT[kind]}</p>
 
-        {query.isPending && <PanelLoading />}
-        {query.isError && <PanelError />}
-        {query.data && query.data.items.length === 0 && (
-          <PanelEmpty message={kind === "failed" ? "No failed enrichments" : "No filtered articles"} />
+        {active.isPending && <PanelLoading />}
+        {active.isError && <PanelError />}
+        {active.data && active.data.items.length === 0 && (
+          <PanelEmpty message={kind === "queue" ? "Enrichment queue is empty" : "No filtered articles"} />
         )}
-        {query.data && query.data.items.length > 0 && (
+        {kind === "unrelated" && unrelated.data && unrelated.data.items.length > 0 && (
           <div className="flex flex-col gap-1.5">
-            {query.data.items.map((a) => (
+            {unrelated.data.items.map((a) => (
               <div key={a.id} className="flex items-start gap-2.5 rounded-xl border border-border bg-background p-2.5">
                 <div className="min-w-0 flex-1">
                   <a
@@ -139,18 +170,92 @@ export function FilteredView() {
                   </div>
                   {a.reason && <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{a.reason}</p>}
                 </div>
-                {canAct && (
+                {canRestore && (
                   <Button
                     size="sm"
                     variant="outline"
                     className="shrink-0"
-                    aria-label={`${actionLabel} ${a.title}`}
-                    disabled={mutation.isPending && mutation.variables === a.id}
-                    onClick={() => mutation.mutate(a.id)}
+                    aria-label={`Restore ${a.title}`}
+                    disabled={restoreMutation.isPending && restoreMutation.variables === a.id}
+                    onClick={() => restoreMutation.mutate(a.id)}
                   >
-                    {kind === "failed" ? "↻ Replay" : "↺ Restore"}
+                    ↺ Restore
                   </Button>
                 )}
+              </div>
+            ))}
+          </div>
+        )}
+        {kind === "queue" && jobs.data && jobs.data.items.length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            {jobs.data.items.map((j) => (
+              <div key={j.id} className="flex flex-wrap items-start gap-2.5 rounded-xl border border-border bg-background p-2.5">
+                <div className="min-w-0 flex-1 basis-60">
+                  <a
+                    href={j.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-foreground no-underline hover:text-primary"
+                  >
+                    {j.title}
+                  </a>
+                  <div className="mt-1 flex flex-wrap items-center gap-2 font-mono text-xs text-muted-foreground">
+                    <span
+                      className={
+                        j.state === "failed"
+                          ? "rounded-full border border-destructive/30 bg-destructive/10 px-2 text-destructive-text"
+                          : "rounded-full border border-warning/30 bg-warning/10 px-2 text-warning-text"
+                      }
+                    >
+                      {j.state}
+                    </span>
+                    <span>{j.source}</span>
+                    <span>{j.attempts} {j.attempts === 1 ? "attempt" : "attempts"}</span>
+                    <span>{age(j.created_at)} old</span>
+                    {j.p_threat_news != null && <span>p {j.p_threat_news.toFixed(2)}</span>}
+                    {j.posted_on && <span>posted {j.posted_on}</span>}
+                  </div>
+                  {j.last_error && (
+                    <p className="mt-1 line-clamp-2 text-xs text-muted-foreground" title={j.last_error}>
+                      {j.last_error}
+                    </p>
+                  )}
+                </div>
+                <div className="flex shrink-0 gap-1.5">
+                  {canDecide && (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        aria-label={`Accept ${j.title}`}
+                        disabled={jobMutation.isPending}
+                        onClick={() => jobMutation.mutate({ id: j.id, action: "accept" })}
+                      >
+                        {busy(j.id, "accept") ? "Accepting…" : "Accept"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        aria-label={`Reject ${j.title}`}
+                        disabled={jobMutation.isPending}
+                        onClick={() => jobMutation.mutate({ id: j.id, action: "reject" })}
+                      >
+                        {busy(j.id, "reject") ? "Rejecting…" : "Reject"}
+                      </Button>
+                    </>
+                  )}
+                  {canRetry && j.state === "failed" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      aria-label={`Retry ${j.title}`}
+                      disabled={jobMutation.isPending}
+                      onClick={() => jobMutation.mutate({ id: j.id, action: "retry" })}
+                    >
+                      {busy(j.id, "retry") ? "Retrying…" : "↻ Retry"}
+                    </Button>
+                  )}
+                </div>
               </div>
             ))}
           </div>

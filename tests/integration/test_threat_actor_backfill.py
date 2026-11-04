@@ -29,6 +29,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
+from tests.integration.enrich_job_support import run_with_verdict
+
 _TODAY = datetime.date.today()
 _INDUSTRY = "Finance & Insurance"
 _SECTOR = "Financial Services"  # P7c (plan Decision 3): nama tampilan sektor label di atas
@@ -173,29 +175,25 @@ def test_new_article_gets_threat_actor_and_mentioned_country(
     pipeline_session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """`score` + `route` + `persist` ASLI; cuma stage LLM/jaringan yang di-stub."""
-    monkeypatch.setattr(
-        pipeline,
-        "classify",
-        lambda title: ClassifyResult(
-            related_cyber=True,
-            confidence=0.9,
-            industries_impacted=[_INDUSTRY],
-            victim_countries=["United States"],
-        ),
-    )
     monkeypatch.setattr(pipeline, "fetch_text", lambda url: "")
     monkeypatch.setattr(pipeline, "summarize", lambda text: "")  # body kosong -> tanpa NER
     monkeypatch.setattr(pipeline.extract_iocs_stage, "extract_iocs", lambda *a, **k: {})
     monkeypatch.setattr(pipeline.extract_iocs_stage, "check_c2_hit", lambda *a, **k: False)
-    monkeypatch.setattr(
-        pipeline, "extract_ttps", lambda s: pipeline.TtpResult(has_techniques=False)
-    )
     alerts: list[object] = []
     monkeypatch.setattr(pipeline, "route_alerts", alerts.append)
     pipeline_session.add_all(ThreatActorGroup(name=g, source="malpedia") for g in _GROUPS)
     pipeline_session.flush()
 
-    outcome = pipeline.run_pipeline(
+    # P7g: vonis classify lewat job `classify` (`enrich_job_support`), bukan LLM inline.
+    verdict = ClassifyResult(
+        related_cyber=True,
+        confidence=0.9,
+        industries_impacted=[_INDUSTRY],
+        victim_countries=["United States"],
+    )
+    outcome = run_with_verdict(
+        pipeline_session,
+        verdict,
         # P4 (Tier 1): nama TA satu kata dari `threat_actor_groups` butuh kata konteks di dekatnya
         # ("hackers"); tanpa itu "ShinyHunters" tidak dicocokkan lagi.
         title="FBI tells ShinyHunters hackers to turn themselves in",
@@ -203,7 +201,6 @@ def test_new_article_gets_threat_actor_and_mentioned_country(
         posted_on=_TODAY,
         source="Test",
         scraper_id="t",
-        session=pipeline_session,
     )
 
     article = pipeline_session.scalar(select(Article).where(Article.id == outcome.article_id))

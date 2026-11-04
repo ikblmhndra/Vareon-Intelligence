@@ -182,3 +182,22 @@ def test_migration_backfill_config(db_session: Session) -> None:
         ).all()
     )
     assert kinds == {"h1": "config", "h2": "permanent"}
+
+
+def test_recent_for_tasks_newest_first_ignores_other_tasks(db_session: Session) -> None:
+    for i, (task, status) in enumerate(
+        [("classify", "ok"), ("recap_daily", "error"), ("ttp", "error"), ("classify", "empty")]
+    ):
+        db_session.add(
+            LlmCall(
+                task=task,
+                model="m",
+                status=status,
+                latency_ms=1,
+                at=NOW - datetime.timedelta(minutes=10 - i),
+            )
+        )
+    db_session.flush()
+    out = LlmCallRepo(db_session).recent_for_tasks(["classify", "ttp"], 2)
+    assert [o.status for o in out] == ["empty", "error"]
+    assert out[0].at > out[1].at

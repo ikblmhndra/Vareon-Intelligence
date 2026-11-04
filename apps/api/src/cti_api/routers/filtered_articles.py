@@ -17,21 +17,13 @@ from __future__ import annotations
 
 from typing import Literal
 
-from cti_core.celery_client import send_enrich_task
 from cti_core.db.models.article import RejectedArticle
 from cti_core.db.repositories.article import AsyncArticleRepo, AsyncRejectedArticleRepo
 from cti_core.db.repositories.assessment import apply_assessments_async
-from cti_core.db.repositories.auth import AsyncAuditLogRepo
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_api.deps import (
-    AuthedUser,
-    get_db,
-    request_ip,
-    require_auth,
-    require_permission,
-)
+from cti_api.deps import AuthedUser, get_db, require_auth, require_permission
 from cti_api.schemas.filtered_article import RejectedArticleListResponse, RejectedArticleOut
 
 router = APIRouter(
@@ -59,10 +51,11 @@ async def list_filtered(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     search: str | None = None,
-    kind: Literal["all", "unrelated", "failed"] = "all",
+    kind: Literal["all", "unrelated"] = "all",
     session: AsyncSession = Depends(get_db),
 ) -> RejectedArticleListResponse:
-    """`kind=unrelated`: ditolak klasifikasi LLM; `kind=failed`: enrichment GAGAL (replay)."""
+    """`kind=unrelated`: ditolak klasifikasi LLM. `kind=failed` dan replay dihapus (P7g): kerja LLM
+    yang gagal kini antrean `enrich_jobs` (`/api/enrich-jobs`), bukan baris `rejected_articles`."""
     rows, total = await AsyncRejectedArticleRepo(session).list_filtered(
         page=page, page_size=page_size, search=search, kind=kind
     )
@@ -82,54 +75,13 @@ async def restore_article(
     if rejected is None:
         raise HTTPException(status_code=404, detail="Article not found or already restored")
     if rejected.failure_kind is not None:
-        # Restore hanya membuat artikel tanpa enrichment, dan stub itu lalu memblokir replay.
+        # Baris gagal-enrich peninggalan sebelum P7g: restore membuat artikel tanpa enrichment.
         raise HTTPException(
             status_code=409,
-            detail="Enrichment failed for this article: use Replay (admin), not Restore",
+            detail="Enrichment failed for this legacy article: it cannot be restored",
         )
     article = await repo.restore(rejected, AsyncArticleRepo(session))
     # tanpa penilaian: chip kosong, dan tiap start API melihat credibility NULL -> recompute penuh
     await apply_assessments_async(session, [article.id])
-    await session.commit()
-    return {"success": True}
-
-
-@router.post("/{article_id}/replay")
-async def replay_article(
-    article_id: int,
-    request: Request,
-    session: AsyncSession = Depends(get_db),
-    user: AuthedUser = Depends(require_permission("manage_scraper")),
-) -> dict[str, bool]:
-    """Kirim ulang artikel yang GAGAL di-enrich ke pipeline (senyap, tanpa alert Telegram). Admin:
-    memakai kuota LLM. Baris gagalnya hilang sendiri begitu artikelnya berhasil diproses."""
-    repo = AsyncRejectedArticleRepo(session)
-    rejected = await repo.get_by_id(article_id)
-    if rejected is None:
-        raise HTTPException(status_code=404, detail="Article not found")
-    if rejected.failure_kind is None:
-        raise HTTPException(
-            status_code=409, detail="Only articles whose enrichment failed can be replayed"
-        )
-    if await AsyncArticleRepo(session).get_by_url(rejected.url) is not None:
-        raise HTTPException(
-            status_code=409,
-            detail="This URL is already an article (processed or restored); nothing to replay",
-        )
-    send_enrich_task(
-        title=rejected.title,
-        url=rejected.url,
-        posted_on=rejected.posted_on,
-        source=rejected.source,
-        scraper_id=rejected.scraper_id,
-        replay=True,
-    )
-    await AsyncAuditLogRepo(session).write(
-        username=user["username"],
-        action="replay_enrichment",
-        target_id=str(rejected.id),
-        detail={"url": rejected.url, "failure_kind": rejected.failure_kind},
-        ip_address=request_ip(request),
-    )
     await session.commit()
     return {"success": True}
