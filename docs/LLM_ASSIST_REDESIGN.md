@@ -304,7 +304,10 @@ migration and no new key):
 - **Global score, per-client reasons.** One `priority_score`; `score_reasons` keeps `client_id` and the API shows only the
   requesting client's PIR titles and tech names. PIR and techstack edits enqueue `confidence.recompute_all`.
 - **Not done.** PIR matches unlocking Tier 3 LLM, the weekly PIR coverage report, RFI linked to PIR and stories, per-client
-  scores. Dev numbers: recorded after the dev deploy.
+  scores.
+- **Measured on dev (2026-11-05, recompute of 2,057 articles in 5.9 s).** `pir_match` on 55 articles, identical to the PIR
+  page list for PIR #5; `own_asset` on 133 (93 in 30 days); p99 `priority_score` 126 to 133; 9 of the 30-day top 10 carry
+  `own_asset` (GitLab RCE and KEV stories).
 
 Not covered in this log: P7e. Cost measurement over a week of real data is now possible on dev.
 
