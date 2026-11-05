@@ -5,21 +5,27 @@ Fase 5). Yang dikunci di sini lahir dari e2e staging Fase 10: LLM gagal
 ngasih JSON di stage TTP -> exception nembus ke Celery -> SELURUH artikel
 (yang sudah lolos klasifikasi) hilang. TTP itu pengayaan opsional, klasifikasi
 bukan -- perlakuannya harus beda.
+
+P7g: pipeline tidak memanggil LLM sama sekali. Vonis classify datang dari job `classify`
+(`_run` menyelesaikannya dengan vonis palsu lewat `enrich_job_support`), dan LLM TTP = job `ttp`
+yang dibuat bersama artikelnya; kegagalan TTP tidak bisa lagi menyentuh artikel.
 """
 
 from __future__ import annotations
 
-import json
 from collections.abc import Iterator
 
 import pytest
 from cti_core.db.models.article import Article
+from cti_core.db.models.enrich_job import EnrichJob
 from cti_core.urlkit import url_hash
 from cti_enrich import pipeline
 from cti_enrich.stages.classify import ClassifyResult
 from cti_enrich.stages.score import ScoreResult
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+
+from tests.integration.enrich_job_support import job_for, run_with_verdict
 
 URL = "https://example.com/incident-report"
 
@@ -46,36 +52,40 @@ def alerts(monkeypatch: pytest.MonkeyPatch) -> list[object]:
     return sent
 
 
+RELEVANT = ClassifyResult(
+    related_cyber=True, confidence=0.9, reason="ransomware", industries_impacted=["General"]
+)
+
+
 @pytest.fixture(autouse=True)
 def _stages(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Semua stage yang butuh LLM/jaringan diganti; `persist`/`routing` ASLI."""
-    monkeypatch.setattr(
-        pipeline,
-        "classify",
-        lambda title: ClassifyResult(
-            related_cyber=True, confidence=0.9, reason="ransomware", industries_impacted=["General"]
-        ),
-    )
+    """Stage jaringan diganti; `persist`/`routing` ASLI. LLM tidak dipanggil pipeline lagi (P7g);
+    stage LLM dibuat meledak supaya panggilan yang tersisa langsung ketahuan."""
+    from cti_enrich.stages import classify as classify_stage
+    from cti_enrich.stages import extract_ttps as ttp_stage
+
+    def no_llm(*a: object, **k: object) -> None:
+        raise AssertionError("pipeline tidak boleh memanggil LLM")
+
+    monkeypatch.setattr(classify_stage, "classify", no_llm)
+    monkeypatch.setattr(ttp_stage, "extract_ttps", no_llm)
     monkeypatch.setattr(pipeline, "fetch_text", lambda url: "Isi artikel lengkap. " * 40)
     monkeypatch.setattr(pipeline, "summarize", lambda text: "Ringkasan insiden ransomware.")
     monkeypatch.setattr(pipeline.extract_iocs_stage, "extract_iocs", lambda *a, **k: {})
     monkeypatch.setattr(pipeline.extract_iocs_stage, "check_c2_hit", lambda *a, **k: False)
     monkeypatch.setattr(pipeline.score_stage, "score", lambda *a, **k: ScoreResult())
-    # Default sukses tanpa TTP -- WAJIB di-stub: tanpa ini `extract_ttps` asli
-    # manggil LLM beneran (lolos di laptop yang punya `.env`, OpenAIError di CI).
-    monkeypatch.setattr(
-        pipeline, "extract_ttps", lambda s: pipeline.TtpResult(has_techniques=False)
-    )
 
 
-def _run(session: Session):
-    return pipeline.run_pipeline(
+def _run(session: Session, *, alert: bool = True) -> pipeline.PipelineOutcome:
+    return run_with_verdict(
+        session,
+        RELEVANT,
+        alert=alert,
         title="Ransomware hits hospital",
         url=URL,
         posted_on=None,
         source="Test",
         scraper_id="t",
-        session=session,
     )
 
 
@@ -83,86 +93,64 @@ def _article(session: Session) -> Article | None:
     return session.scalar(select(Article).where(Article.url_hash == url_hash(URL)))
 
 
-def test_ttp_json_failure_keeps_the_article_without_ttps(
-    session: Session, alerts: list[object], monkeypatch: pytest.MonkeyPatch
+def test_accepted_article_is_stored_with_a_pending_ttp_job(
+    session: Session, alerts: list[object]
 ) -> None:
-    def no_json(summary: str):
-        raise json.JSONDecodeError("Expecting value", "I don't see an article summary", 0)
-
-    monkeypatch.setattr(pipeline, "extract_ttps", no_json)
-
+    """TTP LLM tidak lagi dijalankan inline: artikel tersimpan dengan teknik Tier 1 saja,
+    `llm_ttp_status='pending'`, dan job `ttp` membawa teks yang akan dikirim ke model."""
     outcome = _run(session)
 
     assert outcome.accepted and outcome.article_id is not None
     article = _article(session)
-    assert (
-        article is not None and article.mentions_of("attack-pattern") == []
-    )  # tersimpan TANPA TTP
-    assert len(alerts) == 1  # alert tetap keluar: artikelnya relevan
+    assert article is not None and article.llm_ttp_status == "pending"
+    job = job_for(session, URL, "ttp")
+    assert job is not None and job.article_id == article.id and job.state == "pending"
+    assert job.input_text == pipeline.ttp_job_input(
+        "Isi artikel lengkap. " * 40, "Ringkasan insiden ransomware."
+    )
+    assert job_for(session, URL) is None  # job classify sudah selesai
+    assert len(alerts) == 1  # alert tetap keluar sekarang (D1)
 
 
-def test_empty_summary_skips_the_ttp_call_entirely(
+def test_empty_summary_skips_the_ttp_job_entirely(
     session: Session, alerts: list[object], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Halaman diblokir -> `fetch_text` "" -> summary "" -> gak ada panggilan LLM
-    buat TTP (dan gak ada boilerplate WAF yang dikirim ke model)."""
+    """Halaman diblokir -> `fetch_text` "" -> summary "" -> tidak ada job TTP (dan gak ada
+    boilerplate WAF yang dikirim ke model)."""
     monkeypatch.setattr(pipeline, "fetch_text", lambda url: "")
     monkeypatch.setattr(pipeline, "summarize", lambda text: "")
-    calls: list[str] = []
-    monkeypatch.setattr(pipeline, "extract_ttps", lambda s: calls.append(s))
 
     outcome = _run(session)
 
-    assert outcome.accepted and calls == []
-    assert _article(session) is not None
+    assert outcome.accepted
+    article = _article(session)
+    assert article is not None and article.llm_ttp_status == "skipped"
+    assert job_for(session, URL, "ttp") is None
 
 
 def test_replay_without_alert_still_saves_the_article(
     session: Session, alerts: list[object]
 ) -> None:
-    """Replay artikel yang gagal di-enrich (`alert=False`): tersimpan penuh, TANPA Telegram."""
-    outcome = pipeline.run_pipeline(
-        title="Ransomware hits hospital",
-        url=URL,
-        posted_on=None,
-        source="Test",
-        scraper_id="t",
-        session=session,
-        alert=False,
-    )
+    """Vonis yang datang tanpa alert (`alert=False`): tersimpan penuh, TANPA Telegram."""
+    outcome = _run(session, alert=False)
 
     assert outcome.accepted and _article(session) is not None
     assert alerts == []
 
 
-def test_a_failing_classify_still_raises_so_celery_can_retry(
-    session: Session, alerts: list[object], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Beda dari TTP: tanpa klasifikasi kita GAK TAU artikel ini relevan atau
-    bukan -- jangan ditebak, biarkan naik ke retry Celery."""
+def test_an_uncertain_title_waits_as_a_classify_job(session: Session, alerts: list[object]) -> None:
+    """Dulu classify yang gagal naik ke retry Celery. Sekarang tanpa vonis relevansi artikel
+    tidak disimpan maupun ditolak: ia menunggu sebagai job `classify` dengan teks hasil fetch."""
+    outcome = pipeline.run_pipeline(
+        title="Ransomware hits hospital", url=URL, posted_on=None, source="Test",
+        scraper_id="t", session=session,
+    )  # fmt: skip
 
-    def broken(title: str):
-        raise json.JSONDecodeError("Expecting value", "", 0)
-
-    monkeypatch.setattr(pipeline, "classify", broken)
-
-    with pytest.raises(json.JSONDecodeError):
-        _run(session)
-    assert alerts == []
-
-
-def test_non_json_errors_from_the_ttp_stage_are_not_swallowed(
-    session: Session, alerts: list[object], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Cuma JSONDecodeError yang di-degrade. LLM mati / kuota abis tetap naik."""
-
-    def quota(summary: str):
-        raise RuntimeError("OpenAI credit exhausted")
-
-    monkeypatch.setattr(pipeline, "extract_ttps", quota)
-
-    with pytest.raises(RuntimeError):
-        _run(session)
+    assert not outcome.accepted and outcome.pending_job_id is not None
+    job = session.get(EnrichJob, outcome.pending_job_id)
+    assert job is not None and job.kind == "classify" and job.state == "pending"
+    assert job.input_text == "Isi artikel lengkap. " * 40
+    assert _article(session) is None and alerts == []
 
 
 def test_a_previously_failed_article_leaves_no_stale_rejected_row_once_it_succeeds(
@@ -180,7 +168,7 @@ def test_a_previously_failed_article_leaves_no_stale_rejected_row_once_it_succee
         select(RejectedArticle.id).where(RejectedArticle.url_hash == url_hash(URL))
     )
 
-    _run(session)  # `extract_ttps` di-stub default -> sukses penuh
+    _run(session)  # vonis relevan -> sukses penuh
 
     assert _article(session) is not None
     assert (

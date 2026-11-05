@@ -4,8 +4,8 @@ Status: **in progress** (updated 2026-10-29). Building blocks shipped in 0.8.3 a
 P0 and P1 shipped in 0.8.5, P2 in 0.8.6, P3 in 0.8.7, P4 in 0.8.8, P5 in 0.8.9 and P6 in 0.8.10
 (see Progress below). P7 is split into sub-projects (decomposition in
 `docs/superpowers/specs/2026-10-28-p7a-indicator-lifecycle-design.md` section 0); P7a is built
-for 0.8.11 (deployed to dev 2026-10-29, not yet merged to `main`); P7b onward has not started and P7d
-(sightings) is deferred.
+for 0.8.11 (deployed to dev 2026-10-29, not yet merged to `main`); P7b, P7c and P7g (persist-first enrichment, step 4 of
+`docs/TARGET_ARCHITECTURE.md`) are built for 0.8.11 as well; P7e and P7f have not started and P7d (sightings) is deferred.
 
 Goal: turn Vareon from "every article goes through an LLM" into a CTI platform where
 deterministic code, curated reference data and analyst feedback do the bulk of the work, and
@@ -39,9 +39,10 @@ Shipped in **0.8.5** (P0 and P1, plus prompt correctness fixes):
 
 - **P0 Measure.** `llm_calls` logs every LLM call (task, model, prompt version, tokens, latency,
   status `ok`/`empty`/`error`; 90-day retention via `llm.purge_calls`). Every call site names its
-  task. Data health has an LLM section (status, parked articles, tokens per task over 24 h and 7 d).
+  task. Data health has an LLM section (status, parked articles, tokens per task over 24 h and 7 d; from 0.8.11 the parked
+  block is the enrichment queue, see P7g below).
 - **P1 Self-healing enrichment.** Gateway config errors (400/401/403/404) are parked at once as
-  `config`. `enrich.auto_replay` runs every 10 minutes: one canary article when the model status is
+  `config`. `enrich.auto_replay` (**retired in 0.8.11 by P7g**, see below) ran every 10 minutes: one canary article when the model status is
   unknown, a batch of up to 20 when healthy, at most 3 attempts with backoff, Telegram alert only for
   articles posted within 24 h. Existing `permanent` rows from those errors become `config`.
 - **Prompt fixes.** Classify prompt shortened with boundary examples; TTPs kept only when the
@@ -267,6 +268,31 @@ Also built for **0.8.11** (P7c-1 entity model, backend; spec
 - **Still open.** The web entity pages (P7c-2, replacing TA Room and ATT&CK DB), co-mention relationships stay
   unpublished suggestions, no LLM relationship assessment.
 
+Also built for **0.8.11** (P7g persist-first enrichment; spec
+`docs/superpowers/specs/2026-11-02-p7g-persist-first-design.md`; runbook in `docs/prod-upgrade/0.8.11.md`, migration
+`7a3e91c5d2b4`):
+
+- **The LLM is off the critical path.** `enrich.article` no longer calls the model. Articles whose relevance is known
+  without it (Tier 0, story inheritance, relevance gate) are stored and alerted at once; the rest wait as `classify` jobs
+  in `enrich_jobs` (no attempt cap, analyst Accept/Reject/Retry in Newsroom > "Enrichment queue"). LLM TTP extraction is
+  a separate `ttp` job after persist (`articles.llm_ttp_status`); it never rewrites analyst or legacy TTP mentions.
+- **Circuit breaker and dispatcher.** The breaker (3 consecutive classify/ttp failures, cooldown `min(30 min, 2 min *
+  2^(n-3))`, one canary half-open) is computed from `llm_calls`. `enrich.llm_dispatch` (every minute) sends up to 20 due jobs
+  with a 15 minute lease. This closes the E4 gap: an outage means "fields arrive later", and the migrated parked rows drain
+  without anyone pressing Replay. `enrich.auto_replay`, `cti_core.enrich_replay`, the replay tool and Makefile target, the
+  Replay endpoint and `kind=failed` are removed.
+- **Rollback tool.** `tools/ops/requeue_enrich_jobs.py [--apply]` moves `classify` jobs back to `rejected_articles` and drops
+  `ttp` jobs before an image rollback.
+
+- **Measured on dev (read-only, deploy 2026-11-04 06:25 UTC to 2026-11-05 05:10 UTC).** The migration turned 99 parked
+  rows into `pending` and 8 into `failed` jobs. The free gateway was down from about 06:35 to 00:00 UTC (breaker open or
+  half-open nearly every minute from 07 to 23 UTC). Pending `classify` jobs peaked at 108 (21-22 UTC) and drained to 0 by
+  04 UTC with nobody pressing anything; no `rejected_articles` row with `failure_kind` appeared. Classify errors that day:
+  293 (about 600 a day before), one or two per hour while the gateway was hard down, bursts of 35-51 in the hours it flapped
+  (a canary succeeds, the breaker closes, the next batch of 20 fails). Articles stored since deploy: `llm_ttp_status` done
+  109, skipped 26, pending 4. Found there: a model reply with a technique lacking `technique_id` or `technique_name` raised
+  `KeyError`, which failed the `ttp` job and left the article `pending`; such entries are now dropped.
+
 Also built for **0.8.11** (P7f PIR at ingest and own-asset relevance; spec
 `docs/superpowers/specs/2026-11-05-p7f-pir-own-asset-relevance-design.md`; runbook in `docs/prod-upgrade/0.8.11.md`, no
 migration and no new key):
@@ -280,7 +306,7 @@ migration and no new key):
 - **Not done.** PIR matches unlocking Tier 3 LLM, the weekly PIR coverage report, RFI linked to PIR and stories, per-client
   scores. Dev numbers: recorded after the dev deploy.
 
-Not covered in this log: P7e and P7g. Cost measurement over a week of real data is now possible on dev.
+Not covered in this log: P7e. Cost measurement over a week of real data is now possible on dev.
 
 Correction (2026-10-24, rereading against the code): E4 first said these articles were
 "lost"; they are parked and replayable by hand, so P1 is now about recovering them

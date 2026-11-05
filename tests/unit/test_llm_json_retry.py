@@ -125,3 +125,24 @@ def test_classify_keeps_raw_response_of_every_attempt_for_audit(use_client) -> N
     ]
     assert audit["attempts"][0]["content"] == KIRO  # persona mentah ikut tersimpan
     assert json.loads(audit["attempts"][1]["content"])["reason"] == "vendor blog"
+
+
+def test_ttp_entries_missing_a_key_are_dropped_not_raised(use_client) -> None:
+    """Dev 2026-11-04: model gratis kadang menulis teknik tanpa `technique_id`/`technique_name`.
+    Dulu `KeyError` -> job `ttp` `failed` dan artikel tertahan `llm_ttp_status='pending'`."""
+    reply = json.dumps(
+        {
+            "has_techniques": True,
+            "techniques": [
+                {"technique_name": "Phishing"},
+                {"technique_id": "T1059"},
+                "T1190",
+                {"technique_name": "Phishing", "technique_id": "T1566"},
+            ],
+        }
+    )
+    use_client(ttp_mod, [reply])
+
+    result = ttp_mod.extract_ttps("Attackers sent phishing emails.")
+
+    assert [t.technique_id for t in result.techniques] == ["T1566"]

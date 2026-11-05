@@ -283,6 +283,9 @@ export function ArticleModal({ article, onOpenChange }: { article: Article | nul
             ) : (
               <span className="text-xs text-muted-foreground">No TTPs recorded</span>
             )}
+            {a.llm_ttp_status === "pending" && (
+              <p className="mt-2 text-xs text-muted-foreground">LLM TTPs pending</p>
+            )}
           </Section>
 
           {((a.threat_actors ?? []).length > 0 || (a.malware ?? []).length > 0) && (

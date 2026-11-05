@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from cti_core.db.models.llm_call import LlmCall
+from cti_core.llm.breaker import CallOutcome
 
 
 @dataclass(frozen=True)
@@ -77,6 +78,16 @@ class LlmCallRepo:
             .limit(1)
         ).scalar_one_or_none()
 
+    def recent_for_tasks(self, tasks: Sequence[str], limit: int) -> list[CallOutcome]:
+        """`limit` panggilan terbaru dari `tasks`, terbaru dulu (masukan `breaker_state`)."""
+        rows = self.session.execute(
+            select(LlmCall.status, LlmCall.at)
+            .where(LlmCall.task.in_(tasks))
+            .order_by(LlmCall.at.desc(), LlmCall.id.desc())
+            .limit(limit)
+        ).all()
+        return [CallOutcome(status, at) for status, at in rows]
+
 
 class AsyncLlmCallRepo:
     """Async -- permukaan baca."""
@@ -93,6 +104,17 @@ class AsyncLlmCallRepo:
                 .limit(1)
             )
         ).scalar_one_or_none()
+
+    async def recent_for_tasks(self, tasks: Sequence[str], limit: int) -> list[CallOutcome]:
+        rows = (
+            await self.session.execute(
+                select(LlmCall.status, LlmCall.at)
+                .where(LlmCall.task.in_(tasks))
+                .order_by(LlmCall.at.desc(), LlmCall.id.desc())
+                .limit(limit)
+            )
+        ).all()
+        return [CallOutcome(status, at) for status, at in rows]
 
     async def latest_call_at(self) -> datetime.datetime | None:
         """Cap waktu baris terbaru dari task APA PUN."""

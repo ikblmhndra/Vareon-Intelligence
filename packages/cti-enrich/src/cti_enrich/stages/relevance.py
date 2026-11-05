@@ -55,6 +55,24 @@ class RelevanceResult:
             "decision": self.decision.decision,
         }
 
+    @classmethod
+    def from_audit(cls, d: dict[str, Any]) -> RelevanceResult:
+        """Kebalikan `to_audit` (P7g): job `classify` menyimpan hasil relevansi di `context` supaya
+        `complete` tidak menjalankan model lagi. Key tambahan (mis. `incident_source`) diabaikan.
+        `Probs` di-import di sini karena modulnya menarik sklearn (lihat docstring modul)."""
+        from cti_enrich.relevance.model import Probs
+
+        probs = d["probs"]
+        return cls(
+            model_id=int(d["model_id"]),
+            probs=Probs(
+                reject=float(probs["reject"]),
+                best_practice=float(probs["best_practice"]),
+                threat_news=float(probs["threat_news"]),
+            ),
+            decision=GateDecision(decision=d["decision"], in_band=bool(d["in_band"])),
+        )
+
 
 @dataclass
 class _Cached:

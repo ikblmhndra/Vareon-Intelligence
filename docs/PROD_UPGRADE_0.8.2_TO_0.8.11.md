@@ -12,7 +12,7 @@ Compose commands differ slightly between sections: use the same compose invocati
 
 1. **Before deploy (all read-only):** run every "Before deploy" block below (0.8.4 custom roles, 0.8.5 migration head and
    replay backlog, 0.8.6 baselines and overrides count, 0.8.7 article counts, 0.8.8 ATT&CK dictionary counts, 0.8.9 model
-   download reachability, `.env` keys and disk space, 0.8.10 confidence baseline, 0.8.11 IOC baseline and role check; P7b only needs a stack-env and consumer-planning check, see its read-only bullet;
+   download reachability, `.env` keys and disk space, 0.8.10 confidence baseline, 0.8.11 IOC baseline and role check, P7g parked-backlog count; P7b only needs a stack-env and consumer-planning check, see its read-only bullet;
    P7c link-table baseline, whitelist review and PIR counts). Write the results down: several
    "After deploy" checks compare against them. These run on 0.8.2, where the IOC tables are still `iocs` and `ioc_sources`;
    after the deploy the same data lives in `indicators` and `indicator_sources` (0.8.11), so the After-deploy queries use
@@ -20,7 +20,8 @@ Compose commands differ slightly between sections: use the same compose invocati
 2. **`.env`:** no new required key in any of these releases (0.8.11 adds four optional `INDICATOR__TTL_*_DAYS` keys and the optional `ENTITY__ALIAS_SYNC_ENABLED`, all with defaults; leave them unset). Do **not** copy dev's `RELEVANCE__GATE_MIN_AGREEMENT=0.94` or
    `STORY__EMBEDDING_SIMILARITY=0.8`; leave `RELEVANCE__*` and `STORY__*` unset for the first deploy (see 0.8.7 and 0.8.9).
 3. **Make sure the prod LLM gateway works** (model name and credits). Dev's OpenRouter free quota ran out; with a dead
-   gateway 0.8.5's auto-replay stays on one canary per 10 minutes and 0.8.9's first model may be rejected.
+   gateway the 0.8.11 (P7g) breaker keeps the model on one canary per cooldown and the jobs wait (nothing is lost; the
+   0.8.5 auto-replay no longer exists in this jump), and 0.8.9's first model may be rejected.
 4. **`make deploy`.** The `worker-nlp` build downloads the MiniLM model (~88 MB) from Hugging Face (0.8.9); if that fails
    the deploy aborts before any container changes.
 5. **After deploy:** run the "After deploy" blocks in release order. Admin task from 0.8.4: add `manage_cve`/`view_ops` to
@@ -39,6 +40,10 @@ Compose commands differ slightly between sections: use the same compose invocati
 
    The 0.8.8 actor-name canonicalisation (`cti_enrich.canonicalise_actors`) is **superseded** by the 0.8.11 `entity_model`
    migration and step 4: skip it (on 0.8.11 it prints that and writes nothing).
+
+   P7g needs nothing either: the migration turns the parked `[enrichment_failed]` rows into `enrich_jobs` and
+   `enrich.llm_dispatch` drains them once the gateway is healthy (the 0.8.5 steps about replaying them, including
+   `make replay-failed-enrichment` and the Newsroom Replay button, do not apply from 0.8.11).
 
    0.8.9 needs nothing: the first model trains itself within an hour. 0.8.11 P7a and P7b need nothing either (P7b: only the After-deploy token round trip and the nginx check): the first API start
    enqueues `indicator.reconcile_validity` once (backfills `valid_until`; check `job_state['indicator.ttl_fingerprint']`).
@@ -64,8 +69,9 @@ Compose commands differ slightly between sections: use the same compose invocati
 | 0.8.11 | `a9e4c7b1d3f6` `iocs` → `indicators` (+ child tables), lifecycle/marking columns, compatibility views | `d7a3e1b94c52` | yes (views, new columns dropped; tables renamed back; revocations and TLP/PAP lost) |
 | 0.8.11 (P7b) | `c4f1a8d27b93` machine_api: `api_tokens`, `indicators.feed_changed_at` + `stix_id`, two feed-clock triggers | `a9e4c7b1d3f6` | yes (tokens lost) |
 | 0.8.11 (P7c) | `1387fae00908` entity_model: entities, aliases, relationships, mentions, watches, profiles, reference snapshots; old link/TA tables renamed `_legacy_*` behind writable compatibility views; feed clocks for entities, relationships and stories (4.35 s on a dev copy) | `c4f1a8d27b93` | yes (`_legacy_*` renamed back; everything written after the upgrade lost) |
+| 0.8.11 (P7g) | `7a3e91c5d2b4` enrich_jobs + `articles.llm_ttp_status`; parked `rejected_articles` rows move into the queue | `1387fae00908` | yes (schema only; moved rows are not put back: run `tools/ops/requeue_enrich_jobs.py --apply` first) |
 
-Expected `alembic_version` after the deploy: **`1387fae00908`**. The only way back past `e7b2d4a9c6f1` is the Postgres
+Expected `alembic_version` after the deploy: **`7a3e91c5d2b4`**. The only way back past `e7b2d4a9c6f1` is the Postgres
 backup `make deploy` writes before migrating.
 
 ---
@@ -146,6 +152,11 @@ Image rollback restores open endpoints. Role changes made in Admin stay (harmles
 ---
 
 ## 0.8.5 — LLM call log, self-healing enrichment, prompt fixes (P0 + P1)
+
+> **In a jump to 0.8.11 the replay half of this section is superseded (P7g).** The auto-replay described here is removed
+> in 0.8.11: the migration `7a3e91c5d2b4` turns the parked `[enrichment_failed]` rows into `enrich_jobs`, and
+> `enrich.llm_dispatch` drains them automatically behind a circuit breaker. `make replay-failed-enrichment`, `enrich.auto_replay`
+> and the Newsroom Replay button no longer exist. Read the steps below as the 0.8.5 history; follow the 0.8.11 P7g bullets.
 
 ### What changes in prod
 - Every LLM call is logged in `llm_calls` (task, model, prompt version, tokens, latency, status); rows older than 90 days are purged daily.
@@ -897,7 +908,7 @@ articles (pages of 500, one facts query per page).
 
 ---
 
-## 0.8.11 — P7a indicator lifecycle and TLP/PAP (`iocs` becomes `indicators`), P7b machine API, P7c-1 entity model, P7c-2 entity web, P7f PIR and own-asset relevance
+## 0.8.11 — P7a indicator lifecycle and TLP/PAP (`iocs` becomes `indicators`), P7b machine API, P7c-1 entity model, P7c-2 entity web, P7f PIR and own-asset relevance, P7g persist-first enrichment
 
 Release: not yet tagged (branch `nameless/p7-cti-model-165075`, merge to `origin/Dev` for the dev test, then PR to `main`).
 Spec: `docs/superpowers/specs/2026-10-28-p7a-indicator-lifecycle-design.md`. Progress record:
@@ -1054,6 +1065,41 @@ analyst vs superadmin), not on dev (the dev certificate is not trusted by the ch
   - **Admin > API tokens.** Scope checkboxes `indicators:read` and `intel:read` (the console workaround of P7c-7 is no
     longer needed).
 
+- **P7g: persist-first enrichment (the LLM leaves the critical path).** Spec
+  `docs/superpowers/specs/2026-11-02-p7g-persist-first-design.md`.
+  - **New table `enrich_jobs`** holds only LLM work in flight (`kind` `classify` = a title that needs the model's relevance
+    verdict, `ttp` = LLM TTP extraction for an article that is already stored; `state` `pending` or `failed`). A row is deleted
+    when its work is done; call history stays in `llm_calls`. New column `articles.llm_ttp_status` (`pending`, `done`,
+    `skipped`, `failed`; NULL for articles stored before 0.8.11).
+  - **Articles whose relevance is known without the LLM** (Tier 0 sources, story inheritance, relevance gate) are stored and
+    alerted at once; only their LLM TTPs arrive later (a `ttp` job). A title that needs the classify verdict waits as a
+    `classify` job with no attempt cap, and an analyst can decide it by hand.
+  - **New tasks:** `enrich.llm` (queue `enrich`, runs one job) and `enrich.llm_dispatch` (queue `maintenance`, every minute:
+    sends due jobs, up to 20 per round and no more than the free room in the `enrich` queue, `classify` before `ttp`, 15
+    minute lease). **Removed:** `enrich.auto_replay` (its beat entry), `cti_core.enrich_replay`,
+    `tools/ops/replay_failed_enrichment.py` with `make replay-failed-enrichment`, the `send_enrich_task` helper,
+    `POST /api/filtered-articles/{id}/replay` and `kind=failed`. `enrich.article` keeps Celery retries only for DB and
+    network errors.
+  - **Circuit breaker** (`cti_core.llm.breaker`, computed from `llm_calls` for tasks `classify`/`ttp`; no Redis state, no
+    setting): opens after 3 consecutive failures, cooldown `min(30 min, 2 min * 2^(n-3))`, then half-open lets exactly one
+    canary job through. During an outage the model sees a few canaries instead of every arrival plus every retry.
+  - **Failure handling in `enrich.llm`:** gateway errors (5xx, timeout, 429, empty reply, 400/401/403/404) and DB/network
+    errors reschedule the job with backoff `min(60 min, 2^attempts min)`, no cap. Broken JSON three times or any other
+    exception turns the job `failed` (waits for an analyst); a `ttp` job that fails ends with `llm_ttp_status='failed'` and
+    the article keeps its Tier 1 TTPs. A `ttp` job never rewrites analyst or legacy TTP mentions.
+  - **Alerts** reuse `WORKER__ENRICH_FAILURE_ALERT_COOLDOWN_MIN`: "LLM gateway down, N waiting" fires only while jobs are
+    waiting, plus one alert when a job turns `failed` (permanent `enrich.article` failures included).
+  - **API:** `GET /api/enrich-jobs` (list; `kind`, `state`, `search`), `POST /api/enrich-jobs/{id}/accept` and `/reject`
+    (`manage_sources`), `POST /api/enrich-jobs/{id}/retry` (`manage_scraper`); `ArticleOut.llm_ttp_status`. Data health: the
+    LLM `parked` block became `queue` (breaker state, retry time, pending per kind, failed, oldest pending); the failure
+    figures are now a snapshot of failed jobs by job creation time. The daily report's "scraped" total no longer includes
+    failed items; pending and failed are separate snapshot lines.
+  - **Web:** the Newsroom pill "Failed enrichment" is now "Enrichment queue" (Accept, Reject, Retry); the article modal shows
+    "LLM TTPs pending"; Data health shows the breaker and the queue.
+  - **Existing parked rows become jobs.** On prod (0.8.2 onward) the `[enrichment_failed]` rows in `rejected_articles` are moved
+    into `enrich_jobs` by the migration and drain by themselves once the gateway is healthy: no Replay, no
+    `make replay-failed-enrichment`. The 0.8.5 auto-replay steps above are history for the jump: from 0.8.11 they no longer
+    apply.
 - **P7f: PIR and own-asset relevance in the priority score.** `articles.priority_score` gains two signals computed by the
   same P6 path (`confidence.assess`) at persist, story refresh, the daily recompute and the manual recompute.
   `pir_match`: the article matches an active PIR (same filters and date window as the PIR page); points by the best
@@ -1130,6 +1176,14 @@ victims), `location` 249, `campaign` 0 (campaigns come from the next ATT&CK sync
 `located-at` 1,247). Mentions 12,819, **0 orphans**; every compatibility view returns the same count as its legacy
 table except `article_industries` (General dropped) and `ta_watchlist` (collapse).
 
+- **P7g: `7a3e91c5d2b4`** `enrich_jobs` (revises `1387fae00908`): creates `enrich_jobs` (unique `(kind, url_hash)`, CHECKs on
+  `kind` and `state`, index `(state, kind, next_attempt_at)`) and `articles.llm_ttp_status` (CHECK), then moves every
+  `rejected_articles` row with `failure_kind IS NOT NULL` into `enrich_jobs` as `classify` with `input_text` NULL
+  (`transient`, `config`, `json` become `pending`; `permanent` becomes `failed` with the reason in `last_error`) and deletes
+  those rows. `failure_kind`, `auto_replay_count` and `last_auto_replay_at` stay in place, unused. Downgrade drops the table
+  and column; moved rows are **not** put back by the downgrade: use `tools/ops/requeue_enrich_jobs.py` first (see Rollback).
+  Expected `alembic_version` after the P7g deploy: **`7a3e91c5d2b4`**.
+
 **P7f adds no migration.** `score_reasons` is JSONB; the new keys `pir` and `own_asset` need no schema change.
 
 ### Settings / .env (new keys, recommended PROD values, defaults)
@@ -1151,6 +1205,10 @@ which enqueues the reconcile task) and needs the worker restarted too, since set
 
 **P7c adds no required `.env` key.** One optional key with a default: `ENTITY__ALIAS_SYNC_ENABLED` (default `true`;
 `false` stops the weekly Galaxy sync). Leave it unset. `.env.example` and `.env.prod.template` list it commented out.
+
+P7g adds **no `.env` key and no setting** (breaker constants and the dispatcher batch are module constants; the alert reuses
+`WORKER__ENRICH_FAILURE_ALERT_COOLDOWN_MIN`). Beat gains `enrich-llm-dispatch` (every minute) and loses `enrich-auto-replay`;
+`make deploy` restarts `beat`. No version bump: 0.8.11 already exists.
 
 **P7f adds no `.env` key.** Nothing to set on the prod host before merging.
 
@@ -1227,6 +1285,14 @@ consume the feed (host, TLS trust of the self-signed certificate, TLP ceiling) b
 - **P7c-3. PIR baseline (UI).** Open the PIR page and note the result counts of the PIRs that have actor criteria; After
   deploy check P7c-6 compares them (they may rise: aliases now match).
 
+- **P7g-1. Size of the parked backlog** (read-only, on 0.8.2/0.8.10). These rows become jobs after the deploy:
+  ```sql
+  SELECT coalesce(failure_kind,'(rejected)') AS kind, count(*) FROM rejected_articles GROUP BY 1 ORDER BY 2 DESC;
+  ```
+  Write the numbers down: After deploy P7g-2 compares them. Expected `jobs pending` = `transient` + `config` + `json`, `jobs failed`
+  = `permanent`; `(rejected)` rows stay where they are.
+- **P7g-2. The gateway must work before the deploy.** The backlog starts draining on the first healthy call. With a dead
+  gateway nothing is lost: the breaker stays on one canary per cooldown and the jobs wait.
 - **P7f-1. How much data the new signals can use** (read-only, expected: a handful of rows; dev has 1 client, 1 active PIR
   and 35 active techstack entries). If a client has no active PIR and no active techstack, P7f changes nothing for it.
 
@@ -1436,6 +1502,21 @@ Run SQL in the read-only `psql` session shown above.
   articles; (e) **WRITE**, needs approval: in Admin > API tokens create a throwaway token with `intel:read`, then revoke it.
   Expected: no console errors and no 5xx in `docker compose -p niskala-intelligence logs api --since 10m`.
 
+- **P7g-1. Head and queue.** `SELECT version_num FROM alembic_version;` returns `7a3e91c5d2b4`.
+  `SELECT kind, state, count(*) FROM enrich_jobs GROUP BY 1,2;` shows the migrated rows (compare with Before deploy P7g-1,
+  allowing for arrivals since). `SELECT count(*) FROM rejected_articles WHERE failure_kind IS NOT NULL;` returns 0 (classifier
+  rejects, `failure_kind IS NULL`, are untouched).
+- **P7g-2. The dispatcher runs.** `docker compose -p niskala-intelligence logs worker --since 5m | grep llm_dispatched`
+  prints one line per minute (`breaker=closed ... sent=<n> waiting=<n>`); there is no `auto_replayed` line any more, and
+  `docker compose -p niskala-intelligence logs beat` lists no `enrich-auto-replay`.
+- **P7g-3. It drains.** Re-run the `enrich_jobs` count after 15 to 60 minutes with a healthy gateway: `pending` falls toward 0;
+  `llm_calls` shows `classify` rows with `ok`. In a hard outage `llm_calls` errors are mostly canaries (one or two per hour);
+  when the gateway flaps, a canary that succeeds closes the breaker and the next batch of up to 20 jobs can fail together
+  (dev 2026-11-04: bursts of 35-51 classify errors in such hours, 293 for the day against about 600 a day before P7g).
+- **P7g-4. UI.** Data health shows the breaker (`closed` when healthy, otherwise the retry time) and the pending/failed
+  counts. Newsroom > Filtered > "Enrichment queue" lists the jobs; a `failed` row can be retried (**WRITE**, needs approval)
+  and a pending `classify` row accepted or rejected (**WRITE**). An article stored by the new code shows "LLM TTPs pending" in
+  its modal until the `ttp` job finishes.
 - **P7f-1. Signals present** (read-only, after the One-off recompute below, or after the daily run). Expected: `pir` rows
   roughly equal the articles that the PIR page lists for each active PIR; `own_asset` rows well above 0 (on dev the title
   path alone matched 80 of 1,331 articles in 30 days).
@@ -1518,6 +1599,9 @@ replace the 0.8.8 `canonicalise_actors` step (now a no-op).
    (0 `merge` rows), the gate stays closed and the weekly task keeps storing snapshots only; that is intended, re-run
    steps 2-3 after a later dry-run shows merges.
 
+P7g needs **nothing**: the migration moves the parked rows and the dispatcher drains them. `make replay-failed-enrichment`
+no longer exists. The only P7g command is the rollback helper (below), used **only** if the code is rolled back.
+
 - **P7f recompute (needs the user's approval, WRITE).** Existing articles carry no `pir`/`own_asset` points until their
   score is recomputed; the daily `confidence.recompute_all` and any PIR or techstack edit do it too, so this is only to
   avoid waiting. `POST /api/articles/confidence/recompute` (needs the `manage_intel` permission) runs synchronously inside the API
@@ -1597,6 +1681,28 @@ replace the 0.8.8 `canonicalise_actors` step (now a no-op).
   tables (or another table the migration touches) for more than 10 s. The migration rolled back completely and
   `deploy.sh` restored the `:prev` images; re-run `make deploy` (preferably outside an enrichment burst).
 
+- **P7g: rolling the images back past 0.8.11.** The old code has no `enrich_jobs`, so the waiting work must go back
+  into `rejected_articles`. Run this **after** the image rollback (the old workers and beat are up, the 0.8.11 `worker`,
+  `worker-nlp`, `beat` and `api` are gone, so nothing creates new jobs behind the tool): report first, then `--apply`. If it
+  must run before the rollback, stop `worker`, `worker-nlp`, `beat` and `api` first. From the host checkout (which stays on
+  the new commit), with the app `.env` supplying `DATABASE__SYNC_URL` (the tool prints the host and database it connects to,
+  never the password; check it is the right environment):
+  ```bash
+  uv run python tools/ops/requeue_enrich_jobs.py            # report: counts per kind and state, writes nothing
+  uv run python tools/ops/requeue_enrich_jobs.py --apply    # WRITE, needs approval
+  ```
+  `--apply` moves every `classify` job back into `rejected_articles` as `failure_kind='transient'`, `auto_replay_count=0`,
+  reason `[enrichment_failed] requeued after rollback`, and deletes the `ttp` jobs (those articles keep their Tier 1 TTPs;
+  the LLM TTPs are lost). One transaction; a second run moves nothing; the script uses only the database. What happens next
+  depends on the image you rolled back to:
+  - **0.8.5 to 0.8.10 images:** the old `enrich.auto_replay` (beat, every 10 min) drains the requeued rows by itself once the
+    LLM is healthy.
+  - **0.8.2 images (prod's auto-rollback target):** there is no `enrich.auto_replay` (it arrived in 0.8.5), so the rows stay
+    parked as `[enrichment_failed]` rows. Once the LLM is healthy an admin replays them by hand with the old Replay button
+    (Newsroom > Filtered > Failed enrichment, `POST /api/filtered-articles/{id}/replay`; both exist in the 0.8.2 tag,
+    admin only), row by row. `tools/ops/replay_failed_enrichment.py` is not in these images either: do not look for it.
+- **Gateway down for hours:** not a rollback case. Jobs wait, the breaker holds the model to one canary per cooldown, and the
+  Telegram alert says how many are waiting. Do not restart workers to "push" the queue.
 - **P7f.** No schema change, so a code rollback needs no DB step. The 0.8.10 and older code ignores the unknown
   `score_reasons` keys `pir` and `own_asset` (pydantic default) and serves the same rows; the P7f points stay in
   `priority_score` until the old code's next recompute removes them. Nothing to undo by hand.
@@ -1743,6 +1849,22 @@ replace the 0.8.8 `canonicalise_actors` step (now a no-op).
   counts, `feed_changed_at` untouched by the 04:00 decay sweep, TAXII `intel` pull from outside the host); prod numbers
   for After deploy checks P7c-1 to P7c-8.
 
+- **P7g R1: a title waits as long as the gateway is down.** The Enrichment queue page and the Telegram alert make it
+  visible; an analyst can accept or reject. Follow-ups of a story whose lead waits also wait (they inherit once the lead is
+  decided).
+- **P7g R2: storage.** `input_text` is kept per pending job (tens of KB each); rows are deleted on completion.
+- **P7g R3: the breaker looks only at `classify`/`ttp` calls.** Failures of recap or TA profile calls do not open it.
+- **P7g R4: after a rollback pending `ttp` jobs are dropped** (Tier 1 TTPs remain).
+- **P7g R5: a persistent DB bug loops with backoff** (visible in `attempts` and `last_error`) instead of failing fast, by
+  design: the goal is zero jobs waiting for a human after transient DB trouble.
+- **P7g R6: a permanently rejected request retries forever.** An article whose LLM request always returns 400/401/403/404
+  retries with backoff (up to hourly, no cap) and can be the half-open canary, keeping the breaker open for the whole
+  queue. Watch `last_error` in the Enrichment queue, and reject the article or fix the gateway config.
+- **P7g R7: leftover `enrich.auto_replay` messages.** Messages already queued at deploy time are logged once as
+  "unregistered task" by the new worker and discarded. This is harmless.
+- **P7g follow-ups:** the dev check of spec section 6 after merging to `origin/Dev` (one outage night: classify `error` calls
+  per day drop from hundreds to tens, pending jobs rise then drain, the migrated rows drain, no new `[enrichment_failed]`
+  rows); dropping the unused `failure_kind`, `auto_replay_count`, `last_auto_replay_at` columns is a later cleanup.
 - **P7f-R1: the score is global (D1).** One `priority_score` for all clients, so a match against client A's PIR raises the
   article for client B too. B sees "PIR match +15" in the grade tooltip but never A's PIR title or tech names. Fine with
   one client (today); revisit before a second client with its own PIRs goes live.
@@ -1750,6 +1872,6 @@ replace the 0.8.8 `canonicalise_actors` step (now a no-op).
   queue many runs; they are idempotent.
 - **P7f-R3: relevance is "as of now".** A recompute applies today's PIRs and techstack to old articles, and a PIR whose
   date window opens or closes changes scores at the next daily run.
-- **P7f-R4: direct DB edits and PR #84.** A PIR that expires or is edited directly in the DB keeps or loses its points only at the next recompute (daily, or on an API edit). When P7g (PR #84) lands before or after this release, the second PR must regenerate `docs/openapi.json`, `schema.d.ts` and the article/newsletter router snapshots, not hand-merge them.
+- **P7f-R4: direct DB edits.** A PIR that expires or is edited directly in the DB keeps or loses its points only at the next recompute (daily, or on an API edit).
 - **P7f follow-ups:** PIR matches unlocking Tier 3 LLM, the weekly PIR coverage report and the dashboard "Tech stack"
   badge reading `score_reasons.own_asset` are out of scope; dev numbers for the checks above are filled in after the dev deploy.

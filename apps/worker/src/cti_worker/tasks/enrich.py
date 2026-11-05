@@ -8,67 +8,44 @@ Import `cti_enrich` (spaCy/sumy) LAZY di dalam fungsi -- baca docstring
 `cti_worker.celery_app` soal kenapa (worker scrape-only, image tanpa extra
 `nlp`, tetep bisa start walau task ini gak pernah beneran dia jalanin).
 
-Kebijakan kegagalan (Fase 10.A2) -- SATU prinsip: artikel yang sudah lolos
+Kebijakan kegagalan (Fase 10.A2, diubah P7g) -- SATU prinsip: artikel yang sudah lolos
 dedup (`scraper_seen` udah di-commit pas `send_task`) TIDAK BOLEH hilang tanpa
-jejak. Empat jalur:
+jejak. Sejak P7g task ini TIDAK memanggil LLM (`run_pipeline` menyimpan artikel yang
+relevansinya sudah diketahui, sisanya jadi job `classify` di `enrich_jobs`), jadi kegagalan
+gateway LLM tidak pernah sampai ke sini; itu urusan job runner (`enrich.llm`). Tersisa:
 
-1. **Transien** (LLM mati/timeout/5xx/429-bukan-kuota, koneksi DB putus,
-   jaringan): retry sampai 6x, backoff eksponensial 30s -> 10 mnt (+jitter),
-   total ~30 menit -- cukup buat gateway LLM yang restart/gangguan singkat.
-2. **JSON rusak** (`json.JSONDecodeError` yang lolos dari retry internal
-   `classify()`): 2x retry, lebih pelit karena tiap retry = sampai 3 panggilan
-   LLM dan kegagalan JSON yang PERSISTEN jarang sembuh sendiri.
-3. **Konfigurasi gateway** (`failure_kind='config'`: HTTP 400/401/403/404 dari gateway LLM --
-   model salah, key ditolak, endpoint hilang): TANPA retry Celery, langsung diparkir di
-   `rejected_articles` -- mengulang request yang sama pasti gagal sama. Sembuh setelah
-   konfigurasinya diperbaiki (replay otomatis/manual).
-4. **Gagal permanen** (retry habis, atau error yang gak bakal sembuh:
-   kuota abis/bug): `on_failure` nulis ke `rejected_articles` dengan
-   `reason="[enrichment_failed] ..."` -> muncul di halaman Filtered Articles,
-   bisa di-restore analis. Kalau artikelnya SUDAH tersimpan (gagal SESUDAH
-   `persist`, mis. Telegram down) gak ada yang dicatat -- gak ada yang hilang.
-
-`OpenAIQuotaExhausted` SENGAJA gak di-retry -- kuota abis gak pulih dalam
-hitungan detik, retry cuma nge-spam queue; langsung dicatat, butuh tindakan
-manusia."""
+1. **Transien** (koneksi DB putus, jaringan `httpx`): retry sampai 6x, backoff eksponensial
+   30s -> 10 mnt (+jitter), total ~30 menit.
+2. **Gagal final** (retry habis, atau error lain/bug): `on_failure` menulis job `classify`
+   ber-`state='failed'` dengan `input_text=NULL` (bagian depan pipeline diulang saat job
+   dijalankan lagi) dan `last_error` -> muncul di antrean enrichment Newsroom, analis bisa
+   retry/terima/tolak, plus satu alert Telegram per jendela cooldown (`alert_job_failed`).
+   Kalau artikelnya SUDAH tersimpan (gagal SESUDAH `persist`, mis. Telegram
+   down) gak ada yang dicatat -- gak ada yang hilang."""
 
 from __future__ import annotations
 
 import datetime
-import json
 import random
-from typing import Any
+from typing import Any, Literal, cast
 
 import httpx
-import openai
 import sqlalchemy.exc
 import structlog
 from celery import Task
-from cti_core.llm.client import EmptyLLMResponse
 
 from cti_worker.celery_app import app
 
 log = structlog.get_logger()
 
+# Error LLM (openai, `EmptyLLMResponse`, JSON rusak) tidak ada lagi di sini: task ini tidak
+# memanggil LLM sejak P7g. Kegagalan gateway ditangani job runner tanpa retry Celery.
 _TRANSIENT_ERRORS = (
-    openai.APIConnectionError,  # termasuk APITimeoutError
-    openai.InternalServerError,  # 5xx dari gateway/provider
-    openai.RateLimitError,  # 429 -- yang KUOTA sudah jadi OpenAIQuotaExhausted di stage
-    EmptyLLMResponse,  # 200 tanpa `choices` (openrouter/free saat upstream gagal)
     httpx.TransportError,
     sqlalchemy.exc.OperationalError,  # koneksi DB putus / server restart
     sqlalchemy.exc.InterfaceError,
 )
 _MAX_RETRIES_TRANSIENT = 6
-_MAX_RETRIES_JSON = 2
-# Salah konfigurasi gateway (400/401/403/404): tidak ada di `_TRANSIENT_ERRORS`, jadi task
-# tidak me-retry; hanya dipakai buat melabeli `failure_kind`.
-_CONFIG_ERRORS = (
-    openai.BadRequestError,
-    openai.AuthenticationError,
-    openai.PermissionDeniedError,
-    openai.NotFoundError,
-)
 
 
 def _backoff_s(retries: int) -> float:
@@ -94,76 +71,27 @@ def _relevance_for(scraper_id: str | None) -> tuple[str | None, str, str, str]:
 
 
 def _scrub_secrets(text: str) -> str:
-    """Buang secret yang DIKONFIGURASI dari teks error sebelum masuk DB/UI:
-    provider kadang ngecho (sebagian) API key di pesan errornya."""
-    try:
-        from cti_core.runtime_secrets.overlay import scrub_candidates
+    """Buang secret yang DIKONFIGURASI dari teks error sebelum masuk DB/UI: provider kadang
+    ngecho (sebagian) API key di pesan errornya. Implementasinya satu, dipakai juga job runner
+    `cti_enrich.jobs` (`cti_core.runtime_secrets.overlay.scrub_secrets`, tidak pernah raise)."""
+    from cti_core.runtime_secrets.overlay import scrub_secrets
 
-        secrets = scrub_candidates()
-    except Exception:  # settings gak bisa dimuat: jangan sampai gagal nyatet gara-gara ini
-        return text
-    for secret in secrets:
-        text = text.replace(secret, "***")
-    return text
+    return scrub_secrets(text)
 
 
-_FAILURE_ALERT_KEY = "cti:enrich:failed_alerted"
-
-
-def _alert_enrichment_failure(error_type: str, message: str, waiting: int) -> None:
-    """Satu alert Telegram per jendela cooldown: kegagalan massal (model salah, kuota habis,
-    gateway mati) = ratusan task, dan sebelum ini tidak ada sinyal selain laporan harian 23:55.
-    Dedupe lintas proses worker-nlp lewat Redis (pola `beat_watchdog`). BEST-EFFORT: tidak
-    pernah menutupi kegagalan aslinya."""
-    try:
-        import html
-
-        import redis
-        from cti_alerts.telegram import send_alert
-        from cti_core.config import get_settings
-
-        settings = get_settings()
-        client = redis.Redis.from_url(settings.redis.url)
-        cooldown_s = settings.worker.enrich_failure_alert_cooldown_min * 60
-        if not client.set(_FAILURE_ALERT_KEY, "1", nx=True, ex=cooldown_s):
-            return
-        send_alert(
-            "scraper_health",
-            "<b>Enrichment artikel GAGAL</b> -- artikelnya belum diproses.\n"
-            f"<code>{html.escape(error_type)}</code>: {html.escape(message)}\n"
-            f"Menunggu replay: {waiting} artikel. Perbaiki penyebabnya dulu, lalu replay dari "
-            "Newsroom > Failed enrichment.",
-        )
-    except Exception as alert_error:
-        log.error("enrich_failure_alert_failed", error=str(alert_error)[:200])
-
-
-def _failure_kind(error_class: type[BaseException]) -> str:
-    """Jenis kegagalan FINAL untuk `rejected_articles.failure_kind`, mengikuti kebijakan retry."""
-    if issubclass(error_class, json.JSONDecodeError):
-        return "json"
-    if issubclass(error_class, _TRANSIENT_ERRORS):
-        return "transient"
-    if issubclass(error_class, _CONFIG_ERRORS):
-        return "config"
-    return "permanent"
-
-
-def _record_enrichment_failure(
-    kwargs: dict[str, Any],
-    exc: BaseException,
-    error_type: str | None = None,
-    failure_kind: str = "permanent",
-) -> None:
-    """Catat artikel yang gagal di-enrich ke `rejected_articles`. BEST-EFFORT:
-    gagal nulis catatan ini gak boleh nutupi kegagalan aslinya (cuma di-log)."""
+def _record_failed_job(kwargs: dict[str, Any], exc: BaseException, error_type: str) -> None:
+    """Catat artikel yang gagal di-enrich sebagai job `classify` `failed` (P7g, menggantikan
+    baris `[enrichment_failed]` di `rejected_articles`). `input_text=NULL`: job runner menjalankan
+    `prepare` dulu. `context` membawa marking/relevansi bawaan sumber karena `cti_enrich` tidak
+    bisa mencarinya sendiri (`_relevance_for`). BEST-EFFORT: gagal nulis catatan ini gak boleh
+    nutupi kegagalan aslinya (cuma di-log)."""
     url = kwargs.get("url", "?")
     try:
         from cti_core.db.engine import sync_session
-        from cti_core.db.models.article import Article, RejectedArticle
-        from cti_core.db.repositories.article import RejectedArticleRepo
+        from cti_core.db.models.article import Article
+        from cti_core.db.repositories.enrich_job import EnrichJobRepo
         from cti_core.urlkit import url_hash
-        from sqlalchemy import func, select
+        from sqlalchemy import select
 
         with sync_session() as session:
             exists = session.scalar(select(Article.id).where(Article.url_hash == url_hash(url)))
@@ -172,27 +100,37 @@ def _record_enrichment_failure(
                 log.error("enrich_failed_after_persist", url=url, error=str(exc)[:300])
                 return
             posted = kwargs.get("posted_on")
-            RejectedArticleRepo(session).upsert(
+            scraper_id = kwargs.get("scraper_id")
+            content_kind, default_relevance, tlp, pap = _relevance_for(scraper_id)
+            job = EnrichJobRepo(session).create(
+                kind="classify",
                 url=url,
                 title=kwargs.get("title", ""),
                 source=kwargs.get("source", ""),
-                scraper_id=kwargs.get("scraper_id"),
+                scraper_id=scraper_id,
                 posted_on=datetime.date.fromisoformat(posted) if posted else None,
-                # Scrub SEBELUM dipotong: secret di batas 300 karakter lolos kalau tidak.
-                reason=(
-                    f"[enrichment_failed] {error_type or type(exc).__name__}: "
-                    f"{_scrub_secrets(str(exc))[:300]}"
-                ),
-                failure_kind=failure_kind,
+                input_text=None,
+                context={
+                    "content_kind": content_kind,
+                    "default_relevance": default_relevance,
+                    "tlp": tlp,
+                    "pap": pap,
+                },
+                state="failed",
+                # Scrub SEBELUM dipotong (repo memotong ke 300): secret di batas potongan lolos
+                # kalau urutannya dibalik.
+                last_error=f"{error_type}: {_scrub_secrets(str(exc))}",
             )
-            waiting = session.scalar(
-                select(func.count())
-                .select_from(RejectedArticle)
-                .where(RejectedArticle.failure_kind.is_not(None))
-            )
-        error_name = error_type or type(exc).__name__
-        log.error("enrich_failed_recorded", url=url, error_type=error_name)
-        _alert_enrichment_failure(error_name, _scrub_secrets(str(exc))[:200], waiting or 0)
+        log.error(
+            "enrich_failed_recorded",
+            url=url,
+            error_type=error_type,
+            job_id=job.id if job is not None else None,
+        )
+        if job is not None:
+            from cti_worker.tasks.llm_dispatch import alert_job_failed
+
+            alert_job_failed(job.title, job.last_error or error_type)
     except Exception as record_error:
         log.error(
             "enrich_failure_record_failed",
@@ -218,7 +156,7 @@ class _EnrichTask(Task):  # type: ignore[misc]
         # rumit (openai.*) turun ke kelas dasarnya (`AuthenticationError` ->
         # `OpenAIError`). Tipe ASLI ada di `einfo.type`.
         original = getattr(einfo, "type", None) or type(exc)
-        _record_enrichment_failure(kwargs, exc, original.__name__, _failure_kind(original))
+        _record_failed_job(kwargs, exc, original.__name__)
 
 
 @app.task(bind=True, base=_EnrichTask, name="enrich.article", queue="enrich")
@@ -233,9 +171,9 @@ def enrich_article(
     replay: bool = False,
     alert: bool | None = None,
 ) -> dict[str, object]:
-    """`replay=True` (artikel yang gagal di-enrich dikirim ulang, `send_enrich_task`): disimpan
-    tanpa alert Telegram. `alert` (bila bukan None) menimpa bawaan itu, mis. replay otomatis yang
-    masih segar. Keduanya hanya dikirim bila perlu, jadi pesan lama di antrian tetap valid."""
+    """`replay=True`: disimpan tanpa alert Telegram. `alert` (bila bukan None) menimpa bawaan itu.
+    Pengirim replay (`send_enrich_task`, replay otomatis) sudah pensiun di P7g, tapi pesan lama
+    yang masih di antrian membawa kedua argumen ini, jadi tanda tangannya dipertahankan."""
     from cti_core.db.engine import sync_session
     from cti_enrich.pipeline import run_pipeline
 
@@ -259,10 +197,6 @@ def enrich_article(
                 tlp=tlp,
                 pap=pap,
             )
-    except json.JSONDecodeError as e:
-        raise self.retry(
-            exc=e, countdown=_backoff_s(self.request.retries), max_retries=_MAX_RETRIES_JSON
-        ) from e
     except _TRANSIENT_ERRORS as e:
         log.warning(
             "enrich_transient_error_retrying",
@@ -279,5 +213,26 @@ def enrich_article(
         url=url,
         accepted=outcome.accepted,
         news_type=outcome.news_type,
+        pending_job_id=outcome.pending_job_id,
     )
     return {"accepted": outcome.accepted, "news_type": outcome.news_type}
+
+
+@app.task(name="enrich.llm", queue="enrich", max_retries=0)
+def enrich_llm(job_id: int, decision: str | None = None) -> str:
+    """Satu job `enrich_jobs` (P7g): LLM classify/TTP yang tertunda, atau keputusan analis
+    (`decision="accept"|"reject"`). TANPA retry Celery: kegagalan dicatat di baris job (jadwal
+    ulang gateway, batas JSON, `failed`) dan dispatcher mengirimnya lagi saat jatuh tempo.
+    Return outcome `run_job` (`done`/`duplicate`/`gone`/`retry`/`failed`)."""
+    from cti_enrich.jobs import run_job
+
+    from cti_worker.tasks.llm_dispatch import alert_job_failed
+
+    outcome = run_job(
+        job_id,
+        decision=cast(Literal["accept", "reject"] | None, decision),
+        on_failed=alert_job_failed,
+        relevance_for=_relevance_for,
+    )
+    log.info("enrich_llm_done", job_id=job_id, decision=decision, outcome=outcome)
+    return outcome

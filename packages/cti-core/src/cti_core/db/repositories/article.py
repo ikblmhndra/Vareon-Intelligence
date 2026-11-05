@@ -16,7 +16,7 @@ import datetime
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any, Literal
 
-from sqlalchemy import Select, func, literal_column, or_, select, update
+from sqlalchemy import Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, object_session
 
@@ -31,7 +31,6 @@ from cti_core.db.repositories.entity import (
     entity_ids_named,
 )
 from cti_core.db.repositories.entity import mention_rows as live_mentions
-from cti_core.enrich_replay import BACKOFF_BASE, MAX_ATTEMPTS, ReplayCandidate
 from cti_core.entity.mentions import (
     ARTICLE_MENTION_ATTRS,
     MentionInput,
@@ -312,13 +311,21 @@ def _enrichment_hits(
     ]
 
 
-def apply_ttps(article: Article, ttps: Sequence[TTPInput]) -> None:
+def apply_ttps(
+    article: Article, ttps: Sequence[TTPInput], *, only_methods: Sequence[str] | None = None
+) -> None:
     """Ganti mention teknik artikel dengan `ttps` (yang tidak ada lagi dihapus, yang ada
-    diperbarui method/bukti). Dipakai remap TTP (`ttp_catalog.remap_article_ttps`)."""
+    diperbarui method/bukti). Dipakai remap TTP (`ttp_catalog.remap_article_ttps`).
+
+    `only_methods` (job `ttp` P7g): hanya mention dengan method itu yang boleh dihapus; mention
+    lain (`analyst`, `legacy`) dibiarkan utuh. Pemanggil wajib tidak mengirim teknik yang ID-nya
+    dimiliki mention yang dibiarkan, karena upsert akan menimpanya."""
     session = object_session(article)
     if not isinstance(session, Session):
         raise ValueError("apply_ttps butuh artikel yang terikat ke Session sync")
-    ArticleRepo(session).replace_mentions(article, _ttp_hits(ttps), ("attack-pattern",))
+    ArticleRepo(session).replace_mentions(
+        article, _ttp_hits(ttps), ("attack-pattern",), only_methods=only_methods
+    )
 
 
 class ArticleRepo:
@@ -416,13 +423,21 @@ class ArticleRepo:
         return article
 
     def replace_mentions(
-        self, article: Article, hits: Sequence[MentionInput], types: Sequence[str]
+        self,
+        article: Article,
+        hits: Sequence[MentionInput],
+        types: Sequence[str],
+        *,
+        only_methods: Sequence[str] | None = None,
     ) -> None:
-        """Mention artikel bertipe `types` dibuat persis `hits` (lihat `set_enrichment`)."""
+        """Mention artikel bertipe `types` dibuat persis `hits` (lihat `set_enrichment`);
+        `only_methods` membatasi baris lama yang boleh dihapus (`delete_other_mentions`)."""
         self.session.flush()
         rows = mention_rows({"article_id": article.id}, resolve_all(self.session, hits))
         keep = [(r["entity_id"], r["role"]) for r in rows]
-        self.session.execute(delete_other_mentions(article.id, types, keep))
+        self.session.execute(
+            delete_other_mentions(article.id, types, keep, only_methods=only_methods)
+        )
         if rows:
             self.session.execute(insert_mentions(rows, update=True))
         self.session.flush()
@@ -794,9 +809,6 @@ class AsyncArticleRepo:
         }
 
 
-AUTO_REPLAY_KINDS = ("transient", "config", "json")
-
-
 class RejectedArticleRepo:
     """Sync -- dipakai `cti_enrich.stages.persist.persist_rejected()`
     (Celery task `enrich.article`, sama proses tulis kayak `ArticleRepo`)."""
@@ -846,62 +858,10 @@ class RejectedArticleRepo:
         existing.posted_on = posted_on
         existing.reason = reason
         existing.failure_kind = failure_kind
-        # `auto_replay_count` / `last_auto_replay_at` sengaja tidak disentuh (milik task replay).
         if raw_enrichment is not None:
             existing.raw_enrichment = raw_enrichment
         self.session.flush()
         return existing
-
-    def auto_replay_candidates(self, now: datetime.datetime, limit: int) -> list[ReplayCandidate]:
-        """Artikel `[enrichment_failed]` yang boleh dicoba otomatis (spec 4.2): jenis `transient`,
-        `config`, `json`; percobaan < `MAX_ATTEMPTS`; jeda `BACKOFF_BASE * 2 ** count` sejak
-        percobaan terakhir sudah lewat; yang paling lama ditolak lebih dulu."""
-        backoff: Any = literal_column("interval '1 minute'") * (
-            func.power(2, RejectedArticle.auto_replay_count) * (BACKOFF_BASE.total_seconds() // 60)
-        )
-        rows = (
-            self.session.execute(
-                select(RejectedArticle)
-                .where(
-                    RejectedArticle.failure_kind.in_(AUTO_REPLAY_KINDS),
-                    RejectedArticle.auto_replay_count < MAX_ATTEMPTS,
-                    or_(
-                        RejectedArticle.last_auto_replay_at.is_(None),
-                        RejectedArticle.last_auto_replay_at + backoff <= now,
-                    ),
-                )
-                .order_by(RejectedArticle.rejected_at, RejectedArticle.id)
-                .limit(limit)
-            )
-            .scalars()
-            .all()
-        )
-        return [
-            ReplayCandidate(
-                id=r.id,
-                url=r.url,
-                title=r.title,
-                source=r.source,
-                scraper_id=r.scraper_id,
-                posted_on=r.posted_on,
-                auto_replay_count=r.auto_replay_count,
-                last_auto_replay_at=r.last_auto_replay_at,
-            )
-            for r in rows
-        ]
-
-    def mark_auto_replayed(self, ids: Sequence[int], now: datetime.datetime) -> None:
-        """Catat satu percobaan otomatis untuk `ids` (caller yang commit)."""
-        if not ids:
-            return
-        self.session.execute(
-            update(RejectedArticle)
-            .where(RejectedArticle.id.in_(ids))
-            .values(
-                auto_replay_count=RejectedArticle.auto_replay_count + 1,
-                last_auto_replay_at=now,
-            )
-        )
 
 
 class AsyncRejectedArticleRepo:
