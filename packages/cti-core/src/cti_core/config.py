@@ -229,8 +229,8 @@ class StorySettings(_StrictModel):
     default, jadi tidak ada key `.env` baru yang wajib; ganti nilai butuh restart worker."""
 
     enabled: bool = True
-    """`false` = pipeline persis 0.8.6 (classify sebelum fetch, tanpa tulisan ke `stories`).
-    Mematikan P3 = `STORY__ENABLED=false` + restart worker."""
+    """`false` = tanpa resolve/tulisan ke `stories` (sejak P7g fetch tetap di depan classify:
+    job `classify` membawa teksnya). Mematikan P3 = `STORY__ENABLED=false` + restart worker."""
     window_hours: int = 72
     """Jendela waktu pencocokan: artikel hanya digabung ke story yang aktivitas terakhirnya masih
     dalam rentang ini."""
@@ -373,9 +373,10 @@ class WorkerSettings(_StrictModel):
     """Alert Telegram "scheduler mati" diulang paling sering segini menit
     selama beat masih basi (dedupe lintas container worker lewat Redis)."""
     enrich_failure_alert_cooldown_min: int = 60
-    """Alert Telegram "enrichment artikel gagal" (`enrich.article` gagal FINAL, artikelnya masuk
-    `rejected_articles` dengan `failure_kind`) paling sering segini menit. Kegagalan massal
-    (model salah, kuota habis) = ratusan task, jadi SATU pesan per jendela (dedupe lewat Redis)."""
+    """Alert Telegram enrichment P7g (`cti_worker.tasks.llm_dispatch`: "gateway LLM mati" saat
+    circuit breaker terbuka, dan "job gagal" saat job `enrich_jobs` menjadi `failed`) paling sering
+    segini menit per jenis. Kegagalan massal (model salah, kuota habis) = ratusan job, jadi SATU
+    pesan per jendela (dedupe lewat Redis)."""
     beat_catchup_grace_s: int = 600
     """QA BUG-D7 -- pas beat start, jadwal yang slot terakhirnya terlewat
     LEBIH LAMA dari ini TIDAK di-catch-up (dilompatin ke slot berikutnya).

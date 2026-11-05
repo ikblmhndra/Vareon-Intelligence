@@ -92,6 +92,7 @@
           'industry_source': None,
           'iocs': dict({
           }),
+          'llm_ttp_status': None,
           'malware': list([
           ]),
           'mentioned_countries': list([
@@ -175,6 +176,7 @@
           'industry_source': None,
           'iocs': dict({
           }),
+          'llm_ttp_status': None,
           'malware': list([
           ]),
           'mentioned_countries': list([
@@ -253,6 +255,7 @@
           'industry_source': None,
           'iocs': dict({
           }),
+          'llm_ttp_status': None,
           'malware': list([
           ]),
           'mentioned_countries': list([
@@ -319,6 +322,7 @@
           'industry_source': None,
           'iocs': dict({
           }),
+          'llm_ttp_status': None,
           'malware': list([
           ]),
           'mentioned_countries': list([

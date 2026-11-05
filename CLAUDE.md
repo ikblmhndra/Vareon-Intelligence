@@ -61,7 +61,7 @@ Full write-up (data flows, access patterns, code paths, design decisions, known 
 
 ### Data flow
 
-`beat` (cron) → Celery `scrape.run` → `Runner.execute()` → scraper `fetch()` yields typed items → dedup (`scraper_seen`) → **sink chosen by item type** (`cti_scraper/sinks.py`, `@sink_for(ItemType)`) → `ArticleItem`s enqueue `enrich.article` on the `enrich` queue → `cti_enrich.pipeline` → `articles` table + Telegram alert.
+`beat` (cron) → Celery `scrape.run` → `Runner.execute()` → scraper `fetch()` yields typed items → dedup (`scraper_seen`) → **sink chosen by item type** (`cti_scraper/sinks.py`, `@sink_for(ItemType)`) → `ArticleItem`s enqueue `enrich.article` on the `enrich` queue → `cti_enrich.pipeline` (`prepare`, then `complete`) → `articles` table + Telegram alert. The LLM is off this path (P7g, "persist first"): when relevance is not known without the model, `enrich.article` stores a `classify` row in `enrich_jobs` instead, and LLM TTP extraction is a `ttp` job after persist. `enrich.llm` (queue `enrich`) runs one job; `enrich.llm_dispatch` (beat, every minute, `maintenance`) sends due jobs behind a circuit breaker computed from `llm_calls` (3 consecutive classify/ttp failures open it, one canary half-open). A gateway outage means jobs wait, never parked rows or manual replay. Rollback helper: `tools/ops/requeue_enrich_jobs.py`.
 
 Backpressure: scraping is much faster than enrichment (~10-13 s + LLM per article), so the article sink refuses new items (run status `backpressure`) once the `enrich` queue depth reaches `scraper.enrich_queue_max_depth`.
 

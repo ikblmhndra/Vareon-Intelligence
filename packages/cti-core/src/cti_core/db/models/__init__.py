@@ -37,6 +37,7 @@ from cti_core.db.models.cve import (
     CveTracker,
 )
 from cti_core.db.models.cve_mirror import CvePromotionShadow, CveRecord, CveRecordProduct
+from cti_core.db.models.enrich_job import EnrichJob
 from cti_core.db.models.entity import (
     Entity,
     EntityAlias,
@@ -108,6 +109,7 @@ __all__ = [
     "CveTicket",
     "CveTracker",
     "DailyRecap",
+    "EnrichJob",
     "Entity",
     "EntityAlias",
     "EntityMention",

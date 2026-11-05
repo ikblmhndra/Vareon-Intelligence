@@ -12,11 +12,13 @@ from cti_api.schemas.scraper import ScraperHealthSummary
 
 class EnrichmentHealthOut(BaseModel):
     failed_24h: int
+    """Job `failed` yang DIBUAT dalam 24 jam (tabel tanpa cap waktu gagal): angka snapshot."""
     failed_7d: int
+    """Sama, jendela 7 hari."""
     processed_7d: int
     """Diterima + ditolak + gagal dalam 7 hari: penyebut `failed_7d`."""
     pending_replay: int
-    """Baris `rejected_articles` yang gagal di-enrich dan belum di-replay (semua umur)."""
+    """Job `enrich_jobs` `failed` (menunggu analis), semua umur; nama lama dipertahankan."""
     last_failure_at: str | None
 
 
@@ -47,12 +49,16 @@ class LlmErrorOut(BaseModel):
     http_status: int | None
 
 
-class LlmParkedOut(BaseModel):
-    total: int
-    """Baris `rejected_articles` dengan `failure_kind` terisi (gagal di-enrich, belum pulang)."""
-    auto_eligible: int
-    """Masih boleh di-replay otomatis: jenis transient/config/json, belum sampai batas percobaan."""
-    auto_replays_24h: int
+class LlmQueueOut(BaseModel):
+    """Antrean kerja LLM (`enrich_jobs`) dan circuit breaker-nya (P7g)."""
+
+    breaker: Literal["closed", "open", "half_open"]
+    retry_at: str | None
+    """Akhir cooldown breaker; `None` saat tertutup."""
+    pending_classify: int
+    pending_ttp: int
+    failed: int
+    oldest_pending_at: str | None
 
 
 class LlmTaskUsageOut(BaseModel):
@@ -86,7 +92,7 @@ class LlmHealthOut(BaseModel):
     last_call_at: str | None
     last_ok_at: str | None
     last_error: LlmErrorOut | None
-    parked: LlmParkedOut
+    queue: LlmQueueOut
     usage_24h: list[LlmTaskUsageOut]
     usage_7d: list[LlmTaskUsageOut]
     stories_24h: StoryHealthOut

@@ -201,19 +201,19 @@ export function DataHealthView() {
         </Section>
 
         <Section title="Enrichment" tone={enrichTone}>
-          <Row label="Failed, last 24 hours" value={e.failed_24h.toLocaleString()} />
+          <Row label="Failed jobs created, last 24 hours" value={e.failed_24h.toLocaleString()} />
           <Row
-            label="Failed, last 7 days"
-            value={`${e.failed_7d.toLocaleString()} of ${e.processed_7d.toLocaleString()} processed (${pct(e.failed_7d, e.processed_7d)})`}
+            label="Failed jobs created, last 7 days"
+            value={`${e.failed_7d.toLocaleString()} of ${e.processed_7d.toLocaleString()} processed (${pct(e.failed_7d, e.processed_7d)}) · snapshot of jobs still failed`}
           />
-          <Row label="Waiting for a replay" value={e.pending_replay.toLocaleString()} tone={e.pending_replay ? "warn" : "ok"} />
-          <Row label="Last failure" value={when(e.last_failure_at)} />
+          <Row label="Failed jobs waiting for a retry" value={e.pending_replay.toLocaleString()} tone={e.pending_replay ? "warn" : "ok"} />
+          <Row label="Newest failed job created" value={when(e.last_failure_at)} />
           <Row
             label="Enrich queue"
             value={q.enrich_depth === null ? "unknown (Redis not reachable)" : `${q.enrich_depth.toLocaleString()} waiting · backpressure at ${q.enrich_max_depth.toLocaleString()}`}
             tone={queueTone}
           />
-          <MoreLink href="/newsroom">Replay from Newsroom › Filtered Articles › Failed enrichment</MoreLink>
+          <MoreLink href="/newsroom">Review jobs in Newsroom › Filtered Articles › Enrichment queue</MoreLink>
         </Section>
 
         <Section title="Source freshness">
@@ -265,13 +265,17 @@ export function DataHealthView() {
           <Section title="LLM" tone={llmTone}>
             <Row label="Model status" value={llmStatusValue} tone={llmTone} />
             <Row
-              label="Parked articles"
-              value={`${llm.parked.total.toLocaleString()} parked · ${llm.parked.auto_eligible.toLocaleString()} eligible for auto-replay · ${llm.parked.auto_replays_24h.toLocaleString()} auto-replays in 24 h`}
-              tone={llm.parked.total ? "warn" : "ok"}
+              label="Circuit breaker"
+              value={`${llm.queue.breaker.replace("_", "-")}${llm.queue.retry_at ? ` · retry at ${when(llm.queue.retry_at)}` : ""}`}
+              tone={llm.queue.breaker === "closed" ? "ok" : llm.queue.breaker === "open" ? "bad" : "warn"}
             />
+            <Row label="Pending classify jobs" value={llm.queue.pending_classify.toLocaleString()} tone={llm.queue.pending_classify ? "warn" : "ok"} />
+            <Row label="Pending TTP jobs" value={llm.queue.pending_ttp.toLocaleString()} />
+            <Row label="Failed jobs" value={llm.queue.failed.toLocaleString()} tone={llm.queue.failed ? "warn" : "ok"} />
+            <Row label="Oldest pending job" value={llm.queue.oldest_pending_at ? when(llm.queue.oldest_pending_at) : "none pending"} />
             <Row label="Stories, last 24 hours" value={storySummary(llm.stories_24h)} />
             <Row label="Stories, last 7 days" value={storySummary(llm.stories_7d)} />
-            <MoreLink href="/newsroom">Replay from Newsroom › Filtered Articles › Failed enrichment</MoreLink>
+            <MoreLink href="/newsroom">Review jobs in Newsroom › Filtered Articles › Enrichment queue</MoreLink>
           </Section>
           <Section title="Relevance model" tone={relTone}>
             <Row
@@ -419,8 +423,9 @@ function HowToRead() {
         </li>
         <li>
           <strong className="text-foreground">Enrichment</strong>: Problem when 10% or more of the articles processed in 7 days
-          failed, or 5 or more failed in 24 hours; Check when failed articles are still waiting for a replay. A failed article is
-          stored but not enriched until it is replayed.
+          failed, or 5 or more failed in 24 hours; Check when failed jobs are still waiting for a retry. The failure figures count failed
+          jobs by the time they were created (a snapshot of jobs still failed), not by when they failed. A job that waits for the
+          model is not in the news feed until it is retried, accepted or rejected.
         </li>
         <li>
           <strong className="text-foreground">Enrich queue</strong>: Check at half of the backpressure limit, Problem at the
@@ -438,10 +443,9 @@ function HowToRead() {
         </li>
         <li>
           <strong className="text-foreground">LLM</strong>: Problem when the latest model call failed (the row shows the HTTP
-          status, error type, task and age); OK once a call succeeds again. Articles that could not be enriched because the
-          model failed are parked and replayed automatically when the model works; the row counts how many are parked, how many
-          are eligible for an automatic replay (attempt cap not reached and backoff elapsed) and how many were replayed
-          automatically in 24 hours. The table compares each task over 24 hours and 7 days; a dash means no value was recorded.
+          status, error type, task and age); OK once a call succeeds again. The queue rows show the circuit breaker (closed: calls go through; open: calls
+          pause until the retry time; half-open: one test call at a time), how many classify and TTP jobs wait for the model, how
+          many failed and the age of the oldest pending job; pending jobs drain by themselves once the model works. The table compares each task over 24 hours and 7 days; a dash means no value was recorded.
         </li>
         <li>
           <strong className="text-foreground">Relevance model</strong>: a small local classifier that decides whether a title

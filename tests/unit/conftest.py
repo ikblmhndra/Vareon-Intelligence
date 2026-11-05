@@ -16,3 +16,13 @@ def _reset_tier1_caches() -> Iterator[None]:
     tier1.reset_caches()
     yield
     tier1.reset_caches()
+
+
+@pytest.fixture(autouse=True)
+def _no_broker_sends(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pipeline mengirim job LLM baru langsung ke broker saat breaker tertutup (P7g). Test tidak
+    punya broker (kirim ke Redis yang tidak ada = retry koneksi + log); test yang ingin melihat
+    kirimannya memasang pencatatnya sendiri."""
+    from cti_enrich import pipeline
+
+    monkeypatch.setattr(pipeline, "send_enrich_llm", lambda *_a, **_k: None)

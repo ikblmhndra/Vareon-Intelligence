@@ -1,7 +1,6 @@
-"""`rejected_articles.failure_kind` mengikuti kebijakan retry task `enrich.article`:
-kelas yang di-retry = `transient`, JSON rusak = `json`, konfigurasi gateway
-(400/401/403/404) = `config`, sisanya (kuota, bug) = `permanent`.
-Modul yang diuji: `cti_worker.tasks.enrich._failure_kind`."""
+"""Kebijakan kegagalan task `enrich.article` sesudah P7g: hanya error DB/jaringan yang di-retry
+Celery (task ini tidak memanggil LLM lagi), dan kegagalan final dicatat sebagai job `classify`
+`failed` lewat `_record_failed_job`. Modul yang diuji: `cti_worker.tasks.enrich`."""
 
 from __future__ import annotations
 
@@ -11,6 +10,7 @@ from typing import Any
 import httpx
 import openai
 import pytest
+import sqlalchemy.exc
 from cti_core.llm.client import EmptyLLMResponse
 
 
@@ -27,25 +27,24 @@ def enrich(monkeypatch: pytest.MonkeyPatch) -> Any:
 
 
 @pytest.mark.parametrize(
-    ("error_class", "kind"),
+    ("error_class", "retried"),
     [
-        (openai.APITimeoutError, "transient"),
-        (openai.InternalServerError, "transient"),
-        (openai.RateLimitError, "transient"),
-        (httpx.ConnectError, "transient"),
-        (EmptyLLMResponse, "transient"),
-        (json.JSONDecodeError, "json"),
-        (openai.AuthenticationError, "config"),
-        (openai.BadRequestError, "config"),
-        (openai.PermissionDeniedError, "config"),
-        (openai.NotFoundError, "config"),
-        (TypeError, "permanent"),
+        (httpx.ConnectError, True),
+        (sqlalchemy.exc.OperationalError, True),
+        (sqlalchemy.exc.InterfaceError, True),
+        (openai.APITimeoutError, False),
+        (openai.InternalServerError, False),
+        (openai.RateLimitError, False),
+        (EmptyLLMResponse, False),
+        (json.JSONDecodeError, False),
+        (openai.AuthenticationError, False),
+        (TypeError, False),
     ],
 )
-def test_failure_kind_follows_the_retry_policy(
-    enrich: Any, error_class: type[BaseException], kind: str
+def test_only_db_and_network_errors_are_retried(
+    enrich: Any, error_class: type[BaseException], retried: bool
 ) -> None:
-    assert enrich._failure_kind(error_class) == kind
+    assert issubclass(error_class, enrich._TRANSIENT_ERRORS) is retried
 
 
 def _status_error(cls: type[openai.APIStatusError], status: int) -> openai.APIStatusError:
@@ -53,7 +52,7 @@ def _status_error(cls: type[openai.APIStatusError], status: int) -> openai.APISt
     return cls("boom", response=httpx.Response(status, request=request), body=None)
 
 
-def test_config_error_is_not_retried_and_is_recorded_as_config(
+def test_unretried_error_is_recorded_as_failed_job(
     enrich: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     import contextlib
@@ -70,7 +69,7 @@ def test_config_error_is_not_retried_and_is_recorded_as_config(
     retried: list[object] = []
     monkeypatch.setattr(enrich.enrich_article, "retry", lambda **k: retried.append(k))
     recorded: list[tuple[Any, ...]] = []
-    monkeypatch.setattr(enrich, "_record_enrichment_failure", lambda *a: recorded.append(a))
+    monkeypatch.setattr(enrich, "_record_failed_job", lambda *a: recorded.append(a))
 
     kwargs = {"title": "T", "url": "u", "posted_on": None, "source": "S", "scraper_id": None}
     with pytest.raises(openai.BadRequestError) as caught:
@@ -80,8 +79,9 @@ def test_config_error_is_not_retried_and_is_recorded_as_config(
     class Info:
         type = type(caught.value)
 
+    # Tipe ASLI dari `einfo.type`, bukan kelas dasar hasil pickling Celery.
     enrich.enrich_article.on_failure(caught.value, "tid", (), kwargs, Info())
-    assert recorded[0][1:] == (caught.value, "BadRequestError", "config")
+    assert recorded[0][1:] == (caught.value, "BadRequestError")
 
 
 @pytest.mark.parametrize(
@@ -102,7 +102,7 @@ def test_alert_override_beats_replay_default(
 
     def fake_pipeline(**k: Any) -> Any:
         seen.update(k)
-        return types.SimpleNamespace(accepted=True, news_type="x")
+        return types.SimpleNamespace(accepted=True, news_type="x", pending_job_id=None)
 
     monkeypatch.setattr(pipeline, "run_pipeline", fake_pipeline)
     enrich.enrich_article.run(

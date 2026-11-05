@@ -1,5 +1,6 @@
 """P4 Task 7: `run_pipeline` menjalankan Tier 1 dan meneruskan hasil gabungannya ke `route`
-dan `persist`. Stage di-monkeypatch (gaya `test_pipeline_tier0.py`), tanpa DB."""
+dan `persist`. Stage di-monkeypatch (gaya `test_pipeline_tier0.py`), tanpa DB. Sejak P7g vonis
+LLM classify datang dari job (`_run` menyelesaikannya) dan LLM TTP = job `ttp`."""
 
 from __future__ import annotations
 
@@ -14,10 +15,11 @@ from cti_core.config import RelevanceSettings, StorySettings
 from cti_enrich import pipeline
 from cti_enrich.stages import tier1 as tier1_stage
 from cti_enrich.stages.classify import ClassifyResult
-from cti_enrich.stages.extract_ttps import Technique
 from cti_enrich.stages.score import ScoreResult
 from cti_enrich.stages.tier1 import Tier1Result
 from cti_enrich.tier1.dictionary import build_dictionary
+
+from tests.unit.enrich_job_fakes import FakeJobRepo, finish
 
 BODY = (
     "The attackers dropped a web shell on the server. "
@@ -29,23 +31,11 @@ BODY = (
 @pytest.fixture
 def rec(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     r: dict[str, Any] = {
-        "classify": 0,
-        "ttp": 0,
-        "ttp_sent": [],
         "persist": [],
         "route": [],
         "classify_result": ClassifyResult(related_cyber=True, confidence=0.9, reason="llm"),
-        "ttp_result": pipeline.TtpResult(has_techniques=False),
+        "jobs": FakeJobRepo(),
     }
-
-    def fake_classify(title: str) -> ClassifyResult:
-        r["classify"] += 1
-        return r["classify_result"]  # type: ignore[no-any-return]
-
-    def fake_ttp(sent: str) -> pipeline.TtpResult:
-        r["ttp"] += 1
-        r["ttp_sent"].append(sent)
-        return r["ttp_result"]  # type: ignore[no-any-return]
 
     def fake_persist(**kw: Any) -> Any:
         r["persist"].append(kw)
@@ -73,10 +63,7 @@ def rec(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         ),
     )
     monkeypatch.setattr(pipeline, "_known_article", lambda session, url: None)
-    monkeypatch.setattr(pipeline, "classify", fake_classify)
-    monkeypatch.setattr(pipeline, "extract_ttps", fake_ttp)
-    monkeypatch.setattr(pipeline, "normalize_ttp_result", lambda result, catalog: result)
-    monkeypatch.setattr(pipeline, "load_catalog", lambda session: TechniqueCatalog())
+    monkeypatch.setattr(pipeline, "EnrichJobRepo", r["jobs"])
     monkeypatch.setattr(pipeline, "persist", fake_persist)
     monkeypatch.setattr(pipeline, "fetch_text", lambda url: BODY)
     # Ringkasan sengaja tanpa aktor: aktor harus datang dari teks penuh lewat Tier 1.
@@ -90,8 +77,10 @@ def rec(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     return r
 
 
-def _run(title: str = "Hackers breach a logistics firm", **extra: Any) -> pipeline.PipelineOutcome:
-    return pipeline.run_pipeline(
+def _run(
+    rec: dict[str, Any], title: str = "Hackers breach a logistics firm", **extra: Any
+) -> pipeline.PipelineOutcome:
+    outcome = pipeline.run_pipeline(
         title=title,
         url="https://example.com/a",
         posted_on=None,
@@ -100,12 +89,19 @@ def _run(title: str = "Hackers breach a logistics firm", **extra: Any) -> pipeli
         session=MagicMock(),
         **extra,
     )
+    if outcome.pending_job_id is None:
+        return outcome
+    return finish(rec["jobs"], rec["classify_result"])  # vonis LLM job `classify`
+
+
+def _ttp_jobs(rec: dict[str, Any]) -> list[Any]:
+    return list(rec["jobs"].of_kind("ttp"))
 
 
 def test_tier1_runs_on_always_path(rec: dict[str, Any]) -> None:
-    _run(default_relevance="always", content_kind="kev")
+    _run(rec, default_relevance="always", content_kind="kev")
 
-    assert rec["ttp"] == 0
+    assert _ttp_jobs(rec) == []
     kw = rec["persist"][0]
     assert isinstance(kw["tier1"], Tier1Result)
     merged = {t.ttp_id: t.source for t in kw["merged_ttps"]}
@@ -113,13 +109,16 @@ def test_tier1_runs_on_always_path(rec: dict[str, Any]) -> None:
 
 
 def test_keyword_not_sent_to_llm(rec: dict[str, Any]) -> None:
-    _run()
+    _run(rec)
 
-    assert rec["ttp_sent"] == [pipeline._ttp_input(BODY, "Ringkasan pendek.")]
+    # Job `ttp` membawa teks artikel saja; teknik keyword Tier 1 tidak ikut dikirim.
+    assert [j.input_text for j in _ttp_jobs(rec)] == [
+        pipeline.ttp_job_input(BODY, "Ringkasan pendek.")
+    ]
 
 
 def test_actor_from_full_text_reaches_routing(rec: dict[str, Any]) -> None:
-    outcome = _run()
+    outcome = _run(rec)
 
     assert rec["route"][0].mentioned_group == ["lazarus group"]
     assert outcome.news_type != "Global Article"
@@ -127,24 +126,21 @@ def test_actor_from_full_text_reaches_routing(rec: dict[str, Any]) -> None:
 
 
 def test_tier1_failure_keeps_article(rec: dict[str, Any], monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tier 1 gagal = hasil kosong: artikel tetap tersimpan, TTP LLM tetap dijadwalkan (job `ttp`;
+    penggabungannya dengan sumber `llm` diuji di job runner, Task 4)."""
+
     def failing_tier1(**kw: Any) -> Tier1Result:
         structlog.get_logger().warning("tier1_failed", error="kaboom")
         return Tier1Result.empty()
 
     monkeypatch.setattr(pipeline, "run_tier1", failing_tier1)
-    rec["ttp_result"] = pipeline.TtpResult(
-        has_techniques=True,
-        techniques=[
-            Technique("T1566", "Phishing", evidence="phishing email sent to staff"),
-        ],
-    )
 
-    outcome = _run()
+    outcome = _run(rec)
 
     assert outcome.accepted
     kw = rec["persist"][0]
-    assert [(t.ttp_id, t.source) for t in kw["merged_ttps"]] == [("T1566", "llm")]
-    assert kw["ttp_result"].techniques[0].technique_id == "T1566"
+    assert kw["merged_ttps"] == []
+    assert kw["llm_ttp_status"] == "pending" and len(_ttp_jobs(rec)) == 1
     assert kw["industries"] == ([], "llm")
 
 
@@ -156,10 +152,10 @@ def test_best_practice_gets_entities_and_industry_only(rec: dict[str, Any]) -> N
         industries_impacted=["General"],
         security_tech_best_practice=True,
     )
-    outcome = _run(title="How banks should harden remote access")
+    outcome = _run(rec, title="How banks should harden remote access")
 
     assert outcome.news_type == "Security Technology & Best Practices"
-    assert rec["ttp"] == 0
+    assert _ttp_jobs(rec) == []
     kw = rec["persist"][0]
     tier1 = kw["tier1"]
     assert tier1.techniques == []  # teknik tidak dicari di cabang best practice
@@ -183,7 +179,7 @@ def test_mixed_general_list_keeps_ot_marker(rec: dict[str, Any]) -> None:
         industries_impacted=["General", "Energy & Utilities"],
     )
 
-    outcome = _run(title="Hackers breach banks across the region")
+    outcome = _run(rec, title="Hackers breach banks across the region")
 
     kw = rec["persist"][0]
     assert kw["industries"] == (["Finance & Insurance"], "keyword")

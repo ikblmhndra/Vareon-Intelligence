@@ -2,10 +2,10 @@
 enrichment, kesegaran sumber, dan cakupan enrichment IOC. Hanya hitungan dan cap waktu, tidak
 pernah isi baris (pesan error bisa memuat potongan respons vendor).
 
-"Menunggu replay" = baris `rejected_articles` dengan `failure_kind` terisi: replay yang berhasil
-menghapus barisnya (`tools/ops/replay_failed_enrichment.py`), jadi semua yang tersisa memang belum
-pulang. IOC dianggap "enriched" kalau punya minimal satu kartu provider yang bukan kartu `skipped`
-(`ioc_providers.skipped_card`: IP non-publik dan sejenisnya, provider tidak pernah ditanya)."""
+"Gagal" = job `enrich_jobs` berstatus `failed` (P7g; baris selesai dihapus, jadi semua yang
+tersisa menunggu analis). IOC dianggap "enriched" kalau
+punya minimal satu kartu provider yang bukan kartu `skipped` (`ioc_providers.skipped_card`: IP
+non-publik dan sejenisnya, provider tidak pernah ditanya)."""
 
 from __future__ import annotations
 
@@ -16,10 +16,9 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_core.db.models.article import Article, RejectedArticle
+from cti_core.db.models.enrich_job import EnrichJob
 from cti_core.db.models.indicator import Indicator
 from cti_core.db.models.tweet import Tweet
-from cti_core.db.repositories.article import AUTO_REPLAY_KINDS
-from cti_core.enrich_replay import MAX_ATTEMPTS
 
 # Kartu yang benar-benar dicek provider: `raw.skipped` kosong. Ditulis sebagai SQL mentah
 # karena `jsonb_array_elements` di FROM; tanpa operator `?` (bentrok dengan bind param `text()`).
@@ -39,14 +38,6 @@ class EnrichmentFailures:
 
 
 @dataclass(frozen=True)
-class ParkedCounts:
-    total: int
-    auto_eligible: int
-    """Kandidat auto-replay tanpa syarat waktu (backoff tidak dihitung)."""
-    auto_replays_24h: int
-
-
-@dataclass(frozen=True)
 class IocCoverage:
     type: str
     total: int
@@ -57,29 +48,17 @@ class AsyncDataHealthRepo:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def parked_counts(self, now: datetime.datetime) -> ParkedCounts:
-        eligible = RejectedArticle.failure_kind.in_(AUTO_REPLAY_KINDS) & (
-            RejectedArticle.auto_replay_count < MAX_ATTEMPTS
-        )
-        stmt = select(
-            func.count(),
-            func.count().filter(eligible),
-            func.count().filter(
-                RejectedArticle.last_auto_replay_at >= now - datetime.timedelta(hours=24)
-            ),
-        ).where(RejectedArticle.failure_kind.is_not(None))
-        total, auto, replays = (await self.session.execute(stmt)).one()
-        return ParkedCounts(int(total), int(auto), int(replays))
-
     async def enrichment_failures(self, now: datetime.datetime) -> EnrichmentFailures:
-        failed = RejectedArticle.failure_kind.is_not(None)
-        at = RejectedArticle.rejected_at
+        """Job `enrich_jobs` berstatus `failed` (menunggu analis). Tabel ini tidak punya cap waktu
+        gagal, jadi jendela 24 jam / 7 hari memakai `created_at` job: "gagal dari job yang dibuat
+        dalam jendela", bukan "gagal dalam jendela". `pending_replay` = semua yang `failed`."""
+        at = EnrichJob.created_at
         stmt = select(
             func.count().filter(at >= now - datetime.timedelta(hours=24)),
             func.count().filter(at >= now - datetime.timedelta(days=7)),
             func.count(),
             func.max(at),
-        ).where(failed)
+        ).where(EnrichJob.state == "failed")
         f24, f7, pending, last = (await self.session.execute(stmt)).one()
         return EnrichmentFailures(int(f24), int(f7), int(pending), last)
 

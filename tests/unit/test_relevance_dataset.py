@@ -68,6 +68,16 @@ def test_skipped_and_inherited_excluded() -> None:
     assert [e.title for e in to_examples(rows)] == ["ok"]
 
 
+def test_analyst_decisions_are_labels() -> None:
+    """P7g: analis menerima/menolak job `classify` = putusan manusia, label yang sah (spec 4.3)."""
+    rows = [
+        _art("accepted", audit={"skipped": "analyst"}),
+        _rej("rejected", reason="analyst", audit={"skipped": "analyst"}),
+    ]
+    got = {e.title: e.label for e in to_examples(rows)}
+    assert got == {"accepted": "threat_news", "rejected": "reject"}
+
+
 def test_dedup_latest_wins() -> None:
     rows = [_rej("PHP2Shell  flaw", at=T1), _art("php2shell flaw", at=T2)]
     out = to_examples(rows)

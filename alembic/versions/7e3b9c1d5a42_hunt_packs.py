@@ -3,7 +3,7 @@
 Rollback deploy.sh hanya re-tag image dan tidak men-downgrade; image lama mengabaikan kedua tabel.
 
 Revision ID: 7e3b9c1d5a42
-Revises: 1387fae00908
+Revises: 7a3e91c5d2b4
 Create Date: 2026-11-04 10:00:00.000000
 
 """
@@ -16,7 +16,7 @@ from sqlalchemy.dialects import postgresql
 from alembic import op
 
 revision: str = "7e3b9c1d5a42"
-down_revision: str | Sequence[str] | None = "1387fae00908"
+down_revision: str | Sequence[str] | None = "7a3e91c5d2b4"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
