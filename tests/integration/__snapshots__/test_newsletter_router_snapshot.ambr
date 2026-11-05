@@ -104,6 +104,10 @@
           'score_reasons': dict({
             'credibility': list([
             ]),
+            'own_asset': list([
+            ]),
+            'pir': list([
+            ]),
             'priority': list([
             ]),
           }),
@@ -188,6 +192,10 @@
           'score_reasons': dict({
             'credibility': list([
             ]),
+            'own_asset': list([
+            ]),
+            'pir': list([
+            ]),
             'priority': list([
             ]),
           }),
@@ -265,6 +273,10 @@
           'score_reasons': dict({
             'credibility': list([
             ]),
+            'own_asset': list([
+            ]),
+            'pir': list([
+            ]),
             'priority': list([
             ]),
           }),
@@ -330,6 +342,10 @@
           'reliability_grade': None,
           'score_reasons': dict({
             'credibility': list([
+            ]),
+            'own_asset': list([
+            ]),
+            'pir': list([
             ]),
             'priority': list([
             ]),

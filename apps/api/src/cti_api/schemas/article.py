@@ -59,11 +59,22 @@ class PriorityReason(BaseModel):
     points: int
 
 
+class PirReason(BaseModel):
+    id: int
+    title: str
+    priority: str
+
+
 class ScoreReasons(BaseModel):
-    """Alasan penilaian artikel (P6 3.1): kode kredibilitas + rincian poin prioritas."""
+    """Alasan penilaian artikel (P6 3.1): kode kredibilitas + rincian poin prioritas.
+
+    P7f: `pir` (PIR client yang cocok) dan `own_asset` (nama tech milik client) hanya berisi
+    entri client pemanggil; penyaringan dilakukan `_serialize`, bukan skema ini."""
 
     credibility: list[str] = []
     priority: list[PriorityReason] = []
+    pir: list[PirReason] = []
+    own_asset: list[str] = []
 
 
 class CredibilityOverrideIn(BaseModel):

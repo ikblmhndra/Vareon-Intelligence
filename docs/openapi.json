@@ -594,6 +594,8 @@
             "$ref": "#/components/schemas/ScoreReasons",
             "default": {
               "credibility": [],
+              "own_asset": [],
+              "pir": [],
               "priority": []
             }
           },
@@ -6197,6 +6199,29 @@
         "title": "PasswordResetRequest",
         "type": "object"
       },
+      "PirReason": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "priority": {
+            "title": "Priority",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "priority"
+        ],
+        "title": "PirReason",
+        "type": "object"
+      },
       "PolicySettings": {
         "properties": {
           "force_all_change": {
@@ -7534,7 +7559,7 @@
         "type": "object"
       },
       "ScoreReasons": {
-        "description": "Alasan penilaian artikel (P6 3.1): kode kredibilitas + rincian poin prioritas.",
+        "description": "Alasan penilaian artikel (P6 3.1): kode kredibilitas + rincian poin prioritas.\n\nP7f: `pir` (PIR client yang cocok) dan `own_asset` (nama tech milik client) hanya berisi\nentri client pemanggil; penyaringan dilakukan `_serialize`, bukan skema ini.",
         "properties": {
           "credibility": {
             "default": [],
@@ -7542,6 +7567,22 @@
               "type": "string"
             },
             "title": "Credibility",
+            "type": "array"
+          },
+          "own_asset": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Own Asset",
+            "type": "array"
+          },
+          "pir": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PirReason"
+            },
+            "title": "Pir",
             "type": "array"
           },
           "priority": {
@@ -10758,6 +10799,22 @@
           },
           {
             "in": "header",
+            "name": "x-client-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Client-Id"
+            }
+          },
+          {
+            "in": "header",
             "name": "authorization",
             "required": false,
             "schema": {
@@ -10956,6 +11013,22 @@
           },
           {
             "in": "header",
+            "name": "x-client-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Client-Id"
+            }
+          },
+          {
+            "in": "header",
             "name": "authorization",
             "required": false,
             "schema": {
@@ -11071,6 +11144,22 @@
             "schema": {
               "title": "Article Id",
               "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-client-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Client-Id"
             }
           },
           {

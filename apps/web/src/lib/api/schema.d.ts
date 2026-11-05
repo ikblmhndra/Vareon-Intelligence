@@ -4110,6 +4110,8 @@ export interface components {
             /**
              * @default {
              *       "credibility": [],
+             *       "own_asset": [],
+             *       "pir": [],
              *       "priority": []
              *     }
              */
@@ -6340,6 +6342,15 @@ export interface components {
             /** New Password */
             new_password: string;
         };
+        /** PirReason */
+        PirReason: {
+            /** Id */
+            id: number;
+            /** Priority */
+            priority: string;
+            /** Title */
+            title: string;
+        };
         /** PolicySettings */
         PolicySettings: {
             /**
@@ -6783,6 +6794,9 @@ export interface components {
         /**
          * ScoreReasons
          * @description Alasan penilaian artikel (P6 3.1): kode kredibilitas + rincian poin prioritas.
+         *
+         *     P7f: `pir` (PIR client yang cocok) dan `own_asset` (nama tech milik client) hanya berisi
+         *     entri client pemanggil; penyaringan dilakukan `_serialize`, bukan skema ini.
          */
         ScoreReasons: {
             /**
@@ -6790,6 +6804,16 @@ export interface components {
              * @default []
              */
             credibility: string[];
+            /**
+             * Own Asset
+             * @default []
+             */
+            own_asset: string[];
+            /**
+             * Pir
+             * @default []
+             */
+            pir: components["schemas"]["PirReason"][];
             /**
              * Priority
              * @default []
@@ -7968,6 +7992,7 @@ export interface operations {
                 dedup_threshold?: number;
             };
             header?: {
+                "x-client-id"?: string | null;
                 authorization?: string | null;
             };
             path?: never;
@@ -8069,6 +8094,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "x-client-id"?: string | null;
                 authorization?: string | null;
             };
             path: {
@@ -8137,6 +8163,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
+                "x-client-id"?: string | null;
                 authorization?: string | null;
             };
             path: {
