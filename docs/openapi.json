@@ -19372,6 +19372,18 @@
             }
           },
           {
+            "in": "query",
+            "name": "sigma_per_technique",
+            "required": false,
+            "schema": {
+              "default": 5,
+              "maximum": 500,
+              "minimum": 0,
+              "title": "Sigma Per Technique",
+              "type": "integer"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -29090,6 +29102,18 @@
               ],
               "title": "Format",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sigma_per_technique",
+            "required": false,
+            "schema": {
+              "default": 5,
+              "maximum": 500,
+              "minimum": 0,
+              "title": "Sigma Per Technique",
+              "type": "integer"
             }
           },
           {
