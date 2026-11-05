@@ -91,3 +91,24 @@ async def test_override_requires_permission_and_valid_range(
         "/api/articles/99999999/credibility", headers=auth_header(), json={"credibility": 2}
     )
     assert resp.status_code == 404
+
+
+async def test_unassigned_client_rejected_before_override_is_saved(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+) -> None:
+    """X-Client-ID yang bukan milik user ditolak SEBELUM override disimpan (review PR #86)."""
+    aid = await _seed(api_session)
+    h = {**auth_header(role="admin", client_ids=["default"]), "X-Client-ID": "acme"}
+    resp = await api_client.put(
+        f"/api/articles/{aid}/credibility", headers=h, json={"credibility": 2}
+    )
+    assert resp.status_code == 403
+    assert resp.json()["detail"] == "Client not assigned to this user"
+    article = await AsyncArticleRepo(api_session).get_by_id(aid)
+    assert article is not None
+    await api_session.refresh(article)
+    assert "credibility" not in article.overrides
+    stmt = select(AuditLogEntry).where(AuditLogEntry.action == "set_credibility")
+    assert (await api_session.execute(stmt)).scalars().all() == []
