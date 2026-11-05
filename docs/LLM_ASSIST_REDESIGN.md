@@ -284,7 +284,29 @@ Also built for **0.8.11** (P7g persist-first enrichment; spec
 - **Rollback tool.** `tools/ops/requeue_enrich_jobs.py [--apply]` moves `classify` jobs back to `rejected_articles` and drops
   `ttp` jobs before an image rollback.
 
-Not started: P7f. P7e (hunting packs) is built for 0.8.11. Cost measurement over a week of real data is now possible on dev.
+- **Measured on dev (read-only, deploy 2026-11-04 06:25 UTC to 2026-11-05 05:10 UTC).** The migration turned 99 parked
+  rows into `pending` and 8 into `failed` jobs. The free gateway was down from about 06:35 to 00:00 UTC (breaker open or
+  half-open nearly every minute from 07 to 23 UTC). Pending `classify` jobs peaked at 108 (21-22 UTC) and drained to 0 by
+  04 UTC with nobody pressing anything; no `rejected_articles` row with `failure_kind` appeared. Classify errors that day:
+  293 (about 600 a day before), one or two per hour while the gateway was hard down, bursts of 35-51 in the hours it flapped
+  (a canary succeeds, the breaker closes, the next batch of 20 fails). Articles stored since deploy: `llm_ttp_status` done
+  109, skipped 26, pending 4. Found there: a model reply with a technique lacking `technique_id` or `technique_name` raised
+  `KeyError`, which failed the `ttp` job and left the article `pending`; such entries are now dropped.
+
+Also built for **0.8.11** (P7f PIR at ingest and own-asset relevance; spec
+`docs/superpowers/specs/2026-11-05-p7f-pir-own-asset-relevance-design.md`; runbook in `docs/prod-upgrade/0.8.11.md`, no
+migration and no new key):
+
+- **Two priority signals.** `pir_match` (best matching active PIR only: P1 20, P2 15, P3 10, P4 5; same filters and date
+  window as the PIR page) and `own_asset` (15: the title mentions an active techstack name, or the article mentions a
+  non-FP tracked CVE whose tech matches one). Both come from the P6 facts loader, so persist, story refresh and the
+  recompute use one path; confidence and the Admiralty code are unchanged.
+- **Global score, per-client reasons.** One `priority_score`; `score_reasons` keeps `client_id` and the API shows only the
+  requesting client's PIR titles and tech names. PIR and techstack edits enqueue `confidence.recompute_all`.
+- **Not done.** PIR matches unlocking Tier 3 LLM, the weekly PIR coverage report, RFI linked to PIR and stories, per-client
+  scores. Dev numbers: recorded after the dev deploy.
+
+Not covered in this log: P7e (hunting packs, built for 0.8.11). Cost measurement over a week of real data is now possible on dev.
 
 Correction (2026-10-24, rereading against the code): E4 first said these articles were
 "lost"; they are parked and replayable by hand, so P1 is now about recovering them
@@ -438,13 +460,13 @@ Ordered by value for the effort, assuming Splunk is the first consumer.
    TLP/PAP; sightings are deferred as P7d; allowlist suggestions not built): sightings (from Splunk hits), TP/FP feedback in the IOC UI one click
    away, automatic expiry by type (IP 30 d, domain 90 d, hash none), allowlist suggestions
    from FP analytics.
-5. **PIR-driven collection**: PIR criteria matched at ingest (not only at read time), PIR
+5. **PIR-driven collection** (partly delivered in 0.8.11 by P7f: PIR criteria matched at ingest raise the priority score; Tier 3 unlock and the coverage report are not built): PIR criteria matched at ingest (not only at read time), PIR
    matches raise priority and unlock Tier 3 LLM; weekly PIR coverage report. RFI linked to
    PIR and stories.
 6. **Hunting packages** (built for 0.8.11, P7e; spec `docs/superpowers/specs/2026-11-04-p7e-hunting-packs-design.md`): for a story with TTPs/IOCs, generate (template, not LLM) a Splunk SPL
    pack: IOC search over the standard CIM data models + links to the matching Sigma rules
    (SigmaHQ indexed by ATT&CK ID). LLM may draft a hunt hypothesis on demand.
-7. **Relevance to own assets**: join stories/CVEs to the techstack catalog (exists for CVEs)
+7. **Relevance to own assets** (partly delivered in 0.8.11 by P7f: title and tracked-CVE matches against the techstack raise the priority score; body text and stories are not joined): join stories/CVEs to the techstack catalog (exists for CVEs)
    so the dashboard leads with "what affects us".
 8. **MISP/OpenCTI connector** later, once the entity model exists (roadmap #8).
 
@@ -462,7 +484,7 @@ testing first. Phases 1-3 can start without schema redesign.
 | P4 Deterministic extractors (**built for 0.8.8**) | Actor/malware dictionary matcher, explicit + inferred ATT&CK, industry taxonomy, incident rule | Coverage (E9) measured before/after on the same article set; equal or better than LLM for actor and TTP precision on a 100-article hand-labelled sample. Measured 2026-10-25 on silver labels: met for actor (71% vs 70%) and TTP (keyword 70%, explicit 99% vs LLM 35%) precision and for coverage; malware precision 47% is the weakest field |
 | P5 Local relevance model (**built for 0.8.9**) | Train on audit trail, shadow mode, then gate | Agreement with LLM >= 95% on the confident bands; LLM classify calls down by the measured share. Measured 2026-10-26 on prod labels at 0.85: holdout 98.1% agreement over 54.5% of titles, 5-fold CV 97.6% over 52.2%; the share of calls actually avoided is read from Data health after deploy |
 | P6 Confidence (**built for 0.8.10**) | Grade all sources, Admiralty score in API/UI | Every article shows A-F/1-6. Replay of 1,546 dev articles: top priority value 16.9% of articles, 33 distinct values in the top decile, 11 Admiralty codes |
-| P7+ CTI model (**P7a, P7b, P7c and P7e built for 0.8.11**) | Split into P7a-P7g; see `docs/superpowers/specs/2026-10-28-p7a-indicator-lifecycle-design.md` section 0. P7a: indicators, lifecycle, TLP/PAP. P7b: machine API + TAXII. P7c-1: entities and relationships (backend; web pages in P7c-2). P7e: hunting packs (SPL templates plus Sigma rules). Later: PIR at ingest; sightings (P7d) deferred | Per item in section 4 |
+| P7+ CTI model (**P7a, P7b, P7c, P7e and P7f built for 0.8.11**) | Split into P7a-P7g; see `docs/superpowers/specs/2026-10-28-p7a-indicator-lifecycle-design.md` section 0. P7a: indicators, lifecycle, TLP/PAP. P7b: machine API + TAXII. P7c-1: entities and relationships (backend; web pages in P7c-2). P7e: hunting packs (SPL templates plus Sigma rules). P7f: PIR at ingest and own-asset relevance. Later: sightings (P7d) deferred | Per item in section 4 |
 
 Success metrics tracked from P0: LLM tokens per accepted article, LLM calls per day by call
 site, articles left parked as `[enrichment_failed]` after the model is healthy again (target 0), TTP precision on the labelled sample,

@@ -40,7 +40,8 @@ _MAX_BATCH = 500
 
 async def compute_article_confidence(session: AsyncSession, article: Article) -> Assessment:
     """Nilai satu artikel TANPA menulis apa pun (pratinjau). Fakta dibaca dari DB lewat loader
-    yang sama dengan persist/recompute, jadi child row yang belum di-flush tidak terhitung."""
+    yang sama dengan persist/recompute, jadi child row yang belum di-flush tidak terhitung.
+    Ini pratinjau TANPA relevansi PIR/aset sendiri (P7f), jadi `priority_score` tanpa poin itu."""
     row = (await session.execute(facts_stmt([article.id]))).mappings().one()
     return assess(facts_from_row(row))
 

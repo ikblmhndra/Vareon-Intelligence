@@ -909,7 +909,7 @@ articles (pages of 500, one facts query per page).
 
 ---
 
-## 0.8.11 — P7a indicator lifecycle and TLP/PAP (`iocs` becomes `indicators`), P7b machine API, P7c-1 entity model, P7c-2 entity web, P7g persist-first enrichment, P7e hunting packs
+## 0.8.11 — P7a indicator lifecycle and TLP/PAP (`iocs` becomes `indicators`), P7b machine API, P7c-1 entity model, P7c-2 entity web, P7g persist-first enrichment, P7e hunting packs, P7f PIR and own-asset relevance
 
 Release: not yet tagged (branch `nameless/p7-cti-model-165075`, merge to `origin/Dev` for the dev test, then PR to `main`).
 Spec: `docs/superpowers/specs/2026-10-28-p7a-indicator-lifecycle-design.md`. Progress record:
@@ -1112,6 +1112,25 @@ analyst vs superadmin), not on dev (the dev certificate is not trusted by the ch
   SigmaHQ release from GitHub, refuses a zip with fewer than 1,000 unique rules or fewer than 80 % of the stored count, and
   keeps the old rules on failure (`last_error` recorded). **Outbound HTTPS to `api.github.com`, `github.com` and
   `objects.githubusercontent.com` is needed only for this task.**
+- **P7f: PIR and own-asset relevance in the priority score.** `articles.priority_score` gains two signals computed by the
+  same P6 path (`confidence.assess`) at persist, story refresh, the daily recompute and the manual recompute.
+  `pir_match`: the article matches an active PIR (same filters and date window as the PIR page); points by the best
+  matching PIR only, P1 20, P2 15, P3 10, P4 5 (unknown priority counts as P4), never summed. `own_asset` (flat 15): the
+  article title mentions an active techstack name (whole word) or the article mentions a CVE with a non-false-positive
+  `cve_tracker` row whose `tech` matches an active techstack name of the same client. Body text is not searched. A PIR with
+  malformed criteria, or with no criteria list at all, is ignored (this also applies to the PIR Telegram alert and the
+  `.docx` export, where a PIR with only malformed criteria now counts as "no criteria").
+  - **Global score, per-client explanation (D1).** `priority_score` stays one global number: a match against any client's
+    PIR or techstack raises it. `score_reasons` stores `pir` (`id`, `title`, `priority`, `client_id`) and `own_asset`
+    (`name`, `client_id`, at most 5), and the API returns only the entries of the requesting client (client id removed).
+    The article list, detail and credibility endpoints now read `X-Client-ID` (an unassigned client id gets 403, as the
+    dashboard endpoints already do; the web proxy sends it). The `priority` list (points) is not filtered, so another
+    client can see "PIR match +15" without the PIR behind it.
+  - **Recompute on edit.** Creating, updating or deleting a PIR, and creating, updating or deleting a techstack entry,
+    adding or removing a target, or toggling `active`, enqueues `confidence.recompute_all` after commit (a failed enqueue
+    is logged as `recompute_all_enqueue_failed` and the request still succeeds). Exposure and hosting edits do not.
+  - **UI.** The grade tooltip ("Why this grade") shows "PIR match" and "own asset" points, the matched PIR titles with
+    priority, and the matched tech names.
 
 ### Migrations (revision ids, reversible or not, rough duration/row counts seen on dev)
 
@@ -1181,6 +1200,8 @@ table except `article_industries` (General dropped) and `ta_watchlist` (collapse
 snapshot reloads on the next API start). **This is the last revision in the chain: after the deploy `alembic_version`
 should read `7e3b9c1d5a42`.**
 
+**P7f adds no migration.** `score_reasons` is JSONB; the new keys `pir` and `own_asset` need no schema change.
+
 ### Settings / .env (new keys, recommended PROD values, defaults)
 
 Four **optional** keys. All have defaults, so **prod needs no `.env` change** and the app starts without them:
@@ -1208,6 +1229,8 @@ P7g adds **no `.env` key and no setting** (breaker constants and the dispatcher 
 **P7e adds no required `.env` key.** One optional key with a default: `SIGMA__SYNC_ENABLED` (default `true`; `false` stops the
 weekly `sigma.sync` download, the committed snapshot stays in use). Leave it unset. `.env.example` and `.env.prod.template`
 list it commented out.
+
+**P7f adds no `.env` key.** Nothing to set on the prod host before merging.
 
 ### Before deploy (read-only checks with expected results)
 
@@ -1293,6 +1316,16 @@ consume the feed (host, TLS trust of the self-signed certificate, TLP ceiling) b
 - **P7e-1. Outbound access (read-only).** From the prod host, `curl -sI https://api.github.com/repos/SigmaHQ/sigma/releases/latest`
   should answer `200`. If the host has no outbound access, skip it: the snapshot still loads and the weekly sync records
   `last_error`; load newer rules with `cti-sigma import` (see One-off commands).
+- **P7f-1. How much data the new signals can use** (read-only, expected: a handful of rows; dev has 1 client, 1 active PIR
+  and 35 active techstack entries). If a client has no active PIR and no active techstack, P7f changes nothing for it.
+
+  ```sql
+  SELECT client_id, priority, count(*) FROM pir_requirements WHERE status = 'active' GROUP BY 1, 2 ORDER BY 1, 2;
+  SELECT client_id, count(*) FROM techstack_entries WHERE active GROUP BY 1 ORDER BY 1;
+  ```
+
+  Note the numbers; After deploy check P7f-1 compares against them. More than one client with its own PIRs means the
+  global score (D1) will mix their priorities, see Known risks P7f-R1.
 
 ### After deploy (checks with expected results: SQL, logs, UI pages)
 
@@ -1500,8 +1533,9 @@ Run SQL in the read-only `psql` session shown above.
   prints one line per minute (`breaker=closed ... sent=<n> waiting=<n>`); there is no `auto_replayed` line any more, and
   `docker compose -p niskala-intelligence logs beat` lists no `enrich-auto-replay`.
 - **P7g-3. It drains.** Re-run the `enrich_jobs` count after 15 to 60 minutes with a healthy gateway: `pending` falls toward 0;
-  `llm_calls` shows `classify` rows with `ok`. In an outage `llm_calls` errors are only canaries (a few per half hour, not one
-  per arrival).
+  `llm_calls` shows `classify` rows with `ok`. In a hard outage `llm_calls` errors are mostly canaries (one or two per hour);
+  when the gateway flaps, a canary that succeeds closes the breaker and the next batch of up to 20 jobs can fail together
+  (dev 2026-11-04: bursts of 35-51 classify errors in such hours, 293 for the day against about 600 a day before P7g).
 - **P7g-4. UI.** Data health shows the breaker (`closed` when healthy, otherwise the retry time) and the pending/failed
   counts. Newsroom > Filtered > "Enrichment queue" lists the jobs; a `failed` row can be retried (**WRITE**, needs approval)
   and a pending `classify` row accepted or rejected (**WRITE**). An article stored by the new code shows "LLM TTPs pending" in
@@ -1516,6 +1550,19 @@ Run SQL in the read-only `psql` session shown above.
 - **P7e-4. Hunt UI.** As an analyst open an entity page (an intrusion-set or malware with ATT&CK techniques), tab Hunt: SPL
   cards, the Sigma table and *Download pack (zip)* load without console errors; also the Hunt section of an article in
   Newsroom. **WRITE**, needs approval: *Draft hypothesis* calls the LLM and stores a row.
+- **P7f-1. Signals present** (read-only, after the One-off recompute below, or after the daily run). Expected: `pir` rows
+  roughly equal the articles that the PIR page lists for each active PIR; `own_asset` rows well above 0 (on dev the title
+  path alone matched 80 of 1,331 articles in 30 days).
+
+  ```sql
+  SELECT count(*) FROM articles WHERE score_reasons ? 'pir';
+  SELECT count(*) FROM articles WHERE score_reasons ? 'own_asset';
+  ```
+
+  Dev numbers: recorded after the dev deploy.
+- **P7f-2. Grade tooltip** (UI, read-only). Open the Newsroom, hover the grade chip of an article returned by the checks
+  above: "Why this grade" lists "PIR match" and "own asset" with the PIR title and priority or the tech name. Open the
+  PIR page for that PIR and confirm the article is in its list. Check light and dark mode and a narrow width.
 
 ### One-off commands (recompute/backfills: exact command, `--dry-run` first, expected numbers from dev, how long; mark each as needing the user's approval)
 
@@ -1593,6 +1640,13 @@ no longer exists. The only P7g command is the rollback helper (below), used **on
 container, `cti-sigma import /path/sigma_all_rules.zip --release r2026-07-01` (use the release tag of the download). The
 same guards as the weekly sync apply (at least 1,000 unique rules, at least 80 % of the stored count); on refusal the table
 is unchanged. Nothing else to run for P7e: the first API start loads the snapshot by itself.
+
+- **P7f recompute (needs the user's approval, WRITE).** Existing articles carry no `pir`/`own_asset` points until their
+  score is recomputed; the daily `confidence.recompute_all` and any PIR or techstack edit do it too, so this is only to
+  avoid waiting. `POST /api/articles/confidence/recompute` (needs the `manage_intel` permission) runs synchronously inside the API
+  request (commit per batch), holds the connection for the whole run so proxy/nginx timeouts apply, and returns the counts.
+  The alternative is to wait for the daily `confidence.recompute_all` beat task. There is no `--dry-run`. The run is
+  idempotent and rewrites only score columns. Dev duration: recorded after the dev deploy.
 
 ### Rollback / if it goes wrong
 
@@ -1691,6 +1745,9 @@ is unchanged. Nothing else to run for P7e: the first API start loads the snapsho
 - **P7e.** Old code ignores `sigma_rules` and `hunt_hypotheses`, so a code rollback needs no downgrade and leaves both tables
   in place. `alembic downgrade 7a3e91c5d2b4` drops them (data loss limited to stored hypotheses and the Sigma copy).
   `SIGMA__SYNC_ENABLED=false` stops the weekly download without a rollback.
+- **P7f.** No schema change, so a code rollback needs no DB step. The 0.8.10 and older code ignores the unknown
+  `score_reasons` keys `pir` and `own_asset` (pydantic default) and serves the same rows; the P7f points stay in
+  `priority_score` until the old code's next recompute removes them. Nothing to undo by hand.
 
 ### Known risks and follow-ups
 
@@ -1858,3 +1915,13 @@ is unchanged. Nothing else to run for P7e: the first API start loads the snapsho
 - **P7e-R3: Sigma content and licence.** Rules belong to their authors under Detection Rule License 1.1 (licence file ships
   in the snapshot, the pack README credits it). The weekly sync trusts the GitHub `releases/latest` asset behind the size,
   count and 80 % guards.
+- **P7f-R1: the score is global (D1).** One `priority_score` for all clients, so a match against client A's PIR raises the
+  article for client B too. B sees "PIR match +15" in the grade tooltip but never A's PIR title or tech names. Fine with
+  one client (today); revisit before a second client with its own PIRs goes live.
+- **P7f-R2: PIR and techstack edits trigger a full recompute** (no debounce; 5 batches of 500 on dev). Many quick edits
+  queue many runs; they are idempotent.
+- **P7f-R3: relevance is "as of now".** A recompute applies today's PIRs and techstack to old articles, and a PIR whose
+  date window opens or closes changes scores at the next daily run.
+- **P7f-R4: direct DB edits.** A PIR that expires or is edited directly in the DB keeps or loses its points only at the next recompute (daily, or on an API edit).
+- **P7f follow-ups:** PIR matches unlocking Tier 3 LLM, the weekly PIR coverage report and the dashboard "Tech stack"
+  badge reading `score_reasons.own_asset` are out of scope; dev numbers for the checks above are filled in after the dev deploy.

@@ -113,6 +113,8 @@ def extract_ttps(source_text: str) -> TtpResult:
             evidence=t.get("evidence", ""),
         )
         for t in data.get("techniques", [])
+        # Entri tanpa ID/nama dibuang (dev 2026-11-04: `KeyError` membuat job `ttp` `failed`).
+        if isinstance(t, dict) and t.get("technique_id") and t.get("technique_name")
     ]
     return TtpResult(has_techniques=bool(data.get("has_techniques")), techniques=techniques)
 

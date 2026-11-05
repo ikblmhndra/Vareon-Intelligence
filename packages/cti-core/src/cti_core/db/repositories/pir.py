@@ -36,13 +36,15 @@ itu masuk Fase 7.8 (Celery beat "PIR alert"), lihat docstring
 from __future__ import annotations
 
 import datetime
+from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import Select, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from cti_core.db.models.article import Article
 from cti_core.db.models.pir import PIRNote, PIRRequirement
-from cti_core.db.repositories.article import AsyncArticleRepo
+from cti_core.db.repositories.article import AsyncArticleRepo, _apply_list_filters
 from cti_core.db.repositories.entity import TECHNIQUE, mention_rows
 from cti_core.db.repositories.ttp_catalog import canonical_ttp_name
 
@@ -57,20 +59,58 @@ _CRITERIA_KEYS = (
 )
 
 
+def _values(criteria: Any, key: str) -> list[str] | None:
+    """Nilai kriteria `key` bila berupa list string tidak kosong; selain itu dianggap TIDAK ada.
+    `criteria` itu JSONB bebas: satu PIR berisi `"x"` atau `[1]` tidak boleh menggagalkan
+    penilaian batch artikel (P7f), jadi bentuk yang rusak diabaikan, bukan error."""
+    if not isinstance(criteria, dict):  # list/string/JSON null: PIR dilewati, batch lanjut
+        return None
+    value = criteria.get(key)
+    if isinstance(value, list) and value and all(isinstance(v, str) for v in value):
+        return value
+    return None
+
+
 def _has_criteria(criteria: dict[str, Any]) -> bool:
-    return any(criteria.get(k) for k in _CRITERIA_KEYS)
+    return any(_values(criteria, k) for k in _CRITERIA_KEYS)
 
 
 def _criteria_filters(criteria: dict[str, Any]) -> dict[str, Any]:
     return {
-        "threat_actors": criteria.get("threat_actors") or None,
-        "malware": criteria.get("malware") or None,
-        "industries": criteria.get("industries") or None,
-        "countries": criteria.get("countries") or None,
-        "news_types": criteria.get("news_types") or None,
-        "title_keywords": criteria.get("keywords") or None,
-        "ttps": criteria.get("ttps") or None,
+        "threat_actors": _values(criteria, "threat_actors"),
+        "malware": _values(criteria, "malware"),
+        "industries": _values(criteria, "industries"),
+        "countries": _values(criteria, "countries"),
+        "news_types": _values(criteria, "news_types"),
+        "title_keywords": _values(criteria, "keywords"),
+        "ttps": _values(criteria, "ttps"),
     }
+
+
+def pir_article_ids_stmt(pir: PIRRequirement, article_ids: Sequence[int]) -> Select[tuple[int]]:
+    """Id di `article_ids` yang dicocokkan PIR `pir`, lewat `_apply_list_filters` yang sama
+    dengan halaman PIR (satu definisi "artikel ini cocok PIR itu", P7f): jendela `posted_on`
+    PIR + semua kriteria. Pemanggil menyaring PIR tanpa kriteria lebih dulu (`_has_criteria`)."""
+    stmt = _apply_list_filters(
+        select(Article).where(Article.id.in_(list(article_ids))),
+        posted_on_start=pir.start_date,
+        posted_on_end=pir.end_date,
+        victim_countries=None,
+        actor_countries=None,
+        sources=None,
+        search=None,
+        **_criteria_filters(pir.criteria),
+    )
+    return stmt.with_only_columns(Article.id)
+
+
+def active_pirs_stmt(today: datetime.date) -> Select[tuple[PIRRequirement]]:
+    """PIR aktif lintas client yang jendela tanggalnya (inklusif) memuat `today`."""
+    return select(PIRRequirement).where(
+        PIRRequirement.status == "active",
+        or_(PIRRequirement.start_date.is_(None), PIRRequirement.start_date <= today),
+        or_(PIRRequirement.end_date.is_(None), PIRRequirement.end_date >= today),
+    )
 
 
 class AsyncPIRRepo:
