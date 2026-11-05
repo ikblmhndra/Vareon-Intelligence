@@ -1477,8 +1477,9 @@ Run SQL in the read-only `psql` session shown above.
   prints one line per minute (`breaker=closed ... sent=<n> waiting=<n>`); there is no `auto_replayed` line any more, and
   `docker compose -p niskala-intelligence logs beat` lists no `enrich-auto-replay`.
 - **P7g-3. It drains.** Re-run the `enrich_jobs` count after 15 to 60 minutes with a healthy gateway: `pending` falls toward 0;
-  `llm_calls` shows `classify` rows with `ok`. In an outage `llm_calls` errors are only canaries (a few per half hour, not one
-  per arrival).
+  `llm_calls` shows `classify` rows with `ok`. In a hard outage `llm_calls` errors are mostly canaries (one or two per hour);
+  when the gateway flaps, a canary that succeeds closes the breaker and the next batch of up to 20 jobs can fail together
+  (dev 2026-11-04: bursts of 35-51 classify errors in such hours, 293 for the day against about 600 a day before P7g).
 - **P7g-4. UI.** Data health shows the breaker (`closed` when healthy, otherwise the retry time) and the pending/failed
   counts. Newsroom > Filtered > "Enrichment queue" lists the jobs; a `failed` row can be retried (**WRITE**, needs approval)
   and a pending `classify` row accepted or rejected (**WRITE**). An article stored by the new code shows "LLM TTPs pending" in

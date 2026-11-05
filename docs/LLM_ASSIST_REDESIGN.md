@@ -284,6 +284,15 @@ Also built for **0.8.11** (P7g persist-first enrichment; spec
 - **Rollback tool.** `tools/ops/requeue_enrich_jobs.py [--apply]` moves `classify` jobs back to `rejected_articles` and drops
   `ttp` jobs before an image rollback.
 
+- **Measured on dev (read-only, deploy 2026-11-04 06:25 UTC to 2026-11-05 05:10 UTC).** The migration turned 99 parked
+  rows into `pending` and 8 into `failed` jobs. The free gateway was down from about 06:35 to 00:00 UTC (breaker open or
+  half-open nearly every minute from 07 to 23 UTC). Pending `classify` jobs peaked at 108 (21-22 UTC) and drained to 0 by
+  04 UTC with nobody pressing anything; no `rejected_articles` row with `failure_kind` appeared. Classify errors that day:
+  293 (about 600 a day before), one or two per hour while the gateway was hard down, bursts of 35-51 in the hours it flapped
+  (a canary succeeds, the breaker closes, the next batch of 20 fails). Articles stored since deploy: `llm_ttp_status` done
+  109, skipped 26, pending 4. Found there: a model reply with a technique lacking `technique_id` or `technique_name` raised
+  `KeyError`, which failed the `ttp` job and left the article `pending`; such entries are now dropped.
+
 Not started: P7e, P7f. Cost measurement over a week of real data is now possible on dev.
 
 Correction (2026-10-24, rereading against the code): E4 first said these articles were
