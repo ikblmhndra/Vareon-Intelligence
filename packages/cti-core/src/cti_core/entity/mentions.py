@@ -237,9 +237,15 @@ def insert_mentions(rows: Sequence[dict[str, Any]], *, update: bool) -> Returnin
 
 
 def delete_other_mentions(
-    article_id: int, types: Sequence[str], keep: Iterable[tuple[int, str | None]]
+    article_id: int,
+    types: Sequence[str],
+    keep: Iterable[tuple[int, str | None]],
+    *,
+    only_methods: Sequence[str] | None = None,
 ) -> Delete:
-    """Hapus mention artikel bertipe `types` yang (entitas, role)-nya tidak di `keep`."""
+    """Hapus mention artikel bertipe `types` yang (entitas, role)-nya tidak di `keep`.
+    `only_methods`: hanya baris dengan method itu yang boleh terhapus (job `ttp` P7g: mention
+    `analyst`/`legacy` tidak pernah disentuh); None = semua method."""
     kept = list(keep)
     of_types = select(Entity.id).where(Entity.type.in_(list(types)))
     stmt = (
@@ -247,6 +253,8 @@ def delete_other_mentions(
         .where(EntityMention.article_id == article_id, EntityMention.entity_id.in_(of_types))
         .execution_options(synchronize_session=False)  # pemanggil meng-expire relasinya
     )
+    if only_methods is not None:
+        stmt = stmt.where(EntityMention.method.in_(list(only_methods)))
     if kept:
         # Tiap cabang membandingkan role secara eksplisit (IS NULL / IS NOT NULL) supaya predikat
         # "dipertahankan" tidak pernah NULL: `(entity_id, role) IN (...)` bernilai NULL untuk

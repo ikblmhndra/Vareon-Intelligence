@@ -19,6 +19,7 @@ from types import SimpleNamespace
 import pytest
 from cti_core.db.engine import sync_session
 from cti_core.db.models.article import Article, RejectedArticle
+from cti_core.db.models.enrich_job import EnrichJob
 from cti_core.db.models.report_state import SCOPE_NEWS, SCOPE_TWEET, CveMention, JobState
 from cti_core.db.repositories.report_state import CveMentionRepo, JobStateRepo
 from cti_core.urlkit import url_hash
@@ -45,15 +46,13 @@ def add_article(n: int, first_seen: datetime.datetime, news_type: str = "global"
         )  # fmt: skip
 
 
-def add_rejected(
-    n: int, at: datetime.datetime, reason: str = "not cyber", failure_kind: str | None = None
-) -> None:
+def add_rejected(n: int, at: datetime.datetime, reason: str = "not cyber") -> None:
     url = f"{PREFIX}r{n}"
     with sync_session() as s:
         s.add(
             RejectedArticle(
                 url=url, url_hash=url_hash(url), title=f"Ditolak {n}", source="T",
-                reason=reason, failure_kind=failure_kind, rejected_at=at,
+                reason=reason, rejected_at=at,
             )
         )  # fmt: skip
 
@@ -64,6 +63,7 @@ def _clean(_migrated_schema: None) -> Iterator[None]:
         with sync_session() as s:
             s.execute(delete(Article).where(Article.url.like(f"{PREFIX}%")))
             s.execute(delete(RejectedArticle).where(RejectedArticle.url.like(f"{PREFIX}%")))
+            s.execute(delete(EnrichJob))
             s.execute(delete(CveMention))
             s.execute(delete(JobState))
 
@@ -106,27 +106,47 @@ def run(task, **kwargs):
 # --- sendCounter ---------------------------------------------------------------------
 
 
-def test_daily_counters_split_related_unrelated_and_failed_for_the_local_day(tg: Telegram) -> None:
+def test_daily_counters_split_related_unrelated_for_the_local_day(tg: Telegram) -> None:
     from cti_worker.tasks.reports import report_daily_counters
 
     add_article(1, utc(25, 18))  # 01:00 WIB tgl 26
     add_article(2, utc(26, 10), title="Judul dua")
     add_rejected(1, utc(26, 3))
-    add_rejected(2, utc(26, 4), reason="[enrichment_failed] APIConnectionError: x")  # worker lama
-    add_rejected(3, utc(26, 5), reason="tanpa prefix", failure_kind="permanent")  # worker baru
 
     result = run(report_daily_counters, day=DAY)
 
-    assert result["scraped"] == 5
+    assert result["scraped"] == 3
     [(topic, message)] = tg.alerts
     assert topic == "debug"
-    assert "Total news scraped on 26 09 2026: 5" in message
+    assert "Total news scraped on 26 09 2026: 3" in message
     assert "Total unrelated cti news: 1" in message and "Total related cti news: 2" in message
-    assert "Total gagal diproses (cek Filtered Articles): 2" in message
+    assert "antrean enrichment" not in message  # antrean kosong: tidak ada baris tambahan
     names = {name: (t, c) for t, name, c, _ in tg.docs}
     assert set(names) == {"RELATED_26_09_2026.txt", "UNRELATED_26_09_2026.txt"}
     assert names["RELATED_26_09_2026.txt"][1] == "Judul 1\nJudul dua\n"
-    assert names["UNRELATED_26_09_2026.txt"][1] == "Ditolak 1\n"  # yg gagal BUKAN unrelated
+    assert names["UNRELATED_26_09_2026.txt"][1] == "Ditolak 1\n"
+
+
+def test_daily_counters_report_the_enrichment_queue_from_enrich_jobs(tg: Telegram) -> None:
+    """P7g: artikel yang menunggu LLM atau gagal ada di `enrich_jobs`, bukan `rejected_articles`
+    ber-`failure_kind`. Angkanya keadaan antrean SAAT laporan dikirim (job tidak berhari)."""
+    from cti_core.db.repositories.enrich_job import EnrichJobRepo
+    from cti_worker.tasks.reports import report_daily_counters
+
+    with sync_session() as s:
+        repo = EnrichJobRepo(s)
+        for i, state in enumerate(["pending", "pending", "failed"]):
+            repo.create(
+                kind="classify", url=f"{PREFIX}j{i}", title=f"Job {i}", source="T",
+                scraper_id=None, posted_on=None, input_text=None, context={}, state=state,
+            )  # fmt: skip
+
+    result = run(report_daily_counters, day=DAY)
+
+    assert result["scraped"] == 0  # hari itu; antrean dilaporkan terpisah
+    [(_, message)] = tg.alerts
+    assert "Menunggu LLM (antrean enrichment): 2" in message
+    assert "Gagal diproses (cek antrean enrichment di Newsroom): 1" in message
 
 
 def test_day_boundary_is_local_midnight_not_utc_midnight(tg: Telegram) -> None:

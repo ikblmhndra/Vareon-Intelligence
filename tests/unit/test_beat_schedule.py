@@ -290,10 +290,16 @@ def test_llm_maintenance_entries_run_on_the_maintenance_queue(monkeypatch) -> No
     monkeypatch.setattr(beat, "_scraper_configs", lambda: {})
     schedule = beat.build_beat_schedule()
 
-    replay = schedule["enrich-auto-replay"]
-    assert replay["task"] == "enrich.auto_replay"
-    assert replay["schedule"].minute == set(range(0, 60, 10))
-    assert replay["options"] == {"queue": "maintenance"}
+    dispatch = schedule["enrich-llm-dispatch"]
+    assert dispatch["task"] == "enrich.llm_dispatch"
+    assert dispatch["schedule"] == beat.crontab(minute="*")
+    assert dispatch["options"] == {"queue": "maintenance"}
+    # Replay otomatis pensiun (P7g): tidak ada lagi yang perlu di-replay.
+    assert "enrich-auto-replay" not in schedule
+    assert all(e["task"] != "enrich.auto_replay" for e in schedule.values())
+    from cti_worker.celery_app import app
+
+    assert "enrich.llm_dispatch" in app.tasks and "enrich.auto_replay" not in app.tasks
     purge = schedule["llm-purge-calls"]
     assert purge["task"] == "llm.purge_calls"
     assert (purge["schedule"].hour, purge["schedule"].minute) == ({3}, {40})

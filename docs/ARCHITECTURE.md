@@ -71,11 +71,17 @@ flowchart LR
   bp -->|full: release lease,<br/>run = backpressure| run
   bp -->|send_task| enrich["enrich.article<br/>(worker-nlp)"]
   enrich --> story["fetch text + story resolver<br/>(STORY__ENABLED)"]
-  story --> cls{"classify (LLM) or inherit<br/>related_cyber?"}
-  cls -->|no| rej[("rejected_articles")]
-  cls -->|yes| stages["fetch text → summarize → IOCs<br/>→ TTPs → score → route"]
+  story --> cls{"relevance known without the LLM?<br/>Tier 0, story inheritance, gate"}
+  cls -->|"no: LLM needed"| job[("enrich_jobs<br/>kind classify")]
+  job -.->|"enrich.llm_dispatch (1 min,<br/>circuit breaker)"| llm["enrich.llm"]
+  llm -->|related_cyber false| rej[("rejected_articles")]
+  cls -->|"no (not cyber)"| rej
+  cls -->|yes| stages["summarize → IOCs<br/>→ Tier 1 → score → route"]
+  llm -->|related_cyber true| stages
   stages --> persist[("articles + IOCs<br/>commit")]
   persist -->|after commit| tg(("Telegram topics"))
+  persist -.->|"TTP LLM applies"| tjob[("enrich_jobs<br/>kind ttp")]
+  tjob -.-> llm
 ```
 
 **Scheduling.** `cti_worker.beat.build_beat_schedule` runs once, at import. It reads the scraper registry and
@@ -158,7 +164,7 @@ tweet would move `since_id` past tweets the alert filters rejected.
    (`relevance/embedder.py`) imports `fastembed` lazily and loads the model from `FASTEMBED_CACHE_PATH` with
    `local_files_only` (baked into the `worker-nlp` image), so `cti_enrich.pipeline` still imports without the `nlp` extra.
    The same embedder feeds the optional story title rule `STORY__EMBEDDING_SIMILARITY` (default 0, off).
-1. `classify(title)`, or the inherited result from step 0. If `related_cyber` is false, write a light `rejected_articles` row and return.
+1. The classify verdict: inherited from step 0, Tier 0, the relevance gate, or **the LLM**. Since P7g (0.8.11) `enrich.article` never calls the LLM itself: when the verdict needs the model it stores a `classify` row in `enrich_jobs` (fetched text and story context included, so the job resumes without a second fetch) and returns; `enrich.llm` completes it later (see the P7g paragraph below). If `related_cyber` is false, write a light `rejected_articles` row and return.
    Sources whose `ScraperMeta.content_kind` is structured (`cisa_kev`, `exploitdb`, `cis`; `default_relevance="always"`)
    skip classify and TTP extraction.
 2. `fetch_text` → `summarize` → `extract_iocs` and the C2 check.
@@ -171,7 +177,7 @@ tweet would move `since_id` past tweets the alert filters rejected.
    `mentioned_group` only on the scored path). Keyword TTPs give no confidence bonus. Tweet tagging (`monitor_x`,
    `tweet_alerts`) keeps the 0.8.x behaviour, without the context-word rule.
 3. If `security_tech_best_practice`, skip TTPs and scoring: persist and alert on the `best_practice` topic.
-4. Otherwise `extract_ttps` (normalised against the ATT&CK catalog), `score`, `routing.route`. Tier 1 complements the LLM
+4. Otherwise `score` and `routing.route` run on the Tier 1 TTPs; the LLM `extract_ttps` (normalised against the ATT&CK catalog) is **not** part of the first persist any more: the article is stored with `llm_ttp_status='pending'` and a `ttp` job in the same transaction, and the job merges the LLM result later (below). Tier 1 complements the LLM
    and does not replace it. `tier1.merge.merge_ttps` merges per technique id with the priority explicit > llm > keyword
    (keyword hits are not sent to the TTP LLM call); Tier 1 actors join the scorer's `mentioned_group`, so some new
    articles move from "Global Article" to "TA Group Article" and the Telegram alert gains a "Related Threat Actor" line.
@@ -192,20 +198,38 @@ tweet would move `since_id` past tweets the alert filters rejected.
 6. **Commit**, track CVE mentions (new articles only), then `route_alerts` sends one Telegram message per
    topic.
 
-**Failure policy** (`apps/worker/src/cti_worker/tasks/enrich.py`). Transient errors (LLM connection, 5xx,
-429 that is not quota, a 200 reply without `choices`, network, DB connection) retry up to 6 times with
-30 s → 10 min backoff and jitter. Broken JSON retries twice. On the final failure `on_failure` writes
-`rejected_articles` with `failure_kind` (`transient`, `json`, `config` or `permanent`; `NULL` means the classifier
-rejected it) and reason `[enrichment_failed] ...` (secrets scrubbed), unless the article was already
-persisted. The prefix stays in `reason` for one release so an older worker is still readable.
+**Persist first, LLM later (P7g, 0.8.11).** `cti_enrich.pipeline` is split into `prepare` (URL lock, fetch, story, Tier 0,
+story inheritance, relevance gate: no LLM) and `complete` (summarize, IOCs, Tier 1, score, route, persist, alert), and
+`cti_enrich.jobs.run_job` runs the LLM part in between. Work the model must do is a row in **`enrich_jobs`** (unique per
+`(kind, url_hash)`): `classify` for a title that needs the relevance verdict, `ttp` for the LLM TTP extraction of an article
+that is already stored (`articles.llm_ttp_status` `pending` until done, `skipped` for paths that never call it). A row is
+deleted when its work is done; `llm_calls` keeps the history.
 
-**Replay.** A failed article is re-sent with `make replay-failed-enrichment` (`tools/ops/replay_failed_enrichment.py`:
-report-only without `--apply`, paced by `--rate`, queue depth checked each send). It enqueues `enrich.article` with the
-same five arguments the scraper sink sends plus `replay=True`, which stores the article without Telegram alerts (the news
-is days old). Success deletes the failed row; a classifier reject turns it into an ordinary rejection; a repeat failure
-keeps it. The Newsroom "Restore" button does **not** do this: it only creates a "Manually Restored" article without
-enrichment, and that stub makes the pipeline skip the URL (`_known_article`), so the tool skips such rows unless
-`--replace-restored-stubs` removes the stub first.
+- **`enrich.llm(job_id, decision=None)`** (queue `enrich`, no Celery retry) calls the LLM outside any transaction. Gateway
+  errors (5xx, timeout, 429, empty reply, 400/401/403/404) and DB/network errors reschedule the job (`attempts+1`,
+  `next_attempt_at = now + min(60 min, 2^attempts min)`, no cap). Broken JSON three times or any other exception turns a
+  `classify` job `failed` (waits for an analyst); a failing `ttp` job ends as `llm_ttp_status='failed'` and the article keeps
+  its Tier 1 TTPs. A `ttp` job writes through `apply_ttps` and leaves analyst/legacy TTP mentions alone. An analyst
+  `decision` (`accept`/`reject`, from `POST /api/enrich-jobs/{id}/accept|reject`) replaces the verdict and feeds P5 labels as
+  an analyst decision; `retry` puts a `failed` job back to `pending`.
+- **`enrich.llm_dispatch`** (queue `maintenance`, every minute, `cti_worker.tasks.llm_dispatch`) picks due `pending` jobs,
+  `classify` before `ttp`, oldest first, and sends them behind a **circuit breaker** (`cti_core.llm.breaker`, computed from
+  the latest `llm_calls` of tasks `classify`/`ttp`, no Redis state): closed up to 20 jobs, bounded by the free room in the
+  `enrich` queue; open after 3 consecutive failures for `min(30 min, 2 min * 2^(n-3))`; then half-open sends exactly one
+  canary. A claimed job gets a 15 minute lease in `next_attempt_at` before the send, so a crash cannot re-send forever. A new
+  job is sent at once when the breaker is closed.
+- **Alerts** (`WORKER__ENRICH_FAILURE_ALERT_COOLDOWN_MIN`, Redis dedupe, best effort): "LLM gateway down, N waiting" only while
+  jobs wait, and one alert when a job turns `failed` (permanent `enrich.article` failures too).
+- **`enrich.article` failure policy** (`apps/worker/src/cti_worker/tasks/enrich.py`): Celery retries remain only for DB and
+  network errors (`OperationalError`, `InterfaceError`, `httpx.TransportError`; 30 s to 10 min backoff with jitter); the final
+  failure of the task records a `failed` `classify` job with `input_text` NULL (the job then runs `prepare` itself), not a
+  `[enrichment_failed]` row. `rejected_articles` now holds classifier rejections only (the old `failure_kind`,
+  `auto_replay_count` and `last_auto_replay_at` columns are unused).
+- **No replay tooling.** `enrich.auto_replay`, `cti_core.enrich_replay`, `make replay-failed-enrichment` and
+  `POST /api/filtered-articles/{id}/replay` are gone; the Newsroom "Enrichment queue" (`/api/enrich-jobs`) is the analyst's
+  view. The Newsroom "Restore" button still only creates a "Manually Restored" article without enrichment.
+- **Rollback.** `tools/ops/requeue_enrich_jobs.py [--apply]` (host side, database only) moves `classify` jobs back to
+  `rejected_articles` as `transient` and drops `ttp` jobs before the images are rolled back.
 
 **Tier 1 provenance and backfill.** Mentions carry their origin in `entity_mentions.method` (`explicit`/`llm`/`keyword`
 for TTPs, `dictionary` for Tier 1 actors and malware) and `evidence`; before 0.8.11 the same lived in
@@ -308,6 +332,7 @@ Beat also schedules non-scraper tasks (`cti_worker.beat._periodic_schedule`, `_r
 | `scraper.purge_expired_items`, `scraper.purge_expired_seen` | maintenance | Delete expired `scraper_items` and `scraper_seen` rows. |
 | `scraper.purge_old_runs` | maintenance | 03:05 UTC. Delete `scraper_runs` older than `WORKER__SCRAPER_RUN_RETENTION_DAYS` (90, never below the item retention because `scraper_items.run_id` cascades); never a `running` row. |
 | `scraper.reap_stale_runs` | maintenance | Every 30 min. Close runs still `running` after `WORKER__SCRAPER_RUN_STALE_HOURS` (2) as `timeout` with a reaper note; `finished_at` stays NULL so the row never looks like the latest result in `/api/cve/freshness`. |
+| `enrich.llm_dispatch` | maintenance | Every minute. Sends due `enrich_jobs` to `enrich.llm` behind the LLM circuit breaker (above). |
 | `scraper.health_digest` | notify | One Telegram message summarising unhealthy scrapers; silent when all are fine. |
 | `pir.check_p1_alerts`, `pir.check_all_alerts` | notify | Match new articles against PIRs and alert. |
 | `attack.sync_check`, `ioc.decay_sweep` | maintenance | Re-sync the ATT&CK catalog when older than `worker.attack_sync_interval_days` (the sync also upserts ATT&CK entities, aliases, relationships and campaigns), IOC confidence decay. |
@@ -565,7 +590,8 @@ sync_session`), and **async asyncpg** in FastAPI (`deps.get_db`). The schema has
 | `articles` | `url_hash` (unique) | `enrich.article` (`ArticleRepo.upsert`) | API, reports, PIR alerts |
 | `entities` (+ `entity_aliases`, `relationships`, `entity_watches`, `entity_profiles`) | `id`; aliases unique per `(entity_type, alias_norm)` | resolver (persist, ATT&CK sync, ransomware sink), `entity.alias_sync`, entity API | API (v1 readers, `/api/entities`, `/api/v2`, TAXII `intel`), Tier 1 dictionary |
 | `entity_mentions` (replaces `article_countries`, `_industries`, `_threat_actors`, `_ttps`, `_malware`, `article_cves` and the indicator/CVE actor links, which are compatibility views since 0.8.11) | `id`; unique per article/indicator/CVE, entity and role | `enrich.article` persist, Tier 1 backfill, IOC tags, CVE links | API, reports, PIR, dashboards |
-| `rejected_articles` | `url_hash` | `enrich.article` (not cyber, or final failure with `failure_kind`) | API (Filtered Articles: restore for rejects, admin replay for failures); `enrich.auto_replay` (every 10 min; kinds `transient`/`config`/`json`, max 3 attempts, backoff 30 min x 2^count, tracked in `auto_replay_count` / `last_auto_replay_at`) |
+| `rejected_articles` | `url_hash` | `enrich.article` / `enrich.llm` (classifier rejects only since 0.8.11) | API (Filtered Articles: restore) |
+| `enrich_jobs` | `(kind, url_hash)` unique | `enrich.article` (`classify`), `complete` (`ttp`), `enrich.llm` (reschedule, fail), `enrich.llm_dispatch` (lease), API (retry) | `enrich.llm`, `enrich.llm_dispatch`, API (`/api/enrich-jobs`, Data health queue); rows deleted when done |
 | `llm_calls` | `id` | LLM client (one row per call: task, model, prompt version, tokens, latency, status `ok`/`empty`/`error`; purged after 90 days by `llm.purge_calls`) | API (`/data-health` LLM block) |
 | `indicators` (+ `indicator_sources`, `indicator_tags`, `indicator_threat_actors`, `indicator_feedback`; was `iocs*` before 0.8.11) | `(type, value)` | `enrich.article`, IOC feed sink, `ioc.enrich_pending` (the `enrichment` column) | API, `ioc.decay_sweep` |
 | `techstack_entries` | `(name, client_id)` | API (techstack, catalog) | `new_cve` (`reference_data`), promotion, API |
@@ -598,7 +624,7 @@ Read these in order. Each starts at a real entry point.
 **2. `enrich.article` → stored article and alerts**
 
 1. `apps/worker/src/cti_worker/tasks/enrich.py`: `enrich_article`, `_EnrichTask.on_failure`
-2. `packages/cti-enrich/src/cti_enrich/pipeline.py`: `run_pipeline`
+2. `packages/cti-enrich/src/cti_enrich/pipeline.py`: `prepare`, `complete`; `jobs.py`: `run_job` (LLM jobs, `enrich.llm`); `apps/worker/src/cti_worker/tasks/llm_dispatch.py`: `dispatch`; `packages/cti-core/src/cti_core/llm/breaker.py`
 3. `packages/cti-enrich/src/cti_enrich/stages/`: `classify`, `fetch_text`, `summarize`, `extract_iocs`,
    `extract_ttps`, `score`
 4. `packages/cti-enrich/src/cti_enrich/routing.py`: `route`
@@ -637,9 +663,10 @@ Read these in order. Each starts at a real entry point.
   at `scraper.enrich_queue_max_depth`, instead of letting Redis grow without bound.
 - **Commit before alerting.** The pipeline commits the article before calling `route_alerts`, so a Telegram
   failure cannot roll back stored intelligence.
-- **Nothing that passed dedup is lost silently.** Rejected and failed articles land in `rejected_articles`,
-  where analysts can review and restore them (classifier rejects) or an admin can replay them (failed
-  enrichment).
+- **Nothing that passed dedup is lost silently.** Classifier rejects land in `rejected_articles`, where analysts can
+  review and restore them. Work that needs the LLM waits in `enrich_jobs` (P7g) instead of being parked as a failure: an
+  outage means fields arrive later, the circuit breaker keeps the model to a few canaries, and the backlog drains without
+  anyone pressing a button.
 - **Sink chosen by item type.** Scrapers only yield typed items; `@sink_for` in one file decides where each
   type is stored. `fetch()` has no DB access, so scrapers stay testable with recorded HTTP fixtures.
 - **One business-logic implementation.** Periodic tasks call the same `cti_api.services` functions as the API

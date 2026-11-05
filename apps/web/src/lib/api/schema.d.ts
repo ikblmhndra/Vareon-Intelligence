@@ -1283,6 +1283,77 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/enrich-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Jobs */
+        get: operations["list_jobs_api_enrich_jobs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/enrich-jobs/{job_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept Job */
+        post: operations["accept_job_api_enrich_jobs__job_id__accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/enrich-jobs/{job_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject Job */
+        post: operations["reject_job_api_enrich_jobs__job_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/enrich-jobs/{job_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Job
+         * @description `failed` -> `pending`, jatuh tempo sekarang, `json_failures=0`; dispatcher yang mengirim.
+         */
+        post: operations["retry_job_api_enrich_jobs__job_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/entities": {
         parameters: {
             query?: never;
@@ -1627,32 +1698,12 @@ export interface paths {
         };
         /**
          * List Filtered
-         * @description `kind=unrelated`: ditolak klasifikasi LLM; `kind=failed`: enrichment GAGAL (replay).
+         * @description `kind=unrelated`: ditolak klasifikasi LLM. `kind=failed` dan replay dihapus (P7g): kerja LLM
+         *     yang gagal kini antrean `enrich_jobs` (`/api/enrich-jobs`), bukan baris `rejected_articles`.
          */
         get: operations["list_filtered_api_filtered_articles_get"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/filtered-articles/{article_id}/replay": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Replay Article
-         * @description Kirim ulang artikel yang GAGAL di-enrich ke pipeline (senyap, tanpa alert Telegram). Admin:
-         *     memakai kuota LLM. Baris gagalnya hilang sendiri begitu artikelnya berhasil diproses.
-         */
-        post: operations["replay_article_api_filtered_articles__article_id__replay_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4078,6 +4129,8 @@ export interface components {
             iocs: {
                 [key: string]: unknown;
             };
+            /** Llm Ttp Status */
+            llm_ttp_status?: string | null;
             /**
              * Malware
              * @default []
@@ -4983,6 +5036,50 @@ export interface components {
              */
             ticket_id: string;
         };
+        /** EnrichJobListResponse */
+        EnrichJobListResponse: {
+            /** Items */
+            items: components["schemas"]["EnrichJobOut"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Total */
+            total: number;
+        };
+        /** EnrichJobOut */
+        EnrichJobOut: {
+            /** Attempts */
+            attempts: number;
+            /** Created At */
+            created_at: string;
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "classify" | "ttp";
+            /** Last Error */
+            last_error?: string | null;
+            /** Next Attempt At */
+            next_attempt_at: string;
+            /** P Threat News */
+            p_threat_news?: number | null;
+            /** Posted On */
+            posted_on?: string | null;
+            /** Source */
+            source: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "pending" | "failed";
+            /** Title */
+            title: string;
+            /** Url */
+            url: string;
+        };
         /** EnrichmentHealthOut */
         EnrichmentHealthOut: {
             /** Failed 24H */
@@ -5458,7 +5555,7 @@ export interface components {
             last_error: components["schemas"]["LlmErrorOut"] | null;
             /** Last Ok At */
             last_ok_at: string | null;
-            parked: components["schemas"]["LlmParkedOut"];
+            queue: components["schemas"]["LlmQueueOut"];
             /**
              * Status
              * @enum {string}
@@ -5471,14 +5568,26 @@ export interface components {
             /** Usage 7D */
             usage_7d: components["schemas"]["LlmTaskUsageOut"][];
         };
-        /** LlmParkedOut */
-        LlmParkedOut: {
-            /** Auto Eligible */
-            auto_eligible: number;
-            /** Auto Replays 24H */
-            auto_replays_24h: number;
-            /** Total */
-            total: number;
+        /**
+         * LlmQueueOut
+         * @description Antrean kerja LLM (`enrich_jobs`) dan circuit breaker-nya (P7g).
+         */
+        LlmQueueOut: {
+            /**
+             * Breaker
+             * @enum {string}
+             */
+            breaker: "closed" | "open" | "half_open";
+            /** Failed */
+            failed: number;
+            /** Oldest Pending At */
+            oldest_pending_at: string | null;
+            /** Pending Classify */
+            pending_classify: number;
+            /** Pending Ttp */
+            pending_ttp: number;
+            /** Retry At */
+            retry_at: string | null;
         };
         /** LlmTaskUsageOut */
         LlmTaskUsageOut: {
@@ -10568,6 +10677,148 @@ export interface operations {
             };
         };
     };
+    list_jobs_api_enrich_jobs_get: {
+        parameters: {
+            query?: {
+                kind?: ("classify" | "ttp") | null;
+                state?: ("pending" | "failed") | null;
+                search?: string | null;
+                page?: number;
+                page_size?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnrichJobListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_job_api_enrich_jobs__job_id__accept_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                job_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_job_api_enrich_jobs__job_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                job_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_job_api_enrich_jobs__job_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                job_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_entities_api_entities_get: {
         parameters: {
             query?: {
@@ -11362,7 +11613,7 @@ export interface operations {
                 page?: number;
                 page_size?: number;
                 search?: string | null;
-                kind?: "all" | "unrelated" | "failed";
+                kind?: "all" | "unrelated";
             };
             header?: {
                 authorization?: string | null;
@@ -11379,41 +11630,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RejectedArticleListResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    replay_article_api_filtered_articles__article_id__replay_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                authorization?: string | null;
-            };
-            path: {
-                article_id: number;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: boolean;
-                    };
                 };
             };
             /** @description Validation Error */

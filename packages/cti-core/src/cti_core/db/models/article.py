@@ -50,6 +50,10 @@ class Article(TimestampMixin, Base):
     __tablename__ = "articles"
     __table_args__ = (
         CheckConstraint("credibility BETWEEN 1 AND 6", name="credibility_range"),
+        CheckConstraint(
+            "llm_ttp_status IN ('pending', 'done', 'skipped', 'failed')",
+            name="llm_ttp_status_valid",
+        ),
         Index("ix_articles_priority_score", text("priority_score DESC NULLS LAST")),
     )
 
@@ -118,6 +122,10 @@ class Article(TimestampMixin, Base):
     """Story (kelompok berita sama) tempat artikel ini bergabung; NULL = belum/tanpa story."""
     story_match: Mapped[str | None] = mapped_column(String(20))
     """Aturan yang menautkan: `lead`, `cve`, `title_exact`, `title`, `title_embedding`."""
+
+    llm_ttp_status: Mapped[str | None] = mapped_column(String(10))
+    """Status ekstraksi TTP oleh LLM (P7g): `pending`/`done`/`skipped`/`failed`. NULL = artikel
+    tersimpan sebelum 0.8.11; jalur tanpa panggilan LLM TTP menulis `skipped`."""
 
     mentions: Mapped[list[EntityMention]] = relationship(
         cascade="all, delete-orphan", lazy="selectin", order_by="EntityMention.id"

@@ -263,3 +263,12 @@ def scrub_candidates() -> list[str]:
     except Exception:
         log.warning("runtime_secrets_scrub_overlay_failed")
     return sorted(values, key=lambda v: (-len(v), v))
+
+
+def scrub_secrets(text: str) -> str:
+    """Ganti tiap secret yang dikonfigurasi (`scrub_candidates`) di `text` dengan `***` sebelum
+    teks error masuk DB/UI: provider kadang menggemakan (sebagian) API key di pesan errornya.
+    Satu implementasi untuk task `enrich.article` (`on_failure`) dan job runner `enrich.llm`."""
+    for secret in scrub_candidates():
+        text = text.replace(secret, "***")
+    return text

@@ -41,8 +41,10 @@ def _normalise(title: str) -> str:
 def _label(row: LabelRow) -> str | None:
     """Kelas baris, atau None bila baris harus dikeluarkan."""
     # Keputusan gerbang/Tier 0 dan warisan story bukan putusan LLM: model tidak boleh belajar
-    # dari dirinya sendiri.
-    if row.audit and ("skipped" in row.audit or "inherited_from_story" in row.audit):
+    # dari dirinya sendiri. Keputusan analis atas job `classify` (P7g, `skipped="analyst"`)
+    # justru putusan manusia, jadi tetap label.
+    audit = row.audit or {}
+    if ("skipped" in audit and audit["skipped"] != "analyst") or "inherited_from_story" in audit:
         return None
     if row.kind == "rejected":
         # Dua syarat sekaligus: baris sebelum 0.8.5 belum punya `failure_kind`.

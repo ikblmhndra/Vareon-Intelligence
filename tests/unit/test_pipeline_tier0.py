@@ -1,4 +1,5 @@
-"""Sumber terstruktur (`default_relevance="always"`) melewati classify + TTP di `run_pipeline`;
+"""Sumber terstruktur (`default_relevance="always"`) melewati classify + TTP di `run_pipeline`
+(P7g: tanpa job `classify` maupun `ttp`);
 `_relevance_for` di task `enrich.article` menerjemahkan `scraper_id` ke
 (kind, relevance, tlp, pap)."""
 
@@ -15,18 +16,12 @@ from cti_enrich.stages.classify import ClassifyResult
 from cti_enrich.stages.persist import _audit_fields
 from cti_enrich.stages.score import ScoreResult
 
+from tests.unit.enrich_job_fakes import FakeJobRepo, finish
+
 
 @pytest.fixture
 def calls(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
-    rec: dict[str, Any] = {"classify": 0, "ttp": 0, "persist": []}
-
-    def fake_classify(title: str) -> ClassifyResult:
-        rec["classify"] += 1
-        return ClassifyResult(related_cyber=True, confidence=0.9, reason="llm")
-
-    def fake_ttp(sent: str) -> pipeline.TtpResult:
-        rec["ttp"] += 1
-        return pipeline.TtpResult(has_techniques=False)
+    rec: dict[str, Any] = {"persist": [], "jobs": FakeJobRepo()}
 
     def fake_persist(**kw: Any) -> Any:
         rec["persist"].append(kw)
@@ -41,8 +36,7 @@ def calls(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         ),
     )
     monkeypatch.setattr(pipeline, "_known_article", lambda session, url: None)
-    monkeypatch.setattr(pipeline, "classify", fake_classify)
-    monkeypatch.setattr(pipeline, "extract_ttps", fake_ttp)
+    monkeypatch.setattr(pipeline, "EnrichJobRepo", rec["jobs"])
     monkeypatch.setattr(pipeline, "persist", fake_persist)
     monkeypatch.setattr(pipeline, "fetch_text", lambda url: "Isi artikel. " * 40)
     monkeypatch.setattr(pipeline, "summarize", lambda text: "Ringkasan.")
@@ -69,8 +63,8 @@ def _run(**extra: Any) -> pipeline.PipelineOutcome:
 def test_always_skips_classify_and_ttp(calls: dict[str, Any]) -> None:
     outcome = _run(default_relevance="always", content_kind="kev")
     assert outcome.accepted
-    assert calls["classify"] == 0
-    assert calls["ttp"] == 0
+    assert calls["jobs"].jobs == []  # tanpa job classify maupun ttp
+    assert calls["persist"][0]["llm_ttp_status"] == "skipped"
     classify_result = calls["persist"][0]["classify_result"]
     assert _audit_fields(classify_result)["raw_enrichment"]["classify"] == {
         "skipped": "default_relevance=always",
@@ -78,10 +72,14 @@ def test_always_skips_classify_and_ttp(calls: dict[str, Any]) -> None:
     }
 
 
-def test_classify_default_unchanged(calls: dict[str, Any]) -> None:
-    _run()
-    assert calls["classify"] == 1
-    assert calls["ttp"] == 1
+def test_classify_default_defers_to_jobs(calls: dict[str, Any]) -> None:
+    outcome = _run()
+    assert outcome.pending_job_id is not None and calls["persist"] == []
+    assert [j.kind for j in calls["jobs"].jobs] == ["classify"]
+
+    finish(calls["jobs"], ClassifyResult(related_cyber=True, confidence=0.9, reason="llm"))
+    assert [j.kind for j in calls["jobs"].jobs] == ["ttp"]
+    assert calls["persist"][0]["llm_ttp_status"] == "pending"
 
 
 @pytest.fixture
