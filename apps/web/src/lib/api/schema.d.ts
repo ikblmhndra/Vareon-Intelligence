@@ -11694,6 +11694,7 @@ export interface operations {
                 include?: ("inferred" | "llm")[];
                 days?: number;
                 format?: "json" | "zip";
+                sigma_per_technique?: number;
             };
             header?: {
                 authorization?: string | null;
@@ -16390,6 +16391,7 @@ export interface operations {
                 include?: ("inferred" | "llm")[];
                 days?: number;
                 format?: "json" | "zip";
+                sigma_per_technique?: number;
             };
             header?: {
                 authorization?: string | null;

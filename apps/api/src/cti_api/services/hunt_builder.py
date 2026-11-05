@@ -202,8 +202,25 @@ def _match_kind(pack_id: str, rule_id: str) -> MatchKind | None:
     return None
 
 
+def cap_sigma(found: list[SigmaMatch], per_technique: int) -> list[SigmaMatch]:
+    """Batasi per `via_technique`: exact > sub > parent, lalu urutan global; 0 = tanpa batas."""
+    if per_technique <= 0:
+        return found
+    groups: dict[str, list[SigmaMatch]] = {}
+    for m in found:  # `found` sudah terurut global; sort stabil menjaga urutan itu dalam grup
+        groups.setdefault(m.via_technique, []).append(m)
+    keep: set[str] = set()
+    for g in groups.values():
+        g.sort(key=lambda m: _MATCH_RANK[m.match])
+        keep.update(m.id for m in g[:per_technique])
+    return [m for m in found if m.id in keep]
+
+
 def select_sigma(
-    techniques: list[TechniqueIn], rules: list[SigmaIn], include: set[str]
+    techniques: list[TechniqueIn],
+    rules: list[SigmaIn],
+    include: set[str],
+    per_technique: int = 5,
 ) -> list[SigmaMatch]:
     tids = sorted({t.attack_id for t in techniques if t.tier == "primary" or t.tier in include})
     found: list[SigmaMatch] = []
@@ -231,7 +248,7 @@ def select_sigma(
             m.id,
         )
     )
-    return found
+    return cap_sigma(found, per_technique)
 
 
 def build_pack(
@@ -244,16 +261,18 @@ def build_pack(
     sigma_release: str | None,
     truncated: bool,
     now: datetime,
+    per_technique: int = 5,
 ) -> HuntPack:
     merged = merge_tiers(techniques)
-    sigma = select_sigma(merged, sigma_rules, include)
+    full = select_sigma(merged, sigma_rules, include, per_technique=0)
+    sigma = cap_sigma(full, per_technique)
     spl, skipped = build_spl(indicators)
     tech_out = [
         TechniqueOut(
             t.attack_id,
             t.name,
             t.tier,
-            sum(1 for m in sigma if _covers(t, m)),
+            sum(1 for m in full if _covers(t, m)),
         )
         for t in merged
     ]
@@ -265,7 +284,11 @@ def build_pack(
         spl=spl,
         sigma=sigma,
         iocs=group_iocs(indicators),
-        counts={"indicators": len(indicators), "skipped_values": skipped},
+        counts={
+            "indicators": len(indicators),
+            "skipped_values": skipped,
+            "sigma_total": len(full),
+        },
         truncated=truncated,
         include=sorted(include),
     )
@@ -286,6 +309,10 @@ _README = """# Hunting pack: {title}
 Paste each file in `spl/` into a Splunk search and set the time picker to the period you want
 to hunt. The searches use CIM data models (`tstats`), so the data models must be accelerated or
 at least populated.
+
+## Sigma rule cap
+
+{cap}
 
 CIM assumption: field names follow the standard CIM; adjust them if your data model mappings
 differ.
@@ -308,7 +335,9 @@ def _csv(rows: list[IndicatorIn]) -> str:
     return buf.getvalue()
 
 
-def pack_zip(pack: HuntPack, sigma_yaml: dict[str, str], license_text: str) -> bytes:
+def pack_zip(
+    pack: HuntPack, sigma_yaml: dict[str, str], license_text: str, per_technique: int = 5
+) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         readme = _README.format(
@@ -317,6 +346,13 @@ def pack_zip(pack: HuntPack, sigma_yaml: dict[str, str], license_text: str) -> b
             aid=pack.anchor.id,
             when=pack.generated_at.isoformat(),
             release=pack.sigma_release or "n/a",
+            cap=(
+                f"At most {per_technique} Sigma rules per technique are included "
+                f"({len(pack.sigma)} of {pack.counts.get('sigma_total', len(pack.sigma))}). "
+                "Request `sigma_per_technique=0` to get all matching rules."
+                if per_technique > 0
+                else "All matching Sigma rules are included (no per-technique cap)."
+            ),
         )
         z.writestr("README.md", readme)
         z.writestr("LICENSE.Detection.Rules.md", license_text)

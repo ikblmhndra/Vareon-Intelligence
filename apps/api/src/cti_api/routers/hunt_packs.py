@@ -36,6 +36,7 @@ async def pack_response(
     days: int,
     format_: Literal["json", "zip"],
     max_tlp: str | None,
+    sigma_per_technique: int = 5,
 ) -> HuntPackOut | Response:
     """404 untuk anchor tak dikenal; merged -> 404 dengan `merged_into_id` di detail (handler
     `/api/v2` memindahkannya ke `error.details`)."""
@@ -43,7 +44,13 @@ async def pack_response(
     try:
         if format_ == "zip":
             data = await hunt_pack.get_pack_zip(
-                session, anchor_type, anchor_id, include=inc, days=days, max_tlp=max_tlp
+                session,
+                anchor_type,
+                anchor_id,
+                include=inc,
+                days=days,
+                max_tlp=max_tlp,
+                sigma_per_technique=sigma_per_technique,
             )
             return Response(
                 data,
@@ -55,7 +62,13 @@ async def pack_response(
                 },
             )
         pack = await hunt_pack.get_pack(
-            session, anchor_type, anchor_id, include=inc, days=days, max_tlp=max_tlp
+            session,
+            anchor_type,
+            anchor_id,
+            include=inc,
+            days=days,
+            max_tlp=max_tlp,
+            sigma_per_technique=sigma_per_technique,
         )
     except hunt_pack.AnchorNotFound:
         raise HTTPException(404, "Hunting pack anchor not found") from None
@@ -78,10 +91,18 @@ async def get_hunt_pack(
     include: list[Include] = Query([]),
     days: int = Query(90, ge=1, le=365),
     format_: Literal["json", "zip"] = Query("json", alias="format"),
+    sigma_per_technique: int = Query(5, ge=0, le=500),
     session: AsyncSession = Depends(get_db),
 ) -> HuntPackOut | Response:
     return await pack_response(
-        session, anchor_type, anchor_id, include=include, days=days, format_=format_, max_tlp=None
+        session,
+        anchor_type,
+        anchor_id,
+        include=include,
+        days=days,
+        format_=format_,
+        max_tlp=None,
+        sigma_per_technique=sigma_per_technique,
     )
 
 

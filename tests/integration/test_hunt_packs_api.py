@@ -195,6 +195,26 @@ async def test_story_pack_tiers_and_active_only(
     assert "yaml" not in r.text
 
 
+async def test_sigma_per_technique_param(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Header,
+    seeded_story: Seeded,
+) -> None:
+    for i in range(6):  # total 7 aturan T1059 (1 dari fixture)
+        await _sigma(api_session, f"extra-{i}", "T1059")
+    await api_session.commit()
+    url = f"/api/hunt-packs/story/{seeded_story.id}"
+    body = (await api_client.get(url, headers=auth_header())).json()
+    assert len(body["sigma"]) == 5
+    assert body["counts"]["sigma_total"] == 7
+    assert {t["attack_id"]: t["sigma_count"] for t in body["techniques"]}["T1059"] == 7
+    r = await api_client.get(f"{url}?sigma_per_technique=0", headers=auth_header())
+    assert len(r.json()["sigma"]) == 7
+    r = await api_client.get(f"{url}?sigma_per_technique=501", headers=auth_header())
+    assert r.status_code == 422
+
+
 async def test_story_pack_include_llm_adds_sigma(
     api_client: AsyncClient, auth_header: Header, seeded_story: Seeded
 ) -> None:
