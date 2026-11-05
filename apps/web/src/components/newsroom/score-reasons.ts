@@ -25,6 +25,8 @@ const PRIORITY_TEXT: Record<string, string> = {
   ttps: "TTPs",
   actor: "threat actor",
   corroboration: "more sources",
+  pir_match: "PIR match",
+  own_asset: "own asset",
 };
 
 /** Kode yang belum dikenal web (API lebih baru) ditampilkan apa adanya, bukan disembunyikan. */

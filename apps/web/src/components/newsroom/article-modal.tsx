@@ -185,6 +185,13 @@ export function ArticleModal({ article, onOpenChange }: { article: Article | nul
                 {gradeLines(a).map((line) => (
                   <li key={line}>{line}</li>
                 ))}
+                {/* PIR / aset sendiri sudah difilter API ke client penonton (P7f). */}
+                {a.score_reasons.pir?.map((p) => (
+                  <li key={`pir-${p.id}`}>{`PIR: ${p.title} (${p.priority})`}</li>
+                ))}
+                {a.score_reasons.own_asset?.length ? (
+                  <li>{`Own asset: ${a.score_reasons.own_asset.join(", ")}`}</li>
+                ) : null}
               </ul>
               {can("manage_intel") && <CredibilityOverride key={a.id} article={a} onSaved={setUpdated} />}
             </Section>

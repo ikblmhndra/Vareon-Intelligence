@@ -100,7 +100,12 @@ async def test_article_carries_own_assessment(
     fresh = by_id[b.id]
     assert fresh["admiralty_code"] is None
     assert fresh["credibility"] is None
-    assert fresh["score_reasons"] == {"credibility": [], "priority": []}
+    assert fresh["score_reasons"] == {
+        "credibility": [],
+        "priority": [],
+        "pir": [],
+        "own_asset": [],
+    }
 
 
 async def test_article_detail_carries_source_grade_origin(

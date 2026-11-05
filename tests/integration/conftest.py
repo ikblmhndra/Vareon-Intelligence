@@ -404,3 +404,6 @@ def _no_recompute_enqueue(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "cti_api.routers.source_reliability.send_recompute_source", lambda name: None
     )
+    # Perubahan PIR / techstack mengantre `confidence.recompute_all` (P7f); sama, dibisukan.
+    for target in ("pir", "techstack"):
+        monkeypatch.setattr(f"cti_api.routers.{target}.send_recompute_all", lambda: None)

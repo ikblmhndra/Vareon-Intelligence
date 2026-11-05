@@ -52,6 +52,7 @@ from cti_api.schemas.article import (
     FilterOptions,
     InferredEntity,
     MalwareRef,
+    PirReason,
     ScoreReasons,
     StoryRef,
 )
@@ -96,11 +97,38 @@ def _industry_source(method: str) -> Literal["llm", "keyword"]:
     return "keyword" if method == "keyword" else "llm"
 
 
+def _client_score_reasons(raw: object, client_id: str | None) -> ScoreReasons:
+    """`articles.score_reasons` -> `ScoreReasons` untuk satu client (P7f).
+
+    Kolom itu milik artikel global, sedangkan `pir`/`own_asset` memuat judul PIR dan nama tech
+    tiap client; entri client lain tidak boleh bocor, jadi hanya `client_id` yang cocok yang
+    dipertahankan (tanpa client -> kosong, mis. caller ransomware/newsletter). Entri rusak
+    (bukan dict / kunci kurang) dilewati, bukan menggagalkan seluruh response."""
+    data = dict(raw) if isinstance(raw, dict) else {}
+
+    def mine(key: str) -> list[dict[str, object]]:
+        entries = data.get(key)
+        if client_id is None or not isinstance(entries, list):
+            return []
+        return [e for e in entries if isinstance(e, dict) and e.get("client_id") == client_id]
+
+    pir: list[PirReason] = []
+    for e in mine("pir"):
+        try:
+            pir.append(PirReason.model_validate(e))
+        except ValueError:
+            continue
+    data["pir"] = pir
+    data["own_asset"] = [e["name"] for e in mine("own_asset") if isinstance(e.get("name"), str)]
+    return ScoreReasons.model_validate(data)
+
+
 def _serialize(
     article: Article,
     machine_fields: dict[str, object],
     ratings: Mapping[str, SourceReliabilityEntry] | None = None,
     stories: Mapping[int, tuple[int, int]] | None = None,
+    client_id: str | None = None,
 ) -> ArticleOut:
     posted_on = machine_fields.get("posted_on")
     year, month, week = 0, "", ""
@@ -156,7 +184,7 @@ def _serialize(
         reliability_grade=article.reliability_grade,
         credibility=article.credibility,
         priority_score=article.priority_score,
-        score_reasons=ScoreReasons.model_validate(article.score_reasons or {}),
+        score_reasons=_client_score_reasons(article.score_reasons, client_id),
         iocs={},
         confirmed_incident=bool(article.confirmed_incident),
         story=(
@@ -213,8 +241,11 @@ async def list_articles(
     story_id: int | None = Query(None),
     dedup: bool = Query(False),
     dedup_threshold: float = Query(0.75, ge=0.5, le=0.99),
+    user: AuthedUser = Depends(require_auth),
+    x_client_id: str | None = Header(None),
     session: AsyncSession = Depends(get_db),
 ) -> ArticleListResponse:
+    cid = effective_client_id(user, x_client_id)
     repo = AsyncArticleRepo(session)
     articles, total = await repo.list_filtered(
         page=page,
@@ -252,10 +283,10 @@ async def list_articles(
             d["_article"] = a
             machine_dicts.append(d)
         deduped = dedup_service.find_dedup_groups(machine_dicts, dedup_threshold)
-        parsed = [_serialize(d["_article"], d, ratings, stories) for d in deduped]
+        parsed = [_serialize(d["_article"], d, ratings, stories, cid) for d in deduped]
         return ArticleListResponse(articles=parsed, total=total, page=page, page_size=page_size)
 
-    parsed = [_serialize(a, repo.to_dict(a), ratings, stories) for a in articles]
+    parsed = [_serialize(a, repo.to_dict(a), ratings, stories, cid) for a in articles]
     return ArticleListResponse(articles=parsed, total=total, page=page, page_size=page_size)
 
 
@@ -385,9 +416,12 @@ async def set_article_credibility(
     request: Request,
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),
+    x_client_id: str | None = Header(None),
 ) -> ArticleOut:
     """Override kredibilitas (1-6) oleh analis, atau hapus (`null`); artikel dinilai ulang di
     tempat dan recompute massal menghormati override ini (P6 5.1)."""
+    # cek client dulu: 403 sesudah commit berarti override tersimpan walau request ditolak
+    client_id = effective_client_id(user, x_client_id)
     repo = AsyncArticleRepo(session)
     article = await repo.get_by_id(article_id)
     if article is None:
@@ -419,7 +453,13 @@ async def set_article_credibility(
         if article.story_id is not None
         else None
     )
-    return _serialize(article, repo.to_dict(article), ratings, stories)
+    return _serialize(
+        article,
+        repo.to_dict(article),
+        ratings,
+        stories,
+        client_id,
+    )
 
 
 @router.post(
@@ -448,7 +488,12 @@ async def recompute_confidence_all(
     response_model=ArticleOut,
     dependencies=[Depends(require_auth)],
 )
-async def get_article_by_id(article_id: int, session: AsyncSession = Depends(get_db)) -> ArticleOut:
+async def get_article_by_id(
+    article_id: int,
+    user: AuthedUser = Depends(require_auth),
+    x_client_id: str | None = Header(None),
+    session: AsyncSession = Depends(get_db),
+) -> ArticleOut:
     repo = AsyncArticleRepo(session)
     article = await repo.get_by_id(article_id)
     if article is None:
@@ -463,7 +508,13 @@ async def get_article_by_id(article_id: int, session: AsyncSession = Depends(get
         if article.story_id is not None
         else None
     )
-    return _serialize(article, repo.to_dict(article), ratings, stories)
+    return _serialize(
+        article,
+        repo.to_dict(article),
+        ratings,
+        stories,
+        effective_client_id(user, x_client_id),
+    )
 
 
 @router.get(
