@@ -53,13 +53,15 @@ fixture valid):
 class PirHit:
     id: int
     title: str
-    priority: str   # "P1".."P4"
+    priority: str  # "P1".."P4"
     client_id: str
+
 
 @dataclass(frozen=True, slots=True)
 class AssetHit:
-    name: str       # techstack entry name as stored
+    name: str  # techstack entry name as stored
     client_id: str
+
 
 # ArticleFacts
 pir_hits: tuple[PirHit, ...] = ()
@@ -128,6 +130,7 @@ class PirReason(BaseModel):
     id: int
     title: str
     priority: str
+
 
 class ScoreReasons(BaseModel):
     credibility: list[str] = []
