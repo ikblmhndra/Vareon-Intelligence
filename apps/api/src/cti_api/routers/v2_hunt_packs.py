@@ -24,6 +24,7 @@ async def get_hunt_pack_v2(
     include: list[Include] = Query([]),
     days: int = Query(90, ge=1, le=365),
     format_: Literal["json", "zip"] = Query("json", alias="format"),
+    sigma_per_technique: int = Query(5, ge=0, le=500),
     principal: MachinePrincipal = Depends(require_token("hunt:read")),
     session: AsyncSession = Depends(get_db),
 ) -> HuntPackOut | Response:
@@ -35,4 +36,5 @@ async def get_hunt_pack_v2(
         days=days,
         format_=format_,
         max_tlp=principal.max_tlp,
+        sigma_per_technique=sigma_per_technique,
     )

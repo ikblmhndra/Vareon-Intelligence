@@ -115,6 +115,36 @@ def test_select_sigma_match_kinds_and_order():
     assert got[0].link == "https://github.com/SigmaHQ/sigma/blob/r1/rules/b.yml"
 
 
+def _cap_rules():
+    t = [TechniqueIn("T1059", "", "primary")]
+    rules = [_sig(f"p{i}", ["T1059"], level="low") for i in range(3)]
+    rules += [_sig(f"s{i}", ["T1059.001"], level="critical") for i in range(4)]
+    rules += [_sig("x", ["T1190"])]
+    return t, rules
+
+
+def test_select_sigma_caps_per_technique_exact_first():
+    t, rules = _cap_rules()
+    got = select_sigma(t, rules, include=set(), per_technique=5)
+    assert len(got) == 5
+    assert [m.match for m in got].count("exact") == 3  # exact menang atas sub walau level rendah
+    assert select_sigma(t, rules, include=set(), per_technique=0) == select_sigma(
+        t, rules, include=set(), per_technique=100
+    )
+    assert len(select_sigma(t, rules, include=set(), per_technique=0)) == 7
+    assert len(select_sigma(t, rules, include=set())) == 5  # default 5
+
+
+def test_build_pack_sigma_total_and_uncapped_technique_count():
+    t, rules = _cap_rules()
+    a = _args() | {"techniques": t, "sigma_rules": rules}
+    p = build_pack(**a)
+    assert len(p.sigma) == 5
+    assert p.counts["sigma_total"] == 7
+    assert p.techniques[0].sigma_count == 7
+    assert len(build_pack(**a, per_technique=0).sigma) == 7
+
+
 def test_pack_zip_members_and_attribution():
     z = zipfile.ZipFile(io.BytesIO(pack_zip(_pack(), {"a": "title: a"}, "DRL TEXT")))
     names = set(z.namelist())
@@ -131,7 +161,7 @@ def test_build_pack_is_deterministic():
 
 def test_build_pack_counts_and_sorting():
     p = _pack()
-    assert p.counts == {"indicators": 4, "skipped_values": 1}
+    assert p.counts == {"indicators": 4, "skipped_values": 1, "sigma_total": 1}
     assert [i.value for i in p.iocs["network_traffic"]] == ["198.51.100.1", "198.51.100.7"]
     assert p.techniques[0].sigma_count == 1
     assert p.spl[0].dataset == "network_traffic"

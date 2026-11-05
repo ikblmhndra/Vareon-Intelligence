@@ -244,6 +244,7 @@ async def get_pack(
     include: set[str],
     days: int,
     max_tlp: str | None,
+    sigma_per_technique: int = 5,
 ) -> HuntPack:
     if anchor_type == "story":
         c = await collect_story(session, anchor_id, max_tlp=max_tlp)
@@ -262,6 +263,7 @@ async def get_pack(
         sigma_release=release,
         truncated=c.truncated,
         now=datetime.datetime.now(datetime.UTC),
+        per_technique=sigma_per_technique,
     )
 
 
@@ -273,9 +275,16 @@ async def get_pack_zip(
     include: set[str],
     days: int,
     max_tlp: str | None,
+    sigma_per_technique: int = 5,
 ) -> bytes:
     pack = await get_pack(
-        session, anchor_type, anchor_id, include=include, days=days, max_tlp=max_tlp
+        session,
+        anchor_type,
+        anchor_id,
+        include=include,
+        days=days,
+        max_tlp=max_tlp,
+        sigma_per_technique=sigma_per_technique,
     )
     yaml_rows = await session.execute(
         select(SigmaRule.id, SigmaRule.yaml).where(
@@ -283,4 +292,4 @@ async def get_pack_zip(
         )
     )
     sigma_yaml = {str(r.id): r.yaml for r in yaml_rows}
-    return pack_zip(pack, sigma_yaml, LICENSE_FILE.read_text(encoding="utf-8"))
+    return pack_zip(pack, sigma_yaml, LICENSE_FILE.read_text(encoding="utf-8"), sigma_per_technique)

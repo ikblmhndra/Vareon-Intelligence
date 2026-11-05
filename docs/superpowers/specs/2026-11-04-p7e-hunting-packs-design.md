@@ -233,7 +233,10 @@ an SPL comment (comment macros are not available in every Splunk deployment).
 (`primary` always; `inferred`, `llm` when in `include`). Match kind: `exact`; `sub` (pack has
 `T1059`, rule tags `T1059.001`); `parent` (pack has `T1059.001`, rule tags only `T1059`). Order:
 `ruleset` core first, then level critical > high > medium, then status stable > test >
-experimental, then title. Each rule: `id, title, level, status, author, link, techniques, match,
+experimental, then title. At most `sigma_per_technique` rules (default 5, `0` = no cap) are kept
+per `via_technique`, preferring exact over sub over parent, then the order above; the per-technique
+`sigma_count` stays uncapped and `counts.sigma_total` reports the number of matches before the cap.
+Each rule: `id, title, level, status, author, link, techniques, match,
 via_technique`.
 
 **HuntPack** (JSON): `anchor {type, id, title}`, `generated_at`, `sigma_release`,
@@ -252,7 +255,8 @@ CIM assumptions, attribution and DRL 1.1 notice), `LICENSE.Detection.Rules.md`,
 
 `require_token("hunt:read")`; `hunt:read` is added to `API_TOKEN_SCOPES` (existing tokens are
 unchanged; the token form lists the new scope). Parameters: `include` (repeatable, `inferred`,
-`llm`), `days` (entity only, 1-365, default 90), `format` `json` (default) or `zip`. TLP filter by
+`llm`), `days` (entity only, 1-365, default 90), `sigma_per_technique` (0-500, default 5, 0 = no cap),
+`format` `json` (default) or `zip` (the zip follows the same cap, and its README states it). TLP filter by
 the token's `max_tlp`. Errors in the v2 shape `{error: {code, message, details}}`: unknown anchor or
 unsupported entity type 404, merged entity 404 with `details.merged_into_id`, invalid parameter 422
 (the existing `/api/v2` validation handler).
@@ -260,7 +264,7 @@ unsupported entity type 404, merged entity 404 with `details.merged_into_id`, in
 
 ### 6.2 Web: `/api/hunt-packs/{anchor_type}/{anchor_id}`
 
-`GET` (`require_permission("view_ioc")`), same parameters and builder, no TLP filter (web users have
+`GET` (`require_permission("view_ioc")`), same parameters (including `sigma_per_technique`) and builder, no TLP filter (web users have
 no TLP clearance today; R1). `GET .../hypothesis` (`view_ioc`) returns the stored row or 404.
 `POST .../hypothesis` (`manage_intel`, audit-logged) generates and stores it (section 7.2).
 
