@@ -150,6 +150,11 @@ def test_pir_match_uses_best_priority_only():
     }
 
 
+def test_pir_best_is_max_points_not_lexical():
+    hits = (PirHit(1, "X", "P0", "default"), PirHit(2, "Y", "P1", "default"))
+    assert _prio(assess(_facts(pir_hits=hits)))["pir_match"] == 20
+
+
 def test_pir_unknown_priority_counts_as_p4():
     a = assess(_facts(pir_hits=(PirHit(1, "X", "P9", "default"),)))
     assert _prio(a)["pir_match"] == 5

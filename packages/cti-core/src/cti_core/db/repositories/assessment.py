@@ -12,10 +12,11 @@ LATERAL untuk baris reliabilitas sumber), bukan query per artikel: recompute jal
 500 artikel. Pemanggil yang menjamin batas 500 id itu.
 
 P7f menambah sinyal relevansi (PIR aktif dan aset techstack sendiri) lewat query terpisah per
-batch, jadi total `1 + n_PIR + 3`: fakta, satu `pir_article_ids_stmt` per PIR aktif berkriteria
-(himpunan id yang sama dengan halaman PIR), techstack aktif, dan tech baris `cve_tracker` untuk
-CVE yang disebut artikel. Penggabungannya (`_relevance`) fungsi murni supaya jalur sync dan async
-cuma beda `await`. Pencocokan teks (judul dan `cve_tracker.tech` terhadap nama techstack) lewat
+batch, jadi total `fakta + n_PIR + 2` (plus satu query daftar PIR): fakta, satu
+`pir_article_ids_stmt` per PIR aktif berkriteria (himpunan id yang sama dengan halaman PIR),
+techstack aktif, dan tech baris `cve_tracker` untuk CVE yang disebut artikel.
+Penggabungannya (`_relevance`) fungsi murni supaya jalur sync dan async cuma beda
+`await`. Pencocokan teks (judul dan `cve_tracker.tech` terhadap nama techstack) lewat
 `tech_match.matching_names`, satu definisi dengan gate `new_cve`."""
 
 from __future__ import annotations
@@ -237,7 +238,8 @@ def _update_params(assessments: Mapping[int, Assessment]) -> list[dict[str, Any]
     """Parameter ORM bulk UPDATE by primary key (executemany, satu statement per panggilan).
 
     Catatan: bulk UPDATE ini tidak menyegarkan objek `Article` yang sudah ada di identity map
-    sesi; pemanggil yang masih memegang objeknya harus `refresh` kalau butuh nilai baru."""
+    sesi; pemanggil yang masih memegang objeknya harus `refresh` kalau butuh nilai baru.
+    Urut id supaya recompute yang tumpang tindih mengunci baris berurutan sama (anti-deadlock)."""
     return [
         {
             "id": article_id,
@@ -247,7 +249,7 @@ def _update_params(assessments: Mapping[int, Assessment]) -> list[dict[str, Any]
             "priority_score": a.priority_score,
             "score_reasons": a.reasons,
         }
-        for article_id, a in assessments.items()
+        for article_id, a in sorted(assessments.items())
     ]
 
 

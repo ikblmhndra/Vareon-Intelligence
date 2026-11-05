@@ -174,6 +174,25 @@ async def test_malformed_criteria_ignored(async_db_session: AsyncSession) -> Non
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("bad", [["x"], "x", None])
+async def test_non_dict_criteria_ignored(async_db_session: AsyncSession, bad: Any) -> None:
+    s = async_db_session
+    await _pir(s, criteria=bad)
+    art = await _art(s, "nondict", "x ransomware")
+
+    assert "pir" not in (await _score(s, art)).reasons
+
+
+@pytest.mark.asyncio
+async def test_mixed_valid_and_malformed_keys_still_match(async_db_session: AsyncSession) -> None:
+    s = async_db_session
+    await _pir(s, criteria={"threat_actors": "x", "keywords": ["mixedkw"]})
+    art = await _art(s, "mixed", "mixedkw campaign")
+
+    assert "pir" in (await _score(s, art)).reasons
+
+
+@pytest.mark.asyncio
 async def test_unmatched_active_pir_keeps_p6_scores(async_db_session: AsyncSession) -> None:
     s = async_db_session
     art = await _art(s, "plain")

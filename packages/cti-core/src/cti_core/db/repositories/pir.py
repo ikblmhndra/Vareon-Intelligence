@@ -59,10 +59,12 @@ _CRITERIA_KEYS = (
 )
 
 
-def _values(criteria: dict[str, Any], key: str) -> list[str] | None:
+def _values(criteria: Any, key: str) -> list[str] | None:
     """Nilai kriteria `key` bila berupa list string tidak kosong; selain itu dianggap TIDAK ada.
     `criteria` itu JSONB bebas: satu PIR berisi `"x"` atau `[1]` tidak boleh menggagalkan
     penilaian batch artikel (P7f), jadi bentuk yang rusak diabaikan, bukan error."""
+    if not isinstance(criteria, dict):  # list/string/JSON null: PIR dilewati, batch lanjut
+        return None
     value = criteria.get(key)
     if isinstance(value, list) and value and all(isinstance(v, str) for v in value):
         return value

@@ -175,7 +175,8 @@ def assess(facts: ArticleFacts) -> Assessment:
     reasons: dict[str, Any] = {"credibility": cred_reasons}
     pirs = sorted(facts.pir_hits, key=lambda h: (h.priority, h.id))
     if pirs:
-        points = PRIORITY_PIR.get(pirs[0].priority, PRIORITY_PIR_DEFAULT)
+        # Poin = maksimum atas semua hit (bukan urutan leksikal); `pirs` hanya urutan alasan.
+        points = max(PRIORITY_PIR.get(h.priority, PRIORITY_PIR_DEFAULT) for h in pirs)
         signals.append(("pir_match", points))
         reasons["pir"] = [
             {"id": h.id, "title": h.title, "priority": h.priority, "client_id": h.client_id}
