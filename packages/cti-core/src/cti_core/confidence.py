@@ -6,7 +6,11 @@ aturan (korroborasi story, artefak CVE/IOC/TTP eksplisit, jenis sumber primer) s
 membedakan artikel. `assess()` fungsi murni tanpa DB: dipakai persist enrichment (sync, worker)
 dan recompute API (async) supaya satu rumus saja. Bobot sengaja jadi konstanta modul agar bisa
 dituning di satu tempat. `compute_score` lama (grade + kode kredibilitas sumber + bonus TTP/aktor)
-sudah dihapus; semua jalur memakai `assess()`."""
+sudah dihapus; semua jalur memakai `assess()`.
+
+P7f: dua sinyal prioritas relevansi, kecocokan PIR (hanya PIR terbaik, P1-P4) dan aset milik
+sendiri (flat). Keduanya hanya menggeser `priority_score`, tidak pernah confidence/kredibilitas:
+relevansi bagi sebuah klien tidak membuat laporan lebih bisa dipercaya."""
 
 from __future__ import annotations
 
@@ -44,6 +48,30 @@ PRIORITY_TTP_MAX = 12
 PRIORITY_ACTOR = 8
 PRIORITY_PER_EXTRA_SOURCE = 4
 PRIORITY_CORROBORATION_MAX = 16
+PRIORITY_PIR = {"P1": 20, "P2": 15, "P3": 10, "P4": 5}
+PRIORITY_PIR_DEFAULT = 5
+"""Poin kecocokan PIR per prioritas; prioritas tak dikenal dihitung seperti P4."""
+PRIORITY_OWN_ASSET = 15
+OWN_ASSET_REASON_MAX = 5
+"""Batas entri `reasons["own_asset"]`; poinnya tetap flat berapa pun jumlah aset yang cocok."""
+
+
+@dataclass(frozen=True, slots=True)
+class PirHit:
+    """Satu PIR aktif milik klien yang cocok dengan artikel."""
+
+    id: int
+    title: str
+    priority: str
+    client_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class AssetHit:
+    """Satu entri techstack milik klien yang disebut artikel."""
+
+    name: str
+    client_id: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +91,8 @@ class ArticleFacts:
     poc: bool
     credibility_override: int | None = None
     confidence_override: int | None = None
+    pir_hits: tuple[PirHit, ...] = ()
+    own_asset_hits: tuple[AssetHit, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,17 +171,33 @@ def assess(facts: ArticleFacts) -> Assessment:
     )
     if extra > 0:
         signals.append(("corroboration", extra))
+
+    reasons: dict[str, Any] = {"credibility": cred_reasons}
+    pirs = sorted(facts.pir_hits, key=lambda h: (h.priority, h.id))
+    if pirs:
+        points = PRIORITY_PIR.get(pirs[0].priority, PRIORITY_PIR_DEFAULT)
+        signals.append(("pir_match", points))
+        reasons["pir"] = [
+            {"id": h.id, "title": h.title, "priority": h.priority, "client_id": h.client_id}
+            for h in pirs
+        ]
+    # Dedup pertama-menang pada (nama huruf kecil, klien); urutan input dijaga sebelum sort.
+    assets = {(h.name.lower(), h.client_id): h for h in reversed(facts.own_asset_hits)}
+    if assets:
+        signals.append(("own_asset", PRIORITY_OWN_ASSET))
+        reasons["own_asset"] = [
+            {"name": assets[k].name, "client_id": assets[k].client_id}
+            for k in sorted(assets)[:OWN_ASSET_REASON_MAX]
+        ]
     signals.sort(key=lambda s: (-s[1], s[0]))
+    reasons["priority"] = [{"code": c, "points": p} for c, p in signals]
 
     return Assessment(
         reliability_grade=grade,
         credibility=credibility,
         confidence_score=confidence,
         priority_score=confidence + sum(p for _, p in signals),
-        reasons={
-            "credibility": cred_reasons,
-            "priority": [{"code": c, "points": p} for c, p in signals],
-        },
+        reasons=reasons,
     )
 
 

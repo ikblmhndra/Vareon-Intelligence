@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from cti_core.confidence import ArticleFacts, assess
+from cti_core.confidence import ArticleFacts, AssetHit, PirHit, assess
 
 
 def _facts(**kw: Any) -> ArticleFacts:
@@ -129,3 +129,70 @@ def test_row3_emits_all_applicable_codes():
 def test_three_sources_reason_codes():
     r = assess(_facts(content_kind="news", story_source_count=3, has_cve=True)).reasons
     assert r["credibility"] == ["corroborated_3", "cve"]
+
+
+def _prio(a: Any) -> dict[str, int]:
+    return {e["code"]: e["points"] for e in a.reasons["priority"]}
+
+
+def test_pir_match_uses_best_priority_only():
+    base = assess(_facts()).priority_score
+    hits = (PirHit(2, "Ransomware", "P3", "default"), PirHit(9, "APT", "P1", "default"))
+    a = assess(_facts(pir_hits=hits))
+    assert {"code": "pir_match", "points": 20} in a.reasons["priority"]
+    assert a.priority_score == base + 20
+    assert [h["id"] for h in a.reasons["pir"]] == [9, 2]
+    assert a.reasons["pir"][0] == {
+        "id": 9,
+        "title": "APT",
+        "priority": "P1",
+        "client_id": "default",
+    }
+
+
+def test_pir_unknown_priority_counts_as_p4():
+    a = assess(_facts(pir_hits=(PirHit(1, "X", "P9", "default"),)))
+    assert _prio(a)["pir_match"] == 5
+
+
+def test_own_asset_flat_15_and_dedup():
+    hits = (
+        AssetHit("gitlab", "default"),
+        AssetHit("GitLab", "default"),
+        AssetHit("nginx", "acme"),
+    )
+    a = assess(_facts(own_asset_hits=hits))
+    assert _prio(a)["own_asset"] == 15
+    assert a.reasons["own_asset"] == [
+        {"name": "gitlab", "client_id": "default"},
+        {"name": "nginx", "client_id": "acme"},
+    ]
+
+
+def test_own_asset_reasons_capped_at_5():
+    hits = tuple(AssetHit(f"tech{i}", "default") for i in range(7))
+    a = assess(_facts(own_asset_hits=hits))
+    assert len(a.reasons["own_asset"]) == 5
+    assert _prio(a)["own_asset"] == 15
+
+
+def test_no_hits_no_new_keys():
+    a = assess(_facts())
+    assert "pir" not in a.reasons and "own_asset" not in a.reasons
+    assert "pir_match" not in _prio(a) and "own_asset" not in _prio(a)
+    assert a.priority_score == 60  # B3 tanpa sinyal: confidence saja
+
+
+def test_relevance_does_not_change_confidence():
+    plain = assess(_facts())
+    hit = assess(
+        _facts(
+            pir_hits=(PirHit(1, "X", "P1", "default"),),
+            own_asset_hits=(AssetHit("gitlab", "default"),),
+        )
+    )
+    assert (hit.confidence_score, hit.credibility, hit.reliability_grade) == (
+        plain.confidence_score,
+        plain.credibility,
+        plain.reliability_grade,
+    )
