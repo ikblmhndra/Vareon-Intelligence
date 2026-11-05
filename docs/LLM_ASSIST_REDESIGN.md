@@ -5,7 +5,7 @@ P0 and P1 shipped in 0.8.5, P2 in 0.8.6, P3 in 0.8.7, P4 in 0.8.8, P5 in 0.8.9 a
 (see Progress below). P7 is split into sub-projects (decomposition in
 `docs/superpowers/specs/2026-10-28-p7a-indicator-lifecycle-design.md` section 0); P7a is built
 for 0.8.11 (deployed to dev 2026-10-29, not yet merged to `main`); P7b, P7c and P7g (persist-first enrichment, step 4 of
-`docs/TARGET_ARCHITECTURE.md`) are built for 0.8.11 as well; P7e (hunting packs) is built for 0.8.11 too; P7f has not started and P7d (sightings) is deferred.
+`docs/TARGET_ARCHITECTURE.md`) are built for 0.8.11 as well; P7e (hunting packs) and P7f (PIR and own-asset relevance) are built for 0.8.11 too; P7d (sightings) is pending, tracked as `docs/ROADMAP.md` item 25.
 
 Goal: turn Vareon from "every article goes through an LLM" into a CTI platform where
 deterministic code, curated reference data and analyst feedback do the bulk of the work, and
