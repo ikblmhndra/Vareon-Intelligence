@@ -53,16 +53,18 @@ function iocsCsv(rows: HuntIoc[]): string {
  */
 export function HuntPanel({ anchorType, anchorId }: { anchorType: AnchorType; anchorId: number }) {
   const [include, setInclude] = useState<Include[]>([]);
+  const [showAll, setShowAll] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const sigmaPerTechnique = showAll ? 0 : 5;
   const isStory = anchorType === "story";
 
   const pack = useQuery({
-    queryKey: ["hunt-pack", anchorType, anchorId, include],
+    queryKey: ["hunt-pack", anchorType, anchorId, include, sigmaPerTechnique],
     // Data lama tetap tampil saat checkbox include memicu refetch (tanpa kedip/hilang).
     placeholderData: keepPreviousData,
     queryFn: async () => {
       const { data, response } = await api.GET("/api/hunt-packs/{anchor_type}/{anchor_id}", {
-        params: { path: { anchor_type: anchorType, anchor_id: anchorId }, query: { include } },
+        params: { path: { anchor_type: anchorType, anchor_id: anchorId }, query: { include, sigma_per_technique: sigmaPerTechnique } },
       });
       if (!data) throw new Error(`HTTP ${response.status}`);
       // Skema 200 juga memuat cabang `application/zip` (string); tanpa `format=zip` selalu JSON.
@@ -73,7 +75,7 @@ export function HuntPanel({ anchorType, anchorId }: { anchorType: AnchorType; an
   async function downloadZip() {
     setDownloading(true);
     try {
-      const qs = new URLSearchParams([["format", "zip"], ...include.map((i) => ["include", i])]);
+      const qs = new URLSearchParams([["format", "zip"], ["sigma_per_technique", String(sigmaPerTechnique)], ...include.map((i) => ["include", i])]);
       const clientId = getActiveClientId();
       const resp = await fetch(
         `/api/proxy/api/hunt-packs/${anchorType}/${anchorId}?${qs}`,
@@ -255,8 +257,16 @@ export function HuntPanel({ anchorType, anchorId }: { anchorType: AnchorType; an
 
       <div className="space-y-2">
         <h3 className="text-sm font-semibold">
-          Sigma rules <span className="text-xs font-normal text-muted-foreground">{p.sigma.length} total</span>
+          Sigma rules{" "}
+          <span className="text-xs font-normal text-muted-foreground">
+            — showing {p.sigma.length.toLocaleString()} of {(p.counts.sigma_total ?? p.sigma.length).toLocaleString()}
+          </span>
         </h3>
+        {(showAll || (p.counts.sigma_total ?? 0) > p.sigma.length) && (
+          <Button variant="outline" size="sm" className="max-sm:h-11" onClick={() => setShowAll((v) => !v)}>
+            {showAll ? "Show top 5 per technique" : "Show all"}
+          </Button>
+        )}
         {p.sigma.length === 0 ? (
           <p className="text-xs text-muted-foreground">No Sigma rules match these techniques.</p>
         ) : (
