@@ -14,18 +14,23 @@ import { EntityOverviewTab, useEntityTimeline } from "@/components/entities/enti
 import { EntityRelationshipsTab, useEntityRelationships } from "@/components/entities/entity-relationships-tab";
 import { EntityStoriesTab } from "@/components/entities/entity-stories-tab";
 import { EntityTimelineChart } from "@/components/entities/entity-timeline-chart";
+import { HuntPanel } from "@/components/hunt/hunt-panel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TabPills, type TabPillItem } from "@/components/ui/tab-pills";
 import { api } from "@/lib/api/client";
+import { useCan } from "@/lib/auth/permissions";
 import type { components } from "@/lib/api/schema";
 import { ENTITY_TABS, entityTypeMeta } from "@/lib/entities/types";
 
 type EntityDetail = components["schemas"]["EntityDetail"];
 
-type TabKey = "overview" | "relationships" | "stories" | "indicators" | "cves" | "timeline" | "attack";
+type TabKey = "overview" | "relationships" | "stories" | "indicators" | "cves" | "timeline" | "attack" | "hunt";
 
 /** Tab ATT&CK hanya untuk tipe yang punya pemetaan teknik. */
 const ATTACK_TYPES = new Set(["intrusion-set", "malware", "tool", "attack-pattern"]);
+
+/** Tab Hunt (P7e): tipe yang bisa menjadi anchor hunting pack. */
+const HUNT_TYPES = new Set(["intrusion-set", "malware", "tool", "campaign", "attack-pattern"]);
 
 function TimelineTab({ entity }: { entity: EntityDetail }) {
   const timeline = useEntityTimeline(entity.id);
@@ -55,6 +60,7 @@ export function EntityView({ id }: { id: number }) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
+  const can = useCan();
 
   const detail = useQuery({
     queryKey: ["entity", id],
@@ -107,8 +113,10 @@ export function EntityView({ id }: { id: number }) {
       { value: "timeline", label: "Timeline" },
     ];
     if (entity && ATTACK_TYPES.has(entity.type)) items.push({ value: "attack", label: "ATT&CK" });
+    // pack berisi IOC: tab Hunt hanya untuk yang boleh melihat indikator
+    if (entity && HUNT_TYPES.has(entity.type) && can("view_ioc")) items.push({ value: "hunt", label: "Hunt" });
     return items;
-  }, [entity, relCount, totals.data]);
+  }, [entity, relCount, totals.data, can]);
 
   if (detail.isPending || mergedInto != null) {
     return (
@@ -186,6 +194,7 @@ export function EntityView({ id }: { id: number }) {
         {tab === "cves" && <EntityCvesTab entity={entity} />}
         {tab === "timeline" && <TimelineTab entity={entity} />}
         {tab === "attack" && <EntityAttackTab entity={entity} />}
+        {tab === "hunt" && <HuntPanel key={entity.id} anchorType="entity" anchorId={entity.id} />}
       </div>
     </div>
   );

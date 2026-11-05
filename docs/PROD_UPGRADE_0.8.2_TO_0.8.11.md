@@ -70,8 +70,9 @@ Compose commands differ slightly between sections: use the same compose invocati
 | 0.8.11 (P7b) | `c4f1a8d27b93` machine_api: `api_tokens`, `indicators.feed_changed_at` + `stix_id`, two feed-clock triggers | `a9e4c7b1d3f6` | yes (tokens lost) |
 | 0.8.11 (P7c) | `1387fae00908` entity_model: entities, aliases, relationships, mentions, watches, profiles, reference snapshots; old link/TA tables renamed `_legacy_*` behind writable compatibility views; feed clocks for entities, relationships and stories (4.35 s on a dev copy) | `c4f1a8d27b93` | yes (`_legacy_*` renamed back; everything written after the upgrade lost) |
 | 0.8.11 (P7g) | `7a3e91c5d2b4` enrich_jobs + `articles.llm_ttp_status`; parked `rejected_articles` rows move into the queue | `1387fae00908` | yes (schema only; moved rows are not put back: run `tools/ops/requeue_enrich_jobs.py --apply` first) |
+| 0.8.11 (P7e) | `7e3b9c1d5a42` hunt_packs: `sigma_rules` and `hunt_hypotheses` (DDL only; the first API start loads the Sigma snapshot) | `7a3e91c5d2b4` | yes (both tables dropped) |
 
-Expected `alembic_version` after the deploy: **`7a3e91c5d2b4`**. The only way back past `e7b2d4a9c6f1` is the Postgres
+Expected `alembic_version` after the deploy: **`7e3b9c1d5a42`**. The only way back past `e7b2d4a9c6f1` is the Postgres
 backup `make deploy` writes before migrating.
 
 ---
@@ -908,7 +909,7 @@ articles (pages of 500, one facts query per page).
 
 ---
 
-## 0.8.11 — P7a indicator lifecycle and TLP/PAP (`iocs` becomes `indicators`), P7b machine API, P7c-1 entity model, P7c-2 entity web, P7f PIR and own-asset relevance, P7g persist-first enrichment
+## 0.8.11 — P7a indicator lifecycle and TLP/PAP (`iocs` becomes `indicators`), P7b machine API, P7c-1 entity model, P7c-2 entity web, P7g persist-first enrichment, P7e hunting packs, P7f PIR and own-asset relevance
 
 Release: not yet tagged (branch `nameless/p7-cti-model-165075`, merge to `origin/Dev` for the dev test, then PR to `main`).
 Spec: `docs/superpowers/specs/2026-10-28-p7a-indicator-lifecycle-design.md`. Progress record:
@@ -1100,6 +1101,17 @@ analyst vs superadmin), not on dev (the dev certificate is not trusted by the ch
     into `enrich_jobs` by the migration and drain by themselves once the gateway is healthy: no Replay, no
     `make replay-failed-enrichment`. The 0.8.5 auto-replay steps above are history for the jump: from 0.8.11 they no longer
     apply.
+- **P7e hunting packs (new tables, first start loads data).** Two new tables, `sigma_rules` (SigmaHQ rules) and `hunt_hypotheses`
+  (stored LLM drafts). The committed SigmaHQ snapshot `r2026-07-01` (3,302 rules, Detection Rule License 1.1 plus a SOURCE
+  file) ships inside `cti-core`; the first API start on an empty `sigma_rules` loads it (about 4 s; a failure is logged as
+  `sigma_bootstrap_failed` and does not stop the API). Endpoints: `GET /api/hunt-packs/{story|entity}/{id}` (web,
+  `view_ioc`), `GET /api/v2/hunt-packs/{story|entity}/{id}` (token scope `hunt:read`, TLP per token), and
+  `GET/POST /api/hunt-packs/{...}/hypothesis` (POST needs `manage_intel`, LLM task `hunt_hypothesis`). Existing tokens keep
+  their scopes. Web: Hunt tab on entity pages, Hunt section in the Newsroom article modal, Sigma card on Data health,
+  `hunt:read` in the token form. New weekly Celery task `sigma.sync` (maintenance queue, Sunday 03:30): downloads the latest
+  SigmaHQ release from GitHub, refuses a zip with fewer than 1,000 unique rules or fewer than 80 % of the stored count, and
+  keeps the old rules on failure (`last_error` recorded). **Outbound HTTPS to `api.github.com`, `github.com` and
+  `objects.githubusercontent.com` is needed only for this task.**
 - **P7f: PIR and own-asset relevance in the priority score.** `articles.priority_score` gains two signals computed by the
   same P6 path (`confidence.assess`) at persist, story refresh, the daily recompute and the manual recompute.
   `pir_match`: the article matches an active PIR (same filters and date window as the PIR page); points by the best
@@ -1134,8 +1146,7 @@ CHECK on `max_tlp`), adds `indicators.feed_changed_at` (backfilled from `greates
 `indicators.stix_id` (backfilled in Python in batches of 1,000, then made unique), the index
 `ix_indicators_feed_changed_at_id`, and the two trigger functions (created after the backfill so it does not move the
 clock). Reversible: `downgrade` drops the triggers, functions, index, columns and table. Not run on prod yet.
-**Projection:** seconds (one pass over `indicators`, about 5,500 rows on dev). It is the P7b step; the last revision in
-the chain is the P7c revision below.
+**Projection:** seconds (one pass over `indicators`, about 5,500 rows on dev). It is the P7b step; the chain continues with P7c, P7g and P7e (below).
 
 **P7c:** `1387fae00908` (`entity_model`), down revision `c4f1a8d27b93`. It sets `lock_timeout = '10s'` first (a stuck
 lock fails the `migrate` step fast instead of hanging the deploy) and locks the twelve old link/TA tables in `EXCLUSIVE`
@@ -1146,7 +1157,7 @@ and mentions from the ATT&CK tables (`attack_*`), `threat_actor_groups`, the sec
 country list (249), CVEs, ransomware groups and victims, every old link table and the TA watchlist, profiles and
 whitelist; then renames the old tables to `_legacy_*`, creates the compatibility views and the feed-clock triggers,
 and runs `ANALYZE` on the new tables.
-**This is the last revision in the chain: after the deploy `alembic_version` should read `1387fae00908`.**
+After the P7g and P7e steps below, the head is `7e3b9c1d5a42` (chain: `1387fae00908` -> `7a3e91c5d2b4` -> `7e3b9c1d5a42`).
 
 Reversible: `downgrade` drops the triggers, views, functions and new tables and renames `_legacy_*` back. Rows written
 after the upgrade (through the views or the new tables: new mentions, entities, merges, watches, profiles) are lost; the
@@ -1182,7 +1193,12 @@ table except `article_industries` (General dropped) and `ta_watchlist` (collapse
   (`transient`, `config`, `json` become `pending`; `permanent` becomes `failed` with the reason in `last_error`) and deletes
   those rows. `failure_kind`, `auto_replay_count` and `last_auto_replay_at` stay in place, unused. Downgrade drops the table
   and column; moved rows are **not** put back by the downgrade: use `tools/ops/requeue_enrich_jobs.py` first (see Rollback).
-  Expected `alembic_version` after the P7g deploy: **`7a3e91c5d2b4`**.
+  P7g is the first of the two steps after P7c; the head after P7g alone would be **`7a3e91c5d2b4`**.
+
+**P7e: `7e3b9c1d5a42`** (`hunt_packs`), down revision `7a3e91c5d2b4` (P7g; re-parented so the chain is linear). DDL only: creates `sigma_rules` and `hunt_hypotheses`
+(no data change, instant). Reversible: the downgrade drops both tables (stored hypotheses and the Sigma copy are lost; the
+snapshot reloads on the next API start). **This is the last revision in the chain: after the deploy `alembic_version`
+should read `7e3b9c1d5a42`.**
 
 **P7f adds no migration.** `score_reasons` is JSONB; the new keys `pir` and `own_asset` need no schema change.
 
@@ -1209,6 +1225,10 @@ which enqueues the reconcile task) and needs the worker restarted too, since set
 P7g adds **no `.env` key and no setting** (breaker constants and the dispatcher batch are module constants; the alert reuses
 `WORKER__ENRICH_FAILURE_ALERT_COOLDOWN_MIN`). Beat gains `enrich-llm-dispatch` (every minute) and loses `enrich-auto-replay`;
 `make deploy` restarts `beat`. No version bump: 0.8.11 already exists.
+
+**P7e adds no required `.env` key.** One optional key with a default: `SIGMA__SYNC_ENABLED` (default `true`; `false` stops the
+weekly `sigma.sync` download, the committed snapshot stays in use). Leave it unset. `.env.example` and `.env.prod.template`
+list it commented out.
 
 **P7f adds no `.env` key.** Nothing to set on the prod host before merging.
 
@@ -1293,6 +1313,9 @@ consume the feed (host, TLS trust of the self-signed certificate, TLP ceiling) b
   = `permanent`; `(rejected)` rows stay where they are.
 - **P7g-2. The gateway must work before the deploy.** The backlog starts draining on the first healthy call. With a dead
   gateway nothing is lost: the breaker stays on one canary per cooldown and the jobs wait.
+- **P7e-1. Outbound access (read-only).** From the prod host, `curl -sI https://api.github.com/repos/SigmaHQ/sigma/releases/latest`
+  should answer `200`. If the host has no outbound access, skip it: the snapshot still loads and the weekly sync records
+  `last_error`; load newer rules with `cti-sigma import` (see One-off commands).
 - **P7f-1. How much data the new signals can use** (read-only, expected: a handful of rows; dev has 1 client, 1 active PIR
   and 35 active techstack entries). If a client has no active PIR and no active techstack, P7f changes nothing for it.
 
@@ -1310,8 +1333,8 @@ Run SQL in the read-only `psql` session shown above.
 
 1. **Version and migration head.**
    - `GET /healthz` returns `"version": "0.8.11"`.
-   - `select version_num from alembic_version;` returns `1387fae00908` (P7c head; `a9e4c7b1d3f6` and `c4f1a8d27b93` are
-     the P7a and P7b steps).
+   - `select version_num from alembic_version;` returns `7e3b9c1d5a42` (P7e head; `7a3e91c5d2b4` is the P7g step, `1387fae00908` the P7c step,
+     `a9e4c7b1d3f6` and `c4f1a8d27b93` the P7a and P7b steps).
 2. **The reconcile task ran.**
 
    ```bash
@@ -1502,7 +1525,7 @@ Run SQL in the read-only `psql` session shown above.
   articles; (e) **WRITE**, needs approval: in Admin > API tokens create a throwaway token with `intel:read`, then revoke it.
   Expected: no console errors and no 5xx in `docker compose -p niskala-intelligence logs api --since 10m`.
 
-- **P7g-1. Head and queue.** `SELECT version_num FROM alembic_version;` returns `7a3e91c5d2b4`.
+- **P7g-1. Head and queue.** `SELECT version_num FROM alembic_version;` returns `7e3b9c1d5a42` (P7g's own step is `7a3e91c5d2b4`, one before the head).
   `SELECT kind, state, count(*) FROM enrich_jobs GROUP BY 1,2;` shows the migrated rows (compare with Before deploy P7g-1,
   allowing for arrivals since). `SELECT count(*) FROM rejected_articles WHERE failure_kind IS NOT NULL;` returns 0 (classifier
   rejects, `failure_kind IS NULL`, are untouched).
@@ -1517,6 +1540,16 @@ Run SQL in the read-only `psql` session shown above.
   counts. Newsroom > Filtered > "Enrichment queue" lists the jobs; a `failed` row can be retried (**WRITE**, needs approval)
   and a pending `classify` row accepted or rejected (**WRITE**). An article stored by the new code shows "LLM TTPs pending" in
   its modal until the `ttp` job finishes.
+- **P7e-2. Head and tables.** `select version_num from alembic_version;` returns `7e3b9c1d5a42`.
+  `select count(*) from sigma_rules;` returns `3302` once the first API start has loaded the snapshot (wait a few seconds;
+  `docker compose -p niskala-intelligence logs api --since 10m | grep sigma_bootstrap_failed` must be empty).
+  `select count(*) from hunt_hypotheses;` returns `0`.
+- **P7e-3. Data health.** In the UI open Data health: the Sigma card shows status ok, release `r2026-07-01` and about 3,302
+  rules. After the first Sunday 03:30 run it shows the newest SigmaHQ release; a red or amber card with a `last_error`
+  means the download or its guards failed and the old rules stay in use.
+- **P7e-4. Hunt UI.** As an analyst open an entity page (an intrusion-set or malware with ATT&CK techniques), tab Hunt: SPL
+  cards, the Sigma table and *Download pack (zip)* load without console errors; also the Hunt section of an article in
+  Newsroom. **WRITE**, needs approval: *Draft hypothesis* calls the LLM and stores a row.
 - **P7f-1. Signals present** (read-only, after the One-off recompute below, or after the daily run). Expected: `pir` rows
   roughly equal the articles that the PIR page lists for each active PIR; `own_asset` rows well above 0 (on dev the title
   path alone matched 80 of 1,331 articles in 30 days).
@@ -1605,6 +1638,12 @@ replace the 0.8.8 `canonicalise_actors` step (now a no-op).
 
 P7g needs **nothing**: the migration moves the parked rows and the dispatcher drains them. `make replay-failed-enrichment`
 no longer exists. The only P7g command is the rollback helper (below), used **only** if the code is rolled back.
+
+**P7e: hosts without outbound access (NEEDS USER APPROVAL; WRITE: replaces `sigma_rules`).** Download
+`sigma_all_rules.zip` from the SigmaHQ GitHub release on another machine, copy it to the host and run, inside the `api`
+container, `cti-sigma import /path/sigma_all_rules.zip --release r2026-07-01` (use the release tag of the download). The
+same guards as the weekly sync apply (at least 1,000 unique rules, at least 80 % of the stored count); on refusal the table
+is unchanged. Nothing else to run for P7e: the first API start loads the snapshot by itself.
 
 - **P7f recompute (needs the user's approval, WRITE).** Existing articles carry no `pir`/`own_asset` points until their
   score is recomputed; the daily `confidence.recompute_all` and any PIR or techstack edit do it too, so this is only to
@@ -1707,6 +1746,9 @@ no longer exists. The only P7g command is the rollback helper (below), used **on
     admin only), row by row. `tools/ops/replay_failed_enrichment.py` is not in these images either: do not look for it.
 - **Gateway down for hours:** not a rollback case. Jobs wait, the breaker holds the model to one canary per cooldown, and the
   Telegram alert says how many are waiting. Do not restart workers to "push" the queue.
+- **P7e.** Old code ignores `sigma_rules` and `hunt_hypotheses`, so a code rollback needs no downgrade and leaves both tables
+  in place. `alembic downgrade 7a3e91c5d2b4` drops them (data loss limited to stored hypotheses and the Sigma copy).
+  `SIGMA__SYNC_ENABLED=false` stops the weekly download without a rollback.
 - **P7f.** No schema change, so a code rollback needs no DB step. The 0.8.10 and older code ignores the unknown
   `score_reasons` keys `pir` and `own_asset` (pydantic default) and serves the same rows; the P7f points stay in
   `priority_score` until the old code's next recompute removes them. Nothing to undo by hand.
@@ -1869,6 +1911,14 @@ no longer exists. The only P7g command is the rollback helper (below), used **on
 - **P7g follow-ups:** the dev check of spec section 6 after merging to `origin/Dev` (one outage night: classify `error` calls
   per day drop from hundreds to tens, pending jobs rise then drain, the migrated rows drain, no new `[enrichment_failed]`
   rows); dropping the unused `failure_kind`, `auto_replay_count`, `last_auto_replay_at` columns is a later cleanup.
+- **P7e-R1: web users have no TLP clearance.** The web pack does not filter indicators by TLP (web users have none today);
+  only token requests to `/api/v2/hunt-packs` are filtered by the token's `max_tlp`.
+- **P7e-R2: SPL is a template, not validated against the prod CIM mapping.** Searches use the standard CIM data models; check
+  field and data model names on the prod Splunk before relying on a pack. Entity packs are capped at 2,000 indicators
+  (`truncated: true`).
+- **P7e-R3: Sigma content and licence.** Rules belong to their authors under Detection Rule License 1.1 (licence file ships
+  in the snapshot, the pack README credits it). The weekly sync trusts the GitHub `releases/latest` asset behind the size,
+  count and 80 % guards.
 - **P7f-R1: the score is global (D1).** One `priority_score` for all clients, so a match against client A's PIR raises the
   article for client B too. B sees "PIR match +15" in the grade tooltip but never A's PIR title or tech names. Fine with
   one client (today); revisit before a second client with its own PIRs goes live.

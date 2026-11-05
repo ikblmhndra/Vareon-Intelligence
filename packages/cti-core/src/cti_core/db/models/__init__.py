@@ -47,6 +47,7 @@ from cti_core.db.models.entity import (
     ReferenceSnapshot,
     Relationship,
 )
+from cti_core.db.models.hunt import HuntHypothesis, SigmaRule
 from cti_core.db.models.indicator import (
     Indicator,
     IndicatorFeedback,
@@ -114,6 +115,7 @@ __all__ = [
     "EntityMention",
     "EntityProfile",
     "EntityWatch",
+    "HuntHypothesis",
     "Indicator",
     "IndicatorFeedback",
     "IndicatorSource",
@@ -146,6 +148,7 @@ __all__ = [
     "ScraperItem",
     "ScraperRun",
     "ScraperSeen",
+    "SigmaRule",
     "SourceReliabilityEntry",
     "Story",
     "TechStackEntry",

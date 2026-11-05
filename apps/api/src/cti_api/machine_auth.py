@@ -22,7 +22,7 @@ from cti_api.deps import get_db
 # Hanya untuk dokumentasi OpenAPI (skema `apiToken`); token dibaca dari header `Authorization`.
 _openapi_scheme = HTTPBearer(scheme_name="apiToken", auto_error=False)
 
-API_TOKEN_SCOPES: tuple[str, ...] = ("indicators:read", "intel:read")
+API_TOKEN_SCOPES: tuple[str, ...] = ("indicators:read", "intel:read", "hunt:read")
 DEFAULT_TOKEN_SCOPES: tuple[str, ...] = ("indicators:read",)
 """Default saat token dibuat tanpa `scopes`: perilaku token P7b tidak berubah (P7c spec 5.3)."""
 TOKEN_PREFIX = "vrn_"
