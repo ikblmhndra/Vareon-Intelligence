@@ -122,6 +122,16 @@ class RelevanceHealthOut(BaseModel):
     classify_avoided_7d: int
 
 
+class SigmaHealthOut(BaseModel):
+    """Snapshot SigmaHQ (P7e). `red` = 0 aturan; `amber` = snapshot >60 hari atau `last_error`."""
+
+    release: str | None
+    rules: int
+    fetched_at: str | None
+    last_error: str | None
+    status: Literal["ok", "amber", "red"]
+
+
 class DataHealthOut(BaseModel):
     generated_at: str
     """ISO UTC saat angka dihitung (cache 60 detik per proses)."""
@@ -132,3 +142,4 @@ class DataHealthOut(BaseModel):
     ioc_enrichment: list[IocEnrichmentTypeOut]
     llm: LlmHealthOut
     relevance: RelevanceHealthOut
+    sigma: SigmaHealthOut

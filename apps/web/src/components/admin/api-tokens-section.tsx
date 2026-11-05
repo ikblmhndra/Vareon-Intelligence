@@ -46,6 +46,7 @@ const EXPIRY_ITEMS: Record<string, string> = {
 const SCOPE_ITEMS: { value: string; help: string }[] = [
   { value: "indicators:read", help: "IOC feed and the TAXII \u201cindicators\u201d collection" },
   { value: "intel:read", help: "Entities, relationships, reports and the TAXII \u201cintel\u201d collection" },
+  { value: "hunt:read", help: "Hunting packs" },
 ];
 
 const STATUS_CLASS: Record<string, string> = {

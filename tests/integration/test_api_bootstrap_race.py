@@ -24,6 +24,7 @@ import pytest
 from cti_api.services.roles import SYSTEM_ROLES
 from cti_core.db.engine import async_session
 from cti_core.db.models.auth import Client, Role
+from cti_core.db.models.hunt import SigmaRule
 from cti_core.db.models.source_reliability import SourceReliabilityEntry
 from cti_core.db.repositories.auth import AsyncClientRepo
 from sqlalchemy import delete, func, select
@@ -50,6 +51,7 @@ async def _clean_bootstrap_rows(_migrated_schema: None):
             await s.execute(
                 delete(SourceReliabilityEntry).where(SourceReliabilityEntry.origin == "default")
             )
+            await s.execute(delete(SigmaRule))  # snapshot Sigma (P7e) ikut ter-commit bootstrap
             await s.commit()
 
     await wipe()

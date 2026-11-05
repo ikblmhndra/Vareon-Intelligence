@@ -155,6 +155,9 @@ export function DataHealthView() {
 
   const cov = dashboard.data;
 
+  const sigma = d.sigma;
+  const sigmaTone: Tone = sigma.status === "ok" ? "ok" : sigma.status === "amber" ? "warn" : "bad";
+
   const llm = d.llm;
   const llmTone: Tone = llm.status === "ok" ? "ok" : llm.status === "failing" ? "bad" : "unknown";
   const le = llm.last_error;
@@ -312,6 +315,12 @@ export function DataHealthView() {
               value={`${rel.classify_avoided_24h.toLocaleString()} in 24 h · ${rel.classify_avoided_7d.toLocaleString()} in 7 days`}
             />
           </Section>
+          <Section title="Sigma rules" tone={sigmaTone}>
+            <Row label="Release" value={sigma.release ?? "none loaded"} />
+            <Row label="Rules" value={sigma.rules.toLocaleString()} tone={sigma.rules ? "ok" : "bad"} />
+            <Row label="Fetched" value={when(sigma.fetched_at)} />
+            {sigma.last_error && <Row label="Last error" value={sigma.last_error} tone="warn" />}
+          </Section>
           <Table framed>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
@@ -443,6 +452,10 @@ function HowToRead() {
           is threat news before the LLM is asked. In shadow it only measures agreement with the LLM; once the gate is on, titles
           the model is confident about skip the LLM classify call, except for an audit sample that still goes to the LLM so
           agreement stays measurable. The gate turns itself off if agreement on the latest audit samples drops.
+        </li>
+        <li>
+          <strong className="text-foreground">Sigma rules</strong>: the SigmaHQ snapshot used by hunting packs. Problem when no
+          rules are loaded; Check when the snapshot is more than 60 days old or the last refresh reported an error.
         </li>
       </ul>
     </details>

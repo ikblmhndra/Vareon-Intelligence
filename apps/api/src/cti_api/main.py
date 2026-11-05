@@ -21,6 +21,7 @@ from cti_core.db.models.article import Article
 from cti_core.db.models.report_state import JobState
 from cti_core.db.repositories.auth import AsyncClientRepo
 from cti_core.db.repositories.source_reliability import AsyncSourceReliabilityRepo
+from cti_core.hunt.sigma import ensure_sigma_rules
 from cti_core.indicator.validity import ttl_fingerprint
 from cti_core.logging import configure_logging, get_logger
 from fastapi import FastAPI, Request
@@ -51,6 +52,7 @@ from cti_api.routers import entities as entities_router
 from cti_api.routers import exec_dashboard as exec_dashboard_router
 from cti_api.routers import filtered_articles as filtered_articles_router
 from cti_api.routers import health as health_router
+from cti_api.routers import hunt_packs as hunt_packs_router
 from cti_api.routers import intelligence as intelligence_router
 from cti_api.routers import iocs as iocs_router
 from cti_api.routers import mindmap as mindmap_router
@@ -73,6 +75,7 @@ from cti_api.routers import taxii as taxii_router
 from cti_api.routers import techstack as techstack_router
 from cti_api.routers import tweets as tweets_router
 from cti_api.routers import v2_entities as v2_entities_router
+from cti_api.routers import v2_hunt_packs as v2_hunt_packs_router
 from cti_api.routers import v2_indicators as v2_indicators_router
 from cti_api.services.roles import ensure_system_roles
 
@@ -119,6 +122,11 @@ async def bootstrap_reference_rows(session: AsyncSession) -> list[str]:
     await session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": _BOOTSTRAP_LOCK_KEY})
     await AsyncClientRepo(session).ensure_default()
     inserted = await AsyncSourceReliabilityRepo(session).ensure_defaults(source_kinds)
+    try:
+        async with session.begin_nested():  # savepoint: gagal Sigma tidak membatalkan client/grade
+            await session.run_sync(ensure_sigma_rules)  # P7e: snapshot hanya bila tabel kosong
+    except Exception:
+        log.error("sigma_bootstrap_failed", exc_info=True)
     await ensure_system_roles(session)  # commit di akhir -> lock dilepas
     return inserted
 
@@ -225,6 +233,7 @@ def create_app() -> FastAPI:
     app.include_router(ta_groups_router.router)
     app.include_router(entities_router.router)
     app.include_router(entities_router.relationships_router)
+    app.include_router(hunt_packs_router.router)
     app.include_router(mitre_router.router)
     app.include_router(crossref_router.router)
     app.include_router(newsletter_router.router)
@@ -237,6 +246,7 @@ def create_app() -> FastAPI:
     app.include_router(data_health_router.router)
     app.include_router(v2_indicators_router.router)
     app.include_router(v2_entities_router.router)
+    app.include_router(v2_hunt_packs_router.router)
     app.include_router(taxii_router.router)
     return app
 
