@@ -5,9 +5,11 @@ cascade-delete CVE) dan alasannya (nempel `cve.py`, belum ada di sini)."""
 
 from __future__ import annotations
 
+from cti_core.celery_client import send_recompute_all
 from cti_core.db.models.techstack import TechStackEntry, TechStackTarget
 from cti_core.db.repositories.auth import AsyncAuditLogRepo
 from cti_core.db.repositories.techstack import AsyncTechStackRepo
+from cti_core.logging import get_logger
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,6 +38,18 @@ router = APIRouter(
     tags=["techstack"],
     dependencies=[Depends(require_permission("view_cve"))],
 )
+
+log = get_logger()
+
+
+def _enqueue_recompute_all() -> None:
+    """Skor prioritas artikel memakai kecocokan aset sendiri (techstack), jadi
+    perubahan di sini harus dihitung ulang di worker (maintenance). Gagal kirim dicatat saja:
+    perubahan sudah tersimpan, recompute bisa dipicu ulang."""
+    try:
+        send_recompute_all()
+    except Exception:
+        log.warning("recompute_all_enqueue_failed", reason="techstack", exc_info=True)
 
 
 def _target_out(t: TechStackTarget) -> TechStackTargetOut:
@@ -140,6 +154,7 @@ async def post_techstack(
         ip_address=request_ip(request),
     )
     await session.commit()
+    _enqueue_recompute_all()
     if entry.targets:
         enqueue_promote_entry(entry.id)
     return {"success": True, "item": _serialize(entry).model_dump()}
@@ -169,6 +184,7 @@ async def patch_techstack(
         ip_address=request_ip(request),
     )
     await session.commit()
+    _enqueue_recompute_all()
     if body.active:
         enqueue_promote_entry(tech_id)
     return {"success": True, "item": _serialize(entry).model_dump()}
@@ -218,6 +234,7 @@ async def add_techstack_target(
         ip_address=request_ip(request),
     )
     await session.commit()
+    _enqueue_recompute_all()
     enqueue_promote_entry(entry.id)
     return {"success": True, "item": _serialize(entry).model_dump()}
 
@@ -248,6 +265,7 @@ async def remove_techstack_target(
         ip_address=request_ip(request),
     )
     await session.commit()
+    _enqueue_recompute_all()
     return {"success": True, "item": _serialize(entry).model_dump()}
 
 
@@ -316,4 +334,6 @@ async def remove_techstack(
         ip_address=request_ip(request),
     )
     await session.commit()
+    if ok:
+        _enqueue_recompute_all()
     return {"success": ok}

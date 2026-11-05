@@ -22,11 +22,13 @@ import datetime
 import io
 from typing import Any
 
+from cti_core.celery_client import send_recompute_all
 from cti_core.db.models.article import Article
 from cti_core.db.models.pir import PIRNote, PIRRequirement
 from cti_core.db.repositories.article import AsyncArticleRepo, all_country_codes
 from cti_core.db.repositories.auth import AsyncAuditLogRepo
 from cti_core.db.repositories.pir import AsyncPIRRepo
+from cti_core.logging import get_logger
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -58,6 +60,18 @@ router = APIRouter(
     tags=["pir"],
     dependencies=[Depends(require_permission("view_intel")), Depends(require_auth)],
 )
+
+log = get_logger()
+
+
+def _enqueue_recompute_all() -> None:
+    """Skor prioritas artikel memakai kecocokan PIR, jadi
+    perubahan di sini harus dihitung ulang di worker (maintenance). Gagal kirim dicatat saja:
+    perubahan sudah tersimpan, recompute bisa dipicu ulang."""
+    try:
+        send_recompute_all()
+    except Exception:
+        log.warning("recompute_all_enqueue_failed", reason="pir", exc_info=True)
 
 
 def _to_out(pir: PIRRequirement, total: int, last_match: str | None, recent: int) -> PIROut:
@@ -285,6 +299,7 @@ async def post_pir(
         ip_address=request_ip(request),
     )
     await session.commit()
+    _enqueue_recompute_all()
     total, last_match, recent = await repo.compute_coverage(
         AsyncArticleRepo(session), pir.criteria, pir.start_date, pir.end_date
     )
@@ -314,6 +329,7 @@ async def put_pir(
         ip_address=request_ip(request),
     )
     await session.commit()
+    _enqueue_recompute_all()
     # `updated_at` server-computed (`onupdate=func.now()`) -- flush() lewat
     # UPDATE gak selalu eager-fetch nilai barunya (beda dari INSERT di
     # `create()`, yang selalu dapet lewat RETURNING). Tanpa refresh() ini,
@@ -346,4 +362,5 @@ async def remove_pir(
         ip_address=request_ip(request),
     )
     await session.commit()
+    _enqueue_recompute_all()
     return {"deleted": True}
