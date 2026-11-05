@@ -5,7 +5,7 @@ P0 and P1 shipped in 0.8.5, P2 in 0.8.6, P3 in 0.8.7, P4 in 0.8.8, P5 in 0.8.9 a
 (see Progress below). P7 is split into sub-projects (decomposition in
 `docs/superpowers/specs/2026-10-28-p7a-indicator-lifecycle-design.md` section 0); P7a is built
 for 0.8.11 (deployed to dev 2026-10-29, not yet merged to `main`); P7b, P7c and P7g (persist-first enrichment, step 4 of
-`docs/TARGET_ARCHITECTURE.md`) are built for 0.8.11 as well; P7e and P7f have not started and P7d (sightings) is deferred.
+`docs/TARGET_ARCHITECTURE.md`) are built for 0.8.11 as well; P7e (hunting packs) is built for 0.8.11 too; P7f has not started and P7d (sightings) is deferred.
 
 Goal: turn Vareon from "every article goes through an LLM" into a CTI platform where
 deterministic code, curated reference data and analyst feedback do the bulk of the work, and
@@ -293,7 +293,7 @@ Also built for **0.8.11** (P7g persist-first enrichment; spec
   109, skipped 26, pending 4. Found there: a model reply with a technique lacking `technique_id` or `technique_name` raised
   `KeyError`, which failed the `ttp` job and left the article `pending`; such entries are now dropped.
 
-Not started: P7e, P7f. Cost measurement over a week of real data is now possible on dev.
+Not started: P7f. P7e (hunting packs) is built for 0.8.11. Cost measurement over a week of real data is now possible on dev.
 
 Correction (2026-10-24, rereading against the code): E4 first said these articles were
 "lost"; they are parked and replayable by hand, so P1 is now about recovering them
@@ -450,7 +450,7 @@ Ordered by value for the effort, assuming Splunk is the first consumer.
 5. **PIR-driven collection**: PIR criteria matched at ingest (not only at read time), PIR
    matches raise priority and unlock Tier 3 LLM; weekly PIR coverage report. RFI linked to
    PIR and stories.
-6. **Hunting packages**: for a story with TTPs/IOCs, generate (template, not LLM) a Splunk SPL
+6. **Hunting packages** (built for 0.8.11, P7e; spec `docs/superpowers/specs/2026-11-04-p7e-hunting-packs-design.md`): for a story with TTPs/IOCs, generate (template, not LLM) a Splunk SPL
    pack: IOC search over the standard CIM data models + links to the matching Sigma rules
    (SigmaHQ indexed by ATT&CK ID). LLM may draft a hunt hypothesis on demand.
 7. **Relevance to own assets**: join stories/CVEs to the techstack catalog (exists for CVEs)
@@ -471,7 +471,7 @@ testing first. Phases 1-3 can start without schema redesign.
 | P4 Deterministic extractors (**built for 0.8.8**) | Actor/malware dictionary matcher, explicit + inferred ATT&CK, industry taxonomy, incident rule | Coverage (E9) measured before/after on the same article set; equal or better than LLM for actor and TTP precision on a 100-article hand-labelled sample. Measured 2026-10-25 on silver labels: met for actor (71% vs 70%) and TTP (keyword 70%, explicit 99% vs LLM 35%) precision and for coverage; malware precision 47% is the weakest field |
 | P5 Local relevance model (**built for 0.8.9**) | Train on audit trail, shadow mode, then gate | Agreement with LLM >= 95% on the confident bands; LLM classify calls down by the measured share. Measured 2026-10-26 on prod labels at 0.85: holdout 98.1% agreement over 54.5% of titles, 5-fold CV 97.6% over 52.2%; the share of calls actually avoided is read from Data health after deploy |
 | P6 Confidence (**built for 0.8.10**) | Grade all sources, Admiralty score in API/UI | Every article shows A-F/1-6. Replay of 1,546 dev articles: top priority value 16.9% of articles, 33 distinct values in the top decile, 11 Admiralty codes |
-| P7+ CTI model (**P7a, P7b and P7c-1 built for 0.8.11**) | Split into P7a-P7g; see `docs/superpowers/specs/2026-10-28-p7a-indicator-lifecycle-design.md` section 0. P7a: indicators, lifecycle, TLP/PAP. P7b: machine API + TAXII. P7c-1: entities and relationships (backend; web pages in P7c-2). Later: hunting packs, PIR at ingest; sightings (P7d) deferred | Per item in section 4 |
+| P7+ CTI model (**P7a, P7b, P7c and P7e built for 0.8.11**) | Split into P7a-P7g; see `docs/superpowers/specs/2026-10-28-p7a-indicator-lifecycle-design.md` section 0. P7a: indicators, lifecycle, TLP/PAP. P7b: machine API + TAXII. P7c-1: entities and relationships (backend; web pages in P7c-2). P7e: hunting packs (SPL templates plus Sigma rules). Later: PIR at ingest; sightings (P7d) deferred | Per item in section 4 |
 
 Success metrics tracked from P0: LLM tokens per accepted article, LLM calls per day by call
 site, articles left parked as `[enrichment_failed]` after the model is healthy again (target 0), TTP precision on the labelled sample,

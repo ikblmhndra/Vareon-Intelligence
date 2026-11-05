@@ -215,6 +215,14 @@ class EntitySettings(_StrictModel):
     jadi prod tidak butuh key `.env`; ganti nilai butuh restart worker."""
 
 
+class SigmaSettings(_StrictModel):
+    """Paket hunting (P7e): sinkronisasi rilis SigmaHQ mingguan (`sigma.sync`)."""
+
+    sync_enabled: bool = True
+    """`false` = task mingguan langsung kembali (tidak mengunduh). Default nyala, jadi prod tidak
+    butuh key `.env`; ganti nilai butuh restart worker."""
+
+
 class StorySettings(_StrictModel):
     """Dedup story saat ingest (P3, spec 3.3): artikel yang membahas peristiwa yang sama
     dikelompokkan ke satu `stories` supaya klasifikasi LLM dipakai ulang. Semua field punya
@@ -435,6 +443,7 @@ class Settings(BaseSettings):
     worker: WorkerSettings = Field(default_factory=WorkerSettings)
     cve_mirror: CveMirrorSettings = Field(default_factory=CveMirrorSettings)
     entity: EntitySettings = Field(default_factory=EntitySettings)
+    sigma: SigmaSettings = Field(default_factory=SigmaSettings)
     story: StorySettings = Field(default_factory=StorySettings)
     indicator: IndicatorSettings = Field(default_factory=IndicatorSettings)
     relevance: RelevanceSettings = Field(default_factory=RelevanceSettings)

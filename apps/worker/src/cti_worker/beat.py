@@ -156,6 +156,11 @@ def _periodic_schedule() -> dict[str, dict[str, object]]:
             "schedule": crontab(hour=5, minute=0, day_of_week=0),
             "options": {"queue": QUEUE_MAINTENANCE},
         },
+        "sigma-sync": {
+            "task": "sigma.sync",
+            "schedule": crontab(hour=3, minute=30, day_of_week=0),
+            "options": {"queue": QUEUE_MAINTENANCE},
+        },
         "indicator-reconcile-validity": {
             "task": "indicator.reconcile_validity",
             "schedule": crontab(hour=4, minute=15),

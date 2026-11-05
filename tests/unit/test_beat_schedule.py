@@ -357,3 +357,25 @@ def test_reconcile_validity_scheduled(monkeypatch: pytest.MonkeyPatch) -> None:
     assert entry["task"] == "indicator.reconcile_validity"
     assert entry["options"] == {"queue": "maintenance"}
     assert _cron(entry) == ("15", "4", "*")
+
+
+def test_sigma_sync_scheduled_weekly_on_maintenance(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(beat, "_scraper_configs", lambda: {})
+    entry = beat.build_beat_schedule()["sigma-sync"]
+    assert entry["task"] == "sigma.sync"
+    assert entry["options"] == {"queue": "maintenance"}
+    c = entry["schedule"]
+    assert (str(c._orig_minute), str(c._orig_hour), str(c._orig_day_of_week)) == ("30", "3", "0")
+
+
+def test_sigma_sync_disabled_setting_skips(monkeypatch: pytest.MonkeyPatch) -> None:
+    from cti_core.config import SigmaSettings, get_settings
+    from cti_worker.tasks import sigma
+
+    assert SigmaSettings().sync_enabled is True
+    monkeypatch.setenv("SIGMA__SYNC_ENABLED", "false")
+    get_settings.cache_clear()
+    try:
+        assert sigma.sync() == {"skipped": "disabled"}
+    finally:
+        get_settings.cache_clear()

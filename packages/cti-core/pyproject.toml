@@ -16,10 +16,13 @@ dependencies = [
     # Fernet buat secret yang dikelola lewat UI admin (ROADMAP #23). Sebelumnya cuma ikut transitif
     # lewat python-jose di apps/api; cti-core sekarang memakainya langsung, jadi dideklarasikan sendiri.
     "cryptography>=42",
+    # Parser aturan Sigma (P7e); sebelumnya hanya transitif, versi terkunci tidak berubah.
+    "pyyaml>=6.0",
 ]
 
 [project.scripts]
 cti-entity = "cti_core.entity.cli:main"
+cti-sigma = "cti_core.hunt.cli:main"
 
 [build-system]
 requires = ["hatchling"]
