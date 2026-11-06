@@ -8,3 +8,4 @@ from __future__ import annotations
 QUEUE_ENRICH = "enrich"
 QUEUE_NOTIFY = "notify"
 QUEUE_MAINTENANCE = "maintenance"
+QUEUE_CVE = "cve"  # ingest CVE sendiri, supaya tidak berebut slot dengan scraper di `worker`

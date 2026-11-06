@@ -132,6 +132,21 @@ async def test_freshness_separates_last_successful_check_from_latest_attempt(
     assert as_time(source["next_check_at"]) > datetime.datetime.now(UTC)
 
 
+async def test_freshness_ignores_overlap_runs(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Callable[..., dict[str, str]]
+) -> None:
+    """Run `overlap` (ditolak karena run sebelumnya masih jalan) bukan percobaan pengecekan."""
+    api_session.add_all(
+        [
+            run_row("ok", started=ago(hours=3, minutes=5), finished=ago(hours=3)),
+            run_row("overlap", started=ago(minutes=2), finished=ago(minutes=1)),
+        ]
+    )
+    await api_session.flush()
+    source = (await freshness(api_client, auth_header()))["sources"][0]
+    assert source["last_run_status"] == "ok"
+
+
 async def test_freshness_ignores_runs_stuck_in_running(
     api_client: AsyncClient, api_session: AsyncSession, auth_header: Callable[..., dict[str, str]]
 ) -> None:
@@ -343,7 +358,7 @@ async def test_check_new_in_mirror_mode_sends_the_mirror_sync(
     resp = await api_client.post("/api/cve/check-new", headers=auth_header())
 
     assert (resp.status_code, resp.json()["sources"]) == (200, ["mirror"])
-    assert [(t["name"], t["queue"]) for t in celery.sent] == [("cve.mirror_sync", "maintenance")]
+    assert [(t["name"], t["queue"]) for t in celery.sent] == [("cve.mirror_sync", "cve")]
 
 
 async def test_check_new_while_sources_overlap_sends_both(

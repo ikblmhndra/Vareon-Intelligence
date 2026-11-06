@@ -13,8 +13,10 @@ import time
 from typing import Literal
 
 from cti_core.config import get_settings
+from cti_core.cve_mirror_sync import RECONCILE_KEY, STATE_KEY, ReconcileState, SyncState
 from cti_core.db.models import SigmaRule
 from cti_core.db.models.entity import ReferenceSnapshot
+from cti_core.db.models.report_state import JobState
 from cti_core.db.repositories.data_health import AsyncDataHealthRepo
 from cti_core.db.repositories.enrich_job import AsyncEnrichJobRepo
 from cti_core.db.repositories.llm_call import AsyncLlmCallRepo, TaskUsage
@@ -27,6 +29,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_api.schemas.data_health import (
+    CveIngestHealthOut,
     DataHealthOut,
     EnrichmentHealthOut,
     IocEnrichmentTypeOut,
@@ -198,6 +201,41 @@ async def _sigma_health(session: AsyncSession, now: datetime.datetime) -> SigmaH
     )
 
 
+_CVE_SYNC_RED = datetime.timedelta(minutes=15)
+_CVE_RECONCILE_AMBER = datetime.timedelta(hours=2)
+
+
+async def _cve_ingest_health(session: AsyncSession, now: datetime.datetime) -> CveIngestHealthOut:
+    cfg = get_settings().cve_mirror
+    sync_row = await session.get(JobState, STATE_KEY)
+    sync = SyncState.load(sync_row.value if sync_row is not None else None)
+    rec_row = await session.get(JobState, RECONCILE_KEY)
+    rec = ReconcileState.load(rec_row.value if rec_row is not None else None)
+    report = rec.last_report
+    status: Literal["ok", "amber", "red", "off"]
+    if not cfg.enabled:
+        status = "off"
+    elif sync.polled_at is None or now - sync.polled_at > _CVE_SYNC_RED:
+        status = "red"
+    elif (
+        rec.ran_at is None
+        or now - rec.ran_at > _CVE_RECONCILE_AMBER
+        or (report or {}).get("status") == "error"
+    ):
+        status = "amber"
+    else:
+        status = "ok"
+    return CveIngestHealthOut(
+        enabled=cfg.enabled,
+        promote=cfg.promote,
+        last_sync_at=_iso(sync.polled_at),
+        pending=len(sync.pending),
+        last_reconcile_at=_iso(rec.ran_at),
+        last_reconcile=report,
+        status=status,
+    )
+
+
 async def _build(session: AsyncSession, redis: Redis, now: datetime.datetime) -> DataHealthOut:
     repo = AsyncDataHealthRepo(session)
     # Sekuensial: satu `AsyncSession` tidak aman dipakai concurrent.
@@ -230,4 +268,5 @@ async def _build(session: AsyncSession, redis: Redis, now: datetime.datetime) ->
         llm=await _llm_health(session, repo, now),
         relevance=await _relevance_health(session, now),
         sigma=await _sigma_health(session, now),
+        cve_ingest=await _cve_ingest_health(session, now),
     )

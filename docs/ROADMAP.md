@@ -46,6 +46,7 @@ Each item contains: **what** was asked, **the current state** (facts from the re
 | 20 | **Mostly done** | **Known follow-ups from releases 0.4.0 / 0.4.1** (found while reviewing the CVE Tracker; none is blocking) -- **the data-correctness points were fixed 2026-10-15 (#51, #52) or earlier (#21); what is left (the (D) decisions, the KEV/EPSS/Exploit-DB access point, `trending_cve` in January) is marked in the item** | product decisions on the points marked (D) | -- |
 | 23 | **Live** | **Runtime secrets** (asked 2026-10-16): manage the third-party keys (LLM, Telegram, Graph, NVD, GitHub, twitterapi.io, X, OTX, AbuseIPDB, VirusTotal) from a superadmin-only admin page, encrypted in the database and applied without a restart or rebuild; the deployment-level secrets (database, Redis, JWT/session, OIDC) stay in `.env` -- **merged 2026-10-16 as one pull request (#63), released as 0.7.0 and deployed to prod (running 0.7.4 since 2026-10-21); the master key is set there and the page is in use (one override, `llm`, on 2026-10-23)** | one check that the OTX probe (`GET /api/v1/users/me`) answers 200 for a real key; the re-auth decision for OIDC-only superadmins | -- (touches #11 for the OIDC question) |
 | 24 | **Open** (PR-A live; PR-B merged as release 0.8.0, not deployed) | **Data platform audit follow-ups** (asked 2026-10-17): stop losing articles when the LLM fails (a structured failure kind, replay, an alert, an honest run status, a reaper and a purge) and show the pipeline's health in the UI (a **Data health** page, a reliable previous-period delta, reasons on `/scrapers`) -- **PR-A merged 2026-10-21 (#65, release 0.7.2) and deployed to prod (0.7.4, Alembic head `b7e4c1a9d256`); the replay has not been run on prod (38 rows wait: 34 `transient`, 4 `permanent`, 2026-10-23); on dev the user replayed a first batch of 10 of 147 on 2026-10-21; PR-B (Data health, Dashboard, Scrapers) merged 2026-10-23 (#69, release 0.8.0, together with the web retheme onto theme tokens); prod still runs 0.7.4** | run `make replay-failed-enrichment` on prod (report first, then `--apply`) and finish it on dev; deploy 0.8.0 (`make deploy`) and look at `/data-health` on dev and prod | -- (PR-B reads `failure_kind` from PR-A) |
+| 25 | **Parked** | **Sightings from Splunk (P7d)** (decided 2026-11-05): let a consumer such as Splunk send a sighting back when one of our indicators hits in its logs, so `last_seen`, sighting counts and confidence reflect real hits in our own environment -- **pending; the rest of P7 shipped in 0.8.11** | a consumer that will actually send sightings, and what it sends | P7a indicators, P7b machine API (0.8.11) |
 ---
 
 ## Priority queue (team feedback 2026-10-10)
@@ -1685,3 +1686,30 @@ Starts after PR-A is merged (it reads `failure_kind`).
 - **Not yet looked at**: the Monitored Accounts tab of X Intel, the body of the Admin page (it holds third-party keys), contrast
   measured in both themes, a real 375 px viewport, keyboard use at runtime, and whether `logbook.last_report_date` (2026-09-26,
   14-day interval) means a logbook report was missed.
+
+---
+
+## 25. Sightings from Splunk (P7d) -- pending
+
+**Asked**: during the P7 design (2026-10-28) as part of the CTI model: a SIEM (Splunk first) reports back when one of our
+indicators matched in its logs. **Decision 2026-11-05 (user)**: keep it pending and record it here; the rest of P7
+(P7a, P7b, P7c, P7e, P7f, P7g) ships as release 0.8.11.
+
+**Current state**: indicators have a lifecycle, TLP/PAP and stable STIX ids (P7a/P7b), and consumers pull them over
+`/api/v2/indicators` and TAXII 2.1 with scoped tokens (P7b). Nothing accepts data back yet: there is no sighting table, no
+write scope on machine tokens and no inbound endpoint. The existing "sighting count" on indicators counts our own sources
+re-reporting an IOC, not hits in a customer's environment.
+
+**Design direction (from the P7 decomposition, not yet specified)**: vendor-neutral and API-first, like P7b. The consumer
+adapts to us: a STIX 2.1 `sighting` object (or a small JSON equivalent) posted with a token that has a new write scope,
+referencing the indicator's `stix_id`; we store it, raise `last_seen`, and show it on the IOC page. No Splunk-specific
+connector.
+
+**Touch points**: `cti_core` indicator model and repository, `apps/api` machine API router and token scopes, the IOC page in
+`apps/web`, P6 confidence (a sighting could become evidence).
+
+**Needs before starting**: a consumer that will send sightings and agrees on the payload (the Splunk team has not decided
+which TAXII version or inbound format it supports); whether sightings are visible per client.
+
+**Done when**: a token with the write scope can post a sighting for an indicator, the indicator shows it, and a token
+without the scope gets 403; covered by integration tests and the API contract.

@@ -1937,6 +1937,87 @@
         "title": "CveFreshness",
         "type": "object"
       },
+      "CveIngestHealthOut": {
+        "description": "Ingest CVE dari mirror V5. `off` = mirror mati; `red` = poll terakhir hilang/>15 menit;\n`amber` = rekonsiliasi belum ada, >2 jam, atau terakhir `status == \"error\"`.",
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "last_reconcile": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "string"
+                    }
+                  ]
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Reconcile"
+          },
+          "last_reconcile_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Reconcile At"
+          },
+          "last_sync_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Sync At"
+          },
+          "pending": {
+            "title": "Pending",
+            "type": "integer"
+          },
+          "promote": {
+            "title": "Promote",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "amber",
+              "red",
+              "off"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "enabled",
+          "promote",
+          "last_sync_at",
+          "pending",
+          "last_reconcile_at",
+          "last_reconcile",
+          "status"
+        ],
+        "title": "CveIngestHealthOut",
+        "type": "object"
+      },
       "CveListResponse": {
         "properties": {
           "cves": {
@@ -2593,6 +2674,9 @@
       },
       "DataHealthOut": {
         "properties": {
+          "cve_ingest": {
+            "$ref": "#/components/schemas/CveIngestHealthOut"
+          },
           "enrichment": {
             "$ref": "#/components/schemas/EnrichmentHealthOut"
           },
@@ -2635,7 +2719,8 @@
           "ioc_enrichment",
           "llm",
           "relevance",
-          "sigma"
+          "sigma",
+          "cve_ingest"
         ],
         "title": "DataHealthOut",
         "type": "object"
@@ -10851,7 +10936,7 @@
   },
   "info": {
     "title": "Vareon Intelligence API",
-    "version": "0.8.11"
+    "version": "0.8.13"
   },
   "openapi": "3.1.0",
   "paths": {

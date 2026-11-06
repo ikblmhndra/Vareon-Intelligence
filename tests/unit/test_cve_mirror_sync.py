@@ -13,12 +13,16 @@ import pytest
 from cti_core.cve_mirror_sync import (
     FETCH_GAP,
     POLL_GAP,
+    RECORD_URL_PREFIX,
+    DeltaItem,
     FetchError,
     PendingItem,
+    ReconcileState,
     SyncState,
     needs_catch_up,
     parse_delta_entry,
     parse_delta_log,
+    reconcile_plan,
     valid_record_link,
 )
 from cti_core.cve_record import cna_summary, cve_state, parse_cve_record
@@ -175,3 +179,60 @@ def test_state_roundtrip_and_garbage_tolerance() -> None:
 )
 def test_only_cvelist_record_links_are_fetched(link: str, ok: bool) -> None:
     assert valid_record_link(link) is ok
+
+
+# ── reconcile_plan ────────────────────────────────────────────────────────────────────────────
+
+R0 = datetime.datetime(2026, 11, 3, 19, 50, tzinfo=UTC)
+R1 = R0 + datetime.timedelta(minutes=5)
+
+
+def item(cve: str, at: datetime.datetime | None) -> DeltaItem:
+    return DeltaItem(
+        cve_id=cve, link=f"{RECORD_URL_PREFIX}main/cves/2026/95xxx/{cve}.json", date_updated=at
+    )
+
+
+def test_plan_includes_missing_records() -> None:
+    plan = reconcile_plan([item("CVE-2026-95731", R0)], {}, {})
+    assert [i.cve_id for i in plan] == ["CVE-2026-95731"]
+
+
+def test_plan_includes_outdated_records() -> None:
+    assert reconcile_plan([item("CVE-2026-1", R1)], {"CVE-2026-1": R0}, {})[0].date_updated == R1
+
+
+def test_plan_skips_current_and_newer_mirror_versions() -> None:
+    assert reconcile_plan([item("CVE-2026-1", R0)], {"CVE-2026-1": R0}, {}) == []
+    assert reconcile_plan([item("CVE-2026-1", R0)], {"CVE-2026-1": R1}, {}) == []
+
+
+def test_plan_respects_skip_with_same_version() -> None:
+    assert reconcile_plan([item("CVE-2026-1", R0)], {}, {"CVE-2026-1": R0}) == []
+    assert len(reconcile_plan([item("CVE-2026-1", R1)], {}, {"CVE-2026-1": R0})) == 1
+
+
+def test_plan_dedupes_to_latest_version_across_windows() -> None:
+    plan = reconcile_plan([item("CVE-2026-1", R0), item("CVE-2026-1", R1)], {}, {})
+    assert [(i.cve_id, i.date_updated) for i in plan] == [("CVE-2026-1", R1)]
+
+
+def test_plan_mirror_without_version_counts_as_outdated() -> None:
+    assert len(reconcile_plan([item("CVE-2026-1", R0)], {"CVE-2026-1": None}, {})) == 1
+
+
+def test_plan_unversioned_log_item_only_when_missing_and_sorted() -> None:
+    plan = reconcile_plan(
+        [item("CVE-2026-2", None), item("CVE-2026-1", None), item("CVE-2026-3", None)],
+        {"CVE-2026-3": R0},
+        {},
+    )
+    assert [i.cve_id for i in plan] == ["CVE-2026-1", "CVE-2026-2"]
+
+
+def test_reconcile_state_roundtrip() -> None:
+    s = ReconcileState(
+        skips={"CVE-2026-1": R0, "CVE-2026-2": None}, last_report={"fixed": 2}, ran_at=R1
+    )
+    assert ReconcileState.load(s.dump()) == s
+    assert ReconcileState.load(None) == ReconcileState(skips={}, last_report=None, ran_at=None)

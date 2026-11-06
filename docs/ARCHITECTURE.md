@@ -47,6 +47,7 @@ therefore run on different queues and worker images, with backpressure between t
 | `migrate` | `alembic upgrade head` | The only process that migrates. API and workers never do. |
 | `api` | uvicorn, several processes | `lifespan` bootstraps reference rows under a Postgres advisory lock. |
 | `worker` | `-Q scrape.rss,scrape.api,notify,maintenance` | Light scrapers, notifications, periodic maintenance. |
+| `worker-cve` | `-Q cve -c 1` | CVE ingest (`cve.mirror_sync`, `cve.mirror_reconcile`, `cve.mirror_purge`, `cve.promote_entry`), isolated so long scraper runs cannot starve it. |
 | `worker-browser` | `-Q scrape.browser` | Scrapers with `runtime="browser"` (Playwright/Chromium). |
 | `worker-nlp` | `-Q enrich` | Enrichment. Image includes spaCy and sumy. |
 | `beat` | `python -m cti_worker.beat_main` | Singleton: holds a Redis lock (`cti:beat:lock`) and renews it. |
@@ -297,7 +298,7 @@ flowchart LR
   newcve --> sup{"superseded<br/>by mirror?"}
   sup -->|no| cvesink["_cve_sink<br/>upsert (cve_id, client_id)"]
   cvesink --> tracker[("cve_tracker<br/>+ references, affected")]
-  mirror["cve.mirror_sync<br/>every 5 min, maintenance"] --> apply["apply_record<br/>cve_records + catalog resolve"]
+  mirror["cve.mirror_sync<br/>every 5 min, cve"] --> apply["apply_record<br/>cve_records + catalog resolve"]
   apply -->|created / updated| mode{"CVE_MIRROR__PROMOTE"}
   tech -.->|load_entries| mode
   mode -->|shadow| shadow[("cve_promotion_shadow")]
@@ -343,7 +344,8 @@ Beat also schedules non-scraper tasks (`cti_worker.beat._periodic_schedule`, `_r
 | `newsletter.prepare_monthly` | maintenance | Every weekday 02:00 UTC (09:00 WIB). Returns at once except on the first Monday-Friday of the month and the next 7 days, and only while the previous month has no suggestion: then it builds the suggested content and the Executive Summary (one LLM call, none without weekly recaps). Section 3.5. |
 | `story.purge_empty` | maintenance | Daily. Delete `stories` with no member articles that are older than `STORY__MAX_AGE_DAYS`. |
 | `confidence.refresh_stories`, `confidence.recompute_all` | maintenance | Every 10 minutes: re-assess (Admiralty code and priority) the articles of stories updated since the last successful run (watermark in Redis). Daily 03:20: re-assess every article, to pick up KEV/PoC, IOC suppression and `content_kind` changes. |
-| `cve.enrichment_sweep`, `cve.mirror_sync`, `cve.mirror_purge` | maintenance | Section 3.3. |
+| `cve.enrichment_sweep` | maintenance | Section 3.3. |
+| `cve.mirror_sync`, `cve.mirror_reconcile`, `cve.mirror_purge`, `cve.promote_entry` | cve | Section 3.3. |
 | `report.*` (daily counters, news of the day, logbook, weekly top CVE, trending CVE, threat actor trend) | notify | Scheduled Telegram reports. |
 
 Tasks that need business logic call the async `cti_api.services.*` functions through
@@ -616,7 +618,7 @@ Redis plays four roles at once:
 
 | Key | Role | Written by | Read by |
 |---|---|---|---|
-| lists `scrape.*`, `enrich`, `notify`, `maintenance` | Celery broker | beat, API (manual trigger, promote entry), `_article_sink` | workers; `_article_sink` (`LLEN enrich`) |
+| lists `scrape.*`, `enrich`, `notify`, `maintenance`, `cve` | Celery broker | beat, API (manual trigger, promote entry), `_article_sink` | workers; `_article_sink` (`LLEN enrich`) |
 | `revoked_user:<sub>`, `revoked_jti:<jti>` | JWT revocation | API (logout, password/role/client change) | API, on every authenticated request |
 | `cti:ratelimit:<domain>` | per-domain token bucket | `ScraperHttpClient` via `TokenBucket` | same |
 | `cti:ratelimit:ioc-enrich:<provider>` | hourly lookup budget per reputation provider | `ioc.enrich_pending` via `TokenBucket` | same |

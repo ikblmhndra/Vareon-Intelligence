@@ -45,8 +45,8 @@ from cti_api.schemas.cve_check import (
 SCRAPER_ID = "new_cve"
 MIRROR_LABEL = "CVE List V5 mirror"
 MIRROR_TASK = "cve.mirror_sync"
-MIRROR_QUEUE = "maintenance"
-"""= `cti_worker.queues.QUEUE_MAINTENANCE` (API tidak boleh import worker)."""
+MIRROR_QUEUE = "cve"
+"""= `cti_worker.queues.QUEUE_CVE` (API tidak boleh import worker)."""
 MIRROR_CRON = "*/5 * * * *"
 """= entri beat `cve-mirror-sync` (`cti_worker.beat`)."""
 
@@ -105,7 +105,8 @@ async def _scraper_source(session: AsyncSession, now: datetime.datetime) -> CveC
     enabled = effective_enabled(meta, config)
     runs = AsyncScraperRunRepo(session)
     succeeded = await runs.latest_finished(SCRAPER_ID, statuses=SUCCESS_STATUSES)
-    latest = await runs.latest_finished(SCRAPER_ID)
+    # `overlap`/`disabled` = run ditolak sebelum mengambil apa pun, bukan percobaan pengecekan.
+    latest = await runs.latest_finished(SCRAPER_ID, exclude_statuses=("overlap", "disabled"))
     schedule = config.schedule if config is not None and config.schedule else meta.schedule
     return CveCheckSource(
         id="new_cve",

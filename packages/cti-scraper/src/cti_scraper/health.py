@@ -67,8 +67,9 @@ def run_is_failing(run: ScraperRun) -> bool:
 
 
 def _finished(runs: list[ScraperRun]) -> list[ScraperRun]:
-    """Tanpa baris `running` (sedang jalan, atau yatim karena worker mati): bukan hasil."""
-    done = [r for r in runs if r.status != "running"]
+    """Tanpa baris `running` (sedang jalan, atau yatim karena worker mati) dan `overlap` (ditolak
+    guard, tidak mengambil data sama sekali): bukan hasil."""
+    done = [r for r in runs if r.status not in ("running", "overlap")]
     return done or list(runs)
 
 

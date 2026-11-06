@@ -1559,7 +1559,11 @@ Run SQL in the read-only `psql` session shown above.
   SELECT count(*) FROM articles WHERE score_reasons ? 'own_asset';
   ```
 
-  Dev numbers: recorded after the dev deploy.
+  Dev (2026-11-05, after the recompute, 2,057 articles): `pir` 55, exactly the 55 articles the PIR page lists for PIR #5
+  (P2, Shinyhunters); `own_asset` 133 (93 in the last 30 days; top names Linux 42, gitlab 26, fortinet 20, microsoft 365
+  12, jira 11). `priority_score` median 70, p90 104, p99 133 (before: 70, 101, 126); 9 of the top 10 by priority in 30
+  days carry `own_asset`. The tooltip was checked in light and dark mode; a narrow width was not (the browser window does
+  not go below about 600 px).
 - **P7f-2. Grade tooltip** (UI, read-only). Open the Newsroom, hover the grade chip of an article returned by the checks
   above: "Why this grade" lists "PIR match" and "own asset" with the PIR title and priority or the tech name. Open the
   PIR page for that PIR and confirm the article is in its list. Check light and dark mode and a narrow width.
@@ -1646,7 +1650,7 @@ is unchanged. Nothing else to run for P7e: the first API start loads the snapsho
   avoid waiting. `POST /api/articles/confidence/recompute` (needs the `manage_intel` permission) runs synchronously inside the API
   request (commit per batch), holds the connection for the whole run so proxy/nginx timeouts apply, and returns the counts.
   The alternative is to wait for the daily `confidence.recompute_all` beat task. There is no `--dry-run`. The run is
-  idempotent and rewrites only score columns. Dev duration: recorded after the dev deploy.
+  idempotent and rewrites only score columns. Dev duration: 2,057 articles in 5.9 s (run inside the worker container).
 
 ### Rollback / if it goes wrong
 
@@ -1924,4 +1928,4 @@ is unchanged. Nothing else to run for P7e: the first API start loads the snapsho
   date window opens or closes changes scores at the next daily run.
 - **P7f-R4: direct DB edits.** A PIR that expires or is edited directly in the DB keeps or loses its points only at the next recompute (daily, or on an API edit).
 - **P7f follow-ups:** PIR matches unlocking Tier 3 LLM, the weekly PIR coverage report and the dashboard "Tech stack"
-  badge reading `score_reasons.own_asset` are out of scope; dev numbers for the checks above are filled in after the dev deploy.
+  badge reading `score_reasons.own_asset` are out of scope.

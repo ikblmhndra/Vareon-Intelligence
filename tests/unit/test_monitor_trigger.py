@@ -38,14 +38,14 @@ def test_nothing_is_sent_unless_mirror_and_promotion_are_both_on(
 
 
 @pytest.mark.parametrize("promote", ["shadow", "live"])
-def test_task_is_sent_by_name_to_the_maintenance_queue(
+def test_task_is_sent_by_name_to_the_cve_queue(
     monkeypatch: pytest.MonkeyPatch, promote: str
 ) -> None:
     celery = FakeCelery()
     monkeypatch.setattr(monitor, "get_settings", lambda: settings(True, promote))
     monkeypatch.setattr(monitor, "get_celery_client", lambda: celery)
     assert monitor.enqueue_promote_entry(7) is True
-    assert celery.sent == [("cve.promote_entry", {"entry_id": 7}, "maintenance")]
+    assert celery.sent == [("cve.promote_entry", {"entry_id": 7}, "cve")]
 
 
 def test_a_dead_broker_never_fails_the_request(monkeypatch: pytest.MonkeyPatch) -> None:

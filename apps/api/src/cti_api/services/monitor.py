@@ -17,7 +17,7 @@ from cti_core.config import get_settings
 
 log = structlog.get_logger()
 
-QUEUE = "maintenance"
+QUEUE = "cve"  # = `cti_worker.queues.QUEUE_CVE` (API tidak boleh import worker)
 TASK = "cve.promote_entry"
 
 

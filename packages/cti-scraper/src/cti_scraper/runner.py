@@ -172,6 +172,7 @@ class Runner:
         run = None
         config = None
         if not self.dry_run:
+            from cti_core.config import get_settings
             from cti_core.db.repositories.scraper import ScraperConfigRepo, ScraperRunRepo
 
             assert self.session is not None  # dijamin __init__
@@ -192,6 +193,23 @@ class Runner:
                 result = RunResult(run_id=run_id, scraper_id=self.meta.id, status="disabled")
                 result.duration_ms = int((time.monotonic() - started) * 1000)
                 log.info("run_skipped_disabled", duration_ms=result.duration_ms)
+                return result
+
+            # Jangan numpuk: run per-jam github_poc_monitor yang makan ~2 jam sempat menumpuk 4
+            # sekaligus dan memenuhi semua slot worker. Dicek SEBELUM `start()` supaya baris run ini
+            # sendiri tidak terhitung; baris `running` lebih tua dari ambang dianggap yatim.
+            if run_repo.has_running(
+                self.meta.id,
+                datetime.timedelta(hours=get_settings().worker.scraper_run_stale_hours),
+            ):
+                run = run_repo.start(
+                    run_id=run_id, scraper_id=self.meta.id, trigger=trigger, **self._run_origin
+                )
+                run_repo.finish(run, status="overlap")
+                self.session.commit()
+                result = RunResult(run_id=run_id, scraper_id=self.meta.id, status="overlap")
+                result.duration_ms = int((time.monotonic() - started) * 1000)
+                log.info("run_skipped_overlap", duration_ms=result.duration_ms)
                 return result
 
             if config is not None:

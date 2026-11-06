@@ -74,10 +74,18 @@ def _resolve_true_positive_cves(session: Session) -> list[dict[str, Any]]:
     membuangnya, jadi PoC CVE itu tak pernah dicari selama satu client menandainya FP."""
     from cti_core.db.models.cve import CveTracker
     from cti_core.db.repositories.cve import is_false_positive_row
-    from sqlalchemy import select
+    from sqlalchemy import func, or_, select
 
+    # Hanya CVE terbit <= 90 hari atau di CISA KEV: PoC CVE lama non-KEV jarang muncul lagi dan
+    # mencari semuanya (2.469 di prod) membuat satu run ~2 jam.
+    recent_or_kev = or_(
+        CveTracker.published >= func.current_date() - 90, CveTracker.cisa_kev.is_(True)
+    )
     rows = (
-        session.execute(select(CveTracker).where(~is_false_positive_row())).scalars().unique().all()
+        session.execute(select(CveTracker).where(~is_false_positive_row(), recent_or_kev))
+        .scalars()
+        .unique()
+        .all()
     )
 
     merged: dict[str, set[str]] = {}

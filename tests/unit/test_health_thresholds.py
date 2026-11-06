@@ -157,3 +157,13 @@ def test_the_fleet_summary_carries_reason_counts_and_last_success() -> None:
     assert entry.status == "degraded" and entry.items_failed_last == 4
     assert entry.consecutive_failing == 1 and entry.last_success_at == ok_at
     assert entry.reason and "4 item(s)" in entry.reason
+
+
+def test_health_ignores_overlap_runs() -> None:
+    """Run `overlap` (ditolak guard, tidak mengambil data) bukan hasil: tidak menutupi run nyata."""
+    runs = [run("overlap", minutes_ago=1), run("ok", minutes_ago=16)]
+    assert health(runs) == "ok"
+    assert explain_health("ok", runs) is None
+    failing = [run("overlap", minutes_ago=1), run("parse_error", minutes_ago=16)]
+    assert health(failing) == "degraded"
+    assert consecutive_failing(failing) == 1

@@ -420,6 +420,8 @@ async def set_article_credibility(
 ) -> ArticleOut:
     """Override kredibilitas (1-6) oleh analis, atau hapus (`null`); artikel dinilai ulang di
     tempat dan recompute massal menghormati override ini (P6 5.1)."""
+    # cek client dulu: 403 sesudah commit berarti override tersimpan walau request ditolak
+    client_id = effective_client_id(user, x_client_id)
     repo = AsyncArticleRepo(session)
     article = await repo.get_by_id(article_id)
     if article is None:
@@ -456,7 +458,7 @@ async def set_article_credibility(
         repo.to_dict(article),
         ratings,
         stories,
-        effective_client_id(user, x_client_id),
+        client_id,
     )
 
 

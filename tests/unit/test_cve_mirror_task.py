@@ -45,6 +45,7 @@ def test_disabled_tasks_return_without_touching_db_or_network(
     monkeypatch.setattr(httpx, "Client", boom)
     assert cve_mirror.cve_mirror_sync.run() == {"status": "disabled"}
     assert cve_mirror.cve_mirror_purge.run() == {"status": "disabled"}
+    assert cve_mirror.cve_mirror_reconcile.run() == {"status": "disabled"}
 
 
 def test_tasks_are_registered_and_scheduled(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -55,10 +56,13 @@ def test_tasks_are_registered_and_scheduled(monkeypatch: pytest.MonkeyPatch) -> 
     for name, task in (
         ("cve-mirror-sync", "cve.mirror_sync"),
         ("cve-mirror-purge", "cve.mirror_purge"),
+        ("cve-mirror-reconcile", "cve.mirror_reconcile"),
     ):
         assert schedule[name]["task"] == task and task in app.tasks
-        assert schedule[name]["options"] == {"queue": "maintenance"}
+        assert schedule[name]["options"] == {"queue": "cve"}
+    assert schedule["cve-enrichment-sweep"]["options"] == {"queue": "maintenance"}
     assert sorted(schedule["cve-mirror-sync"]["schedule"].minute) == list(range(0, 60, 5))
+    assert sorted(schedule["cve-mirror-reconcile"]["schedule"].minute) == [17]
 
 
 def test_fetcher_returns_body_and_maps_every_failure_to_fetch_error() -> None:
@@ -83,3 +87,31 @@ def test_fetcher_returns_body_and_maps_every_failure_to_fetch_error() -> None:
     fetch(DELTA_LOG_URL)
     # deltaLog.json (24 MB): timeout lebih longgar
     assert seen[DELTA_URL] == 30.0 and seen[DELTA_LOG_URL] == 90.0
+
+
+def test_cve_tasks_route_to_cve_queue() -> None:
+    from cti_worker.celery_app import app
+
+    names = ("cve.mirror_sync", "cve.mirror_reconcile", "cve.mirror_purge", "cve.promote_entry")
+    for name in names:
+        assert app.tasks[name].queue == "cve"
+
+
+def test_compose_has_worker_cve() -> None:
+    from pathlib import Path
+
+    import yaml
+
+    services = yaml.safe_load(Path("docker-compose.yml").read_text())["services"]
+    cmd = services["worker-cve"]["command"]
+    assert cmd[cmd.index("-Q") + 1] == "cve"
+    assert cmd[cmd.index("-c") + 1] == "1"
+    worker_cmd = services["worker"]["command"]
+    assert "cve" not in worker_cmd[worker_cmd.index("-Q") + 1].split(",")
+
+
+def test_api_dispatches_cve_tasks_to_cve_queue() -> None:
+    from cti_api.services import cve_check, monitor
+
+    assert monitor.QUEUE == "cve"
+    assert cve_check.MIRROR_QUEUE == "cve"

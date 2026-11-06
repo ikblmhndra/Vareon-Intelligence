@@ -178,7 +178,7 @@ fi
 
 say "3/9 postgres + redis$([ -z "$RESTORE_FROM" ] || echo ', restore database'), migrasi skema, api"
 if [ "$REPLACE_DB" -eq 1 ]; then  # DROP DATABASE memutus koneksi: hentikan semua penulis dulu
-  dc stop beat worker worker-browser worker-nlp web nginx api >/dev/null 2>&1 || true
+  dc stop beat worker worker-browser worker-nlp worker-cve web nginx api >/dev/null 2>&1 || true
 fi
 dc up -d postgres redis
 wait_ready postgres; wait_ready redis
@@ -276,9 +276,9 @@ then
        bisa punya TTP yang belum dinormalisasi."
 fi
 
-say "7/9 worker (ringan, browser, nlp)"
-dc up -d worker worker-browser worker-nlp
-wait_ready worker; wait_ready worker-browser; wait_ready worker-nlp 360
+say "7/9 worker (ringan, browser, nlp, cve)"
+dc up -d worker worker-browser worker-nlp worker-cve
+wait_ready worker; wait_ready worker-browser; wait_ready worker-nlp 360; wait_ready worker-cve
 
 say "8/9 beat -- penembak jadwal, SENGAJA terakhir"
 dc up -d beat

@@ -50,7 +50,7 @@ SSH needs to be opened.
 
 ## What `deploy.sh` does (also runnable by hand: `make deploy`)
 
-Before upgrading prod across several releases, follow `docs/PROD_UPGRADE_0.8.2_TO_0.8.11.md` (per-release checks in
+Before upgrading prod across several releases, follow `docs/PROD_UPGRADE_0.8.11_TO_0.8.13.md` (per-release checks in
 `docs/prod-upgrade/<version>.md`).
 
 | Step | On failure -> |
@@ -61,6 +61,7 @@ Before upgrading prod across several releases, follow `docs/PROD_UPGRADE_0.8.2_T
 | `docker compose up -d` (the `migrate` service upgrades the schema first) | rollback to `:prev` + alarm |
 | wait for `/healthz` and all containers to be healthy (max 300 s) | rollback to `:prev` + alarm |
 
+- `worker-cve` (`-Q cve -c 1`) runs CVE ingest on its own queue so long scraper runs cannot starve it; it is in the `up -d`, wait-healthy and rollback service lists.
 - `:prev` is taken from the running containers, not from the `latest` tag, so a failed deploy does not
   overwrite the rollback anchor with a broken image.
 - Automatic rollback uses `tools/ops/rollback.py` **without `--yes`**: if the rollback would need

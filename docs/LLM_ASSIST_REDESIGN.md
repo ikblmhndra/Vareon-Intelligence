@@ -5,7 +5,7 @@ P0 and P1 shipped in 0.8.5, P2 in 0.8.6, P3 in 0.8.7, P4 in 0.8.8, P5 in 0.8.9 a
 (see Progress below). P7 is split into sub-projects (decomposition in
 `docs/superpowers/specs/2026-10-28-p7a-indicator-lifecycle-design.md` section 0); P7a is built
 for 0.8.11 (deployed to dev 2026-10-29, not yet merged to `main`); P7b, P7c and P7g (persist-first enrichment, step 4 of
-`docs/TARGET_ARCHITECTURE.md`) are built for 0.8.11 as well; P7e (hunting packs) is built for 0.8.11 too; P7f has not started and P7d (sightings) is deferred.
+`docs/TARGET_ARCHITECTURE.md`) are built for 0.8.11 as well; P7e (hunting packs) and P7f (PIR and own-asset relevance) are built for 0.8.11 too; P7d (sightings) is pending, tracked as `docs/ROADMAP.md` item 25.
 
 Goal: turn Vareon from "every article goes through an LLM" into a CTI platform where
 deterministic code, curated reference data and analyst feedback do the bulk of the work, and
@@ -304,7 +304,10 @@ migration and no new key):
 - **Global score, per-client reasons.** One `priority_score`; `score_reasons` keeps `client_id` and the API shows only the
   requesting client's PIR titles and tech names. PIR and techstack edits enqueue `confidence.recompute_all`.
 - **Not done.** PIR matches unlocking Tier 3 LLM, the weekly PIR coverage report, RFI linked to PIR and stories, per-client
-  scores. Dev numbers: recorded after the dev deploy.
+  scores.
+- **Measured on dev (2026-11-05, recompute of 2,057 articles in 5.9 s).** `pir_match` on 55 articles, identical to the PIR
+  page list for PIR #5; `own_asset` on 133 (93 in 30 days); p99 `priority_score` 126 to 133; 9 of the 30-day top 10 carry
+  `own_asset` (GitLab RCE and KEV stories).
 
 Not covered in this log: P7e (hunting packs, built for 0.8.11). Cost measurement over a week of real data is now possible on dev.
 

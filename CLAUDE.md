@@ -67,7 +67,7 @@ Backpressure: scraping is much faster than enrichment (~10-13 s + LLM per articl
 
 Pipeline short-circuits: `related_cyber == False` returns early (only a light row in `rejected_articles`); `security_tech_best_practice` skips TTP extraction and scoring.
 
-Celery queues: `scrape.rss`, `scrape.api` (scrapers with a `credential`), `scrape.browser` (`runtime="browser"`, Playwright), `enrich`, `notify`, `maintenance`. Compose runs `worker` (rss/api/notify/maintenance), `worker-browser`, `worker-nlp` (enrich) and a singleton `beat` (`beat_main` takes a Redis lock). One Celery app (`cti_worker.celery_app`) serves all of them; `-Q` picks the role. Tasks use `acks_late`.
+Celery queues: `scrape.rss`, `scrape.api` (scrapers with a `credential`), `scrape.browser` (`runtime="browser"`, Playwright), `enrich`, `notify`, `maintenance`, `cve` (mirror sync/reconcile/purge + promote). Compose runs `worker` (rss/api/notify/maintenance), `worker-cve` (cve, concurrency 1), `worker-browser`, `worker-nlp` (enrich) and a singleton `beat` (`beat_main` takes a Redis lock). One Celery app (`cti_worker.celery_app`) serves all of them; `-Q` picks the role. Tasks use `acks_late`.
 
 ### Scraper framework rules that span files
 

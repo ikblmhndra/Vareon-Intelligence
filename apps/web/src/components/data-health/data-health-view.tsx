@@ -156,6 +156,10 @@ export function DataHealthView() {
   const cov = dashboard.data;
 
   const sigma = d.sigma;
+  const ingest = d.cve_ingest;
+  const cveTone: Tone =
+    ingest.status === "ok" ? "ok" : ingest.status === "amber" ? "warn" : ingest.status === "red" ? "bad" : "unknown";
+  const cveReport = ingest.last_reconcile;
   const sigmaTone: Tone = sigma.status === "ok" ? "ok" : sigma.status === "amber" ? "warn" : "bad";
 
   const llm = d.llm;
@@ -315,6 +319,33 @@ export function DataHealthView() {
               value={`${rel.classify_avoided_24h.toLocaleString()} in 24 h · ${rel.classify_avoided_7d.toLocaleString()} in 7 days`}
             />
           </Section>
+          <Section title="CVE ingest" tone={cveTone}>
+            {!ingest.enabled ? (
+              <Row label="Mirror" value="Off (CVE_MIRROR__ENABLED is false)" />
+            ) : (
+              <>
+                <Row label="Promote mode" value={ingest.promote} />
+                <Row
+                  label="Last sync"
+                  value={when(ingest.last_sync_at)}
+                  tone={ingest.status === "red" ? "bad" : "ok"}
+                />
+                <Row label="Pending items" value={ingest.pending.toLocaleString()} />
+                <Row label="Last reconcile" value={when(ingest.last_reconcile_at)} />
+                {cveReport && (
+                  <Row
+                    label="Reconcile result"
+                    value={
+                      cveReport.status === "error"
+                        ? `error · ${String(cveReport.error || "unknown")}`
+                        : `${Number(cveReport.fixed ?? 0).toLocaleString()} fixed · ${Number(cveReport.missing ?? 0).toLocaleString()} missing · ${Number(cveReport.outdated ?? 0).toLocaleString()} outdated · ${Number(cveReport.failed ?? 0).toLocaleString()} failed`
+                    }
+                    tone={cveReport.status === "error" ? "warn" : undefined}
+                  />
+                )}
+              </>
+            )}
+          </Section>
           <Section title="Sigma rules" tone={sigmaTone}>
             <Row label="Release" value={sigma.release ?? "none loaded"} />
             <Row label="Rules" value={sigma.rules.toLocaleString()} tone={sigma.rules ? "ok" : "bad"} />
@@ -452,6 +483,11 @@ function HowToRead() {
           is threat news before the LLM is asked. In shadow it only measures agreement with the LLM; once the gate is on, titles
           the model is confident about skip the LLM classify call, except for an audit sample that still goes to the LLM so
           agreement stays measurable. The gate turns itself off if agreement on the latest audit samples drops.
+        </li>
+        <li>
+          <strong className="text-foreground">CVE ingest</strong>: the CVE List V5 mirror that feeds the CVE tracker. Problem
+          when the last sync is missing or older than 15 minutes; Check when the hourly reconcile has not run for 2 hours or
+          last ended in an error. Off when the mirror is disabled.
         </li>
         <li>
           <strong className="text-foreground">Sigma rules</strong>: the SigmaHQ snapshot used by hunting packs. Problem when no
