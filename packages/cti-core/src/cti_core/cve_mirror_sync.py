@@ -75,6 +75,7 @@ DELTA_LOG_URL = f"{BASE_URL}/deltaLog.json"
 RECORD_URL_PREFIX = "https://raw.githubusercontent.com/CVEProject/cvelistV5/"
 NVD_LINK = "https://nvd.nist.gov/vuln/detail/{}"
 STATE_KEY = "cve_mirror.state"
+RECONCILE_KEY = "cve_mirror.reconcile"
 
 POLL_GAP = datetime.timedelta(minutes=12)
 """Poll sukses terakhir lebih tua dari ini = kita telat >= 2 tick (jadwal 5 menit): catch-up."""
@@ -229,6 +230,70 @@ def needs_catch_up(state: SyncState, fetch_time: datetime.datetime, now: datetim
     if state.polled_at is not None and now - state.polled_at > POLL_GAP:
         return True
     return fetch_time - state.fetch_time > FETCH_GAP
+
+
+def _when(value: Any) -> datetime.datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=datetime.UTC)
+
+
+@dataclass
+class ReconcileState:
+    """State rekonsiliasi per jam (`job_state[RECONCILE_KEY]`): `skips` = CVE yang record-nya
+    sengaja dilewati `apply_record` (REJECTED, di luar retensi, ...) beserta versi log-nya, supaya
+    tidak diunduh ulang tiap jam; `last_report` = ringkasan run terakhir."""
+
+    skips: dict[str, datetime.datetime | None] = field(default_factory=dict)
+    last_report: dict[str, Any] | None = None
+    ran_at: datetime.datetime | None = None
+
+    def dump(self) -> dict[str, Any]:
+        return {
+            "skips": {k: v.isoformat() if v else None for k, v in self.skips.items()},
+            "last_report": self.last_report,
+            "ran_at": self.ran_at.isoformat() if self.ran_at else None,
+        }
+
+    @classmethod
+    def load(cls, raw: Any) -> ReconcileState:
+        if not isinstance(raw, dict):
+            return cls()
+        skips = raw.get("skips")
+        report = raw.get("last_report")
+        return cls(
+            skips={str(k): _when(v) for k, v in skips.items()} if isinstance(skips, dict) else {},
+            last_report=report if isinstance(report, dict) else None,
+            ran_at=_when(raw.get("ran_at")),
+        )
+
+
+def reconcile_plan(
+    log_items: Iterable[DeltaItem],
+    mirror_versions: Mapping[str, datetime.datetime | None],
+    skips: Mapping[str, datetime.datetime | None],
+) -> list[DeltaItem]:
+    """Record di `deltaLog` yang perlu diunduh: belum ada di mirror, atau versi mirror lebih tua
+    dari versi log (`None` = tak diketahui = dianggap usang). Item log tanpa `date_updated` hanya
+    direncanakan bila CVE-nya belum ada di mirror. Yang ada di `skips` dengan versi yang sama
+    (atau lebih baru) dilewati. Hasil terurut menurut `cve_id`."""
+    plan: list[DeltaItem] = []
+    for it in _dedupe(log_items):
+        at = it.date_updated
+        if it.cve_id in skips and (
+            at is None or ((skipped := skips[it.cve_id]) is not None and at <= skipped)
+        ):
+            continue
+        if it.cve_id in mirror_versions:
+            have = mirror_versions[it.cve_id]
+            if at is None or (have is not None and have >= at):
+                continue
+        plan.append(it)
+    return sorted(plan, key=lambda i: i.cve_id)
 
 
 # ── satu record ───────────────────────────────────────────────────────────────────────────────
