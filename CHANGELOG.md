@@ -22,7 +22,7 @@ router `changelog.py`) -- parser-nya expect header persis
 
 ### Diubah
 - Jendela pembuatan 30 hari (`SYNC_CREATE_WINDOW`): jalur sync dan reconcile hanya membuat baris `cve_tracker` untuk record yang terbit dalam 30 hari terakhir (`PromoteOutcome.held` menandai kecocokan yang ditahan). Record lama yang cocok tetap memperbarui baris yang sudah ada tetapi tidak membuat baris baru. Jalur riwayat (`cve.promote_entry`, `make promote-cve-mirror --since`) tidak berubah dan tanpa batas. Konsekuensi yang diterima: CVE lama yang CNA-nya baru bulan-bulan kemudian menambahkan produk kita ke `affected` tidak muncul sendiri; analis dapat mempromosikan riwayat entri.
-- `github_poc_monitor` dibatasi: hanya CVE yang terbit dalam 90 hari atau masuk CISA KEV yang dicari, dan tiap run mengambil irisan bergilir paling banyak sekitar 300 (hash crc32 `cve_id` mod `k`, `k = ceil(n / 300)`, menurut jam). Tiap kandidat dicari paling tidak tiap `k` jam (prod: sekitar 5 jam), satu run sekitar 10 menit. Pencarian luas per tahun tidak berubah.
+- `github_poc_monitor` dibatasi lebih ketat (menggantikan irisan 600 per run dari 0.8.12): hanya CVE yang terbit dalam 90 hari atau masuk CISA KEV yang dicari, dan tiap run mengambil irisan bergilir paling banyak sekitar 300 (hash crc32 `cve_id` mod `k`, `k = ceil(n / 300)`, menurut jam). Tiap kandidat dicari paling tidak tiap `k` jam (prod: sekitar 5 jam), satu run sekitar 10 menit. Pencarian luas per tahun tidak berubah.
 - `tools/ops/deploy.sh` dan `fresh_deploy.sh` menyalakan, menunggu sehat, dan merollback `worker-cve` bersama service lain.
 - `docs/CVE_END_TO_END.md`, `docs/ARCHITECTURE.md`, dan `docs/CI_CD.md` menjelaskan reconcile, jendela 30 hari, dan `worker-cve`.
 
@@ -31,7 +31,7 @@ router `changelog.py`) -- parser-nya expect header persis
 **Perbaikan: scraper `github_poc_monitor` tidak lagi memenuhi worker.** Satu run dulu mencari PoC GitHub untuk SEMUA CVE di `cve_tracker` (2.469 di prod, terus bertambah sejak mirror CVE `live`) dengan budget GitHub Search 30/menit, jadi satu run lebih dari 80 menit padahal jadwalnya tiap jam. Run menumpuk, memenuhi keempat slot `worker`, dan pada 6 Nov ingest RSS, tugas maintenance, dan notifikasi berhenti sekitar 5 jam. Tanpa migrasi dan tanpa kunci `.env`.
 
 ### Diperbaiki
-- `github_poc_monitor`: pencarian targeted (per CVE ter-track) dibatasi 600 per run (sekitar 20 menit). Daftar yang lebih besar dibagi ke beberapa jam berturut-turut menurut crc32 `cve_id`, sehingga tiap CVE tetap dicek, sekali per beberapa jam (prod sekarang: 5 irisan, tiap CVE dicek tiap 5 jam). Daftar sampai 600 CVE dicari semua tiap run, seperti dulu. Pencarian broad (repo `cve-{tahun}-*` dan alert Telegram PoC baru) tidak berubah.
+- `github_poc_monitor`: pencarian targeted (per CVE ter-track) dibatasi 600 per run (sekitar 20 menit). Daftar yang lebih besar dibagi ke beberapa jam berturut-turut menurut crc32 `cve_id`, sehingga tiap CVE tetap dicek, sekali per beberapa jam (prod sekarang: 5 irisan, tiap CVE dicek tiap 5 jam). Daftar sampai 600 CVE dicari semua tiap run, seperti dulu. Pencarian broad (repo `cve-{tahun}-*` dan alert Telegram PoC baru) tidak berubah. Batas 600 ini diganti di 0.8.13 (kandidat 90 hari/KEV, irisan sekitar 300); prod yang naik langsung ke 0.8.13 hanya menjalankan versi 0.8.13.
 
 ## [0.8.11] - 2026-11-05
 
