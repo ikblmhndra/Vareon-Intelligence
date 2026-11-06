@@ -16,6 +16,7 @@ registry. `dispatch` di-patch (sink asli ngirim ke Celery/Redis).
 from __future__ import annotations
 
 import datetime
+import uuid
 from collections.abc import Callable, Iterator
 
 import pytest
@@ -561,3 +562,57 @@ def test_priming_twice_is_harmless_and_never_reaches_the_sink(
     again = Runner(scraper_cls, session=session, prime=True).execute()
 
     assert dispatched == [] and again.items_dropped == 1  # sudah seen -> duplikat biasa
+
+
+# -- guard overlap: run baru ditolak selama run scraper yang sama masih `running` ----------------
+
+
+def _seed_running(session: Session, scraper_id: str, *, hours_ago: float) -> None:
+    session.add(
+        ScraperRun(
+            run_id=str(uuid.uuid4()),
+            scraper_id=scraper_id,
+            trigger="beat",
+            status="running",
+            started_at=datetime.datetime.now(datetime.UTC) - datetime.timedelta(hours=hours_ago),
+        )
+    )
+    session.flush()
+
+
+def test_runner_refuses_overlapping_run(session: Session) -> None:
+    _seed_running(session, SCRAPER_ID, hours_ago=10 / 60)
+    fetched: list[int] = []
+
+    def items() -> list[Item]:
+        fetched.append(1)
+        return []
+
+    result = Runner(make_scraper(items), session=session, cold_start_max_items=0).execute()
+
+    assert result.status == "overlap"
+    assert fetched == []
+    run = session.scalar(select(ScraperRun).where(ScraperRun.run_id == result.run_id))
+    assert run is not None and run.status == "overlap" and run.finished_at is not None
+
+
+def test_runner_ignores_stale_running_row(session: Session) -> None:
+    _seed_running(session, SCRAPER_ID, hours_ago=3)
+
+    result = Runner(make_scraper(lambda: []), session=session, cold_start_max_items=0).execute()
+
+    assert result.status != "overlap"
+
+
+def test_runner_ignores_other_scrapers(session: Session) -> None:
+    _seed_running(session, "some-other-scraper", hours_ago=0.1)
+
+    result = Runner(make_scraper(lambda: []), session=session, cold_start_max_items=0).execute()
+
+    assert result.status != "overlap"
+
+
+def test_dry_run_skips_overlap_check() -> None:
+    result = Runner(make_scraper(lambda: []), dry_run=True, cold_start_max_items=0).execute()
+
+    assert result.status != "overlap"

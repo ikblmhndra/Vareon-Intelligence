@@ -52,6 +52,7 @@ _TERMINAL_STATUSES = frozenset(
         "timeout",
         "backpressure",
         "disabled",
+        "overlap",
     }
 )
 
@@ -184,6 +185,24 @@ class ScraperRunRepo:
     def last_success_by_scraper(self) -> dict[str, datetime.datetime]:
         """Run bersih terakhir per scraper (status ok/empty/partial dan `items_failed = 0`)."""
         return {sid: ts for sid, ts in self.session.execute(_last_success_stmt())}
+
+    def has_running(
+        self,
+        scraper_id: str,
+        younger_than: datetime.timedelta,
+        exclude_run_id: str | None = None,
+    ) -> bool:
+        """Ada run `running` scraper ini yang mulai kurang dari `younger_than` lalu? Baris yang
+        lebih tua dianggap yatim (worker mati; reaper yang menutupnya) dan tidak memblokir."""
+        cutoff = datetime.datetime.now(datetime.UTC) - younger_than
+        stmt = select(ScraperRun.id).where(
+            ScraperRun.scraper_id == scraper_id,
+            ScraperRun.status == "running",
+            ScraperRun.started_at > cutoff,
+        )
+        if exclude_run_id is not None:
+            stmt = stmt.where(ScraperRun.run_id != exclude_run_id)
+        return self.session.execute(stmt.limit(1)).first() is not None
 
     def reap_stale_running(self, stale_after: datetime.timedelta) -> int:
         """Run yang MASIH `running` lewat `stale_after` (worker mati atau di-redeploy saat jalan)
