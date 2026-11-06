@@ -172,9 +172,16 @@ def record_view(rec: CveRecord) -> RecordView:
     )
 
 
+SYNC_CREATE_WINDOW = datetime.timedelta(days=30)
+"""Jalur sync/reconcile hanya MEMBUAT baris tracker untuk CVE yang terbit dalam jendela ini.
+Update upstream atas CVE lama (mis. kernel.org menyentuh ratusan CVE Linux 2025) tadinya membuat
+baris baru ber-`detected_on = now`; baris lama tetap di-update, riwayat lewat `promote_all`."""
+
+
 @dataclass
 class PromoteOutcome:
     created: int = 0
+    held: int = 0
     updated: int = 0
     unchanged: int = 0
     shadow: int = 0
@@ -202,7 +209,13 @@ def _tracker_fields(rec: CveRecord, tech: str) -> dict[str, object]:
     return fields
 
 
-def _promote_live(session: Session, rec: CveRecord, client_id: str, tech: str) -> str:
+def _promote_live(
+    session: Session,
+    rec: CveRecord,
+    client_id: str,
+    tech: str,
+    create_before: datetime.date | None = None,
+) -> str:
     existing = session.execute(
         select(CveTracker).where(CveTracker.cve_id == rec.cve_id, CveTracker.client_id == client_id)
     ).scalar_one_or_none()
@@ -216,6 +229,8 @@ def _promote_live(session: Session, rec: CveRecord, client_id: str, tech: str) -
         )
         if unchanged:
             return "unchanged"
+    elif create_before is not None and rec.published_date < create_before:
+        return "held"
     _row, created = CveTrackerRepo(session).upsert_with_status(
         cve_id=rec.cve_id,
         client_id=client_id,
@@ -260,9 +275,17 @@ def _promote_shadow(session: Session, rec: CveRecord, choices: dict[str, Choice]
 
 
 def promote_record(
-    session: Session, rec: CveRecord, entries: Sequence[EntryView], mode: Mode
+    session: Session,
+    rec: CveRecord,
+    entries: Sequence[EntryView],
+    mode: Mode,
+    *,
+    create_before: datetime.date | None = None,
 ) -> PromoteOutcome:
-    """Terapkan `mode` untuk satu record mirror. `off` tidak melakukan apa pun."""
+    """Terapkan `mode` untuk satu record mirror. `off` tidak melakukan apa pun.
+
+    `create_before` (hanya `live`): CVE terbit sebelum tanggal ini TIDAK dibuatkan baris baru
+    (status `held`); baris yang sudah ada tetap di-update. `None` = tanpa batas (jalur riwayat)."""
     out = PromoteOutcome()
     if mode == "off":
         return out
@@ -272,7 +295,7 @@ def promote_record(
         out.shadow = _promote_shadow(session, rec, out.choices)
         return out
     for client_id, choice in out.choices.items():
-        status = _promote_live(session, rec, client_id, choice.entry.name)
+        status = _promote_live(session, rec, client_id, choice.entry.name, create_before)
         setattr(out, status, getattr(out, status) + 1)
     return out
 

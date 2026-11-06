@@ -540,7 +540,10 @@ def test_reconcile_promotes_live(session: Session) -> None:
     session.add(TechStackTarget(entry_id=entry.id, family_id=family_id))
     session.flush()
     serve_log(net, log_row("CVE-2025-0021"))
-    net.files[link("CVE-2025-0021")] = record("CVE-2025-0021")
+    # terbit baru-baru ini: CVE lama tidak dibuatkan baris (jendela `SYNC_CREATE_WINDOW`)
+    net.files[link("CVE-2025-0021")] = record(
+        "CVE-2025-0021", datePublished="2026-10-01T10:00:00.000Z"
+    )
     r = reconcile_once(session, net, at(60), promote="live")
     assert (r.fixed, r.promoted_new) == (1, 1)
 
@@ -556,3 +559,29 @@ def test_reconcile_saves_report(session: Session) -> None:
     assert (
         isinstance(saved.last_report["duration_ms"], int) and saved.last_report["duration_ms"] >= 0
     )
+
+
+def test_sync_tick_holds_old_record_update(session: Session) -> None:
+    from cti_core.cve_promotion import NEW_CVE_ROWS_KEY
+    from cti_core.db.models.auth import Client
+    from cti_core.db.models.cve import CveTracker
+    from cti_core.db.models.techstack import TechStackEntry, TechStackTarget
+
+    net = FakeNet()
+    net.serve(delta("2026-10-07T11:03:20.000Z", ["CVE-2025-0030"]), record("CVE-2025-0030"))
+    sync_once(session, net, NOW)  # membuat katalog Fortinet/FortiOS
+    session.add(Client(client_id="acme", name="Acme"))
+    entry = TechStackEntry(name="fortigate", client_id="acme", active=True)
+    session.add(entry)
+    session.flush()
+    family_id = session.execute(
+        select(CatalogFamily.id).where(CatalogFamily.key == "fortios")
+    ).scalar_one()
+    session.add(TechStackTarget(entry_id=entry.id, family_id=family_id))
+    session.flush()
+    old = record("CVE-2025-0030", dateUpdated="2026-10-07T10:00:00.000Z")
+    net.serve(delta("2026-10-07T11:08:20.000Z", updated=["CVE-2025-0030"]), old)
+    r = sync_once(session, net, at(5), promote="live")
+    assert (r.updated, r.promoted_held, r.promoted_new) == (1, 1, 0)
+    assert session.scalar(select(func.count()).select_from(CveTracker)) == 0
+    assert not session.info.get(NEW_CVE_ROWS_KEY)

@@ -46,6 +46,7 @@ from sqlalchemy.orm import Session
 
 from cti_core.catalog_resolve import resolve_all
 from cti_core.cve_promotion import (
+    SYNC_CREATE_WINDOW,
     EntryView,
     Mode,
     forget_shadow,
@@ -379,6 +380,8 @@ class SyncReport:
     promoted_new: int = 0
     """Baris `cve_tracker` BARU dari promosi `live`."""
     promoted_updated: int = 0
+    promoted_held: int = 0
+    """CVE lama yang cocok entri tapi tidak dibuatkan baris (di luar `SYNC_CREATE_WINDOW`)."""
     shadow_rows: int = 0
     """Baris `cve_promotion_shadow` yang dievaluasi (mode `shadow`)."""
 
@@ -520,8 +523,15 @@ def _process(
             if outcome in ("created", "updated"):
                 rec = repo.get(item.cve_id)
                 if rec is not None:
-                    done = promote_record(session, rec, entries, promote)
+                    done = promote_record(
+                        session,
+                        rec,
+                        entries,
+                        promote,
+                        create_before=today - SYNC_CREATE_WINDOW,
+                    )
                     report.promoted_new += done.created
+                    report.promoted_held += done.held
                     report.promoted_updated += done.updated
                     report.shadow_rows += done.shadow
             elif outcome == "removed":

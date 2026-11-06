@@ -20,6 +20,7 @@ from cti_core.catalog_resolve import AffectedEntry, resolve_all
 from cti_core.cve_mirror_sync import DELTA_URL, FetchError, sync_once
 from cti_core.cve_promotion import (
     NEW_CVE_ROWS_KEY,
+    SYNC_CREATE_WINDOW,
     forget_shadow,
     load_entries,
     promote_all,
@@ -549,3 +550,45 @@ def test_promote_entry_for_a_custom_entry_scans_the_whole_mirror_with_the_text_g
     out = promote_entry(session, custom.id, "live")
     assert (out.scanned, out.created) == (2, 1)
     assert tracker(session, "CVE-2026-0002").tech == "junos"  # type: ignore[union-attr]
+
+
+# ── jendela pembuatan baris jalur sync ────────────────────────────────────────────────────────
+
+
+def _window_setup(session: Session, age_days: int) -> tuple[CveRecord, list[Any]]:
+    rec = add_record(session, "CVE-2026-0900", FORTI, published=TODAY - age(age_days))
+    add_entry(session, "fortigate", families=("fortios",))
+    return rec, load_entries(session)
+
+
+def age(days: int) -> datetime.timedelta:
+    return datetime.timedelta(days=days)
+
+
+def test_live_sync_does_not_create_rows_for_old_cves(session: Session) -> None:
+    rec, entries = _window_setup(session, 31)
+    out = promote_record(session, rec, entries, "live", create_before=TODAY - SYNC_CREATE_WINDOW)
+    assert (out.created, out.held) == (0, 1)
+    assert tracker(session, "CVE-2026-0900") is None
+    assert not session.info.get(NEW_CVE_ROWS_KEY)
+
+
+def test_live_sync_updates_existing_row_for_old_cve(session: Session) -> None:
+    rec, entries = _window_setup(session, 31)
+    promote_record(session, rec, entries, "live")  # riwayat: membuat baris
+    rec.modified_at = NOW
+    out = promote_record(session, rec, entries, "live", create_before=TODAY - SYNC_CREATE_WINDOW)
+    assert (out.updated, out.held, out.created) == (1, 0, 0)
+
+
+def test_live_sync_creates_recent_cve(session: Session) -> None:
+    rec, entries = _window_setup(session, 29)
+    out = promote_record(session, rec, entries, "live", create_before=TODAY - SYNC_CREATE_WINDOW)
+    assert (out.created, out.held) == (1, 0)
+
+
+def test_promote_entry_history_still_creates_old_rows(session: Session) -> None:
+    add_record(session, "CVE-2025-0901", FORTI, published=D(2025, 6, 1))
+    entry = add_entry(session, "fortigate", families=("fortios",))
+    done = promote_entry(session, entry.id, "live")
+    assert done.created == 1 and tracker(session, "CVE-2025-0901") is not None
