@@ -204,6 +204,11 @@ def _periodic_schedule() -> dict[str, dict[str, object]]:
             "schedule": crontab(minute="*/5"),
             "options": {"queue": QUEUE_MAINTENANCE},
         },
+        "cve-mirror-reconcile": {
+            "task": "cve.mirror_reconcile",
+            "schedule": crontab(minute=17),
+            "options": {"queue": QUEUE_MAINTENANCE},
+        },
         "cve-mirror-purge": {
             "task": "cve.mirror_purge",
             "schedule": crontab(hour=3, minute=30),

@@ -36,7 +36,7 @@ import datetime
 import json
 import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
 import structlog
@@ -551,6 +551,125 @@ def _record_failure(
         attempts=item.attempts,
         error=str(error)[:300],
     )
+
+
+# ── rekonsiliasi per jam ──────────────────────────────────────────────────────────────────────
+
+_VERSION_CHUNK = 5000
+
+
+@dataclass
+class ReconcileReport:
+    status: str = "ok"
+    error: str = ""
+    log_items: int = 0
+    planned: int = 0
+    missing: int = 0
+    outdated: int = 0
+    fixed: int = 0
+    skipped: int = 0
+    stale: int = 0
+    failed: int = 0
+    queued: int = 0
+    promoted_new: int = 0
+
+    def as_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def _mirror_versions(session: Session, ids: Sequence[str]) -> dict[str, datetime.datetime | None]:
+    out: dict[str, datetime.datetime | None] = {}
+    for i in range(0, len(ids), _VERSION_CHUNK):
+        rows = session.execute(
+            select(CveRecord.cve_id, CveRecord.modified_at).where(
+                CveRecord.cve_id.in_(ids[i : i + _VERSION_CHUNK])
+            )
+        )
+        out.update({cve_id: modified for cve_id, modified in rows})
+    return out
+
+
+def reconcile_once(
+    session: Session,
+    fetch: Fetcher,
+    now: datetime.datetime,
+    *,
+    max_files: int = DEFAULT_MAX_FILES,
+    promote: Mode = "off",
+) -> ReconcileReport:
+    """Rekonsiliasi per jam: bandingkan versi record di `deltaLog.json` (30 hari) dengan mirror
+    dan unduh ulang yang hilang atau usang, supaya CVE tidak hilang diam-diam walau `sync_once`
+    pernah melewatkan jendela. Kursor `SyncState` (`fetch_time`/`polled_at`) TIDAK disentuh;
+    kelebihan di atas `max_files` dan kegagalan masuk `SyncState.pending` agar ditangani siklus
+    sync berikutnya. Gagal ambil log = `status="error"` tanpa menulis apa pun."""
+    if not acquire_lock(session):
+        return ReconcileReport(status="locked")
+    try:
+        return _reconcile_locked(session, fetch, now, max_files, promote)
+    finally:
+        release_lock(session)
+
+
+def _reconcile_locked(
+    session: Session, fetch: Fetcher, now: datetime.datetime, max_files: int, promote: Mode
+) -> ReconcileReport:
+    report = ReconcileReport()
+    states = JobStateRepo(session)
+    try:
+        entries = parse_delta_log(_load_json(fetch(DELTA_LOG_URL)))
+    except FetchError as e:
+        report.status, report.error = "error", str(e)
+        log.warning("cve_mirror_reconcile_log_failed", error=str(e))
+        return report
+
+    log_items = [item for entry in entries for item in entry.items]
+    log_ids = {item.cve_id for item in log_items}
+    report.log_items = len(log_ids)
+    rstate = ReconcileState.load(states.get(RECONCILE_KEY))
+    versions = _mirror_versions(session, sorted(log_ids))
+    plan = reconcile_plan(log_items, versions, rstate.skips)
+    report.planned = len(plan)
+    report.missing = sum(1 for it in plan if it.cve_id not in versions)
+    report.outdated = report.planned - report.missing
+
+    sstate = SyncState.load(states.get(STATE_KEY))
+    queued_ids = {p.cve_id for p in sstate.pending}
+    todo = [PendingItem(it.cve_id, it.link) for it in plan if it.cve_id not in queued_ids]
+    version_of = {it.cve_id: it.date_updated for it in plan}
+
+    catalog = CatalogRepo(session)
+    repo = CveMirrorRepo(session, catalog)
+    aliases = catalog.alias_map()
+    today = now.date()
+    tech_entries: list[EntryView] = load_entries(session) if promote != "off" else []
+    retry: list[PendingItem] = []
+
+    for done, item in enumerate(todo[:max_files], start=1):
+        one = SyncReport()
+        try:
+            _process(session, repo, fetch, item, today, aliases, one, promote, tech_entries)
+        except Exception as e:  # FetchError, record janggal, error DB: batch jalan terus
+            _record_failure(repo, item, e, retry, one)
+        report.fixed += one.created + one.updated
+        report.stale += one.stale
+        report.failed += one.failed
+        report.promoted_new += one.promoted_new
+        if one.skipped or one.removed:
+            report.skipped += 1
+            rstate.skips[item.cve_id] = version_of[item.cve_id]
+        if done % COMMIT_EVERY == 0:
+            session.commit()
+
+    added = [*retry, *todo[max_files:]]
+    report.queued = len(added)
+    sstate.pending = [*sstate.pending, *added]
+    states.set(STATE_KEY, sstate.dump())
+
+    rstate.skips = {k: v for k, v in rstate.skips.items() if k in log_ids}
+    rstate.last_report, rstate.ran_at = report.as_dict(), now
+    states.set(RECONCILE_KEY, rstate.dump())
+    log.info("cve_mirror_reconciled", **report.as_dict())
+    return report
 
 
 def purge_expired(session: Session, today: datetime.date) -> int:

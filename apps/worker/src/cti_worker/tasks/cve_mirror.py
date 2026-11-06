@@ -70,6 +70,35 @@ def cve_mirror_sync(self: Any) -> dict[str, object]:
     return report.as_dict()
 
 
+@app.task(bind=True, name="cve.mirror_reconcile", queue=QUEUE_MAINTENANCE)
+def cve_mirror_reconcile(self: Any) -> dict[str, object]:
+    """Tiap jam: cocokkan `deltaLog.json` dengan mirror, unduh yang hilang/usang
+    (`cti_core.cve_mirror_sync.reconcile_once`). Bentuknya sama dengan `cve.mirror_sync`."""
+    from cti_core.cve_mirror_sync import reconcile_once
+    from cti_core.db.engine import sync_session
+    from cti_scraper.sinks import finish_run
+
+    cfg = get_settings().cve_mirror
+    if not cfg.enabled:
+        return {"status": "disabled"}
+    with (
+        httpx.Client(
+            headers={"User-Agent": _USER_AGENT}, follow_redirects=False, trust_env=True
+        ) as client,
+        sync_session() as session,
+    ):
+        report = reconcile_once(
+            session,
+            make_fetcher(client, cfg.request_timeout_s),
+            datetime.datetime.now(datetime.UTC),
+            max_files=cfg.max_files_per_run,
+            promote=cfg.promote,
+        )
+        session.commit()
+        finish_run(session)
+    return report.as_dict()
+
+
 @app.task(bind=True, name="cve.mirror_purge", queue=QUEUE_MAINTENANCE)
 def cve_mirror_purge(self: Any) -> dict[str, object]:
     from cti_core.cve_mirror_sync import purge_expired

@@ -45,6 +45,7 @@ def test_disabled_tasks_return_without_touching_db_or_network(
     monkeypatch.setattr(httpx, "Client", boom)
     assert cve_mirror.cve_mirror_sync.run() == {"status": "disabled"}
     assert cve_mirror.cve_mirror_purge.run() == {"status": "disabled"}
+    assert cve_mirror.cve_mirror_reconcile.run() == {"status": "disabled"}
 
 
 def test_tasks_are_registered_and_scheduled(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -55,10 +56,12 @@ def test_tasks_are_registered_and_scheduled(monkeypatch: pytest.MonkeyPatch) -> 
     for name, task in (
         ("cve-mirror-sync", "cve.mirror_sync"),
         ("cve-mirror-purge", "cve.mirror_purge"),
+        ("cve-mirror-reconcile", "cve.mirror_reconcile"),
     ):
         assert schedule[name]["task"] == task and task in app.tasks
         assert schedule[name]["options"] == {"queue": "maintenance"}
     assert sorted(schedule["cve-mirror-sync"]["schedule"].minute) == list(range(0, 60, 5))
+    assert sorted(schedule["cve-mirror-reconcile"]["schedule"].minute) == [17]
 
 
 def test_fetcher_returns_body_and_maps_every_failure_to_fetch_error() -> None:
