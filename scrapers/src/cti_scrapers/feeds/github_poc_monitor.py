@@ -38,7 +38,7 @@ import math
 import re
 import zlib
 from collections.abc import Iterator, Mapping, Sequence
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from cti_scraper.base import BaseScraper, ScrapeContext, ScraperMeta
@@ -66,7 +66,10 @@ def poc_slice(
     dalam k jam; kalau n <= cap, k = 1 dan semuanya dicari tiap run. Ukuran irisan tidak persis
     rata karena crc32."""
     k = max(1, math.ceil(len(entries) / cap))
-    return [e for e in entries if zlib.crc32(e["cve_id"].encode()) % k == now.hour % k]
+    # Indeks jam absolut (`ctx.now` = UTC naive): tiap sisa muncul tiap k jam, lintas tengah malam
+    # dan untuk k > 24 (`now.hour % k` melewatkan kelompok >= 24).
+    hour_index = int(now.replace(tzinfo=UTC).timestamp() // 3600)
+    return [e for e in entries if zlib.crc32(e["cve_id"].encode()) % k == hour_index % k]
 
 
 # 4 repo yang kebukti false-positive (nama/deskripsi kebetulan mirip CVE

@@ -105,7 +105,8 @@ async def _scraper_source(session: AsyncSession, now: datetime.datetime) -> CveC
     enabled = effective_enabled(meta, config)
     runs = AsyncScraperRunRepo(session)
     succeeded = await runs.latest_finished(SCRAPER_ID, statuses=SUCCESS_STATUSES)
-    latest = await runs.latest_finished(SCRAPER_ID)
+    # `overlap`/`disabled` = run ditolak sebelum mengambil apa pun, bukan percobaan pengecekan.
+    latest = await runs.latest_finished(SCRAPER_ID, exclude_statuses=("overlap", "disabled"))
     schedule = config.schedule if config is not None and config.schedule else meta.schedule
     return CveCheckSource(
         id="new_cve",

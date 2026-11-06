@@ -476,7 +476,7 @@ def test_reconcile_stale_is_retried_not_skipped(session: Session) -> None:
     assert reconcile_once(session, net, at(120)).planned == 1
 
 
-def test_reconcile_overflow_goes_to_pending(session: Session) -> None:
+def test_reconcile_overflow_waits_for_next_run(session: Session) -> None:
     net = FakeNet()
     ids = ["CVE-2025-0010", "CVE-2025-0011", "CVE-2025-0012"]
     serve_log(net, *(log_row(c) for c in ids))
@@ -485,12 +485,61 @@ def test_reconcile_overflow_goes_to_pending(session: Session) -> None:
     s0 = SyncState(
         fetch_time=NOW, polled_at=NOW, pending=[PendingItem("CVE-2025-0010", link("CVE-2025-0010"))]
     )
-    JobStateRepo(session).set(STATE_KEY, s0.dump())
+    states = JobStateRepo(session)
+    states.set(STATE_KEY, s0.dump())
+    before = states.get(STATE_KEY)
     r = reconcile_once(session, net, at(60), max_files=1)
+    # 0010 sudah antre di sync (dibuang dari rencana), 0011 diproses, 0012 menunggu run berikutnya
     assert (r.planned, r.fixed, r.queued) == (3, 1, 1)
-    after = state(session)
-    assert sorted(p.cve_id for p in after.pending) == ["CVE-2025-0010", "CVE-2025-0012"]
-    assert (after.fetch_time, after.polled_at) == (NOW, NOW)
+    assert states.get(STATE_KEY) == before
+    assert session.get(CveRecord, "CVE-2025-0011") is not None
+    r2 = reconcile_once(session, net, at(120), max_files=1)
+    assert (r2.fixed, r2.queued) == (1, 0)
+    assert session.get(CveRecord, "CVE-2025-0012") is not None
+
+
+def test_reconcile_processes_newest_first(session: Session) -> None:
+    net = FakeNet()
+    old, new = "2026-03-02T10:00:00.000Z", "2026-03-09T10:00:00.000Z"
+    serve_log(net, log_row("CVE-2025-0001", old), log_row("CVE-2025-0002", new))
+    net.files[link("CVE-2025-0001")] = record("CVE-2025-0001", dateUpdated=old)
+    net.files[link("CVE-2025-0002")] = record("CVE-2025-0002", dateUpdated=new)
+    r = reconcile_once(session, net, NOW, max_files=1)
+    assert (r.fixed, r.queued) == (1, 1)
+    assert session.get(CveRecord, "CVE-2025-0002") is not None
+    assert session.get(CveRecord, "CVE-2025-0001") is None
+
+
+def test_reconcile_out_of_retention_is_skipped_once(session: Session) -> None:
+    net = FakeNet()
+    serve_log(net, log_row("CVE-2025-0005"))
+    net.files[link("CVE-2025-0005")] = record(
+        "CVE-2025-0005", datePublished="2024-12-31T23:59:00.000Z"
+    )
+    r = reconcile_once(session, net, NOW)
+    assert (r.skipped, r.fixed) == (1, 0)
+    saved = ReconcileState.load(JobStateRepo(session).get(RECONCILE_KEY))
+    assert "CVE-2025-0005" in saved.skips
+    net.calls.clear()
+    r2 = reconcile_once(session, net, at(60))
+    assert r2.planned == 0 and link("CVE-2025-0005") not in net.calls
+
+
+def test_reconcile_remembers_removed_records(session: Session) -> None:
+    net = FakeNet()
+    net.serve(delta("2026-10-07T11:03:20.000Z", ["CVE-2025-0006"]), record("CVE-2025-0006"))
+    sync_once(session, net, NOW)
+    t1 = "2026-03-05T10:00:00.000Z"
+    serve_log(net, log_row("CVE-2025-0006", t1))
+    net.files[link("CVE-2025-0006")] = {
+        "cveMetadata": {"cveId": "CVE-2025-0006", "state": "REJECTED", "dateUpdated": t1},
+        "containers": {},
+    }
+    r = reconcile_once(session, net, at(60))
+    assert (r.outdated, r.skipped, r.fixed) == (1, 1, 0)
+    assert session.get(CveRecord, "CVE-2025-0006") is None
+    saved = ReconcileState.load(JobStateRepo(session).get(RECONCILE_KEY))
+    assert "CVE-2025-0006" in saved.skips
 
 
 def test_reconcile_fetch_error_records_error_only(session: Session) -> None:

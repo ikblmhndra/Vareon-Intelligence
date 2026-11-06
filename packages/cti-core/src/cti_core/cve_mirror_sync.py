@@ -568,6 +568,10 @@ def _record_failure(
 
 _VERSION_CHUNK = 5000
 
+RECONCILE_MAX_FILES = 500
+"""Batas berkas per run rekonsiliasi (per jam). `deltaLog` 30 hari memuat ribuan CVE lama yang
+diperbarui; sisanya menunggu run berikutnya, bukan antrean `SyncState.pending`."""
+
 
 @dataclass
 class ReconcileReport:
@@ -606,14 +610,16 @@ def reconcile_once(
     fetch: Fetcher,
     now: datetime.datetime,
     *,
-    max_files: int = DEFAULT_MAX_FILES,
+    max_files: int = RECONCILE_MAX_FILES,
     promote: Mode = "off",
 ) -> ReconcileReport:
     """Rekonsiliasi per jam: bandingkan versi record di `deltaLog.json` (30 hari) dengan mirror
     dan unduh ulang yang hilang atau usang, supaya CVE tidak hilang diam-diam walau `sync_once`
-    pernah melewatkan jendela. Kursor `SyncState` (`fetch_time`/`polled_at`) TIDAK disentuh;
-    kelebihan di atas `max_files` dan kegagalan masuk `SyncState.pending` agar ditangani siklus
-    sync berikutnya. Gagal ambil log = `status="error"` tanpa menulis apa pun."""
+    pernah melewatkan jendela. Kursor dan antrean `SyncState` TIDAK disentuh (hanya dibaca untuk
+    membuang item yang sudah antre): rencana diurutkan `date_updated` terbaru dulu lalu dipotong
+    `max_files` (500), sisanya (`queued`) dan kegagalan direncanakan ulang oleh run berikutnya.
+    Dengan begitu ribuan CVE lama di log tidak membanjiri `pending` dan menunda CVE baru. Gagal
+    ambil log = `status="error"`: hanya laporan error dan `ran_at` yang disimpan."""
     started = time.monotonic()
     if not acquire_lock(session):
         return ReconcileReport(status="locked", duration_ms=_ms_since(started))
@@ -660,8 +666,9 @@ def _reconcile_locked(
     report.missing = sum(1 for it in plan if it.cve_id not in versions)
     report.outdated = report.planned - report.missing
 
-    sstate = SyncState.load(states.get(STATE_KEY))
-    queued_ids = {p.cve_id for p in sstate.pending}
+    queued_ids = {p.cve_id for p in SyncState.load(states.get(STATE_KEY)).pending}
+    # Terbaru dulu (tanpa tanggal terakhir): CVE baru yang benar-benar hilang diproses duluan.
+    plan.sort(key=lambda it: (-_ts(it).timestamp(), it.cve_id))
     todo = [PendingItem(it.cve_id, it.link) for it in plan if it.cve_id not in queued_ids]
     version_of = {it.cve_id: it.date_updated for it in plan}
 
@@ -670,14 +677,13 @@ def _reconcile_locked(
     aliases = catalog.alias_map()
     today = now.date()
     tech_entries: list[EntryView] = load_entries(session) if promote != "off" else []
-    retry: list[PendingItem] = []
 
     for done, item in enumerate(todo[:max_files], start=1):
         one = SyncReport()
         try:
             _process(session, repo, fetch, item, today, aliases, one, promote, tech_entries)
         except Exception as e:  # FetchError, record janggal, error DB: batch jalan terus
-            _record_failure(repo, item, e, retry, one)
+            _record_failure(repo, item, e, [], one)
         report.fixed += one.created + one.updated
         report.stale += one.stale
         report.failed += one.failed
@@ -688,10 +694,7 @@ def _reconcile_locked(
         if done % COMMIT_EVERY == 0:
             session.commit()
 
-    added = [*retry, *todo[max_files:]]
-    report.queued = len(added)
-    sstate.pending = [*sstate.pending, *added]
-    states.set(STATE_KEY, sstate.dump())
+    report.queued = max(0, len(todo) - max_files)
 
     rstate.skips = {k: v for k, v in rstate.skips.items() if k in log_ids}
     report.duration_ms = _ms_since(started)

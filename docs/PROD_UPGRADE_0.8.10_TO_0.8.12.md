@@ -1144,16 +1144,18 @@ Read-only (`PGOPTIONS=-c default_transaction_read_only=on`). Write the results d
 1. `docker compose ps` shows `worker-cve` healthy. `docker compose logs worker-cve | tail` shows it consuming
    `cve.mirror_sync` every 5 min.
 2. Beat picked up the routing: the `maintenance` queue no longer collects `cve.mirror_sync`
-   (`redis-cli LLEN maintenance` stays low).
+   (`docker compose -p niskala-intelligence exec redis redis-cli LLEN maintenance` stays low).
 3. After the first reconcile (minute :17, or one-off below): the log line `cve_mirror_reconciled` carries `planned`,
-   `missing`, `outdated`, `fixed`, `skipped`, `failed`, `duration_ms`. Expect `missing` near 50 on the first run and
-   `fixed` close to it; `failed` 0.
+   `missing`, `outdated`, `fixed`, `skipped`, `failed`, `queued`, `duration_ms`. The first runs plan a large backlog (old
+   CVEs updated in the last 30 days: mostly skipped once, processed 500 per hour, newest first, `queued` is what waits
+   for the next run). The ~50 recent missing CVEs are fixed in the first run; `failed` 0. A reconcile run holds the
+   mirror lock for its duration, so a sync tick may report `locked` meanwhile.
 4. The 50 CVEs are in the mirror (query from Before deploy now returns the rows) and, for those matching a monitored
    tech and published within 30 days, in the tracker.
 5. UI: `/data-health` shows the CVE ingest block with status `ok`.
 6. `github_poc_monitor`: re-enable it now if it was disabled (`cti-scraper enable github_poc_monitor`, then restart
    `beat`). Its runs should finish in ~10 min.
-7. **7-day watch (spec section 4, step 4):** reconcile `missing + outdated` near 0 after the first run; no sync gap
+7. **7-day watch (spec section 4, step 4):** reconcile `fixed` near 0 after the first day and no CVE ingest `red`; no sync gap
    over 15 min (block never red); PoC runs under 15 min; no `overlap` storms in Scrapers > Recent Runs. Only when all
    four hold, do the final step.
 8. **Final step, retire `new_cve`:** set `CVE_MIRROR__KEEP_LEGACY_NEW_CVE=false` in the prod `.env`, then recreate with
@@ -1188,8 +1190,8 @@ Read-only (`PGOPTIONS=-c default_transaction_read_only=on`). Write the results d
   will not appear by itself (same case as the 786-row flood). It stays in the CVE DB tab; an analyst can promote the
   entry history (`cve.promote_entry`, `make promote-cve-mirror --since`).
 - **First reconcile precision:** if `cve_records.modified_at` and `dateUpdated` differ in precision, the first run could
-  plan thousands of outdated records. The `DEFAULT_MAX_FILES` cap spreads the work across runs; check `outdated` in the
-  first report (expected near 0).
+  plan thousands of outdated records. The reconcile cap (500 per run, newest first, overflow left for the next run) spreads
+  the work across runs; check `outdated` in the first report (expected near 0).
 - **Pool pressure was the `worker` pool:** it was saturated by 4 concurrent `github_poc_monitor` runs (oldest 4.9 h, the
   `maintenance` queue 291 deep with 40 `cve.mirror_sync`). The `cve` queue and the overlap guard remove that cause;
   the `github_poc_monitor` long tail (CVEs older than 90 days and not in KEV) is no longer searched for PoCs.

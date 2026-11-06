@@ -298,16 +298,22 @@ class AsyncScraperRunRepo:
         return result.scalar_one_or_none()
 
     async def latest_finished(
-        self, scraper_id: str, *, statuses: Sequence[str] | None = None
+        self,
+        scraper_id: str,
+        *,
+        statuses: Sequence[str] | None = None,
+        exclude_statuses: Sequence[str] = (),
     ) -> ScraperRun | None:
         """Run terbaru `scraper_id` yang SUDAH selesai (`finished_at` terisi), opsional dibatasi ke
-        `statuses`. Beda dari `list_recent_by_scraper()[0]`: tidak terpengaruh run yang sedang
-        berjalan, dan bisa melompati run gagal untuk mencari yang terakhir sukses."""
+        `statuses`, atau tanpa `exclude_statuses`. Beda dari `list_recent_by_scraper()[0]`: tidak
+        terpengaruh run yang sedang berjalan, dan bisa melompati run gagal untuk mencari yang terakhir sukses."""
         stmt = select(ScraperRun).where(
             ScraperRun.scraper_id == scraper_id, ScraperRun.finished_at.is_not(None)
         )
         if statuses is not None:
             stmt = stmt.where(ScraperRun.status.in_(statuses))
+        if exclude_statuses:
+            stmt = stmt.where(ScraperRun.status.not_in(exclude_statuses))
         result = await self.session.execute(stmt.order_by(ScraperRun.finished_at.desc()).limit(1))
         return result.scalar_one_or_none()
 

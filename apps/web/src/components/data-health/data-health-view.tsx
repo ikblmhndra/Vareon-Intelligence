@@ -337,7 +337,7 @@ export function DataHealthView() {
                     label="Reconcile result"
                     value={
                       cveReport.status === "error"
-                        ? `error · ${String(cveReport.error ?? "unknown")}`
+                        ? `error · ${String(cveReport.error || "unknown")}`
                         : `${Number(cveReport.fixed ?? 0).toLocaleString()} fixed · ${Number(cveReport.missing ?? 0).toLocaleString()} missing · ${Number(cveReport.outdated ?? 0).toLocaleString()} outdated · ${Number(cveReport.failed ?? 0).toLocaleString()} failed`
                     }
                     tone={cveReport.status === "error" ? "warn" : undefined}

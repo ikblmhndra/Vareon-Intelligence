@@ -121,7 +121,7 @@ and of the "Newest CVE detected" line in the UI.
 
 ## 3. Which path is active
 
-Read once per process, so a change needs a restart of `worker`, `worker-cve`, `beat` and `api`. Use `up -d`, not
+Read once per process, so a change needs a restart of `worker`, `beat` and `api`. Use `up -d`, not
 `restart`, so the container picks up the changed `.env`.
 
 ```mermaid
@@ -267,10 +267,11 @@ Behaviours worth knowing:
 - **Reconcile (hourly, minute 17, `cve.mirror_reconcile`)** does not trust the cursor. It downloads `deltaLog.json`
   (~24 MB, 30 days), keeps the latest `dateUpdated` per CVE, and plans a refetch for every CVE that is missing from
   `cve_records` or whose `modified_at` is older than the log, then runs the same per-record pipeline as the sync (same
-  advisory lock, at most `max_files_per_run`, the rest waits in `pending`). Records fetched and deliberately not
+  advisory lock), newest `dateUpdated` first and at most 500 per run (`RECONCILE_MAX_FILES`); the rest, and
+  any failure, is re-planned by the next hourly run and never enters `pending`. Records fetched and deliberately not
   stored (not PUBLISHED, outside retention, no publish date) go to `skips` in `job_state["cve_mirror.reconcile"]`
   and are not refetched while their `dateUpdated` is unchanged. The report (`planned`, `missing`, `outdated`,
-  `fixed`, `skipped`, `failed`, `duration_ms`, status) is logged as `cve_mirror_reconciled` and kept in `job_state`
+  `fixed`, `skipped`, `failed`, `queued` = planned but over the cap, `duration_ms`, status) is logged as `cve_mirror_reconciled` and kept in `job_state`
   for `/data-health`; a failed `deltaLog.json` download is recorded as an error, not swallowed. It never moves the
   sync cursor. Beyond 30 days `make backfill-cve-mirror` is still the tool.
 - A failing record does not stop the batch: it goes to `pending` and is retried next tick (a bounded number of
@@ -528,7 +529,7 @@ The mirror (`cve_records`) is global: it is not per client. Everything per clien
 | What does an entry match | Monitored Tech > Targets (Path B); the entry name (Path A) |
 | What would the mirror promote, without writing | `make compare-promotion-shadow SINCE=<date>` (needs shadow mode) |
 | Sync health, gaps | Data health > CVE ingest block (`status` off, red, amber or ok: red = last sync older than 15 min, amber = no reconcile yet, last reconcile older than 2 h, or its last report has status `error`); `worker-cve` log for `cve.mirror_sync`; the report has `gap_unrecoverable` |
-| Did the hourly reconcile find holes | `worker-cve` log line `cve_mirror_reconciled` (`missing` and `outdated` should be near 0 after the first run); same numbers in the CVE ingest block |
+| Did the hourly reconcile find holes | `worker-cve` log line `cve_mirror_reconciled` (the first runs plan a backlog of old CVEs, 500 per hour; `fixed` should be near 0 after the first day); same numbers in the CVE ingest block |
 | Did a scraper start twice | Scrapers > Recent Runs: status `overlap` (refused because a younger run of the same scraper was still `running`) |
 
 All of the `GET` calls are read-only and work from a logged-in browser session through `/api/proxy/api/...`.

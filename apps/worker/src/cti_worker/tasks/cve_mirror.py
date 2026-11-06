@@ -91,7 +91,6 @@ def cve_mirror_reconcile(self: Any) -> dict[str, object]:
             session,
             make_fetcher(client, cfg.request_timeout_s),
             datetime.datetime.now(datetime.UTC),
-            max_files=cfg.max_files_per_run,
             promote=cfg.promote,
         )
         session.commit()
