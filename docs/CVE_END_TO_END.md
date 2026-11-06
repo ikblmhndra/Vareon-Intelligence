@@ -121,7 +121,9 @@ and of the "Newest CVE detected" line in the UI.
 
 ## 3. Which path is active
 
-Read once per process, so a change needs a restart of `worker`, `beat` and `api`. Use `up -d`, not
+Read once per process, so a change needs a restart of `worker`, `worker-cve`, `beat` and `api`
+(`worker-cve` runs the mirror tasks that read `ENABLED`/`PROMOTE`; for `KEEP_LEGACY_NEW_CVE` alone,
+`worker`, `beat` and `api` are enough). Use `up -d`, not
 `restart`, so the container picks up the changed `.env`.
 
 ```mermaid
