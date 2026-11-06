@@ -29,6 +29,7 @@ const RUN_STATUS_STYLE: Record<string, string> = {
   timeout: "text-destructive",
   backpressure: "text-warning",
   disabled: "text-muted-foreground",
+  overlap: "text-muted-foreground",
   running: "text-severity-medium",
 };
 

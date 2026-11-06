@@ -34,10 +34,11 @@ Bandingkan sama script lama:
 from __future__ import annotations
 
 import html
+import math
 import re
 import zlib
-from collections.abc import Iterator
-from datetime import datetime, timedelta
+from collections.abc import Iterator, Mapping, Sequence
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from cti_scraper.base import BaseScraper, ScrapeContext, ScraperMeta
@@ -47,30 +48,29 @@ from cti_scraper.schedule import spread
 from cti_scrapers.feeds._pacing import get_waiting
 
 _SEARCH_URL = "https://api.github.com/search/repositories"
-
-_TARGETED_SEARCHES_PER_RUN = 600
-"""Batas pencarian targeted per run: 600 / 30 per menit = 20 menit, jauh di bawah jadwal tiap jam.
-
-Prod 2026-11-06: `cve_tracker` 2.469 CVE (tumbuh cepat sejak mirror CVE `live`), satu run mencari
-semuanya = > 80 menit, run baru datang sebelum yang lama selesai, dan tumpukannya memenuhi keempat slot
-`worker` (ingest RSS berhenti ~5 jam). Daftar yang lebih besar dibagi ke beberapa jam berturut-turut."""
-
-
-def _targeted_slice(entries: list[dict[str, Any]], now: datetime) -> list[dict[str, Any]]:
-    """Irisan CVE untuk run ini. Bagian CVE ditentukan crc32 `cve_id` (stabil walau daftar berubah),
-    irisan yang aktif dari jam `now` (retry di jam yang sama dapat irisan yang sama). Daftar
-    <= batas: semua, seperti dulu. Dengan k irisan tiap CVE dicek tiap k jam."""
-    slices = -(-len(entries) // _TARGETED_SEARCHES_PER_RUN)
-    if slices <= 1:
-        return entries
-    slot = int(now.timestamp() // 3600) % slices
-    return [e for e in entries if zlib.crc32(e["cve_id"].encode()) % slices == slot]
-
-
 _MITRE_URL = "https://cveawg.mitre.org/api/cve"
 
 
 _CVE_ID_RE = re.compile(r"(cve-\d{4}-\d+)")
+
+POC_SEARCH_CAP = 300
+"""Batas kasar pencarian GitHub per run (30/menit, jadi ~10 menit). Dulu satu run mencari semua
+CVE true-positive (2.469 di prod, ~2 jam)."""
+
+
+def poc_slice(
+    entries: Sequence[Mapping[str, Any]], now: datetime, cap: int = POC_SEARCH_CAP
+) -> list[Mapping[str, Any]]:
+    """Irisan berputar per jam: bagi CVE jadi k = ceil(n / cap) kelompok lewat crc32(cve_id)
+    (stabil antar proses, bukan `hash()`), run jam H mencari kelompok H % k. Semua CVE tercakup
+    dalam k jam; kalau n <= cap, k = 1 dan semuanya dicari tiap run. Ukuran irisan tidak persis
+    rata karena crc32."""
+    k = max(1, math.ceil(len(entries) / cap))
+    # Indeks jam absolut (`ctx.now` = UTC naive): tiap sisa muncul tiap k jam, lintas tengah malam
+    # dan untuk k > 24 (`now.hour % k` melewatkan kelompok >= 24).
+    hour_index = int(now.replace(tzinfo=UTC).timestamp() // 3600)
+    return [e for e in entries if zlib.crc32(e["cve_id"].encode()) % k == hour_index % k]
+
 
 # 4 repo yang kebukti false-positive (nama/deskripsi kebetulan mirip CVE
 # POC tapi bukan) -- diambil apa adanya dari script lama.
@@ -244,7 +244,7 @@ class GithubPocMonitor(BaseScraper):
                     yield notice
 
     def _targeted_search(self, ctx: ScrapeContext) -> Iterator[CvePocItem]:
-        for entry in _targeted_slice(ctx.reference["true_positive_cves"], ctx.now):
+        for entry in poc_slice(ctx.reference["true_positive_cves"], ctx.now):
             cve_id: str = entry["cve_id"]
             existing_urls: set[str] = entry["poc_urls"]
 

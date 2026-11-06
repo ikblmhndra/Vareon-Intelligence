@@ -84,7 +84,7 @@ rollback_or_alarm() {
   if python3 tools/ops/rollback.py --current-tag "$TAG" --tag prev \
        --compose "docker compose --env-file $STACK_ENV --profile app" \
        --env-file "$ENV_FILE" --network "${PROJECT}_default" --api-url "$API_URL" \
-       --services "api worker worker-browser worker-nlp beat web"; then
+       --services "api worker worker-browser worker-nlp worker-cve beat web"; then
     notify "DEPLOY GAGAL (commit $SHA): $why. Stack DIKEMBALIKAN ke versi sebelumnya (:prev). Cek log CD."
     die "$why -- stack dikembalikan ke :prev"
   fi

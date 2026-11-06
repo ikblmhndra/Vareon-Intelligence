@@ -132,6 +132,19 @@ class SigmaHealthOut(BaseModel):
     status: Literal["ok", "amber", "red"]
 
 
+class CveIngestHealthOut(BaseModel):
+    """Ingest CVE dari mirror V5. `off` = mirror mati; `red` = poll terakhir hilang/>15 menit;
+    `amber` = rekonsiliasi belum ada, >2 jam, atau terakhir `status == "error"`."""
+
+    enabled: bool
+    promote: str
+    last_sync_at: str | None
+    pending: int
+    last_reconcile_at: str | None
+    last_reconcile: dict[str, int | str] | None
+    status: Literal["ok", "amber", "red", "off"]
+
+
 class DataHealthOut(BaseModel):
     generated_at: str
     """ISO UTC saat angka dihitung (cache 60 detik per proses)."""
@@ -143,3 +156,4 @@ class DataHealthOut(BaseModel):
     llm: LlmHealthOut
     relevance: RelevanceHealthOut
     sigma: SigmaHealthOut
+    cve_ingest: CveIngestHealthOut

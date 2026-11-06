@@ -1,5 +1,5 @@
 """Task mirror CVE (ROADMAP #19, irisan 3): `cve.mirror_sync` (tiap 5 menit) dan
-`cve.mirror_purge` (harian), keduanya queue `maintenance`. Logikanya di
+`cve.mirror_purge` (harian), keduanya queue `cve`. Logikanya di
 `cti_core.cve_mirror_sync` (murni terhadap fetcher yang disuntik); di sini hanya HTTP (httpx) dan
 penyalaan lewat `Settings.cve_mirror.enabled`.
 
@@ -19,7 +19,7 @@ from cti_core.config import get_settings
 from cti_core.cve_mirror_sync import DELTA_LOG_URL, Fetcher, FetchError
 
 from cti_worker.celery_app import app
-from cti_worker.queues import QUEUE_MAINTENANCE
+from cti_worker.queues import QUEUE_CVE
 
 log = structlog.get_logger()
 
@@ -41,7 +41,7 @@ def make_fetcher(client: httpx.Client, timeout_s: float) -> Fetcher:
     return fetch
 
 
-@app.task(bind=True, name="cve.mirror_sync", queue=QUEUE_MAINTENANCE)
+@app.task(bind=True, name="cve.mirror_sync", queue=QUEUE_CVE)
 def cve_mirror_sync(self: Any) -> dict[str, object]:
     from cti_core.cve_mirror_sync import sync_once
     from cti_core.db.engine import sync_session
@@ -70,7 +70,35 @@ def cve_mirror_sync(self: Any) -> dict[str, object]:
     return report.as_dict()
 
 
-@app.task(bind=True, name="cve.mirror_purge", queue=QUEUE_MAINTENANCE)
+@app.task(bind=True, name="cve.mirror_reconcile", queue=QUEUE_CVE)
+def cve_mirror_reconcile(self: Any) -> dict[str, object]:
+    """Tiap jam: cocokkan `deltaLog.json` dengan mirror, unduh yang hilang/usang
+    (`cti_core.cve_mirror_sync.reconcile_once`). Bentuknya sama dengan `cve.mirror_sync`."""
+    from cti_core.cve_mirror_sync import reconcile_once
+    from cti_core.db.engine import sync_session
+    from cti_scraper.sinks import finish_run
+
+    cfg = get_settings().cve_mirror
+    if not cfg.enabled:
+        return {"status": "disabled"}
+    with (
+        httpx.Client(
+            headers={"User-Agent": _USER_AGENT}, follow_redirects=False, trust_env=True
+        ) as client,
+        sync_session() as session,
+    ):
+        report = reconcile_once(
+            session,
+            make_fetcher(client, cfg.request_timeout_s),
+            datetime.datetime.now(datetime.UTC),
+            promote=cfg.promote,
+        )
+        session.commit()
+        finish_run(session)
+    return report.as_dict()
+
+
+@app.task(bind=True, name="cve.mirror_purge", queue=QUEUE_CVE)
 def cve_mirror_purge(self: Any) -> dict[str, object]:
     from cti_core.cve_mirror_sync import purge_expired
     from cti_core.db.engine import sync_session
@@ -83,7 +111,7 @@ def cve_mirror_purge(self: Any) -> dict[str, object]:
     return {"status": "ok", "deleted": deleted}
 
 
-@app.task(bind=True, name="cve.promote_entry", queue=QUEUE_MAINTENANCE, max_retries=5)
+@app.task(bind=True, name="cve.promote_entry", queue=QUEUE_CVE, max_retries=5)
 def cve_promote_entry(self: Any, entry_id: int) -> dict[str, object]:
     """Satu entri baru di-Monitor / diaktifkan / dapat target: isi riwayatnya dari mirror
     (`cti_core.cve_promotion.promote_entry`), dipicu API setelah commit. Tanpa notifikasi

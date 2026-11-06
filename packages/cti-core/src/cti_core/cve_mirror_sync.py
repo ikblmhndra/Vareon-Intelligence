@@ -35,8 +35,9 @@ from __future__ import annotations
 import datetime
 import json
 import re
+import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
 import structlog
@@ -45,6 +46,7 @@ from sqlalchemy.orm import Session
 
 from cti_core.catalog_resolve import resolve_all
 from cti_core.cve_promotion import (
+    SYNC_CREATE_WINDOW,
     EntryView,
     Mode,
     forget_shadow,
@@ -75,6 +77,7 @@ DELTA_LOG_URL = f"{BASE_URL}/deltaLog.json"
 RECORD_URL_PREFIX = "https://raw.githubusercontent.com/CVEProject/cvelistV5/"
 NVD_LINK = "https://nvd.nist.gov/vuln/detail/{}"
 STATE_KEY = "cve_mirror.state"
+RECONCILE_KEY = "cve_mirror.reconcile"
 
 POLL_GAP = datetime.timedelta(minutes=12)
 """Poll sukses terakhir lebih tua dari ini = kita telat >= 2 tick (jadwal 5 menit): catch-up."""
@@ -231,6 +234,70 @@ def needs_catch_up(state: SyncState, fetch_time: datetime.datetime, now: datetim
     return fetch_time - state.fetch_time > FETCH_GAP
 
 
+def _when(value: Any) -> datetime.datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=datetime.UTC)
+
+
+@dataclass
+class ReconcileState:
+    """State rekonsiliasi per jam (`job_state[RECONCILE_KEY]`): `skips` = CVE yang record-nya
+    sengaja dilewati `apply_record` (REJECTED, di luar retensi, ...) beserta versi log-nya, supaya
+    tidak diunduh ulang tiap jam; `last_report` = ringkasan run terakhir."""
+
+    skips: dict[str, datetime.datetime | None] = field(default_factory=dict)
+    last_report: dict[str, Any] | None = None
+    ran_at: datetime.datetime | None = None
+
+    def dump(self) -> dict[str, Any]:
+        return {
+            "skips": {k: v.isoformat() if v else None for k, v in self.skips.items()},
+            "last_report": self.last_report,
+            "ran_at": self.ran_at.isoformat() if self.ran_at else None,
+        }
+
+    @classmethod
+    def load(cls, raw: Any) -> ReconcileState:
+        if not isinstance(raw, dict):
+            return cls()
+        skips = raw.get("skips")
+        report = raw.get("last_report")
+        return cls(
+            skips={str(k): _when(v) for k, v in skips.items()} if isinstance(skips, dict) else {},
+            last_report=report if isinstance(report, dict) else None,
+            ran_at=_when(raw.get("ran_at")),
+        )
+
+
+def reconcile_plan(
+    log_items: Iterable[DeltaItem],
+    mirror_versions: Mapping[str, datetime.datetime | None],
+    skips: Mapping[str, datetime.datetime | None],
+) -> list[DeltaItem]:
+    """Record di `deltaLog` yang perlu diunduh: belum ada di mirror, atau versi mirror lebih tua
+    dari versi log (`None` = tak diketahui = dianggap usang). Item log tanpa `date_updated` hanya
+    direncanakan bila CVE-nya belum ada di mirror. Yang ada di `skips` dengan versi yang sama
+    (atau lebih baru) dilewati. Hasil terurut menurut `cve_id`."""
+    plan: list[DeltaItem] = []
+    for it in _dedupe(log_items):
+        at = it.date_updated
+        if it.cve_id in skips and (
+            at is None or ((skipped := skips[it.cve_id]) is not None and at <= skipped)
+        ):
+            continue
+        if it.cve_id in mirror_versions:
+            have = mirror_versions[it.cve_id]
+            if at is None or (have is not None and have >= at):
+                continue
+        plan.append(it)
+    return sorted(plan, key=lambda i: i.cve_id)
+
+
 # ── satu record ───────────────────────────────────────────────────────────────────────────────
 
 Outcome = Literal["created", "updated", "stale", "removed", "skipped"]
@@ -313,6 +380,8 @@ class SyncReport:
     promoted_new: int = 0
     """Baris `cve_tracker` BARU dari promosi `live`."""
     promoted_updated: int = 0
+    promoted_held: int = 0
+    """CVE lama yang cocok entri tapi tidak dibuatkan baris (di luar `SYNC_CREATE_WINDOW`)."""
     shadow_rows: int = 0
     """Baris `cve_promotion_shadow` yang dievaluasi (mode `shadow`)."""
 
@@ -454,8 +523,15 @@ def _process(
             if outcome in ("created", "updated"):
                 rec = repo.get(item.cve_id)
                 if rec is not None:
-                    done = promote_record(session, rec, entries, promote)
+                    done = promote_record(
+                        session,
+                        rec,
+                        entries,
+                        promote,
+                        create_before=today - SYNC_CREATE_WINDOW,
+                    )
                     report.promoted_new += done.created
+                    report.promoted_held += done.held
                     report.promoted_updated += done.updated
                     report.shadow_rows += done.shadow
             elif outcome == "removed":
@@ -486,6 +562,146 @@ def _record_failure(
         attempts=item.attempts,
         error=str(error)[:300],
     )
+
+
+# ── rekonsiliasi per jam ──────────────────────────────────────────────────────────────────────
+
+_VERSION_CHUNK = 5000
+
+RECONCILE_MAX_FILES = 500
+"""Batas berkas per run rekonsiliasi (per jam). `deltaLog` 30 hari memuat ribuan CVE lama yang
+diperbarui; sisanya menunggu run berikutnya, bukan antrean `SyncState.pending`."""
+
+
+@dataclass
+class ReconcileReport:
+    status: str = "ok"
+    error: str = ""
+    log_items: int = 0
+    planned: int = 0
+    missing: int = 0
+    outdated: int = 0
+    fixed: int = 0
+    skipped: int = 0
+    stale: int = 0
+    failed: int = 0
+    queued: int = 0
+    promoted_new: int = 0
+    duration_ms: int = 0
+
+    def as_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+def _mirror_versions(session: Session, ids: Sequence[str]) -> dict[str, datetime.datetime | None]:
+    out: dict[str, datetime.datetime | None] = {}
+    for i in range(0, len(ids), _VERSION_CHUNK):
+        rows = session.execute(
+            select(CveRecord.cve_id, CveRecord.modified_at).where(
+                CveRecord.cve_id.in_(ids[i : i + _VERSION_CHUNK])
+            )
+        )
+        out.update({cve_id: modified for cve_id, modified in rows})
+    return out
+
+
+def reconcile_once(
+    session: Session,
+    fetch: Fetcher,
+    now: datetime.datetime,
+    *,
+    max_files: int = RECONCILE_MAX_FILES,
+    promote: Mode = "off",
+) -> ReconcileReport:
+    """Rekonsiliasi per jam: bandingkan versi record di `deltaLog.json` (30 hari) dengan mirror
+    dan unduh ulang yang hilang atau usang, supaya CVE tidak hilang diam-diam walau `sync_once`
+    pernah melewatkan jendela. Kursor dan antrean `SyncState` TIDAK disentuh (hanya dibaca untuk
+    membuang item yang sudah antre): rencana diurutkan `date_updated` terbaru dulu lalu dipotong
+    `max_files` (500), sisanya (`queued`) dan kegagalan direncanakan ulang oleh run berikutnya.
+    Dengan begitu ribuan CVE lama di log tidak membanjiri `pending` dan menunda CVE baru. Gagal
+    ambil log = `status="error"`: hanya laporan error dan `ran_at` yang disimpan."""
+    started = time.monotonic()
+    if not acquire_lock(session):
+        return ReconcileReport(status="locked", duration_ms=_ms_since(started))
+    try:
+        return _reconcile_locked(session, fetch, now, max_files, promote, started)
+    finally:
+        release_lock(session)
+
+
+def _ms_since(started: float) -> int:
+    return int((time.monotonic() - started) * 1000)
+
+
+def _reconcile_locked(
+    session: Session,
+    fetch: Fetcher,
+    now: datetime.datetime,
+    max_files: int,
+    promote: Mode,
+    started: float,
+) -> ReconcileReport:
+    report = ReconcileReport()
+    states = JobStateRepo(session)
+    try:
+        entries = parse_delta_log(_load_json(fetch(DELTA_LOG_URL)))
+    except FetchError as e:
+        report.status, report.error = "error", str(e)
+        log.warning("cve_mirror_reconcile_log_failed", error=str(e))
+        # Kegagalan harus terlihat di panel data-health: simpan laporan error saja (skips tetap,
+        # `SyncState` tidak disentuh).
+        report.duration_ms = _ms_since(started)
+        rstate = ReconcileState.load(states.get(RECONCILE_KEY))
+        rstate.last_report, rstate.ran_at = report.as_dict(), now
+        states.set(RECONCILE_KEY, rstate.dump())
+        return report
+
+    log_items = [item for entry in entries for item in entry.items]
+    log_ids = {item.cve_id for item in log_items}
+    report.log_items = len(log_ids)
+    rstate = ReconcileState.load(states.get(RECONCILE_KEY))
+    versions = _mirror_versions(session, sorted(log_ids))
+    plan = reconcile_plan(log_items, versions, rstate.skips)
+    report.planned = len(plan)
+    report.missing = sum(1 for it in plan if it.cve_id not in versions)
+    report.outdated = report.planned - report.missing
+
+    queued_ids = {p.cve_id for p in SyncState.load(states.get(STATE_KEY)).pending}
+    # Terbaru dulu (tanpa tanggal terakhir): CVE baru yang benar-benar hilang diproses duluan.
+    plan.sort(key=lambda it: (-_ts(it).timestamp(), it.cve_id))
+    todo = [PendingItem(it.cve_id, it.link) for it in plan if it.cve_id not in queued_ids]
+    version_of = {it.cve_id: it.date_updated for it in plan}
+
+    catalog = CatalogRepo(session)
+    repo = CveMirrorRepo(session, catalog)
+    aliases = catalog.alias_map()
+    today = now.date()
+    tech_entries: list[EntryView] = load_entries(session) if promote != "off" else []
+
+    for done, item in enumerate(todo[:max_files], start=1):
+        one = SyncReport()
+        try:
+            _process(session, repo, fetch, item, today, aliases, one, promote, tech_entries)
+        except Exception as e:  # FetchError, record janggal, error DB: batch jalan terus
+            _record_failure(repo, item, e, [], one)
+        report.fixed += one.created + one.updated
+        report.stale += one.stale
+        report.failed += one.failed
+        report.promoted_new += one.promoted_new
+        if one.skipped or one.removed:
+            report.skipped += 1
+            rstate.skips[item.cve_id] = version_of[item.cve_id]
+        if done % COMMIT_EVERY == 0:
+            session.commit()
+
+    report.queued = max(0, len(todo) - max_files)
+
+    rstate.skips = {k: v for k, v in rstate.skips.items() if k in log_ids}
+    report.duration_ms = _ms_since(started)
+    rstate.last_report, rstate.ran_at = report.as_dict(), now
+    states.set(RECONCILE_KEY, rstate.dump())
+    log.info("cve_mirror_reconciled", **report.as_dict())
+    return report
 
 
 def purge_expired(session: Session, today: datetime.date) -> int:

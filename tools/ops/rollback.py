@@ -42,7 +42,7 @@ import urllib.request
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
-DEFAULT_SERVICES = "api worker worker-browser worker-nlp web"
+DEFAULT_SERVICES = "api worker worker-browser worker-nlp worker-cve web"
 REV_RE = re.compile(r"^([0-9a-f]{6,})\b")
 
 
