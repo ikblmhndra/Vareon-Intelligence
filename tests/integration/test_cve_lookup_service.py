@@ -376,3 +376,62 @@ async def test_run_exploit_db_bulk_lookup_batches(async_db_session: AsyncSession
     assert summary["checked"] == 7
     assert summary["with_exploits"] == 0
     assert summary["errors"] == 0
+
+
+async def test_run_exploit_db_bulk_lookup_commits_after_each_cve(
+    async_db_session: AsyncSession,
+) -> None:
+    """Sweep tiap 3 jam dulu memegang SATU transaksi selama scraping ~2.500 CVE (prod
+    2026-11-06: > 75 menit `idle in transaction`), jadi lock baris `cve_tracker` menahan sweep
+    lain dan promosi mirror. Sekarang daftar CVE dibaca lalu di-commit, dan tiap CVE di-commit
+    sendiri: lock dipegang selama satu tulis saja."""
+    await _ensure_clients(async_db_session)
+    for i in range(7):
+        async_db_session.add(
+            CveTracker(cve_id=f"CVE-2026-21{i:02d}", client_id="default", tech="nginx")
+        )
+    await async_db_session.flush()
+
+    commits = AsyncMock(wraps=async_db_session.commit)
+    with (
+        patch.object(cve_lookup_service, "_lookup_exploitdb", AsyncMock(return_value=[])),
+        patch("asyncio.sleep", AsyncMock()),
+        patch.object(async_db_session, "commit", commits),
+    ):
+        summary = await cve_lookup_service.run_exploit_db_bulk_lookup(async_db_session)
+
+    assert summary["checked"] == 7
+    assert commits.await_count == 1 + 7  # sesudah daftar dibaca, lalu sesudah tiap CVE
+
+
+async def test_run_exploit_db_bulk_lookup_continues_after_a_db_error(
+    async_db_session: AsyncSession,
+) -> None:
+    """Gagal menulis satu CVE (savepoint di-rollback) tidak membatalkan CVE lain."""
+    await _ensure_clients(async_db_session)
+    for i in range(3):
+        async_db_session.add(
+            CveTracker(cve_id=f"CVE-2026-22{i:02d}", client_id="default", tech="nginx")
+        )
+    await async_db_session.flush()
+
+    real_apply = AsyncCveTrackerRepo.apply_exploit_hits
+
+    async def flaky(self: AsyncCveTrackerRepo, cve_id: str, exploits: list) -> None:
+        if cve_id == "CVE-2026-2201":
+            raise RuntimeError("boom")
+        await real_apply(self, cve_id, exploits)
+
+    with (
+        patch.object(cve_lookup_service, "_lookup_exploitdb", AsyncMock(return_value=[])),
+        patch("asyncio.sleep", AsyncMock()),
+        patch.object(AsyncCveTrackerRepo, "apply_exploit_hits", flaky),
+    ):
+        summary = await cve_lookup_service.run_exploit_db_bulk_lookup(async_db_session)
+
+    assert summary["checked"] == 3
+    assert summary["errors"] == 1
+    rows = await AsyncCveTrackerRepo(async_db_session).list_by_cve_ids_any_client(
+        ["CVE-2026-2200", "CVE-2026-2202"]
+    )
+    assert all(r.exploit_db_checked_at is not None for r in rows) and len(rows) == 2

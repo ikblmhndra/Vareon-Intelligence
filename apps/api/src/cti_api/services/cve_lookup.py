@@ -211,7 +211,9 @@ async def run_exploit_db_single_lookup(session: AsyncSession, cve_id: str) -> di
     """Lookup satu CVE ke exploit-db, simpen hasilnya. Balikin ringkasan."""
     try:
         exploits = await _lookup_exploitdb(cve_id)
-        await AsyncCveTrackerRepo(session).apply_exploit_hits(cve_id, exploits)
+        # Savepoint: gagal menulis satu CVE tidak merusak transaksi pemanggil (bulk jalan terus).
+        async with session.begin_nested():
+            await AsyncCveTrackerRepo(session).apply_exploit_hits(cve_id, exploits)
         return {"cve_id": cve_id, "found": len(exploits), "error": None}
     except Exception as exc:
         return {"cve_id": cve_id, "found": 0, "error": str(exc)}
@@ -222,8 +224,14 @@ async def run_exploit_db_bulk_lookup(
 ) -> dict[str, Any]:
     """Exploit-db lookup buat SEMUA CVE true-positive, batch 5 + jeda 1
     detik antar-batch -- port rate-limit lama (situs exploit-db gak
-    punya API resmi, hormatin biar gak diblokir)."""
+    punya API resmi, hormatin biar gak diblokir).
+
+    Commit sesudah daftar dibaca dan sesudah TIAP CVE: lookup HTTP jalan di luar transaksi dan
+    lock baris `cve_tracker` hanya dipegang selama satu tulis. Dulu satu transaksi untuk ~2.500
+    CVE (prod 2026-11-06: > 75 menit `idle in transaction`) menahan sweep lain dan promosi mirror
+    (yang memegang kunci ingest), sehingga sync/reconcile CVE berhenti."""
     tp_ids = await AsyncCveTrackerRepo(session).list_true_positive_cve_ids(client_id)
+    await session.commit()
 
     results: list[dict[str, Any]] = []
     batch_size = 5
@@ -238,6 +246,7 @@ async def run_exploit_db_bulk_lookup(
         # tiap "batch" logis.
         for cid in batch:
             results.append(await run_exploit_db_single_lookup(session, cid))
+            await session.commit()
         if i + batch_size < len(tp_ids):
             await asyncio.sleep(1)
 
