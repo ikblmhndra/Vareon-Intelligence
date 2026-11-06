@@ -60,3 +60,10 @@ def test_deploy_sh_tidak_pernah_downgrade_otomatis() -> None:
     code = [line for line in SCRIPT.read_text().splitlines() if not line.lstrip().startswith("#")]
     assert any("rollback.py" in line for line in code)
     assert not [line for line in code if "--yes" in line]  # downgrade DB selalu keputusan manusia
+
+
+def test_worker_cve_is_started_and_rolled_back_with_the_stack() -> None:
+    from pathlib import Path
+
+    for f in ("tools/ops/deploy.sh", "tools/ops/fresh_deploy.sh", "tools/ops/rollback.py"):
+        assert "worker-cve" in Path(f).read_text(), f
