@@ -45,8 +45,8 @@ from cti_api.schemas.cve_check import (
 SCRAPER_ID = "new_cve"
 MIRROR_LABEL = "CVE List V5 mirror"
 MIRROR_TASK = "cve.mirror_sync"
-MIRROR_QUEUE = "maintenance"
-"""= `cti_worker.queues.QUEUE_MAINTENANCE` (API tidak boleh import worker)."""
+MIRROR_QUEUE = "cve"
+"""= `cti_worker.queues.QUEUE_CVE` (API tidak boleh import worker)."""
 MIRROR_CRON = "*/5 * * * *"
 """= entri beat `cve-mirror-sync` (`cti_worker.beat`)."""
 

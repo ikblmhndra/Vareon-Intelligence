@@ -49,7 +49,7 @@ from cti_scraper.queues import queue_for
 from cti_scraper.registry import discover
 from cti_scraper.supersede import effective_enabled
 
-from cti_worker.queues import QUEUE_ENRICH, QUEUE_MAINTENANCE, QUEUE_NOTIFY
+from cti_worker.queues import QUEUE_CVE, QUEUE_ENRICH, QUEUE_MAINTENANCE, QUEUE_NOTIFY
 from cti_worker.reports.timeutil import local_to_utc_cron
 
 if TYPE_CHECKING:
@@ -202,17 +202,17 @@ def _periodic_schedule() -> dict[str, dict[str, object]]:
         "cve-mirror-sync": {
             "task": "cve.mirror_sync",
             "schedule": crontab(minute="*/5"),
-            "options": {"queue": QUEUE_MAINTENANCE},
+            "options": {"queue": QUEUE_CVE},
         },
         "cve-mirror-reconcile": {
             "task": "cve.mirror_reconcile",
             "schedule": crontab(minute=17),
-            "options": {"queue": QUEUE_MAINTENANCE},
+            "options": {"queue": QUEUE_CVE},
         },
         "cve-mirror-purge": {
             "task": "cve.mirror_purge",
             "schedule": crontab(hour=3, minute=30),
-            "options": {"queue": QUEUE_MAINTENANCE},
+            "options": {"queue": QUEUE_CVE},
         },
         "enrich-llm-dispatch": {
             # P7g: job LLM yang jatuh tempo dikirim di balik circuit breaker (menggantikan replay
