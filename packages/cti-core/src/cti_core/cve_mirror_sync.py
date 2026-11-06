@@ -35,6 +35,7 @@ from __future__ import annotations
 import datetime
 import json
 import re
+import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
@@ -572,6 +573,7 @@ class ReconcileReport:
     failed: int = 0
     queued: int = 0
     promoted_new: int = 0
+    duration_ms: int = 0
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -602,16 +604,26 @@ def reconcile_once(
     pernah melewatkan jendela. Kursor `SyncState` (`fetch_time`/`polled_at`) TIDAK disentuh;
     kelebihan di atas `max_files` dan kegagalan masuk `SyncState.pending` agar ditangani siklus
     sync berikutnya. Gagal ambil log = `status="error"` tanpa menulis apa pun."""
+    started = time.monotonic()
     if not acquire_lock(session):
-        return ReconcileReport(status="locked")
+        return ReconcileReport(status="locked", duration_ms=_ms_since(started))
     try:
-        return _reconcile_locked(session, fetch, now, max_files, promote)
+        return _reconcile_locked(session, fetch, now, max_files, promote, started)
     finally:
         release_lock(session)
 
 
+def _ms_since(started: float) -> int:
+    return int((time.monotonic() - started) * 1000)
+
+
 def _reconcile_locked(
-    session: Session, fetch: Fetcher, now: datetime.datetime, max_files: int, promote: Mode
+    session: Session,
+    fetch: Fetcher,
+    now: datetime.datetime,
+    max_files: int,
+    promote: Mode,
+    started: float,
 ) -> ReconcileReport:
     report = ReconcileReport()
     states = JobStateRepo(session)
@@ -620,6 +632,12 @@ def _reconcile_locked(
     except FetchError as e:
         report.status, report.error = "error", str(e)
         log.warning("cve_mirror_reconcile_log_failed", error=str(e))
+        # Kegagalan harus terlihat di panel data-health: simpan laporan error saja (skips tetap,
+        # `SyncState` tidak disentuh).
+        report.duration_ms = _ms_since(started)
+        rstate = ReconcileState.load(states.get(RECONCILE_KEY))
+        rstate.last_report, rstate.ran_at = report.as_dict(), now
+        states.set(RECONCILE_KEY, rstate.dump())
         return report
 
     log_items = [item for entry in entries for item in entry.items]
@@ -666,6 +684,7 @@ def _reconcile_locked(
     states.set(STATE_KEY, sstate.dump())
 
     rstate.skips = {k: v for k, v in rstate.skips.items() if k in log_ids}
+    report.duration_ms = _ms_since(started)
     rstate.last_report, rstate.ran_at = report.as_dict(), now
     states.set(RECONCILE_KEY, rstate.dump())
     log.info("cve_mirror_reconciled", **report.as_dict())

@@ -493,15 +493,19 @@ def test_reconcile_overflow_goes_to_pending(session: Session) -> None:
     assert (after.fetch_time, after.polled_at) == (NOW, NOW)
 
 
-def test_reconcile_fetch_error_changes_nothing(session: Session) -> None:
+def test_reconcile_fetch_error_records_error_only(session: Session) -> None:
     net = FakeNet()
     net.fail.add(DELTA_LOG_URL)
     states = JobStateRepo(session)
     states.set(STATE_KEY, SyncState(fetch_time=NOW).dump())
     before = states.get(STATE_KEY)
+    skips = {"CVE-2025-0003": NOW}
+    states.set(RECONCILE_KEY, ReconcileState(skips=skips).dump())
     r = reconcile_once(session, net, at(60))
     assert r.status == "error" and states.get(STATE_KEY) == before
-    assert states.get(RECONCILE_KEY) is None
+    saved = ReconcileState.load(states.get(RECONCILE_KEY))
+    assert saved.skips == skips and saved.ran_at == at(60)
+    assert saved.last_report is not None and saved.last_report["status"] == "error"
 
 
 def test_reconcile_locked(session: Session) -> None:
@@ -549,3 +553,6 @@ def test_reconcile_saves_report(session: Session) -> None:
     saved = ReconcileState.load(JobStateRepo(session).get(RECONCILE_KEY))
     assert saved.last_report is not None and saved.last_report["fixed"] == r.fixed == 1
     assert saved.ran_at == NOW
+    assert (
+        isinstance(saved.last_report["duration_ms"], int) and saved.last_report["duration_ms"] >= 0
+    )
