@@ -4695,6 +4695,32 @@ export interface components {
             /** Sources */
             sources: components["schemas"]["CveCheckSource"][];
         };
+        /**
+         * CveIngestHealthOut
+         * @description Ingest CVE dari mirror V5. `off` = mirror mati; `red` = poll terakhir hilang/>15 menit;
+         *     `amber` = rekonsiliasi belum ada, >2 jam, atau terakhir `status == "error"`.
+         */
+        CveIngestHealthOut: {
+            /** Enabled */
+            enabled: boolean;
+            /** Last Reconcile */
+            last_reconcile: {
+                [key: string]: number | string;
+            } | null;
+            /** Last Reconcile At */
+            last_reconcile_at: string | null;
+            /** Last Sync At */
+            last_sync_at: string | null;
+            /** Pending */
+            pending: number;
+            /** Promote */
+            promote: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "amber" | "red" | "off";
+        };
         /** CveListResponse */
         CveListResponse: {
             /** Cves */
@@ -5069,6 +5095,7 @@ export interface components {
         };
         /** DataHealthOut */
         DataHealthOut: {
+            cve_ingest: components["schemas"]["CveIngestHealthOut"];
             enrichment: components["schemas"]["EnrichmentHealthOut"];
             /** Generated At */
             generated_at: string;
