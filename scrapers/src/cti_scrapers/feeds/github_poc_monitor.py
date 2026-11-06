@@ -34,8 +34,10 @@ Bandingkan sama script lama:
 from __future__ import annotations
 
 import html
+import math
 import re
-from collections.abc import Iterator
+import zlib
+from collections.abc import Iterator, Mapping, Sequence
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -50,6 +52,22 @@ _MITRE_URL = "https://cveawg.mitre.org/api/cve"
 
 
 _CVE_ID_RE = re.compile(r"(cve-\d{4}-\d+)")
+
+POC_SEARCH_CAP = 300
+"""Batas kasar pencarian GitHub per run (30/menit, jadi ~10 menit). Dulu satu run mencari semua
+CVE true-positive (2.469 di prod, ~2 jam)."""
+
+
+def poc_slice(
+    entries: Sequence[Mapping[str, Any]], now: datetime, cap: int = POC_SEARCH_CAP
+) -> list[Mapping[str, Any]]:
+    """Irisan berputar per jam: bagi CVE jadi k = ceil(n / cap) kelompok lewat crc32(cve_id)
+    (stabil antar proses, bukan `hash()`), run jam H mencari kelompok H % k. Semua CVE tercakup
+    dalam k jam; kalau n <= cap, k = 1 dan semuanya dicari tiap run. Ukuran irisan tidak persis
+    rata karena crc32."""
+    k = max(1, math.ceil(len(entries) / cap))
+    return [e for e in entries if zlib.crc32(e["cve_id"].encode()) % k == now.hour % k]
+
 
 # 4 repo yang kebukti false-positive (nama/deskripsi kebetulan mirip CVE
 # POC tapi bukan) -- diambil apa adanya dari script lama.
@@ -223,7 +241,7 @@ class GithubPocMonitor(BaseScraper):
                     yield notice
 
     def _targeted_search(self, ctx: ScrapeContext) -> Iterator[CvePocItem]:
-        for entry in ctx.reference["true_positive_cves"]:
+        for entry in poc_slice(ctx.reference["true_positive_cves"], ctx.now):
             cve_id: str = entry["cve_id"]
             existing_urls: set[str] = entry["poc_urls"]
 
