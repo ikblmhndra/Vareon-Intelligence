@@ -6,13 +6,13 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
-## [0.8.12] - 2026-11-06
+## [0.8.13] - 2026-11-06
 
 **CVE Tracker kini punya satu sumber yang menyembuhkan diri sendiri: mirror CVE List V5 dicocokkan tiap jam dengan `deltaLog.json`, CVE yang hilang atau usang diunduh ulang otomatis, dan tugas CVE punya antrean serta worker sendiri sehingga scraper lambat tidak lagi menghambatnya.** Latar belakang: pada 2026-11-06 di prod, pool `worker` penuh oleh 4 run `github_poc_monitor` bersamaan, sync mirror tertinggal lebih dari satu jam, 50 CVE PUBLISHED 2026 tidak ada di mirror, dan 786 CVE lama (terbit 2025) menjadi baris tracker baru karena kernel.org menyentuh recordnya.
 
 **Tanpa migrasi dan tanpa kunci `.env` baru**, tetapi ada satu service compose baru: `worker-cve` (`-Q cve -c 1`, image dan env sama dengan `worker`), dibuat oleh `make deploy` lewat `up -d` dan ikut daftar wait-healthy dan rollback. `beat` harus restart (otomatis di `make deploy`) agar routing antrean baru terpakai.
 
-**Saat upgrade dari 0.8.11:** `make deploy`. Reconcile pertama (menit :17) memperbaiki sekitar 50 CVE yang hilang di prod; backlog CVE lama dari `deltaLog` diproses 500 per jam, terbaru dulu. Aktifkan lagi `github_poc_monitor` bila sempat dimatikan manual. Pantau 7 hari (`fixed` reconcile mendekati 0 sesudah hari pertama dan blok CVE ingest tidak `red`, tidak ada celah sync di atas 15 menit, run PoC di bawah 15 menit, tidak ada badai `overlap`), baru set `CVE_MIRROR__KEEP_LEGACY_NEW_CVE=false` dan `up -d worker beat api` (bukan `restart`) untuk mematikan `new_cve`. Rollback: kembalikan flag itu ke `true`. Baris tracker lama dari Path A yang false positive atau REJECTED tidak dibersihkan oleh rilis ini. Runbook: `docs/prod-upgrade/0.8.12.md` dan `docs/PROD_UPGRADE_0.8.10_TO_0.8.12.md`.
+**Saat upgrade dari 0.8.11 (lewat 0.8.12):** `make deploy`. Reconcile pertama (menit :17) memperbaiki sekitar 50 CVE yang hilang di prod; backlog CVE lama dari `deltaLog` diproses 500 per jam, terbaru dulu. Aktifkan lagi `github_poc_monitor` bila sempat dimatikan manual. Pantau 7 hari (`fixed` reconcile mendekati 0 sesudah hari pertama dan blok CVE ingest tidak `red`, tidak ada celah sync di atas 15 menit, run PoC di bawah 15 menit, tidak ada badai `overlap`), baru set `CVE_MIRROR__KEEP_LEGACY_NEW_CVE=false` dan `up -d worker beat api` (bukan `restart`) untuk mematikan `new_cve`. Rollback: kembalikan flag itu ke `true`. Baris tracker lama dari Path A yang false positive atau REJECTED tidak dibersihkan oleh rilis ini. Runbook: `docs/prod-upgrade/0.8.13.md` dan `docs/PROD_UPGRADE_0.8.11_TO_0.8.13.md`.
 
 ### Ditambah
 - Tugas `cve.mirror_reconcile` (antrean `cve`, tiap jam menit 17): mengunduh `deltaLog.json` (30 hari, sekitar 24 MB), mengambil `dateUpdated` terbaru per CVE, lalu merencanakan unduh ulang untuk tiap CVE yang tidak ada di `cve_records` atau yang `modified_at`-nya lebih tua dari log (`reconcile_plan` di `cti_core.cve_mirror_sync`, fungsi murni). Memakai pipeline per record dan advisory lock yang sama dengan `cve.mirror_sync`, paling banyak 500 per run, `dateUpdated` terbaru dulu; sisanya dan kegagalan direncanakan ulang run berikutnya tanpa menyentuh `SyncState.pending`. Record yang diunduh tapi sengaja tidak disimpan (bukan PUBLISHED, di luar retensi, tanpa tanggal terbit) dicatat di `skips` pada `job_state["cve_mirror.reconcile"]` dan tidak diunduh ulang selama `dateUpdated`-nya sama. Laporan (`planned`, `missing`, `outdated`, `fixed`, `skipped`, `failed`, `duration_ms`, status) dicatat sebagai `cve_mirror_reconciled`; kegagalan mengunduh `deltaLog.json` dicatat sebagai error, bukan ditelan.
@@ -25,6 +25,13 @@ router `changelog.py`) -- parser-nya expect header persis
 - `github_poc_monitor` dibatasi: hanya CVE yang terbit dalam 90 hari atau masuk CISA KEV yang dicari, dan tiap run mengambil irisan bergilir paling banyak sekitar 300 (hash crc32 `cve_id` mod `k`, `k = ceil(n / 300)`, menurut jam). Tiap kandidat dicari paling tidak tiap `k` jam (prod: sekitar 5 jam), satu run sekitar 10 menit. Pencarian luas per tahun tidak berubah.
 - `tools/ops/deploy.sh` dan `fresh_deploy.sh` menyalakan, menunggu sehat, dan merollback `worker-cve` bersama service lain.
 - `docs/CVE_END_TO_END.md`, `docs/ARCHITECTURE.md`, dan `docs/CI_CD.md` menjelaskan reconcile, jendela 30 hari, dan `worker-cve`.
+
+## [0.8.12] - 2026-11-06
+
+**Perbaikan: scraper `github_poc_monitor` tidak lagi memenuhi worker.** Satu run dulu mencari PoC GitHub untuk SEMUA CVE di `cve_tracker` (2.469 di prod, terus bertambah sejak mirror CVE `live`) dengan budget GitHub Search 30/menit, jadi satu run lebih dari 80 menit padahal jadwalnya tiap jam. Run menumpuk, memenuhi keempat slot `worker`, dan pada 6 Nov ingest RSS, tugas maintenance, dan notifikasi berhenti sekitar 5 jam. Tanpa migrasi dan tanpa kunci `.env`.
+
+### Diperbaiki
+- `github_poc_monitor`: pencarian targeted (per CVE ter-track) dibatasi 600 per run (sekitar 20 menit). Daftar yang lebih besar dibagi ke beberapa jam berturut-turut menurut crc32 `cve_id`, sehingga tiap CVE tetap dicek, sekali per beberapa jam (prod sekarang: 5 irisan, tiap CVE dicek tiap 5 jam). Daftar sampai 600 CVE dicari semua tiap run, seperti dulu. Pencarian broad (repo `cve-{tahun}-*` dan alert Telegram PoC baru) tidak berubah.
 
 ## [0.8.11] - 2026-11-05
 

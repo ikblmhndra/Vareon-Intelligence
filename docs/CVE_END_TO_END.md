@@ -102,7 +102,7 @@ text gate. See the low-level flow in 4.1.
 record's `(vendor, product)` to catalog vendors and families, and then **promotes** matching records into
 `cve_tracker` according to the Monitored Tech entries. See 4.2 to 4.4.
 
-Since 0.8.12 the mirror heals itself: the hourly `cve.mirror_reconcile` compares every record version in
+Since 0.8.13 the mirror heals itself: the hourly `cve.mirror_reconcile` compares every record version in
 `deltaLog.json` (30 days) with `cve_records.modified_at` and refetches what is missing or outdated, so a lost
 `delta.json` window or a record dropped after its retries no longer needs a manual backfill. All CVE tasks
 (`cve.mirror_sync`, `cve.mirror_reconcile`, `cve.promote_entry`, `cve.mirror_purge`) run on the `cve` queue served by
@@ -145,7 +145,7 @@ production listed only `new_cve` while the CVE DB tab held 122,864 CVEs: the mir
 
 Cutover and rollback steps: `docs/CVE_CATALOG_CUTOVER.md`. Rollback is a flag, never a migration.
 
-Target state (from 0.8.12, set on prod after a 7-day watch, see `docs/prod-upgrade/0.8.12.md`): `PROMOTE=live` and
+Target state (from 0.8.13, set on prod after a 7-day watch, see `docs/prod-upgrade/0.8.13.md`): `PROMOTE=live` and
 `KEEP_LEGACY_NEW_CVE=false`, so the mirror is the single source and `new_cve` is suspended. Until then prod runs both.
 
 ## 4. Low-level flows
