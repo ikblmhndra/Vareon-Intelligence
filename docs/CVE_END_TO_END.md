@@ -44,16 +44,19 @@ flowchart TD
   mon["Monitored Tech, per client<br/>entries + catalog targets"]
 
   A["Path A: new_cve scraper<br/>hourly, queue scrape.api"]
-  B["Path B: cve.mirror_sync<br/>every 5 min, queue maintenance"]
+  B["Path B: cve.mirror_sync<br/>every 5 min, queue cve (worker-cve)"]
+  R["cve.mirror_reconcile<br/>hourly, queue cve (worker-cve)<br/>deltaLog vs mirror versions"]
 
   nvd --> A
   ten --> A
   mitre --> A
   v5 --> B
+  v5 -->|"deltaLog.json"| R
   mon -.->|"names"| A
   mon -.->|"entries and targets"| B
 
   B --> mir[("CVE mirror<br/>cve_records, cve_record_products")]
+  R -->|"refetch missing or outdated"| mir
   mir -->|"promotion = live"| trk
   mir -->|"promotion = shadow"| shd[("cve_promotion_shadow")]
   A --> trk[("cve_tracker<br/>one row per CVE and client")]
@@ -99,6 +102,12 @@ text gate. See the low-level flow in 4.1.
 record's `(vendor, product)` to catalog vendors and families, and then **promotes** matching records into
 `cve_tracker` according to the Monitored Tech entries. See 4.2 to 4.4.
 
+Since 0.8.12 the mirror heals itself: the hourly `cve.mirror_reconcile` compares every record version in
+`deltaLog.json` (30 days) with `cve_records.modified_at` and refetches what is missing or outdated, so a lost
+`delta.json` window or a record dropped after its retries no longer needs a manual backfill. All CVE tasks
+(`cve.mirror_sync`, `cve.mirror_reconcile`, `cve.promote_entry`, `cve.mirror_purge`) run on the `cve` queue served by
+the `worker-cve` container (`-Q cve -c 1`), so long scraper runs cannot starve them.
+
 ### 2.4 The tracker row
 
 `cve_tracker`, unique on `(cve_id, client_id)`: one row per CVE per client, and **one tech per row**.
@@ -112,7 +121,8 @@ and of the "Newest CVE detected" line in the UI.
 
 ## 3. Which path is active
 
-Read once per process, so a change needs a restart of `worker`, `beat` and `api`.
+Read once per process, so a change needs a restart of `worker`, `worker-cve`, `beat` and `api`. Use `up -d`, not
+`restart`, so the container picks up the changed `.env`.
 
 ```mermaid
 flowchart TD
@@ -132,6 +142,9 @@ production listed only `new_cve` while the CVE DB tab held 122,864 CVEs: the mir
 `PROMOTE` was `off` or `shadow` (the API does not say which).
 
 Cutover and rollback steps: `docs/CVE_CATALOG_CUTOVER.md`. Rollback is a flag, never a migration.
+
+Target state (from 0.8.12, set on prod after a 7-day watch, see `docs/prod-upgrade/0.8.12.md`): `PROMOTE=live` and
+`KEEP_LEGACY_NEW_CVE=false`, so the mirror is the single source and `new_cve` is suspended. Until then prod runs both.
 
 ## 4. Low-level flows
 
@@ -212,7 +225,7 @@ Properties that matter when something is missing:
 sequenceDiagram
   autonumber
   participant Beat
-  participant W as Worker (maintenance)
+  participant W as Worker (worker-cve, queue cve)
   participant G as cvelistV5 on GitHub
   participant P as cve_record parser
   participant C as catalog_resolve
@@ -251,6 +264,15 @@ Behaviours worth knowing:
   `deltaLog.json` when the last successful poll is too old or the new `fetchTime` is too far from the cursor. If
   the cursor is older than the oldest log entry the report says `gap_unrecoverable`; the only cure is
   `make backfill-cve-mirror SOURCE=<clone or zip of cvelistV5>`.
+- **Reconcile (hourly, minute 17, `cve.mirror_reconcile`)** does not trust the cursor. It downloads `deltaLog.json`
+  (~24 MB, 30 days), keeps the latest `dateUpdated` per CVE, and plans a refetch for every CVE that is missing from
+  `cve_records` or whose `modified_at` is older than the log, then runs the same per-record pipeline as the sync (same
+  advisory lock, at most `max_files_per_run`, the rest waits in `pending`). Records fetched and deliberately not
+  stored (not PUBLISHED, outside retention, no publish date) go to `skips` in `job_state["cve_mirror.reconcile"]`
+  and are not refetched while their `dateUpdated` is unchanged. The report (`planned`, `missing`, `outdated`,
+  `fixed`, `skipped`, `failed`, `duration_ms`, status) is logged as `cve_mirror_reconciled` and kept in `job_state`
+  for `/data-health`; a failed `deltaLog.json` download is recorded as an error, not swallowed. It never moves the
+  sync cursor. Beyond 30 days `make backfill-cve-mirror` is still the tool.
 - A failing record does not stop the batch: it goes to `pending` and is retried next tick (a bounded number of
   attempts, then dropped with a log line). Records beyond `max_files_per_run` (default 3000) wait in `pending`
   without using an attempt.
@@ -290,11 +312,18 @@ flowchart TD
 
 Notes:
 
+- **30-day creation window.** The sync and reconcile paths create a tracker row only when the record was published
+  within the last 30 days (`SYNC_CREATE_WINDOW`; `PromoteOutcome.held` marks a match that was withheld). An older
+  matching record still updates an existing row (score, references, affected) but does not create one, so a CNA or
+  kernel.org touching an old record no longer floods the tracker with `detected_on = now` rows. The history paths
+  (`cve.promote_entry` when an entry is added or mapped, `make promote-cve-mirror --since`) have no window and behave
+  as before.
 - `live` never deletes an existing tracker row, even if the CVE stops matching: tickets and false-positive marks
   are keyed by `(cve_id, client_id)` with no foreign key to the tracker.
 - When the record has no CVSS the row gets score `0.0` and an empty vector (same defaults as Path A), which the
   UI shows as **Unrated**.
-- Promotion has no 8-day lookback like Path A. A sync tick promotes the records it just ingested; adding or
+- Promotion has no 8-day lookback like Path A. A sync or reconcile tick promotes the records it just ingested (new
+  rows only inside the 30-day window above); adding or
   changing an entry promotes that entry's whole history from the mirror (4.4); `make promote-cve-mirror` can
   replay the entire mirror. Its `--since YYYY-MM-DD` limit is what you use at cutover so old history does not
   flood the tracker with `detected_on = now` and spoil MTTD.
@@ -498,7 +527,9 @@ The mirror (`cve_records`) is global: it is not per client. Everything per clien
 | Is the CVE in the tracker, even hidden or FP | `GET /api/cve?search=<id>&include_fp=true` with the right `X-Client-ID` |
 | What does an entry match | Monitored Tech > Targets (Path B); the entry name (Path A) |
 | What would the mirror promote, without writing | `make compare-promotion-shadow SINCE=<date>` (needs shadow mode) |
-| Sync health, gaps | worker log for `cve.mirror_sync`; the report has `gap_unrecoverable` |
+| Sync health, gaps | Data health > CVE ingest block (`status` off, red, amber or ok: red = last sync older than 15 min, amber = no reconcile yet, last reconcile older than 2 h, or its last report has status `error`); `worker-cve` log for `cve.mirror_sync`; the report has `gap_unrecoverable` |
+| Did the hourly reconcile find holes | `worker-cve` log line `cve_mirror_reconciled` (`missing` and `outdated` should be near 0 after the first run); same numbers in the CVE ingest block |
+| Did a scraper start twice | Scrapers > Recent Runs: status `overlap` (refused because a younger run of the same scraper was still `running`) |
 
 All of the `GET` calls are read-only and work from a logged-in browser session through `/api/proxy/api/...`.
 
@@ -518,7 +549,8 @@ does not check whether a run is already going (the CVEs-tab button does, with a 
 first.
 
 Run statuses: `ok`, `empty`, `partial` (a `new_cve` run that stopped at its cap, 4.1), `parse_error`,
-`fetch_error`, `rate_limited`, `backpressure`, `disabled`. `freshness` counts `ok`, `empty` and `partial` as a
+`fetch_error`, `rate_limited`, `backpressure`, `overlap` (refused: a younger run of the same scraper is still
+running; neutral in health), `disabled`. `freshness` counts `ok`, `empty` and `partial` as a
 successful check.
 A 300-row `new_cve` run took about 7 to 11 minutes on production (MITRE is rate-limited to 60 per minute), so give
 a manual run that long before judging it.
@@ -629,9 +661,18 @@ the new code is live it is redundant and can be removed with Reset to Defaults.
 ## 8. Known limits
 
 - Path A only sees CVEs published in the last 8 days, and only by keyword. A tech whose NVD description never says
-  its name is invisible to it.
-- Path A and Path B can disagree about `tech` for the same CVE when both run (`KEEP_LEGACY_NEW_CVE=true`): the row
-  flips to whichever wrote last.
+  its name is invisible to it. It is retired by `KEEP_LEGACY_NEW_CVE=false` once the mirror has been watched for a
+  week.
+- Path A and Path B can disagree about `tech` for the same CVE while both run (`KEEP_LEGACY_NEW_CVE=true`, the state
+  until the switch): the row flips to whichever wrote last.
+- Old CVEs do not enter the tracker on their own (30-day creation window, 4.3): a CVE whose CNA adds a monitored
+  product to `affected` months after publication stays in the CVE DB tab until an analyst promotes the entry
+  history. Accepted, because the same case produced the 786-row Linux flood of 2026-11-05.
+- Reconcile reads `deltaLog.json`, which covers 30 days and lags `delta.json` on the CDN; a longer gap needs
+  `make backfill-cve-mirror`. It costs one ~24 MB download per hour.
+- `github_poc_monitor` searches only CVEs published within 90 days or in CISA KEV, a rotating slice of about 300
+  per run, so the long tail of old non-KEV CVEs is not searched for PoCs.
+- Existing Path A false-positive and REJECTED tracker rows are not cleaned automatically by the mirror.
 - The enrichment sweep has no freshness filter, so its cost grows with the tracker.
 - `cve_threat_actors` and `cve_ttps` have no writer in this repository; `crossref` only reads them.
 - Ticket status values are a soft enum with no validation (ROADMAP #18).
@@ -647,7 +688,7 @@ the new code is live it is redundant and can be removed with Reset to Defaults.
 | Run framework, overrides, statuses, suspension | `packages/cti-scraper/src/cti_scraper/runner.py`, `supersede.py` |
 | Telegram summary | `packages/cti-scraper/src/cti_scraper/cve_alert.py` |
 | CNA parsing, text gate | `packages/cti-core/src/cti_core/cve_record.py`, `tech_match.py` |
-| Mirror sync | `packages/cti-core/src/cti_core/cve_mirror_sync.py`, worker task `apps/worker/src/cti_worker/tasks/cve_mirror.py` |
+| Mirror sync and reconcile | `packages/cti-core/src/cti_core/cve_mirror_sync.py` (`reconcile_plan`, `reconcile_once`), worker task `apps/worker/src/cti_worker/tasks/cve_mirror.py` |
 | Catalog resolver | `packages/cti-core/src/cti_core/catalog_resolve.py` |
 | Promotion | `packages/cti-core/src/cti_core/cve_promotion.py` |
 | Beat schedule | `apps/worker/src/cti_worker/beat.py` |

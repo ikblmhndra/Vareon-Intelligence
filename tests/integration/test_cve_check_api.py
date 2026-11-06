@@ -343,7 +343,7 @@ async def test_check_new_in_mirror_mode_sends_the_mirror_sync(
     resp = await api_client.post("/api/cve/check-new", headers=auth_header())
 
     assert (resp.status_code, resp.json()["sources"]) == (200, ["mirror"])
-    assert [(t["name"], t["queue"]) for t in celery.sent] == [("cve.mirror_sync", "maintenance")]
+    assert [(t["name"], t["queue"]) for t in celery.sent] == [("cve.mirror_sync", "cve")]
 
 
 async def test_check_new_while_sources_overlap_sends_both(
