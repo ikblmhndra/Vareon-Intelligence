@@ -6,6 +6,13 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
+## [0.8.12] - 2026-11-06
+
+**Perbaikan: scraper `github_poc_monitor` tidak lagi memenuhi worker.** Satu run dulu mencari PoC GitHub untuk SEMUA CVE di `cve_tracker` (2.469 di prod, terus bertambah sejak mirror CVE `live`) dengan budget GitHub Search 30/menit, jadi satu run lebih dari 80 menit padahal jadwalnya tiap jam. Run menumpuk, memenuhi keempat slot `worker`, dan pada 6 Nov ingest RSS, tugas maintenance, dan notifikasi berhenti sekitar 5 jam. Tanpa migrasi dan tanpa kunci `.env`.
+
+### Diperbaiki
+- `github_poc_monitor`: pencarian targeted (per CVE ter-track) dibatasi 600 per run (sekitar 20 menit). Daftar yang lebih besar dibagi ke beberapa jam berturut-turut menurut crc32 `cve_id`, sehingga tiap CVE tetap dicek, sekali per beberapa jam (prod sekarang: 5 irisan, tiap CVE dicek tiap 5 jam). Daftar sampai 600 CVE dicari semua tiap run, seperti dulu. Pencarian broad (repo `cve-{tahun}-*` dan alert Telegram PoC baru) tidak berubah.
+
 ## [0.8.11] - 2026-11-05
 
 **Indikator (IOC) kini punya siklus hidup: tabel `iocs` berganti nama menjadi `indicators`, tiap indikator punya masa berlaku (`valid_until`) menurut tipe, bisa dicabut (revoked) lewat feedback FP, dan membawa penanda TLP/PAP. Status dihitung, tidak disimpan: active, expired, revoked, atau allowlisted. Aktor, malware, tool, teknik ATT&CK, CVE, campaign, sektor, negara, dan korban ransomware kini masing-masing satu entitas dengan alias dan relasi (P7c-1). Halaman Entities menggantikan TA Room dan ATT&CK DB, dan nama entitas di seluruh aplikasi menjadi chip yang membuka halaman entitasnya (P7c-2). Enrichment kini menyimpan dulu, LLM menyusul (P7g): gateway LLM mati berarti judul menunggu di antrean `enrich_jobs` lalu terproses sendiri, bukan artikel yang diparkir menunggu Replay. Tiap story dan entitas kini punya paket hunting (query SPL Splunk dari template atas IOC dan TTP, plus aturan Sigma dari SigmaHQ menurut ID ATT&CK) (P7e).**

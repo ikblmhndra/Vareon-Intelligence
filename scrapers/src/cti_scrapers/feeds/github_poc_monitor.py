@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import html
 import re
+import zlib
 from collections.abc import Iterator
 from datetime import datetime, timedelta
 from typing import Any
@@ -46,6 +47,26 @@ from cti_scraper.schedule import spread
 from cti_scrapers.feeds._pacing import get_waiting
 
 _SEARCH_URL = "https://api.github.com/search/repositories"
+
+_TARGETED_SEARCHES_PER_RUN = 600
+"""Batas pencarian targeted per run: 600 / 30 per menit = 20 menit, jauh di bawah jadwal tiap jam.
+
+Prod 2026-11-06: `cve_tracker` 2.469 CVE (tumbuh cepat sejak mirror CVE `live`), satu run mencari
+semuanya = > 80 menit, run baru datang sebelum yang lama selesai, dan tumpukannya memenuhi keempat slot
+`worker` (ingest RSS berhenti ~5 jam). Daftar yang lebih besar dibagi ke beberapa jam berturut-turut."""
+
+
+def _targeted_slice(entries: list[dict[str, Any]], now: datetime) -> list[dict[str, Any]]:
+    """Irisan CVE untuk run ini. Bagian CVE ditentukan crc32 `cve_id` (stabil walau daftar berubah),
+    irisan yang aktif dari jam `now` (retry di jam yang sama dapat irisan yang sama). Daftar
+    <= batas: semua, seperti dulu. Dengan k irisan tiap CVE dicek tiap k jam."""
+    slices = -(-len(entries) // _TARGETED_SEARCHES_PER_RUN)
+    if slices <= 1:
+        return entries
+    slot = int(now.timestamp() // 3600) % slices
+    return [e for e in entries if zlib.crc32(e["cve_id"].encode()) % slices == slot]
+
+
 _MITRE_URL = "https://cveawg.mitre.org/api/cve"
 
 
@@ -223,7 +244,7 @@ class GithubPocMonitor(BaseScraper):
                     yield notice
 
     def _targeted_search(self, ctx: ScrapeContext) -> Iterator[CvePocItem]:
-        for entry in ctx.reference["true_positive_cves"]:
+        for entry in _targeted_slice(ctx.reference["true_positive_cves"], ctx.now):
             cve_id: str = entry["cve_id"]
             existing_urls: set[str] = entry["poc_urls"]
 
