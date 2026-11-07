@@ -10,6 +10,7 @@ import datetime
 import statistics
 import time
 from collections import defaultdict
+from collections.abc import Iterable
 from typing import Any
 
 from cti_core.db.repositories.dashboard import AsyncDashboardRepo
@@ -106,6 +107,23 @@ async def _compute_spikes(
     for sp in country_spikes:
         sp["entity_id"] = country_ids.get(str(sp["entity"]))
 
+    today = datetime.date.today()
+    axis = _date_axis(cutoff, today)
+    totals_by_date = dict(daily_total)
+    daily = {
+        "dates": [d.isoformat() for d in axis],
+        "threat_actors": _daily_series(
+            by_actor, (str(s["entity"]) for s in actor_spikes), cutoff, today
+        ),
+        "countries": _daily_series(
+            by_country, (str(s["entity"]) for s in country_spikes), cutoff, today
+        ),
+        "industries": _daily_series(
+            by_industry, (str(s["entity"]) for s in industry_spikes), cutoff, today
+        ),
+        "overall": [totals_by_date.get(d, 0) for d in axis],
+    }
+
     return {
         "threat_actors": actor_spikes,
         "countries": country_spikes,
@@ -117,7 +135,28 @@ async def _compute_spikes(
             "z_threshold": z_threshold,
             "recent_window": "last 7 days",
         },
+        "daily": daily,
     }
+
+
+def _date_axis(start: datetime.date, end: datetime.date) -> list[datetime.date]:
+    """Sumbu tanggal inklusif `start..end`, menaik."""
+    return [start + datetime.timedelta(days=i) for i in range((end - start).days + 1)]
+
+
+def _daily_series(
+    raw: list[tuple[datetime.date, str, int]],
+    entities: Iterable[str],
+    start: datetime.date,
+    end: datetime.date,
+) -> dict[str, list[int]]:
+    """Hitungan harian per entitas, zero-filled di sumbu `start..end`. Hanya `entities`
+    yang dimuat (entitas yang masuk daftar spike), bukan seluruh `raw`, supaya respons kecil."""
+    names = list(dict.fromkeys(entities))
+    wanted = set(names)
+    series = _build_series([r for r in raw if r[1] in wanted])
+    axis = _date_axis(start, end)
+    return {e: [series.get(e, {}).get(d, 0) for d in axis] for e in names}
 
 
 def _build_series(
