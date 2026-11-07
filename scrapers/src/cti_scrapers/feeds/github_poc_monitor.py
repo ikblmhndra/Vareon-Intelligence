@@ -53,9 +53,10 @@ _MITRE_URL = "https://cveawg.mitre.org/api/cve"
 
 _CVE_ID_RE = re.compile(r"(cve-\d{4}-\d+)")
 
-POC_SEARCH_CAP = 300
-"""Batas kasar pencarian GitHub per run (30/menit, jadi ~10 menit). Dulu satu run mencari semua
-CVE true-positive (2.469 di prod, ~2 jam)."""
+POC_SEARCH_CAP = 250
+"""Batas kasar pencarian GitHub per run (30/menit, ~8 menit pencarian targeted). Dulu satu run
+mencari semua CVE true-positive (2.469 di prod, ~2 jam). 0.8.13 memakai 300, tapi di prod run-nya
+rata-rata ~18 menit (pencarian broad + lookup MITRE ikut makan waktu), di atas target 15 menit."""
 
 
 def poc_slice(

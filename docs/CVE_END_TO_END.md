@@ -688,7 +688,7 @@ the new code is live it is redundant and can be removed with Reset to Defaults.
   history. Accepted, because the same case produced the 786-row Linux flood of 2026-11-05.
 - Reconcile reads `deltaLog.json`, which covers 30 days and lags `delta.json` on the CDN; a longer gap needs
   `make backfill-cve-mirror`. It costs one ~24 MB download per hour.
-- `github_poc_monitor` searches only CVEs published within 90 days or in CISA KEV, a rotating slice of about 300
+- `github_poc_monitor` searches only CVEs published within 90 days or in CISA KEV, a rotating slice of about 250
   per run, so the long tail of old non-KEV CVEs is not searched for PoCs.
 - Existing Path A false-positive and REJECTED tracker rows are not cleaned automatically by the mirror.
 - The enrichment sweep has no freshness filter, so its cost grows with the tracker.
