@@ -6,6 +6,21 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
+## [0.8.15] - 2026-11-08
+
+**Redesain FigCraft: tiga sumber data baru untuk halaman PIR, Intelligence, dan MITRE, plus penyeragaman tema web.** API mendapat cakupan PIR per minggu, seri harian per entitas yang melonjak, dan layer ATT&CK Navigator yang sama persis dengan heatmap yang terlihat. Web memakai satu skala tier risiko, border field yang terbaca, dan fokus yang jelas. Tanpa migrasi dan tanpa kunci `.env`.
+
+### Ditambahkan
+- `GET /api/pir/{pir_id}/coverage/weekly`: jumlah artikel per minggu untuk grafik cakupan PIR.
+- `GET /api/spikes`: respons kini bertipe (`SpikesResponse`) dan punya blok `daily`, yaitu seri harian per entitas yang melonjak. Key lama tidak berubah.
+- `GET /api/mitre/navigator-layer` dan `/navigator-export`: parameter opsional `top_rows`, `top_ttps`, `ttp_source` supaya layer yang diekspor sama dengan heatmap yang sedang tampil.
+
+### Diubah
+- Web: satu skala tier risiko di risk matrix (LOW 0-39, MED 40-69, HIGH 70-100).
+- Web: border field memakai `--input` dengan kontras minimal 3:1, ring fokus berwarna ink, warna warning `#A04A07`, dan aturan breakpoint di `lg` (1024px).
+
+**Saat upgrade dari 0.8.14:** `make deploy`, tidak ada langkah lain. Runbook: `docs/prod-upgrade/0.8.15.md` dan `docs/PROD_UPGRADE_0.8.14_TO_0.8.15.md`.
+
 ## [0.8.14] - 2026-11-07
 
 **Perbaikan: sweep enrichment CVE (KEV, Exploit-DB, EPSS) tidak lagi menahan lock `cve_tracker` lebih dari satu jam, dan tidak ada dua sweep yang jalan bersamaan.** Pada 6 Nov di prod, satu sweep membuka satu transaksi lebih dari 75 menit selama scraping Exploit-DB. Sweep kedua (sisa antrean sesudah deploy) dan backfill promosi mirror ikut menunggu, sehingga sync dan reconcile CVE berhenti sekitar 35 menit. Tanpa migrasi dan tanpa kunci `.env`.
