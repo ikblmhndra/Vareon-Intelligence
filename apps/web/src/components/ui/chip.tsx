@@ -65,7 +65,7 @@ export function Chip(props: ChipProps) {
   return (
     <span
       className={cn(
-        "inline-flex items-center whitespace-nowrap rounded-md px-2 py-0.5 text-2xs font-semibold uppercase",
+        "inline-flex items-center whitespace-nowrap rounded-[6px] px-2 py-0.5 text-2xs font-semibold uppercase",
         tone,
         className,
       )}

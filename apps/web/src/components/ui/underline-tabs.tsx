@@ -29,7 +29,7 @@ export function UnderlineTabs<T extends string>({
       role="tablist"
       aria-label={ariaLabel}
       onKeyDown={onKeyDown}
-      className={cn("flex gap-6 overflow-x-auto border-b border-border", className)}
+      className={cn("flex gap-6 overflow-x-auto border-b border-border px-1 pt-1", className)}
     >
       {items.map((item, i) => {
         const active = item.value === value;

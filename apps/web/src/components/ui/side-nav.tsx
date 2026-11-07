@@ -25,7 +25,7 @@ export function SideNav({ items, "aria-label": ariaLabel, className }: SideNavPr
             href={item.href}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "rounded-lg px-3 py-2 text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+              "rounded-[8px] px-3 py-2 text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
               active
                 ? "bg-surface font-semibold text-foreground"
                 : "text-muted-foreground hover:bg-surface hover:text-foreground",
