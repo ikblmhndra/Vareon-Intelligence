@@ -243,3 +243,23 @@ async def test_pir_weekly_coverage(
         f"/api/pir/{pir_id}/coverage/weekly", params={"weeks": 0}, headers=auth_header()
     )
     assert bad.status_code == 422
+
+
+async def test_pir_weekly_coverage_other_client_matches_articles_route(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+) -> None:
+    """PIR milik client lain: weekly coverage membalas status yang sama dengan route
+    `/articles` (404, tidak membocorkan keberadaan), bukan 200/403."""
+    clients = AsyncClientRepo(api_session)
+    await clients.ensure_default()
+    await clients.create(client_id="acme", name="Acme", countries=[])
+    other = await AsyncPIRRepo(api_session).create(
+        {"title": "Acme PIR", "criteria": {"threat_actors": ["Apt41"]}}, client_id="acme"
+    )
+    headers = auth_header(role="analyst", client_ids=["default"])
+    articles = await api_client.get(f"/api/pir/{other.id}/articles", headers=headers)
+    weekly = await api_client.get(f"/api/pir/{other.id}/coverage/weekly", headers=headers)
+    assert articles.status_code == 404
+    assert weekly.status_code == articles.status_code

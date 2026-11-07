@@ -275,3 +275,42 @@ async def test_weekly_coverage_future_start_returns_none(async_db_session: Async
         client_id="default",
     )
     assert await repo.weekly_coverage(pir, weeks=12, today=today) is None
+
+
+async def test_weekly_coverage_trims_first_week_before_mid_week_start(
+    async_db_session: AsyncSession,
+) -> None:
+    """`start_date` di tengah minggu: artikel di minggu yang sama tapi SEBELUM start_date
+    tidak dihitung di minggu pertama; artikel pada/sesudah start_date dihitung."""
+    await _ensure_clients(async_db_session)
+    article_repo = AsyncArticleRepo(async_db_session)
+    today = datetime.date.today()
+    monday = today - datetime.timedelta(days=today.weekday())
+    # Pakai minggu lalu supaya Rabu dan Senin-Selasa selalu sudah lewat dan dalam jendela.
+    week_start = monday - datetime.timedelta(days=7)
+    start = week_start + datetime.timedelta(days=2)  # Rabu
+    before = week_start + datetime.timedelta(days=1)  # Selasa, sebelum start_date
+    for url, day in (("before", before), ("on-start", start)):
+        a = await article_repo.upsert(
+            url=f"https://example.com/midweek-{url}",
+            title=f"APT41 {url}",
+            source="gbhacker",
+            posted_on=day,
+            news_type="apac",
+        )
+        await article_repo.set_enrichment(a, threat_actors=["Apt41"])
+    repo = AsyncPIRRepo(async_db_session)
+    pir = await repo.create(
+        {
+            "title": "Mid-week",
+            "criteria": {"threat_actors": ["Apt41"]},
+            "start_date": start,
+        },
+        client_id="default",
+    )
+
+    result = await repo.weekly_coverage(pir, weeks=12, today=today)
+    assert result is not None
+    _, _, rows = result
+    assert rows[0][0] == week_start
+    assert rows[0][1] == 1  # hanya artikel pada start_date
