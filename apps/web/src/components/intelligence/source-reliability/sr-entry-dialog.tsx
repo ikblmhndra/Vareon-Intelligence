@@ -26,7 +26,7 @@ interface SrEntryDialogProps {
 }
 
 function nativeSelectClass() {
-  return "h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-focus dark:bg-input/30";
+  return "h-8 w-full rounded-lg border border-input bg-surface px-2.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 }
 
 /** Port modal Add/Edit Source Rating (`source_reliability.js:113-299`,
