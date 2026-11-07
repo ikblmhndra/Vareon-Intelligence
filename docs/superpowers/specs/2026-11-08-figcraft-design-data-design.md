@@ -53,9 +53,11 @@ Mockup: "Strongest signal" card, daily bars over the lookback plus a baseline-me
 - The response gets a Pydantic model (`SpikesResponse` with `EntitySpike`, `OverallSpike`, `SpikeDaily`,
   `SpikeParameters`) so `schema.d.ts` is typed; today it is `dict[str, object]`. Field names and
   types stay exactly the same (`entity_id` nullable).
-- Known quirk, kept on purpose: `baseline_mean` averages only days that had at least one article
-  (existing behaviour). With zero-filled bars, the line can sit above the visual average of the
-  baseline bars. Changing it changes detection results, so it is a follow-up, not part of this change.
+- Baseline (revised 2026-11-08, user decision): detection now counts baseline days without articles
+  as 0 for mean and standard deviation, so `baseline_mean` matches the zero-filled `daily` bars. This
+  changes detection results on purpose. An entity still needs 5 baseline days with articles; the
+  old `mean < 0.5` filter is dropped (it never triggered on non-zero days and would now hide sparse
+  entities).
 
 ## 3. ATT&CK Navigator layer from the heatmap
 
@@ -77,8 +79,10 @@ the heatmap filters: they export every technique observed in the period.
 - Code: `AsyncMitreHeatmapRepo.get_heatmap_navigator_layer(...)` next to `get_navigator_layer`, with
   the layer envelope shared through one helper.
 - Web: the heatmap's export button passes its current rows/columns/source filters.
-- Not fixed here (follow-up): "Open in Navigator" passes a `layerURL` to the proxy, which
-  mitre-attack.github.io cannot fetch without the session cookie.
+- "Open in Navigator" (revised 2026-11-08, user decision): `#layerURL=` cannot work (no session cookie
+  from mitre-attack.github.io; http internal hosts are mixed content), so the button opens Navigator,
+  downloads the same layer as Export, and tells the user to use "Open Existing Layer → Upload from local".
+  No auth change.
 
 ## 4. Frontend alignment
 

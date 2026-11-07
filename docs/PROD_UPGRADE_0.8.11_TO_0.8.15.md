@@ -30,7 +30,7 @@ read-only session (`PGOPTIONS=-c default_transaction_read_only=on`); anything ma
      disabled, disk). Write the numbers down for the after-deploy comparison.
    - 0.8.14: **no sweep is running** (both checks: `pg_stat_activity` and the worker log). Sweeps start at 00, 03, 06, ...
      UTC; the safest window is roughly 90 minutes to 3 hours after a slot.
-   - 0.8.15: nothing to check.
+   - 0.8.15: record the Early Warning anomaly counts per group (30d, z 2.0) to compare after deploy.
 2. **`.env`:** no new key in any of the four releases.
 3. **`make deploy`** (with `sudo`). Beat restarts with it, which the 0.8.13 queue routing needs.
 4. **After deploy:**
@@ -321,6 +321,12 @@ lands in the same PR.
   coverage chart. Read-only query on existing tables.
 - `GET /api/spikes` now has a typed response (`SpikesResponse`) with a new `daily` block (daily series per spiking
   entity). Existing keys are unchanged.
+- **Spike detection changes:** the baseline mean and standard deviation now count baseline days without articles as 0
+  (before, only days with articles counted). `baseline_mean` drops and z-scores of sparse entities rise, so the number
+  and order of Early Warning anomalies change after deploy. An entity still needs at least 5 baseline days with
+  articles. Exec dashboard industry spikes use the same detector and change the same way.
+- MITRE page: "Open in Navigator" now opens ATT&CK Navigator and downloads the layer, with a hint to load it via
+  "Open Existing Layer → Upload from local" (the old `#layerURL=` link never worked behind login).
 - `GET /api/mitre/navigator-layer` and `/navigator-export` accept the optional `top_rows`, `top_ttps` and `ttp_source`
   parameters, so the exported ATT&CK Navigator layer matches the visible heatmap. Without them the output is unchanged.
 - Web: one risk-tier scale (LOW 0-39, MED 40-69, HIGH 70-100) in the risk matrix, ink focus ring, warning colour
@@ -338,14 +344,19 @@ None.
 
 ### Before deploy
 
-Nothing to check. All changes are read-only endpoints and web styling.
+Record the current Early Warning picture for comparison: anomaly count per group (threat actors, industries,
+countries, overall) at lookback 30d, z 2.0, from Intelligence > Early Warning or `GET /api/spikes`. Nothing else to
+check; all other changes are read-only endpoints and web styling.
 
 ### After deploy
 
 1. `GET /api/health` reports version `0.8.15`.
 2. Intelligence > Early Warning: the spike view still renders (it reads `/api/spikes`); the response now includes `daily`.
+   Compare with the counts recorded before deploy: different anomalies and lower `baseline_mean` values are expected
+   (empty baseline days now count as 0); an empty list where there were many anomalies is not.
 3. PIR page: `GET /api/pir/<id>/coverage/weekly` returns 200 with a weekly series for an existing PIR.
-4. MITRE page: the Navigator export opens in ATT&CK Navigator and lists the same techniques as the visible heatmap.
+4. MITRE page: "Open in Navigator" opens ATT&CK Navigator and downloads the layer; uploading it ("Open Existing
+   Layer → Upload from local") shows the same techniques as the visible heatmap.
 5. Spot-check light and dark theme: field borders, focus ring and the risk matrix colours.
 
 ### One-off commands
@@ -360,4 +371,6 @@ and the `daily` block; nothing is written to the database, so there is nothing t
 ### Known risks
 
 - Cached browser bundles may show old colours until a hard refresh after the web image changes.
+- Early Warning anomalies change by design (zero-filled baseline). Analysts used to the old list may see entities
+  appear or drop out; rollback to 0.8.14 restores the old detection.
 - The weekly coverage query scans article rows by week for one PIR; check its latency on prod-sized data on first use.
