@@ -1,4 +1,4 @@
-"""`poc_slice`: irisan berputar per jam supaya pencarian GitHub per run terbatas (~300)."""
+"""`poc_slice`: irisan berputar per jam, pencarian GitHub per run dibatasi `POC_SEARCH_CAP`."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ def _at(hour: int) -> datetime:
 
 
 def test_slice_returns_everything_under_cap() -> None:
-    entries = _entries(250)
+    entries = _entries(POC_SEARCH_CAP)
     for hour in range(24):
         assert poc_slice(entries, _at(hour)) == entries
 
@@ -25,7 +25,7 @@ def test_slice_returns_everything_under_cap() -> None:
 def test_slice_covers_every_cve_within_k_hours() -> None:
     entries = _entries(1425)
     k = math.ceil(len(entries) / POC_SEARCH_CAP)
-    assert k == 5
+    assert k == 6  # 1.425 kandidat (prod 2026-11-06) / 250
     slices = [{e["cve_id"] for e in poc_slice(entries, _at(h))} for h in range(k)]
     assert set().union(*slices) == {e["cve_id"] for e in entries}
     assert sum(len(s) for s in slices) == len(entries)  # saling lepas
@@ -35,7 +35,7 @@ def test_slice_covers_every_cve_within_k_hours() -> None:
 
 def test_slice_covers_every_cve_across_midnight() -> None:
     entries = _entries(1425)
-    k = 5
+    k = math.ceil(len(entries) / POC_SEARCH_CAP)
     slices = [{e["cve_id"] for e in poc_slice(entries, _at(h))} for h in range(22, 22 + k)]
     assert set().union(*slices) == {e["cve_id"] for e in entries}
 
