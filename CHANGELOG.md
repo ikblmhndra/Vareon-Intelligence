@@ -17,9 +17,9 @@ router `changelog.py`) -- parser-nya expect header persis
 
 ### Diubah
 - Web: satu skala tier risiko di risk matrix (LOW 0-39, MED 40-69, HIGH 70-100).
-- Web: border field memakai `--input` dengan kontras minimal 3:1, ring fokus berwarna ink, warna warning `#A04A07`, dan aturan breakpoint di `lg` (1024px).
+- Web: ring fokus berwarna ink, warna warning `#A04A07`, aturan breakpoint di `lg` (1024px), dan token border `--input` yang lebih gelap (kontras minimal 3:1). Token `--input` hanya dipakai Textarea, Checkbox, helper field buatan sendiri, dan Button outline mode gelap; Input dan trigger Select tetap berlatar `bg-muted` tanpa border terlihat.
 
-**Saat upgrade dari 0.8.14:** `make deploy`, tidak ada langkah lain. Runbook: `docs/prod-upgrade/0.8.15.md` dan `docs/PROD_UPGRADE_0.8.14_TO_0.8.15.md`.
+**Saat upgrade dari 0.8.14:** `make deploy`, tidak ada langkah lain. Dari prod 0.8.11 (versi yang sedang jalan): ikuti runbook gabungan `docs/PROD_UPGRADE_0.8.11_TO_0.8.15.md`; cek per rilis ada di `docs/prod-upgrade/0.8.15.md`.
 
 ## [0.8.14] - 2026-11-07
 
