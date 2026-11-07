@@ -70,9 +70,12 @@ export function MitreHeatmapView() {
     window.open("https://mitre-attack.github.io/attack-navigator/", "_blank", "noopener");
     try {
       await downloadLayer();
+      // Tetap tampil sampai ditutup: user biasanya sedang di tab Navigator saat toast muncul.
       toast.info("Layer downloaded", {
-        description: "In ATT&CK Navigator choose Open Existing Layer → Upload from local, then pick the downloaded JSON.",
-        duration: 12000,
+        description:
+          "In ATT&CK Navigator choose Open Existing Layer → Upload from local, then pick the downloaded JSON. If no tab opened, go to mitre-attack.github.io/attack-navigator.",
+        duration: Infinity,
+        closeButton: true,
       });
     } catch {
       toast.error("Failed to download the layer.");
@@ -116,7 +119,7 @@ export function MitreHeatmapView() {
           </Select>
         </div>
         <div className="ml-auto flex gap-2">
-          <Button size="sm" variant="outline" disabled={exporting} onClick={() => void downloadLayer()}>
+          <Button size="sm" variant="outline" disabled={exporting} onClick={() => void downloadLayer().catch(() => toast.error("Failed to download the layer."))}>
             <DownloadIcon /> Download Layer
           </Button>
           <Button size="sm" variant="outline" disabled={exporting} onClick={() => void openNavigator()}>

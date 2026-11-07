@@ -322,8 +322,9 @@ lands in the same PR.
 - `GET /api/spikes` now has a typed response (`SpikesResponse`) with a new `daily` block (daily series per spiking
   entity). Existing keys are unchanged.
 - **Spike detection changes:** the baseline mean and standard deviation now count baseline days without articles as 0
-  (before, only days with articles counted). `baseline_mean` drops and z-scores of sparse entities rise, so the number
-  and order of Early Warning anomalies change after deploy. An entity still needs at least 5 baseline days with
+  (before, only days with articles counted). `baseline_mean` drops for every entity with empty baseline days; sparse
+  entities get higher z-scores, while entities with uneven daily counts can get lower ones (their std rises). The
+  number and order of Early Warning anomalies change after deploy in both directions. An entity still needs at least 5 baseline days with
   articles. Exec dashboard industry spikes use the same detector and change the same way.
 - MITRE page: "Open in Navigator" now opens ATT&CK Navigator and downloads the layer, with a hint to load it via
   "Open Existing Layer → Upload from local" (the old `#layerURL=` link never worked behind login).
