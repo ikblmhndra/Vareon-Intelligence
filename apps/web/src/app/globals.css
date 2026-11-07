@@ -42,6 +42,7 @@
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
   --color-popover-foreground: var(--popover-foreground);
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
@@ -139,6 +140,7 @@
   --popover-foreground: var(--foreground);
   --primary: #d0002f; /* Privy Red, digelapkan sedikit dari #e60034 supaya teks merah di atas beige lulus AA */
   --primary-foreground: #ffffff;
+  --primary-hover: #b00025;
   --secondary: #f0e7db;
   --secondary-foreground: var(--foreground);
   --muted: var(--panel);
@@ -209,6 +211,7 @@
   --popover-foreground: var(--foreground);
   --primary: #ff4d6d;
   --primary-foreground: #0f070b;
+  --primary-hover: #ff6b85;
   --secondary: #33202f;
   --secondary-foreground: var(--foreground);
   --muted: var(--panel);
