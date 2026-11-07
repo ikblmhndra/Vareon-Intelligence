@@ -68,3 +68,5 @@ extraction via `FormData` must check whether the key EXISTS
   controls are 44px below 640px (`max-sm:h-11` on `Button`/`Input`/`Select`); tab switchers use `TabPills`.
 - **Verify in both modes**: after changing global tokens or shared primitives, check contrast in light AND dark on the
   dense pages (Risk Matrix, IOC, Exec, Scrapers), plus the dialogs (changelog, brief, ticket).
+- **Breakpoints**: 2-3 column layouts collapse to one column below 1024 px (`lg:`, e.g. `lg:grid-cols-2`), not `md:`.
+  Mobile layouts are still out of scope.

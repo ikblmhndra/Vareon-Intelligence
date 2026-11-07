@@ -147,10 +147,10 @@
   --accent-foreground: var(--foreground);
   --destructive: #b42318; /* oranye-merah, beda hue dari --primary */
   --border: #e3d6c6;
-  --input: #e3d6c6;
-  --ring: #d0002f;
+  --input: #8f7565;
+  --ring: var(--foreground);
   --success: #17703f;
-  --warning: #9a4a00;
+  --warning: #a04a07;
   --info: #256a8a;
   --tag-violet: #6b4a9e;
   --severity-critical: #b42318;
@@ -217,8 +217,8 @@
   --accent-foreground: var(--foreground);
   --destructive: #ff7a6e;
   --border: #55344a;
-  --input: #55344a;
-  --ring: #ff4d6d;
+  --input: #8a6a7c;
+  --ring: var(--foreground);
   --success: #76ce93;
   --warning: #ffa164;
   --info: #92bbd1;
