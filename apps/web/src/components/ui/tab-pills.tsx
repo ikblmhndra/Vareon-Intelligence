@@ -16,12 +16,12 @@ export interface TabPillItem<T extends string> {
 /** Kelas satu pil. Dipakai juga `IntelligenceNav` (tautan antar-route, bukan tab). */
 export function tabPillClass(active: boolean, tone: "default" | "destructive" = "default") {
   return cn(
-    "shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-sm font-medium transition-colors duration-200",
+    "h-[31px] shrink-0 whitespace-nowrap rounded-full border px-3 py-[7px] text-[13px] font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
     active
       ? tone === "destructive"
         ? "border-destructive/40 bg-destructive/10 text-destructive-text"
-        : "border-primary/30 bg-primary/10 text-primary-text"
-      : "border-border bg-surface text-muted-foreground hover:bg-muted hover:text-foreground",
+        : "border-foreground bg-foreground text-background"
+      : "border-border bg-background text-foreground hover:bg-surface",
   );
 }
 
@@ -83,7 +83,7 @@ export function TabPills<T extends string>({
           >
             {item.label}
             {item.count != null && (
-              <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 font-code text-2xs text-muted-foreground">
+              <span className="ml-1.5 rounded-full bg-panel px-1.5 py-0.5 font-code text-2xs text-muted-foreground">
                 {item.count}
               </span>
             )}
