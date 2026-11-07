@@ -376,6 +376,21 @@ There is no freshness filter: everything is re-checked each time, so the cost gr
 "CISA KEV / EPSS / Exploit-DB Lookup" buttons run the same code on demand. `github_poc_monitor` (a scraper)
 sets `poc_available` and `cve_pocs` separately.
 
+Transactions and concurrency (since 0.8.14):
+
+- Each step runs in its own database session and commits when it finishes, so KEV results are saved even if
+  Exploit-DB or EPSS fails later.
+- The Exploit-DB step commits after reading the CVE list and after every CVE. Each CVE is written in a
+  savepoint, so one failing write does not undo the others. The HTTP lookups run outside any transaction.
+- Only one sweep runs at a time: a Redis lock (`cti:cve:enrichment_sweep:lock`, TTL 3 h) makes a second sweep
+  return `{"status": "skipped"}` and log `cve_enrichment_skipped_running`.
+
+Why: on 2026-11-06 the sweep used one session for all three steps. The Exploit-DB step kept one transaction
+open for more than 75 minutes while scraping about 2,500 CVEs, holding row locks on `cve_tracker`. A second
+sweep, left in the `maintenance` queue by a deploy, waited behind it, and so did
+`tools/ops/promote_cve_mirror.py --apply`. That tool holds the mirror ingest lock, so `cve.mirror_sync` and
+`cve.mirror_reconcile` reported `locked` for about 35 minutes.
+
 ### 4.6 Reading it: what the CVEs tab shows
 
 ```mermaid

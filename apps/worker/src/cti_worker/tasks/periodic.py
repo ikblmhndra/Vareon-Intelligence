@@ -254,23 +254,48 @@ async def _run_cve_enrichment() -> dict[str, Any]:
     )
     from cti_core.db.engine import async_session
 
+    # Satu session (= transaksi) per langkah: dulu satu session untuk ketiganya, jadi hasil KEV
+    # baru ter-commit sesudah Exploit-DB dan EPSS selesai (> 1 jam), dan gagal satu langkah
+    # (session rusak) ikut menggagalkan langkah berikutnya.
+    steps = (
+        ("cisa_kev", run_cisa_kev_lookup),
+        ("exploit_db", run_exploit_db_bulk_lookup),
+        ("epss", run_epss_lookup),
+    )
     results: dict[str, Any] = {}
-    async with async_session() as session:
+    for name, run in steps:
         try:
-            results["cisa_kev"] = await run_cisa_kev_lookup(session)
+            async with async_session() as session:
+                results[name] = await run(session)
         except Exception as e:
-            log.warning("cve_enrichment_cisa_kev_failed", error=str(e))
-        try:
-            results["exploit_db"] = await run_exploit_db_bulk_lookup(session)
-        except Exception as e:
-            log.warning("cve_enrichment_exploit_db_failed", error=str(e))
-        try:
-            results["epss"] = await run_epss_lookup(session)
-        except Exception as e:
-            log.warning("cve_enrichment_epss_failed", error=str(e))
+            log.warning(f"cve_enrichment_{name}_failed", error=str(e))
     return results
+
+
+_SWEEP_LOCK_KEY = "cti:cve:enrichment_sweep:lock"
+_SWEEP_LOCK_TTL_MS = 3 * 60 * 60 * 1000
+"""Sama dengan jadwal (tiap 3 jam): lock yang tertinggal karena worker mati habis sendiri."""
+
+
+def _sweep_lock() -> Any:
+    import redis
+    from cti_core.config import get_settings
+
+    from cti_worker.beat_lock import BeatLock
+
+    client = redis.Redis.from_url(get_settings().redis.url)
+    return BeatLock(client, ttl_ms=_SWEEP_LOCK_TTL_MS, key=_SWEEP_LOCK_KEY)
 
 
 @app.task(bind=True, name="cve.enrichment_sweep", queue=QUEUE_MAINTENANCE)
 def cve_enrichment_sweep(self: Any) -> dict[str, object]:
-    return _run_async(_run_cve_enrichment())
+    """Satu sweep sekaligus: prod 2026-11-06 dua sweep (sisa antrean `maintenance` sesudah
+    deploy) jalan bersamaan dan saling menunggu lock baris `cve_tracker`."""
+    lock = _sweep_lock()
+    if not lock.acquire():
+        log.info("cve_enrichment_skipped_running")
+        return {"status": "skipped"}
+    try:
+        return _run_async(_run_cve_enrichment())
+    finally:
+        lock.release()

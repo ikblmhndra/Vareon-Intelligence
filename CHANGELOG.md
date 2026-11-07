@@ -6,6 +6,17 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
+## [0.8.14] - 2026-11-07
+
+**Perbaikan: sweep enrichment CVE (KEV, Exploit-DB, EPSS) tidak lagi menahan lock `cve_tracker` lebih dari satu jam, dan tidak ada dua sweep yang jalan bersamaan.** Pada 6 Nov di prod, satu sweep membuka satu transaksi lebih dari 75 menit selama scraping Exploit-DB. Sweep kedua (sisa antrean sesudah deploy) dan backfill promosi mirror ikut menunggu, sehingga sync dan reconcile CVE berhenti sekitar 35 menit. Tanpa migrasi dan tanpa kunci `.env`.
+
+### Diperbaiki
+- `cve.enrichment_sweep`: tiap langkah (KEV, Exploit-DB, EPSS) memakai session sendiri dan langsung di-commit, jadi hasil KEV tersimpan walau langkah sesudahnya gagal.
+- Lookup Exploit-DB massal (sweep dan tombol "Exploit-DB Lookup"): commit sesudah daftar CVE dibaca dan sesudah tiap CVE; lookup HTTP berjalan di luar transaksi; tulisan tiap CVE dibungkus savepoint sehingga satu CVE gagal tidak membatalkan yang lain.
+- Hanya satu sweep sekaligus: kunci Redis `cti:cve:enrichment_sweep:lock` (TTL 3 jam); sweep kedua langsung selesai dengan status `skipped`.
+
+**Saat upgrade dari 0.8.13:** `make deploy`, tidak ada langkah lain. Runbook: `docs/prod-upgrade/0.8.14.md` dan `docs/PROD_UPGRADE_0.8.13_TO_0.8.14.md`.
+
 ## [0.8.13] - 2026-11-06
 
 **CVE Tracker kini punya satu sumber yang menyembuhkan diri sendiri: mirror CVE List V5 dicocokkan tiap jam dengan `deltaLog.json`, CVE yang hilang atau usang diunduh ulang otomatis, dan tugas CVE punya antrean serta worker sendiri sehingga scraper lambat tidak lagi menghambatnya.** Latar belakang: pada 2026-11-06 di prod, pool `worker` penuh oleh 4 run `github_poc_monitor` bersamaan, sync mirror tertinggal lebih dari satu jam, 50 CVE PUBLISHED 2026 tidak ada di mirror, dan 786 CVE lama (terbit 2025) menjadi baris tracker baru karena kernel.org menyentuh recordnya.
