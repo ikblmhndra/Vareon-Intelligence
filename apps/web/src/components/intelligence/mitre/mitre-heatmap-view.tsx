@@ -18,6 +18,10 @@ const VIEWS = [
   { value: "industry", label: "Industry" },
 ] as const;
 const DAY_OPTIONS = [30, 90, 180, 365];
+// Heatmap belum punya kontrol baris/kolom/sumber: ukuran yang tampil = default `/heatmap`.
+// Dikirim eksplisit ke export supaya layer Navigator = heatmap yang terlihat.
+const TOP_ROWS = 15;
+const TOP_TTPS = 20;
 
 /** Port `loadMitreHeatmap()`/`downloadNavigatorLayer()`/`openNavigator()`
  * (`scraper.js:68-182`) -- heatmap TTP OBSERVED di artikel (`ArticleTTP`,
@@ -42,14 +46,14 @@ export function MitreHeatmapView() {
     try {
       const clientId = getActiveClientId();
       const resp = await fetch(
-        `/api/proxy/api/mitre/navigator-export?view=${view}&days=${days}`,
+        `/api/proxy/api/mitre/navigator-export?view=${view}&days=${days}&top_rows=${TOP_ROWS}&top_ttps=${TOP_TTPS}`,
         clientId ? { headers: { "X-Client-ID": clientId } } : undefined,
       );
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const blob = await resp.blob();
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = `cti_navigator_${view}_${days}d.json`;
+      a.download = `cti_navigator_${view}_${days}d_r${TOP_ROWS}_c${TOP_TTPS}.json`;
       a.click();
       URL.revokeObjectURL(a.href);
     } finally {

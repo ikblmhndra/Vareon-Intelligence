@@ -83,3 +83,17 @@ async def test_mitre_ttp_articles_empty(
     )
     assert resp.status_code == 200
     assert resp.json() == snapshot
+
+
+async def test_navigator_export_heatmap_mode(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+) -> None:
+    params = {"view": "ta", "days": 90, "top_rows": 10, "top_ttps": 12}
+    resp = await api_client.get("/api/mitre/navigator-export", params=params, headers=auth_header())
+    assert resp.status_code == 200
+    assert "_r10_c12" in resp.headers["content-disposition"]
+    heat = await api_client.get("/api/mitre/heatmap", params=params, headers=auth_header())
+    heat_ids = {t["id"] for t in heat.json()["ttps"] if t["id"].startswith("T")}
+    assert {t["techniqueID"] for t in resp.json()["techniques"]} == heat_ids

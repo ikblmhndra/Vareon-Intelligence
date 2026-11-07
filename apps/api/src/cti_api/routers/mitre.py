@@ -4,7 +4,7 @@ ada asimetri baca-vs-tulis di sini."""
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from cti_core.db.models.article import Article
 from cti_core.db.repositories.mitre import AsyncMitreHeatmapRepo
@@ -55,13 +55,41 @@ async def d3fend_countermeasures(technique_id: str) -> dict[str, object]:
     }
 
 
+async def _build_layer(
+    session: AsyncSession,
+    *,
+    view: str,
+    days: int,
+    top_rows: int | None,
+    top_ttps: int | None,
+    ttp_source: list[Literal["explicit", "keyword", "llm"]] | None,
+) -> tuple[dict[str, Any], str]:
+    """Tanpa satu pun filter heatmap -> keluaran lama; selain itu layer = heatmap yang tampil."""
+    repo = AsyncMitreHeatmapRepo(session)
+    if top_rows is None and top_ttps is None and ttp_source is None:
+        return await repo.get_navigator_layer(view=view, days=days), (
+            f"cti_navigator_{view}_{days}d.json"
+        )
+    rows = top_rows if top_rows is not None else 15
+    cols = top_ttps if top_ttps is not None else 20
+    layer = await repo.get_heatmap_navigator_layer(
+        view=view, days=days, top_rows=rows, top_ttps=cols, ttp_sources=ttp_source
+    )
+    return layer, f"cti_navigator_{view}_{days}d_r{rows}_c{cols}.json"
+
+
 @router.get("/navigator-layer")
 async def navigator_layer(
     view: str = Query("ta", pattern="^(ta|industry)$"),
     days: int = Query(90, ge=7, le=365),
+    top_rows: int | None = Query(None, ge=3, le=30),
+    top_ttps: int | None = Query(None, ge=5, le=40),
+    ttp_source: list[Literal["explicit", "keyword", "llm"]] | None = Query(None),
     session: AsyncSession = Depends(get_db),
 ) -> JSONResponse:
-    layer = await AsyncMitreHeatmapRepo(session).get_navigator_layer(view=view, days=days)
+    layer, _ = await _build_layer(
+        session, view=view, days=days, top_rows=top_rows, top_ttps=top_ttps, ttp_source=ttp_source
+    )
     return JSONResponse(content=layer)
 
 
@@ -69,10 +97,14 @@ async def navigator_layer(
 async def navigator_export(
     view: str = Query("ta", pattern="^(ta|industry)$"),
     days: int = Query(90, ge=7, le=365),
+    top_rows: int | None = Query(None, ge=3, le=30),
+    top_ttps: int | None = Query(None, ge=5, le=40),
+    ttp_source: list[Literal["explicit", "keyword", "llm"]] | None = Query(None),
     session: AsyncSession = Depends(get_db),
 ) -> JSONResponse:
-    layer = await AsyncMitreHeatmapRepo(session).get_navigator_layer(view=view, days=days)
-    filename = f"cti_navigator_{view}_{days}d.json"
+    layer, filename = await _build_layer(
+        session, view=view, days=days, top_rows=top_rows, top_ttps=top_ttps, ttp_source=ttp_source
+    )
     return JSONResponse(
         content=layer, headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
