@@ -62,7 +62,7 @@ export function MitreHeatmapView() {
   }
 
   function openNavigator() {
-    const layerUrl = encodeURIComponent(`${window.location.origin}/api/proxy/api/mitre/navigator-layer?view=${view}&days=${days}`);
+    const layerUrl = encodeURIComponent(`${window.location.origin}/api/proxy/api/mitre/navigator-layer?view=${view}&days=${days}&top_rows=${TOP_ROWS}&top_ttps=${TOP_TTPS}`);
     window.open(`https://mitre-attack.github.io/attack-navigator/#layerURL=${layerUrl}`, "_blank");
   }
 
