@@ -6,6 +6,15 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
+## [0.8.15] - 2026-11-08
+
+**Penyesuaian: run `github_poc_monitor` dipercepat dari rata-rata ~18 menit ke target di bawah 15 menit.** Sesudah 0.8.13/0.8.14 di prod, 14 run berturut-turut sukses dan tidak menumpuk, tapi rata-ratanya 1.076 detik, karena di luar 300 pencarian targeted ada pencarian broad dan lookup MITRE. Tanpa migrasi dan tanpa kunci `.env`.
+
+### Diubah
+- `github_poc_monitor`: batas pencarian targeted per run turun dari 300 ke 250 (`POC_SEARCH_CAP`). Prod sekarang: 1.425 kandidat (CVE 90 hari terakhir atau KEV) dibagi 6 irisan, jadi tiap CVE dicek tiap ±6 jam (sebelumnya ±5 jam).
+
+**Saat upgrade dari 0.8.14:** `make deploy`, tidak ada langkah lain. Runbook: `docs/prod-upgrade/0.8.15.md` dan `docs/PROD_UPGRADE_0.8.14_TO_0.8.15.md`.
+
 ## [0.8.14] - 2026-11-07
 
 **Perbaikan: sweep enrichment CVE (KEV, Exploit-DB, EPSS) tidak lagi menahan lock `cve_tracker` lebih dari satu jam, dan tidak ada dua sweep yang jalan bersamaan.** Pada 6 Nov di prod, satu sweep membuka satu transaksi lebih dari 75 menit selama scraping Exploit-DB. Sweep kedua (sisa antrean sesudah deploy) dan backfill promosi mirror ikut menunggu, sehingga sync dan reconcile CVE berhenti sekitar 35 menit. Tanpa migrasi dan tanpa kunci `.env`.
