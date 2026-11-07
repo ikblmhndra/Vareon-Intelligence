@@ -96,6 +96,18 @@ class PIRNoteOut(BaseModel):
     updated_at: str = ""
 
 
+class PIRWeekCount(BaseModel):
+    week_start: str
+    count: int
+
+
+class PIRWeeklyCoverage(BaseModel):
+    pir_id: int
+    since: str | None = None
+    until: str | None = None
+    weeks: list[PIRWeekCount]
+
+
 class PIROptions(BaseModel):
     threat_actors: list[str]
     malware: list[str]

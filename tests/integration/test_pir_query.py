@@ -240,3 +240,38 @@ async def test_old_pir_without_malware_key_unchanged(async_db_session: AsyncSess
     assert total == 2
     options = await repo.get_options(article_repo)
     assert options["malware"] == []
+
+
+async def test_weekly_coverage_counts_matches_per_week(async_db_session: AsyncSession) -> None:
+    await _ensure_clients(async_db_session)
+    article_repo = AsyncArticleRepo(async_db_session)
+    await _seed_articles(article_repo)
+    repo = AsyncPIRRepo(async_db_session)
+    pir = await repo.create(
+        {"title": "Track APT41", "criteria": {"threat_actors": ["Apt41"]}}, client_id="default"
+    )
+
+    today = datetime.date.today()
+    result = await repo.weekly_coverage(pir, weeks=12, today=today)
+    assert result is not None
+    _, _, rows = result
+    assert len(rows) == 12
+    assert sum(count for _, count in rows) == 2  # a1 + a2; artikel unrelated tidak ikut
+    old = today - datetime.timedelta(days=60)
+    old_monday = old - datetime.timedelta(days=old.weekday())
+    assert dict(rows)[old_monday] == 1
+
+
+async def test_weekly_coverage_future_start_returns_none(async_db_session: AsyncSession) -> None:
+    await _ensure_clients(async_db_session)
+    repo = AsyncPIRRepo(async_db_session)
+    today = datetime.date.today()
+    pir = await repo.create(
+        {
+            "title": "Future",
+            "criteria": {"threat_actors": ["Apt41"]},
+            "start_date": today + datetime.timedelta(days=30),
+        },
+        client_id="default",
+    )
+    assert await repo.weekly_coverage(pir, weeks=12, today=today) is None

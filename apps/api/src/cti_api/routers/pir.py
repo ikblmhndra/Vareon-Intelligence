@@ -52,6 +52,8 @@ from cti_api.schemas.pir import (
     PIROptions,
     PIROut,
     PIRUpdate,
+    PIRWeekCount,
+    PIRWeeklyCoverage,
 )
 from cti_api.services.pir_docx import build_docx, export_filename
 
@@ -175,6 +177,28 @@ async def pir_articles(
         total=total,
         page=page,
         page_size=page_size,
+    )
+
+
+@router.get("/{pir_id}/coverage/weekly", response_model=PIRWeeklyCoverage)
+async def pir_weekly_coverage(
+    pir_id: int,
+    weeks: int = Query(26, ge=1, le=52),
+    session: AsyncSession = Depends(get_db),
+    user: AuthedUser = Depends(require_auth),
+) -> PIRWeeklyCoverage:
+    """Artikel cocok per minggu untuk grafik coverage; PIR yang belum mulai -> `weeks` kosong."""
+    repo = AsyncPIRRepo(session)
+    pir = await _get_pir_or_404(repo, pir_id, user)
+    result = await repo.weekly_coverage(pir, weeks=weeks, today=datetime.date.today())
+    if result is None:
+        return PIRWeeklyCoverage(pir_id=pir_id, weeks=[])
+    since, until, rows = result
+    return PIRWeeklyCoverage(
+        pir_id=pir_id,
+        since=since.isoformat(),
+        until=until.isoformat(),
+        weeks=[PIRWeekCount(week_start=d.isoformat(), count=c) for d, c in rows],
     )
 
 

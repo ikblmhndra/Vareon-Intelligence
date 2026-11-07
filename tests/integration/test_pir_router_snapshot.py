@@ -219,3 +219,27 @@ async def test_remove_pir(
     resp = await api_client.delete(f"/api/pir/{pir_id}", headers=auth_header())
     assert resp.status_code == 200
     assert resp.json() == snapshot
+
+
+async def test_pir_weekly_coverage(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+) -> None:
+    await _seed_article(api_session)
+    pir_id = await _seed_pir(api_session)
+    resp = await api_client.get(
+        f"/api/pir/{pir_id}/coverage/weekly", params={"weeks": 4}, headers=auth_header()
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["pir_id"] == pir_id
+    assert 1 <= len(body["weeks"]) <= 4
+    assert sum(w["count"] for w in body["weeks"]) == 1
+
+    missing = await api_client.get("/api/pir/999999/coverage/weekly", headers=auth_header())
+    assert missing.status_code == 404
+    bad = await api_client.get(
+        f"/api/pir/{pir_id}/coverage/weekly", params={"weeks": 0}, headers=auth_header()
+    )
+    assert bad.status_code == 422
