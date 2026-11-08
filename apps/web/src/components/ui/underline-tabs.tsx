@@ -22,14 +22,17 @@ export function UnderlineTabs<T extends string>({
   "aria-label": ariaLabel,
   className,
 }: UnderlineTabsProps<T>) {
-  const { onKeyDown, setRef } = useRovingKeys(items, value, onChange);
+  const { onKeyDown, setRef, tabIndexFor } = useRovingKeys(items, value, onChange);
 
   return (
     <div
       role="tablist"
       aria-label={ariaLabel}
       onKeyDown={onKeyDown}
-      className={cn("flex gap-6 overflow-x-auto border-b border-border px-1 pt-1", className)}
+      className={cn(
+        "flex gap-6 overflow-x-auto px-1 pt-1 pb-1 shadow-[inset_0_-1px_0_var(--border)]",
+        className,
+      )}
     >
       {items.map((item, i) => {
         const active = item.value === value;
@@ -40,10 +43,10 @@ export function UnderlineTabs<T extends string>({
             type="button"
             role="tab"
             aria-selected={active}
-            tabIndex={active ? 0 : -1}
+            tabIndex={tabIndexFor(i)}
             onClick={() => onChange(item.value)}
             className={cn(
-              "-mb-px shrink-0 whitespace-nowrap border-b-2 px-0.5 pb-2.5 text-[15px] font-semibold transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+              "shrink-0 whitespace-nowrap border-b-2 px-0.5 pb-2.5 text-[15px] font-semibold transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
               active
                 ? "border-primary text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground",

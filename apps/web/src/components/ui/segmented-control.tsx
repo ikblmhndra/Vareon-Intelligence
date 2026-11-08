@@ -22,7 +22,7 @@ export function SegmentedControl<T extends string>({
   size = "default",
   className,
 }: SegmentedControlProps<T>) {
-  const { onKeyDown, setRef } = useRovingKeys(options, value, onChange);
+  const { onKeyDown, setRef, tabIndexFor } = useRovingKeys(options, value, onChange);
 
   return (
     <div
@@ -40,10 +40,10 @@ export function SegmentedControl<T extends string>({
             type="button"
             role="radio"
             aria-checked={active}
-            tabIndex={active ? 0 : -1}
+            tabIndex={tabIndexFor(i)}
             onClick={() => onChange(opt.value)}
             className={cn(
-              "whitespace-nowrap rounded-[8px] text-[13px] font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+              "whitespace-nowrap rounded-[8px] text-xs font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
               size === "sm" ? "px-2.5 py-1" : "px-3.5 py-1.5",
               active
                 ? "bg-foreground text-background"

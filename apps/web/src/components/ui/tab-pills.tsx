@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef, type KeyboardEvent } from "react";
-
 import { cn } from "@/lib/utils";
+
+import { useRovingKeys } from "./use-roving-keys";
 
 export interface TabPillItem<T extends string> {
   value: T;
@@ -16,7 +16,7 @@ export interface TabPillItem<T extends string> {
 /** Kelas satu pil. Dipakai juga `IntelligenceNav` (tautan antar-route, bukan tab). */
 export function tabPillClass(active: boolean, tone: "default" | "destructive" = "default") {
   return cn(
-    "h-[31px] shrink-0 whitespace-nowrap rounded-full border px-3 py-[7px] text-[13px] font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+    "h-[31px] shrink-0 whitespace-nowrap rounded-full border px-3 py-[7px] text-xs font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
     active
       ? tone === "destructive"
         ? "border-destructive/40 bg-destructive/10 text-destructive-text"
@@ -44,20 +44,7 @@ export function TabPills<T extends string>({
   "aria-label": ariaLabel,
   className,
 }: TabPillsProps<T>) {
-  const refs = useRef<(HTMLButtonElement | null)[]>([]);
-
-  function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
-    const current = items.findIndex((item) => item.value === value);
-    let next: number;
-    if (e.key === "ArrowRight") next = (current + 1) % items.length;
-    else if (e.key === "ArrowLeft") next = (current - 1 + items.length) % items.length;
-    else if (e.key === "Home") next = 0;
-    else if (e.key === "End") next = items.length - 1;
-    else return;
-    e.preventDefault();
-    onChange(items[next].value);
-    refs.current[next]?.focus();
-  }
+  const { onKeyDown, setRef, tabIndexFor } = useRovingKeys(items, value, onChange);
 
   return (
     <div
@@ -71,13 +58,11 @@ export function TabPills<T extends string>({
         return (
           <button
             key={item.value}
-            ref={(el) => {
-              refs.current[i] = el;
-            }}
+            ref={setRef(i)}
             type="button"
             role="tab"
             aria-selected={active}
-            tabIndex={active ? 0 : -1}
+            tabIndex={tabIndexFor(i)}
             onClick={() => onChange(item.value)}
             className={tabPillClass(active, item.tone)}
           >
