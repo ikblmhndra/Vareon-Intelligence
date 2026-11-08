@@ -122,12 +122,13 @@
   --text-2xs--line-height: calc(1 / 0.6875);
 }
 
-/* Permukaan "raised" untuk kartu konten utama: warna surface + garis border token, tanpa bayangan
-   (mockup FigCraft: kartu datar berbingkai, bukan terangkat). Nama utility dipertahankan agar
+/* Permukaan "raised" untuk kartu konten utama: latar putih (bg-background, sama dengan Card) +
+   garis border token, tanpa bayangan (mockup FigCraft: kartu datar berbingkai; beige surface hanya
+   untuk tile tanpa border). Nama utility dipertahankan agar
    pemakai lama tidak perlu diubah.
    Hierarki: hero (band burgundy) > raised (ini) > flat (tanpa latar, hanya spasi/pembatas). */
 @utility surface-raised {
-  @apply border border-border bg-surface;
+  @apply border border-border bg-background;
 }
 
 :root {
