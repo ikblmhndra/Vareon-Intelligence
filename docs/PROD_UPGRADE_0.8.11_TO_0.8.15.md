@@ -332,7 +332,7 @@ lands in the same PR.
   parameters, so the exported ATT&CK Navigator layer matches the visible heatmap. Without them the output is unchanged.
 - Web: one risk-tier scale (LOW 0-39, MED 40-69, HIGH 70-100) in the risk matrix, ink focus ring, warning colour
   `#A04A07`, breakpoint rule at `lg` (1024px), and a darker `--input` border token (3:1 contrast or better). The
-  `--input` token reaches only Textarea, Checkbox, the hand-rolled field helpers and the dark outline Button; Input and
+  `--input` token reaches only Textarea, Checkbox, the hand-rolled field helpers; Input and
   the Select trigger keep their filled `border-transparent bg-muted` look and do not use it.
 
 ### Migrations

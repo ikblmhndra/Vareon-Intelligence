@@ -51,21 +51,25 @@ extraction via `FormData` must check whether the key EXISTS
 
 - **Page header**: every route has a `layout.tsx` that renders `<PageHeader title description />` (the page's only
   `<h1>`) and exports `metadata.title`. Section headings below it are `<h2>`, then `<h3>` (do not skip levels).
-- **Surfaces**: cards use `surface-raised` (tinted shadow + 7% hairline ring), never `border border-border bg-surface`.
-  Hierarchy is hero band (burgundy) > raised > flat (no box). Use `Card`, `Table framed`, `ChartCard`, `MapCard`.
+- **Surfaces**: `surface-raised` / `Card` = white `bg-background`, 1 px `border-border`, no shadow, radius 12 (`rounded-lg`).
+  Tiles (stat boxes, nested blocks) = `bg-surface`, no border. Use `Card`, `Table framed`, `ChartCard`, `MapCard`.
+- **Shell**: the masthead (`components/app-shell/`) replaces the sidebar; there is no sidebar.
+- **Navigation patterns**: underline tabs (`UnderlineTabs`) = level-1 views of one page; pill tabs (`TabPills`) =
+  sub-pages / page tabs; segmented (`SegmentedControl`) = filters or modes inside a card or toolbar; side nav
+  (`SideNav`) = settings areas (Admin). Chips via `Chip`, empty/loading/error/no-access states via `StatePanel`.
 - **Text on tints**: a tinted badge (`bg-X/10..25`) must use `text-X-text` (`text-primary-text`, `text-success-text`, ...),
   not `text-X`; the base token only reaches 3.6-4.1:1 on its own tint (AA needs 4.5:1). Heatmap cells cap the tint
   alpha instead of flipping the text color. Never dim text with `opacity-*` (use a lighter token).
 - **Fonts**: `font-mono` is NOT monospace here (`--font-mono` = Google Sans Flex). Use `font-code` (IBM Plex Mono) for
   data values: IOC, hash, IP, CVE/TTP ID, cron schedules.
-- **Tokens, not literals**: keyboard focus is `focus-visible:ring-3 focus-visible:ring-focus` (`ring-ring/50` is below
-  3:1); the burgundy band uses `bg-hero`/`text-hero-*`; dialog scrim is `bg-overlay`; micro labels use `text-2xs`
-  (11px floor), data text `text-xs` (never `text-[13px]`). No hex, `rgb()` or raw palette classes (`amber-500`) in components.
+- **Tokens, not literals**: keyboard focus is `focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
+  focus-visible:ring-offset-background`; the burgundy band uses `bg-hero`/`text-hero-*`; dialog scrim is `bg-overlay`; micro labels use `text-2xs`
+  (11px floor), data text `text-xs` (= 13 px; use it instead of `text-[13px]`). No hex, `rgb()` or raw palette classes (`amber-500`) in components.
 - **No `backdrop-blur`/`backdrop-filter`** (commit 8f0655e removed it: heavy render, screenshot timeouts).
 - **Markdown** (`.prose`): colors come from `--tw-prose-*` mapped to theme tokens in `globals.css`; never add `prose-invert`.
 - **Accessibility**: every input needs an `aria-label` or an associated `<label htmlFor>` (a `<Label>` next to it is not
   associated); icon-only buttons and checkboxes need `aria-label`; interactive targets are at least 24px, and primary
-  controls are 44px below 640px (`max-sm:h-11` on `Button`/`Input`/`Select`); tab switchers use `TabPills`.
+  controls are 44px below 640px (`max-sm:h-11` on `Button`/`Input`/`Select`); tab switchers use `TabPills` / `UnderlineTabs` / `SegmentedControl` (see Navigation patterns).
 - **Verify in both modes**: after changing global tokens or shared primitives, check contrast in light AND dark on the
   dense pages (Risk Matrix, IOC, Exec, Scrapers), plus the dialogs (changelog, brief, ticket).
 - **Breakpoints**: 2-3 column layouts collapse to one column below 1024 px (`lg:`, e.g. `lg:grid-cols-2`), not `md:`.
