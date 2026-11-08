@@ -11,14 +11,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { components } from "@/lib/api/schema";
+import { nativeSelectClass } from "@/components/ui/native-select";
 
 type RFIOut = components["schemas"]["RFIOut"];
 
 const STATUSES = ["open", "in_progress", "closed"];
-
-function nativeSelectClass() {
-  return "h-10 w-full rounded-[10px] border border-input bg-surface px-3 text-[15px] outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
-}
 
 interface RfiFormDialogProps {
   rfi?: RFIOut | null;

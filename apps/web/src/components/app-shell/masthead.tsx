@@ -29,7 +29,7 @@ function NavLabel({ active, children }: { active: boolean; children: React.React
 }
 
 const ITEM =
-  "flex flex-col items-center gap-1.5 rounded-sm text-[13px] font-semibold whitespace-nowrap transition-colors";
+  "flex flex-col items-center gap-1.5 rounded-sm text-xs font-semibold whitespace-nowrap transition-colors";
 
 /** Masthead editorial (mockup FigCraft): wordmark "Vareon" + titik merah di kiri, nav di kanan
  * rata bawah. Nav penuh dari `lg:` (1024 px); di bawahnya diganti tombol "Menu" (`MobileNav`). */
@@ -78,6 +78,7 @@ export function Masthead() {
           >
             <NavLabel active={moreActive}>
               More
+              {moreActive && <span className="sr-only">(current section)</span>}
               <ChevronDownIcon aria-hidden className="size-3.5" />
             </NavLabel>
           </DropdownMenuTrigger>

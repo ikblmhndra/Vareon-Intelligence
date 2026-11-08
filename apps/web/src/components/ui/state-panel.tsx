@@ -18,7 +18,7 @@ export function StatePanel({ variant, title, description, action, className }: S
     <div
       role={role}
       className={cn(
-        "flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border px-6 py-12 text-center",
+        "flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border px-6 py-12 text-center",
         className,
       )}
     >

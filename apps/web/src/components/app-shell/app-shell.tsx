@@ -23,7 +23,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <UtilityBar />
         <Masthead />
       </header>
-      <main id="main-content" tabIndex={-1} className={`${SHELL_COLUMN} flex-1 py-6 outline-none lg:py-8`}>
+      <main id="main-content" tabIndex={-1} className={`${SHELL_COLUMN} flex-1 pb-6 outline-none lg:pb-8`}>
         {children}
       </main>
     </div>
