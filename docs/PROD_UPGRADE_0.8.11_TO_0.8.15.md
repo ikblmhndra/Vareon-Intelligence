@@ -38,7 +38,7 @@ read-only session (`PGOPTIONS=-c default_transaction_read_only=on`); anything ma
      600 searches with the 90-day/KEV filter and a cap of 300.
    - 0.8.13 checks (`worker-cve` healthy, queue routing, first reconcile, the 50 missing CVEs, `/data-health`).
    - 0.8.14 checks at the next sweep slot (no long `cve_tracker` transaction, no run of `locked` syncs).
-   - 0.8.15 checks (health version `0.8.15`, Early Warning spikes, PIR weekly coverage, Navigator export, theme).
+   - 0.8.15 checks (health version `0.8.15`, Early Warning spikes, PIR weekly coverage, Navigator export, theme, masthead shell).
 5. **One-off WRITE commands:** only the optional manual `cve.mirror_reconcile` run (0.8.13); otherwise the first one
    happens at minute :17.
 6. **7-day watch (0.8.13), then the final step:** only when it passes, set `CVE_MIRROR__KEEP_LEGACY_NEW_CVE=false` in
@@ -359,6 +359,8 @@ check; all other changes are read-only endpoints and web styling.
 4. MITRE page: "Open in Navigator" opens ATT&CK Navigator and downloads the layer; uploading it ("Open Existing
    Layer → Upload from local") shows the same techniques as the visible heatmap.
 5. Spot-check light and dark theme: field borders, focus ring and the risk matrix colours.
+6. Shell: the masthead nav shows on every page (active item underlined), below 1024px it collapses into the Menu
+   button, and a dialog (e.g. Intelligence > PIR > New PIR) looks right in light and dark.
 
 ### One-off commands
 
