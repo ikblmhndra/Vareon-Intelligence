@@ -17,7 +17,7 @@ type RFIOut = components["schemas"]["RFIOut"];
 const STATUSES = ["open", "in_progress", "closed"];
 
 function nativeSelectClass() {
-  return "h-8 w-full rounded-lg border border-input bg-surface px-2.5 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+  return "h-10 w-full rounded-[10px] border border-input bg-surface px-3 text-[15px] outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 }
 
 interface RfiFormDialogProps {
