@@ -1,4 +1,4 @@
-# Prod upgrade runbook: 0.8.11 → 0.8.15
+# Prod upgrade runbook: 0.8.11 → 0.8.16
 
 Prod (`privy-admin@10.8.20.78`, compose project `niskala-intelligence`, repo `/home/privy-admin/Niskala-Intelligence`) runs
 **0.8.11** per the user. Older runbooks have claimed other starting versions (`docs/PROD_UPGRADE_0.8.13_TO_0.8.14.md` says
@@ -7,13 +7,14 @@ for that version:
 
 | Running version | Follow |
 |---|---|
-| 0.8.11 | every section below (0.8.12, 0.8.13, 0.8.14, 0.8.15) |
-| 0.8.12 | 0.8.13, 0.8.14, 0.8.15 |
-| 0.8.13 | 0.8.14, 0.8.15 |
-| 0.8.14 | 0.8.15 |
+| 0.8.11 | every section below (0.8.12, 0.8.13, 0.8.14, 0.8.15, 0.8.16) |
+| 0.8.12 | 0.8.13, 0.8.14, 0.8.15, 0.8.16 |
+| 0.8.13 | 0.8.14, 0.8.15, 0.8.16 |
+| 0.8.14 | 0.8.15, 0.8.16 |
+| 0.8.15 | 0.8.16 |
 
-One `make deploy` takes prod from any of these to 0.8.15: it backs up Postgres, runs `migrate` (none of 0.8.12 to
-0.8.15 has a migration), creates the new `worker-cve` service when it is missing, rebuilds, then waits for health. The
+One `make deploy` takes prod from any of these to 0.8.16: it backs up Postgres, runs `migrate` (none of 0.8.12 to
+0.8.16 has a migration), creates the new `worker-cve` service when it is missing, rebuilds, then waits for health. The
 Deploy workflow is off and the checkout is owned by root, so this is a manual run by the user with `sudo`. Older steps
 stay in `docs/PROD_UPGRADE_0.8.13_TO_0.8.14.md`, `docs/PROD_UPGRADE_0.8.14_TO_0.8.15.md`,
 `docs/PROD_UPGRADE_0.8.11_TO_0.8.13.md` and `docs/PROD_UPGRADE_0.8.2_TO_0.8.11.md` for history.
@@ -30,15 +31,17 @@ read-only session (`PGOPTIONS=-c default_transaction_read_only=on`); anything ma
      disabled, disk). Write the numbers down for the after-deploy comparison.
    - 0.8.14: **no sweep is running** (both checks: `pg_stat_activity` and the worker log). Sweeps start at 00, 03, 06, ...
      UTC; the safest window is roughly 90 minutes to 3 hours after a slot.
-   - 0.8.15: record the Early Warning anomaly counts per group (30d, z 2.0) to compare after deploy.
-2. **`.env`:** no new key in any of the four releases.
+   - 0.8.15: nothing to check (PoC cap, no `.env` key).
+   - 0.8.16: record the Early Warning anomaly counts per group (30d, z 2.0) to compare after deploy.
+2. **`.env`:** no new key in any of the five releases.
 3. **`make deploy`** (with `sudo`). Beat restarts with it, which the 0.8.13 queue routing needs.
 4. **After deploy:**
    - 0.8.12 checks (`github_poc_monitor` run length) are superseded by the 0.8.13 ones: 0.8.13 replaces the 0.8.12 cap of
      600 searches with the 90-day/KEV filter and a cap of 300.
    - 0.8.13 checks (`worker-cve` healthy, queue routing, first reconcile, the 50 missing CVEs, `/data-health`).
    - 0.8.14 checks at the next sweep slot (no long `cve_tracker` transaction, no run of `locked` syncs).
-   - 0.8.15 checks (health version `0.8.15`, Early Warning spikes, PIR weekly coverage, Navigator export, theme, masthead shell).
+   - 0.8.15 checks: the next hourly `github_poc_monitor` runs finish in under 15 minutes, no `overlap` rows.
+   - 0.8.16 checks (health version `0.8.16`, Early Warning spikes, PIR weekly coverage, Navigator export, theme, masthead shell).
 5. **One-off WRITE commands:** only the optional manual `cve.mirror_reconcile` run (0.8.13); otherwise the first one
    happens at minute :17.
 6. **7-day watch (0.8.13), then the final step:** only when it passes, set `CVE_MIRROR__KEEP_LEGACY_NEW_CVE=false` in
@@ -309,10 +312,60 @@ long transaction; no data to undo.
 
 ---
 
-## 0.8.15 — FigCraft redesign data: PIR weekly coverage, spike daily series, Navigator layer from the heatmap
+## 0.8.15 — `github_poc_monitor` targeted searches capped at 250 per run
+
+Release: not yet tagged (branch `nameless/poc-search-cap-250`; merge to `origin/Dev` for the dev test, then PR to
+`main`). Patch on top of 0.8.14, which prod runs since 2026-11-07.
+
+### What changes in prod
+
+- `github_poc_monitor` searches at most about 250 tracked CVEs per run (`POC_SEARCH_CAP`, was 300). The candidates are
+  unchanged: CVEs published within 90 days or in CISA KEV.
+- Prod on 2026-11-07: 1,425 candidates, so the rotation grows from 5 to 6 hourly slices. Each CVE is searched about
+  every 6 hours instead of every 5.
+
+Why: after 0.8.13/0.8.14, 14 consecutive prod runs all finished `ok` with no overlap, but averaged 1,076 s
+(about 18 min), above the 15 min target. The broad search and MITRE lookups come on top of the targeted searches at
+GitHub's 30 searches per minute.
+
+### Migrations
+
+None. `alembic_version` stays at `7e3b9c1d5a42`.
+
+### Settings / .env
+
+None. The cap is a module constant (`POC_SEARCH_CAP` in `scrapers/src/cti_scrapers/feeds/github_poc_monitor.py`).
+
+### Before deploy
+
+Nothing to check.
+
+### After deploy
+
+1. The next hourly `github_poc_monitor` runs finish in under 15 minutes:
+   `SELECT status, round(extract(epoch from finished_at - started_at)) FROM scraper_runs WHERE scraper_id = 'github_poc_monitor' ORDER BY started_at DESC LIMIT 6;`
+2. No `overlap` rows for `github_poc_monitor` in Scrapers > Recent Runs.
+
+### One-off commands
+
+None.
+
+### Rollback
+
+`make deploy` restores the `:prev` images on a failed health check. Rolling back to 0.8.14 only brings back the cap of
+300.
+
+### Known risks
+
+- PoCs for long-tail candidates are found up to about one hour later than with 0.8.14 (6 slices instead of 5). Recent
+  and KEV CVEs are all still in the candidate set.
+
+---
+
+## 0.8.16 — FigCraft redesign data: PIR weekly coverage, spike daily series, Navigator layer from the heatmap
 
 Release: not yet tagged (branch `claude/figcraft-design-data`; merge to `origin/Dev` for the dev test, then PR to
-`main`). Minor-scope patch on top of 0.8.14. The release entry may grow when the page implementation of the redesign
+`main`). Patch on top of 0.8.15 (`github_poc_monitor` cap 250, PR #90). The release entry may grow when the page implementation of the redesign
 lands in the same PR.
 
 ### What changes in prod
@@ -331,9 +384,11 @@ lands in the same PR.
 - `GET /api/mitre/navigator-layer` and `/navigator-export` accept the optional `top_rows`, `top_ttps` and `ttp_source`
   parameters, so the exported ATT&CK Navigator layer matches the visible heatmap. Without them the output is unchanged.
 - Web: one risk-tier scale (LOW 0-39, MED 40-69, HIGH 70-100) in the risk matrix, ink focus ring, warning colour
-  `#A04A07`, breakpoint rule at `lg` (1024px), and a darker `--input` border token (3:1 contrast or better). The
-  `--input` token reaches only Textarea, Checkbox, the hand-rolled field helpers; Input and
-  the Select trigger keep their filled `border-transparent bg-muted` look and do not use it.
+  `#A04A07`, breakpoint rule at `lg` (1024px), and a darker `--input` border token (3:1 contrast or better) used by
+  Input, Textarea, Select and Checkbox.
+- Web: new shell following the FigCraft mockup: a top masthead with a "More" menu replaces the sidebar (a Menu button
+  below 1024px), with a utility bar for the client switcher and account menu. Buttons, fields, underline and pill tabs,
+  segmented controls, chips, cards (flat, bordered, no shadow), tables and dialogs follow the mockup too.
 
 ### Migrations
 
@@ -351,7 +406,7 @@ check; all other changes are read-only endpoints and web styling.
 
 ### After deploy
 
-1. `GET /api/health` reports version `0.8.15`.
+1. `GET /api/health` reports version `0.8.16`.
 2. Intelligence > Early Warning: the spike view still renders (it reads `/api/spikes`); the response now includes `daily`.
    Compare with the counts recorded before deploy: different anomalies and lower `baseline_mean` values are expected
    (empty baseline days now count as 0); an empty list where there were many anomalies is not.
@@ -359,8 +414,9 @@ check; all other changes are read-only endpoints and web styling.
 4. MITRE page: "Open in Navigator" opens ATT&CK Navigator and downloads the layer; uploading it ("Open Existing
    Layer → Upload from local") shows the same techniques as the visible heatmap.
 5. Spot-check light and dark theme: field borders, focus ring and the risk matrix colours.
-6. Shell: the masthead nav shows on every page (active item underlined), below 1024px it collapses into the Menu
-   button, and a dialog (e.g. Intelligence > PIR > New PIR) looks right in light and dark.
+6. Shell: the masthead nav shows on every page (Dashboard, Newsroom, CVE Tracker, Intelligence, Exec, X Intel, Recap,
+   Newsletter, More), the active item has the underline, and below 1024px the nav collapses into the Menu button.
+   Open one dialog (e.g. Intelligence > PIR > New PIR) in light and dark: field borders visible, footer divider only.
 
 ### One-off commands
 
@@ -368,12 +424,12 @@ None.
 
 ### Rollback
 
-`make deploy` restores the `:prev` images on a failed health check. Rolling back to 0.8.14 removes the new endpoint
+`make deploy` restores the `:prev` images on a failed health check. Rolling back to 0.8.15 removes the new endpoint
 and the `daily` block; nothing is written to the database, so there is nothing to undo.
 
 ### Known risks
 
 - Cached browser bundles may show old colours until a hard refresh after the web image changes.
 - Early Warning anomalies change by design (zero-filled baseline). Analysts used to the old list may see entities
-  appear or drop out; rollback to 0.8.14 restores the old detection.
+  appear or drop out; rollback to 0.8.15 restores the old detection.
 - The weekly coverage query scans article rows by week for one PIR; check its latency on prod-sized data on first use.

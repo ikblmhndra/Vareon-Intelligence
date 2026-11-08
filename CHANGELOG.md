@@ -6,7 +6,7 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
-## [0.8.15] - 2026-11-08
+## [0.8.16] - 2026-11-08
 
 **Redesain FigCraft: tiga sumber data baru untuk halaman PIR, Intelligence, dan MITRE, plus penyeragaman tema web.** API mendapat cakupan PIR per minggu, seri harian per entitas yang melonjak, dan layer ATT&CK Navigator yang sama persis dengan heatmap yang terlihat. Web memakai satu skala tier risiko, border field yang terbaca, dan fokus yang jelas. Tanpa migrasi dan tanpa kunci `.env`.
 
@@ -23,7 +23,16 @@ router `changelog.py`) -- parser-nya expect header persis
 - Web: shell baru mengikuti mockup FigCraft. Navigasi atas (masthead) dengan menu "More" menggantikan sidebar; di bawah 1024px menjadi tombol Menu. Utility bar memuat pemilih klien dan menu akun.
 - Web: tombol (semua state), field, tab bergaris bawah dan pil, kontrol segmented, chip, kartu, tabel, dialog, dan panel state kosong/error mengikuti mockup. Kartu kini datar berbingkai (tanpa bayangan), judul dialog semibold, dan badge memakai ring fokus ink.
 
-**Saat upgrade dari 0.8.14:** catat jumlah anomali Early Warning per kelompok sebelum deploy untuk dibandingkan, lalu `make deploy`. Dari prod 0.8.11 (versi yang sedang jalan): ikuti runbook gabungan `docs/PROD_UPGRADE_0.8.11_TO_0.8.15.md`; cek per rilis ada di `docs/prod-upgrade/0.8.15.md`.
+**Saat upgrade dari 0.8.15:** catat jumlah anomali Early Warning per kelompok sebelum deploy untuk dibandingkan, lalu `make deploy`. Dari prod 0.8.11 (versi yang sedang jalan): ikuti runbook gabungan `docs/PROD_UPGRADE_0.8.11_TO_0.8.16.md`; cek per rilis ada di `docs/prod-upgrade/0.8.16.md`.
+
+## [0.8.15] - 2026-11-08
+
+**Penyesuaian: run `github_poc_monitor` dipercepat dari rata-rata ~18 menit ke target di bawah 15 menit.** Sesudah 0.8.13/0.8.14 di prod, 14 run berturut-turut sukses dan tidak menumpuk, tapi rata-ratanya 1.076 detik, karena di luar 300 pencarian targeted ada pencarian broad dan lookup MITRE. Tanpa migrasi dan tanpa kunci `.env`.
+
+### Diubah
+- `github_poc_monitor`: batas pencarian targeted per run turun dari 300 ke 250 (`POC_SEARCH_CAP`). Prod sekarang: 1.425 kandidat (CVE 90 hari terakhir atau KEV) dibagi 6 irisan, jadi tiap CVE dicek tiap ±6 jam (sebelumnya ±5 jam).
+
+**Saat upgrade dari 0.8.14:** `make deploy`, tidak ada langkah lain. Runbook: `docs/prod-upgrade/0.8.15.md` dan `docs/PROD_UPGRADE_0.8.14_TO_0.8.15.md`.
 
 ## [0.8.14] - 2026-11-07
 
