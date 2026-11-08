@@ -36,8 +36,16 @@ export function ClientSwitcher({ user }: { user: AuthUser }) {
         window.location.reload();
       }}
     >
-      <SelectTrigger size="sm" className="w-36 font-mono text-xs">
-        <SelectValue />
+      {/* Gaya ghost ala utility bar mockup ("Client: {name} ▾", tanpa kotak); nama client
+          panjang dipotong supaya tidak mendorong avatar keluar baris. */}
+      <SelectTrigger
+        size="sm"
+        aria-label="Active client"
+        className="max-w-48 border-transparent bg-transparent px-2 text-xs font-semibold hover:bg-surface"
+      >
+        <SelectValue className="min-w-0">
+          {(id: string) => <span className="truncate">{`Client: ${id}`}</span>}
+        </SelectValue>
       </SelectTrigger>
       <SelectContent>
         {user.client_ids.map((id) => (

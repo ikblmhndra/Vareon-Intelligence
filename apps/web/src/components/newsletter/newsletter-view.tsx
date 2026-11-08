@@ -99,7 +99,7 @@ function describeMerge(r: MergeResult, mode: "replace" | "merge"): string {
 
 /** Port `newsletter.html` (1261 baris, route standalone di app lama --
  * di sini route Next.js biasa `/newsletter`, nav udah disiapin Grup A
- * `app-header.tsx`). Grup H, sub-grup terakhir Fase 8 -- numpang
+ * `app-shell/nav-items.ts`). Grup H, sub-grup terakhir Fase 8 -- numpang
  * komponen Mindmap (G5) buat "Mind Map" per histori.
  *
  * Composer baru (ROADMAP #22, PR 9): terbuka sudah terisi saran bulan itu (artikel per section dan

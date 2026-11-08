@@ -21,7 +21,7 @@ import { Label } from "@/components/ui/label";
  * Ganti password diri sendiri -- port `openSelfPwModal()`/
  * `doSelfPwChange()` (`usermgmt.js`, dipicu klik username di header lama).
  * Gap nyata dari Grup A: sebelum ini gak ada cara user ganti password
- * sendiri dari UI sama sekali. Dipasang di `UserMenu` (Grup C, numpang
+ * sendiri dari UI sama sekali. Dipasang di `AvatarMenu` (dulu `UserMenu`, Grup C; numpang
  * `usePasswordPolicy()`/`validatePasswordClient()` yang dibangun buat
  * Admin Reset Password/Add User).
  */
@@ -29,11 +29,15 @@ export function ChangePasswordDialog({
   open,
   onOpenChange,
   forced = false,
+  finalFocus,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Akun ditandai `force_pw_change`: dialog tidak bisa ditutup, hanya ganti password / sign out. */
   forced?: boolean;
+  /** Ke mana fokus kembali saat dialog menutup. Dibuka dari item menu avatar yang sudah di-unmount,
+   * jadi tanpa ini fokus jatuh ke `<body>`. */
+  finalFocus?: React.RefObject<HTMLElement | null>;
 }) {
   const policy = usePasswordPolicy();
   const { logout } = useAuth();
@@ -73,7 +77,7 @@ export function ChangePasswordDialog({
 
   return (
     <Dialog open={open} onOpenChange={forced ? () => undefined : onOpenChange}>
-      <DialogContent className="sm:max-w-sm">
+      <DialogContent className="sm:max-w-sm" finalFocus={finalFocus}>
         <DialogHeader>
           <DialogTitle className="font-heading">Change Password</DialogTitle>
         </DialogHeader>
