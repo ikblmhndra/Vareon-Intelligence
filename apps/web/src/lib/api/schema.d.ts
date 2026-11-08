@@ -2506,6 +2506,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/pir/{pir_id}/coverage/weekly": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Pir Weekly Coverage
+         * @description Artikel cocok per minggu untuk grafik coverage; PIR yang belum mulai -> `weeks` kosong.
+         */
+        get: operations["pir_weekly_coverage_api_pir__pir_id__coverage_weekly_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/pir/{pir_id}/export": {
         parameters: {
             query?: never;
@@ -5417,6 +5437,23 @@ export interface components {
             /** Relationships */
             relationships: components["schemas"]["RelationshipOut"][];
         };
+        /** EntitySpike */
+        EntitySpike: {
+            /** Baseline Mean */
+            baseline_mean: number;
+            /** Count */
+            count: number;
+            /** Date */
+            date: string;
+            /** Entity */
+            entity: string;
+            /** Entity Id */
+            entity_id?: number | null;
+            /** Severity */
+            severity: string;
+            /** Z Score */
+            z_score: number;
+        };
         /** EntityStoriesResponse */
         EntityStoriesResponse: {
             /** Items */
@@ -6293,6 +6330,19 @@ export interface components {
              */
             summary_text: string;
         };
+        /** OverallSpike */
+        OverallSpike: {
+            /** Baseline Mean */
+            baseline_mean: number;
+            /** Count */
+            count: number;
+            /** Date */
+            date: string;
+            /** Severity */
+            severity: string;
+            /** Z Score */
+            z_score: number;
+        };
         /** PIRArticleListResponse */
         PIRArticleListResponse: {
             /** Articles */
@@ -6505,6 +6555,24 @@ export interface components {
             status?: string | null;
             /** Title */
             title?: string | null;
+        };
+        /** PIRWeekCount */
+        PIRWeekCount: {
+            /** Count */
+            count: number;
+            /** Week Start */
+            week_start: string;
+        };
+        /** PIRWeeklyCoverage */
+        PIRWeeklyCoverage: {
+            /** Pir Id */
+            pir_id: number;
+            /** Since */
+            since?: string | null;
+            /** Until */
+            until?: string | null;
+            /** Weeks */
+            weeks: components["schemas"]["PIRWeekCount"][];
         };
         /** PackageDepGraphOut */
         PackageDepGraphOut: {
@@ -7588,6 +7656,52 @@ export interface components {
             iocs_newest_at: string | null;
             /** Tweets Newest At */
             tweets_newest_at: string | null;
+        };
+        /**
+         * SpikeDaily
+         * @description Seri harian sejajar `dates`, zero-filled; hanya entitas yang masuk daftar spike.
+         */
+        SpikeDaily: {
+            /** Countries */
+            countries: {
+                [key: string]: number[];
+            };
+            /** Dates */
+            dates: string[];
+            /** Industries */
+            industries: {
+                [key: string]: number[];
+            };
+            /** Overall */
+            overall: number[];
+            /** Threat Actors */
+            threat_actors: {
+                [key: string]: number[];
+            };
+        };
+        /** SpikeParameters */
+        SpikeParameters: {
+            /** Lookback Days */
+            lookback_days: number;
+            /** Recent Window */
+            recent_window: string;
+            /** Z Threshold */
+            z_threshold: number;
+        };
+        /** SpikesResponse */
+        SpikesResponse: {
+            /** Countries */
+            countries: components["schemas"]["EntitySpike"][];
+            daily: components["schemas"]["SpikeDaily"];
+            /** Generated At */
+            generated_at: string;
+            /** Industries */
+            industries: components["schemas"]["EntitySpike"][];
+            /** Overall */
+            overall: components["schemas"]["OverallSpike"][];
+            parameters: components["schemas"]["SpikeParameters"];
+            /** Threat Actors */
+            threat_actors: components["schemas"]["EntitySpike"][];
         };
         /** SplitBody */
         SplitBody: {
@@ -12958,6 +13072,9 @@ export interface operations {
             query?: {
                 view?: string;
                 days?: number;
+                top_rows?: number | null;
+                top_ttps?: number | null;
+                ttp_source?: ("explicit" | "keyword" | "llm")[] | null;
             };
             header?: {
                 authorization?: string | null;
@@ -12992,6 +13109,9 @@ export interface operations {
             query?: {
                 view?: string;
                 days?: number;
+                top_rows?: number | null;
+                top_ttps?: number | null;
+                ttp_source?: ("explicit" | "keyword" | "llm")[] | null;
             };
             header?: {
                 authorization?: string | null;
@@ -13674,6 +13794,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PIRArticleListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pir_weekly_coverage_api_pir__pir_id__coverage_weekly_get: {
+        parameters: {
+            query?: {
+                weeks?: number;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                pir_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PIRWeeklyCoverage"];
                 };
             };
             /** @description Validation Error */
@@ -15649,9 +15804,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["SpikesResponse"];
                 };
             };
             /** @description Validation Error */

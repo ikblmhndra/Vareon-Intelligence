@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type { components } from "@/lib/api/schema";
 import type { SrActionResult } from "@/lib/api/loose-types";
+import { nativeSelectClass } from "@/components/ui/native-select";
 
 type SREntry = components["schemas"]["SREntryOut"];
 
@@ -23,10 +24,6 @@ interface SrEntryDialogProps {
   open: boolean;
   onClose: () => void;
   onSaved: () => void;
-}
-
-function nativeSelectClass() {
-  return "h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-focus dark:bg-input/30";
 }
 
 /** Port modal Add/Edit Source Rating (`source_reliability.js:113-299`,

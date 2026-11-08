@@ -36,7 +36,7 @@ const USERS_KEY = ["admin", "users"] as const;
 
 function roleBadgeClass(role: string): string {
   if (role === "superadmin") return "border-warning/40 bg-warning/10 text-warning-text";
-  if (role === "admin") return "border-ring/40 bg-ring/10 text-primary-text";
+  if (role === "admin") return "border-primary/40 bg-primary/10 text-primary-text";
   return "border-primary/30 bg-primary/10 text-primary-text";
 }
 

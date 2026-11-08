@@ -42,6 +42,7 @@
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
   --color-popover-foreground: var(--popover-foreground);
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
@@ -121,11 +122,13 @@
   --text-2xs--line-height: calc(1 / 0.6875);
 }
 
-/* Permukaan "raised" untuk kartu konten utama: warna surface + bayangan bertinta, tepinya cuma
-   hairline 7% (bukan garis beige penuh), jadi kartu terbaca sebagai lapisan, bukan kotak.
+/* Permukaan "raised" untuk kartu konten utama: latar putih (bg-background, sama dengan Card) +
+   garis border token, tanpa bayangan (mockup FigCraft: kartu datar berbingkai; beige surface hanya
+   untuk tile tanpa border). Nama utility dipertahankan agar
+   pemakai lama tidak perlu diubah.
    Hierarki: hero (band burgundy) > raised (ini) > flat (tanpa latar, hanya spasi/pembatas). */
 @utility surface-raised {
-  @apply bg-surface shadow-sm ring-1 ring-foreground/[0.07];
+  @apply border border-border bg-background;
 }
 
 :root {
@@ -139,6 +142,7 @@
   --popover-foreground: var(--foreground);
   --primary: #d0002f; /* Privy Red, digelapkan sedikit dari #e60034 supaya teks merah di atas beige lulus AA */
   --primary-foreground: #ffffff;
+  --primary-hover: #b00025;
   --secondary: #f0e7db;
   --secondary-foreground: var(--foreground);
   --muted: var(--panel);
@@ -147,10 +151,10 @@
   --accent-foreground: var(--foreground);
   --destructive: #b42318; /* oranye-merah, beda hue dari --primary */
   --border: #e3d6c6;
-  --input: #e3d6c6;
-  --ring: #d0002f;
+  --input: #8f7565;
+  --ring: var(--foreground);
   --success: #17703f;
-  --warning: #9a4a00;
+  --warning: #a04a07;
   --info: #256a8a;
   --tag-violet: #6b4a9e;
   --severity-critical: #b42318;
@@ -209,6 +213,7 @@
   --popover-foreground: var(--foreground);
   --primary: #ff4d6d;
   --primary-foreground: #0f070b;
+  --primary-hover: #ff6b85;
   --secondary: #33202f;
   --secondary-foreground: var(--foreground);
   --muted: var(--panel);
@@ -217,8 +222,8 @@
   --accent-foreground: var(--foreground);
   --destructive: #ff7a6e;
   --border: #55344a;
-  --input: #55344a;
-  --ring: #ff4d6d;
+  --input: #8a6a7c;
+  --ring: var(--foreground);
   --success: #76ce93;
   --warning: #ffa164;
   --info: #92bbd1;

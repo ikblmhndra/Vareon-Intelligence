@@ -99,7 +99,7 @@ function WatchButton({
   return (
     <Button
       size="sm"
-      variant={item.watched ? "secondary" : "outline"}
+      variant={item.watched ? "default" : "outline"}
       aria-pressed={item.watched}
       aria-label={`${item.watched ? "Stop watching" : "Watch"} ${item.name}`}
       disabled={busy}
@@ -251,7 +251,7 @@ export function EntitiesListView() {
             <div role="group" aria-labelledby="entity-show-label" className="flex gap-1.5">
               <Button
                 size="sm"
-                variant={watchedOnly ? "outline" : "secondary"}
+                variant={watchedOnly ? "outline" : "default"}
                 aria-pressed={!watchedOnly}
                 onClick={() => setParams({ watched: null })}
                 className="max-sm:h-11"
@@ -260,7 +260,7 @@ export function EntitiesListView() {
               </Button>
               <Button
                 size="sm"
-                variant={watchedOnly ? "secondary" : "outline"}
+                variant={watchedOnly ? "default" : "outline"}
                 aria-pressed={watchedOnly}
                 onClick={() => setParams({ watched: "1" })}
                 className="max-sm:h-11"

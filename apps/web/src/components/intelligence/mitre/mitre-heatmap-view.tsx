@@ -3,6 +3,7 @@
 import { DownloadIcon } from "lucide-react";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 import { api } from "@/lib/api/client";
 import { getActiveClientId } from "@/lib/auth/client-id";
@@ -18,6 +19,10 @@ const VIEWS = [
   { value: "industry", label: "Industry" },
 ] as const;
 const DAY_OPTIONS = [30, 90, 180, 365];
+// Heatmap belum punya kontrol baris/kolom/sumber: ukuran yang tampil = default `/heatmap`.
+// Dikirim eksplisit ke export supaya layer Navigator = heatmap yang terlihat.
+const TOP_ROWS = 15;
+const TOP_TTPS = 20;
 
 /** Port `loadMitreHeatmap()`/`downloadNavigatorLayer()`/`openNavigator()`
  * (`scraper.js:68-182`) -- heatmap TTP OBSERVED di artikel (`ArticleTTP`,
@@ -42,14 +47,14 @@ export function MitreHeatmapView() {
     try {
       const clientId = getActiveClientId();
       const resp = await fetch(
-        `/api/proxy/api/mitre/navigator-export?view=${view}&days=${days}`,
+        `/api/proxy/api/mitre/navigator-export?view=${view}&days=${days}&top_rows=${TOP_ROWS}&top_ttps=${TOP_TTPS}`,
         clientId ? { headers: { "X-Client-ID": clientId } } : undefined,
       );
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const blob = await resp.blob();
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = `cti_navigator_${view}_${days}d.json`;
+      a.download = `cti_navigator_${view}_${days}d_r${TOP_ROWS}_c${TOP_TTPS}.json`;
       a.click();
       URL.revokeObjectURL(a.href);
     } finally {
@@ -57,9 +62,24 @@ export function MitreHeatmapView() {
     }
   }
 
-  function openNavigator() {
-    const layerUrl = encodeURIComponent(`${window.location.origin}/api/proxy/api/mitre/navigator-layer?view=${view}&days=${days}`);
-    window.open(`https://mitre-attack.github.io/attack-navigator/#layerURL=${layerUrl}`, "_blank");
+  /** `#layerURL=` tidak bisa dipakai: Navigator (mitre-attack.github.io) mengambil layer dari
+   * browser TANPA cookie sesi (proxy menolak), dan app di http internal diblokir sebagai mixed
+   * content. Jadi: buka Navigator (sinkron di handler klik supaya tidak kena popup blocker),
+   * unduh layer yang sama dengan tombol Download, lalu tunjukkan cara memuatnya. */
+  async function openNavigator() {
+    window.open("https://mitre-attack.github.io/attack-navigator/", "_blank", "noopener");
+    try {
+      await downloadLayer();
+      // Tetap tampil sampai ditutup: user biasanya sedang di tab Navigator saat toast muncul.
+      toast.info("Layer downloaded", {
+        description:
+          "In ATT&CK Navigator choose Open Existing Layer → Upload from local, then pick the downloaded JSON. If no tab opened, go to mitre-attack.github.io/attack-navigator.",
+        duration: Infinity,
+        closeButton: true,
+      });
+    } catch {
+      toast.error("Failed to download the layer.");
+    }
   }
 
   const d = query.data;
@@ -99,10 +119,10 @@ export function MitreHeatmapView() {
           </Select>
         </div>
         <div className="ml-auto flex gap-2">
-          <Button size="sm" variant="outline" disabled={exporting} onClick={() => void downloadLayer()}>
+          <Button size="sm" variant="outline" disabled={exporting} onClick={() => void downloadLayer().catch(() => toast.error("Failed to download the layer."))}>
             <DownloadIcon /> Download Layer
           </Button>
-          <Button size="sm" variant="outline" onClick={openNavigator}>
+          <Button size="sm" variant="outline" disabled={exporting} onClick={() => void openNavigator()}>
             ⧉ Open in Navigator
           </Button>
         </div>

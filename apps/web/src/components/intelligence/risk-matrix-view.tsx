@@ -9,21 +9,21 @@ import { nameChip } from "@/lib/entities/name-chips";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { RISK_HIGH_MIN, RISK_MED_MIN } from "@/lib/exec/format";
 import type { RiskMatrixResponse } from "@/lib/api/loose-types";
 
 function riskTierClass(score: number): { bg: string; text: string } {
-  if (score <= 25) return { bg: "bg-success/20", text: "text-success-text" };
-  if (score <= 50) return { bg: "bg-info/20", text: "text-info-text" };
-  if (score <= 75) return { bg: "bg-warning/25", text: "text-warning-text" };
+  if (score < RISK_MED_MIN) return { bg: "bg-success/20", text: "text-success-text" };
+  if (score < RISK_HIGH_MIN) return { bg: "bg-warning/25", text: "text-warning-text" };
   return { bg: "bg-severity-critical/25", text: "text-severity-critical-text" };
 }
 
 /** Port `risk_matrix.js` (90 baris) -- matriks Industry × Country, skor
  * 0-100 dari unique-TA/unique-TTP/volume periode berjalan vs
- * sebelumnya. Tier warna 4 tingkat legacy (`_rmCellColor`/
- * `_rmCellTextColor`, literal rgba) di-mapping ke token Tailwind
- * (success/primary/warning/destructive), konsisten sama re-theme Fase
- * 8. `min_score` filter murni client-side, port apa adanya. */
+ * sebelumnya. Tier warna 3 tingkat (LOW <40, MED 40-69,
+ * HIGH >=70, satu skala dengan `riskTier` di `lib/exec/format.ts`;
+ * sebelumnya 4 tingkat legacy 25/50/75) pakai token Tailwind
+ * success/warning/severity-critical. `min_score` filter murni client-side, port apa adanya. */
 export function RiskMatrixView() {
   const [days, setDays] = useState(30);
   const [compareDays, setCompareDays] = useState(30);

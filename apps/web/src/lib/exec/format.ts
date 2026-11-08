@@ -9,9 +9,14 @@ export function execTrend(current: number, prev: number): { text: string; colorC
   return { text: `${arrow}${pct}% vs prev period`, colorClass };
 }
 
+/** Batas tier risiko (satu skala: LOW <40, MED 40-69, HIGH >=70), dipakai juga
+ * oleh `risk-matrix-view.tsx`. */
+export const RISK_MED_MIN = 40;
+export const RISK_HIGH_MIN = 70;
+
 export function riskTier(score: number): { label: string; colorClass: string } {
-  if (score >= 70) return { label: "HIGH", colorClass: "text-destructive" };
-  if (score >= 40) return { label: "MED", colorClass: "text-warning" };
+  if (score >= RISK_HIGH_MIN) return { label: "HIGH", colorClass: "text-destructive" };
+  if (score >= RISK_MED_MIN) return { label: "MED", colorClass: "text-warning" };
   return { label: "LOW", colorClass: "text-success" };
 }
 

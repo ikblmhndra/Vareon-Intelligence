@@ -6,6 +6,25 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
+## [0.8.16] - 2026-11-08
+
+**Redesain FigCraft: tiga sumber data baru untuk halaman PIR, Intelligence, dan MITRE, plus penyeragaman tema web.** API mendapat cakupan PIR per minggu, seri harian per entitas yang melonjak, dan layer ATT&CK Navigator yang sama persis dengan heatmap yang terlihat. Web memakai satu skala tier risiko, border field yang terbaca, dan fokus yang jelas. Tanpa migrasi dan tanpa kunci `.env`.
+
+### Ditambahkan
+- `GET /api/pir/{pir_id}/coverage/weekly`: jumlah artikel per minggu untuk grafik cakupan PIR.
+- `GET /api/spikes`: respons kini bertipe (`SpikesResponse`) dan punya blok `daily`, yaitu seri harian per entitas yang melonjak. Key lama tidak berubah.
+- `GET /api/mitre/navigator-layer` dan `/navigator-export`: parameter opsional `top_rows`, `top_ttps`, `ttp_source` supaya layer yang diekspor sama dengan heatmap yang sedang tampil.
+
+### Diubah
+- Deteksi spike (Early Warning dan industry spikes di dashboard eksekutif): mean dan simpangan baku baseline kini menghitung hari tanpa artikel sebagai 0, sama dengan seri `daily`. Dulu hanya hari yang ada artikelnya yang dihitung, sehingga garis baseline lebih tinggi daripada batang hariannya dan entitas yang jarang muncul mendapat z-score terlalu kecil. Akibatnya jumlah dan urutan anomali berubah sesudah deploy, ke dua arah: entitas jarang bisa muncul, entitas yang hitungan hariannya naik-turun bisa hilang. Entitas tetap butuh minimal 5 hari baseline yang ada artikelnya.
+- MITRE: tombol "Open in Navigator" kini membuka ATT&CK Navigator dan mengunduh layer, dengan petunjuk "Open Existing Layer → Upload from local". Link `#layerURL=` lama tidak pernah bisa dipakai di balik login.
+- Web: satu skala tier risiko di risk matrix (LOW 0-39, MED 40-69, HIGH 70-100).
+- Web: ring fokus berwarna ink, warna warning `#A04A07`, aturan breakpoint di `lg` (1024px), dan token border `--input` yang lebih gelap (kontras minimal 3:1) untuk Input, Textarea, Select, dan Checkbox.
+- Web: shell baru mengikuti mockup FigCraft. Navigasi atas (masthead) dengan menu "More" menggantikan sidebar; di bawah 1024px menjadi tombol Menu. Utility bar memuat pemilih klien dan menu akun.
+- Web: tombol (semua state), field, tab bergaris bawah dan pil, kontrol segmented, chip, kartu, tabel, dialog, dan panel state kosong/error mengikuti mockup. Kartu kini datar berbingkai (tanpa bayangan), judul dialog semibold, dan badge memakai ring fokus ink.
+
+**Saat upgrade dari 0.8.15:** catat jumlah anomali Early Warning per kelompok sebelum deploy untuk dibandingkan, lalu `make deploy`. Dari prod 0.8.11 (versi yang sedang jalan): ikuti runbook gabungan `docs/PROD_UPGRADE_0.8.11_TO_0.8.16.md`; cek per rilis ada di `docs/prod-upgrade/0.8.16.md`.
+
 ## [0.8.15] - 2026-11-08
 
 **Penyesuaian: run `github_poc_monitor` dipercepat dari rata-rata ~18 menit ke target di bawah 15 menit.** Sesudah 0.8.13/0.8.14 di prod, 14 run berturut-turut sukses dan tidak menumpuk, tapi rata-ratanya 1.076 detik, karena di luar 300 pencarian targeted ada pencarian broad dan lookup MITRE. Tanpa migrasi dan tanpa kunci `.env`.

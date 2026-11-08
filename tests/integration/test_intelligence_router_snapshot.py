@@ -42,6 +42,7 @@ _NORMALIZE = path_type(
         # path per elemen berakhir di angka index, bukan "id" literal,
         # jadi butuh pattern sendiri (beda dari field skalar `id`).
         r"(.*\.)?member_article_ids\.\d+$": (int,),
+        r"daily\.dates\.\d+$": (str,),
     },
     regex=True,
     strict=False,

@@ -39,7 +39,7 @@ import datetime
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import Select, or_, select
+from sqlalchemy import Date, Select, distinct, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_core.db.models.article import Article
@@ -104,6 +104,30 @@ def pir_article_ids_stmt(pir: PIRRequirement, article_ids: Sequence[int]) -> Sel
     return stmt.with_only_columns(Article.id)
 
 
+def _monday(d: datetime.date) -> datetime.date:
+    return d - datetime.timedelta(days=d.weekday())
+
+
+def weekly_window(
+    start_date: datetime.date | None,
+    end_date: datetime.date | None,
+    today: datetime.date,
+    weeks: int,
+) -> tuple[datetime.date, datetime.date] | None:
+    """`(since_senin, until)` untuk grafik coverage mingguan PIR, atau `None` bila kosong.
+
+    `until` = `end_date` PIR bila sudah lewat, selain itu `today` (inklusif, sama seperti
+    `posted_on_end` di `_apply_list_filters`). `since` = Senin dari `start_date` PIR, tetapi
+    dipotong ke `weeks` minggu terakhir supaya PIR lama tidak menghasilkan ratusan bucket.
+    `None` bila `start_date` ada di masa depan (jendela belum mulai)."""
+    until = min(end_date, today) if end_date else today
+    floor = _monday(until) - datetime.timedelta(days=(weeks - 1) * 7)
+    since = max(_monday(start_date), floor) if start_date else floor
+    if since > until:
+        return None
+    return since, until
+
+
 def active_pirs_stmt(today: datetime.date) -> Select[tuple[PIRRequirement]]:
     """PIR aktif lintas client yang jendela tanggalnya (inklusif) memuat `today`."""
     return select(PIRRequirement).where(
@@ -150,6 +174,40 @@ class AsyncPIRRepo:
                 **filters,
             )
         return total, last_match, recent
+
+    async def weekly_coverage(
+        self, pir: PIRRequirement, *, weeks: int, today: datetime.date
+    ) -> tuple[datetime.date, datetime.date, list[tuple[datetime.date, int]]] | None:
+        """Jumlah artikel cocok PIR per minggu (bucket Senin), diisi nol untuk minggu kosong.
+
+        Pencocokan lewat `_apply_list_filters` + `_criteria_filters` yang sama dengan halaman
+        PIR, jadi angka grafik == jumlah di daftar artikel. `posted_on_start` tetap
+        `max(start_date, since)` (bukan Senin mentah) supaya artikel sebelum `start_date`
+        PIR di minggu pertama tidak ikut terhitung."""
+        window = weekly_window(pir.start_date, pir.end_date, today, weeks)
+        if window is None:
+            return None
+        since, until = window
+        posted_start = max(pir.start_date, since) if pir.start_date else since
+        week = func.date_trunc("week", Article.posted_on).cast(Date)
+        base = _apply_list_filters(
+            select(Article),
+            posted_on_start=posted_start,
+            posted_on_end=until,  # inklusif (`Article.posted_on <= until`)
+            victim_countries=None,
+            actor_countries=None,
+            sources=None,
+            search=None,
+            **_criteria_filters(pir.criteria),
+        )
+        stmt = base.with_only_columns(week, func.count(distinct(Article.id))).group_by(week)
+        counts = {row[0]: row[1] for row in (await self.session.execute(stmt)).all()}
+        rows: list[tuple[datetime.date, int]] = []
+        monday = _monday(since)
+        while monday <= until:
+            rows.append((monday, int(counts.get(monday, 0))))
+            monday += datetime.timedelta(days=7)
+        return since, until, rows
 
     async def list_pirs(
         self, article_repo: AsyncArticleRepo, client_id: str

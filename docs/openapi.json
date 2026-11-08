@@ -3696,6 +3696,55 @@
         "title": "EntityRelationshipsResponse",
         "type": "object"
       },
+      "EntitySpike": {
+        "properties": {
+          "baseline_mean": {
+            "title": "Baseline Mean",
+            "type": "number"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "entity": {
+            "title": "Entity",
+            "type": "string"
+          },
+          "entity_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Id"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "z_score": {
+            "title": "Z Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "entity",
+          "date",
+          "count",
+          "baseline_mean",
+          "z_score",
+          "severity"
+        ],
+        "title": "EntitySpike",
+        "type": "object"
+      },
       "EntityStoriesResponse": {
         "properties": {
           "items": {
@@ -5847,6 +5896,39 @@
         "title": "NewsletterSuggestionResponse",
         "type": "object"
       },
+      "OverallSpike": {
+        "properties": {
+          "baseline_mean": {
+            "title": "Baseline Mean",
+            "type": "number"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "z_score": {
+            "title": "Z Score",
+            "type": "number"
+          }
+        },
+        "required": [
+          "date",
+          "count",
+          "baseline_mean",
+          "z_score",
+          "severity"
+        ],
+        "title": "OverallSpike",
+        "type": "object"
+      },
       "PIRArticleListResponse": {
         "properties": {
           "articles": {
@@ -6388,6 +6470,67 @@
           }
         },
         "title": "PIRUpdate",
+        "type": "object"
+      },
+      "PIRWeekCount": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "week_start": {
+            "title": "Week Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "week_start",
+          "count"
+        ],
+        "title": "PIRWeekCount",
+        "type": "object"
+      },
+      "PIRWeeklyCoverage": {
+        "properties": {
+          "pir_id": {
+            "title": "Pir Id",
+            "type": "integer"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          },
+          "until": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Until"
+          },
+          "weeks": {
+            "items": {
+              "$ref": "#/components/schemas/PIRWeekCount"
+            },
+            "title": "Weeks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "pir_id",
+          "weeks"
+        ],
+        "title": "PIRWeeklyCoverage",
         "type": "object"
       },
       "PackageDepGraphOut": {
@@ -9618,6 +9761,140 @@
         "title": "SourceFreshnessOut",
         "type": "object"
       },
+      "SpikeDaily": {
+        "description": "Seri harian sejajar `dates`, zero-filled; hanya entitas yang masuk daftar spike.",
+        "properties": {
+          "countries": {
+            "additionalProperties": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "title": "Countries",
+            "type": "object"
+          },
+          "dates": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Dates",
+            "type": "array"
+          },
+          "industries": {
+            "additionalProperties": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "title": "Industries",
+            "type": "object"
+          },
+          "overall": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Overall",
+            "type": "array"
+          },
+          "threat_actors": {
+            "additionalProperties": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "title": "Threat Actors",
+            "type": "object"
+          }
+        },
+        "required": [
+          "dates",
+          "threat_actors",
+          "countries",
+          "industries",
+          "overall"
+        ],
+        "title": "SpikeDaily",
+        "type": "object"
+      },
+      "SpikeParameters": {
+        "properties": {
+          "lookback_days": {
+            "title": "Lookback Days",
+            "type": "integer"
+          },
+          "recent_window": {
+            "title": "Recent Window",
+            "type": "string"
+          },
+          "z_threshold": {
+            "title": "Z Threshold",
+            "type": "number"
+          }
+        },
+        "required": [
+          "lookback_days",
+          "z_threshold",
+          "recent_window"
+        ],
+        "title": "SpikeParameters",
+        "type": "object"
+      },
+      "SpikesResponse": {
+        "properties": {
+          "countries": {
+            "items": {
+              "$ref": "#/components/schemas/EntitySpike"
+            },
+            "title": "Countries",
+            "type": "array"
+          },
+          "daily": {
+            "$ref": "#/components/schemas/SpikeDaily"
+          },
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "industries": {
+            "items": {
+              "$ref": "#/components/schemas/EntitySpike"
+            },
+            "title": "Industries",
+            "type": "array"
+          },
+          "overall": {
+            "items": {
+              "$ref": "#/components/schemas/OverallSpike"
+            },
+            "title": "Overall",
+            "type": "array"
+          },
+          "parameters": {
+            "$ref": "#/components/schemas/SpikeParameters"
+          },
+          "threat_actors": {
+            "items": {
+              "$ref": "#/components/schemas/EntitySpike"
+            },
+            "title": "Threat Actors",
+            "type": "array"
+          }
+        },
+        "required": [
+          "threat_actors",
+          "countries",
+          "industries",
+          "overall",
+          "generated_at",
+          "parameters",
+          "daily"
+        ],
+        "title": "SpikesResponse",
+        "type": "object"
+      },
       "SplitBody": {
         "properties": {
           "alias_ids": {
@@ -10936,7 +11213,7 @@
   },
   "info": {
     "title": "Vareon Intelligence API",
-    "version": "0.8.15"
+    "version": "0.8.16"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -21628,6 +21905,66 @@
             }
           },
           {
+            "in": "query",
+            "name": "top_rows",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 30,
+                  "minimum": 3,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Top Rows"
+            }
+          },
+          {
+            "in": "query",
+            "name": "top_ttps",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 40,
+                  "minimum": 5,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Top Ttps"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ttp_source",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "enum": [
+                      "explicit",
+                      "keyword",
+                      "llm"
+                    ],
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ttp Source"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -21695,6 +22032,66 @@
               "minimum": 7,
               "title": "Days",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "top_rows",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 30,
+                  "minimum": 3,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Top Rows"
+            }
+          },
+          {
+            "in": "query",
+            "name": "top_ttps",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 40,
+                  "minimum": 5,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Top Ttps"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ttp_source",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "enum": [
+                      "explicit",
+                      "keyword",
+                      "llm"
+                    ],
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ttp Source"
             }
           },
           {
@@ -23053,6 +23450,77 @@
           }
         },
         "summary": "Pir Articles",
+        "tags": [
+          "pir"
+        ]
+      }
+    },
+    "/api/pir/{pir_id}/coverage/weekly": {
+      "get": {
+        "description": "Artikel cocok per minggu untuk grafik coverage; PIR yang belum mulai -> `weeks` kosong.",
+        "operationId": "pir_weekly_coverage_api_pir__pir_id__coverage_weekly_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pir_id",
+            "required": true,
+            "schema": {
+              "title": "Pir Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "weeks",
+            "required": false,
+            "schema": {
+              "default": 26,
+              "maximum": 52,
+              "minimum": 1,
+              "title": "Weeks",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PIRWeeklyCoverage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Pir Weekly Coverage",
         "tags": [
           "pir"
         ]
@@ -26908,9 +27376,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Early Warning Api Spikes Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/SpikesResponse"
                 }
               }
             },

@@ -10,6 +10,7 @@ import datetime
 import statistics
 import time
 from collections import defaultdict
+from collections.abc import Iterable
 from typing import Any
 
 from cti_core.db.repositories.dashboard import AsyncDashboardRepo
@@ -88,9 +89,15 @@ async def _compute_spikes(
         confirmed_only=confirmed_only,
     )
 
-    actor_spikes = _detect_entity_spikes(by_actor, recent_cutoff, z_threshold)
-    country_spikes = _detect_entity_spikes(by_country, recent_cutoff, z_threshold)
-    industry_spikes = _detect_entity_spikes(by_industry, recent_cutoff, z_threshold)
+    actor_spikes = _detect_entity_spikes(
+        by_actor, recent_cutoff, z_threshold, baseline_start=cutoff
+    )
+    country_spikes = _detect_entity_spikes(
+        by_country, recent_cutoff, z_threshold, baseline_start=cutoff
+    )
+    industry_spikes = _detect_entity_spikes(
+        by_industry, recent_cutoff, z_threshold, baseline_start=cutoff
+    )
     # `entity_id` dicari sesudah deteksi (satu query per dimensi), hanya untuk entri yang lolos.
     actor_keys = await name_keys_async(session, ACTOR, [str(s["entity"]) for s in actor_spikes])
     industry_keys = await name_keys_async(
@@ -106,18 +113,58 @@ async def _compute_spikes(
     for sp in country_spikes:
         sp["entity_id"] = country_ids.get(str(sp["entity"]))
 
+    today = datetime.date.today()
+    axis = _date_axis(cutoff, today)
+    totals_by_date = dict(daily_total)
+    daily = {
+        "dates": [d.isoformat() for d in axis],
+        "threat_actors": _daily_series(
+            by_actor, (str(s["entity"]) for s in actor_spikes), cutoff, today
+        ),
+        "countries": _daily_series(
+            by_country, (str(s["entity"]) for s in country_spikes), cutoff, today
+        ),
+        "industries": _daily_series(
+            by_industry, (str(s["entity"]) for s in industry_spikes), cutoff, today
+        ),
+        "overall": [totals_by_date.get(d, 0) for d in axis],
+    }
+
     return {
         "threat_actors": actor_spikes,
         "countries": country_spikes,
         "industries": industry_spikes,
-        "overall": _detect_overall_spikes(daily_total, recent_cutoff, z_threshold),
+        "overall": _detect_overall_spikes(
+            daily_total, recent_cutoff, z_threshold, baseline_start=cutoff
+        ),
         "generated_at": datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "parameters": {
             "lookback_days": lookback_days,
             "z_threshold": z_threshold,
             "recent_window": "last 7 days",
         },
+        "daily": daily,
     }
+
+
+def _date_axis(start: datetime.date, end: datetime.date) -> list[datetime.date]:
+    """Sumbu tanggal inklusif `start..end`, menaik."""
+    return [start + datetime.timedelta(days=i) for i in range((end - start).days + 1)]
+
+
+def _daily_series(
+    raw: list[tuple[datetime.date, str, int]],
+    entities: Iterable[str],
+    start: datetime.date,
+    end: datetime.date,
+) -> dict[str, list[int]]:
+    """Hitungan harian per entitas, zero-filled di sumbu `start..end`. Hanya `entities`
+    yang dimuat (entitas yang masuk daftar spike), bukan seluruh `raw`, supaya respons kecil."""
+    names = list(dict.fromkeys(entities))
+    wanted = set(names)
+    series = _build_series([r for r in raw if r[1] in wanted])
+    axis = _date_axis(start, end)
+    return {e: [series.get(e, {}).get(d, 0) for d in axis] for e in names}
 
 
 def _build_series(
@@ -129,23 +176,40 @@ def _build_series(
     return series
 
 
+def _baseline_days(
+    baseline_start: datetime.date, recent_cutoff: datetime.date
+) -> list[datetime.date]:
+    """Hari baseline `baseline_start..recent_cutoff-1`, inklusif."""
+    return _date_axis(baseline_start, recent_cutoff - datetime.timedelta(days=1))
+
+
 def _detect_entity_spikes(
-    raw: list[tuple[datetime.date, str, int]], recent_cutoff: datetime.date, z_threshold: float
+    raw: list[tuple[datetime.date, str, int]],
+    recent_cutoff: datetime.date,
+    z_threshold: float,
+    *,
+    baseline_start: datetime.date,
 ) -> list[dict[str, Any]]:
+    """Baseline = SEMUA hari `baseline_start..recent_cutoff-1`, hari tanpa artikel = 0 (0.8.15).
+
+    Dulu mean/std hanya dari hari yang ada artikelnya: garis baseline di kartu Early Warning jadi
+    lebih tinggi daripada batang deret `daily` (yang mengisi 0), dan entitas yang jarang muncul
+    mendapat z-score terlalu kecil. Syarat "minimal 5 hari baseline" tetap berarti 5 hari yang ADA
+    artikelnya (kalau dihitung dengan hari nol, syarat itu selalu lolos). Filter lama `mean < 0.5`
+    dibuang: dengan nilai harian >= 1 ia tidak pernah aktif, dan dengan hari nol ia justru akan
+    membuang entitas jarang yang memang ingin terdeteksi."""
     series = _build_series(raw)
+    baseline_days = _baseline_days(baseline_start, recent_cutoff)
     spikes = []
 
     for entity, daily in series.items():
-        dates = sorted(daily)
-        baseline_vals = [daily[d] for d in dates if d < recent_cutoff]
-        recent_dates = [d for d in dates if d >= recent_cutoff]
+        baseline_vals = [daily.get(d, 0) for d in baseline_days]
+        recent_dates = sorted(d for d in daily if d >= recent_cutoff)
 
-        if len(baseline_vals) < 5:
+        if sum(1 for v in baseline_vals if v > 0) < 5:
             continue
 
         mean = statistics.mean(baseline_vals)
-        if mean < 0.5:
-            continue
 
         try:
             std = statistics.stdev(baseline_vals)
@@ -173,12 +237,18 @@ def _detect_entity_spikes(
 
 
 def _detect_overall_spikes(
-    daily_total: list[tuple[datetime.date, int]], recent_cutoff: datetime.date, z_threshold: float
+    daily_total: list[tuple[datetime.date, int]],
+    recent_cutoff: datetime.date,
+    z_threshold: float,
+    *,
+    baseline_start: datetime.date,
 ) -> list[dict[str, Any]]:
-    baseline_vals = [count for date, count in daily_total if date < recent_cutoff]
+    """Sama dengan `_detect_entity_spikes`: hari baseline tanpa artikel dihitung 0 (0.8.15)."""
+    by_date = dict(daily_total)
+    baseline_vals = [by_date.get(d, 0) for d in _baseline_days(baseline_start, recent_cutoff)]
     recent = [(date, count) for date, count in daily_total if date >= recent_cutoff]
 
-    if len(baseline_vals) < 5:
+    if sum(1 for v in baseline_vals if v > 0) < 5:
         return []
 
     mean = statistics.mean(baseline_vals)
