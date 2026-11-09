@@ -431,12 +431,37 @@ export interface paths {
         };
         /**
          * Search Families
-         * @description Pencarian lintas vendor; tidak menyembunyikan keluarga ber-1 CVE.
+         * @description Pencarian lintas vendor (`q`): tidak menyembunyikan apa pun. Tanpa `q` = jelajah semua
+         *     produk (All Tech mode Products), urut CVE terbanyak; aturan jelajah berlaku (`show_all`,
+         *     `show_hidden`).
          */
         get: operations["search_families_api_catalog_families_get"];
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/catalog/families/{family_id}/hide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Hide Family
+         * @description Sembunyikan keluarga dari All Tech client ini (tampilan saja; Monitor, promosi, dan CVE DB
+         *     tidak berubah). Idempoten. 409 bila client ini me-Monitor keluarga itu langsung; cakupan
+         *     vendor tidak menghalangi.
+         */
+        put: operations["hide_family_api_catalog_families__family_id__hide_put"];
+        post?: never;
+        /** Unhide Family */
+        delete: operations["unhide_family_api_catalog_families__family_id__hide_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -699,6 +724,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cve-db/meta": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Cve Db Meta
+         * @description Baris kecil di atas CVE DB: total mirror, sinkron terakhir, dan apakah mirror menyala.
+         *     `total` = `count(*)` atas jutaan baris, jadi di-cache `_TOTAL_TTL` detik; gagal Redis tidak
+         *     boleh menjatuhkan endpoint (jatuh ke hitung langsung).
+         */
+        get: operations["get_cve_db_meta_api_cve_db_meta_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/cve-db/{cve_id}": {
         parameters: {
             query?: never;
@@ -789,7 +836,8 @@ export interface paths {
          *     `new_cve`, atau `cve.mirror_sync` bila mirror `live`) ke worker; hasilnya tampil lewat
          *     `GET /freshness`. Hanya admin (kuota NVD/MITRE, sama dengan trigger scraper). Ditolak 409 bila
          *     cek sedang berjalan atau scraper dimatikan, 429 selama cooldown, 503 bila worker tak
-         *     terjangkau.
+         *     terjangkau. `source` (opsional) memicu satu jalur saja dengan cooldown sendiri; nilai tak
+         *     dikenal = 422, jalur yang tidak aktif = 409.
          */
         post: operations["check_new_cves_api_cve_check_new_post"];
         delete?: never;
@@ -945,6 +993,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cve/lookup/{cve_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Live Lookup Cve
+         * @description Lookup langsung CVE sembarang (mirror, NVD, CIRCL, Exploit-DB, EPSS paralel). Hanya baca:
+         *     tidak menulis tracker/ticket/FP. Per user 10/menit (429 + `Retry-After`), cache 6 jam untuk
+         *     bagian publik; `tracked` dihitung untuk client aktif. Satu sumber gagal tidak menggagalkan
+         *     lookup (lihat `sources`). Dicatat di audit log.
+         */
+        get: operations["live_lookup_cve_api_cve_lookup__cve_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/cve/next-ticket-id": {
         parameters: {
             query?: never;
@@ -1027,6 +1098,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/cve/teams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Teams */
+        get: operations["list_teams_api_cve_teams_get"];
+        put?: never;
+        /** Create Team */
+        post: operations["create_team_api_cve_teams_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cve/teams/{team_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Deactivate Team
+         * @description Soft delete: `active=false`. Ticket yang memakai nama tim ini tetap menyimpannya.
+         */
+        delete: operations["deactivate_team_api_cve_teams__team_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Team
+         * @description Rename merambat ke `owner_team` ticket client ini (satu transaksi). `409` kalau nama baru
+         *     sudah dipakai tim lain (tanpa beda huruf besar/kecil).
+         */
+        patch: operations["update_team_api_cve_teams__team_id__patch"];
+        trace?: never;
+    };
     "/api/cve/tech-list": {
         parameters: {
             query?: never;
@@ -1068,6 +1182,26 @@ export interface paths {
          *     ticket.
          */
         get: operations["list_cve_tickets_api_cve_tickets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cve/tickets/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Cve Tickets
+         * @description Export view Ticketing (filter sama dengan `GET /tickets`) sebagai Excel.
+         */
+        get: operations["export_cve_tickets_api_cve_tickets_export_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1132,7 +1266,8 @@ export interface paths {
         put?: never;
         /**
          * Set False Positive
-         * @description `404` kalau CVE-nya tidak ada di tracker client ini.
+         * @description `404` kalau CVE-nya tidak ada di tracker client ini. Body opsional (pemanggil lama tanpa
+         *     body tetap jalan, alasan kosong); dengan body, alasan/catatan disimpan dan menimpa yang lama.
          */
         post: operations["set_false_positive_api_cve__cve_id__false_positive_post"];
         /** Remove False Positive */
@@ -1155,6 +1290,10 @@ export interface paths {
          * Update Cve Ticket
          * @description `404` kalau CVE-nya tidak ada di tracker client ini, kecuali sudah punya ticket (ticket yang
          *     ada tetap boleh diubah).
+         *
+         *     Eskalasi (spec 2a 4.6): hanya transisi mati -> nyala yang menjadwalkan draf email ke lead tim
+         *     (sesudah commit, best effort). Mematikan eskalasi mengosongkan `escalation_notified_at`
+         *     supaya menyalakan lagi membuat draf baru.
          */
         put: operations["update_cve_ticket_api_cve__cve_id__ticket_put"];
         post?: never;
@@ -2589,9 +2728,15 @@ export interface paths {
         put?: never;
         /**
          * Import Lockfile Endpoint
-         * @description Upload lockfile (requirements.txt, package-lock.json, go.mod,
-         *     pom.xml, poetry.lock). Parse package dengan versi pinned, tambahin
-         *     ke monitoring.
+         * @description Upload lockfile (requirements.txt, package-lock.json, package.json,
+         *     yarn.lock, go.mod, go.sum, pom.xml, poetry.lock, Gemfile.lock). Parse
+         *     package dengan versi pinned, tambahin ke monitoring.
+         *
+         *     `dry_run=true` cuma ngitung (baru / sudah dimonitor / versi berubah):
+         *     gak nulis apa pun, gak jadwalin scan, gak audit. Nama file yang tidak
+         *     dikenali dengan `ecosystem="auto"` -> 422; kalau `ecosystem` dipilih
+         *     eksplisit, parser fallback ecosystem itu dipakai. `project` (tanpa
+         *     `..`) jadi prefix `source_path`.
          */
         post: operations["import_lockfile_endpoint_api_pkgvuln_import_lockfile_post"];
         delete?: never;
@@ -3634,6 +3779,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/techstack/coverage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Techstack Coverage
+         * @description Deklarasi SEBELUM rute `/{tech_id}` supaya `coverage` tidak dibaca sebagai id.
+         */
+        get: operations["get_techstack_coverage_api_techstack_coverage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/techstack/{tech_id}": {
         parameters: {
             query?: never;
@@ -4346,8 +4511,23 @@ export interface components {
         };
         /** Body_import_lockfile_endpoint_api_pkgvuln_import_lockfile_post */
         Body_import_lockfile_endpoint_api_pkgvuln_import_lockfile_post: {
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+            /**
+             * Ecosystem
+             * @default auto
+             */
+            ecosystem: string;
             /** File */
             file: string;
+            /**
+             * Project
+             * @default
+             */
+            project: string;
         };
         /** Brief */
         Brief: {
@@ -4373,6 +4553,13 @@ export interface components {
         BulkFalsePositiveBody: {
             /** Cve Ids */
             cve_ids: string[];
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            /** Reason */
+            reason?: ("not_in_stack" | "version_not_affected" | "component_not_exposed" | "duplicate" | "other") | null;
         };
         /** CatalogFamilyListResponse */
         CatalogFamilyListResponse: {
@@ -4381,6 +4568,11 @@ export interface components {
              * @default 0
              */
             hidden: number;
+            /**
+             * Hidden By Client
+             * @default 0
+             */
+            hidden_by_client: number;
             /** Items */
             items: components["schemas"]["CatalogFamilyOut"][];
             /** Page */
@@ -4403,6 +4595,11 @@ export interface components {
             display_name: string;
             /** First Seen */
             first_seen?: string | null;
+            /**
+             * Hidden
+             * @default false
+             */
+            hidden: boolean;
             /** Id */
             id: number;
             /** Key */
@@ -4528,6 +4725,8 @@ export interface components {
             next_check_at: string | null;
             /** Running */
             running: boolean;
+            /** Running Since */
+            running_since?: string | null;
         };
         /** CveCheckTriggered */
         CveCheckTriggered: {
@@ -4630,6 +4829,15 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** CveDbMeta */
+        CveDbMeta: {
+            /** Enabled */
+            enabled: boolean;
+            /** Last Sync At */
+            last_sync_at?: string | null;
+            /** Total */
+            total: number;
+        };
         /** CveDbOut */
         CveDbOut: {
             /** Cve Id */
@@ -4655,6 +4863,11 @@ export interface components {
         };
         /** CveDbProductOut */
         CveDbProductOut: {
+            /**
+             * Covered By Vendor
+             * @default false
+             */
+            covered_by_vendor: boolean;
             /** Family */
             family: string;
             /** Family Id */
@@ -4706,6 +4919,8 @@ export interface components {
             last_checked_at: string | null;
             /** Last Run Finished At */
             last_run_finished_at: string | null;
+            /** Last Triggered At */
+            last_triggered_at?: string | null;
             /** New Since */
             new_since: number | null;
             /** Newest Detected At */
@@ -4751,6 +4966,58 @@ export interface components {
             page_size: number;
             /** Total */
             total: number;
+        };
+        /** CveLookupOut */
+        CveLookupOut: {
+            /** Affected */
+            affected?: string[];
+            /** Cve Id */
+            cve_id: string;
+            /** Cvss Score */
+            cvss_score?: number | null;
+            /** Cvss Severity */
+            cvss_severity?: string | null;
+            /** Cvss Vector */
+            cvss_vector?: string | null;
+            /** Cwe */
+            cwe?: string[];
+            /** Epss Percentile */
+            epss_percentile?: number | null;
+            /** Epss Score */
+            epss_score?: number | null;
+            /** Exploits */
+            exploits?: components["schemas"]["ExploitHit"][];
+            /**
+             * False Positive
+             * @default false
+             */
+            false_positive: boolean;
+            /**
+             * In Mirror
+             * @default false
+             */
+            in_mirror: boolean;
+            kev?: components["schemas"]["KevInfo"] | null;
+            /** Modified */
+            modified?: string | null;
+            /** Published */
+            published?: string | null;
+            /** References */
+            references?: string[];
+            /** Sources */
+            sources?: components["schemas"]["LookupSource"][];
+            /**
+             * Summary
+             * @default
+             */
+            summary: string;
+            /**
+             * Tracked
+             * @default false
+             */
+            tracked: boolean;
+            /** Tracker Tech */
+            tracker_tech?: string | null;
         };
         /** CveOut */
         CveOut: {
@@ -4806,6 +5073,26 @@ export interface components {
              */
             false_positive: boolean;
             /**
+             * Fp Marked At
+             * @default
+             */
+            fp_marked_at: string;
+            /**
+             * Fp Marked By
+             * @default
+             */
+            fp_marked_by: string;
+            /**
+             * Fp Note
+             * @default
+             */
+            fp_note: string;
+            /**
+             * Fp Reason
+             * @default
+             */
+            fp_reason: string;
+            /**
              * Hosting Type
              * @default on_prem
              */
@@ -4854,6 +5141,16 @@ export interface components {
              * @default []
              */
             reference: components["schemas"]["CveReferenceOut"][];
+            /**
+             * Risk Label
+             * @default
+             */
+            risk_label: string;
+            /**
+             * Risk Score
+             * @default 0
+             */
+            risk_score: number;
             /**
              * Solutions
              * @default
@@ -4910,6 +5207,57 @@ export interface components {
             /** Unrated */
             unrated: number;
         };
+        /** CveTeamIn */
+        CveTeamIn: {
+            /**
+             * Lead Email
+             * @default
+             */
+            lead_email: string | "";
+            /**
+             * Lead Name
+             * @default
+             */
+            lead_name: string;
+            /** Name */
+            name: string;
+        };
+        /** CveTeamListResponse */
+        CveTeamListResponse: {
+            /** Items */
+            items: components["schemas"]["CveTeamOut"][];
+            /** Total */
+            total: number;
+        };
+        /** CveTeamOut */
+        CveTeamOut: {
+            /** Active */
+            active: boolean;
+            /** Id */
+            id: number;
+            /** Lead Email */
+            lead_email: string;
+            /** Lead Name */
+            lead_name: string;
+            /** Name */
+            name: string;
+            /** Ticket Count */
+            ticket_count: number;
+        };
+        /**
+         * CveTeamPatch
+         * @description Semua field opsional; yang tidak dikirim tidak diubah. `active=true` mengaktifkan lagi.
+         */
+        CveTeamPatch: {
+            /** Active */
+            active?: boolean | null;
+            /** Lead Email */
+            lead_email?: string | "" | null;
+            /** Lead Name */
+            lead_name?: string | null;
+            /** Name */
+            name?: string | null;
+        };
         /** CveTicketBody */
         CveTicketBody: {
             /**
@@ -4961,7 +5309,7 @@ export interface components {
              * Owner Email
              * @default
              */
-            owner_email: string;
+            owner_email: string | "";
             /**
              * Owner Team
              * @default
@@ -4982,6 +5330,25 @@ export interface components {
              * @default
              */
             risk_acceptance: string;
+        };
+        /**
+         * CveTicketSaveOut
+         * @description Respons `PUT /api/cve/{id}/ticket`. `escalation`: `queued` = draf email ke lead tim
+         *     dijadwalkan; `no_lead` = eskalasi menyala tapi tim/lead_email tidak ditemukan; `failed` =
+         *     broker mati (ticket tetap tersimpan); `not_needed` = bukan transisi ke nyala.
+         */
+        CveTicketSaveOut: {
+            /**
+             * Escalation
+             * @default not_needed
+             * @enum {string}
+             */
+            escalation: "queued" | "not_needed" | "no_lead" | "failed";
+            /**
+             * Ok
+             * @default true
+             */
+            ok: boolean;
         };
         /** DashboardAttention */
         DashboardAttention: {
@@ -5500,6 +5867,18 @@ export interface components {
             /** Suppressed */
             suppressed?: boolean | null;
         };
+        /** ExploitHit */
+        ExploitHit: {
+            /**
+             * Published
+             * @default
+             */
+            published: string;
+            /** Title */
+            title: string;
+            /** Url */
+            url: string;
+        };
         /**
          * ExploitRiskCve
          * @description CVE yang belum selesai tetapi terbukti/berpeluang tinggi dieksploitasi.
@@ -5531,6 +5910,23 @@ export interface components {
              * @default
              */
             tech: string;
+        };
+        /**
+         * FalsePositiveBody
+         * @description Body opsional `POST /{cve_id}/false-positive`; `note` boleh kosong kecuali `other`.
+         *     `note` punya default, jadi TIDAK required di OpenAPI.
+         */
+        FalsePositiveBody: {
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "not_in_stack" | "version_not_affected" | "component_not_exposed" | "duplicate" | "other";
         };
         /** FeedbackBody */
         FeedbackBody: {
@@ -5779,6 +6175,18 @@ export interface components {
             /** Type */
             type: string;
         };
+        /** KevInfo */
+        KevInfo: {
+            /**
+             * Action
+             * @default
+             */
+            action: string;
+            /** Added */
+            added?: string | null;
+            /** Due */
+            due?: string | null;
+        };
         /** LlmErrorOut */
         LlmErrorOut: {
             /** At */
@@ -5853,10 +6261,35 @@ export interface components {
             /** Added */
             added: number;
             /**
+             * Already Monitored
+             * @default 0
+             */
+            already_monitored: number;
+            /**
+             * Detected Format
+             * @default
+             */
+            detected_format: string;
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+            /**
+             * Ecosystem
+             * @default
+             */
+            ecosystem: string;
+            /**
              * Errors
              * @default []
              */
             errors: string[];
+            /**
+             * New
+             * @default 0
+             */
+            new: number;
             /**
              * Packages
              * @default []
@@ -5868,6 +6301,16 @@ export interface components {
             parsed: number;
             /** Skipped */
             skipped: number;
+            /**
+             * Unsupported
+             * @default 0
+             */
+            unsupported: number;
+            /**
+             * Version Changes
+             * @default 0
+             */
+            version_changes: number;
         };
         /** LoginRequest */
         LoginRequest: {
@@ -5875,6 +6318,21 @@ export interface components {
             password: string;
             /** Username */
             username: string;
+        };
+        /** LookupSource */
+        LookupSource: {
+            /** Fetched At */
+            fetched_at?: string | null;
+            /**
+             * Id
+             * @enum {string}
+             */
+            id: "mirror" | "nvd" | "circl" | "exploitdb" | "epss";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "not_found" | "error" | "timeout" | "rate_limited" | "cached";
         };
         /** MalwareRef */
         MalwareRef: {
@@ -6034,6 +6492,11 @@ export interface components {
             scorecard_score?: number | null;
             /** Source */
             source: string;
+            /**
+             * Source Path
+             * @default
+             */
+            source_path: string;
             /** Version */
             version?: string | null;
             /** Vuln Count */
@@ -6730,6 +7193,27 @@ export interface components {
             priority: string;
             /** Title */
             title: string;
+        };
+        /** PkgVulnStats */
+        PkgVulnStats: {
+            /** Critical */
+            critical: number;
+            /** High */
+            high: number;
+            /** Kev Count */
+            kev_count: number;
+            /** Low */
+            low: number;
+            /** Medium */
+            medium: number;
+            /** Packages */
+            packages: number;
+            /** Total Vulns */
+            total_vulns: number;
+            /** Unacknowledged */
+            unacknowledged: number;
+            /** Vulnerable Packages */
+            vulnerable_packages: number;
         };
         /** PolicySettings */
         PolicySettings: {
@@ -7853,6 +8337,24 @@ export interface components {
             /** Vendor Id */
             vendor_id?: number | null;
         };
+        /**
+         * TechStackCoverage
+         * @description Ringkasan pemetaan katalog satu client; tidak terpengaruh filter/paging daftar.
+         */
+        TechStackCoverage: {
+            /** Active */
+            active: number;
+            /** Hidden */
+            hidden: number;
+            /** Mapped Family */
+            mapped_family: number;
+            /** Mapped Vendor */
+            mapped_vendor: number;
+            /** Total */
+            total: number;
+            /** Unmapped */
+            unmapped: number;
+        };
         /** TechStackExposureUpdate */
         TechStackExposureUpdate: {
             /** Exposure */
@@ -7904,6 +8406,11 @@ export interface components {
              * @enum {string}
              */
             kind: "catalog" | "custom";
+            /**
+             * Match Count
+             * @default 0
+             */
+            match_count: number;
             /** Name */
             name: string;
             /**
@@ -9274,8 +9781,10 @@ export interface operations {
     };
     search_families_api_catalog_families_get: {
         parameters: {
-            query: {
-                q: string;
+            query?: {
+                q?: string | null;
+                show_all?: boolean;
+                show_hidden?: boolean;
                 page?: number;
                 page_size?: number;
             };
@@ -9295,6 +9804,78 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CatalogFamilyListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    hide_family_api_catalog_families__family_id__hide_put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-client-id"?: string | null;
+                authorization?: string | null;
+            };
+            path: {
+                family_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unhide_family_api_catalog_families__family_id__hide_delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-client-id"?: string | null;
+                authorization?: string | null;
+            };
+            path: {
+                family_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -9350,6 +9931,7 @@ export interface operations {
             query?: {
                 q?: string | null;
                 show_all?: boolean;
+                show_hidden?: boolean;
                 page?: number;
                 page_size?: number;
             };
@@ -9862,6 +10444,7 @@ export interface operations {
                 date_start?: string | null;
                 date_end?: string | null;
                 include_fp?: boolean;
+                fp_only?: boolean;
                 sort_by?: string;
                 sort_dir?: string;
                 ack_filter?: string | null;
@@ -9926,6 +10509,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CveDbListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_cve_db_meta_api_cve_db_meta_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CveDbMeta"];
                 };
             };
             /** @description Validation Error */
@@ -10085,7 +10699,9 @@ export interface operations {
     };
     check_new_cves_api_cve_check_new_post: {
         parameters: {
-            query?: never;
+            query?: {
+                source?: ("new_cve" | "mirror") | null;
+            };
             header?: {
                 authorization?: string | null;
             };
@@ -10360,6 +10976,40 @@ export interface operations {
             };
         };
     };
+    live_lookup_cve_api_cve_lookup__cve_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-client-id"?: string | null;
+                authorization?: string | null;
+            };
+            path: {
+                cve_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CveLookupOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     next_ticket_id_api_cve_next_ticket_id_get: {
         parameters: {
             query?: never;
@@ -10472,6 +11122,7 @@ export interface operations {
         parameters: {
             query?: {
                 include_fp?: boolean;
+                fp_only?: boolean;
                 search?: string | null;
                 severity?: string[] | null;
                 tech?: string[] | null;
@@ -10496,6 +11147,150 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CveStats"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_teams_api_cve_teams_get: {
+        parameters: {
+            query?: {
+                include_inactive?: boolean;
+            };
+            header?: {
+                "x-client-id"?: string | null;
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CveTeamListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_team_api_cve_teams_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-client-id"?: string | null;
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CveTeamIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CveTeamOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    deactivate_team_api_cve_teams__team_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-client-id"?: string | null;
+                authorization?: string | null;
+            };
+            path: {
+                team_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_team_api_cve_teams__team_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-client-id"?: string | null;
+                authorization?: string | null;
+            };
+            path: {
+                team_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CveTeamPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CveTeamOut"];
                 };
             };
             /** @description Validation Error */
@@ -10566,6 +11361,42 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_cve_tickets_api_cve_tickets_export_get: {
+        parameters: {
+            query?: {
+                search?: string | null;
+                status?: string | null;
+                include_fp?: boolean;
+            };
+            header?: {
+                "x-client-id"?: string | null;
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */
@@ -10662,7 +11493,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["FalsePositiveBody"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -10782,9 +11617,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: boolean;
-                    };
+                    "application/json": components["schemas"]["CveTicketSaveOut"];
                 };
             };
             /** @description Validation Error */
@@ -14022,6 +14855,7 @@ export interface operations {
         parameters: {
             query?: {
                 search?: string | null;
+                ecosystem?: string | null;
                 page?: number;
                 page_size?: number;
                 sort_by?: string;
@@ -14330,9 +15164,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["PkgVulnStats"];
                 };
             };
             /** @description Validation Error */
@@ -16434,6 +17266,38 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_techstack_coverage_api_techstack_coverage_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-client-id"?: string | null;
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TechStackCoverage"];
                 };
             };
             /** @description Validation Error */
