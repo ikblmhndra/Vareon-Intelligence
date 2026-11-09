@@ -54,6 +54,13 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
+/** Teks sumber luar (NVD/Exploit-DB) kadang membawa entitas HTML ("&lt;"). Decode sebagai TEKS saja lewat
+ * DOMParser (tidak mengeksekusi skrip, bukan innerHTML); di SSR dikembalikan apa adanya. */
+function decodeEntities(s: string): string {
+  if (typeof DOMParser === "undefined" || !s.includes("&")) return s;
+  return new DOMParser().parseFromString(s, "text/html").documentElement.textContent ?? s;
+}
+
 /** Hanya tautan http(s): data berasal dari sumber luar (NVD/CIRCL/Exploit-DB). */
 function safeHref(url: string): string | null {
   return /^https?:\/\//i.test(url) ? url : null;
@@ -106,7 +113,7 @@ function LookupBody({ r }: { r: CveLookupOut }) {
       )}
 
       <Section title="Summary">
-        <p className="text-sm">{r.summary || "No summary available."}</p>
+        <p className="text-sm">{decodeEntities(r.summary) || "No summary available."}</p>
       </Section>
 
       {r.cvss_vector && (
@@ -121,7 +128,7 @@ function LookupBody({ r }: { r: CveLookupOut }) {
           <p className="mt-1 text-muted-foreground">
             Added {fmtShortDate(r.kev.added)} - due {fmtShortDate(r.kev.due)}
           </p>
-          {r.kev.action && <p className="mt-1 text-foreground">{r.kev.action}</p>}
+          {r.kev.action && <p className="mt-1 text-foreground">{decodeEntities(r.kev.action)}</p>}
         </div>
       )}
 
@@ -147,10 +154,10 @@ function LookupBody({ r }: { r: CveLookupOut }) {
                 <li key={`${i}-${x.url}`}>
                   {href ? (
                     <a href={href} target="_blank" rel="noreferrer noopener" className="text-primary-text underline underline-offset-2">
-                      {x.title}
+                      {decodeEntities(x.title)}
                     </a>
                   ) : (
-                    x.title
+                    decodeEntities(x.title)
                   )}
                   {x.published && <span className="text-muted-foreground"> - {fmtShortDate(x.published)}</span>}
                 </li>

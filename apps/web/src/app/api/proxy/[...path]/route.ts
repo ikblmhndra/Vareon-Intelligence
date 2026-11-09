@@ -49,7 +49,7 @@ async function proxy(request: NextRequest, path: string[]): Promise<NextResponse
   }
 
   const responseHeaders = new Headers();
-  for (const name of ["content-type", "content-disposition"]) {
+  for (const name of ["content-type", "content-disposition", "retry-after"]) {
     const value = upstream.headers.get(name);
     if (value) responseHeaders.set(name, value);
   }

@@ -77,6 +77,8 @@ function FpBody({ cveIds, onClose, onDone }: { cveIds: string[]; onClose: () => 
       toast.success(single ? `${cveIds[0]} marked as a false positive` : `${cveIds.length} CVEs marked as false positives`);
       void queryClient.invalidateQueries({ queryKey: ["cve", "list"] });
       void queryClient.invalidateQueries({ queryKey: ["cve", "stats"] });
+      void queryClient.invalidateQueries({ queryKey: ["cve", "dashboard"] });
+      void queryClient.invalidateQueries({ queryKey: ["cve", "tickets"] });
       onDone();
       onClose();
     } catch (e) {
