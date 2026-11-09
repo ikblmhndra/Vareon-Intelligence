@@ -36,6 +36,7 @@ import datetime
 import re
 import urllib.parse
 import xml.etree.ElementTree as ET
+from collections.abc import Callable
 from typing import Any
 
 import httpx
@@ -545,27 +546,139 @@ def parse_poetry_lock(content: str) -> list[tuple[str, str, str | None]]:
     return results
 
 
-def detect_and_parse_lockfile(filename: str, content: str) -> list[tuple[str, str, str | None]]:
-    """Auto-detect tipe lockfile dari nama file lalu parse."""
-    fname = filename.lower()
+def parse_gemfile_lock(content: str) -> list[tuple[str, str, str | None]]:
+    """Parse Gemfile.lock -> [(gem, 'RubyGems', version)]. Hanya spec level-atas
+    (indent 4 spasi) di bawah `specs:`; dependensi turunan (indent 6) dilewati."""
+    results: list[tuple[str, str, str | None]] = []
+    seen: set[tuple[str, str]] = set()
+    in_specs = False
+    for raw in content.splitlines():
+        if raw.strip() == "specs:":
+            in_specs = True
+            continue
+        if in_specs and (not raw.strip() or not raw.startswith(" ")):
+            in_specs = False
+        if not in_specs:
+            continue
+        m = re.match(r"^ {4}([^\s(]+) \(([^)\s]+)\)\s*$", raw)
+        if m and (m.group(1), m.group(2)) not in seen:
+            seen.add((m.group(1), m.group(2)))
+            results.append((m.group(1), "RubyGems", m.group(2)))
+    return results
+
+
+def parse_yarn_lock(content: str) -> list[tuple[str, str, str | None]]:
+    """Parse yarn.lock (v1 dan berry) -> [(name, 'npm', version)]. Header entri di
+    kolom 0 (`a@^1, a@^1.2:`), versi di baris `version "x"` (v1) / `version: x` (berry)."""
+    results: list[tuple[str, str, str | None]] = []
+    seen: set[tuple[str, str]] = set()
+    current: str | None = None
+    for raw in content.splitlines():
+        if not raw.strip() or raw.lstrip().startswith("#"):
+            continue
+        if not raw[0].isspace():
+            current = None
+            header = raw.rstrip()
+            if not header.endswith(":"):
+                continue
+            spec = header[:-1].split(",")[0].strip().strip("\"'")
+            at = spec.find("@", 1)
+            if at <= 0 or spec[at + 1 :].startswith("workspace:"):
+                continue
+            current = spec[:at]
+            continue
+        if current is None:
+            continue
+        m = re.match(r"^\s+version:?\s+\"?([^\s\"]+)\"?\s*$", raw)
+        if m:
+            if (current, m.group(1)) not in seen:
+                seen.add((current, m.group(1)))
+                results.append((current, "npm", m.group(1)))
+            current = None
+    return results
+
+
+def parse_go_sum(content: str) -> list[tuple[str, str, str | None]]:
+    """Parse go.sum -> [(module, 'Go', version)]. Baris `/go.mod` dibuang dan modul
+    yang sama dideduplikasi; baris rusak dilewati."""
+    results: list[tuple[str, str, str | None]] = []
+    seen: set[tuple[str, str]] = set()
+    for line in content.splitlines():
+        parts = line.split()
+        if len(parts) < 3 or not parts[1].startswith("v") or parts[1].endswith("/go.mod"):
+            continue
+        ver = re.sub(r"-[0-9]{14}-[a-f0-9]+$", "", parts[1]).lstrip("v")
+        if not ver or (parts[0], ver) in seen:
+            continue
+        seen.add((parts[0], ver))
+        results.append((parts[0], "Go", ver))
+    return results
+
+
+class UnknownLockfileError(ValueError):
+    """Nama file tidak dikenali dan ecosystem tidak dipilih eksplisit."""
+
+
+_PARSERS: dict[str, Callable[[str], list[tuple[str, str, str | None]]]] = {
+    "requirements": parse_requirements_txt,
+    "package-lock": parse_package_lock_json,
+    "package-json": parse_package_json,
+    "go-mod": parse_go_mod,
+    "go-sum": parse_go_sum,
+    "pom": parse_pom_xml,
+    "poetry": parse_poetry_lock,
+    "gemfile-lock": parse_gemfile_lock,
+    "yarn-lock": parse_yarn_lock,
+}
+
+# Parser cadangan kalau nama file tidak dikenali tapi user memilih ecosystem.
+FALLBACK_FORMAT_BY_ECOSYSTEM = {
+    "PyPI": "requirements",
+    "npm": "package-lock",
+    "Go": "go-mod",
+    "Maven": "pom",
+    "RubyGems": "gemfile-lock",
+}
+
+
+def detect_lockfile_format(filename: str) -> str | None:
+    """Nama file -> kode format, atau None kalau tidak dikenali."""
+    fname = filename.replace("\\", "/").rsplit("/", 1)[-1].lower()
     if fname in (
         "requirements.txt",
         "requirements.lock",
         "requirements-dev.txt",
         "requirements-prod.txt",
     ) or fname.endswith(".requirements.txt"):
-        return parse_requirements_txt(content)
-    if fname == "package-lock.json":
-        return parse_package_lock_json(content)
-    if fname == "package.json":
-        return parse_package_json(content)
-    if fname in ("go.mod", "go.sum"):
-        return parse_go_mod(content)
-    if fname == "pom.xml":
-        return parse_pom_xml(content)
-    if fname == "poetry.lock":
-        return parse_poetry_lock(content)
-    return parse_requirements_txt(content)
+        return "requirements"
+    return {
+        "package-lock.json": "package-lock",
+        "package.json": "package-json",
+        "go.mod": "go-mod",
+        "go.sum": "go-sum",
+        "pom.xml": "pom",
+        "poetry.lock": "poetry",
+        "gemfile.lock": "gemfile-lock",
+        "yarn.lock": "yarn-lock",
+    }.get(fname)
+
+
+def parse_lockfile(
+    filename: str, content: str, ecosystem: str = "auto"
+) -> tuple[str, list[tuple[str, str, str | None]]]:
+    """Balikin (format, paket). Nama file yang dikenali selalu menang; nama asing
+    + `auto` -> `UnknownLockfileError`; nama asing + ecosystem eksplisit -> parser cadangan."""
+    fmt = detect_lockfile_format(filename)
+    if fmt is None:
+        fmt = FALLBACK_FORMAT_BY_ECOSYSTEM.get(ecosystem)
+        if fmt is None:
+            raise UnknownLockfileError(filename)
+    return fmt, _PARSERS[fmt](content)
+
+
+def detect_and_parse_lockfile(filename: str, content: str) -> list[tuple[str, str, str | None]]:
+    """Auto-detect tipe lockfile dari nama file lalu parse."""
+    return parse_lockfile(filename, content)[1]
 
 
 # ── Package management ───────────────────────────────────────────────────────
@@ -870,12 +983,23 @@ async def resolve_package_deps(
 
 
 async def import_lockfile(
-    session: AsyncSession, filename: str, content: str, client_id: str = "default"
+    session: AsyncSession,
+    filename: str,
+    content: str,
+    client_id: str = "default",
+    *,
+    ecosystem: str = "auto",
+    project: str = "",
+    dry_run: bool = False,
 ) -> dict[str, Any]:
     """Parse lockfile, bulk-add package baru. Balikin ringkasan import --
     `packages` dipakai router buat nge-jadwalin scan background per
-    package yang BARU ditambahkan."""
-    parsed_pkgs = detect_and_parse_lockfile(filename, content)
+    package yang BARU ditambahkan. `dry_run` cuma menghitung (new /
+    already_monitored / version_changes), tanpa menulis apa pun.
+    `UnknownLockfileError` dilempar ke caller (router -> 422)."""
+    detected_format, parsed_pkgs = parse_lockfile(filename, content, ecosystem)
+    source_path = f"{project}/{filename}" if project else filename
+    result_eco = parsed_pkgs[0][1] if parsed_pkgs else ""
     if not parsed_pkgs:
         return {
             "parsed": 0,
@@ -883,35 +1007,64 @@ async def import_lockfile(
             "skipped": 0,
             "errors": ["No packages detected — check file format"],
             "packages": [],
+            "dry_run": dry_run,
+            "detected_format": detected_format,
+            "ecosystem": result_eco,
+            "new": 0,
+            "already_monitored": 0,
+            "version_changes": 0,
+            "unsupported": 0,
         }
 
     added = 0
     skipped = 0
+    new = 0
+    already = 0
+    version_changes = 0
+    unsupported = 0
     errors: list[str] = []
     pkg_list: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
 
     repo = AsyncMonitoredPackageRepo(session)
-    for name, ecosystem, version in parsed_pkgs:
-        if not name or ecosystem not in _VALID_ECOSYSTEMS:
+    for name, eco, version in parsed_pkgs:
+        if not name or eco not in _VALID_ECOSYSTEMS:
+            unsupported += 1
             continue
-        existing = await repo.get_by_name_ci(name, ecosystem, client_id)
-        if existing is not None:
-            if version and existing.version != version:
-                await repo.update_fields(existing, version=version)
+        key = (name.lower(), eco)
+        existing = await repo.get_by_name_ci(name, eco, client_id)
+        if existing is not None or key in seen:
             skipped += 1
+            if existing is None:
+                already += 1  # duplikat dalam file yang sama
+            else:
+                if version and existing.version != version:
+                    version_changes += 1  # sudah dimonitor tapi versinya berbeda
+                    if not dry_run:
+                        await repo.update_fields(existing, version=version)
+                else:
+                    already += 1
+                if not dry_run and existing.source_path is None:
+                    await repo.update_fields(existing, source_path=source_path)
+            continue
+        seen.add(key)
+        new += 1
+        pkg_list.append({"name": name, "ecosystem": eco, "version": version})
+        if dry_run:
             continue
         try:
             await repo.create(
                 name=name,
-                ecosystem=ecosystem,
+                ecosystem=eco,
                 version=version,
                 client_id=client_id,
                 source="lockfile",
+                source_path=source_path,
             )
             added += 1
-            pkg_list.append({"name": name, "ecosystem": ecosystem, "version": version})
         except Exception as e:
             errors.append(f"{name}: {e}")
+            pkg_list.pop()
 
     return {
         "parsed": len(parsed_pkgs),
@@ -919,4 +1072,11 @@ async def import_lockfile(
         "skipped": skipped,
         "errors": errors[:20],
         "packages": pkg_list[:50],
+        "dry_run": dry_run,
+        "detected_format": detected_format,
+        "ecosystem": result_eco,
+        "new": new,
+        "already_monitored": already,
+        "version_changes": version_changes,
+        "unsupported": unsupported,
     }

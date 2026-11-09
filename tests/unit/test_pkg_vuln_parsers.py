@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import datetime
 
+import pytest
 from cti_api.services import pkg_vuln as svc
 
 # ── CVSS / severity ──────────────────────────────────────────────────────────
@@ -167,3 +168,69 @@ def test_detect_and_parse_lockfile_by_filename() -> None:
     assert svc.detect_and_parse_lockfile(
         "package.json", '{"dependencies": {"lodash": "4.17.21"}}'
     ) == [("lodash", "npm", "4.17.21")]
+
+
+def test_parse_gemfile_lock() -> None:
+    content = (
+        "GEM\n  remote: https://rubygems.org/\n  specs:\n"
+        "    rails (7.1.3)\n      actionpack (= 7.1.3)\n"
+        "    rack (3.0.9)\n\nPLATFORMS\n  ruby\n\nDEPENDENCIES\n  rails\n"
+    )
+    result = svc.parse_gemfile_lock(content)
+    assert ("rails", "RubyGems", "7.1.3") in result
+    assert ("rack", "RubyGems", "3.0.9") in result
+    assert all(name != "actionpack" for name, _, _ in result)  # dependensi turunan bukan spec
+
+
+def test_parse_yarn_lock_v1() -> None:
+    content = (
+        "# yarn lockfile v1\n\n"
+        'lodash@^4.17.0, lodash@^4.17.21:\n  version "4.17.21"\n  resolved "x"\n\n'
+        '"@babel/core@^7.0.0":\n  version "7.23.0"\n'
+    )
+    result = svc.parse_yarn_lock(content)
+    assert ("lodash", "npm", "4.17.21") in result
+    assert ("@babel/core", "npm", "7.23.0") in result
+
+
+def test_parse_yarn_lock_berry() -> None:
+    content = (
+        '__metadata:\n  version: 6\n\n"lodash@npm:^4.17.21":\n  version: 4.17.21\n'
+        '  resolution: "lodash@npm:4.17.21"\n\n"@babel/core@npm:^7.0.0":\n  version: 7.23.0\n'
+    )
+    result = svc.parse_yarn_lock(content)
+    assert ("lodash", "npm", "4.17.21") in result
+    assert ("@babel/core", "npm", "7.23.0") in result
+    assert all(name != "__metadata" for name, _, _ in result)
+
+
+def test_parse_go_sum_dedupes_and_drops_go_mod() -> None:
+    content = (
+        "github.com/pkg/errors v0.9.1 h1:abc=\n"
+        "github.com/pkg/errors v0.9.1/go.mod h1:def=\n"
+        "bad line\n"
+    )
+    assert svc.parse_go_sum(content) == [("github.com/pkg/errors", "Go", "0.9.1")]
+
+
+def test_unknown_lockfile_auto_raises() -> None:
+    with pytest.raises(svc.UnknownLockfileError):
+        svc.parse_lockfile("deps.txt", "flask==3.0.0", "auto")
+
+
+def test_explicit_ecosystem_picks_parser_for_unknown_name() -> None:
+    fmt, pkgs = svc.parse_lockfile("deps.txt", "flask==3.0.0", "PyPI")
+    assert fmt == "requirements"
+    assert pkgs == [("flask", "PyPI", "3.0.0")]
+
+
+def test_recognised_name_ignores_override() -> None:
+    fmt, _ = svc.parse_lockfile("package-lock.json", "{}", "PyPI")
+    assert fmt == "package-lock"
+
+
+def test_detect_lockfile_format() -> None:
+    assert svc.detect_lockfile_format("Gemfile.lock") == "gemfile-lock"
+    assert svc.detect_lockfile_format("yarn.lock") == "yarn-lock"
+    assert svc.detect_lockfile_format("go.sum") == "go-sum"
+    assert svc.detect_lockfile_format("deps.txt") is None

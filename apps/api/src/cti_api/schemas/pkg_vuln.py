@@ -33,6 +33,7 @@ class MonitoredPackageOut(BaseModel):
     dep_resolved_at: str | None = None
     scorecard_score: float | None = None
     scorecard_date: str | None = None
+    source_path: str = ""
 
 
 class MonitoredPackageAddBody(BaseModel):
@@ -95,6 +96,25 @@ class LockfileImportResult(BaseModel):
     skipped: int
     errors: list[str] = []
     packages: list[dict[str, Any]] = []
+    dry_run: bool = False
+    detected_format: str = ""
+    ecosystem: str = ""
+    new: int = 0
+    already_monitored: int = 0
+    version_changes: int = 0
+    unsupported: int = 0
+
+
+class PkgVulnStats(BaseModel):
+    packages: int
+    total_vulns: int
+    critical: int
+    high: int
+    medium: int
+    low: int
+    unacknowledged: int
+    kev_count: int
+    vulnerable_packages: int
 
 
 class PackageDepGraphOut(BaseModel):

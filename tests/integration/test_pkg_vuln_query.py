@@ -11,16 +11,21 @@ beneran dilakuin terpisah (skrip manual), bukan bagian suite otomatis ini
 from __future__ import annotations
 
 import datetime
+from collections.abc import Callable
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from cti_api.services import pkg_vuln as pkg_vuln_service
+from cti_core.db.models.auth import AuditLogEntry
+from cti_core.db.models.package import MonitoredPackage
 from cti_core.db.repositories.auth import AsyncClientRepo
 from cti_core.db.repositories.package import (
     AsyncMonitoredPackageRepo,
     AsyncPackageDepGraphRepo,
     AsyncPackageVulnRepo,
 )
+from httpx import AsyncClient
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 pytestmark = pytest.mark.asyncio
@@ -394,3 +399,128 @@ async def test_import_lockfile_adds_and_skips_duplicates(async_db_session: Async
     )
     assert result2["added"] == 0
     assert result2["skipped"] == 2
+
+
+# ── Task 10: dry run, ecosystem override, source path, stats ─────────────────
+
+
+async def _pkg_count(session: AsyncSession) -> int:
+    return (await session.execute(select(func.count()).select_from(MonitoredPackage))).scalar_one()
+
+
+async def test_dry_run_writes_nothing(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+) -> None:
+    repo = AsyncMonitoredPackageRepo(api_session)
+    await repo.create(
+        name="flask", ecosystem="PyPI", version="3.0.0", client_id="default", source="manual"
+    )
+    await repo.create(
+        name="requests", ecosystem="PyPI", version="2.30.0", client_id="default", source="manual"
+    )
+    before = await _pkg_count(api_session)
+    audit_before = (
+        await api_session.execute(select(func.count()).select_from(AuditLogEntry))
+    ).scalar_one()
+    resp = await api_client.post(
+        "/api/pkgvuln/import-lockfile",
+        headers=auth_header(),
+        data={"dry_run": "true"},
+        files={"file": ("requirements.txt", b"flask==3.0.0\nrequests==2.31.0\ndjango==5.0.0\n")},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["dry_run"] is True
+    assert body["new"] == 1
+    assert body["already_monitored"] == 1
+    assert body["version_changes"] == 1
+    assert body["detected_format"] == "requirements"
+    assert await _pkg_count(api_session) == before
+    audit_after = (
+        await api_session.execute(select(func.count()).select_from(AuditLogEntry))
+    ).scalar_one()
+    assert audit_after == audit_before
+    req = await repo.get_by_name_ci("requests", "PyPI", "default")
+    assert req is not None and req.version == "2.30.0"
+
+
+async def test_import_sets_source_path(async_db_session: AsyncSession) -> None:
+    await _ensure_clients(async_db_session)
+    await pkg_vuln_service.import_lockfile(
+        async_db_session, "requirements.txt", "flask==3.0.0\n", "default", project="shop-api"
+    )
+    pkg = await AsyncMonitoredPackageRepo(async_db_session).get_by_name_ci(
+        "flask", "PyPI", "default"
+    )
+    assert pkg is not None
+    assert pkg.source_path == "shop-api/requirements.txt"
+    await pkg_vuln_service.import_lockfile(
+        async_db_session, "requirements.txt", "flask==3.0.0\n", "default", project="other"
+    )
+    await async_db_session.refresh(pkg)
+    assert pkg.source_path == "shop-api/requirements.txt"
+
+
+async def test_unknown_lockfile_auto_is_422(
+    api_client: AsyncClient, auth_header: Callable[..., dict[str, str]]
+) -> None:
+    resp = await api_client.post(
+        "/api/pkgvuln/import-lockfile",
+        headers=auth_header(),
+        files={"file": ("deps.txt", b"flask==3.0.0\n")},
+    )
+    assert resp.status_code == 422
+    assert resp.json()["detail"] == "Unrecognised lockfile, choose the ecosystem"
+
+
+async def test_project_with_dotdot_is_422(
+    api_client: AsyncClient, auth_header: Callable[..., dict[str, str]]
+) -> None:
+    resp = await api_client.post(
+        "/api/pkgvuln/import-lockfile",
+        headers=auth_header(),
+        data={"project": "../etc"},
+        files={"file": ("requirements.txt", b"flask==3.0.0\n")},
+    )
+    assert resp.status_code == 422
+
+
+async def test_stats_vulnerable_packages(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+) -> None:
+    repo = AsyncMonitoredPackageRepo(api_session)
+    await repo.create(name="a", ecosystem="PyPI", version="1", client_id="default", source="manual")
+    b = await repo.create(
+        name="b", ecosystem="PyPI", version="1", client_id="default", source="manual"
+    )
+    b.vuln_count = 3
+    await api_session.flush()
+    resp = await api_client.get("/api/pkgvuln/stats", headers=auth_header())
+    assert resp.status_code == 200
+    assert resp.json()["vulnerable_packages"] == 1
+    assert resp.json()["packages"] == 2
+
+
+async def test_packages_ecosystem_filter(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+) -> None:
+    repo = AsyncMonitoredPackageRepo(api_session)
+    await repo.create(
+        name="flask", ecosystem="PyPI", version="1", client_id="default", source="manual"
+    )
+    await repo.create(
+        name="lodash", ecosystem="npm", version="1", client_id="default", source="manual"
+    )
+    resp = await api_client.get(
+        "/api/pkgvuln/packages", headers=auth_header(), params={"ecosystem": "npm"}
+    )
+    assert resp.status_code == 200
+    assert [i["name"] for i in resp.json()["items"]] == ["lodash"]
+    resp = await api_client.get("/api/pkgvuln/packages", headers=auth_header())
+    assert resp.json()["total"] == 2
