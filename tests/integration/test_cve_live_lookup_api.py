@@ -15,7 +15,7 @@ from cti_core.db.models.auth import AuditLogEntry
 from cti_core.db.models.cve import CveTracker
 from cti_core.db.repositories.auth import AsyncClientRepo
 from httpx import AsyncClient
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 pytestmark = pytest.mark.asyncio
@@ -195,3 +195,49 @@ async def test_lookup_writes_no_tracker_row(
         )
     ).all()
     assert len(audit) == 1
+
+
+async def test_mirror_failure_keeps_transaction_usable(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    analyst: dict[str, str],
+    calls: Calls,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Query mirror yang gagal membatalkan transaksi Postgres; savepoint menjaga pembacaan
+    tracker sesudahnya tetap jalan (bukan 500)."""
+    api_session.add(CveTracker(cve_id=CVE, client_id="default", tech="PAN-OS"))
+    await api_session.flush()
+
+    async def broken(self: Any, cve_id: str, client_id: str) -> None:
+        await self.session.execute(text("select * from tabel_tidak_ada"))
+
+    monkeypatch.setattr(cve_live_lookup.AsyncCatalogRepo, "get_cve", broken)
+    resp = await api_client.get(f"/api/cve/lookup/{CVE}", headers=analyst)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert statuses(body)["mirror"] == "error"
+    assert body["tracked"] is True
+
+
+async def test_counter_without_ttl_is_healed(
+    api_client: AsyncClient,
+    analyst: dict[str, str],
+    calls: Calls,
+    fake_redis: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Kunci limit tanpa TTL (crash antara INCR dan EXPIRE) mendapat TTL lagi di panggilan
+    berikutnya, bukan terkunci selamanya."""
+    expired: list[str] = []
+    original = fake_redis.expire
+
+    async def spy(key: str, seconds: int) -> bool:
+        expired.append(key)
+        return await original(key, seconds)
+
+    monkeypatch.setattr(fake_redis, "expire", spy)
+    fake_redis._counts["cve:lookup:user:alice"] = 3
+    resp = await api_client.get(f"/api/cve/lookup/{CVE}", headers=analyst)
+    assert resp.status_code == 200
+    assert "cve:lookup:user:alice" in expired

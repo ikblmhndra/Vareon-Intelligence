@@ -41,12 +41,15 @@ log = structlog.get_logger()
 USER_LIMIT_PER_MIN = 10
 NVD_BUCKET_MAX = 5
 NVD_BUCKET_WINDOW_S = 30
+# Bucket NVD ini counter Redis TERSENDIRI, bukan kuota bersama dengan pacing `new_cve` (itu
+# in-process, tanpa bucket Redis); angkanya sengaja konservatif (kunci NVD: 50 req/30 dtk).
 CACHE_TTL_S = 21600
 SOURCE_TIMEOUT_S = 10.0
 
 _NVD_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
 _CIRCL_URL = "https://cve.circl.lu/api/cve/{cve_id}"
 _MAX_AFFECTED = 20
+_MAX_REFERENCES = 50
 _FAILED: frozenset[LookupSourceStatus] = frozenset({"error", "timeout", "rate_limited"})
 _UTC = datetime.UTC
 
@@ -145,7 +148,9 @@ def parse_nvd(payload: dict[str, Any]) -> dict[str, Any] | None:
         "cvss_severity": severity,
         "cvss_vector": vector,
         "cwe": cwe,
-        "references": [r["url"] for r in cve.get("references") or [] if r.get("url")],
+        "references": [r["url"] for r in cve.get("references") or [] if r.get("url")][
+            :_MAX_REFERENCES
+        ],
         "affected": affected[:_MAX_AFFECTED],
         "kev": kev,
     }
@@ -198,7 +203,9 @@ def parse_circl(payload: dict[str, Any]) -> dict[str, Any] | None:
         "cvss_severity": severity,
         "cvss_vector": vector,
         "cwe": cwe,
-        "references": [r["url"] for r in cna.get("references") or [] if r.get("url")],
+        "references": [r["url"] for r in cna.get("references") or [] if r.get("url")][
+            :_MAX_REFERENCES
+        ],
         "affected": affected[:_MAX_AFFECTED],
     }
 
@@ -265,7 +272,10 @@ async def _mirror_part(
 ) -> tuple[LookupSourceStatus, dict[str, Any] | None]:
     """Baca mirror lokal. Tanpa `wait_for`: membatalkan query di tengah jalan merusak session."""
     try:
-        row = await AsyncCatalogRepo(session).get_cve(cve_id, client_id)
+        # Savepoint: query gagal hanya me-rollback savepoint, bukan transaksi request
+        # (pembacaan tracker/FP sesudahnya tetap jalan).
+        async with session.begin_nested():
+            row = await AsyncCatalogRepo(session).get_cve(cve_id, client_id)
     except Exception as exc:
         log.warning("cve_live_lookup.mirror_failed", error=repr(exc))
         return "error", None
@@ -287,7 +297,8 @@ async def _mirror_part(
 async def _check_user_limit(redis: Redis, username: str) -> None:
     key = f"cve:lookup:user:{username}"
     count = await redis.incr(key)
-    if count == 1:
+    # `ttl < 0` menyembuhkan kunci tanpa TTL (proses mati di antara INCR dan EXPIRE).
+    if count == 1 or await redis.ttl(key) < 0:
         await redis.expire(key, 60)
     if count > USER_LIMIT_PER_MIN:
         ttl = await redis.ttl(key)
@@ -297,7 +308,7 @@ async def _check_user_limit(redis: Redis, username: str) -> None:
 async def _take_nvd_token(redis: Redis) -> bool:
     key = "cve:lookup:nvd"
     count = await redis.incr(key)
-    if count == 1:
+    if count == 1 or await redis.ttl(key) < 0:
         await redis.expire(key, NVD_BUCKET_WINDOW_S)
     return bool(count <= NVD_BUCKET_MAX)
 
