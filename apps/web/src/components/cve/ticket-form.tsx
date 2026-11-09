@@ -185,11 +185,6 @@ export function TicketForm({ cveId, cve, ticket, variant, onSaved, readOnly, onC
 
   return (
     <form onSubmit={(e) => void submit(e)} className="grid gap-4" noValidate>
-      {ticket?.escalation_required && variant === "panel" && (
-        <div>
-          <Chip kind="cve" value="escalation" />
-        </div>
-      )}
       <div className={pair}>
         <Field label="Affected asset" htmlFor={id("asset")}>
           <Input id={id("asset")} value={v.affected_asset} readOnly={ro} onChange={(e) => set("affected_asset", e.target.value)} />

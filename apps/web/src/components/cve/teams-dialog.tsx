@@ -175,8 +175,8 @@ export function TeamsDialog({ open, onOpenChange }: { open: boolean; onOpenChang
   async function deactivate(t: Team) {
     setBusy(`off-${t.id}`);
     try {
-      const { error } = await api.DELETE("/api/cve/teams/{team_id}", { params: { path: { team_id: t.id } } });
-      if (error) throw new Error("Request failed");
+      const { error, response } = await api.DELETE("/api/cve/teams/{team_id}", { params: { path: { team_id: t.id } } });
+      if (error) throw new Error(fieldErrors(response.status, error).other ?? "Request failed");
       toast.success(`Team "${t.name}" deactivated. Tickets keep the name.`);
       setEditId(null);
       refresh();
