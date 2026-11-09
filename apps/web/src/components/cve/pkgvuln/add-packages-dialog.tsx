@@ -60,6 +60,8 @@ export function AddPackagesDialog({ open, onOpenChange, mode }: AddPackagesDialo
 
 function invalidatePkgvuln(queryClient: ReturnType<typeof useQueryClient>) {
   void queryClient.invalidateQueries({ queryKey: ["pkgvuln", "packages"] });
+  void queryClient.invalidateQueries({ queryKey: ["pkgvuln", "package-lookup"] });
+  void queryClient.invalidateQueries({ queryKey: ["pkgvuln", "packages-for-filter"] });
   void queryClient.invalidateQueries({ queryKey: ["pkgvuln", "stats"] });
   void queryClient.invalidateQueries({ queryKey: ["pkgvuln", "vulns"] });
 }

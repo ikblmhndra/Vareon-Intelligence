@@ -8,8 +8,8 @@ import { api } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { AddPackagesDialog } from "@/components/cve/pkgvuln/add-packages-dialog";
-import { PackagesPanel } from "@/components/cve/pkgvuln/packages-panel";
-import { VulnsPanel } from "@/components/cve/pkgvuln/vulns-panel";
+import { INITIAL_PACKAGE_FILTERS, PackagesPanel, type PackageFilters } from "@/components/cve/pkgvuln/packages-panel";
+import { INITIAL_VULN_FILTERS, VulnsPanel, type VulnFilters } from "@/components/cve/pkgvuln/vulns-panel";
 import { useCan } from "@/lib/auth/permissions";
 
 type Segment = "vulns" | "packages";
@@ -25,6 +25,9 @@ export function PkgVulnView() {
   const [addOpen, setAddOpen] = useState(false);
   const [addMode, setAddMode] = useState<"single" | "import">("single");
   const [scanning, setScanning] = useState(false);
+  // Filter di sini (bukan di panel) supaya tetap saat berpindah segmen.
+  const [vulnFilters, setVulnFilters] = useState<VulnFilters>(INITIAL_VULN_FILTERS);
+  const [pkgFilters, setPkgFilters] = useState<PackageFilters>(INITIAL_PACKAGE_FILTERS);
 
   const statsQuery = useQuery({
     queryKey: ["pkgvuln", "stats"],
@@ -85,9 +88,9 @@ export function PkgVulnView() {
   return (
     <div>
       {segment === "vulns" ? (
-        <VulnsPanel stats={stats} segment={pills} actions={actions} />
+        <VulnsPanel filters={vulnFilters} onFilters={(p) => setVulnFilters((f) => ({ ...f, ...p }))} stats={stats} segment={pills} actions={actions} />
       ) : (
-        <PackagesPanel segment={pills} actions={actions} />
+        <PackagesPanel filters={pkgFilters} onFilters={(p) => setPkgFilters((f) => ({ ...f, ...p }))} segment={pills} actions={actions} />
       )}
       <AddPackagesDialog open={addOpen} onOpenChange={setAddOpen} mode={addMode} />
     </div>

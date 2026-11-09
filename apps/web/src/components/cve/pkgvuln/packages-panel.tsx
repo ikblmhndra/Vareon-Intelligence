@@ -34,7 +34,16 @@ const ECOSYSTEM_OPTIONS = [
   ...PKG_ECOSYSTEMS.map((e) => ({ value: e, label: e })),
 ] as const;
 
+/** Filter segmen Packages; state-nya dipegang `PkgVulnView` supaya tidak reset saat pindah segmen. */
+export interface PackageFilters {
+  search: string;
+  ecosystem: string;
+}
+export const INITIAL_PACKAGE_FILTERS: PackageFilters = { search: "", ecosystem: "all" };
+
 interface PackagesPanelProps {
+  filters: PackageFilters;
+  onFilters: (patch: Partial<PackageFilters>) => void;
   /** Pil Vulnerabilities | Packages dan tombol toolbar; dipasang oleh `PkgVulnView` supaya sama di kedua segmen. */
   segment: ReactNode;
   actions: ReactNode;
@@ -43,13 +52,12 @@ interface PackagesPanelProps {
 /** Segmen Packages (spec 2a 6.8): tabel penuh di dalam kartu utama; permukaan aksi = menu baris "...".
  * Scan/resolve-deps fire-and-forget (`BackgroundTasks`, tak ada endpoint status job): segarkan query
  * sesudah jeda tetap, bukan menunggu sinyal "selesai" yang memang tidak ada. */
-export function PackagesPanel({ segment, actions }: PackagesPanelProps) {
+export function PackagesPanel({ filters, onFilters, segment, actions }: PackagesPanelProps) {
   const can = useCan();
   const canManage = can("manage_cve");
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
-  const [search, setSearch] = useState("");
-  const [ecosystem, setEcosystem] = useState<string>("all");
+  const { search, ecosystem } = filters;
   const [removeTarget, setRemoveTarget] = useState<{ id: number; name: string } | null>(null);
   const [editTarget, setEditTarget] = useState<MonitoredPackageOut | null>(null);
   const [depsTarget, setDepsTarget] = useState<number | null>(null);
@@ -126,7 +134,7 @@ export function PackagesPanel({ segment, actions }: PackagesPanelProps) {
           <SearchInput
             value={search}
             onChange={(v) => {
-              setSearch(v);
+              onFilters({ search: v });
               setPage(1);
             }}
             placeholder="Search packages"
@@ -137,7 +145,7 @@ export function PackagesPanel({ segment, actions }: PackagesPanelProps) {
             prefix="Ecosystem"
             value={ecosystem}
             onChange={(v) => {
-              setEcosystem(v);
+              onFilters({ ecosystem: v });
               setPage(1);
             }}
             options={ECOSYSTEM_OPTIONS}
@@ -161,7 +169,13 @@ export function PackagesPanel({ segment, actions }: PackagesPanelProps) {
           <StatePanel
             variant="empty"
             title="No monitored packages"
-            description={q || ecosystem !== "all" ? "No package matches these filters." : "Add a package or import a lockfile to start monitoring."}
+            description={
+              q || ecosystem !== "all"
+                ? "No package matches these filters."
+                : canManage
+                  ? "Add a package or import a lockfile to start monitoring."
+                  : undefined
+            }
           />
         )}
         {items.length > 0 && (

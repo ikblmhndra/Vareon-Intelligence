@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { keepPreviousData, useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { api } from "@/lib/api/client";
@@ -15,6 +15,7 @@ import { SearchInput } from "@/components/ui/search-input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatePanel } from "@/components/ui/state-panel";
 import { StatTile } from "@/components/ui/stat-tile";
+import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PKG_ECOSYSTEMS } from "@/components/cve/pkgvuln/add-packages-dialog";
 import { DepsModal } from "@/components/cve/pkgvuln/deps-modal";
@@ -44,9 +45,29 @@ const SHOW_OPTIONS = [
   { value: "acknowledged", label: "acknowledged" },
   { value: "all", label: "all" },
 ] as const;
-type Show = (typeof SHOW_OPTIONS)[number]["value"];
+export type Show = (typeof SHOW_OPTIONS)[number]["value"];
+
+/** Filter segmen Vulnerabilities; state-nya dipegang `PkgVulnView` supaya tidak reset saat pindah segmen. */
+export interface VulnFilters {
+  search: string;
+  ecosystem: string;
+  severity: string;
+  show: Show;
+  packageName: string;
+  kevOnly: boolean;
+}
+export const INITIAL_VULN_FILTERS: VulnFilters = {
+  search: "",
+  ecosystem: "all",
+  severity: "all",
+  show: "unacknowledged",
+  packageName: "all",
+  kevOnly: false,
+};
 
 interface VulnsPanelProps {
+  filters: VulnFilters;
+  onFilters: (patch: Partial<VulnFilters>) => void;
   stats: PkgVulnStats | undefined;
   /** Pil Vulnerabilities | Packages dan tombol toolbar; dipasang oleh `PkgVulnView` supaya sama di kedua segmen. */
   segment: ReactNode;
@@ -55,21 +76,32 @@ interface VulnsPanelProps {
 
 /** Segmen Vulnerabilities (spec 2a 6.7): kartu utama berisi pil + filter + aksi, enam `StatTile`, lalu
  * master-detail (daftar urut skor yang disesuaikan, panel rincian). Aksi paket per baris ada di segmen Packages. */
-export function VulnsPanel({ stats, segment, actions }: VulnsPanelProps) {
+export function VulnsPanel({ filters, onFilters, stats, segment, actions }: VulnsPanelProps) {
   const can = useCan();
   const canManage = can("manage_cve");
   const queryClient = useQueryClient();
-  const [search, setSearch] = useState("");
-  const [ecosystem, setEcosystem] = useState<string>("all");
-  const [severity, setSeverity] = useState<string>("all");
-  const [show, setShow] = useState<Show>("unacknowledged");
+  const { search, ecosystem, severity, show, packageName, kevOnly } = filters;
   const [picked, setPicked] = useState<number | null>(null);
   const [depsTarget, setDepsTarget] = useState<number | null>(null);
   const [ackBusy, setAckBusy] = useState<number | null>(null);
   const q = useDebounced(search.trim());
 
+  // Pencarian backend hanya mencocokkan advisory/ringkasan/alias, jadi nama paket difilter lewat dropdown ini.
+  const packagesQuery = useQuery({
+    queryKey: ["pkgvuln", "packages-for-filter"],
+    queryFn: async () => {
+      const { data, error } = await api.GET("/api/pkgvuln/packages", { params: { query: { page: 1, page_size: 500 } } });
+      if (error) throw error;
+      return data.items.map((p) => p.name);
+    },
+  });
+  const packageOptions = [
+    { value: "all", label: "all" },
+    ...[...new Set(packagesQuery.data ?? [])].map((n) => ({ value: n, label: n })),
+  ];
+
   const list = useInfiniteQuery({
-    queryKey: ["pkgvuln", "vulns", q, ecosystem, severity, show],
+    queryKey: ["pkgvuln", "vulns", q, ecosystem, severity, show, packageName, kevOnly],
     initialPageParam: 1,
     placeholderData: keepPreviousData,
     queryFn: async ({ pageParam }) => {
@@ -83,6 +115,8 @@ export function VulnsPanel({ stats, segment, actions }: VulnsPanelProps) {
             search: q || undefined,
             ecosystem: ecosystem === "all" ? undefined : ecosystem,
             severity: severity === "all" ? undefined : severity,
+            package_name: packageName === "all" ? undefined : packageName,
+            kev_only: kevOnly || undefined,
             acknowledged: show === "all" ? undefined : show === "acknowledged" ? "true" : "false",
           },
         },
@@ -126,14 +160,16 @@ export function VulnsPanel({ stats, segment, actions }: VulnsPanelProps) {
           <div className="flex flex-wrap items-center gap-2">
             <SearchInput
               value={search}
-              onChange={setSearch}
-              placeholder="Search package or advisory"
-              aria-label="Search package or advisory"
+              onChange={(v) => onFilters({ search: v })}
+              placeholder="Search advisory or summary"
+              aria-label="Search advisory or summary"
               className="w-full sm:w-64"
             />
-            <FilterSelect prefix="Ecosystem" value={ecosystem} onChange={setEcosystem} options={ECOSYSTEM_OPTIONS} />
-            <FilterSelect prefix="Severity" value={severity} onChange={setSeverity} options={SEVERITY_OPTIONS} />
-            <FilterSelect prefix="Show" value={show} onChange={setShow} options={SHOW_OPTIONS} />
+            <FilterSelect prefix="Ecosystem" value={ecosystem} onChange={(v) => onFilters({ ecosystem: v })} options={ECOSYSTEM_OPTIONS} />
+            <FilterSelect prefix="Package" value={packageName} onChange={(v) => onFilters({ packageName: v })} options={packageOptions} />
+            <FilterSelect prefix="Severity" value={severity} onChange={(v) => onFilters({ severity: v })} options={SEVERITY_OPTIONS} />
+            <FilterSelect prefix="Show" value={show} onChange={(v) => onFilters({ show: v })} options={SHOW_OPTIONS} />
+            <Switch checked={kevOnly} onCheckedChange={(c) => onFilters({ kevOnly: c })} aria-label="KEV only" label={<span className="text-xs">KEV only</span>} />
             <div className="flex flex-wrap items-center gap-2 lg:ml-auto">{actions}</div>
           </div>
         </CardContent>
