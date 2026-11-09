@@ -10,13 +10,14 @@ const SEVERITY = {
   high: "bg-severity-high/15 text-severity-high-text",
   medium: "bg-severity-medium/15 text-severity-medium-text",
   low: "bg-severity-low/15 text-severity-low-text",
+  unrated: "bg-panel text-foreground",
 } as const;
 
 const STATUS = {
   ok: "bg-success/15 text-success-text",
   watch: "bg-warning/15 text-warning-text",
   action: "bg-destructive/15 text-destructive-text",
-  open: "bg-info/15 text-info-text",
+  open: "bg-destructive/15 text-destructive-text",
   in_progress: "bg-primary/15 text-primary-text",
   completed: "bg-success/15 text-success-text",
 } as const;
@@ -29,9 +30,39 @@ const RISK = {
 
 const NEUTRAL = "bg-panel text-foreground";
 
+// Kata + tint lencana CVE Tracker (spec 2a 6.11).
+const CVE = {
+  kev: { word: "KEV", tone: "bg-destructive/15 text-destructive-text" },
+  exploited: { word: "EXPLOITED", tone: "bg-destructive/15 text-destructive-text" },
+  poc: { word: "PoC", tone: NEUTRAL },
+  acknowledged: { word: "ACKNOWLEDGED", tone: "bg-success/15 text-success-text" },
+  false_positive: { word: "FALSE POSITIVE", tone: NEUTRAL },
+  monitored: { word: "MONITORED", tone: "bg-success/15 text-success-text" },
+  covered_by_vendor: { word: "COVERED BY VENDOR", tone: "bg-info/15 text-info-text" },
+  unmapped: { word: "unmapped", tone: "bg-warning/15 text-warning-text" },
+  escalation: { word: "ESCALATION", tone: "bg-warning/15 text-warning-text" },
+} as const;
+
+const EXPOSURE = {
+  public: { word: "public", tone: "bg-destructive/15 text-destructive-text" },
+  internal: { word: "internal", tone: NEUTRAL },
+  both: { word: "public + internal", tone: NEUTRAL },
+} as const;
+
+const TICKET = {
+  Open: "bg-destructive/15 text-destructive-text",
+  "In Progress": "bg-warning/15 text-warning-text",
+  Resolved: "bg-success/15 text-success-text",
+  "Risk Accepted": NEUTRAL,
+  Closed: NEUTRAL,
+} as const;
+
 type ChipProps = { children?: ReactNode; className?: string } & (
   | { kind: "severity"; value: keyof typeof SEVERITY }
   | { kind: "status"; value: keyof typeof STATUS }
+  | { kind: "cve"; value: keyof typeof CVE }
+  | { kind: "exposure"; value: keyof typeof EXPOSURE }
+  | { kind: "ticket"; value: keyof typeof TICKET }
   | { kind: "risk"; value: number }
   | { kind: "grade" | "flag"; value: string }
 );
@@ -50,6 +81,18 @@ export function Chip(props: ChipProps) {
     case "status":
       tone = STATUS[props.value];
       text = children ?? props.value.replace("_", " ");
+      break;
+    case "cve":
+      tone = CVE[props.value].tone;
+      text = children ?? CVE[props.value].word;
+      break;
+    case "exposure":
+      tone = EXPOSURE[props.value].tone;
+      text = children ?? EXPOSURE[props.value].word;
+      break;
+    case "ticket":
+      tone = TICKET[props.value];
+      text = children ?? props.value;
       break;
     case "risk": {
       const level =
