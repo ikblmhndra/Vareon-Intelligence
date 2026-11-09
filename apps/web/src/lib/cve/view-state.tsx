@@ -14,6 +14,10 @@ interface CveViewState {
   addFromCatalogRequested: boolean;
   requestAddFromCatalog: () => void;
   clearAddFromCatalog: () => void;
+  /** Pencarian yang diteruskan ke sub-view CVEs (mis. "Open in CVE tracker" dari CVE DB); CveCoreView memakai lalu menghapusnya. */
+  pendingSearch: string | null;
+  openInTracker: (search: string) => void;
+  clearPendingSearch: () => void;
 }
 
 const CveViewContext = createContext<CveViewState | null>(null);
@@ -31,6 +35,13 @@ export function CveViewProvider({ children }: { children: ReactNode }) {
     setSubview("monitored");
   }, []);
   const clearAddFromCatalog = useCallback(() => setRequested(false), []);
+  const [pendingSearch, setPendingSearch] = useState<string | null>(null);
+  const openInTracker = useCallback((search: string) => {
+    setPendingSearch(search);
+    setView("cves");
+    setSubview("cves");
+  }, []);
+  const clearPendingSearch = useCallback(() => setPendingSearch(null), []);
 
   const value = useMemo(
     () => ({
@@ -41,8 +52,11 @@ export function CveViewProvider({ children }: { children: ReactNode }) {
       addFromCatalogRequested,
       requestAddFromCatalog,
       clearAddFromCatalog,
+      pendingSearch,
+      openInTracker,
+      clearPendingSearch,
     }),
-    [view, subview, addFromCatalogRequested, requestAddFromCatalog, clearAddFromCatalog],
+    [view, subview, addFromCatalogRequested, requestAddFromCatalog, clearAddFromCatalog, pendingSearch, openInTracker, clearPendingSearch],
   );
   return <CveViewContext.Provider value={value}>{children}</CveViewContext.Provider>;
 }

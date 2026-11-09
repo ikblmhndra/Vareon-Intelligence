@@ -439,6 +439,12 @@ export function AllTechView() {
                         ))}
                       </TableBody>
                     </Table>
+                    {(vendors.data?.pages[0]?.hidden ?? 0) > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        {vendors.data?.pages[0]?.hidden} vendor(s) whose products all have only 1 CVE are hidden. Search for
+                        them, or set Show to &quot;all&quot;.
+                      </p>
+                    )}
                     <LoadMoreFooter
                       shown={vendorItems.length}
                       total={vendorTotal}
