@@ -95,7 +95,8 @@ download flow, and the risk tier scale LOW/MED/HIGH (`Chip kind="risk"`, `RISK_M
   (`lib/entities/types.ts::ENTITY_TABS`, incl. Campaigns and Victims). Result: All + all eight, with the mockup words
   where they map (Threat actors, Malware & tools, Techniques, CVEs, Campaigns, Sectors, Locations, Victims).
 - **C6 Entities sort.** Mockup "sorted by mentions in 30 days"; the API keyset-sorts by `lower(name)` and `Entity.id`
-  (`services/entities.py::list_entities`). Sort stays by name; the card subtitle says "sorted by name".
+  (`services/entities.py::list_entities`). User decision: the Entities page sorts by 30-day mentions (new opt-in
+  `sort=mentions`, 4.7); pickers and dialogs keep the name sort. The card subtitle says "sorted by mentions (30 d)".
 - **C7 Article count in the profile.** "from 143 articles" is illustrative: the model is given at most 10 article
   titles from the last 90 days (`AsyncTAProfileRepo.fetch_recent_news(days=90, limit=10)`). The stored count is the
   number of articles in the context, and the UI says "from N recent articles".
@@ -238,6 +239,24 @@ files. After the API changes: `uv run python tools/export_openapi.py`, `cd apps/
 - **Performance.** One extra count per first page; the alias `EXISTS` filter is the same as the page query.
 - **Tests.** `tests/integration/test_entities_api.py::test_list_total_first_page_only` (total with `type`, `q`,
   `watched`, `include_suppressed`; `null` with a cursor; tombstones excluded) and `::test_list_item_first_seen`.
+- **Sort by 30-day mentions (C6).** New query param `sort: Literal["name", "mentions"] = "name"` on `GET
+  /api/entities`; the default keeps today's behaviour for `entity-autocomplete`, `entity-create-dialog`,
+  `entity-merge-dialog` and `relationship-create-dialog`. Only `entities-list-view.tsx` sends `sort=mentions`.
+  - Logic: `mentions` LEFT JOINs a subquery `count(DISTINCT article_id)` per `entity_id` over `EntityMention` joined to
+    `Article` where `_article_day() >= today - 30 days` (same window and day expression as `_mention_counts`, so the
+    sort key equals the row's `mentions_30d`), `coalesce(n30, 0)`. Order `n30 DESC, _sort_key() ASC, Entity.id ASC`.
+  - Cursor: `encode_cursor` gains an optional count; a `mentions` cursor is the JSON `[n30, name_key, id]`, a `name`
+    cursor stays `[name_key, id]` (old cursors keep working). Keyset predicate `n30 < c OR (n30 = c AND
+    (name_key, id) > (c_name, c_id))`. A cursor of the wrong shape for the requested `sort` is a 422, as today.
+  - Counts shift while paging (a new article can move an entity across pages); accepted, as with any live keyset.
+  - Performance: the 30-day subquery is bounded by the window and served by
+    `ix_entity_mentions_entity_id_article_id`; no new index. The plan runs `EXPLAIN ANALYZE` on dev-sized data
+    (read-only, local copy of the synthetic seed scaled up) and records the timing; add an index only if one page
+    exceeds 300 ms.
+  - Tests: `tests/integration/test_entities_api.py::test_list_sort_mentions` (order by 30-day count, ties by name then
+    id, zero-mention entities last, `mentions_30d` in the row equals the sort key, cursor pages are disjoint and
+    complete across a tie boundary, filters still apply) and `::test_list_sort_mentions_bad_cursor` (a `name` cursor
+    with `sort=mentions` returns 422); a unit test for the cursor round trip in both shapes.
 
 ### 4.8 RFI per-status counts
 - **Contract.** `RFIListResponse.status_counts: RFIStatusCounts {open: int, in_progress: int, closed: int}`, computed
@@ -479,7 +498,7 @@ no-access states use `StatePanel` everywhere (replacing the ad-hoc "Loading…" 
   1024 px); right `StarToggle`-style toggle button "Watched only" (`aria-pressed`), "⋯" menu: "Include suppressed"
   (checkbox item, `manage_entities`), "Download watchlist Navigator layer" (actors, existing call), and "+ New entity"
   primary (`manage_entities`, existing dialog).
-- **List card** (left): "{tab label}" / "{total} entities · sorted by name" (4.7; C6). Table NAME (`StarToggle` +
+- **List card** (left): "{tab label}" / "{total} entities · sorted by mentions (30 d)" (4.7; C6). Table NAME (`StarToggle` +
   name; `manage_pir` to toggle, read-only star otherwise), ATT&CK ID (`font-code`, primary text), ALIASES (first 2 +
   "+n"), 30 D (bold, trend arrow kept from today), 90 D, LAST SEEN (`fmtCompactAge`), TYPE column only on "All".
   Source column → preview panel; "Suppressed" chip on suppressed rows when shown. Row click selects (does not
@@ -617,7 +636,8 @@ Already exist (reuse): `MasterDetail`, `SelectableList`, `StatTile`, `Field`, `F
 ## 7. Out of scope
 - Mockup sample numbers and copy that are illustrative ("143 articles", "0.72", "Acme Bank", masthead badges).
 - A 4th PIR priority "Low" or any PIR priority/status migration (D15).
-- Sorting entities by mentions (C6), changing the cluster threshold range (D11), the spike cache or algorithm.
+- A user-selectable sort on the Entities page (C6 fixes it to 30-day mentions), changing the cluster threshold
+  range (D11), the spike cache or algorithm.
 - Server-side caching of the campaign pipeline, and client scoping of IOCs (C2).
 - Mobile layouts beyond the 1024 px collapse and the kept Entities card fallback (D28).
 - `/intelligence/entities/resolve` (unchanged), TA Room, Exec, X Intel and other pages.
@@ -661,6 +681,8 @@ Already exist (reuse): `MasterDetail`, `SelectableList`, `StatTile`, `Field`, `F
   previous value reachable.
 - **Removing dialogs** (IOC detail, TTP drill) changes deep-link and focus behaviour; selection lives in the URL where
   listed (`id`), focus returns to the selected row after dialogs.
+- **Entities sort** (C6) is computed per request over the 30-day window; entities move between pages while new
+  articles arrive, and a slow aggregate would slow the first paint of the Entities page (timing checked in 4.7).
 - **RFI default tab** changes from all statuses to Open; status counts make the other tabs visible at a glance.
 - **Newsroom URL params** add a second way into `ArticleListSheet`; the sheet scope must not combine with the masthead
   filters in a way that changes the count (the new source carries its own country and date, independent of the
