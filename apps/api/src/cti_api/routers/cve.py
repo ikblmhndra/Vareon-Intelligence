@@ -66,7 +66,7 @@ from cti_api.schemas.cve import (
     FalsePositiveBody,
     PurgeOrphanedBody,
 )
-from cti_api.schemas.cve_check import CveCheckTriggered, CveFreshness
+from cti_api.schemas.cve_check import CheckSourceId, CveCheckTriggered, CveFreshness
 from cti_api.schemas.cve_dashboard import CveDashboard
 from cti_api.schemas.techstack import EXPOSURE_MULTIPLIER, HOSTING_MULTIPLIER
 from cti_api.services import cve_check as cve_check_service
@@ -332,6 +332,7 @@ async def cve_dashboard(
 async def cve_freshness(
     new_since: datetime.datetime | None = Query(None),
     session: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(get_redis),
     user: AuthedUser = Depends(require_auth),
     x_client_id: str | None = Header(None),
 ) -> CveFreshness:
@@ -343,6 +344,7 @@ async def cve_freshness(
     fp_ids = await AsyncCveFalsePositiveRepo(session).list_cve_ids(cid)
     return await cve_check_service.get_freshness(
         session,
+        redis=redis,
         client_id=cid,
         tech=await _active_tech_names(session, cid),
         exclude_cve_ids=fp_ids or None,
@@ -353,6 +355,7 @@ async def cve_freshness(
 @router.post("/check-new", response_model=CveCheckTriggered)
 async def check_new_cves(
     request: Request,
+    source: CheckSourceId | None = Query(None),
     session: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis),
     user: AuthedUser = Depends(require_permission("manage_scraper")),
@@ -361,9 +364,10 @@ async def check_new_cves(
     `new_cve`, atau `cve.mirror_sync` bila mirror `live`) ke worker; hasilnya tampil lewat
     `GET /freshness`. Hanya admin (kuota NVD/MITRE, sama dengan trigger scraper). Ditolak 409 bila
     cek sedang berjalan atau scraper dimatikan, 429 selama cooldown, 503 bila worker tak
-    terjangkau."""
+    terjangkau. `source` (opsional) memicu satu jalur saja dengan cooldown sendiri; nilai tak
+    dikenal = 422, jalur yang tidak aktif = 409."""
     try:
-        result = await cve_check_service.trigger_check(session, redis)
+        result = await cve_check_service.trigger_check(session, redis, source=source)
     except cve_check_service.CheckAlreadyRunning:
         raise HTTPException(status_code=409, detail="A CVE check is already running") from None
     except cve_check_service.CheckUnavailable as e:

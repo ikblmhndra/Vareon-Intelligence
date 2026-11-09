@@ -17,6 +17,7 @@ dihitung per client aktif di lingkup yang sama dengan tab CVEs."""
 
 from __future__ import annotations
 
+import contextlib
 import datetime
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -55,7 +56,15 @@ SUCCESS_STATUSES = ("ok", "empty", "partial")
 RUNNING_STALE_AFTER = datetime.timedelta(minutes=30)
 """Baris `running` lebih tua dari ini dianggap nyangkut (worker mati), bukan sedang berjalan."""
 COOLDOWN_S = 120
-_COOLDOWN_KEY = "cve:check_new:cooldown"
+COOLDOWN_KEY = "cve:check_new:cooldown"
+"""Cooldown pemicu TANPA `source` (semua jalur aktif)."""
+LAST_TRIGGERED_KEY = "cve:check_new:last_triggered"
+LAST_TRIGGERED_TTL_S = 3600
+
+
+def cooldown_key(source: CheckSourceId) -> str:
+    """Cooldown pemicu per jalur; independen dari `COOLDOWN_KEY` dan dari jalur lain."""
+    return f"{COOLDOWN_KEY}:{source}"
 
 
 class CheckError(Exception):
@@ -104,6 +113,7 @@ async def _scraper_source(session: AsyncSession, now: datetime.datetime) -> CveC
     config = await AsyncScraperConfigRepo(session).get(SCRAPER_ID)
     enabled = effective_enabled(meta, config)
     runs = AsyncScraperRunRepo(session)
+    running_row = await runs.latest_running(SCRAPER_ID, started_after=now - RUNNING_STALE_AFTER)
     succeeded = await runs.latest_finished(SCRAPER_ID, statuses=SUCCESS_STATUSES)
     # `overlap`/`disabled` = run ditolak sebelum mengambil apa pun, bukan percobaan pengecekan.
     latest = await runs.latest_finished(SCRAPER_ID, exclude_statuses=("overlap", "disabled"))
@@ -115,7 +125,8 @@ async def _scraper_source(session: AsyncSession, now: datetime.datetime) -> CveC
         last_checked_at=succeeded.finished_at if succeeded else None,
         last_run_finished_at=latest.finished_at if latest else None,
         last_run_status=latest.status if latest else None,
-        running=await runs.has_running(SCRAPER_ID, started_after=now - RUNNING_STALE_AFTER),
+        running=running_row is not None,
+        running_since=running_row.started_at if running_row is not None else None,
         next_check_at=next_run(schedule, now=now) if enabled else None,
     )
 
@@ -135,9 +146,21 @@ async def _mirror_source(session: AsyncSession, now: datetime.datetime) -> CveCh
     )
 
 
+async def _last_triggered(redis: Redis) -> datetime.datetime | None:
+    raw = await redis.get(LAST_TRIGGERED_KEY)
+    if not raw:
+        return None
+    try:
+        value = datetime.datetime.fromisoformat(raw.decode() if isinstance(raw, bytes) else raw)
+    except ValueError:
+        return None
+    return value if value.tzinfo is not None else value.replace(tzinfo=datetime.UTC)
+
+
 async def get_freshness(
     session: AsyncSession,
     *,
+    redis: Redis,
     client_id: str,
     tech: Sequence[str] | None,
     exclude_cve_ids: Sequence[str] | None,
@@ -164,6 +187,7 @@ async def get_freshness(
         new_since = new_since.replace(tzinfo=datetime.UTC)
     return CveFreshness(
         sources=sources,
+        last_triggered_at=await _last_triggered(redis),
         last_checked_at=_latest([s.last_checked_at for s in sources]),
         last_run_finished_at=_latest([s.last_run_finished_at for s in sources]),
         running=any(s.running for s in sources),
@@ -174,18 +198,23 @@ async def get_freshness(
     )
 
 
-async def trigger_check(session: AsyncSession, redis: Redis) -> CveCheckTriggered:
-    """Kirim tugas cek ke semua jalur yang aktif dan siap. `CheckError` (subclass) bila ditolak.
+async def trigger_check(
+    session: AsyncSession, redis: Redis, *, source: CheckSourceId | None = None
+) -> CveCheckTriggered:
+    """Kirim tugas cek ke jalur yang aktif dan siap (atau hanya `source`). `CheckError`
+    (subclass) bila ditolak.
 
     Penolakan karena run masih berjalan atau scraper dimatikan TIDAK memakai cooldown: begitu
-    keadaan berubah tombol langsung bisa dipakai. Cooldown juga dilepas bila pengiriman gagal."""
+    keadaan berubah tombol langsung bisa dipakai. Cooldown juga dilepas bila pengiriman gagal.
+    Tanpa `source` memakai `COOLDOWN_KEY`; dengan `source` memakai `cooldown_key(source)`
+    (independen satu sama lain). `source` yang bukan jalur aktif ditolak `CheckUnavailable`."""
     now = datetime.datetime.now(datetime.UTC)
     active = active_sources()
     tasks: list[tuple[CheckSourceId, str, tuple[str, ...], dict[str, str], str]] = []
     running = False
-    if active.mirror:
+    if active.mirror and source in (None, "mirror"):
         tasks.append(("mirror", MIRROR_TASK, (), {}, MIRROR_QUEUE))
-    if active.scraper:
+    if active.scraper and source in (None, "new_cve"):
         meta = discover()[SCRAPER_ID].meta
         config = await AsyncScraperConfigRepo(session).get(SCRAPER_ID)
         if effective_enabled(meta, config):
@@ -200,18 +229,25 @@ async def trigger_check(session: AsyncSession, redis: Redis) -> CveCheckTriggere
     if not tasks:
         if running:
             raise CheckAlreadyRunning()
+        if source == "mirror" or (source is None and active.mirror):
+            raise CheckUnavailable("The CVE List V5 mirror is not an active check source")
+        if source == "new_cve" and not active.scraper:
+            raise CheckUnavailable(f"Scraper '{SCRAPER_ID}' is superseded by the CVE mirror")
         raise CheckUnavailable(f"Scraper '{SCRAPER_ID}' is turned off in the control plane")
 
-    if not await redis.set(_COOLDOWN_KEY, "1", ex=COOLDOWN_S, nx=True):
-        remaining = await redis.ttl(_COOLDOWN_KEY)  # -1/-2: kunci tanpa umur / baru saja habis
+    lock_key = COOLDOWN_KEY if source is None else cooldown_key(source)
+    if not await redis.set(lock_key, "1", ex=COOLDOWN_S, nx=True):
+        remaining = await redis.ttl(lock_key)  # -1/-2: kunci tanpa umur / baru saja habis
         raise CheckCooldown(remaining if remaining > 0 else COOLDOWN_S)
     try:
         client = get_celery_client()
         for _source, name, args, kwargs, queue in tasks:
             client.send_task(name, args=args, kwargs=kwargs, queue=queue)
     except Exception as exc:
-        await redis.delete(_COOLDOWN_KEY)
+        await redis.delete(lock_key)
         raise CheckBrokerError(str(exc)) from exc
+    with contextlib.suppress(Exception):  # info tampilan saja; tugas sudah terkirim
+        await redis.set(LAST_TRIGGERED_KEY, now.isoformat(), ex=LAST_TRIGGERED_TTL_S)
     return CveCheckTriggered(
         status="queued", triggered_at=now, sources=[source for source, *_ in tasks]
     )

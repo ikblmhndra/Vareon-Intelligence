@@ -386,3 +386,130 @@ async def test_check_new_with_a_dead_broker_fails_cleanly_and_releases_the_coold
 
     monkeypatch.setattr(cve_check, "get_celery_client", lambda: FakeCelery())
     assert (await api_client.post("/api/cve/check-new", headers=auth_header())).status_code == 200
+
+
+# ── running_since, last_triggered_at, ?source= ───────────────────────────────
+
+
+async def test_running_since_from_running_row(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Callable[..., dict[str, str]]
+) -> None:
+    started = ago(minutes=3)
+    api_session.add(run_row("running", started=started, finished=None))
+    await api_session.flush()
+
+    source = (await freshness(api_client, auth_header()))["sources"][0]
+
+    assert source["running"] is True
+    assert as_time(source["running_since"]) == started
+
+
+async def test_stale_running_row_ignored(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Callable[..., dict[str, str]]
+) -> None:
+    stale = cve_check.RUNNING_STALE_AFTER + datetime.timedelta(minutes=5)
+    api_session.add(run_row("running", started=ago(seconds=stale.total_seconds()), finished=None))
+    await api_session.flush()
+
+    source = (await freshness(api_client, auth_header()))["sources"][0]
+
+    assert (source["running"], source["running_since"]) == (False, None)
+
+
+async def test_source_mirror_only_sends_mirror_sync(
+    api_client: AsyncClient,
+    auth_header: Callable[..., dict[str, str]],
+    celery: FakeCelery,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    set_mirror(monkeypatch, enabled=True, promote="live", keep_legacy=True)
+
+    resp = await api_client.post(
+        "/api/cve/check-new", headers=auth_header(), params={"source": "mirror"}
+    )
+
+    assert (resp.status_code, resp.json()["sources"]) == (200, ["mirror"])
+    assert [t["name"] for t in celery.sent] == ["cve.mirror_sync"]
+
+
+async def test_cooldown_is_per_source(
+    api_client: AsyncClient,
+    auth_header: Callable[..., dict[str, str]],
+    celery: FakeCelery,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    set_mirror(monkeypatch, enabled=True, promote="live", keep_legacy=True)
+    post = api_client.post
+
+    first = await post("/api/cve/check-new", headers=auth_header(), params={"source": "mirror"})
+    again = await post("/api/cve/check-new", headers=auth_header(), params={"source": "mirror"})
+    other = await post("/api/cve/check-new", headers=auth_header(), params={"source": "new_cve"})
+
+    assert (first.status_code, again.status_code, other.status_code) == (200, 429, 200)
+    assert [t["name"] for t in celery.sent] == ["cve.mirror_sync", "scrape.run"]
+
+
+async def test_global_and_per_source_cooldowns_are_independent(
+    api_client: AsyncClient,
+    auth_header: Callable[..., dict[str, str]],
+    celery: FakeCelery,
+    fake_redis: Any,
+) -> None:
+    """Tanpa `source` memakai kunci lama `cve:check_new:cooldown`; per-source kunci sendiri."""
+    await api_client.post("/api/cve/check-new", headers=auth_header())
+    assert "cve:check_new:cooldown" in fake_redis._counts
+    scoped = await api_client.post(
+        "/api/cve/check-new", headers=auth_header(), params={"source": "new_cve"}
+    )
+
+    assert scoped.status_code == 200
+    assert "cve:check_new:cooldown:new_cve" in fake_redis._counts
+
+
+async def test_unknown_source_is_422_and_inactive_source_is_409(
+    api_client: AsyncClient, auth_header: Callable[..., dict[str, str]], celery: FakeCelery
+) -> None:
+    bad = await api_client.post(
+        "/api/cve/check-new", headers=auth_header(), params={"source": "nope"}
+    )
+    mirror_off = await api_client.post(
+        "/api/cve/check-new", headers=auth_header(), params={"source": "mirror"}
+    )
+
+    assert (bad.status_code, mirror_off.status_code, celery.sent) == (422, 409, [])
+
+
+async def test_source_running_check_applies_to_requested_source_only(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+    celery: FakeCelery,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    set_mirror(monkeypatch, enabled=True, promote="live", keep_legacy=True)
+    api_session.add(run_row("running", started=ago(minutes=2), finished=None))
+    await api_session.flush()
+
+    scraper = await api_client.post(
+        "/api/cve/check-new", headers=auth_header(), params={"source": "new_cve"}
+    )
+    mirror = await api_client.post(
+        "/api/cve/check-new", headers=auth_header(), params={"source": "mirror"}
+    )
+
+    assert (scraper.status_code, mirror.status_code) == (409, 200)
+
+
+async def test_last_triggered_at_visible_to_non_admin(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+    celery: FakeCelery,
+) -> None:
+    await AsyncClientRepo(api_session).ensure_default()
+    assert (await freshness(api_client, auth_header(role="analyst")))["last_triggered_at"] is None
+
+    triggered = await api_client.post("/api/cve/check-new", headers=auth_header(role="admin"))
+    body = await freshness(api_client, auth_header(role="analyst"))
+
+    assert as_time(body["last_triggered_at"]) == as_time(triggered.json()["triggered_at"])
