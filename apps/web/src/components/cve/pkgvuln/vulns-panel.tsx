@@ -1,79 +1,106 @@
 "use client";
 
-import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState, type ReactNode } from "react";
+import { keepPreviousData, useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { api } from "@/lib/api/client";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Chip } from "@/components/ui/chip";
+import { FilterSelect } from "@/components/ui/filter-select";
+import { LoadMoreFooter } from "@/components/ui/load-more-footer";
+import { MasterDetail } from "@/components/ui/master-detail";
+import { SearchInput } from "@/components/ui/search-input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { StatePanel } from "@/components/ui/state-panel";
+import { StatTile } from "@/components/ui/stat-tile";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { SimplePager } from "@/components/pager";
-import { PanelError, PanelLoading } from "@/components/newsroom/panel-shell";
-import { epssColorClass, severityColorClass } from "@/lib/cve/format";
-import { cn } from "@/lib/utils";
-import type { components } from "@/lib/api/schema";
+import { PKG_ECOSYSTEMS } from "@/components/cve/pkgvuln/add-packages-dialog";
+import { DepsModal } from "@/components/cve/pkgvuln/deps-modal";
+import { VulnDetailCard } from "@/components/cve/pkgvuln/vuln-detail-card";
 import type { PkgVulnAckResult } from "@/lib/api/loose-types";
-import { VulnDetailModal } from "@/components/cve/pkgvuln/vuln-detail-modal";
+import type { components } from "@/lib/api/schema";
 import { useCan } from "@/lib/auth/permissions";
+import { useDebounced } from "@/lib/cve/catalog";
+import { severityChipKey } from "@/lib/cve/labels";
+import { cn } from "@/lib/utils";
 
-const PAGE_SIZE = 20;
-const ALL = "__all__";
-const SEVERITIES = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN"];
+type PackageVulnOut = components["schemas"]["PackageVulnOut"];
+type PkgVulnStats = components["schemas"]["PkgVulnStats"];
 
-/** Port sub-view Vulns (`pvLoadVulns()`+filter, `pkgvuln.js:208-450`).
- * `ecosystem` query param ada di backend tapi gak pernah dipakai UI
- * lama -- ditambahin di sini (free win, disebut di gap notes). */
-export function VulnsPanel({ active }: { active: boolean }) {
+const PAGE_SIZE = 25;
+
+const ECOSYSTEM_OPTIONS = [
+  { value: "all", label: "all" },
+  ...PKG_ECOSYSTEMS.map((e) => ({ value: e, label: e })),
+] as const;
+const SEVERITY_OPTIONS = [
+  { value: "all", label: "all" },
+  ...["CRITICAL", "HIGH", "MEDIUM", "LOW", "UNKNOWN"].map((s) => ({ value: s, label: s.toLowerCase() })),
+] as const;
+const SHOW_OPTIONS = [
+  { value: "unacknowledged", label: "unacknowledged" },
+  { value: "acknowledged", label: "acknowledged" },
+  { value: "all", label: "all" },
+] as const;
+type Show = (typeof SHOW_OPTIONS)[number]["value"];
+
+interface VulnsPanelProps {
+  stats: PkgVulnStats | undefined;
+  /** Pil Vulnerabilities | Packages dan tombol toolbar; dipasang oleh `PkgVulnView` supaya sama di kedua segmen. */
+  segment: ReactNode;
+  actions: ReactNode;
+}
+
+/** Segmen Vulnerabilities (spec 2a 6.7): kartu utama berisi pil + filter + aksi, enam `StatTile`, lalu
+ * master-detail (daftar urut skor yang disesuaikan, panel rincian). Aksi paket per baris ada di segmen Packages. */
+export function VulnsPanel({ stats, segment, actions }: VulnsPanelProps) {
   const can = useCan();
+  const canManage = can("manage_cve");
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
-  const [severity, setSeverity] = useState("");
-  const [packageName, setPackageName] = useState("");
-  const [kevOnly, setKevOnly] = useState(false);
-  const [unackedOnly, setUnackedOnly] = useState(false);
-  const [page, setPage] = useState(1);
-  const [selected, setSelected] = useState<components["schemas"]["PackageVulnOut"] | null>(null);
+  const [ecosystem, setEcosystem] = useState<string>("all");
+  const [severity, setSeverity] = useState<string>("all");
+  const [show, setShow] = useState<Show>("unacknowledged");
+  const [picked, setPicked] = useState<number | null>(null);
+  const [depsTarget, setDepsTarget] = useState<number | null>(null);
+  const [ackBusy, setAckBusy] = useState<number | null>(null);
+  const q = useDebounced(search.trim());
 
-  const packagesQuery = useQuery({
-    queryKey: ["pkgvuln", "packages-for-filter"],
-    queryFn: async () => {
-      const { data, error } = await api.GET("/api/pkgvuln/packages", { params: { query: { page: 1, page_size: 500 } } });
-      if (error) throw error;
-      return data.items.map((p) => p.name);
-    },
-  });
-
-  const listQuery = useQuery({
-    queryKey: ["pkgvuln", "vulns", search, severity, packageName, kevOnly, unackedOnly, page],
-    queryFn: async () => {
+  const list = useInfiniteQuery({
+    queryKey: ["pkgvuln", "vulns", q, ecosystem, severity, show],
+    initialPageParam: 1,
+    placeholderData: keepPreviousData,
+    queryFn: async ({ pageParam }) => {
       const { data, error } = await api.GET("/api/pkgvuln/vulns", {
         params: {
           query: {
-            page,
+            page: pageParam,
             page_size: PAGE_SIZE,
             sort_by: "adjusted_score",
             sort_dir: "desc",
-            search: search || undefined,
-            severity: severity || undefined,
-            package_name: packageName || undefined,
-            kev_only: kevOnly || undefined,
-            acknowledged: unackedOnly ? "false" : undefined,
+            search: q || undefined,
+            ecosystem: ecosystem === "all" ? undefined : ecosystem,
+            severity: severity === "all" ? undefined : severity,
+            acknowledged: show === "all" ? undefined : show === "acknowledged" ? "true" : "false",
           },
         },
       });
       if (error) throw error;
       return data;
     },
-    enabled: active,
+    getNextPageParam: (last, all) => (all.reduce((n, p) => n + p.items.length, 0) < last.total ? last.page + 1 : undefined),
   });
 
+  const items = list.data?.pages.flatMap((p) => p.items) ?? [];
+  const total = list.data?.pages[0]?.total ?? 0;
+  const selected = items.find((v) => v.id === picked) ?? items[0] ?? null;
+
   async function toggleAck(vulnId: number) {
+    setAckBusy(vulnId);
     const { data, error } = await api.PATCH("/api/pkgvuln/vulns/{vuln_id}/ack", { params: { path: { vuln_id: vulnId } } });
+    setAckBusy(null);
     if (error) {
       toast.error("Acknowledge failed");
       return;
@@ -84,180 +111,190 @@ export function VulnsPanel({ active }: { active: boolean }) {
     void queryClient.invalidateQueries({ queryKey: ["pkgvuln", "stats"] });
   }
 
-  function resetFilters() {
-    setSearch("");
-    setSeverity("");
-    setPackageName("");
-    setKevOnly(false);
-    setUnackedOnly(false);
-    setPage(1);
+  function invalidatePackages() {
+    void queryClient.invalidateQueries({ queryKey: ["pkgvuln", "packages"] });
+    void queryClient.invalidateQueries({ queryKey: ["pkgvuln", "package-lookup"] });
+    void queryClient.invalidateQueries({ queryKey: ["pkgvuln", "stats"] });
+    void queryClient.invalidateQueries({ queryKey: ["pkgvuln", "vulns"] });
   }
 
-  const total = listQuery.data?.total ?? 0;
-  const totalPages = Math.ceil(total / PAGE_SIZE) || 1;
-
   return (
-    <div>
-      <div className="mb-3 flex flex-wrap items-end gap-2 border-b border-border pb-3">
-        <div className="flex flex-col gap-1">
-          <Label className="text-sm font-medium text-muted-foreground">Search</Label>
-          <Input
-            placeholder="Advisory, CVE, summary…"
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
-            className="w-48 font-mono text-xs"
-          />
-        </div>
-        <div className="flex flex-col gap-1">
-          <Label className="text-sm font-medium text-muted-foreground">Severity</Label>
-          <Select
-            items={{ [ALL]: "All Severities", ...Object.fromEntries(SEVERITIES.map((s) => [s, s])) }}
-            value={severity || ALL}
-            onValueChange={(v) => {
-              setSeverity(v === ALL ? "" : (v ?? ""));
-              setPage(1);
-            }}
-          >
-            <SelectTrigger size="sm" className="w-36 font-mono text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL} className="font-mono text-xs">
-                All Severities
-              </SelectItem>
-              {SEVERITIES.map((s) => (
-                <SelectItem key={s} value={s} className="font-mono text-xs">
-                  {s}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex flex-col gap-1">
-          <Label className="text-sm font-medium text-muted-foreground">Package</Label>
-          <Select
-            items={{ [ALL]: "All Packages", ...Object.fromEntries((packagesQuery.data ?? []).map((p) => [p, p])) }}
-            value={packageName || ALL}
-            onValueChange={(v) => {
-              setPackageName(v === ALL ? "" : (v ?? ""));
-              setPage(1);
-            }}
-          >
-            <SelectTrigger size="sm" className="w-40 font-mono text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL} className="font-mono text-xs">
-                All Packages
-              </SelectItem>
-              {(packagesQuery.data ?? []).map((p) => (
-                <SelectItem key={p} value={p} className="font-mono text-xs">
-                  {p}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <label className="mb-1.5 flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
-          <Checkbox
-            checked={kevOnly}
-            onCheckedChange={(c) => {
-              setKevOnly(c === true);
-              setPage(1);
-            }}
-          />
-          KEV only
-        </label>
-        <label className="mb-1.5 flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
-          <Checkbox
-            checked={unackedOnly}
-            onCheckedChange={(c) => {
-              setUnackedOnly(c === true);
-              setPage(1);
-            }}
-          />
-          Unacked only
-        </label>
-        <Button size="sm" variant="outline" onClick={resetFilters}>
-          Reset
-        </Button>
+    <div className="flex flex-col gap-4">
+      <Card>
+        <CardContent className="flex flex-col gap-3">
+          <div>{segment}</div>
+          <div className="flex flex-wrap items-center gap-2">
+            <SearchInput
+              value={search}
+              onChange={setSearch}
+              placeholder="Search package or advisory"
+              aria-label="Search package or advisory"
+              className="w-full sm:w-64"
+            />
+            <FilterSelect prefix="Ecosystem" value={ecosystem} onChange={setEcosystem} options={ECOSYSTEM_OPTIONS} />
+            <FilterSelect prefix="Severity" value={severity} onChange={setSeverity} options={SEVERITY_OPTIONS} />
+            <FilterSelect prefix="Show" value={show} onChange={setShow} options={SHOW_OPTIONS} />
+            <div className="flex flex-wrap items-center gap-2 lg:ml-auto">{actions}</div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+        <StatTile label="Packages" value={stats?.packages ?? "—"} />
+        <StatTile label="Vulnerable" value={stats?.vulnerable_packages ?? "—"} tone="warning" />
+        <StatTile label="Critical" value={stats?.critical ?? "—"} tone="destructive" />
+        <StatTile label="High" value={stats?.high ?? "—"} tone="warning" />
+        <StatTile label="KEV" value={stats?.kev_count ?? "—"} tone="destructive" />
+        <StatTile label="Acknowledged" value={stats ? stats.total_vulns - stats.unacknowledged : "—"} tone="success" />
       </div>
 
-      {listQuery.isPending && <PanelLoading />}
-      {listQuery.isError && <PanelError />}
-      {listQuery.data && (
-        <>
-          <Table framed>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Advisory</TableHead>
-                <TableHead>Package</TableHead>
-                <TableHead>Summary</TableHead>
-                <TableHead>Severity</TableHead>
-                <TableHead>Score</TableHead>
-                <TableHead>EPSS</TableHead>
-                <TableHead>Published</TableHead>
-                <TableHead>Fixed In</TableHead>
-                <TableHead>Ack</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {listQuery.data.items.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={9} className="py-8 text-center text-xs text-muted-foreground">
-                    No package vulnerabilities found.
-                  </TableCell>
-                </TableRow>
+      <MasterDetail
+        list={
+          <Card>
+            <CardHeader>
+              <CardTitle>Vulnerabilities</CardTitle>
+              <CardDescription>Sorted by adjusted score</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              {list.isPending && <Skeleton className="h-64 w-full rounded-lg" />}
+              {list.isError && (
+                <StatePanel
+                  variant="error"
+                  title="Could not load package vulnerabilities"
+                  action={
+                    <Button variant="outline" onClick={() => void list.refetch()}>
+                      Retry
+                    </Button>
+                  }
+                />
               )}
-              {listQuery.data.items.map((v) => (
-                <TableRow key={v.id} className="cursor-pointer" onClick={() => setSelected(v)}>
-                  <TableCell className="font-mono text-xs">
-                    {v.advisory_id}
-                    {v.aliases.length > 0 && <div className="text-xs text-muted-foreground">{v.aliases.join(", ")}</div>}
-                  </TableCell>
-                  <TableCell className="font-mono text-xs">
-                    {v.package_name}
-                    {v.pinned_version && <span className="text-muted-foreground">@{v.pinned_version}</span>}
-                  </TableCell>
-                  <TableCell className="max-w-[240px] truncate text-xs">{v.summary || "—"}</TableCell>
-                  <TableCell className={cn("text-xs font-semibold", severityColorClass(v.adjusted_severity || v.severity))}>
-                    {v.adjusted_severity || v.severity}
-                  </TableCell>
-                  <TableCell className="font-mono text-xs" onClick={(e) => e.stopPropagation()}>
-                    {v.adjusted_score?.toFixed(1) ?? "—"}
-                    {v.kev && (
-                      <Badge variant="destructive" className="ml-1 text-xs">
-                        KEV
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell className={cn("font-mono text-xs", v.epss_score != null ? epssColorClass(v.epss_score) : "text-muted-foreground")}>
-                    {v.epss_score != null ? `${(v.epss_score * 100).toFixed(2)}%` : "—"}
-                  </TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground">{v.published?.slice(0, 10) || "—"}</TableCell>
-                  <TableCell className="font-mono text-xs text-primary">{v.fixed_version || "—"}</TableCell>
-                  <TableCell onClick={(e) => e.stopPropagation()}>
-                    <Checkbox
-                      aria-label={`Acknowledge ${v.id}`}
-                      disabled={!can("manage_cve")}
-                      checked={v.acknowledged}
-                      onCheckedChange={() => void toggleAck(v.id)}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          <div className="mt-3 flex justify-center">
-            <SimplePager page={page} totalPages={totalPages} totalLabel={`${total} results`} onPageChange={setPage} />
-          </div>
-        </>
-      )}
+              {list.isSuccess && items.length === 0 && (
+                <StatePanel variant="empty" title="No package vulnerabilities found" description="Try another filter, or set Show to all." />
+              )}
+              {items.length > 0 && (
+                <>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Advisory</TableHead>
+                        <TableHead>Package</TableHead>
+                        <TableHead>Severity</TableHead>
+                        <TableHead className="text-right">Score</TableHead>
+                        <TableHead>KEV</TableHead>
+                        <TableHead>Fixed in</TableHead>
+                        <TableHead className="text-right">EPSS</TableHead>
+                        <TableHead>Ack</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {items.map((v) => (
+                        <VulnRow
+                          key={v.id}
+                          vuln={v}
+                          selected={v.id === selected?.id}
+                          canManage={canManage}
+                          busy={ackBusy === v.id}
+                          onSelect={() => setPicked(v.id)}
+                          onAck={() => void toggleAck(v.id)}
+                        />
+                      ))}
+                    </TableBody>
+                  </Table>
+                  <LoadMoreFooter
+                    shown={items.length}
+                    total={total}
+                    hasMore={!!list.hasNextPage}
+                    loading={list.isFetchingNextPage}
+                    onLoadMore={() => void list.fetchNextPage()}
+                  />
+                </>
+              )}
+            </CardContent>
+          </Card>
+        }
+        detail={
+          selected ? (
+            <VulnDetailCard
+              key={selected.id}
+              vuln={selected}
+              canManage={canManage}
+              ackBusy={ackBusy === selected.id}
+              onToggleAck={() => void toggleAck(selected.id)}
+              onOpenDeps={setDepsTarget}
+            />
+          ) : list.isPending ? (
+            <Skeleton className="h-64 rounded-lg" />
+          ) : (
+            <StatePanel variant="empty" title="No vulnerability selected" description="Pick a row to see its advisory and package." />
+          )
+        }
+      />
 
-      <VulnDetailModal vuln={selected} onClose={() => setSelected(null)} />
+      <DepsModal pkgId={depsTarget} onClose={() => setDepsTarget(null)} onResolved={invalidatePackages} />
     </div>
+  );
+}
+
+function VulnRow({
+  vuln: v,
+  selected,
+  canManage,
+  busy,
+  onSelect,
+  onAck,
+}: {
+  vuln: PackageVulnOut;
+  selected: boolean;
+  canManage: boolean;
+  busy: boolean;
+  onSelect: () => void;
+  onAck: () => void;
+}) {
+  const sev = v.adjusted_severity || v.severity;
+  return (
+    <TableRow selected={selected}>
+      <TableCell>
+        <button
+          type="button"
+          aria-current={selected ? "true" : undefined}
+          onClick={onSelect}
+          className="rounded-sm text-left font-code text-xs font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        >
+          {v.advisory_id}
+        </button>
+      </TableCell>
+      <TableCell className="text-xs">
+        <span className="font-semibold">{v.package_name}</span>
+        {v.pinned_version && <span className="text-muted-foreground"> {v.pinned_version}</span>}
+      </TableCell>
+      <TableCell>
+        <Chip kind="severity" value={severityChipKey(sev)}>
+          {sev}
+        </Chip>
+      </TableCell>
+      <TableCell className="text-right text-xs tabular-nums">{v.adjusted_score?.toFixed(1) ?? "—"}</TableCell>
+      <TableCell>{v.kev && <Chip kind="cve" value="kev" />}</TableCell>
+      <TableCell className={cn("font-code text-xs", v.fixed_version ? "text-success-text" : "text-muted-foreground")}>
+        {v.fixed_version || "—"}
+      </TableCell>
+      <TableCell className="text-right text-xs tabular-nums">{v.epss_score != null ? v.epss_score.toFixed(2) : "—"}</TableCell>
+      <TableCell className="text-xs">
+        {v.acknowledged ? (
+          <span className="text-muted-foreground">{v.ack_by || "Acked"}</span>
+        ) : canManage ? (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onAck}
+            aria-label={`Acknowledge ${v.advisory_id} on ${v.package_name}`}
+            className="rounded-sm font-semibold underline outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:text-muted-foreground"
+          >
+            Ack
+          </button>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
+      </TableCell>
+    </TableRow>
   );
 }
