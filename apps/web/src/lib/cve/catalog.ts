@@ -26,6 +26,10 @@ export function useDebounced<T>(value: T, ms = 400): T {
   return debounced;
 }
 
+/** Pilihan Exposure/Hosting entri techstack (D15): nilai API -> label tampilan. */
+export const EXPOSURE_LABEL: Record<string, string> = { public: "Public", internal: "Internal", both: "Public + internal" };
+export const HOSTING_LABEL: Record<string, string> = { on_prem: "On-prem", cloud: "Cloud", saas: "SaaS" };
+
 const REASONS: Record<string, string> = {
   duplicate: "A tech with this name already exists for this client",
   not_found: "That catalog item no longer exists",
@@ -75,10 +79,13 @@ export function useMonitorActions() {
   }
 
   /** Tombol Monitor di All Tech / CVE DB: entri baru dengan satu target katalog. */
-  const monitor = (ref: CatalogRef, label?: string) =>
+  const monitor = (
+    ref: CatalogRef,
+    label?: string,
+    opts: { exposure: string; hosting_type: string } = { exposure: "internal", hosting_type: "on_prem" },
+  ) =>
     guarded(async () => {
-      const { data, error } = await api.POST("/api/techstack", { body: { ...ref, name: label, exposure: "internal", hosting_type: "on_prem" },
-      });
+      const { data, error } = await api.POST("/api/techstack", { body: { ...ref, name: label, ...opts } });
       if (error) throw new Error(detailText(error));
       const d = data as unknown as TechStackActionResult;
       if (!d.success) {
