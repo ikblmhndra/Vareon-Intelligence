@@ -313,6 +313,23 @@ class AsyncCveTrackerRepo:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
+    async def count_by_tech(self, client_id: str) -> dict[str, int]:
+        """`{lower(tech): jumlah CVE}` milik client ini, tanpa baris FP-nya dan tanpa filter
+        tanggal (pengecualian yang sama dengan tab CVEs). Satu `GROUP BY`; dipetakan ke entri
+        techstack lewat `entry.name.lower()`. Entri nonaktif ikut terhitung karena baris
+        `cve_tracker`-nya tetap (riwayat). Baris tanpa `tech` dilewati."""
+        key = func.lower(CveTracker.tech)
+        rows = await self.session.execute(
+            select(key, func.count())
+            .where(
+                CveTracker.client_id == client_id,
+                CveTracker.tech.is_not(None),
+                ~is_false_positive_row(),
+            )
+            .group_by(key)
+        )
+        return {tech: n for tech, n in rows.all()}
+
     async def list_all_distinct_cve_ids(self) -> list[str]:
         """Lintas client, TANPA filter -- semua cve_id yang lagi ditrack, termasuk yang
         ditandai FP. Buat "true positive" pakai `list_true_positive_cve_ids`."""

@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_core.catalog_resolve import VENDOR_NONE_KEY
@@ -69,6 +69,37 @@ class AsyncTechStackRepo:
         list_stmt = stmt.order_by(order).offset((page - 1) * page_size).limit(page_size)
         result = await self.session.execute(list_stmt)
         return list(result.scalars().all()), total
+
+    async def coverage(self, client_id: str) -> dict[str, int]:
+        """Ringkasan pemetaan katalog client ini dalam satu query (`EXISTS` pada target), tidak
+        tergantung filter/paging daftar. `mapped_vendor` = aktif dengan >= 1 target vendor;
+        `mapped_family` = aktif hanya bertarget keluarga; `unmapped` = aktif tanpa target;
+        `hidden` = nonaktif (apa pun pemetaannya); `active` = tiga bucket pertama."""
+
+        def has_target(*conds: ColumnElement[bool]) -> ColumnElement[bool]:
+            return (
+                select(TechStackTarget.id)
+                .where(TechStackTarget.entry_id == TechStackEntry.id, *conds)
+                .exists()
+            )
+
+        vendor = has_target(TechStackTarget.vendor_id.is_not(None))
+        anything = has_target()
+        on = TechStackEntry.active.is_(True)
+        row = (
+            await self.session.execute(
+                select(
+                    func.count(),
+                    func.count().filter(on),
+                    func.count().filter(on, ~vendor, anything),
+                    func.count().filter(on, vendor),
+                    func.count().filter(on, ~anything),
+                    func.count().filter(TechStackEntry.active.is_(False)),
+                ).where(TechStackEntry.client_id == client_id)
+            )
+        ).one()
+        keys = ("total", "active", "mapped_family", "mapped_vendor", "unmapped", "hidden")
+        return dict(zip(keys, (int(n) for n in row), strict=True))
 
     async def get_by_name_ci(self, name: str, client_id: str) -> TechStackEntry | None:
         result = await self.session.execute(
