@@ -8,12 +8,22 @@ router `changelog.py`) -- parser-nya expect header persis
 
 ## [0.8.16] - 2026-11-08
 
-**Redesain FigCraft: tiga sumber data baru untuk halaman PIR, Intelligence, dan MITRE, plus penyeragaman tema web.** API mendapat cakupan PIR per minggu, seri harian per entitas yang melonjak, dan layer ATT&CK Navigator yang sama persis dengan heatmap yang terlihat. Web memakai satu skala tier risiko, border field yang terbaca, dan fokus yang jelas. Tanpa migrasi dan tanpa kunci `.env`.
+**Redesain FigCraft: tiga sumber data baru untuk halaman PIR, Intelligence, dan MITRE, penyeragaman tema web, dan redesain CVE Tracker beserta tambahan backend-nya.** API mendapat cakupan PIR per minggu, seri harian per entitas yang melonjak, dan layer ATT&CK Navigator yang sama persis dengan heatmap yang terlihat. Web memakai satu skala tier risiko, border field yang terbaca, dan fokus yang jelas. Satu migrasi aditif (`b7d41e9a2c63`) dijalankan otomatis oleh `make deploy`, dan satu dependency baru (`email-validator`). Tanpa kunci `.env`.
 
 ### Ditambahkan
 - `GET /api/pir/{pir_id}/coverage/weekly`: jumlah artikel per minggu untuk grafik cakupan PIR.
 - `GET /api/spikes`: respons kini bertipe (`SpikesResponse`) dan punya blok `daily`, yaitu seri harian per entitas yang melonjak. Key lama tidak berubah.
 - `GET /api/mitre/navigator-layer` dan `/navigator-export`: parameter opsional `top_rows`, `top_ttps`, `ttp_source` supaya layer yang diekspor sama dengan heatmap yang sedang tampil.
+- CVE Tracker, risk score 0-100 per CVE dan urutan berdasarkan risk (`sort`).
+- CVE Tracker, filter tab False positive dengan alasan FP (`fp_reason`) dan catatan (`fp_note`).
+- Ticket: timestamp `updated_at`/`updated_by` dan `escalation_notified_at`, plus export XLSX ticket.
+- Tim pemilik (`cve_owner_teams`): CRUD tim dengan email lead. Eskalasi ticket membuat DRAFT email ke lead tim lewat Microsoft Graph (tanpa Telegram, tidak terkirim otomatis, tidak diulang saat ticket disimpan ulang).
+- Techstack: jumlah match per entri dan coverage; sembunyikan produk katalog per klien (`catalog_family_hides`).
+- CVE DB: info sinkron mirror dan penanda `covered_by_vendor`.
+- Status cek CVE: `running_since` dan coba ulang per sumber.
+- Lookup CVE langsung (NVD, CIRCL, Exploit-DB, EPSS), di-cache dan dibatasi rate-nya.
+- Dry run lockfile, kolom ecosystem dan path sumber (`monitored_packages.source_path`), parser `Gemfile.lock`, `yarn.lock`, dan `go.sum`.
+- Web: CVEs master/detail dengan urutan risk, tab Open/Acknowledged/False positive, menu More actions dan mode Select; Ticketing master/detail dan Teams.
 
 ### Diubah
 - Deteksi spike (Early Warning dan industry spikes di dashboard eksekutif): mean dan simpangan baku baseline kini menghitung hari tanpa artikel sebagai 0, sama dengan seri `daily`. Dulu hanya hari yang ada artikelnya yang dihitung, sehingga garis baseline lebih tinggi daripada batang hariannya dan entitas yang jarang muncul mendapat z-score terlalu kecil. Akibatnya jumlah dan urutan anomali berubah sesudah deploy, ke dua arah: entitas jarang bisa muncul, entitas yang hitungan hariannya naik-turun bisa hilang. Entitas tetap butuh minimal 5 hari baseline yang ada artikelnya.
@@ -22,8 +32,11 @@ router `changelog.py`) -- parser-nya expect header persis
 - Web: ring fokus berwarna ink, warna warning `#A04A07`, aturan breakpoint di `lg` (1024px), dan token border `--input` yang lebih gelap (kontras minimal 3:1) untuk Input, Textarea, Select, dan Checkbox.
 - Web: shell baru mengikuti mockup FigCraft. Navigasi atas (masthead) dengan menu "More" menggantikan sidebar; di bawah 1024px menjadi tombol Menu. Utility bar memuat pemilih klien dan menu akun.
 - Web: tombol (semua state), field, tab bergaris bawah dan pil, kontrol segmented, chip, kartu, tabel, dialog, dan panel state kosong/error mengikuti mockup. Kartu kini datar berbingkai (tanpa bayangan), judul dialog semibold, dan badge memakai ring fokus ink.
+- Web: CVE Tracker (CVEs, Ticketing, Monitored Tech, All Tech, CVE DB, Dashboard, Packages) tampil master/detail mengikuti mockup FigCraft; panel samping menggantikan modal detail; chip status Open jadi merah; semua waktu memakai zona waktu browser.
+- Web: tab Ticketing disembunyikan untuk role tanpa `manage_cve`.
+- Lockfile tak dikenal dan "Detect from file" kini membalas 422 (dulu diam-diam diparse sebagai `requirements.txt`).
 
-**Saat upgrade dari 0.8.15:** catat jumlah anomali Early Warning per kelompok sebelum deploy untuk dibandingkan, lalu `make deploy`. Dari prod 0.8.11 (versi yang sedang jalan): ikuti runbook gabungan `docs/PROD_UPGRADE_0.8.11_TO_0.8.16.md`; cek per rilis ada di `docs/prod-upgrade/0.8.16.md`.
+**Saat upgrade dari 0.8.15:** catat jumlah anomali Early Warning per kelompok sebelum deploy untuk dibandingkan, lalu `make deploy` (migrasi jalan otomatis). Dari prod 0.8.11 (versi yang sedang jalan): ikuti runbook gabungan `docs/PROD_UPGRADE_0.8.11_TO_0.8.16.md`; cek per rilis ada di `docs/prod-upgrade/0.8.16.md`.
 
 ## [0.8.15] - 2026-11-08
 
