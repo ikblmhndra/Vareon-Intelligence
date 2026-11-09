@@ -23,7 +23,7 @@ import zoneinfo
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import ColumnElement, Row, Select, and_, false, func, or_, select, text
+from sqlalchemy import ColumnElement, Row, Select, and_, false, func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute, Session
 
@@ -33,6 +33,7 @@ from cti_core.db.models.cve import (
     CveAffected,
     CveFalsePositive,
     CveNewsletterMention,
+    CveOwnerTeam,
     CvePoc,
     CveReference,
     CveTicket,
@@ -1383,3 +1384,84 @@ class AsyncCveTicketRepo:
             ticket.updated_by = analyst_name
             await self.session.flush()
         return len(to_ack)
+
+
+class AsyncCveOwnerTeamRepo:
+    """Tim pemilik CVE per client. `CveTicket.owner_team` teks bebas tanpa FK, jadi semua pencocokan
+    nama tim <-> ticket memakai `lower(btrim(...))` (nilai lama bisa berspasi/beda huruf besar)."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def list(
+        self, client_id: str, *, include_inactive: bool = False
+    ) -> list[tuple[CveOwnerTeam, int]]:
+        """Tim + jumlah ticket yang `owner_team`-nya cocok (satu query, urut nama)."""
+        count = (
+            select(func.count(CveTicket.id))
+            .where(
+                CveTicket.client_id == CveOwnerTeam.client_id,
+                func.lower(func.btrim(CveTicket.owner_team)) == func.lower(CveOwnerTeam.name),
+            )
+            .correlate(CveOwnerTeam)
+            .scalar_subquery()
+        )
+        stmt = select(CveOwnerTeam, count).where(CveOwnerTeam.client_id == client_id)
+        if not include_inactive:
+            stmt = stmt.where(CveOwnerTeam.active.is_(True))
+        rows = await self.session.execute(stmt.order_by(func.lower(CveOwnerTeam.name)))
+        return [(team, int(n or 0)) for team, n in rows.all()]
+
+    async def get(self, team_id: int, client_id: str) -> CveOwnerTeam | None:
+        result = await self.session.execute(
+            select(CveOwnerTeam).where(
+                CveOwnerTeam.id == team_id, CveOwnerTeam.client_id == client_id
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def get_by_name_ci(self, name: str, client_id: str) -> CveOwnerTeam | None:
+        result = await self.session.execute(
+            select(CveOwnerTeam).where(
+                CveOwnerTeam.client_id == client_id,
+                func.lower(CveOwnerTeam.name) == name.strip().lower(),
+            )
+        )
+        return result.scalars().first()
+
+    async def create(
+        self, client_id: str, name: str, lead_name: str, lead_email: str
+    ) -> CveOwnerTeam:
+        team = CveOwnerTeam(
+            client_id=client_id,
+            name=name.strip(),
+            lead_name=lead_name or None,
+            lead_email=lead_email or None,
+            active=True,
+        )
+        self.session.add(team)
+        await self.session.flush()
+        return team
+
+    async def count_tickets(self, client_id: str, name: str) -> int:
+        result = await self.session.execute(
+            select(func.count(CveTicket.id)).where(
+                CveTicket.client_id == client_id,
+                func.lower(func.btrim(CveTicket.owner_team)) == name.strip().lower(),
+            )
+        )
+        return int(result.scalar_one())
+
+    async def rename_cascade(self, client_id: str, old: str, new: str) -> int:
+        """Ganti `owner_team` ticket client ini dari `old` ke `new` (satu transaksi dengan rename
+        tim oleh pemanggil). Mengembalikan jumlah ticket yang berubah."""
+        result = await self.session.execute(
+            update(CveTicket)
+            .where(
+                CveTicket.client_id == client_id,
+                func.lower(func.btrim(CveTicket.owner_team)) == old.strip().lower(),
+            )
+            .values(owner_team=new)
+            .execution_options(synchronize_session=False)
+        )
+        return int(getattr(result, "rowcount", 0) or 0)

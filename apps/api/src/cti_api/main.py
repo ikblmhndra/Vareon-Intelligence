@@ -46,6 +46,7 @@ from cti_api.routers import clients as clients_router
 from cti_api.routers import crossref as crossref_router
 from cti_api.routers import cve as cve_router
 from cti_api.routers import cve_db as cve_db_router
+from cti_api.routers import cve_teams as cve_teams_router
 from cti_api.routers import data_health as data_health_router
 from cti_api.routers import enrich_jobs as enrich_jobs_router
 from cti_api.routers import entities as entities_router
@@ -217,6 +218,7 @@ def create_app() -> FastAPI:
     app.include_router(iocs_router.router)
     app.include_router(techstack_router.router)
     app.include_router(cve_router.router)
+    app.include_router(cve_teams_router.router)
     app.include_router(cve_db_router.router)
     app.include_router(catalog_router.router)
     app.include_router(tweets_router.router)
