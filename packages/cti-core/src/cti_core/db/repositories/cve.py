@@ -1254,6 +1254,7 @@ class AsyncCveTicketRepo:
         comments: str | None = None,
         risk_acceptance: str | None = None,
         closure_date: datetime.date | None = None,
+        updated_by: str | None = None,
     ) -> CveTicket:
         """Port `upsert_ticket()` -- `PUT /{cve_id}/ticket`. `ticket_id`
         kosong/`None` -> pakai yang udah ada (record lama) atau generate
@@ -1290,6 +1291,8 @@ class AsyncCveTicketRepo:
         ticket.comments = comments
         ticket.risk_acceptance = risk_acceptance
         ticket.closure_date = closure_date
+        if updated_by:
+            ticket.updated_by = updated_by
         await self.session.flush()
         return ticket
 
@@ -1335,6 +1338,7 @@ class AsyncCveTicketRepo:
             ticket.ticket_id = ticket_id
         ticket.acknowledged_by = analyst_name.strip()
         ticket.acknowledge_time = now
+        ticket.updated_by = ticket.acknowledged_by
         await self.session.flush()
         return ticket
 
@@ -1376,5 +1380,6 @@ class AsyncCveTicketRepo:
                 self.session.add(ticket)
             ticket.acknowledged_by = analyst_name
             ticket.acknowledge_time = now
+            ticket.updated_by = analyst_name
             await self.session.flush()
         return len(to_ack)

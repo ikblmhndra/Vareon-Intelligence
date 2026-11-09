@@ -24,7 +24,7 @@ from __future__ import annotations
 import re
 from typing import Annotated, Literal
 
-from pydantic import AfterValidator, BaseModel, Field, model_validator
+from pydantic import AfterValidator, BaseModel, EmailStr, Field, model_validator
 
 _CVE_ID = re.compile(r"cve-[0-9]{4}-[0-9]{4,11}", re.ASCII | re.IGNORECASE)
 """`CVE-YYYY-NNNN...`, maksimum 11 digit supaya muat di kolom `String(20)` (9 karakter awalan).
@@ -153,7 +153,7 @@ class CveTicketBody(BaseModel):
     affected_version: str = ""
     fixed_version: str = ""
     asset_owner: str = ""
-    owner_email: str = ""
+    owner_email: EmailStr | Literal[""] = ""
     owner_team: str = ""
     active_exploitation: str = ""
     remediation_date_plan: str = ""

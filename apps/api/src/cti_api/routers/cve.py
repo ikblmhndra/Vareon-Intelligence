@@ -93,6 +93,9 @@ def _serialize_ticket(ticket: CveTicket | None) -> dict[str, object]:
     sendiri kalau field ini gak ada di response."""
     if ticket is None:
         return {}
+    # `opened_at` = yang lebih awal antara baris ticket dibuat dan ack (ticket bisa lahir lewat
+    # import/ack lama yang `acknowledge_time`-nya mendahului `created_at`).
+    opened = [t for t in (ticket.created_at, ticket.acknowledge_time) if t is not None]
     return {
         "ticket_id": ticket.ticket_id,
         "cve_id": ticket.cve_id,
@@ -116,6 +119,10 @@ def _serialize_ticket(ticket: CveTicket | None) -> dict[str, object]:
         "closure_date": ticket.closure_date.isoformat() if ticket.closure_date else "",
         "acknowledged_by": ticket.acknowledged_by or "",
         "acknowledge_time": ticket.acknowledge_time.isoformat() if ticket.acknowledge_time else "",
+        "created_at": ticket.created_at.isoformat() if ticket.created_at else "",
+        "updated_at": ticket.updated_at.isoformat() if ticket.updated_at else "",
+        "updated_by": ticket.updated_by or "",
+        "opened_at": min(opened).isoformat() if opened else "",
     }
 
 
@@ -743,6 +750,40 @@ async def create_draft_email(
     return result
 
 
+@router.get("/tickets/export", dependencies=[Depends(require_permission("export_data"))])
+async def export_cve_tickets(
+    request: Request,
+    search: str | None = Query(None),
+    status: str | None = Query(None),
+    include_fp: bool = Query(False),
+    session: AsyncSession = Depends(get_db),
+    user: AuthedUser = Depends(require_auth),
+    x_client_id: str | None = Header(None),
+) -> StreamingResponse:
+    """Export view Ticketing (filter sama dengan `GET /tickets`) sebagai Excel."""
+    cid = effective_client_id(user, x_client_id)
+    try:
+        data = await cve_export_service.export_tickets_to_excel(
+            session, client_id=cid, search=search, status=status, include_fp=include_fp
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+    filename = f"CVE_Tickets_{datetime.date.today().strftime('%Y%m%d')}.xlsx"
+    await AsyncAuditLogRepo(session).write(
+        username=user["username"],
+        action="export_cve_tickets_excel",
+        detail={"search": search, "status": status, "include_fp": include_fp},
+        ip_address=request_ip(request),
+    )
+    await session.commit()
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.get("/tickets")
 async def list_cve_tickets(
     search: str | None = Query(None),
@@ -819,6 +860,7 @@ async def update_cve_ticket(
         comments=body.comments or None,
         risk_acceptance=body.risk_acceptance or None,
         closure_date=_parse_date(body.closure_date),
+        updated_by=user["username"],
     )
     await AsyncAuditLogRepo(session).write(
         username=user["username"],
