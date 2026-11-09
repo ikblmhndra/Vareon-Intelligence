@@ -17,6 +17,31 @@ export const STATUS_ORDER: { key: StatusKey; label: string; hint: string }[] = [
   { key: "not_affected", label: "Not Affected", hint: "Risk acceptance = No Risk (Not Affected)" },
 ];
 
+export type StatusGroupKey = "open" | "in_progress" | "resolved" | "closed";
+
+/** Pengelompokan UI untuk 7 bucket tersimpan (spec 2a D17): hanya tampilan, tidak mengubah data.
+ * Open + In progress = `BACKLOG_BUCKETS` di `cti_api.services.cve_dashboard` (dipin test integrasi). */
+export const STATUS_GROUPS: readonly {
+  key: StatusGroupKey;
+  label: "Open" | "In progress" | "Resolved" | "Closed";
+  buckets: readonly StatusKey[];
+}[] = [
+  { key: "open", label: "Open", buckets: ["unacknowledged", "awaiting_status", "open"] },
+  { key: "in_progress", label: "In progress", buckets: ["in_progress"] },
+  { key: "resolved", label: "Resolved", buckets: ["completed"] },
+  { key: "closed", label: "Closed", buckets: ["risk_accepted", "not_affected"] },
+];
+
+export function groupStatus(b: components["schemas"]["StatusBreakdown"]): Record<StatusGroupKey, number> {
+  const out = { open: 0, in_progress: 0, resolved: 0, closed: 0 };
+  for (const g of STATUS_GROUPS) out[g.key] = g.buckets.reduce((sum, k) => sum + b[k], 0);
+  return out;
+}
+
+/** Rata-rata hari di atas ambang ini diberi warna destructive di tabel severity (sama dengan batas
+ * "Needs improvement" pada `ratingForMtta`). */
+export const SLOW_MEAN_DAYS = 14;
+
 export const STATUS_LABEL: Record<string, string> = Object.fromEntries(STATUS_ORDER.map((s) => [s.key, s.label]));
 
 /** `null` = tidak ada data; angka bulat tanpa desimal, selain itu 1 desimal. */

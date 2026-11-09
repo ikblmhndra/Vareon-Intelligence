@@ -300,3 +300,43 @@ async def test_dashboard_response_shape(
     resp = await api_client.get("/api/cve/dashboard?year=2026", headers=auth_header())
     assert resp.status_code == 200
     assert resp.json() == snapshot
+
+
+async def test_backlog_total_equals_open_plus_in_progress_groups(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+) -> None:
+    """Karakterisasi (UI 2a D17): empat grup status di UI (Open = unacknowledged + awaiting_status +
+    open, In progress, Resolved = completed, Closed = risk_accepted + not_affected) hanya
+    pengelompokan tampilan; `backlog.total` harus tetap = Open + In progress, dan keempat grup
+    menjumlah ke `summary.total`. Semua tujuh bucket di-seed."""
+    await _seed(api_session)
+    api_session.add_all(
+        [
+            _cve("CVE-2026-7201"),  # awaiting_status
+            _cve("CVE-2026-7202"),  # open
+            _cve("CVE-2026-7203"),  # risk_accepted
+        ]
+    )
+    await api_session.flush()
+    api_session.add_all(
+        [
+            _ticket("CVE-2026-7201", "CTI-2026-09-101", owner_team="SOC"),
+            _ticket("CVE-2026-7202", "CTI-2026-09-102", remediation_status="Open"),
+            _ticket("CVE-2026-7203", "CTI-2026-09-103", remediation_status="Risk Accepted"),
+        ]
+    )
+    await api_session.flush()
+
+    resp = await api_client.get("/api/cve/dashboard?year=2026", headers=auth_header())
+    assert resp.status_code == 200
+    d = resp.json()
+    s = d["status"]
+    assert all(s[k] >= 1 for k in s), s  # ketujuh bucket terisi
+
+    open_group = s["unacknowledged"] + s["awaiting_status"] + s["open"]
+    assert d["backlog"]["total"] == open_group + s["in_progress"]
+    resolved = s["completed"]
+    closed = s["risk_accepted"] + s["not_affected"]
+    assert open_group + s["in_progress"] + resolved + closed == d["summary"]["total"]
