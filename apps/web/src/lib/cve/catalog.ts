@@ -134,3 +134,28 @@ export function useMonitorActions() {
 
   return { busy, monitor, addTarget, removeTarget, setActive, invalidate };
 }
+
+/**
+ * Sembunyikan / tampilkan lagi keluarga produk di All Tech client aktif (D16; tampilan saja, Monitor dan CVE DB
+ * tidak berubah). 409 = produk di-Monitor langsung: detail dari API ("{produk} is monitored directly, so it cannot
+ * be hidden") ditampilkan sebagai toast. Hanya `manage_cve`; pemanggil yang menyembunyikan tombolnya.
+ */
+export function useHideFamily() {
+  const queryClient = useQueryClient();
+
+  async function run(family: CatalogFamily, hide: boolean) {
+    const path = { family_id: family.id };
+    const { error } = hide
+      ? await api.PUT("/api/catalog/families/{family_id}/hide", { params: { path } })
+      : await api.DELETE("/api/catalog/families/{family_id}/hide", { params: { path } });
+    if (error) {
+      const text = detailText(error);
+      toast.error(text === "Request failed" && hide ? `${family.display_name} could not be hidden` : text);
+      return;
+    }
+    toast.success(hide ? `Hidden ${family.display_name}` : `Unhidden ${family.display_name}`);
+    for (const key of ["catalog", "techstack"]) void queryClient.invalidateQueries({ queryKey: [key] });
+  }
+
+  return { hide: (f: CatalogFamily) => void run(f, true), unhide: (f: CatalogFamily) => void run(f, false) };
+}
