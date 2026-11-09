@@ -42,9 +42,14 @@ export const RISK_ACCEPTANCE_VALUES = [
 
 export const HOSTING_LABEL = { on_prem: "on-prem", cloud: "cloud", saas: "SaaS" } as const;
 
-// `cve-detail-modal.tsx` belum punya peta sumber PoC (menampilkan `p.source` mentah), jadi ini peta
-// baru; sumber yang tidak dikenal tetap ditampilkan apa adanya oleh pemanggil.
-export const POC_SOURCE_LABEL: Record<string, string> = {
-  github: "GitHub",
-  exploit_db: "Exploit-DB",
-};
+/** Label sumber PoC untuk chip. Data backend: Exploit-DB ditulis `source="exploit-db"` (hyphen), PoC GitHub
+ * menaruh LOGIN PEMILIK repo di `source` (jadi dikenali dari URL), dan belum ada PoC Nuclei di backend
+ * (poc_type hanya "poc" | "exploit"); cabang Nuclei dari URL `nuclei-templates` disiapkan untuk nanti.
+ * Selain itu: `source` mentah. */
+export function pocSourceLabel(poc: { source?: string; url?: string; poc_type?: string }): string {
+  const url = (poc.url ?? "").toLowerCase();
+  if (poc.source === "exploit-db" || url.includes("exploit-db.com")) return "Exploit-DB";
+  if (url.includes("nuclei-templates")) return "Nuclei";
+  if (url.includes("github.com")) return "GitHub";
+  return poc.source ?? "";
+}

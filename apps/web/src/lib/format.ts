@@ -14,14 +14,20 @@ export function parseLocalDate(isoDate: string): Date {
   return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
 }
 
-function toDate(value: string | Date): Date {
-  return value instanceof Date ? value : parseLocalDate(value);
+const DASH = "—";
+
+/** Date valid, atau null untuk input kosong/tak valid (Intl melempar RangeError pada Date tak valid). */
+function toDate(value: string | Date | null | undefined): Date | null {
+  if (value == null || value === "") return null;
+  const d = value instanceof Date ? value : parseLocalDate(value);
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
 /** "2 Nov"; "12 Nov 2026" bila tahunnya beda dengan tahun sekarang. Tanggal-saja tidak bergeser.
  * Contoh: fmtShortDate("2026-11-02") === "2 Nov" (tahun berjalan 2026), di zona UTC-8 juga. */
-export function fmtShortDate(value: string | Date): string {
+export function fmtShortDate(value: string | Date | null | undefined): string {
   const d = toDate(value);
+  if (!d) return DASH;
   const sameYear = d.getFullYear() === new Date().getFullYear();
   return new Intl.DateTimeFormat("en-GB", {
     day: "numeric",
@@ -35,7 +41,9 @@ function part(parts: Intl.DateTimeFormatPart[], type: Intl.DateTimeFormatPartTyp
 }
 
 /** "2 Nov 14:20 GMT+7" (zona browser, offset pendek). */
-export function fmtDateTime(value: string | Date): string {
+export function fmtDateTime(value: string | Date | null | undefined): string {
+  const d = toDate(value);
+  if (!d) return DASH;
   const p = new Intl.DateTimeFormat("en-GB", {
     day: "numeric",
     month: "short",
@@ -43,22 +51,29 @@ export function fmtDateTime(value: string | Date): string {
     minute: "2-digit",
     hourCycle: "h23",
     timeZoneName: "shortOffset",
-  }).formatToParts(toDate(value));
+  }).formatToParts(d);
   return `${part(p, "day")} ${part(p, "month")} ${part(p, "hour")}:${part(p, "minute")} ${part(p, "timeZoneName")}`;
 }
 
 /** "14:20" (24 jam, zona browser). */
-export function fmtTime(value: string | Date): string {
+export function fmtTime(value: string | Date | null | undefined): string {
+  const d = toDate(value);
+  if (!d) return DASH;
   return new Intl.DateTimeFormat("en-GB", {
     hour: "2-digit",
     minute: "2-digit",
     hourCycle: "h23",
-  }).format(toDate(value));
+  }).format(d);
 }
 
 /** Umur ringkas tanpa "ago": "now", "5 m", "2 h", "1 d", "2 w", "3 mo", "1 y". */
-export function fmtCompactAge(value: string | Date, nowMs: number = Date.now()): string {
-  const sec = Math.max(0, Math.floor((nowMs - toDate(value).getTime()) / 1000));
+export function fmtCompactAge(
+  value: string | Date | null | undefined,
+  nowMs: number = Date.now(),
+): string {
+  const date = toDate(value);
+  if (!date) return DASH;
+  const sec = Math.max(0, Math.floor((nowMs - date.getTime()) / 1000));
   const min = Math.floor(sec / 60);
   if (min < 1) return "now";
   if (min < 60) return `${min} m`;
@@ -88,9 +103,11 @@ export function browserZoneName(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 }
 
-/** Selisih hari kalender (zona browser) dari hari ini ke `isoDate`; negatif = sudah lewat. */
-export function daysUntil(isoDate: string, now: Date = new Date()): number {
-  const target = parseLocalDate(isoDate);
+/** Selisih hari kalender (zona browser) dari hari ini ke `isoDate`; negatif = sudah lewat.
+ * `null` untuk input kosong/tak valid: pemanggil harus menanganinya. */
+export function daysUntil(isoDate: string | null | undefined, now: Date = new Date()): number | null {
+  const target = toDate(isoDate);
+  if (!target) return null;
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   return Math.round((target.getTime() - today.getTime()) / MS_DAY);
 }
