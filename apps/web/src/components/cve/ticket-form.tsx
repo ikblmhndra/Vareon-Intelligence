@@ -16,11 +16,11 @@ import { Textarea } from "@/components/ui/textarea";
 import type { CveTicket } from "@/lib/api/loose-types";
 import type { components } from "@/lib/api/schema";
 import { parseAffected } from "@/lib/cve/format";
+import { normalizeTicketStatus } from "@/lib/cve/tickets";
 import {
   ACTIVE_EXPLOITATION_VALUES,
   RISK_ACCEPTANCE_VALUES,
   TICKET_STATUSES,
-  type TicketStatus,
 } from "@/lib/cve/labels";
 import { daysUntil, fmtShortDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -38,7 +38,7 @@ const PLAN_WARN_DAYS = 7;
 export function escalationToast(r: CveTicketSaveOut, team: string, lead?: string): void {
   switch (r.escalation) {
     case "queued":
-      toast.success(lead ? `Draft email to ${lead} is being prepared` : "Escalation draft is being created");
+      toast.success(lead ? `Draft email to ${lead} requested` : "Escalation draft requested");
       break;
     case "no_lead":
       toast.warning(`Escalation saved, but ${team || "the owner team"} has no lead email, so no draft was created`);
@@ -93,7 +93,7 @@ export function TicketForm({ cveId, cve, ticket, variant, onSaved, readOnly, onC
     owner_team: ticket?.owner_team ?? "",
     active_exploitation: ticket?.active_exploitation ?? "",
     remediation_date_plan: ticket?.remediation_date_plan ?? "",
-    remediation_status: (ticket?.remediation_status || "Open") as TicketStatus,
+    remediation_status: normalizeTicketStatus(ticket?.remediation_status),
     actual_remediation_date: ticket?.actual_remediation_date ?? "",
     escalation_required: ticket?.escalation_required ?? false,
     comments: ticket?.comments ?? "",
@@ -144,7 +144,8 @@ export function TicketForm({ cveId, cve, ticket, variant, onSaved, readOnly, onC
     e.preventDefault();
     if (readOnly) return;
     const email = v.owner_email.trim();
-    if (email && !EMAIL_RE.test(email)) {
+    // Hanya nilai yang diubah yang dicek: email teks bebas lama yang tidak disentuh tetap boleh disimpan ulang.
+    if (email && email !== (ticket?.owner_email ?? "").trim() && !EMAIL_RE.test(email)) {
       setEmailError(EMAIL_ERROR);
       return;
     }
