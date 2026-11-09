@@ -46,7 +46,13 @@ function AddFromCatalogBody({ onClose }: { onClose: () => void }) {
           Pick the product to watch, or a whole vendor. CVEs are matched by the product&apos;s identity, not by name text.
         </DialogDescription>
       </DialogHeader>
-      <SearchInput value={search} onChange={setSearch} placeholder="Search vendor or product" aria-label="Search the catalog" />
+      <SearchInput
+        value={search}
+        onChange={(v) => {
+          setSearch(v);
+          setPicked(null); // pilihan lama bisa hilang dari daftar hasil baru
+        }} placeholder="Search vendor or product" aria-label="Search the catalog"
+      />
       <CatalogPicker q={q} value={picked?.ref ?? null} onChange={(ref, label) => setPicked({ ref, label })} disableMonitored />
       <ExposureHostingFields exposure={exposure} hosting={hosting} onExposure={setExposure} onHosting={setHosting} />
       <DialogFooter>

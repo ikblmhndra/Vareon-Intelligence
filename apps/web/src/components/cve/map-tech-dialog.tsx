@@ -57,8 +57,12 @@ function MapTechBody({ entry, onClose }: { entry: TechStackOut; onClose: () => v
   return (
     <>
       <DialogHeader>
-        <DialogTitle>Map &quot;{entry.name}&quot; to the catalog</DialogTitle>
-        <DialogDescription>Today it matches CVEs by name only. Pick the product it really is.</DialogDescription>
+        <DialogTitle>{unmapped ? <>Map &quot;{entry.name}&quot; to the catalog</> : <>Targets for {entry.name}</>}</DialogTitle>
+        <DialogDescription>
+          {unmapped
+            ? "Today it matches CVEs by name only. Pick the product it really is."
+            : "CVEs affecting any of these products or vendors are matched to this entry. Add more (e.g. several products of one vendor)."}
+        </DialogDescription>
       </DialogHeader>
 
       {!unmapped && (
@@ -84,7 +88,13 @@ function MapTechBody({ entry, onClose }: { entry: TechStackOut; onClose: () => v
         </div>
       )}
 
-      <SearchInput value={search} onChange={setSearch} placeholder="Search vendor or product" aria-label="Search the catalog" />
+      <SearchInput
+        value={search}
+        onChange={(v) => {
+          setSearch(v);
+          setPicked(null); // pilihan lama bisa hilang dari daftar hasil baru
+        }} placeholder="Search vendor or product" aria-label="Search the catalog"
+      />
       <CatalogPicker q={q} value={picked?.ref ?? null} onChange={(ref, label) => setPicked({ ref, label })} taken={taken} />
 
       <DialogFooter>
