@@ -53,3 +53,17 @@ export function pocSourceLabel(poc: { source?: string; url?: string; poc_type?: 
   if (url.includes("github.com")) return "GitHub";
   return poc.source ?? "";
 }
+
+/** Kata untuk `risk_label` API (tooltip skor risiko di baris CVE). */
+export const RISK_LABEL_WORDS: Record<string, string> = {
+  critical_patch: "Critical, patch now",
+  high_priority: "High priority",
+  medium: "Medium",
+  low: "Low",
+};
+
+/** Kunci `Chip kind="severity"` dari teks severity API; selain empat level = "unrated". */
+export function severityChipKey(severity: string): "critical" | "high" | "medium" | "low" | "unrated" {
+  const s = severity.toLowerCase();
+  return s === "critical" || s === "high" || s === "medium" || s === "low" ? s : "unrated";
+}
