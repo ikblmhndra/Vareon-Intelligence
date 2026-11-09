@@ -13,8 +13,7 @@ for that version:
 | 0.8.14 | 0.8.15, 0.8.16 |
 | 0.8.15 | 0.8.16 |
 
-One `make deploy` takes prod from any of these to 0.8.16: it backs up Postgres, runs `migrate` (none of 0.8.12 to
-0.8.16 has a migration), creates the new `worker-cve` service when it is missing, rebuilds, then waits for health. The
+One `make deploy` takes prod from any of these to 0.8.16: it backs up Postgres, runs `migrate` (only 0.8.16 has a migration, `b7d41e9a2c63`, additive), creates the new `worker-cve` service when it is missing, rebuilds, then waits for health. The
 Deploy workflow is off and the checkout is owned by root, so this is a manual run by the user with `sudo`. Older steps
 stay in `docs/PROD_UPGRADE_0.8.13_TO_0.8.14.md`, `docs/PROD_UPGRADE_0.8.14_TO_0.8.15.md`,
 `docs/PROD_UPGRADE_0.8.11_TO_0.8.13.md` and `docs/PROD_UPGRADE_0.8.2_TO_0.8.11.md` for history.
@@ -32,8 +31,9 @@ read-only session (`PGOPTIONS=-c default_transaction_read_only=on`); anything ma
    - 0.8.14: **no sweep is running** (both checks: `pg_stat_activity` and the worker log). Sweeps start at 00, 03, 06, ...
      UTC; the safest window is roughly 90 minutes to 3 hours after a slot.
    - 0.8.15: nothing to check (PoC cap, no `.env` key).
-   - 0.8.16: record the Early Warning anomaly counts per group (30d, z 2.0) to compare after deploy.
-2. **`.env`:** no new key in any of the five releases.
+   - 0.8.16: record the Early Warning anomaly counts per group (30d, z 2.0) to compare after deploy; optionally count
+     tickets with a non-email `owner_email` or a legacy status alias (queries in the 0.8.16 section, informational).
+2. **`.env`:** no new key in any of the five releases. 0.8.16 adds one migration (`b7d41e9a2c63`), applied by `make deploy`.
 3. **`make deploy`** (with `sudo`). Beat restarts with it, which the 0.8.13 queue routing needs.
 4. **After deploy:**
    - 0.8.12 checks (`github_poc_monitor` run length) are superseded by the 0.8.13 ones: 0.8.13 replaces the 0.8.12 cap of
@@ -41,7 +41,7 @@ read-only session (`PGOPTIONS=-c default_transaction_read_only=on`); anything ma
    - 0.8.13 checks (`worker-cve` healthy, queue routing, first reconcile, the 50 missing CVEs, `/data-health`).
    - 0.8.14 checks at the next sweep slot (no long `cve_tracker` transaction, no run of `locked` syncs).
    - 0.8.15 checks: the next hourly `github_poc_monitor` runs finish in under 15 minutes, no `overlap` rows.
-   - 0.8.16 checks (health version `0.8.16`, Early Warning spikes, PIR weekly coverage, Navigator export, theme, masthead shell).
+   - 0.8.16 checks (health version `0.8.16`, Early Warning spikes, PIR weekly coverage, Navigator export, theme, masthead shell, CVE Tracker pages: risk sort, FP tab, ticket save + escalation draft, teams, lookup, lockfile dry run).
 5. **One-off WRITE commands:** only the optional manual `cve.mirror_reconcile` run (0.8.13); otherwise the first one
    happens at minute :17.
 6. **7-day watch (0.8.13), then the final step:** only when it passes, set `CVE_MIRROR__KEEP_LEGACY_NEW_CVE=false` in
@@ -365,8 +365,7 @@ None.
 ## 0.8.16 — FigCraft redesign data: PIR weekly coverage, spike daily series, Navigator layer from the heatmap
 
 Release: not yet tagged (branch `claude/figcraft-design-data`; merge to `origin/Dev` for the dev test, then PR to
-`main`). Patch on top of 0.8.15 (`github_poc_monitor` cap 250, PR #90). The release entry may grow when the page implementation of the redesign
-lands in the same PR.
+`main`). Patch on top of 0.8.15 (`github_poc_monitor` cap 250, PR #90). The release also carries the CVE Tracker redesign (backend additions, UI and one additive migration).
 
 ### What changes in prod
 
@@ -389,10 +388,27 @@ lands in the same PR.
 - Web: new shell following the FigCraft mockup: a top masthead with a "More" menu replaces the sidebar (a Menu button
   below 1024px), with a utility bar for the client switcher and account menu. Buttons, fields, underline and pill tabs,
   segmented controls, chips, cards (flat, bordered, no shadow), tables and dialogs follow the mockup too.
+- CVE Tracker redesign, backend: risk score 0-100 with the `sort_by=risk` option; False positive tab filter with reason and note;
+  ticket timestamps and a ticket XLSX export; stricter owner email validation (new or changed values must be a valid
+  email, at most 200 characters; an unchanged legacy value can still be saved); the CVE response carries the KEV ruling
+  (`kev_date_added`, `kev_due_date`, `kev_required_action`); owner teams and an escalation EMAIL DRAFT to the team lead (Microsoft
+  Graph; nothing is sent and there is no Telegram); techstack match counts and coverage; per-client catalog hide; CVE DB
+  mirror meta and `covered_by_vendor`; check status `running_since` and per-source retry; live CVE lookup (NVD, CIRCL,
+  Exploit-DB, EPSS; cached and rate limited); lockfile dry run with ecosystem and project path, plus `Gemfile.lock`,
+  `yarn.lock` and `go.sum` parsers. With ecosystem "Detect from file", a file name the parser does not recognise now
+  returns 422 (before, it was silently parsed as `requirements.txt`); an explicit ecosystem still forces that parser. New dependency: `email-validator`.
+- CVE Tracker redesign, web: CVEs master-detail with risk sort, Open/Acknowledged/False positive tabs, More actions and
+  Select mode; Ticketing master-detail and Teams; Monitored Tech, All Tech, CVE DB, Dashboard and Packages restyled;
+  all times render in the browser timezone. The Ticketing tab is hidden for roles without `manage_cve`, and the detail
+  modal is replaced by a side panel.
 
 ### Migrations
 
-None. `alembic_version` stays at `7e3b9c1d5a42`.
+One migration, applied automatically by `make deploy` (the `migrate` service): revision `b7d41e9a2c63`, on top of
+`7e3b9c1d5a42`. It is additive and all new columns are nullable: `cve_false_positives` reason and note,
+`cve_tickets.updated_by` and `escalation_notified_at`, new tables `cve_owner_teams` and `catalog_family_hides`, and
+`monitored_packages.source_path`. It backfills owner teams from the distinct ticket `owner_team` values and
+`cve_tickets.updated_by` from `acknowledged_by`. After deploy `alembic_version` is `b7d41e9a2c63`.
 
 ### Settings / .env
 
@@ -401,8 +417,22 @@ None.
 ### Before deploy
 
 Record the current Early Warning picture for comparison: anomaly count per group (threat actors, industries,
-countries, overall) at lookback 30d, z 2.0, from Intelligence > Early Warning or `GET /api/spikes`. Nothing else to
-check; all other changes are read-only endpoints and web styling.
+countries, overall) at lookback 30d, z 2.0, from Intelligence > Early Warning or `GET /api/spikes`.
+
+Optional, read-only (`PGOPTIONS=-c default_transaction_read_only=on`), informational only: the app handles both cases,
+but the numbers tell you what legacy data exists.
+
+```sql
+-- tickets whose owner_email is set but does not look like an email (they can still be re-saved unchanged)
+SELECT count(*) FROM cve_tickets WHERE coalesce(owner_email, '') <> '' AND owner_email !~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$';
+-- tickets with a legacy status alias (shown under the canonical status tabs)
+SELECT remediation_status, count(*) FROM cve_tickets
+WHERE lower(coalesce(remediation_status, '')) IN ('pending', 'completed', 'not affected', 'not applicable')
+   OR remediation_status IN ('open', 'in progress', 'resolved', 'closed', 'risk accepted')
+GROUP BY 1;
+```
+
+Nothing else to check; all other changes are read-only endpoints and web styling.
 
 ### After deploy
 
@@ -417,6 +447,11 @@ check; all other changes are read-only endpoints and web styling.
 6. Shell: the masthead nav shows on every page (Dashboard, Newsroom, CVE Tracker, Intelligence, Exec, X Intel, Recap,
    Newsletter, More), the active item has the underline, and below 1024px the nav collapses into the Menu button.
    Open one dialog (e.g. Intelligence > PIR > New PIR) in light and dark: field borders visible, footer divider only.
+7. CVE Tracker: `alembic_version` is `b7d41e9a2c63`. CVEs tab: sort by risk works, the False positive tab lists
+   items with reason and note. Ticketing: save a ticket (the updated timestamp changes); an escalation produces a
+   draft in the shared mailbox, once, and not again on re-save (needs the existing Microsoft Graph config and a team
+   lead email; nothing is sent). Teams list shows the names backfilled from ticket owner teams. Run one live lookup
+   of a known CVE, and a lockfile dry run (e.g. a `yarn.lock`) in Packages. A `cve_reader` user must not see Ticketing.
 
 ### One-off commands
 
@@ -424,8 +459,9 @@ None.
 
 ### Rollback
 
-`make deploy` restores the `:prev` images on a failed health check. Rolling back to 0.8.15 removes the new endpoint
-and the `daily` block; nothing is written to the database, so there is nothing to undo.
+`make deploy` restores the `:prev` images on a failed health check; it never auto-downgrades the database. Rolling back
+to 0.8.15 removes the new endpoints and the `daily` block. The `b7d41e9a2c63` migration is additive (nullable columns
+and new tables the old code ignores), so it is safe to leave in place; no manual downgrade is needed.
 
 ### Known risks
 

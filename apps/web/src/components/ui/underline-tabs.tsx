@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { useRovingKeys } from "./use-roving-keys";
 
 interface UnderlineTabsProps<T extends string> {
-  items: readonly { value: T; label: string }[];
+  items: readonly { value: T; label: string; count?: number }[];
   value: T;
   onChange: (value: T) => void;
   /** Nama daftar tab untuk pembaca layar. */
@@ -43,6 +43,7 @@ export function UnderlineTabs<T extends string>({
             type="button"
             role="tab"
             aria-selected={active}
+            aria-label={item.count != null ? `${item.label}, ${item.count}` : undefined}
             tabIndex={tabIndexFor(i)}
             onClick={() => onChange(item.value)}
             className={cn(
@@ -53,6 +54,11 @@ export function UnderlineTabs<T extends string>({
             )}
           >
             {item.label}
+            {item.count != null && (
+              <span className="ml-1.5 rounded-full bg-panel px-1.5 py-0.5 font-code text-2xs font-medium text-muted-foreground">
+                {item.count}
+              </span>
+            )}
           </button>
         );
       })}

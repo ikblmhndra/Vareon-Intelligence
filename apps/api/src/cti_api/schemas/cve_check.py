@@ -24,6 +24,9 @@ class CveCheckSource(BaseModel):
     """Percobaan terakhir yang selesai, apa pun statusnya (mirror: sama dengan checked)."""
     last_run_status: str | None
     running: bool
+    running_since: datetime.datetime | None = None
+    """`started_at` run `running` terbaru yang tidak nyangkut; `None` bila tidak berjalan (mirror
+    selalu `None`: tidak ada baris run)."""
     next_check_at: datetime.datetime | None
     """Slot cek otomatis berikutnya menurut jadwal; `None` bila dimatikan."""
 
@@ -34,6 +37,8 @@ class CveFreshness(BaseModel):
     """Yang terbaru dari semua jalur: "diupdate per kapan"."""
     last_run_finished_at: datetime.datetime | None
     running: bool
+    last_triggered_at: datetime.datetime | None = None
+    """Kapan tombol cek manual terakhir dipakai (Redis, TTL 1 jam); terlihat oleh semua viewer."""
     newest_detected_at: datetime.datetime | None
     """CVE terbaru yang tercatat di tab CVEs (client aktif, tech dimonitor, tanpa FP)."""
     new_since: int | None

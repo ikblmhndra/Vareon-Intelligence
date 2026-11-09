@@ -1,0 +1,37 @@
+{
+  "dataType": "CVE_RECORD",
+  "dataVersion": "5.1",
+  "cveMetadata": {
+    "cveId": "CVE-2024-3400",
+    "state": "PUBLISHED",
+    "datePublished": "2024-04-12T07:15:00.000Z",
+    "dateUpdated": "2024-11-21T09:29:00.000Z"
+  },
+  "containers": {
+    "cna": {
+      "title": "PAN-OS: Arbitrary File Creation Leads to OS Command Injection Vulnerability in GlobalProtect",
+      "descriptions": [
+        {"lang": "en", "value": "A command injection as a result of an arbitrary file creation vulnerability in the GlobalProtect feature of Palo Alto Networks PAN-OS software for specific PAN-OS versions and distinct feature configurations may enable an unauthenticated attacker to execute arbitrary code with root privileges on the firewall."}
+      ],
+      "affected": [
+        {
+          "vendor": "Palo Alto Networks",
+          "product": "PAN-OS",
+          "versions": [
+            {"version": "10.2", "status": "affected", "lessThan": "10.2.9-h1"},
+            {"version": "11.0", "status": "affected", "lessThan": "11.0.4-h1"}
+          ]
+        }
+      ],
+      "problemTypes": [
+        {"descriptions": [{"type": "CWE", "cweId": "CWE-77", "lang": "en", "description": "CWE-77 Command Injection"}]}
+      ],
+      "metrics": [
+        {"cvssV4_0": {"version": "4.0", "baseScore": 10.0, "baseSeverity": "CRITICAL", "vectorString": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:H/SI:H/SA:H"}}
+      ],
+      "references": [
+        {"url": "https://security.paloaltonetworks.com/CVE-2024-3400"}
+      ]
+    }
+  }
+}

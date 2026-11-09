@@ -320,6 +320,11 @@ export interface CveTicket {
   closure_date: string;
   acknowledged_by: string;
   acknowledge_time: string;
+  // Empat key ini datang dari `_serialize_ticket` (timestamp ISO + siapa yang terakhir mengubah).
+  created_at: string;
+  updated_at: string;
+  updated_by: string;
+  opened_at: string;
 }
 
 /** `GET /{cve_id}/ticket` balikin `{}` kalau belum ada ticket (port

@@ -29,6 +29,7 @@ dependencies = [
     # openpyxl cuma baca/tulis gambar kalau Pillow ke-import; tanpa ini logo di
     # template CVE tracker (`xl/media/image1.png`) hilang diam-diam di hasil export.
     "pillow>=10.0",
+    "email-validator>=2",
 ]
 
 [build-system]

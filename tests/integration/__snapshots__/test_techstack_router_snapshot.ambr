@@ -9,6 +9,7 @@
         'hosting_type': 'cloud',
         'id': int,
         'kind': 'custom',
+        'match_count': 0,
         'name': 'WordPress',
         'source': 'manual',
         'targets': list([
@@ -39,6 +40,7 @@
       'hosting_type': 'on_prem',
       'id': int,
       'kind': 'custom',
+      'match_count': 0,
       'name': 'nginx',
       'source': 'manual',
       'targets': list([

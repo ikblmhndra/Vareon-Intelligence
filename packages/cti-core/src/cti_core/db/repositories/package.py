@@ -49,12 +49,15 @@ class AsyncMonitoredPackageRepo:
         client_id: str,
         *,
         search: str | None = None,
+        ecosystem: str | None = None,
         page: int = 1,
         page_size: int = 50,
         sort_by: str = "name",
         sort_dir: str = "asc",
     ) -> tuple[list[MonitoredPackage], int]:
         stmt = select(MonitoredPackage).where(MonitoredPackage.client_id == client_id)
+        if ecosystem:
+            stmt = stmt.where(MonitoredPackage.ecosystem == ecosystem)
         if search:
             stmt = stmt.where(
                 or_(
@@ -92,9 +95,17 @@ class AsyncMonitoredPackageRepo:
         return result.scalar_one_or_none()
 
     async def create(
-        self, *, name: str, ecosystem: str, version: str | None, client_id: str, source: str
+        self,
+        *,
+        name: str,
+        ecosystem: str,
+        version: str | None,
+        client_id: str,
+        source: str,
+        source_path: str | None = None,
     ) -> MonitoredPackage:
         pkg = MonitoredPackage(
+            source_path=source_path,
             name=name,
             ecosystem=ecosystem,
             version=version,
@@ -140,6 +151,15 @@ class AsyncMonitoredPackageRepo:
             select(func.count())
             .select_from(MonitoredPackage)
             .where(MonitoredPackage.client_id == client_id)
+        )
+        return result.scalar_one()
+
+    async def count_vulnerable(self, client_id: str) -> int:
+        """Jumlah package yang punya minimal satu vuln (`vuln_count > 0`)."""
+        result = await self.session.execute(
+            select(func.count())
+            .select_from(MonitoredPackage)
+            .where(MonitoredPackage.client_id == client_id, MonitoredPackage.vuln_count > 0)
         )
         return result.scalar_one()
 

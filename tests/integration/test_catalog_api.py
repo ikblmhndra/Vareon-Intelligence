@@ -173,7 +173,8 @@ async def test_unknown_vendor_is_404_and_family_search_needs_two_chars(
         await api_client.get("/api/catalog/vendors/999999/families", headers=h)
     ).status_code == 404
     assert (await api_client.get("/api/catalog/families?q=a", headers=h)).status_code == 422
-    assert (await api_client.get("/api/catalog/families", headers=h)).status_code == 422
+    # tanpa `q` = jelajah semua produk (All Tech mode Products), bukan error
+    assert (await api_client.get("/api/catalog/families", headers=h)).status_code == 200
 
 
 async def test_family_search_spans_vendors_and_shows_single_cve_families(
@@ -608,3 +609,155 @@ async def test_export_follows_the_same_scope_as_the_tab(
     ws = openpyxl.load_workbook(io.BytesIO(resp.content)).worksheets[0]
     text = " ".join(str(c.value) for row in ws.iter_rows() for c in row if c.value is not None)
     assert "CVE-2026-0002" in text and "CVE-2026-0001" not in text
+
+
+# ── hide per client, CVE DB vendor coverage dan meta (2a, item 9-11) ──────────────────────────
+
+
+async def _hide(api_client: AsyncClient, headers: dict[str, str], family_id: int) -> Any:
+    return await api_client.put(f"/api/catalog/families/{family_id}/hide", headers=headers)
+
+
+async def test_hide_excludes_family_from_browse(
+    api_client: AsyncClient, api_session: AsyncSession, h: dict[str, str]
+) -> None:
+    await seed_catalog(api_session)
+    forti = await vid(api_session, "fortinet")
+    pan = await fid(api_session, "pan os")
+    assert (await _hide(api_client, h, pan)).status_code == 200
+    # FortiOS (3 CVE) tampil di jelajah; PAN-OS (2 CVE) disembunyikan client ini.
+    body = (await api_client.get("/api/catalog/families?show_all=true", headers=h)).json()
+    assert pan not in [f["id"] for f in body["items"]]
+    assert body["hidden_by_client"] == 1
+    shown = (
+        await api_client.get("/api/catalog/families?show_all=true&show_hidden=true", headers=h)
+    ).json()
+    row = next(f for f in shown["items"] if f["id"] == pan)
+    assert row["hidden"] is True and shown["hidden_by_client"] == 0
+    per_vendor = (
+        await api_client.get(f"/api/catalog/vendors/{forti}/families?show_all=true", headers=h)
+    ).json()
+    assert per_vendor["hidden_by_client"] == 0
+
+
+async def test_search_with_q_includes_hidden_flagged(
+    api_client: AsyncClient, api_session: AsyncSession, h: dict[str, str]
+) -> None:
+    await seed_catalog(api_session)
+    pan = await fid(api_session, "pan os")
+    await _hide(api_client, h, pan)
+    body = (await api_client.get("/api/catalog/families?q=pan%20os", headers=h)).json()
+    assert [(f["id"], f["hidden"]) for f in body["items"]] == [(pan, True)]
+
+
+async def test_hide_is_per_client(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+) -> None:
+    from cti_core.db.repositories.auth import AsyncClientRepo
+
+    await AsyncClientRepo(api_session).create(client_id="acme", name="Acme", countries=[])
+    await seed_catalog(api_session)
+    pan = await fid(api_session, "pan os")
+    mine = auth_header(client_ids=["default", "acme"])
+    await _hide(api_client, {**mine, "X-Client-ID": "default"}, pan)
+    url = "/api/catalog/families?show_all=true"
+    default = (await api_client.get(url, headers={**mine, "X-Client-ID": "default"})).json()
+    acme = (await api_client.get(url, headers={**mine, "X-Client-ID": "acme"})).json()
+    assert pan not in [f["id"] for f in default["items"]]
+    assert pan in [f["id"] for f in acme["items"]] and acme["hidden_by_client"] == 0
+    # unhide milik acme tidak menyentuh baris default
+    await api_client.delete(
+        f"/api/catalog/families/{pan}/hide", headers={**mine, "X-Client-ID": "acme"}
+    )
+    again = (await api_client.get(url, headers={**mine, "X-Client-ID": "default"})).json()
+    assert again["hidden_by_client"] == 1
+
+
+async def test_hide_monitored_family_409(
+    api_client: AsyncClient, api_session: AsyncSession, h: dict[str, str]
+) -> None:
+    await seed_catalog(api_session)
+    fam = await fid(api_session, "fortios")
+    await api_client.post("/api/techstack", headers=h, json={"family_id": fam})
+    r = await _hide(api_client, h, fam)
+    assert r.status_code == 409
+    assert r.json()["detail"] == "FortiOS is monitored directly, so it cannot be hidden"
+
+
+async def test_hide_vendor_covered_family_allowed(
+    api_client: AsyncClient, api_session: AsyncSession, h: dict[str, str]
+) -> None:
+    await seed_catalog(api_session)
+    forti = await vid(api_session, "fortinet")
+    await api_client.post("/api/techstack", headers=h, json={"vendor_id": forti})
+    assert (await _hide(api_client, h, await fid(api_session, "fortios"))).status_code == 200
+
+
+async def test_hide_unknown_family_404_and_unhide_idempotent(
+    api_client: AsyncClient, api_session: AsyncSession, h: dict[str, str]
+) -> None:
+    await seed_catalog(api_session)
+    assert (await _hide(api_client, h, 999999)).status_code == 404
+    pan = await fid(api_session, "pan os")
+    assert (await _hide(api_client, h, pan)).status_code == 200
+    assert (await _hide(api_client, h, pan)).status_code == 200  # idempoten
+    for _ in range(2):
+        r = await api_client.delete(f"/api/catalog/families/{pan}/hide", headers=h)
+        assert r.status_code == 200
+    body = (await api_client.get("/api/catalog/families?show_all=true", headers=h)).json()
+    assert pan in [f["id"] for f in body["items"]] and body["hidden_by_client"] == 0
+
+
+async def test_families_browse_without_q(
+    api_client: AsyncClient, api_session: AsyncSession, h: dict[str, str]
+) -> None:
+    await seed_catalog(api_session)
+    body = (await api_client.get("/api/catalog/families", headers=h)).json()
+    assert [f["key"] for f in body["items"]] == [
+        "fortios",
+        "pan os",
+    ]  # urut CVE; ber-1 CVE tersembunyi
+    assert body["hidden"] == 3
+    everything = (await api_client.get("/api/catalog/families?show_all=true", headers=h)).json()
+    assert everything["total"] == 5 and everything["hidden"] == 0
+    # q pendek tetap ditolak
+    assert (await api_client.get("/api/catalog/families?q=a", headers=h)).status_code == 422
+
+
+async def test_cve_db_product_covered_by_vendor(
+    api_client: AsyncClient, api_session: AsyncSession, h: dict[str, str]
+) -> None:
+    await seed_catalog(api_session)
+    forti = await vid(api_session, "fortinet")
+    await api_client.post("/api/techstack", headers=h, json={"vendor_id": forti})
+    items = (await api_client.get("/api/cve-db?q=CVE-2026-0001", headers=h)).json()["items"]
+    p = items[0]["products"][0]
+    assert p["covered_by_vendor"] is True and p["monitored"] is True
+    pan = (await api_client.get("/api/cve-db?q=CVE-2026-0004", headers=h)).json()["items"]
+    assert pan[0]["products"][0]["covered_by_vendor"] is False
+
+
+async def test_cve_db_meta(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    h: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+
+    from cti_api.routers import cve_db
+    from cti_core.config import CveMirrorSettings
+
+    await seed_catalog(api_session)
+    monkeypatch.setattr(
+        cve_db, "get_settings", lambda: SimpleNamespace(cve_mirror=CveMirrorSettings(enabled=True))
+    )
+    r = await api_client.get("/api/cve-db/meta", headers=h)
+    assert r.status_code == 200
+    assert r.json() == {"total": len(SEED), "last_sync_at": None, "enabled": True}
+    monkeypatch.setattr(
+        cve_db, "get_settings", lambda: SimpleNamespace(cve_mirror=CveMirrorSettings(enabled=False))
+    )
+    assert (await api_client.get("/api/cve-db/meta", headers=h)).json()["enabled"] is False

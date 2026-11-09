@@ -822,9 +822,25 @@
       },
       "Body_import_lockfile_endpoint_api_pkgvuln_import_lockfile_post": {
         "properties": {
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "ecosystem": {
+            "default": "auto",
+            "title": "Ecosystem",
+            "type": "string"
+          },
           "file": {
             "contentMediaType": "application/octet-stream",
             "title": "File",
+            "type": "string"
+          },
+          "project": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Project",
             "type": "string"
           }
         },
@@ -893,6 +909,30 @@
             },
             "title": "Cve Ids",
             "type": "array"
+          },
+          "note": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Note",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "not_in_stack",
+                  "version_not_affected",
+                  "component_not_exposed",
+                  "duplicate",
+                  "other"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
           }
         },
         "required": [
@@ -906,6 +946,11 @@
           "hidden": {
             "default": 0,
             "title": "Hidden",
+            "type": "integer"
+          },
+          "hidden_by_client": {
+            "default": 0,
+            "title": "Hidden By Client",
             "type": "integer"
           },
           "items": {
@@ -963,6 +1008,11 @@
               }
             ],
             "title": "First Seen"
+          },
+          "hidden": {
+            "default": false,
+            "title": "Hidden",
+            "type": "boolean"
           },
           "id": {
             "title": "Id",
@@ -1335,6 +1385,18 @@
           "running": {
             "title": "Running",
             "type": "boolean"
+          },
+          "running_since": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Running Since"
           }
         },
         "required": [
@@ -1648,6 +1710,36 @@
         "title": "CveDbListResponse",
         "type": "object"
       },
+      "CveDbMeta": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "last_sync_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Sync At"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "enabled"
+        ],
+        "title": "CveDbMeta",
+        "type": "object"
+      },
       "CveDbOut": {
         "properties": {
           "cve_id": {
@@ -1709,6 +1801,11 @@
       },
       "CveDbProductOut": {
         "properties": {
+          "covered_by_vendor": {
+            "default": false,
+            "title": "Covered By Vendor",
+            "type": "boolean"
+          },
           "family": {
             "title": "Family",
             "type": "string"
@@ -1891,6 +1988,18 @@
             ],
             "title": "Last Run Finished At"
           },
+          "last_triggered_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Triggered At"
+          },
           "new_since": {
             "anyOf": [
               {
@@ -2049,6 +2158,174 @@
         "title": "CveListResponse",
         "type": "object"
       },
+      "CveLookupOut": {
+        "properties": {
+          "affected": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Affected",
+            "type": "array"
+          },
+          "cve_id": {
+            "title": "Cve Id",
+            "type": "string"
+          },
+          "cvss_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cvss Score"
+          },
+          "cvss_severity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cvss Severity"
+          },
+          "cvss_vector": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cvss Vector"
+          },
+          "cwe": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Cwe",
+            "type": "array"
+          },
+          "epss_percentile": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Epss Percentile"
+          },
+          "epss_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Epss Score"
+          },
+          "exploits": {
+            "items": {
+              "$ref": "#/components/schemas/ExploitHit"
+            },
+            "title": "Exploits",
+            "type": "array"
+          },
+          "false_positive": {
+            "default": false,
+            "title": "False Positive",
+            "type": "boolean"
+          },
+          "in_mirror": {
+            "default": false,
+            "title": "In Mirror",
+            "type": "boolean"
+          },
+          "kev": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KevInfo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "modified": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modified"
+          },
+          "published": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published"
+          },
+          "references": {
+            "items": {
+              "type": "string"
+            },
+            "title": "References",
+            "type": "array"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/LookupSource"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "summary": {
+            "default": "",
+            "title": "Summary",
+            "type": "string"
+          },
+          "tracked": {
+            "default": false,
+            "title": "Tracked",
+            "type": "boolean"
+          },
+          "tracker_tech": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tracker Tech"
+          }
+        },
+        "required": [
+          "cve_id"
+        ],
+        "title": "CveLookupOut",
+        "type": "object"
+      },
       "CveOut": {
         "properties": {
           "active_exploitation": {
@@ -2125,6 +2402,26 @@
             "title": "False Positive",
             "type": "boolean"
           },
+          "fp_marked_at": {
+            "default": "",
+            "title": "Fp Marked At",
+            "type": "string"
+          },
+          "fp_marked_by": {
+            "default": "",
+            "title": "Fp Marked By",
+            "type": "string"
+          },
+          "fp_note": {
+            "default": "",
+            "title": "Fp Note",
+            "type": "string"
+          },
+          "fp_reason": {
+            "default": "",
+            "title": "Fp Reason",
+            "type": "string"
+          },
           "hosting_type": {
             "default": "on_prem",
             "title": "Hosting Type",
@@ -2133,6 +2430,21 @@
           "id": {
             "title": "Id",
             "type": "integer"
+          },
+          "kev_date_added": {
+            "default": "",
+            "title": "Kev Date Added",
+            "type": "string"
+          },
+          "kev_due_date": {
+            "default": "",
+            "title": "Kev Due Date",
+            "type": "string"
+          },
+          "kev_required_action": {
+            "default": "",
+            "title": "Kev Required Action",
+            "type": "string"
           },
           "last_updated": {
             "default": "",
@@ -2185,6 +2497,16 @@
             },
             "title": "Reference",
             "type": "array"
+          },
+          "risk_label": {
+            "default": "",
+            "title": "Risk Label",
+            "type": "string"
+          },
+          "risk_score": {
+            "default": 0.0,
+            "title": "Risk Score",
+            "type": "number"
           },
           "solutions": {
             "default": "",
@@ -2288,6 +2610,159 @@
         "title": "CveStats",
         "type": "object"
       },
+      "CveTeamIn": {
+        "properties": {
+          "lead_email": {
+            "anyOf": [
+              {
+                "format": "email",
+                "type": "string"
+              },
+              {
+                "const": "",
+                "type": "string"
+              }
+            ],
+            "default": "",
+            "title": "Lead Email"
+          },
+          "lead_name": {
+            "default": "",
+            "maxLength": 200,
+            "title": "Lead Name",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CveTeamIn",
+        "type": "object"
+      },
+      "CveTeamListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CveTeamOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "CveTeamListResponse",
+        "type": "object"
+      },
+      "CveTeamOut": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "lead_email": {
+            "title": "Lead Email",
+            "type": "string"
+          },
+          "lead_name": {
+            "title": "Lead Name",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "ticket_count": {
+            "title": "Ticket Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "lead_name",
+          "lead_email",
+          "active",
+          "ticket_count"
+        ],
+        "title": "CveTeamOut",
+        "type": "object"
+      },
+      "CveTeamPatch": {
+        "description": "Semua field opsional; yang tidak dikirim tidak diubah. `active=true` mengaktifkan lagi.",
+        "properties": {
+          "active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active"
+          },
+          "lead_email": {
+            "anyOf": [
+              {
+                "format": "email",
+                "type": "string"
+              },
+              {
+                "const": "",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lead Email"
+          },
+          "lead_name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lead Name"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "title": "CveTeamPatch",
+        "type": "object"
+      },
       "CveTicketBody": {
         "properties": {
           "active_exploitation": {
@@ -2337,6 +2812,7 @@
           },
           "owner_email": {
             "default": "",
+            "maxLength": 200,
             "title": "Owner Email",
             "type": "string"
           },
@@ -2362,6 +2838,29 @@
           }
         },
         "title": "CveTicketBody",
+        "type": "object"
+      },
+      "CveTicketSaveOut": {
+        "description": "Respons `PUT /api/cve/{id}/ticket`. `escalation`: `queued` = draf email ke lead tim\ndijadwalkan; `no_lead` = eskalasi menyala tapi tim/lead_email tidak ditemukan; `failed` =\nbroker mati (ticket tetap tersimpan); `not_needed` = bukan transisi ke nyala.",
+        "properties": {
+          "escalation": {
+            "default": "not_needed",
+            "enum": [
+              "queued",
+              "not_needed",
+              "no_lead",
+              "failed"
+            ],
+            "title": "Escalation",
+            "type": "string"
+          },
+          "ok": {
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "title": "CveTicketSaveOut",
         "type": "object"
       },
       "DashboardAttention": {
@@ -3873,6 +4372,29 @@
         "title": "EntityUpdate",
         "type": "object"
       },
+      "ExploitHit": {
+        "properties": {
+          "published": {
+            "default": "",
+            "title": "Published",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "url"
+        ],
+        "title": "ExploitHit",
+        "type": "object"
+      },
       "ExploitRiskCve": {
         "description": "CVE yang belum selesai tetapi terbukti/berpeluang tinggi dieksploitasi.",
         "properties": {
@@ -3921,6 +4443,33 @@
           "status"
         ],
         "title": "ExploitRiskCve",
+        "type": "object"
+      },
+      "FalsePositiveBody": {
+        "description": "Body opsional `POST /{cve_id}/false-positive`; `note` boleh kosong kecuali `other`.\n`note` punya default, jadi TIDAK required di OpenAPI.",
+        "properties": {
+          "note": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Note",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "not_in_stack",
+              "version_not_affected",
+              "component_not_exposed",
+              "duplicate",
+              "other"
+            ],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "FalsePositiveBody",
         "type": "object"
       },
       "FeedbackBody": {
@@ -4584,6 +5133,41 @@
         "title": "IocEnrichmentTypeOut",
         "type": "object"
       },
+      "KevInfo": {
+        "properties": {
+          "action": {
+            "default": "",
+            "title": "Action",
+            "type": "string"
+          },
+          "added": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Added"
+          },
+          "due": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due"
+          }
+        },
+        "title": "KevInfo",
+        "type": "object"
+      },
       "LlmErrorOut": {
         "properties": {
           "at": {
@@ -4842,6 +5426,26 @@
             "title": "Added",
             "type": "integer"
           },
+          "already_monitored": {
+            "default": 0,
+            "title": "Already Monitored",
+            "type": "integer"
+          },
+          "detected_format": {
+            "default": "",
+            "title": "Detected Format",
+            "type": "string"
+          },
+          "dry_run": {
+            "default": false,
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "ecosystem": {
+            "default": "",
+            "title": "Ecosystem",
+            "type": "string"
+          },
           "errors": {
             "default": [],
             "items": {
@@ -4849,6 +5453,11 @@
             },
             "title": "Errors",
             "type": "array"
+          },
+          "new": {
+            "default": 0,
+            "title": "New",
+            "type": "integer"
           },
           "packages": {
             "default": [],
@@ -4865,6 +5474,16 @@
           },
           "skipped": {
             "title": "Skipped",
+            "type": "integer"
+          },
+          "unsupported": {
+            "default": 0,
+            "title": "Unsupported",
+            "type": "integer"
+          },
+          "version_changes": {
+            "default": 0,
+            "title": "Version Changes",
             "type": "integer"
           }
         },
@@ -4892,6 +5511,51 @@
           "password"
         ],
         "title": "LoginRequest",
+        "type": "object"
+      },
+      "LookupSource": {
+        "properties": {
+          "fetched_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fetched At"
+          },
+          "id": {
+            "enum": [
+              "mirror",
+              "nvd",
+              "circl",
+              "exploitdb",
+              "epss"
+            ],
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "not_found",
+              "error",
+              "timeout",
+              "rate_limited",
+              "cached"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status"
+        ],
+        "title": "LookupSource",
         "type": "object"
       },
       "MalwareRef": {
@@ -5340,6 +6004,11 @@
           },
           "source": {
             "title": "Source",
+            "type": "string"
+          },
+          "source_path": {
+            "default": "",
+            "title": "Source Path",
             "type": "string"
           },
           "version": {
@@ -6948,6 +7617,59 @@
           "priority"
         ],
         "title": "PirReason",
+        "type": "object"
+      },
+      "PkgVulnStats": {
+        "properties": {
+          "critical": {
+            "title": "Critical",
+            "type": "integer"
+          },
+          "high": {
+            "title": "High",
+            "type": "integer"
+          },
+          "kev_count": {
+            "title": "Kev Count",
+            "type": "integer"
+          },
+          "low": {
+            "title": "Low",
+            "type": "integer"
+          },
+          "medium": {
+            "title": "Medium",
+            "type": "integer"
+          },
+          "packages": {
+            "title": "Packages",
+            "type": "integer"
+          },
+          "total_vulns": {
+            "title": "Total Vulns",
+            "type": "integer"
+          },
+          "unacknowledged": {
+            "title": "Unacknowledged",
+            "type": "integer"
+          },
+          "vulnerable_packages": {
+            "title": "Vulnerable Packages",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "packages",
+          "total_vulns",
+          "critical",
+          "high",
+          "medium",
+          "low",
+          "unacknowledged",
+          "kev_count",
+          "vulnerable_packages"
+        ],
+        "title": "PkgVulnStats",
         "type": "object"
       },
       "PolicySettings": {
@@ -10195,6 +10917,45 @@
         "title": "TechStackAdd",
         "type": "object"
       },
+      "TechStackCoverage": {
+        "description": "Ringkasan pemetaan katalog satu client; tidak terpengaruh filter/paging daftar.",
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "integer"
+          },
+          "hidden": {
+            "title": "Hidden",
+            "type": "integer"
+          },
+          "mapped_family": {
+            "title": "Mapped Family",
+            "type": "integer"
+          },
+          "mapped_vendor": {
+            "title": "Mapped Vendor",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "unmapped": {
+            "title": "Unmapped",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "active",
+          "mapped_family",
+          "mapped_vendor",
+          "unmapped",
+          "hidden"
+        ],
+        "title": "TechStackCoverage",
+        "type": "object"
+      },
       "TechStackExposureUpdate": {
         "properties": {
           "exposure": {
@@ -10286,6 +11047,11 @@
             ],
             "title": "Kind",
             "type": "string"
+          },
+          "match_count": {
+            "default": 0,
+            "title": "Match Count",
+            "type": "integer"
           },
           "name": {
             "title": "Name",
@@ -13270,18 +14036,45 @@
     },
     "/api/catalog/families": {
       "get": {
-        "description": "Pencarian lintas vendor; tidak menyembunyikan keluarga ber-1 CVE.",
+        "description": "Pencarian lintas vendor (`q`): tidak menyembunyikan apa pun. Tanpa `q` = jelajah semua\nproduk (All Tech mode Products), urut CVE terbanyak; aturan jelajah berlaku (`show_all`,\n`show_hidden`).",
         "operationId": "search_families_api_catalog_families_get",
         "parameters": [
           {
             "in": "query",
             "name": "q",
-            "required": true,
+            "required": false,
             "schema": {
-              "maxLength": 100,
-              "minLength": 2,
-              "title": "Q",
-              "type": "string"
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "minLength": 2,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "show_all",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Show All",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "show_hidden",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Show Hidden",
+              "type": "boolean"
             }
           },
           {
@@ -13363,6 +14156,161 @@
           }
         },
         "summary": "Search Families",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/catalog/families/{family_id}/hide": {
+      "delete": {
+        "operationId": "unhide_family_api_catalog_families__family_id__hide_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "family_id",
+            "required": true,
+            "schema": {
+              "title": "Family Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-client-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Client-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Unhide Family Api Catalog Families  Family Id  Hide Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Unhide Family",
+        "tags": [
+          "catalog"
+        ]
+      },
+      "put": {
+        "description": "Sembunyikan keluarga dari All Tech client ini (tampilan saja; Monitor, promosi, dan CVE DB\ntidak berubah). Idempoten. 409 bila client ini me-Monitor keluarga itu langsung; cakupan\nvendor tidak menghalangi.",
+        "operationId": "hide_family_api_catalog_families__family_id__hide_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "family_id",
+            "required": true,
+            "schema": {
+              "title": "Family Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-client-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Client-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Hide Family Api Catalog Families  Family Id  Hide Put",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Hide Family",
         "tags": [
           "catalog"
         ]
@@ -13520,6 +14468,16 @@
             "schema": {
               "default": false,
               "title": "Show All",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "show_hidden",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Show Hidden",
               "type": "boolean"
             }
           },
@@ -14628,11 +15586,21 @@
           },
           {
             "in": "query",
+            "name": "fp_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Fp Only",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
             "name": "sort_by",
             "required": false,
             "schema": {
               "default": "published",
-              "pattern": "^(tech|severity|published|epss)$",
+              "pattern": "^(tech|severity|published|epss|risk)$",
               "title": "Sort By",
               "type": "string"
             }
@@ -14926,6 +15894,56 @@
           }
         },
         "summary": "List Cve Db",
+        "tags": [
+          "cve-db"
+        ]
+      }
+    },
+    "/api/cve-db/meta": {
+      "get": {
+        "description": "Baris kecil di atas CVE DB: total mirror, sinkron terakhir, dan apakah mirror menyala.\n`total` = `count(*)` atas jutaan baris, jadi di-cache `_TOTAL_TTL` detik; gagal Redis tidak\nboleh menjatuhkan endpoint (jatuh ke hitung langsung).",
+        "operationId": "get_cve_db_meta_api_cve_db_meta_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CveDbMeta"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Cve Db Meta",
         "tags": [
           "cve-db"
         ]
@@ -15232,9 +16250,29 @@
     },
     "/api/cve/check-new": {
       "post": {
-        "description": "Cek CVE terbaru SEKARANG untuk tech yang dimonitor: mengirim tugas cek rutin (scraper\n`new_cve`, atau `cve.mirror_sync` bila mirror `live`) ke worker; hasilnya tampil lewat\n`GET /freshness`. Hanya admin (kuota NVD/MITRE, sama dengan trigger scraper). Ditolak 409 bila\ncek sedang berjalan atau scraper dimatikan, 429 selama cooldown, 503 bila worker tak\nterjangkau.",
+        "description": "Cek CVE terbaru SEKARANG untuk tech yang dimonitor: mengirim tugas cek rutin (scraper\n`new_cve`, atau `cve.mirror_sync` bila mirror `live`) ke worker; hasilnya tampil lewat\n`GET /freshness`. Hanya admin (kuota NVD/MITRE, sama dengan trigger scraper). Ditolak 409 bila\ncek sedang berjalan atau scraper dimatikan, 429 selama cooldown, 503 bila worker tak\nterjangkau. `source` (opsional) memicu satu jalur saja dengan cooldown sendiri; nilai tak\ndikenal = 422, jalur yang tidak aktif = 409.",
         "operationId": "check_new_cves_api_cve_check_new_post",
         "parameters": [
+          {
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "new_cve",
+                    "mirror"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
           {
             "in": "header",
             "name": "authorization",
@@ -15870,6 +16908,81 @@
         ]
       }
     },
+    "/api/cve/lookup/{cve_id}": {
+      "get": {
+        "description": "Lookup langsung CVE sembarang (mirror, NVD, CIRCL, Exploit-DB, EPSS paralel). Hanya baca:\ntidak menulis tracker/ticket/FP. Per user 10/menit (429 + `Retry-After`), cache 6 jam untuk\nbagian publik; `tracked` dihitung untuk client aktif. Satu sumber gagal tidak menggagalkan\nlookup (lihat `sources`). Dicatat di audit log.",
+        "operationId": "live_lookup_cve_api_cve_lookup__cve_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cve_id",
+            "required": true,
+            "schema": {
+              "title": "Cve Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-client-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Client-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CveLookupOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Live Lookup Cve",
+        "tags": [
+          "cve"
+        ]
+      }
+    },
     "/api/cve/next-ticket-id": {
       "get": {
         "operationId": "next_ticket_id_api_cve_next_ticket_id_get",
@@ -16096,6 +17209,16 @@
           },
           {
             "in": "query",
+            "name": "fp_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Fp Only",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
             "name": "search",
             "required": false,
             "schema": {
@@ -16266,6 +17389,316 @@
           }
         },
         "summary": "Cve Stats",
+        "tags": [
+          "cve"
+        ]
+      }
+    },
+    "/api/cve/teams": {
+      "get": {
+        "operationId": "list_teams_api_cve_teams_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "include_inactive",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Inactive",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-client-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Client-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CveTeamListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Teams",
+        "tags": [
+          "cve"
+        ]
+      },
+      "post": {
+        "operationId": "create_team_api_cve_teams_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-client-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Client-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CveTeamIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CveTeamOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Team",
+        "tags": [
+          "cve"
+        ]
+      }
+    },
+    "/api/cve/teams/{team_id}": {
+      "delete": {
+        "description": "Soft delete: `active=false`. Ticket yang memakai nama tim ini tetap menyimpannya.",
+        "operationId": "deactivate_team_api_cve_teams__team_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "team_id",
+            "required": true,
+            "schema": {
+              "title": "Team Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-client-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Client-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Deactivate Team Api Cve Teams  Team Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Deactivate Team",
+        "tags": [
+          "cve"
+        ]
+      },
+      "patch": {
+        "description": "Rename merambat ke `owner_team` ticket client ini (satu transaksi). `409` kalau nama baru\nsudah dipakai tim lain (tanpa beda huruf besar/kecil).",
+        "operationId": "update_team_api_cve_teams__team_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "team_id",
+            "required": true,
+            "schema": {
+              "title": "Team Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-client-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Client-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CveTeamPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CveTeamOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Team",
         "tags": [
           "cve"
         ]
@@ -16446,6 +17879,112 @@
           }
         },
         "summary": "List Cve Tickets",
+        "tags": [
+          "cve"
+        ]
+      }
+    },
+    "/api/cve/tickets/export": {
+      "get": {
+        "description": "Export view Ticketing (filter sama dengan `GET /tickets`) sebagai Excel.",
+        "operationId": "export_cve_tickets_api_cve_tickets_export_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_fp",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Fp",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-client-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Client-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Cve Tickets",
         "tags": [
           "cve"
         ]
@@ -16669,7 +18208,7 @@
         ]
       },
       "post": {
-        "description": "`404` kalau CVE-nya tidak ada di tracker client ini.",
+        "description": "`404` kalau CVE-nya tidak ada di tracker client ini. Body opsional (pemanggil lama tanpa\nbody tetap jalan, alasan kosong); dengan body, alasan/catatan disimpan dan menimpa yang lama.",
         "operationId": "set_false_positive_api_cve__cve_id__false_positive_post",
         "parameters": [
           {
@@ -16714,6 +18253,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/FalsePositiveBody"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
@@ -16822,7 +18378,7 @@
         ]
       },
       "put": {
-        "description": "`404` kalau CVE-nya tidak ada di tracker client ini, kecuali sudah punya ticket (ticket yang\nada tetap boleh diubah).",
+        "description": "`404` kalau CVE-nya tidak ada di tracker client ini, kecuali sudah punya ticket (ticket yang\nada tetap boleh diubah).\n\nEskalasi (spec 2a 4.6): hanya transisi mati -> nyala yang menjadwalkan draf email ke lead tim\n(sesudah commit, best effort). Mematikan eskalasi mengosongkan `escalation_notified_at`\nsupaya menyalakan lagi membuat draf baru.",
         "operationId": "update_cve_ticket_api_cve__cve_id__ticket_put",
         "parameters": [
           {
@@ -16882,11 +18438,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": {
-                    "type": "boolean"
-                  },
-                  "title": "Response Update Cve Ticket Api Cve  Cve Id  Ticket Put",
-                  "type": "object"
+                  "$ref": "#/components/schemas/CveTicketSaveOut"
                 }
               }
             },
@@ -23777,7 +25329,7 @@
     },
     "/api/pkgvuln/import-lockfile": {
       "post": {
-        "description": "Upload lockfile (requirements.txt, package-lock.json, go.mod,\npom.xml, poetry.lock). Parse package dengan versi pinned, tambahin\nke monitoring.",
+        "description": "Upload lockfile (requirements.txt, package-lock.json, package.json,\nyarn.lock, go.mod, go.sum, pom.xml, poetry.lock, Gemfile.lock). Parse\npackage dengan versi pinned, tambahin ke monitoring.\n\n`dry_run=true` cuma ngitung (baru / sudah dimonitor / versi berubah):\ngak nulis apa pun, gak jadwalin scan, gak audit. Nama file yang tidak\ndikenali dengan `ecosystem=\"auto\"` -> 422; kalau `ecosystem` dipilih\neksplisit, parser fallback ecosystem itu dipakai. `project` (tanpa\n`..`) jadi prefix `source_path`.",
         "operationId": "import_lockfile_endpoint_api_pkgvuln_import_lockfile_post",
         "parameters": [
           {
@@ -23869,6 +25421,22 @@
                 }
               ],
               "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ecosystem",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ecosystem"
             }
           },
           {
@@ -24555,9 +26123,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Get Pkg Stats Api Pkgvuln Stats Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/PkgVulnStats"
                 }
               }
             },
@@ -28653,6 +30219,72 @@
           }
         },
         "summary": "Post Techstack",
+        "tags": [
+          "techstack"
+        ]
+      }
+    },
+    "/api/techstack/coverage": {
+      "get": {
+        "description": "Deklarasi SEBELUM rute `/{tech_id}` supaya `coverage` tidak dibaca sebagai id.",
+        "operationId": "get_techstack_coverage_api_techstack_coverage_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-client-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Client-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TechStackCoverage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Techstack Coverage",
         "tags": [
           "techstack"
         ]

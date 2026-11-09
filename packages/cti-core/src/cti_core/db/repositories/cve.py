@@ -23,15 +23,17 @@ import zoneinfo
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import ColumnElement, Row, Select, and_, func, or_, select, text
+from sqlalchemy import ColumnElement, Row, Select, and_, false, func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import InstrumentedAttribute, Session
 
+from cti_core.cve_risk import risk_score_sql
 from cti_core.db.models.article import Article
 from cti_core.db.models.cve import (
     CveAffected,
     CveFalsePositive,
     CveNewsletterMention,
+    CveOwnerTeam,
     CvePoc,
     CveReference,
     CveTicket,
@@ -180,10 +182,14 @@ def _apply_filters[S: Select[Any]](
     exclude_cve_ids: Sequence[str] | None,
     ack_filter: str | None = None,
     date_basis: str = "published",
+    only_cve_ids: Sequence[str] | None = None,
 ) -> S:
     stmt = stmt.where(CveTracker.client_id == client_id)
     if exclude_cve_ids:
         stmt = stmt.where(CveTracker.cve_id.notin_(exclude_cve_ids))
+    if only_cve_ids is not None:
+        # `is not None`, bukan truthiness: `[]` = client tanpa FP -> tab kosong, bukan tanpa filter.
+        stmt = stmt.where(CveTracker.cve_id.in_(only_cve_ids))
     if tech is not None:
         stmt = stmt.where(CveTracker.tech.in_(tech))
     if severity:
@@ -222,15 +228,45 @@ class AsyncCveFalsePositiveRepo:
         )
         return list(result.scalars().all())
 
-    async def mark(self, cve_id: str, client_id: str, marked_by: str | None = None) -> None:
+    async def get_many(self, cve_ids: Sequence[str], client_id: str) -> dict[str, CveFalsePositive]:
+        """`{cve_id: baris FP}` milik client ini (satu query), buat alasan/catatan di list."""
+        if not cve_ids:
+            return {}
+        result = await self.session.execute(
+            select(CveFalsePositive).where(
+                CveFalsePositive.client_id == client_id, CveFalsePositive.cve_id.in_(cve_ids)
+            )
+        )
+        return {r.cve_id: r for r in result.scalars().all()}
+
+    async def mark(
+        self,
+        cve_id: str,
+        client_id: str,
+        marked_by: str | None = None,
+        *,
+        reason: str | None = None,
+        note: str | None = None,
+    ) -> None:
+        """Idempoten. Baris yang sudah ada hanya diubah alasan/catatannya (re-klasifikasi) kalau
+        `reason` diisi; tanpa `reason` (POST tanpa body) tidak ada yang berubah."""
         existing = await self.session.execute(
             select(CveFalsePositive).where(
                 CveFalsePositive.cve_id == cve_id, CveFalsePositive.client_id == client_id
             )
         )
-        if existing.scalar_one_or_none() is not None:
+        row = existing.scalar_one_or_none()
+        if row is not None:
+            if reason is not None:
+                row.reason = reason
+                row.note = note
+                await self.session.flush()
             return
-        self.session.add(CveFalsePositive(cve_id=cve_id, client_id=client_id, marked_by=marked_by))
+        self.session.add(
+            CveFalsePositive(
+                cve_id=cve_id, client_id=client_id, marked_by=marked_by, reason=reason, note=note
+            )
+        )
         await self.session.flush()
 
     async def unmark(self, cve_id: str, client_id: str) -> None:
@@ -245,14 +281,30 @@ class AsyncCveFalsePositiveRepo:
             await self.session.flush()
 
     async def bulk_mark(
-        self, cve_ids: Sequence[str], client_id: str, marked_by: str | None = None
+        self,
+        cve_ids: Sequence[str],
+        client_id: str,
+        marked_by: str | None = None,
+        *,
+        reason: str | None = None,
+        note: str | None = None,
     ) -> int:
-        existing = set(await self.list_cve_ids(client_id))
+        """Jumlah baris BARU. Baris yang sudah FP tidak dihitung, tapi alasan/catatannya ikut
+        diperbarui kalau `reason` diisi (aturan sama dengan `mark`)."""
+        existing = await self.get_many(list(dict.fromkeys(cve_ids)), client_id)
         # `dict.fromkeys`: id kembar dalam satu permintaan cukup dihitung sekali (dua baris
         # `(cve_id, client_id)` yang sama = IntegrityError).
         to_add = [cid for cid in dict.fromkeys(cve_ids) if cid not in existing]
+        if reason is not None:
+            for row in existing.values():
+                row.reason = reason
+                row.note = note
         for cid in to_add:
-            self.session.add(CveFalsePositive(cve_id=cid, client_id=client_id, marked_by=marked_by))
+            self.session.add(
+                CveFalsePositive(
+                    cve_id=cid, client_id=client_id, marked_by=marked_by, reason=reason, note=note
+                )
+            )
         await self.session.flush()
         return len(to_add)
 
@@ -260,6 +312,23 @@ class AsyncCveFalsePositiveRepo:
 class AsyncCveTrackerRepo:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
+
+    async def count_by_tech(self, client_id: str) -> dict[str, int]:
+        """`{lower(tech): jumlah CVE}` milik client ini, tanpa baris FP-nya dan tanpa filter
+        tanggal (pengecualian yang sama dengan tab CVEs). Satu `GROUP BY`; dipetakan ke entri
+        techstack lewat `entry.name.lower()`. Entri nonaktif ikut terhitung karena baris
+        `cve_tracker`-nya tetap (riwayat). Baris tanpa `tech` dilewati."""
+        key = func.lower(CveTracker.tech)
+        rows = await self.session.execute(
+            select(key, func.count())
+            .where(
+                CveTracker.client_id == client_id,
+                CveTracker.tech.is_not(None),
+                ~is_false_positive_row(),
+            )
+            .group_by(key)
+        )
+        return {tech: n for tech, n in rows.all()}
 
     async def list_all_distinct_cve_ids(self) -> list[str]:
         """Lintas client, TANPA filter -- semua cve_id yang lagi ditrack, termasuk yang
@@ -687,7 +756,11 @@ class AsyncCveTrackerRepo:
         sort_dir: str = "desc",
         ack_filter: str | None = None,
         date_basis: str = "published",
+        risk_names: Sequence[str] | None = None,
+        only_cve_ids: Sequence[str] | None = None,
     ) -> tuple[list[CveTracker], int]:
+        """`risk_names` = nama techstack client (lowercase, SEMUA entri termasuk nonaktif; sama
+        dengan `get_risk_context`) buat bonus in-stack saat `sort_by="risk"`; None = tanpa bonus."""
         base = _apply_filters(
             select(CveTracker),
             client_id=client_id,
@@ -699,12 +772,18 @@ class AsyncCveTrackerRepo:
             exclude_cve_ids=exclude_cve_ids,
             ack_filter=ack_filter,
             date_basis=date_basis,
+            only_cve_ids=only_cve_ids,
         )
         total = (
             await self.session.execute(select(func.count()).select_from(base.subquery()))
         ).scalar_one()
 
-        order_col = _SORT_FIELDS.get(sort_by, CveTracker.published)
+        order_col: ColumnElement[Any] | InstrumentedAttribute[Any]
+        if sort_by == "risk":
+            in_stack = func.lower(CveTracker.tech).in_(list(risk_names)) if risk_names else false()
+            order_col = risk_score_sql(in_stack)
+        else:
+            order_col = _SORT_FIELDS.get(sort_by, CveTracker.published)
         order = order_col.desc() if sort_dir == "desc" else order_col.asc()
         # `CveTracker.id` = tie-breaker: tanpa ini baris ber-nilai sama (mis. published) bisa
         # muncul di dua halaman dan sebagian lain tidak pernah muncul.
@@ -728,6 +807,7 @@ class AsyncCveTrackerRepo:
         exclude_cve_ids: Sequence[str] | None = None,
         ack_filter: str | None = None,
         date_basis: str = "published",
+        only_cve_ids: Sequence[str] | None = None,
     ) -> dict[str, int]:
         """`severity` SENGAJA cuma dipakai buat query `total` -- port perilaku
         lama: bucket critical/high/medium/low tetap ngitung SEMUA severity
@@ -745,6 +825,7 @@ class AsyncCveTrackerRepo:
             exclude_cve_ids=exclude_cve_ids,
             ack_filter=ack_filter,
             date_basis=date_basis,
+            only_cve_ids=only_cve_ids,
         )
         base_with_severity = _apply_filters(
             select(CveTracker),
@@ -757,6 +838,7 @@ class AsyncCveTrackerRepo:
             exclude_cve_ids=exclude_cve_ids,
             ack_filter=ack_filter,
             date_basis=date_basis,
+            only_cve_ids=only_cve_ids,
         )
 
         async def _count(stmt: Select[tuple[CveTracker]]) -> int:
@@ -1190,6 +1272,7 @@ class AsyncCveTicketRepo:
         comments: str | None = None,
         risk_acceptance: str | None = None,
         closure_date: datetime.date | None = None,
+        updated_by: str | None = None,
     ) -> CveTicket:
         """Port `upsert_ticket()` -- `PUT /{cve_id}/ticket`. `ticket_id`
         kosong/`None` -> pakai yang udah ada (record lama) atau generate
@@ -1226,6 +1309,8 @@ class AsyncCveTicketRepo:
         ticket.comments = comments
         ticket.risk_acceptance = risk_acceptance
         ticket.closure_date = closure_date
+        if updated_by:
+            ticket.updated_by = updated_by
         await self.session.flush()
         return ticket
 
@@ -1271,6 +1356,7 @@ class AsyncCveTicketRepo:
             ticket.ticket_id = ticket_id
         ticket.acknowledged_by = analyst_name.strip()
         ticket.acknowledge_time = now
+        ticket.updated_by = ticket.acknowledged_by
         await self.session.flush()
         return ticket
 
@@ -1312,5 +1398,88 @@ class AsyncCveTicketRepo:
                 self.session.add(ticket)
             ticket.acknowledged_by = analyst_name
             ticket.acknowledge_time = now
+            ticket.updated_by = analyst_name
             await self.session.flush()
         return len(to_ack)
+
+
+class AsyncCveOwnerTeamRepo:
+    """Tim pemilik CVE per client. `CveTicket.owner_team` teks bebas tanpa FK, jadi semua pencocokan
+    nama tim <-> ticket memakai `btrim(owner_team) = nama` (trim saja, huruf besar/kecil dibedakan:
+    spec 4.5 menjaga "SOC" dan "soc" sebagai tim terpisah; nilai lama bisa berspasi)."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def list(
+        self, client_id: str, *, include_inactive: bool = False
+    ) -> list[tuple[CveOwnerTeam, int]]:
+        """Tim + jumlah ticket yang `owner_team`-nya cocok (satu query, urut nama)."""
+        count = (
+            select(func.count(CveTicket.id))
+            .where(
+                CveTicket.client_id == CveOwnerTeam.client_id,
+                func.btrim(CveTicket.owner_team) == CveOwnerTeam.name,
+            )
+            .correlate(CveOwnerTeam)
+            .scalar_subquery()
+        )
+        stmt = select(CveOwnerTeam, count).where(CveOwnerTeam.client_id == client_id)
+        if not include_inactive:
+            stmt = stmt.where(CveOwnerTeam.active.is_(True))
+        rows = await self.session.execute(stmt.order_by(func.lower(CveOwnerTeam.name)))
+        return [(team, int(n or 0)) for team, n in rows.all()]
+
+    async def get(self, team_id: int, client_id: str) -> CveOwnerTeam | None:
+        result = await self.session.execute(
+            select(CveOwnerTeam).where(
+                CveOwnerTeam.id == team_id, CveOwnerTeam.client_id == client_id
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def get_by_name_ci(self, name: str, client_id: str) -> CveOwnerTeam | None:
+        result = await self.session.execute(
+            select(CveOwnerTeam).where(
+                CveOwnerTeam.client_id == client_id,
+                func.lower(CveOwnerTeam.name) == name.strip().lower(),
+            )
+        )
+        return result.scalars().first()
+
+    async def create(
+        self, client_id: str, name: str, lead_name: str, lead_email: str
+    ) -> CveOwnerTeam:
+        team = CveOwnerTeam(
+            client_id=client_id,
+            name=name.strip(),
+            lead_name=lead_name or None,
+            lead_email=lead_email or None,
+            active=True,
+        )
+        self.session.add(team)
+        await self.session.flush()
+        return team
+
+    async def count_tickets(self, client_id: str, name: str) -> int:
+        result = await self.session.execute(
+            select(func.count(CveTicket.id)).where(
+                CveTicket.client_id == client_id,
+                func.btrim(CveTicket.owner_team) == name.strip(),
+            )
+        )
+        return int(result.scalar_one())
+
+    async def rename_cascade(self, client_id: str, old: str, new: str) -> int:
+        """Ganti `owner_team` ticket client ini dari `old` ke `new` (satu transaksi dengan rename
+        tim oleh pemanggil). Mengembalikan jumlah ticket yang berubah."""
+        result = await self.session.execute(
+            update(CveTicket)
+            .where(
+                CveTicket.client_id == client_id,
+                func.btrim(CveTicket.owner_team) == old.strip(),
+            )
+            .values(owner_team=new)
+            .execution_options(synchronize_session=False)
+        )
+        return int(getattr(result, "rowcount", 0) or 0)

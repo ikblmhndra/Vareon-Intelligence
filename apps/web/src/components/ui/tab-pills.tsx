@@ -62,6 +62,7 @@ export function TabPills<T extends string>({
             type="button"
             role="tab"
             aria-selected={active}
+            aria-label={item.count != null ? `${item.label}, ${item.count}` : undefined}
             tabIndex={tabIndexFor(i)}
             onClick={() => onChange(item.value)}
             className={tabPillClass(active, item.tone)}

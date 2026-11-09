@@ -146,6 +146,12 @@ or `detected` = the WIB calendar day on which the CVE was first detected), `ack_
 `cve_score × EXPOSURE_MULTIPLIER × HOSTING_MULTIPLIER` (from `techstack_entries` via the lower-case name), the count and list
 of articles that mention the CVE in their title (`get_article_mentions`: ILIKE is only a rough filter, followed by an exact match with a number
 boundary, so `CVE-2026-1234` is not `CVE-2026-12345`), and the FP status.
+- **Risk score and `fp_only`.** Each list row carries `risk_score` (0-100, one decimal) from `cti_core/cve_risk.py`:
+  CVSS x 10 x 0.30 + KEV 20 + exploited 20 + PoC 10 + in-stack 20, capped at 100; `sort_by=risk` uses the SQL twin
+  (`risk_score_sql`, same constants). **`in_stack` differs from `/prioritize`**: the list uses plain
+  `lower(tech)` equality with the client's techstack entries, **inactive entries included**; `/prioritize` keeps its
+  word-mention match, so the same CVE can score differently in the two places. `fp_only=true` (list and stats)
+  is the "False positive" tab: only the CVEs this client marked FP, with no FP exclusion (an empty FP set = an empty tab).
 - `GET /stats`, `GET /dashboard?year=` (MTTD/MTTA/MTTR, `services/cve_dashboard.py`), `GET /export` (Excel
   from the `CVE_Tracker_template.xlsx` template, `services/cve_export.py`) use **the same scope** (client,
   active techstack, no FPs), so their numbers are consistent with the CVEs tab. (Correction: before slice 5 `/export`
@@ -172,6 +178,25 @@ boundary, so `CVE-2026-1234` is not `CVE-2026-12345`), and the FP status.
   use the cooldown), **503** when the broker is down (the cooldown is released). Note: the `new_cve` check processes **all clients**
   at once (one global run); only the "new CVEs" count is per client. This is NOT "Populate now" (ROADMAP #3,
   history backfill): it only runs the routine check right now.
+- **Per-client catalog hide** (`PUT /api/catalog/families/{id}/hide`, `show_hidden` on the browse endpoints): a hide row
+  hides a catalog family from that client's browse list only. It is display-only (no tracker/mirror change), and a family
+  the client monitors directly stays visible despite a hide row.
+- **Check status and per-source trigger.** `GET /freshness` also reports `running_since` (start of the run in progress)
+  and `last_triggered_at`. `POST /check-new?source=` triggers one path only (unknown value 422, inactive path 409); each
+  source has its own cooldown key (`cve:check_new:cooldown:<source>`), independent of the global key and of each other.
+- **Live lookup** (`GET /lookup/{cve_id}`, requires `view_cve` like the rest of the router): queries mirror, NVD, CIRCL, Exploit-DB and EPSS in
+  parallel and returns per-source status (one failing source does not fail the lookup). Public part cached 6 hours in
+  Redis (10 minutes when mirror, NVD and CIRCL all report `not_found`, since a fresh CVE may appear shortly); rate limit 10 per minute per user (429 + `Retry-After`); `tracked` is computed for the active client. It
+  never writes tracker, ticket or FP rows; audited.
+- **Lockfile import** (`POST /api/pkgvuln/import-lockfile`, multipart): `dry_run=true` only counts (new / already
+  monitored / version changed) and writes nothing; `ecosystem=auto` detects the parser from the file name, an
+  unrecognised file is **422** ("Unrecognised lockfile, choose the ecosystem"), an explicit `ecosystem` forces that
+  ecosystem's fallback parser; `project` (no `..`) becomes the `source_path` prefix stored on each package.
+- **Techstack coverage** (`GET /api/techstack/coverage`, `TechStackCoverage`): per-client summary of catalog mapping
+  (`total`, `active`, `mapped_family`, `mapped_vendor`, `unmapped`, `hidden` = inactive entries). Unaffected by list
+  filters or paging; scoped by `X-Client-ID`. Declared before `/{tech_id}` so `coverage` is not read as an id.
+- **CVE DB meta** (`GET /api/cve-db/meta`, `CveDbMeta`): `total` mirror rows (Redis-cached 300 s; a Redis failure falls
+  back to a live count), `last_sync_at` and `enabled` (`CVE_MIRROR__ENABLED`; off hides the row in the UI). Read-only.
 - `GET /prioritize`: priority score (`services/cve_priority.py`): CVSS 30%, KEV 20%, exploited 20%, PoC
   10%, `in_tech_stack` 20% → a label and `patch_urgency`. If a CVE has rows for several clients, the calling
   client's row is used (other clients' rows are only a fallback when the CVE is not yet tracked by that client).
@@ -184,10 +209,22 @@ boundary, so `CVE-2026-1234` is not `CVE-2026-12345`), and the FP status.
   body used to be mandatory and stored as-is (a legacy of the old UI: a shared password + a typed name), so anyone
   logged in could act in another analyst's name; old clients that still send it are accepted, the field is ignored.
   Creates/touches `cve_tickets` (sets `acknowledged_by`, `acknowledge_time`, `ticket_id` if not set yet).
+- **Ticket timestamps.** The serialised ticket (`_serialize_ticket`) also returns `created_at`, `updated_at`,
+  `updated_by` (the logged-in username of the last save) and `opened_at` (when the ticket was first opened).
+  Acknowledge keeps first-ack-wins: it never rewrites `acknowledged_by`/`acknowledge_time` of an acked ticket.
 - **Ticket** (`PUT /{cve_id}/ticket`): `affected_asset`/`affected_version`/`fixed_version`, `asset_owner`,
   `owner_email`/`owner_team`, `active_exploitation` (analyst input, distinct from the machine bool),
   `remediation_status`/`remediation_date_plan`/`actual_remediation_date`, `escalation_required`, `comments`,
   `risk_acceptance`, `closure_date`. Status values are a "soft enum" **without validation** (ROADMAP #18).
+- **FP reason and note.** `POST /{cve_id}/false-positive` and `bulk-false-positive` accept an optional `reason`
+  (`not_in_stack`, `version_not_affected`, `component_not_exposed`, `duplicate`, `other`) and a `note`; `other`
+  requires a non-empty note. Both body fields have defaults, so they are optional in `docs/openapi.json`
+  (the generated `schema.d.ts` still types `note` as required because openapi-typescript treats a default as present:
+  callers send `note: ""`).
+- **Owner teams** (`/api/cve/teams`, per client): the dropdown list for `owner_team` plus the lead's contact. Renaming a
+  team cascades to the `owner_team` of that client's tickets in the same transaction (409 if the new name equals another
+  team's name, case-insensitively); delete is soft (`active=false`, tickets keep the name).
+- **Ticket export**: `GET /tickets/export` (permission `export_data`) exports the ticketing view.
 - **False positive** (`POST/DELETE /{cve_id}/false-positive`, `bulk-false-positive` max 100): per
   `(cve_id, client_id)`, recorded in the audit log. A tracker row is only treated as FP if **the client that owns the row**
   marked it (`is_false_positive_row`); marks by other clients, including clients that do not track that CVE,
@@ -255,6 +292,13 @@ Other CVE-related items (unchanged):
 | Trending CVE (`report.trending_cve`, certain hours at minute 5) | beat | `tech_stack` when it matches, otherwise `tech_stack_unrelated` + `vendor_report` | yes, same |
 | GitHub PoC alert (`github_poc_monitor`) | a new repo <= 3 days old from the broad search | `github_poc` | yes (via MITRE vendor/product) |
 | CVE draft email | an analyst presses the button | Graph (draft) | no |
+| Escalation draft (`cve.notify_escalation`, queue `notify`) | a ticket save turns `escalation_required` on | Graph email **draft** to the team lead; no Telegram | no |
+
+**Escalation drafts.** When a save sets `escalation_required` (false to true), the API only enqueues
+`cve.notify_escalation` by name; the worker resolves the lead from the ticket's `owner_team` (exact match on the
+`btrim`med name first, otherwise a single case-insensitive match) and creates a Graph draft. It is a draft only, never
+sent automatically, and one draft per escalation. A missing team/lead or a broker error never fails the
+ticket save; `CveTicketSaveOut.escalation` reports `queued`, `not_needed`, `no_lead` or `failed`.
 
 The digests and the article/report alerts use the techstack names **combined across all clients**, not per client; the
 new-CVE summary above is the only per-client one.
@@ -331,6 +375,9 @@ is not changed.
 10. **FP, ticket, and ack only for tracked CVEs**: all three are keyed by `(cve_id, client_id)` with no FK to the tracker,
     so the existence of a tracker row is checked in the router (`_require_tracked`); without it any valid id would create an orphan
     ticket or an FP mark for a CVE that was never tracked.
+11. **Escalation never fails a save** and drafts at most once per escalation: the enqueue is best-effort after the commit.
+12. **Risk score has one formula** (`cti_core/cve_risk.py`) shared by `/prioritize` and the list; only the `in_stack`
+    input differs (section 5). Change weights there, never in one caller.
 
 ## 11. Not yet verified (honestly)
 
