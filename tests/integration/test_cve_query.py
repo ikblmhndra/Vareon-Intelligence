@@ -124,6 +124,26 @@ class TestAsyncCveTrackerRepo:
         )
         assert total == 2
 
+    async def test_fp_only_lists_only_false_positives(self, async_db_session: AsyncSession) -> None:
+        await _seed(async_db_session)
+        repo = AsyncCveTrackerRepo(async_db_session)
+        cves, total = await repo.list_filtered(client_id="default", only_cve_ids=["CVE-2026-0002"])
+        assert [c.cve_id for c in cves] == ["CVE-2026-0002"]
+        assert total == 1
+        stats = await repo.get_stats(client_id="default", only_cve_ids=["CVE-2026-0002"])
+        assert stats["total"] == 1
+
+    async def test_fp_only_with_no_fps_returns_nothing(
+        self, async_db_session: AsyncSession
+    ) -> None:
+        # `[]` BUKAN "tanpa filter": client tanpa FP harus dapat tab kosong.
+        await _seed(async_db_session)
+        repo = AsyncCveTrackerRepo(async_db_session)
+        cves, total = await repo.list_filtered(client_id="default", only_cve_ids=[])
+        assert cves == []
+        assert total == 0
+        assert (await repo.get_stats(client_id="default", only_cve_ids=[]))["total"] == 0
+
     async def test_list_filtered_sort_by_tech_asc(self, async_db_session: AsyncSession) -> None:
         await _seed(async_db_session)
         cves, _ = await AsyncCveTrackerRepo(async_db_session).list_filtered(

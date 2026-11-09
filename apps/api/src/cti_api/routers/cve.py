@@ -28,7 +28,7 @@ import io
 from collections.abc import Sequence
 
 from cti_core.cve_risk import risk_label, risk_score
-from cti_core.db.models.cve import CveTicket, CveTracker
+from cti_core.db.models.cve import CveFalsePositive, CveTicket, CveTracker
 from cti_core.db.repositories.auth import AsyncAuditLogRepo
 from cti_core.db.repositories.cve import (
     AsyncCveFalsePositiveRepo,
@@ -61,6 +61,7 @@ from cti_api.schemas.cve import (
     CveStats,
     CveTicketBody,
     DraftEmailBody,
+    FalsePositiveBody,
     PurgeOrphanedBody,
 )
 from cti_api.schemas.cve_check import CveCheckTriggered, CveFreshness
@@ -122,6 +123,7 @@ def _serialize(
     cve: CveTracker,
     *,
     is_fp: bool,
+    fp_row: CveFalsePositive | None = None,
     mentions: list[dict[str, str]],
     risk_ctx: dict[str, dict[str, str]],
 ) -> CveOut:
@@ -161,6 +163,10 @@ def _serialize(
             for p in cve.pocs
         ],
         false_positive=is_fp,
+        fp_reason=(fp_row.reason or "") if fp_row else "",
+        fp_note=(fp_row.note or "") if fp_row else "",
+        fp_marked_by=(fp_row.marked_by or "") if fp_row else "",
+        fp_marked_at=fp_row.marked_at.isoformat() if fp_row and fp_row.marked_at else "",
         detected_on=cve.detected_on.isoformat() if cve.detected_on else "",
         news_mentions_count=len(mentions),
         news_mentions=mentions,
@@ -195,6 +201,7 @@ async def list_cves(
     date_start: datetime.date | None = None,
     date_end: datetime.date | None = None,
     include_fp: bool = False,
+    fp_only: bool = False,
     sort_by: str = Query("published", pattern="^(tech|severity|published|epss|risk)$"),
     sort_dir: str = Query("desc", pattern="^(asc|desc)$"),
     ack_filter: str | None = Query(None, pattern=_ACK_FILTER_PATTERN),
@@ -221,7 +228,9 @@ async def list_cves(
         search=search,
         date_start=date_start,
         date_end=date_end,
-        exclude_cve_ids=None if include_fp else fp_ids,
+        # `fp_only` = tab "False positive": hanya id FP client ini (`[]` -> kosong), tanpa exclude.
+        exclude_cve_ids=None if include_fp or fp_only else fp_ids,
+        only_cve_ids=fp_ids if fp_only else None,
         sort_by=sort_by,
         sort_dir=sort_dir,
         ack_filter=ack_filter,
@@ -231,12 +240,14 @@ async def list_cves(
 
     tp_ids = [c.cve_id for c in cves if c.cve_id not in fp_ids_set]
     mentions_map = await tracker_repo.get_article_mentions(tp_ids)
+    fp_rows = await fp_repo.get_many([c.cve_id for c in cves if c.cve_id in fp_ids_set], cid)
 
     return CveListResponse(
         cves=[
             _serialize(
                 c,
                 is_fp=c.cve_id in fp_ids_set,
+                fp_row=fp_rows.get(c.cve_id),
                 mentions=mentions_map.get(c.cve_id, []),
                 risk_ctx=risk_ctx,
             )
@@ -251,6 +262,7 @@ async def list_cves(
 @router.get("/stats", response_model=CveStats)
 async def cve_stats(
     include_fp: bool = False,
+    fp_only: bool = False,
     search: str | None = Query(None),
     severity: list[str] | None = Query(None),
     tech: list[str] | None = Query(None),
@@ -263,7 +275,11 @@ async def cve_stats(
     x_client_id: str | None = Header(None),
 ) -> CveStats:
     cid = effective_client_id(user, x_client_id)
-    fp_ids = await AsyncCveFalsePositiveRepo(session).list_cve_ids(cid) if not include_fp else []
+    fp_ids = (
+        await AsyncCveFalsePositiveRepo(session).list_cve_ids(cid)
+        if fp_only or not include_fp
+        else []
+    )
     effective_tech = tech or await _active_tech_names(session, cid)
     stats = await AsyncCveTrackerRepo(session).get_stats(
         client_id=cid,
@@ -272,7 +288,8 @@ async def cve_stats(
         search=search,
         date_start=date_start,
         date_end=date_end,
-        exclude_cve_ids=fp_ids or None,
+        exclude_cve_ids=None if fp_only else (fp_ids or None),
+        only_cve_ids=fp_ids if fp_only else None,
         ack_filter=ack_filter,
         date_basis=date_basis,
     )
@@ -410,18 +427,27 @@ async def _require_tracked(
 async def set_false_positive(
     cve_id: CveId,
     request: Request,
+    body: FalsePositiveBody | None = None,
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),
     x_client_id: str | None = Header(None),
 ) -> dict[str, bool]:
-    """`404` kalau CVE-nya tidak ada di tracker client ini."""
+    """`404` kalau CVE-nya tidak ada di tracker client ini. Body opsional (pemanggil lama tanpa
+    body tetap jalan, alasan kosong); dengan body, alasan/catatan disimpan dan menimpa yang lama."""
     cid = effective_client_id(user, x_client_id)
     await _require_tracked(session, cid, [cve_id])
-    await AsyncCveFalsePositiveRepo(session).mark(cve_id, cid, marked_by=user["username"])
+    await AsyncCveFalsePositiveRepo(session).mark(
+        cve_id,
+        cid,
+        marked_by=user["username"],
+        reason=body.reason if body else None,
+        note=body.note if body else None,
+    )
     await AsyncAuditLogRepo(session).write(
         username=user["username"],
         action="mark_false_positive",
         target_id=cve_id,
+        detail={"reason": body.reason} if body else None,
         ip_address=request_ip(request),
     )
     await session.commit()
@@ -465,12 +491,13 @@ async def set_bulk_false_positive(
     cid = effective_client_id(user, x_client_id)
     await _require_tracked(session, cid, cve_ids)
     marked = await AsyncCveFalsePositiveRepo(session).bulk_mark(
-        cve_ids, cid, marked_by=user["username"]
+        cve_ids, cid, marked_by=user["username"], reason=body.reason, note=body.note
     )
     await AsyncAuditLogRepo(session).write(
         username=user["username"],
         action="bulk_mark_false_positive",
-        detail={"cve_ids": cve_ids, "count": marked},
+        detail={"cve_ids": cve_ids, "count": marked}
+        | ({"reason": body.reason} if body.reason else {}),
         ip_address=request_ip(request),
     )
     await session.commit()

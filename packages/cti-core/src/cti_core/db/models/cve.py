@@ -220,8 +220,9 @@ class CveFalsePositive(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     reason: Mapped[str | None] = mapped_column(String(40))
-    """"Soft enum" tanpa CHECK (sama pola `CveTicket`): `not_applicable`|`already_patched`|
-    `mitigated`|`misattributed`|`other`. NULL = baris lama sebelum alasan dicatat."""
+    """"Soft enum" tanpa CHECK (sama pola `CveTicket`): `not_in_stack`|
+    `version_not_affected`|`component_not_exposed`|`duplicate`|`other`.
+    NULL = baris lama sebelum alasan dicatat."""
     note: Mapped[str | None] = mapped_column(Text)
 
 

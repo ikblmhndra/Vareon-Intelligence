@@ -11,6 +11,7 @@ from cti_api.schemas.cve import (
     BulkAcknowledgeBody,
     BulkFalsePositiveBody,
     DraftEmailBody,
+    FalsePositiveBody,
     normalize_cve_id,
 )
 from pydantic import ValidationError
@@ -68,3 +69,25 @@ def test_bulk_acknowledge_body_normalizes_ids() -> None:
 def test_one_malformed_id_rejects_the_whole_list(body: type) -> None:
     with pytest.raises(ValidationError):
         body(cve_ids=["CVE-2026-1234", "nope"])
+
+
+def test_false_positive_body_other_requires_note() -> None:
+    with pytest.raises(ValidationError):
+        FalsePositiveBody(reason="other", note="   ")
+    with pytest.raises(ValidationError):
+        FalsePositiveBody(reason="bogus")  # type: ignore[arg-type]
+    assert FalsePositiveBody(reason="other", note="alasan").note == "alasan"
+    assert FalsePositiveBody(reason="duplicate").note == ""
+
+
+def test_false_positive_bodies_keep_defaulted_fields_optional_in_openapi() -> None:
+    fp = FalsePositiveBody.model_json_schema()
+    assert fp["required"] == ["reason"]
+    bulk = BulkFalsePositiveBody.model_json_schema()
+    assert bulk["required"] == ["cve_ids"]
+    assert BulkFalsePositiveBody(cve_ids=["CVE-2026-1234"]).reason is None
+
+
+def test_bulk_false_positive_body_other_requires_note_only_with_reason() -> None:
+    with pytest.raises(ValidationError):
+        BulkFalsePositiveBody(cve_ids=["CVE-2026-1234"], reason="other")

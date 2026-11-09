@@ -22,9 +22,9 @@ server-side (`AsyncCveTicketRepo.upsert`), `acknowledged_by`/
 from __future__ import annotations
 
 import re
-from typing import Annotated
+from typing import Annotated, Literal
 
-from pydantic import AfterValidator, BaseModel
+from pydantic import AfterValidator, BaseModel, Field, model_validator
 
 _CVE_ID = re.compile(r"cve-[0-9]{4}-[0-9]{4,11}", re.ASCII | re.IGNORECASE)
 """`CVE-YYYY-NNNN...`, maksimum 11 digit supaya muat di kolom `String(20)` (9 karakter awalan).
@@ -72,6 +72,12 @@ class CveOut(BaseModel):
     poc_available: bool = False
     pocs: list[CvePocOut] = []
     false_positive: bool = False
+    fp_reason: str = ""
+    fp_note: str = ""
+    fp_marked_by: str = ""
+    fp_marked_at: str = ""
+    """Alasan/catatan/penanda FP milik client pemanggil; kosong kalau bukan FP (atau baris FP
+    lama tanpa alasan)."""
     detected_on: str = ""
     news_mentions_count: int = 0
     news_mentions: list[dict[str, str]] = []
@@ -103,8 +109,39 @@ class CveStats(BaseModel):
     """CVE tanpa skor CVSS (0 / NULL) -- masuk `total`, tapi bukan bucket critical..low."""
 
 
+FpReason = Literal[
+    "not_in_stack", "version_not_affected", "component_not_exposed", "duplicate", "other"
+]
+"""Alasan menandai CVE sebagai false positive (spec 2a §4.2). Soft enum di DB (tanpa CHECK)."""
+
+
+def _other_needs_note(reason: str | None, note: str) -> None:
+    if reason == "other" and not note.strip():
+        raise ValueError("alasan 'other' wajib disertai catatan")
+
+
+class FalsePositiveBody(BaseModel):
+    """Body opsional `POST /{cve_id}/false-positive`; `note` boleh kosong kecuali `other`.
+    `note` punya default, jadi TIDAK required di OpenAPI."""
+
+    reason: FpReason
+    note: str = Field("", max_length=2000)
+
+    @model_validator(mode="after")
+    def _check_note(self) -> FalsePositiveBody:
+        _other_needs_note(self.reason, self.note)
+        return self
+
+
 class BulkFalsePositiveBody(BaseModel):
     cve_ids: list[CveId]
+    reason: FpReason | None = None
+    note: str = Field("", max_length=2000)
+
+    @model_validator(mode="after")
+    def _check_note(self) -> BulkFalsePositiveBody:
+        _other_needs_note(self.reason, self.note)
+        return self
 
 
 class PurgeOrphanedBody(BaseModel):

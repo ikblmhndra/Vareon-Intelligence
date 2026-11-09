@@ -181,10 +181,14 @@ def _apply_filters[S: Select[Any]](
     exclude_cve_ids: Sequence[str] | None,
     ack_filter: str | None = None,
     date_basis: str = "published",
+    only_cve_ids: Sequence[str] | None = None,
 ) -> S:
     stmt = stmt.where(CveTracker.client_id == client_id)
     if exclude_cve_ids:
         stmt = stmt.where(CveTracker.cve_id.notin_(exclude_cve_ids))
+    if only_cve_ids is not None:
+        # `is not None`, bukan truthiness: `[]` = client tanpa FP -> tab kosong, bukan tanpa filter.
+        stmt = stmt.where(CveTracker.cve_id.in_(only_cve_ids))
     if tech is not None:
         stmt = stmt.where(CveTracker.tech.in_(tech))
     if severity:
@@ -223,15 +227,45 @@ class AsyncCveFalsePositiveRepo:
         )
         return list(result.scalars().all())
 
-    async def mark(self, cve_id: str, client_id: str, marked_by: str | None = None) -> None:
+    async def get_many(self, cve_ids: Sequence[str], client_id: str) -> dict[str, CveFalsePositive]:
+        """`{cve_id: baris FP}` milik client ini (satu query), buat alasan/catatan di list."""
+        if not cve_ids:
+            return {}
+        result = await self.session.execute(
+            select(CveFalsePositive).where(
+                CveFalsePositive.client_id == client_id, CveFalsePositive.cve_id.in_(cve_ids)
+            )
+        )
+        return {r.cve_id: r for r in result.scalars().all()}
+
+    async def mark(
+        self,
+        cve_id: str,
+        client_id: str,
+        marked_by: str | None = None,
+        *,
+        reason: str | None = None,
+        note: str | None = None,
+    ) -> None:
+        """Idempoten. Baris yang sudah ada hanya diubah alasan/catatannya (re-klasifikasi) kalau
+        `reason` diisi; tanpa `reason` (POST tanpa body) tidak ada yang berubah."""
         existing = await self.session.execute(
             select(CveFalsePositive).where(
                 CveFalsePositive.cve_id == cve_id, CveFalsePositive.client_id == client_id
             )
         )
-        if existing.scalar_one_or_none() is not None:
+        row = existing.scalar_one_or_none()
+        if row is not None:
+            if reason is not None:
+                row.reason = reason
+                row.note = note
+                await self.session.flush()
             return
-        self.session.add(CveFalsePositive(cve_id=cve_id, client_id=client_id, marked_by=marked_by))
+        self.session.add(
+            CveFalsePositive(
+                cve_id=cve_id, client_id=client_id, marked_by=marked_by, reason=reason, note=note
+            )
+        )
         await self.session.flush()
 
     async def unmark(self, cve_id: str, client_id: str) -> None:
@@ -246,14 +280,30 @@ class AsyncCveFalsePositiveRepo:
             await self.session.flush()
 
     async def bulk_mark(
-        self, cve_ids: Sequence[str], client_id: str, marked_by: str | None = None
+        self,
+        cve_ids: Sequence[str],
+        client_id: str,
+        marked_by: str | None = None,
+        *,
+        reason: str | None = None,
+        note: str | None = None,
     ) -> int:
-        existing = set(await self.list_cve_ids(client_id))
+        """Jumlah baris BARU. Baris yang sudah FP tidak dihitung, tapi alasan/catatannya ikut
+        diperbarui kalau `reason` diisi (aturan sama dengan `mark`)."""
+        existing = await self.get_many(list(dict.fromkeys(cve_ids)), client_id)
         # `dict.fromkeys`: id kembar dalam satu permintaan cukup dihitung sekali (dua baris
         # `(cve_id, client_id)` yang sama = IntegrityError).
         to_add = [cid for cid in dict.fromkeys(cve_ids) if cid not in existing]
+        if reason is not None:
+            for row in existing.values():
+                row.reason = reason
+                row.note = note
         for cid in to_add:
-            self.session.add(CveFalsePositive(cve_id=cid, client_id=client_id, marked_by=marked_by))
+            self.session.add(
+                CveFalsePositive(
+                    cve_id=cid, client_id=client_id, marked_by=marked_by, reason=reason, note=note
+                )
+            )
         await self.session.flush()
         return len(to_add)
 
@@ -689,6 +739,7 @@ class AsyncCveTrackerRepo:
         ack_filter: str | None = None,
         date_basis: str = "published",
         risk_names: Sequence[str] | None = None,
+        only_cve_ids: Sequence[str] | None = None,
     ) -> tuple[list[CveTracker], int]:
         """`risk_names` = nama techstack client (lowercase, SEMUA entri termasuk nonaktif; sama
         dengan `get_risk_context`) buat bonus in-stack saat `sort_by="risk"`; None = tanpa bonus."""
@@ -703,6 +754,7 @@ class AsyncCveTrackerRepo:
             exclude_cve_ids=exclude_cve_ids,
             ack_filter=ack_filter,
             date_basis=date_basis,
+            only_cve_ids=only_cve_ids,
         )
         total = (
             await self.session.execute(select(func.count()).select_from(base.subquery()))
@@ -737,6 +789,7 @@ class AsyncCveTrackerRepo:
         exclude_cve_ids: Sequence[str] | None = None,
         ack_filter: str | None = None,
         date_basis: str = "published",
+        only_cve_ids: Sequence[str] | None = None,
     ) -> dict[str, int]:
         """`severity` SENGAJA cuma dipakai buat query `total` -- port perilaku
         lama: bucket critical/high/medium/low tetap ngitung SEMUA severity
@@ -754,6 +807,7 @@ class AsyncCveTrackerRepo:
             exclude_cve_ids=exclude_cve_ids,
             ack_filter=ack_filter,
             date_basis=date_basis,
+            only_cve_ids=only_cve_ids,
         )
         base_with_severity = _apply_filters(
             select(CveTracker),
@@ -766,6 +820,7 @@ class AsyncCveTrackerRepo:
             exclude_cve_ids=exclude_cve_ids,
             ack_filter=ack_filter,
             date_basis=date_basis,
+            only_cve_ids=only_cve_ids,
         )
 
         async def _count(stmt: Select[tuple[CveTracker]]) -> int:
