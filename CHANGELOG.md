@@ -14,8 +14,10 @@ router `changelog.py`) -- parser-nya expect header persis
 - `GET /api/pir/{pir_id}/coverage/weekly`: jumlah artikel per minggu untuk grafik cakupan PIR.
 - `GET /api/spikes`: respons kini bertipe (`SpikesResponse`) dan punya blok `daily`, yaitu seri harian per entitas yang melonjak. Key lama tidak berubah.
 - `GET /api/mitre/navigator-layer` dan `/navigator-export`: parameter opsional `top_rows`, `top_ttps`, `ttp_source` supaya layer yang diekspor sama dengan heatmap yang sedang tampil.
-- CVE Tracker, risk score 0-100 per CVE dan urutan berdasarkan risk (`sort`).
-- CVE Tracker, filter tab False positive dengan alasan FP (`fp_reason`) dan catatan (`fp_note`).
+- CVE Tracker, risk score 0-100 per CVE dan urutan berdasarkan risk (`sort_by=risk`).
+- CVE Tracker, putusan KEV (`kev_date_added`, `kev_due_date`, `kev_required_action`) di respons CVE, tampil di panel detail.
+- Ticketing: sakelar "Include false positives" (`include_fp`), default mati.
+- CVE Tracker, filter tab False positive dengan alasan FP (`fp_reason`) dan catatan (`fp_note`), disimpan di `cve_false_positives`.
 - Ticket: timestamp `updated_at`/`updated_by` dan `escalation_notified_at`, plus export XLSX ticket.
 - Tim pemilik (`cve_owner_teams`): CRUD tim dengan email lead. Eskalasi ticket membuat DRAFT email ke lead tim lewat Microsoft Graph (tanpa Telegram, tidak terkirim otomatis, tidak diulang saat ticket disimpan ulang).
 - Techstack: jumlah match per entri dan coverage; sembunyikan produk katalog per klien (`catalog_family_hides`).
@@ -34,9 +36,11 @@ router `changelog.py`) -- parser-nya expect header persis
 - Web: tombol (semua state), field, tab bergaris bawah dan pil, kontrol segmented, chip, kartu, tabel, dialog, dan panel state kosong/error mengikuti mockup. Kartu kini datar berbingkai (tanpa bayangan), judul dialog semibold, dan badge memakai ring fokus ink.
 - Web: CVE Tracker (CVEs, Ticketing, Monitored Tech, All Tech, CVE DB, Dashboard, Packages) tampil master/detail mengikuti mockup FigCraft; panel samping menggantikan modal detail; chip status Open jadi merah; semua waktu memakai zona waktu browser.
 - Web: tab Ticketing disembunyikan untuk role tanpa `manage_cve`.
-- Lockfile tak dikenal dan "Detect from file" kini membalas 422 (dulu diam-diam diparse sebagai `requirements.txt`).
+- Lockfile: dengan ecosystem "Detect from file", nama file yang tidak dikenali kini membalas 422 (dulu diam-diam diparse sebagai `requirements.txt`); ecosystem eksplisit tetap memaksa parsernya. `source_path` dipotong 500 karakter.
+- Ticket: `owner_email` baru atau yang diubah harus email sah dan paling panjang 200 karakter (spasi pinggir dibuang); nilai lama yang tidak diubah tetap bisa disimpan ulang. Status ticket dengan alias lama (Pending, Completed, Not Affected, Not Applicable) dinormalkan di Ticketing.
+- Lookup CVE langsung: hasil "tidak ditemukan di mana-mana" di-cache 10 menit, bukan 6 jam.
 
-**Saat upgrade dari 0.8.15:** catat jumlah anomali Early Warning per kelompok sebelum deploy untuk dibandingkan, lalu `make deploy` (migrasi jalan otomatis). Dari prod 0.8.11 (versi yang sedang jalan): ikuti runbook gabungan `docs/PROD_UPGRADE_0.8.11_TO_0.8.16.md`; cek per rilis ada di `docs/prod-upgrade/0.8.16.md`.
+**Saat upgrade dari 0.8.15:** catat jumlah anomali Early Warning per kelompok sebelum deploy untuk dibandingkan (opsional, baca-saja: hitung ticket dengan `owner_email` bukan email dan ticket dengan alias status lama, query di runbook), lalu `make deploy` (migrasi jalan otomatis). Dari prod 0.8.11 (versi yang sedang jalan): ikuti runbook gabungan `docs/PROD_UPGRADE_0.8.11_TO_0.8.16.md`; cek per rilis ada di `docs/prod-upgrade/0.8.16.md`.
 
 ## [0.8.15] - 2026-11-08
 

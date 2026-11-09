@@ -184,14 +184,19 @@ boundary, so `CVE-2026-1234` is not `CVE-2026-12345`), and the FP status.
 - **Check status and per-source trigger.** `GET /freshness` also reports `running_since` (start of the run in progress)
   and `last_triggered_at`. `POST /check-new?source=` triggers one path only (unknown value 422, inactive path 409); each
   source has its own cooldown key (`cve:check_new:cooldown:<source>`), independent of the global key and of each other.
-- **Live lookup** (`GET /lookup/{cve_id}`, any authenticated user): queries mirror, NVD, CIRCL, Exploit-DB and EPSS in
+- **Live lookup** (`GET /lookup/{cve_id}`, requires `view_cve` like the rest of the router): queries mirror, NVD, CIRCL, Exploit-DB and EPSS in
   parallel and returns per-source status (one failing source does not fail the lookup). Public part cached 6 hours in
-  Redis; rate limit 10 per minute per user (429 + `Retry-After`); `tracked` is computed for the active client. It
+  Redis (10 minutes when mirror, NVD and CIRCL all report `not_found`, since a fresh CVE may appear shortly); rate limit 10 per minute per user (429 + `Retry-After`); `tracked` is computed for the active client. It
   never writes tracker, ticket or FP rows; audited.
 - **Lockfile import** (`POST /api/pkgvuln/import-lockfile`, multipart): `dry_run=true` only counts (new / already
   monitored / version changed) and writes nothing; `ecosystem=auto` detects the parser from the file name, an
   unrecognised file is **422** ("Unrecognised lockfile, choose the ecosystem"), an explicit `ecosystem` forces that
   ecosystem's fallback parser; `project` (no `..`) becomes the `source_path` prefix stored on each package.
+- **Techstack coverage** (`GET /api/techstack/coverage`, `TechStackCoverage`): per-client summary of catalog mapping
+  (`total`, `active`, `mapped_family`, `mapped_vendor`, `unmapped`, `hidden` = inactive entries). Unaffected by list
+  filters or paging; scoped by `X-Client-ID`. Declared before `/{tech_id}` so `coverage` is not read as an id.
+- **CVE DB meta** (`GET /api/cve-db/meta`, `CveDbMeta`): `total` mirror rows (Redis-cached 300 s; a Redis failure falls
+  back to a live count), `last_sync_at` and `enabled` (`CVE_MIRROR__ENABLED`; off hides the row in the UI). Read-only.
 - `GET /prioritize`: priority score (`services/cve_priority.py`): CVSS 30%, KEV 20%, exploited 20%, PoC
   10%, `in_tech_stack` 20% → a label and `patch_urgency`. If a CVE has rows for several clients, the calling
   client's row is used (other clients' rows are only a fallback when the CVE is not yet tracked by that client).

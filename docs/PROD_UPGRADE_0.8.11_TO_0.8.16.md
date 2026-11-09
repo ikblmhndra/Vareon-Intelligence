@@ -31,7 +31,8 @@ read-only session (`PGOPTIONS=-c default_transaction_read_only=on`); anything ma
    - 0.8.14: **no sweep is running** (both checks: `pg_stat_activity` and the worker log). Sweeps start at 00, 03, 06, ...
      UTC; the safest window is roughly 90 minutes to 3 hours after a slot.
    - 0.8.15: nothing to check (PoC cap, no `.env` key).
-   - 0.8.16: record the Early Warning anomaly counts per group (30d, z 2.0) to compare after deploy.
+   - 0.8.16: record the Early Warning anomaly counts per group (30d, z 2.0) to compare after deploy; optionally count
+     tickets with a non-email `owner_email` or a legacy status alias (queries in the 0.8.16 section, informational).
 2. **`.env`:** no new key in any of the five releases. 0.8.16 adds one migration (`b7d41e9a2c63`), applied by `make deploy`.
 3. **`make deploy`** (with `sudo`). Beat restarts with it, which the 0.8.13 queue routing needs.
 4. **After deploy:**
@@ -387,13 +388,15 @@ Release: not yet tagged (branch `claude/figcraft-design-data`; merge to `origin/
 - Web: new shell following the FigCraft mockup: a top masthead with a "More" menu replaces the sidebar (a Menu button
   below 1024px), with a utility bar for the client switcher and account menu. Buttons, fields, underline and pill tabs,
   segmented controls, chips, cards (flat, bordered, no shadow), tables and dialogs follow the mockup too.
-- CVE Tracker redesign, backend: risk score 0-100 with a sort option; False positive tab filter with reason and note;
-  ticket timestamps and a ticket XLSX export; owner teams and an escalation EMAIL DRAFT to the team lead (Microsoft
+- CVE Tracker redesign, backend: risk score 0-100 with the `sort_by=risk` option; False positive tab filter with reason and note;
+  ticket timestamps and a ticket XLSX export; stricter owner email validation (new or changed values must be a valid
+  email, at most 200 characters; an unchanged legacy value can still be saved); the CVE response carries the KEV ruling
+  (`kev_date_added`, `kev_due_date`, `kev_required_action`); owner teams and an escalation EMAIL DRAFT to the team lead (Microsoft
   Graph; nothing is sent and there is no Telegram); techstack match counts and coverage; per-client catalog hide; CVE DB
   mirror meta and `covered_by_vendor`; check status `running_since` and per-source retry; live CVE lookup (NVD, CIRCL,
   Exploit-DB, EPSS; cached and rate limited); lockfile dry run with ecosystem and project path, plus `Gemfile.lock`,
-  `yarn.lock` and `go.sum` parsers. An unknown lockfile and "Detect from file" now return 422 (before, they were
-  silently parsed as `requirements.txt`). New dependency: `email-validator`.
+  `yarn.lock` and `go.sum` parsers. With ecosystem "Detect from file", a file name the parser does not recognise now
+  returns 422 (before, it was silently parsed as `requirements.txt`); an explicit ecosystem still forces that parser. New dependency: `email-validator`.
 - CVE Tracker redesign, web: CVEs master-detail with risk sort, Open/Acknowledged/False positive tabs, More actions and
   Select mode; Ticketing master-detail and Teams; Monitored Tech, All Tech, CVE DB, Dashboard and Packages restyled;
   all times render in the browser timezone. The Ticketing tab is hidden for roles without `manage_cve`, and the detail
@@ -402,7 +405,7 @@ Release: not yet tagged (branch `claude/figcraft-design-data`; merge to `origin/
 ### Migrations
 
 One migration, applied automatically by `make deploy` (the `migrate` service): revision `b7d41e9a2c63`, on top of
-`7e3b9c1d5a42`. It is additive and all new columns are nullable: `cve_tracker` false-positive reason and note,
+`7e3b9c1d5a42`. It is additive and all new columns are nullable: `cve_false_positives` reason and note,
 `cve_tickets.updated_by` and `escalation_notified_at`, new tables `cve_owner_teams` and `catalog_family_hides`, and
 `monitored_packages.source_path`. It backfills owner teams from the distinct ticket `owner_team` values and
 `cve_tickets.updated_by` from `acknowledged_by`. After deploy `alembic_version` is `b7d41e9a2c63`.
@@ -414,8 +417,22 @@ None.
 ### Before deploy
 
 Record the current Early Warning picture for comparison: anomaly count per group (threat actors, industries,
-countries, overall) at lookback 30d, z 2.0, from Intelligence > Early Warning or `GET /api/spikes`. Nothing else to
-check; all other changes are read-only endpoints and web styling.
+countries, overall) at lookback 30d, z 2.0, from Intelligence > Early Warning or `GET /api/spikes`.
+
+Optional, read-only (`PGOPTIONS=-c default_transaction_read_only=on`), informational only: the app handles both cases,
+but the numbers tell you what legacy data exists.
+
+```sql
+-- tickets whose owner_email is set but does not look like an email (they can still be re-saved unchanged)
+SELECT count(*) FROM cve_tickets WHERE coalesce(owner_email, '') <> '' AND owner_email !~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$';
+-- tickets with a legacy status alias (shown under the canonical status tabs)
+SELECT remediation_status, count(*) FROM cve_tickets
+WHERE lower(coalesce(remediation_status, '')) IN ('pending', 'completed', 'not affected', 'not applicable')
+   OR remediation_status IN ('open', 'in progress', 'resolved', 'closed', 'risk accepted')
+GROUP BY 1;
+```
+
+Nothing else to check; all other changes are read-only endpoints and web styling.
 
 ### After deploy
 
