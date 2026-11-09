@@ -102,8 +102,8 @@ async def test_rename_cascades_to_tickets(
     api_client: AsyncClient, api_session: AsyncSession, admin: dict[str, str]
 ) -> None:
     await _seed_tickets(api_session, "SOC", ["CVE-2026-8011", "CVE-2026-8012"])
-    # Ticket lama dengan spasi di sekitar nama tetap ikut (pembandingan lower(btrim)).
-    await _seed_tickets(api_session, "  soc ", ["CVE-2026-8013"])
+    # Ticket lama dengan spasi di sekitar nama tetap ikut (pembandingan btrim).
+    await _seed_tickets(api_session, " SOC ", ["CVE-2026-8013"])
     team = await _create(api_client, admin, "SOC")
 
     resp = await api_client.patch(f"{URL}/{team['id']}", headers=admin, json={"name": "SecOps"})
@@ -173,3 +173,28 @@ async def test_lead_email_invalid_422(api_client: AsyncClient, admin: dict[str, 
     assert resp.status_code == 422
     ok = await api_client.post(URL, headers=admin, json={"name": "SOC", "lead_email": ""})
     assert ok.status_code == 201
+
+
+@pytest.mark.usefixtures("clients")
+async def test_case_variant_teams_do_not_share_tickets(
+    api_client: AsyncClient, api_session: AsyncSession, admin: dict[str, str]
+) -> None:
+    """Spec 4.5: "SOC" dan "soc" boleh jadi tim terpisah (hasil backfill); ticket tidak dicampur."""
+    await _seed_tickets(api_session, "SOC", ["CVE-2026-8031"])
+    await _seed_tickets(api_session, "soc", ["CVE-2026-8032"])
+    upper = CveOwnerTeam(client_id="default", name="SOC", active=True)
+    lower = CveOwnerTeam(client_id="default", name="soc", active=True)
+    api_session.add_all([upper, lower])
+    await api_session.flush()
+
+    items = (await api_client.get(URL, headers=admin)).json()["items"]
+    assert {i["name"]: i["ticket_count"] for i in items} == {"SOC": 1, "soc": 1}
+
+    resp = await api_client.patch(f"{URL}/{upper.id}", headers=admin, json={"name": "Blue team"})
+    assert resp.status_code == 200
+    assert resp.json()["ticket_count"] == 1
+    api_session.expire_all()
+    assert await _tickets(api_session) == {
+        "CVE-2026-8031": "Blue team",
+        "CVE-2026-8032": "soc",
+    }

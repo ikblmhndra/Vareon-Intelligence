@@ -1388,7 +1388,8 @@ class AsyncCveTicketRepo:
 
 class AsyncCveOwnerTeamRepo:
     """Tim pemilik CVE per client. `CveTicket.owner_team` teks bebas tanpa FK, jadi semua pencocokan
-    nama tim <-> ticket memakai `lower(btrim(...))` (nilai lama bisa berspasi/beda huruf besar)."""
+    nama tim <-> ticket memakai `btrim(owner_team) = nama` (trim saja, huruf besar/kecil dibedakan:
+    spec 4.5 menjaga "SOC" dan "soc" sebagai tim terpisah; nilai lama bisa berspasi)."""
 
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -1401,7 +1402,7 @@ class AsyncCveOwnerTeamRepo:
             select(func.count(CveTicket.id))
             .where(
                 CveTicket.client_id == CveOwnerTeam.client_id,
-                func.lower(func.btrim(CveTicket.owner_team)) == func.lower(CveOwnerTeam.name),
+                func.btrim(CveTicket.owner_team) == CveOwnerTeam.name,
             )
             .correlate(CveOwnerTeam)
             .scalar_subquery()
@@ -1447,7 +1448,7 @@ class AsyncCveOwnerTeamRepo:
         result = await self.session.execute(
             select(func.count(CveTicket.id)).where(
                 CveTicket.client_id == client_id,
-                func.lower(func.btrim(CveTicket.owner_team)) == name.strip().lower(),
+                func.btrim(CveTicket.owner_team) == name.strip(),
             )
         )
         return int(result.scalar_one())
@@ -1459,7 +1460,7 @@ class AsyncCveOwnerTeamRepo:
             update(CveTicket)
             .where(
                 CveTicket.client_id == client_id,
-                func.lower(func.btrim(CveTicket.owner_team)) == old.strip().lower(),
+                func.btrim(CveTicket.owner_team) == old.strip(),
             )
             .values(owner_team=new)
             .execution_options(synchronize_session=False)
