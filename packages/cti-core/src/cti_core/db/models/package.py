@@ -115,6 +115,8 @@ class MonitoredPackage(TimestampMixin, Base):
     scorecard_date: Mapped[str | None] = mapped_column(String(10))
     """`YYYY-MM-DD` string dari API OSSF Scorecard (deps.dev), bukan `Date`
     asli -- port apa adanya, sumbernya udah string date-only."""
+    source_path: Mapped[str | None] = mapped_column(String(500))
+    """Path manifest asal paket (mis. `services/api/requirements.txt`); NULL = ditambah manual."""
 
 
 class PackageVuln(TimestampMixin, Base):

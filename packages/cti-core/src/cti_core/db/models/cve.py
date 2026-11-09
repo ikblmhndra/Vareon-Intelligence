@@ -50,6 +50,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    true,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -218,6 +219,10 @@ class CveFalsePositive(Base):
     marked_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+    reason: Mapped[str | None] = mapped_column(String(40))
+    """"Soft enum" tanpa CHECK (sama pola `CveTicket`): `not_applicable`|`already_patched`|
+    `mitigated`|`misattributed`|`other`. NULL = baris lama sebelum alasan dicatat."""
+    note: Mapped[str | None] = mapped_column(Text)
 
 
 class CveTicket(TimestampMixin, Base):
@@ -285,3 +290,30 @@ class CveTicket(TimestampMixin, Base):
 
     acknowledged_by: Mapped[str | None] = mapped_column(String(200))
     acknowledge_time: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_by: Mapped[str | None] = mapped_column(String(200))
+    """Siapa yang TERAKHIR mengubah ticket. Beda dari `acknowledged_by` yang first-ack-wins dan
+    tidak pernah ditimpa; baris lama di-backfill dari `acknowledged_by`."""
+    escalation_notified_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    """Kapan draf email eskalasi terakhir dibuat; NULL = belum pernah."""
+
+
+class CveOwnerTeam(TimestampMixin, Base):
+    """Daftar tim pemilik per client untuk dropdown ticket. `CveTicket.owner_team` TETAP teks
+    bebas yang sama dengan `name` (tanpa FK), jadi ticket lama tidak terputus. Keunikan
+    case-insensitive dijaga service, bukan indeks fungsional, karena pembandingan migrasi vs
+    model kurang akur dengan indeks ekspresi; constraint di sini hanya mencegah duplikat persis.
+    Tanpa kolom Telegram: eskalasi hanya draf email."""
+
+    __tablename__ = "cve_owner_teams"
+    __table_args__ = (UniqueConstraint("client_id", "name", name="uq_cve_owner_teams_client_name"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    client_id: Mapped[str] = mapped_column(
+        ForeignKey("clients.client_id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    lead_name: Mapped[str | None] = mapped_column(String(200))
+    lead_email: Mapped[str | None] = mapped_column(String(200))
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=true())
