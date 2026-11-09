@@ -495,3 +495,30 @@ async def test_tickets_hide_false_positive_cves_unless_asked(
     everything = await api_client.get("/api/cve/tickets?include_fp=true", headers=auth_header())
     flags = {t["cve_id"]: t["false_positive"] for t in everything.json()["tickets"]}
     assert flags == {"CVE-2026-7001": False, "CVE-2026-7002": True}
+
+
+async def test_list_cves_returns_risk_score_and_label(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+) -> None:
+    await AsyncClientRepo(api_session).ensure_default()
+    api_session.add_all(
+        [
+            TechStackEntry(name="Nginx", client_id="default"),
+            CveTracker(
+                cve_id="CVE-2026-9101",
+                client_id="default",
+                tech="Nginx",
+                cve_score=7.0,
+                cisa_kev=True,
+                published=datetime.date(2026, 9, 1),
+            ),
+        ]
+    )
+    await api_session.flush()
+    resp = await api_client.get("/api/cve", headers=auth_header(), params={"sort_by": "risk"})
+    assert resp.status_code == 200
+    row = resp.json()["cves"][0]
+    assert row["risk_score"] == 61.0
+    assert row["risk_label"] == "high_priority"

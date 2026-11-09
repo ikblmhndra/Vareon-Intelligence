@@ -164,6 +164,8 @@
         'published': '2026-09-05',
         'reference': list([
         ]),
+        'risk_label': 'low',
+        'risk_score': 9.3,
         'solutions': '',
         'summary': 'Config parsing bug',
         'tech': 'nginx',
@@ -196,6 +198,8 @@
         'published': '2026-09-01',
         'reference': list([
         ]),
+        'risk_label': 'medium',
+        'risk_score': 49.4,
         'solutions': '',
         'summary': 'Stored XSS in a WordPress plugin',
         'tech': 'WordPress',

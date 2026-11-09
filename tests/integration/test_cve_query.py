@@ -553,3 +553,57 @@ async def test_exploit_flags_are_per_cve_across_clients_and_skip_false_positives
         "CVE-2026-1005": (False, True),  # baris "default" (KEV) FP; yang dihitung baris "acme"
     }
     assert await repo.exploit_flags([]) == {}
+
+
+class TestSortByRisk:
+    async def _seed_risk(self, session: AsyncSession) -> None:
+        await _ensure_clients(session)
+        common = {"client_id": "default", "published": datetime.date(2026, 9, 1)}
+        session.add_all(
+            [
+                CveTracker(
+                    cve_id="CVE-2026-9001", tech="Nginx", cve_score=7.0, cisa_kev=True, **common
+                ),
+                CveTracker(cve_id="CVE-2026-9002", tech="Nginx", cve_score=7.0, **common),
+                CveTracker(cve_id="CVE-2026-9003", tech="Orphan", cve_score=9.0, **common),
+                CveTracker(cve_id="CVE-2026-9004", tech="Orphan", cve_score=2.0, **common),
+                CveTracker(cve_id="CVE-2026-9005", tech="Orphan", cve_score=2.0, **common),
+            ]
+        )
+        await session.flush()
+
+    async def test_sort_by_risk_orders_by_priority_formula(
+        self, async_db_session: AsyncSession
+    ) -> None:
+        await self._seed_risk(async_db_session)
+        repo = AsyncCveTrackerRepo(async_db_session)
+        cves, _ = await repo.list_filtered(
+            client_id="default", sort_by="risk", sort_dir="desc", risk_names=["nginx"]
+        )
+        ids = [c.cve_id for c in cves]
+        # A = 7*3+20+20 = 61; B = 41; C = 27; D/E = 6 (urut id).
+        assert ids == [
+            "CVE-2026-9001",
+            "CVE-2026-9002",
+            "CVE-2026-9003",
+            "CVE-2026-9004",
+            "CVE-2026-9005",
+        ]
+
+        # D/E skor sama: paging 1 per halaman tidak boleh mengulang/menghilangkan baris.
+        seen = []
+        for page in range(1, 6):
+            rows, _ = await repo.list_filtered(
+                client_id="default",
+                sort_by="risk",
+                sort_dir="desc",
+                risk_names=["nginx"],
+                page=page,
+                page_size=1,
+            )
+            seen += [c.cve_id for c in rows]
+        assert seen == ids
+
+        # Tanpa risk_names tidak ada bonus in-stack: B (21) jatuh di bawah C (27).
+        cves, _ = await repo.list_filtered(client_id="default", sort_by="risk", sort_dir="desc")
+        assert [c.cve_id for c in cves][:3] == ["CVE-2026-9001", "CVE-2026-9003", "CVE-2026-9002"]

@@ -23,10 +23,11 @@ import zoneinfo
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import ColumnElement, Row, Select, and_, func, or_, select, text
+from sqlalchemy import ColumnElement, Row, Select, and_, false, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import InstrumentedAttribute, Session
 
+from cti_core.cve_risk import risk_score_sql
 from cti_core.db.models.article import Article
 from cti_core.db.models.cve import (
     CveAffected,
@@ -687,7 +688,10 @@ class AsyncCveTrackerRepo:
         sort_dir: str = "desc",
         ack_filter: str | None = None,
         date_basis: str = "published",
+        risk_names: Sequence[str] | None = None,
     ) -> tuple[list[CveTracker], int]:
+        """`risk_names` = nama techstack client (lowercase, SEMUA entri termasuk nonaktif; sama
+        dengan `get_risk_context`) buat bonus in-stack saat `sort_by="risk"`; None = tanpa bonus."""
         base = _apply_filters(
             select(CveTracker),
             client_id=client_id,
@@ -704,7 +708,12 @@ class AsyncCveTrackerRepo:
             await self.session.execute(select(func.count()).select_from(base.subquery()))
         ).scalar_one()
 
-        order_col = _SORT_FIELDS.get(sort_by, CveTracker.published)
+        order_col: ColumnElement[Any] | InstrumentedAttribute[Any]
+        if sort_by == "risk":
+            in_stack = func.lower(CveTracker.tech).in_(list(risk_names)) if risk_names else false()
+            order_col = risk_score_sql(in_stack)
+        else:
+            order_col = _SORT_FIELDS.get(sort_by, CveTracker.published)
         order = order_col.desc() if sort_dir == "desc" else order_col.asc()
         # `CveTracker.id` = tie-breaker: tanpa ini baris ber-nilai sama (mis. published) bisa
         # muncul di dua halaman dan sebagian lain tidak pernah muncul.

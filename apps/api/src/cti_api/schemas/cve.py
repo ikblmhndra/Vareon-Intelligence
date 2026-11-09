@@ -78,6 +78,8 @@ class CveOut(BaseModel):
     tech_exposure: str = "internal"
     hosting_type: str = "on_prem"
     adjusted_risk_score: float = 0.0
+    risk_score: float = 0.0
+    risk_label: str = ""
     cisa_kev: bool = False
     active_exploitation: bool = False
     epss_score: float | None = None

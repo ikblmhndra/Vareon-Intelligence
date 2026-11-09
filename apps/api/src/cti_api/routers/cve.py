@@ -27,6 +27,7 @@ import datetime
 import io
 from collections.abc import Sequence
 
+from cti_core.cve_risk import risk_label, risk_score
 from cti_core.db.models.cve import CveTicket, CveTracker
 from cti_core.db.repositories.auth import AsyncAuditLogRepo
 from cti_core.db.repositories.cve import (
@@ -132,6 +133,14 @@ def _serialize(
     hosting_mult = HOSTING_MULTIPLIER.get(hosting, 1.0)
     adjusted = round(min(10.0, raw * exposure_mult * hosting_mult), 1) if raw else 0.0
 
+    score = risk_score(
+        cve.cve_score,
+        kev=cve.cisa_kev,
+        exploited=cve.active_exploitation,
+        poc=cve.poc_available,
+        in_stack=(cve.tech or "").lower() in risk_ctx,
+    )
+
     return CveOut(
         id=cve.id,
         cve_id=cve.cve_id,
@@ -158,6 +167,8 @@ def _serialize(
         tech_exposure=exposure,
         hosting_type=hosting,
         adjusted_risk_score=adjusted,
+        risk_score=score,
+        risk_label=risk_label(score),
         cisa_kev=cve.cisa_kev,
         active_exploitation=cve.active_exploitation,
         epss_score=cve.epss_score,
@@ -184,7 +195,7 @@ async def list_cves(
     date_start: datetime.date | None = None,
     date_end: datetime.date | None = None,
     include_fp: bool = False,
-    sort_by: str = Query("published", pattern="^(tech|severity|published|epss)$"),
+    sort_by: str = Query("published", pattern="^(tech|severity|published|epss|risk)$"),
     sort_dir: str = Query("desc", pattern="^(asc|desc)$"),
     ack_filter: str | None = Query(None, pattern=_ACK_FILTER_PATTERN),
     date_basis: str = Query("published", pattern=_DATE_BASIS_PATTERN),
@@ -199,6 +210,8 @@ async def list_cves(
 
     effective_tech = tech or await _active_tech_names(session, cid)
     tracker_repo = AsyncCveTrackerRepo(session)
+    # Konteks risiko diambil sebelum query: `sort_by=risk` butuh nama techstack (bonus in-stack).
+    risk_ctx = await AsyncTechStackRepo(session).get_risk_context(cid)
     cves, total = await tracker_repo.list_filtered(
         client_id=cid,
         page=page,
@@ -213,11 +226,11 @@ async def list_cves(
         sort_dir=sort_dir,
         ack_filter=ack_filter,
         date_basis=date_basis,
+        risk_names=list(risk_ctx),
     )
 
     tp_ids = [c.cve_id for c in cves if c.cve_id not in fp_ids_set]
     mentions_map = await tracker_repo.get_article_mentions(tp_ids)
-    risk_ctx = await AsyncTechStackRepo(session).get_risk_context(cid)
 
     return CveListResponse(
         cves=[
