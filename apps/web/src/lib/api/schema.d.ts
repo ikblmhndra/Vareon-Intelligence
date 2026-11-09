@@ -5100,6 +5100,21 @@ export interface components {
             /** Id */
             id: number;
             /**
+             * Kev Date Added
+             * @default
+             */
+            kev_date_added: string;
+            /**
+             * Kev Due Date
+             * @default
+             */
+            kev_due_date: string;
+            /**
+             * Kev Required Action
+             * @default
+             */
+            kev_required_action: string;
+            /**
              * Last Updated
              * @default
              */
@@ -5309,7 +5324,7 @@ export interface components {
              * Owner Email
              * @default
              */
-            owner_email: string | "";
+            owner_email: string;
             /**
              * Owner Team
              * @default

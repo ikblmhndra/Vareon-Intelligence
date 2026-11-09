@@ -2431,6 +2431,21 @@
             "title": "Id",
             "type": "integer"
           },
+          "kev_date_added": {
+            "default": "",
+            "title": "Kev Date Added",
+            "type": "string"
+          },
+          "kev_due_date": {
+            "default": "",
+            "title": "Kev Due Date",
+            "type": "string"
+          },
+          "kev_required_action": {
+            "default": "",
+            "title": "Kev Required Action",
+            "type": "string"
+          },
           "last_updated": {
             "default": "",
             "title": "Last Updated",
@@ -2796,18 +2811,10 @@
             "type": "string"
           },
           "owner_email": {
-            "anyOf": [
-              {
-                "format": "email",
-                "type": "string"
-              },
-              {
-                "const": "",
-                "type": "string"
-              }
-            ],
             "default": "",
-            "title": "Owner Email"
+            "maxLength": 200,
+            "title": "Owner Email",
+            "type": "string"
           },
           "owner_team": {
             "default": "",

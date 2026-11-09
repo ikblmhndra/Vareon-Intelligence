@@ -525,3 +525,85 @@ async def test_list_cves_returns_risk_score_and_label(
     row = resp.json()["cves"][0]
     assert row["risk_score"] == 61.0
     assert row["risk_label"] == "high_priority"
+
+
+async def test_list_cves_serializes_kev_ruling(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+) -> None:
+    """Putusan KEV (tanggal masuk, tenggat, tindakan wajib) dibaca dari `cisa_kev_detail`; CVE tanpa
+    detail dapat string kosong."""
+    await AsyncClientRepo(api_session).ensure_default()
+    api_session.add_all(
+        [
+            TechStackEntry(name="Nginx", client_id="default"),
+            CveTracker(
+                cve_id="CVE-2026-9201",
+                client_id="default",
+                tech="Nginx",
+                cve_score=9.0,
+                cisa_kev=True,
+                cisa_kev_detail={
+                    "date_added": "2026-10-01",
+                    "due_date": "2026-10-22",
+                    "action": "Apply updates per vendor instructions.",
+                },
+                published=datetime.date(2026, 9, 1),
+            ),
+            CveTracker(
+                cve_id="CVE-2026-9202",
+                client_id="default",
+                tech="Nginx",
+                cve_score=5.0,
+                published=datetime.date(2026, 9, 2),
+            ),
+        ]
+    )
+    await api_session.flush()
+    resp = await api_client.get("/api/cve", headers=auth_header())
+    assert resp.status_code == 200
+    rows = {r["cve_id"]: r for r in resp.json()["cves"]}
+    assert rows["CVE-2026-9201"]["kev_date_added"] == "2026-10-01"
+    assert rows["CVE-2026-9201"]["kev_due_date"] == "2026-10-22"
+    assert rows["CVE-2026-9201"]["kev_required_action"] == "Apply updates per vendor instructions."
+    assert rows["CVE-2026-9202"]["kev_date_added"] == ""
+    assert rows["CVE-2026-9202"]["kev_required_action"] == ""
+
+
+async def _put_ticket(
+    api_client: AsyncClient, headers: dict[str, str], **fields: str
+) -> tuple[int, dict[str, object]]:
+    resp = await api_client.put("/api/cve/CVE-2026-7001/ticket", headers=headers, json=fields)
+    return resp.status_code, resp.json()
+
+
+async def test_ticket_owner_email_validates_only_new_values(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+) -> None:
+    """Email teks bebas lama boleh disimpan ulang tanpa diubah; nilai baru harus email sah."""
+    from cti_core.db.models.cve import CveTicket
+
+    await _seed_two_cves(api_session)
+    api_session.add(
+        CveTicket(
+            ticket_id="CVE-T-LEGACY",
+            cve_id="CVE-2026-7001",
+            client_id="default",
+            owner_email="soc team / ext 123",
+        )
+    )
+    await api_session.flush()
+    headers = auth_header()
+    status, _ = await _put_ticket(api_client, headers, owner_email="  soc team / ext 123 ")
+    assert status == 200
+    status, _ = await _put_ticket(api_client, headers, owner_email="not an email")
+    assert status == 422
+    status, _ = await _put_ticket(api_client, headers, owner_email="x" * 201 + "@example.com")
+    assert status == 422
+    status, _ = await _put_ticket(api_client, headers, owner_email=" lead@example.com ")
+    assert status == 200
+    got = await api_client.get("/api/cve/CVE-2026-7001/ticket", headers=headers)
+    assert got.json()["owner_email"] == "lead@example.com"

@@ -44,6 +44,9 @@ NVD_BUCKET_WINDOW_S = 30
 # Bucket NVD ini counter Redis TERSENDIRI, bukan kuota bersama dengan pacing `new_cve` (itu
 # in-process, tanpa bucket Redis); angkanya sengaja konservatif (kunci NVD: 50 req/30 dtk).
 CACHE_TTL_S = 21600
+NOT_FOUND_CACHE_TTL_S = 600
+"""TTL singkat bila mirror, NVD, dan CIRCL semuanya `not_found`: CVE yang baru terbit sering
+belum ada di sumber, jadi jangan menahan "tidak ditemukan" 6 jam."""
 SOURCE_TIMEOUT_S = 10.0
 
 _NVD_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
@@ -361,7 +364,10 @@ async def live_lookup(
     else:
         out = await _fetch_public(session, redis, cve_id=cve_id, client_id=client_id)
         if not any(s.status in _FAILED for s in out.sources):
-            await redis.set(cache_key, out.model_dump_json(), ex=CACHE_TTL_S)
+            core = {s.id: s.status for s in out.sources if s.id in ("mirror", "nvd", "circl")}
+            nothing_found = len(core) == 3 and set(core.values()) == {"not_found"}
+            ttl = NOT_FOUND_CACHE_TTL_S if nothing_found else CACHE_TTL_S
+            await redis.set(cache_key, out.model_dump_json(), ex=ttl)
 
     # bagian khusus client: selalu dihitung ulang, tidak pernah dari cache
     tracked = await AsyncCveTrackerRepo(session).get_by_cve_ids([cve_id], client_id=client_id)

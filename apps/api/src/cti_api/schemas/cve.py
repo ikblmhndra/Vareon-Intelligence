@@ -24,7 +24,7 @@ from __future__ import annotations
 import re
 from typing import Annotated, Literal
 
-from pydantic import AfterValidator, BaseModel, EmailStr, Field, model_validator
+from pydantic import AfterValidator, BaseModel, Field, StringConstraints, model_validator
 
 _CVE_ID = re.compile(r"cve-[0-9]{4}-[0-9]{4,11}", re.ASCII | re.IGNORECASE)
 """`CVE-YYYY-NNNN...`, maksimum 11 digit supaya muat di kolom `String(20)` (9 karakter awalan).
@@ -87,6 +87,9 @@ class CveOut(BaseModel):
     risk_score: float = 0.0
     risk_label: str = ""
     cisa_kev: bool = False
+    kev_date_added: str = ""
+    kev_due_date: str = ""
+    kev_required_action: str = ""
     active_exploitation: bool = False
     epss_score: float | None = None
     epss_percentile: float | None = None
@@ -153,7 +156,9 @@ class CveTicketBody(BaseModel):
     affected_version: str = ""
     fixed_version: str = ""
     asset_owner: str = ""
-    owner_email: EmailStr | Literal[""] = ""
+    # Bentuk email divalidasi di router hanya untuk nilai BARU/berubah (ticket lama boleh teks
+    # bebas hasil impor); di sini cuma potong spasi dan batasi panjang kolom (String(200)).
+    owner_email: Annotated[str, StringConstraints(strip_whitespace=True, max_length=200)] = ""
     owner_team: str = ""
     active_exploitation: str = ""
     remediation_date_plan: str = ""

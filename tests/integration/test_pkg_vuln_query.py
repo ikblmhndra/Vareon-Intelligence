@@ -463,6 +463,20 @@ async def test_import_sets_source_path(async_db_session: AsyncSession) -> None:
     assert pkg.source_path == "shop-api/requirements.txt"
 
 
+async def test_import_truncates_long_source_path(async_db_session: AsyncSession) -> None:
+    """`source_path` String(500): nama file yang kepanjangan dipotong, impor tidak gagal."""
+    await _ensure_clients(async_db_session)
+    long_name = "d" * 600 + "/requirements.txt"
+    await pkg_vuln_service.import_lockfile(
+        async_db_session, long_name, "flask==3.0.0\n", "default", ecosystem="PyPI"
+    )
+    pkg = await AsyncMonitoredPackageRepo(async_db_session).get_by_name_ci(
+        "flask", "PyPI", "default"
+    )
+    assert pkg is not None
+    assert pkg.source_path == long_name[:500]
+
+
 async def test_unknown_lockfile_auto_is_422(
     api_client: AsyncClient, auth_header: Callable[..., dict[str, str]]
 ) -> None:

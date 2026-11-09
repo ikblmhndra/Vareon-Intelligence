@@ -241,3 +241,32 @@ async def test_counter_without_ttl_is_healed(
     resp = await api_client.get(f"/api/cve/lookup/{CVE}", headers=analyst)
     assert resp.status_code == 200
     assert "cve:lookup:user:alice" in expired
+
+
+async def test_not_found_everywhere_is_cached_briefly(
+    api_client: AsyncClient,
+    analyst: dict[str, str],
+    calls: Calls,
+    monkeypatch: pytest.MonkeyPatch,
+    fake_redis: Any,
+) -> None:
+    """CVE yang belum ada di mirror/NVD/CIRCL bisa muncul sebentar lagi: jangan di-cache 6 jam."""
+
+    async def nothing(cve_id: str) -> dict[str, Any] | None:
+        return None
+
+    monkeypatch.setattr(cve_live_lookup, "_fetch_nvd", nothing)
+    monkeypatch.setattr(cve_live_lookup, "_fetch_circl", nothing)
+    resp = await api_client.get(f"/api/cve/lookup/{CVE}", headers=analyst)
+    assert resp.status_code == 200
+    s = statuses(resp.json())
+    assert (s["mirror"], s["nvd"], s["circl"]) == ("not_found",) * 3
+    assert await fake_redis.ttl(f"cve:lookup:{CVE}") == cve_live_lookup.NOT_FOUND_CACHE_TTL_S
+    assert cve_live_lookup.NOT_FOUND_CACHE_TTL_S == 600
+
+
+async def test_found_result_keeps_long_cache_ttl(
+    api_client: AsyncClient, analyst: dict[str, str], calls: Calls, fake_redis: Any
+) -> None:
+    await api_client.get(f"/api/cve/lookup/{CVE}", headers=analyst)
+    assert await fake_redis.ttl(f"cve:lookup:{CVE}") == cve_live_lookup.CACHE_TTL_S

@@ -998,7 +998,8 @@ async def import_lockfile(
     already_monitored / version_changes), tanpa menulis apa pun.
     `UnknownLockfileError` dilempar ke caller (router -> 422)."""
     detected_format, parsed_pkgs = parse_lockfile(filename, content, ecosystem)
-    source_path = f"{project}/{filename}" if project else filename
+    # Kolom `source_path` String(500): nama yang kepanjangan dipotong, impor tidak gagal.
+    source_path = (f"{project}/{filename}" if project else filename)[:500]
     result_eco = parsed_pkgs[0][1] if parsed_pkgs else ""
     if not parsed_pkgs:
         return {

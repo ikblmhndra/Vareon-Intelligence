@@ -39,6 +39,7 @@ from cti_core.db.repositories.cve import (
 from cti_core.db.repositories.techstack import AsyncTechStackRepo
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
+from pydantic import EmailStr, TypeAdapter, ValidationError
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -188,6 +189,9 @@ def _serialize(
         risk_score=score,
         risk_label=risk_label(score),
         cisa_kev=cve.cisa_kev,
+        kev_date_added=str((cve.cisa_kev_detail or {}).get("date_added") or ""),
+        kev_due_date=str((cve.cisa_kev_detail or {}).get("due_date") or ""),
+        kev_required_action=str((cve.cisa_kev_detail or {}).get("action") or ""),
         active_exploitation=cve.active_exploitation,
         epss_score=cve.epss_score,
         epss_percentile=cve.epss_percentile,
@@ -873,6 +877,28 @@ async def get_cve_ticket(
     return _serialize_ticket(ticket)
 
 
+_EMAIL_ADAPTER: TypeAdapter[str] = TypeAdapter(EmailStr)
+
+
+def _require_valid_email(value: str) -> None:
+    """`422` (bentuk sama dengan validasi body) kalau bukan email sah."""
+    try:
+        _EMAIL_ADAPTER.validate_python(value)
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=[
+                {
+                    "type": "value_error",
+                    "loc": ["body", "owner_email"],
+                    "msg": "Enter a valid email address",
+                    "input": value,
+                    "ctx": {"error": str(exc.errors()[0]["msg"])},
+                }
+            ],
+        ) from exc
+
+
 @router.put(
     "/{cve_id}/ticket",
     response_model=CveTicketSaveOut,
@@ -896,6 +922,9 @@ async def update_cve_ticket(
     await _require_tracked(session, cid, [cve_id], unless_ticketed=True)
     ticket_repo = AsyncCveTicketRepo(session)
     old = await ticket_repo.get(cve_id, cid)
+    stored_email = ((old.owner_email if old else "") or "").strip()
+    if body.owner_email and body.owner_email != stored_email:
+        _require_valid_email(body.owner_email)
     newly = cve_escalation.is_newly_escalated(
         old.escalation_required if old else None, body.escalation_required
     )

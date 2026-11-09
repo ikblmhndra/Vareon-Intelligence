@@ -157,6 +157,9 @@
         'fp_reason': '',
         'hosting_type': 'on_prem',
         'id': int,
+        'kev_date_added': '',
+        'kev_due_date': '',
+        'kev_required_action': '',
         'last_updated': str,
         'link': '',
         'news_mentions': list([
@@ -195,6 +198,9 @@
         'fp_reason': '',
         'hosting_type': 'on_prem',
         'id': int,
+        'kev_date_added': '',
+        'kev_due_date': '',
+        'kev_required_action': '',
         'last_updated': str,
         'link': '',
         'news_mentions': list([
