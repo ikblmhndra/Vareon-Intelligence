@@ -68,12 +68,14 @@ from cti_api.schemas.cve import (
 )
 from cti_api.schemas.cve_check import CheckSourceId, CveCheckTriggered, CveFreshness
 from cti_api.schemas.cve_dashboard import CveDashboard
+from cti_api.schemas.cve_lookup import CveLookupOut
 from cti_api.schemas.techstack import EXPOSURE_MULTIPLIER, HOSTING_MULTIPLIER
 from cti_api.services import cve_check as cve_check_service
 from cti_api.services import cve_dashboard as cve_dashboard_service
 from cti_api.services import cve_email as cve_email_service
 from cti_api.services import cve_escalation
 from cti_api.services import cve_export as cve_export_service
+from cti_api.services import cve_live_lookup as cve_live_lookup_service
 from cti_api.services import cve_lookup as cve_lookup_service
 from cti_api.services import cve_priority as cve_priority_service
 
@@ -390,6 +392,40 @@ async def check_new_cves(
     )
     await session.commit()
     return result
+
+
+@router.get("/lookup/{cve_id}", response_model=CveLookupOut)
+async def live_lookup_cve(
+    request: Request,
+    cve_id: CveId,
+    session: AsyncSession = Depends(get_db),
+    redis: Redis = Depends(get_redis),
+    user: AuthedUser = Depends(require_auth),
+    x_client_id: str | None = Header(None),
+) -> CveLookupOut:
+    """Lookup langsung CVE sembarang (mirror, NVD, CIRCL, Exploit-DB, EPSS paralel). Hanya baca:
+    tidak menulis tracker/ticket/FP. Per user 10/menit (429 + `Retry-After`), cache 6 jam untuk
+    bagian publik; `tracked` dihitung untuk client aktif. Satu sumber gagal tidak menggagalkan
+    lookup (lihat `sources`). Dicatat di audit log."""
+    cid = effective_client_id(user, x_client_id)
+    try:
+        out = await cve_live_lookup_service.live_lookup(
+            session, redis, cve_id=cve_id, client_id=cid, username=user["username"]
+        )
+    except cve_live_lookup_service.LookupRateLimited as e:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many lookups, try again in {e.retry_after} seconds",
+            headers={"Retry-After": str(e.retry_after)},
+        ) from None
+    await AsyncAuditLogRepo(session).write(
+        username=user["username"],
+        action="cve_live_lookup",
+        detail={"cve_id": cve_id},
+        ip_address=request_ip(request),
+    )
+    await session.commit()
+    return out
 
 
 @router.get("/tech-list")
