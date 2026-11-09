@@ -323,6 +323,7 @@
 # ---
 # name: test_update_cve_ticket_then_get[put_response]
   dict({
+    'escalation': 'not_needed',
     'ok': True,
   })
 # ---

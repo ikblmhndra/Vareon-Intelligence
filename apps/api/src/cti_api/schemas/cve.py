@@ -165,6 +165,15 @@ class CveTicketBody(BaseModel):
     closure_date: str = ""
 
 
+class CveTicketSaveOut(BaseModel):
+    """Respons `PUT /api/cve/{id}/ticket`. `escalation`: `queued` = draf email ke lead tim
+    dijadwalkan; `no_lead` = eskalasi menyala tapi tim/lead_email tidak ditemukan; `failed` =
+    broker mati (ticket tetap tersimpan); `not_needed` = bukan transisi ke nyala."""
+
+    ok: bool = True
+    escalation: Literal["queued", "not_needed", "no_lead", "failed"] = "not_needed"
+
+
 class BulkAcknowledgeBody(BaseModel):
     """Tanpa nama analis: `acknowledged_by` selalu username yang login (lihat `acknowledge`)."""
 

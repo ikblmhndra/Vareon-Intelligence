@@ -32,6 +32,7 @@ from cti_core.db.models.cve import CveFalsePositive, CveTicket, CveTracker
 from cti_core.db.repositories.auth import AsyncAuditLogRepo
 from cti_core.db.repositories.cve import (
     AsyncCveFalsePositiveRepo,
+    AsyncCveOwnerTeamRepo,
     AsyncCveTicketRepo,
     AsyncCveTrackerRepo,
 )
@@ -60,6 +61,7 @@ from cti_api.schemas.cve import (
     CveReferenceOut,
     CveStats,
     CveTicketBody,
+    CveTicketSaveOut,
     DraftEmailBody,
     FalsePositiveBody,
     PurgeOrphanedBody,
@@ -70,6 +72,7 @@ from cti_api.schemas.techstack import EXPOSURE_MULTIPLIER, HOSTING_MULTIPLIER
 from cti_api.services import cve_check as cve_check_service
 from cti_api.services import cve_dashboard as cve_dashboard_service
 from cti_api.services import cve_email as cve_email_service
+from cti_api.services import cve_escalation
 from cti_api.services import cve_export as cve_export_service
 from cti_api.services import cve_lookup as cve_lookup_service
 from cti_api.services import cve_priority as cve_priority_service
@@ -830,7 +833,11 @@ async def get_cve_ticket(
     return _serialize_ticket(ticket)
 
 
-@router.put("/{cve_id}/ticket", dependencies=[Depends(require_permission("manage_cve"))])
+@router.put(
+    "/{cve_id}/ticket",
+    response_model=CveTicketSaveOut,
+    dependencies=[Depends(require_permission("manage_cve"))],
+)
 async def update_cve_ticket(
     cve_id: CveId,
     body: CveTicketBody,
@@ -838,12 +845,25 @@ async def update_cve_ticket(
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),
     x_client_id: str | None = Header(None),
-) -> dict[str, bool]:
+) -> CveTicketSaveOut:
     """`404` kalau CVE-nya tidak ada di tracker client ini, kecuali sudah punya ticket (ticket yang
-    ada tetap boleh diubah)."""
+    ada tetap boleh diubah).
+
+    Eskalasi (spec 2a 4.6): hanya transisi mati -> nyala yang menjadwalkan draf email ke lead tim
+    (sesudah commit, best effort). Mematikan eskalasi mengosongkan `escalation_notified_at`
+    supaya menyalakan lagi membuat draf baru."""
     cid = effective_client_id(user, x_client_id)
     await _require_tracked(session, cid, [cve_id], unless_ticketed=True)
-    await AsyncCveTicketRepo(session).upsert(
+    ticket_repo = AsyncCveTicketRepo(session)
+    old = await ticket_repo.get(cve_id, cid)
+    newly = cve_escalation.is_newly_escalated(
+        old.escalation_required if old else None, body.escalation_required
+    )
+    team = None
+    if newly:
+        teams = [t for t, _ in await AsyncCveOwnerTeamRepo(session).list(cid)]
+        team = cve_escalation.pick_team(teams, body.owner_team)
+    ticket = await ticket_repo.upsert(
         cve_id=cve_id,
         client_id=cid,
         affected_asset=body.affected_asset or None,
@@ -862,6 +882,8 @@ async def update_cve_ticket(
         closure_date=_parse_date(body.closure_date),
         updated_by=user["username"],
     )
+    if not body.escalation_required:
+        ticket.escalation_notified_at = None
     await AsyncAuditLogRepo(session).write(
         username=user["username"],
         action="update_ticket",
@@ -869,7 +891,12 @@ async def update_cve_ticket(
         ip_address=request_ip(request),
     )
     await session.commit()
-    return {"ok": True}
+    if not newly:
+        return CveTicketSaveOut(escalation="not_needed")
+    if team is None or not (team.lead_email or "").strip():
+        return CveTicketSaveOut(escalation="no_lead")
+    queued = cve_escalation.enqueue_escalation(client_id=cid, cve_id=cve_id, actor=user["username"])
+    return CveTicketSaveOut(escalation="queued" if queued else "failed")
 
 
 @router.post("/bulk-acknowledge", dependencies=[Depends(require_permission("manage_cve"))])
