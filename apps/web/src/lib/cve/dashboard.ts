@@ -38,10 +38,6 @@ export function groupStatus(b: components["schemas"]["StatusBreakdown"]): Record
   return out;
 }
 
-/** Rata-rata hari di atas ambang ini diberi warna destructive di tabel severity (sama dengan batas
- * "Needs improvement" pada `ratingForMtta`). */
-export const SLOW_MEAN_DAYS = 14;
-
 export const STATUS_LABEL: Record<string, string> = Object.fromEntries(STATUS_ORDER.map((s) => [s.key, s.label]));
 
 /** `null` = tidak ada data; angka bulat tanpa desimal, selain itu 1 desimal. */
