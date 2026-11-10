@@ -626,6 +626,18 @@ export interface SpikeEntry {
   severity: "high" | "medium";
 }
 
+/**
+ * Deret harian per entity untuk sparkline Early Warning -- dari `services/spike.py::get_spikes()`
+ * (kunci `daily`). Semua array sejajar dengan `dates` (menaik, inklusif lookback..hari ini).
+ */
+export interface SpikeDaily {
+  dates: string[];
+  threat_actors: Record<string, number[]>;
+  industries: Record<string, number[]>;
+  countries: Record<string, number[]>;
+  overall: number[];
+}
+
 export interface SpikesResponse {
   threat_actors: SpikeEntry[];
   countries: SpikeEntry[];
@@ -633,6 +645,7 @@ export interface SpikesResponse {
   overall: SpikeEntry[];
   generated_at: string;
   parameters: { lookback_days: number; z_threshold: number; recent_window: number };
+  daily: SpikeDaily;
 }
 
 export interface RiskMatrixCell {
@@ -859,6 +872,8 @@ export interface IocFpSuggestion {
   value: string;
   allowlist_type: string;
   fp_count: number;
+  /** Dari `services/fp_analytics.py` (kunci `tp_count`): penanda saran allowlist yang berisiko. */
+  tp_count: number;
 }
 
 export interface IocFpAnalytics {

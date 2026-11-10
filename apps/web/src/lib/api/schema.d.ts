@@ -1500,7 +1500,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Entities */
+        /**
+         * List Entities
+         * @description `sort=mentions` hanya untuk halaman Entities (C6); picker/dialog memakai default nama.
+         */
         get: operations["list_entities_api_entities_get"];
         put?: never;
         /** Create Entity */
@@ -2015,6 +2018,30 @@ export interface paths {
         put?: never;
         /** Bulk Delete */
         post: operations["bulk_delete_api_iocs_bulk_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/iocs/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Iocs
+         * @description Export CSV dengan filter yang sama dengan `GET /api/iocs`. Semua TLP ikut: IOC bersifat
+         *     platform-wide (C2, tanpa client_id) dan file membawa kolom `tlp`/`pap` untuk konsumennya.
+         *     Nilai kanonik (tidak di-defang). Dibaca per batch keyset (bukan offset) lalu dijadikan satu
+         *     `Response` tanpa streaming; terpotong di `_EXPORT_CAP` ditandai header `X-Export-Truncated`.
+         *     Harus dideklarasikan sebelum `/{ioc_type}/{value:path}`.
+         */
+        get: operations["export_iocs_api_iocs_export_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2582,7 +2609,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Pirs */
+        /**
+         * Get Pirs
+         * @description Daftar PIR + RFI tertaut. `linked_pir_id` hanyalah FK tanpa cek client, jadi RFI disaring
+         *     per client di repo. `include_campaigns` opt-in karena clustering kampanye mahal: satu panggilan
+         *     `get_recent_campaigns` lalu dibalik per PIR (PIR tanpa kecocokan, termasuk paused/archived,
+         *     mendapat `[]`). Cakupan dihitung dua kali bila halaman mengambil kedua varian.
+         */
         get: operations["get_pirs_api_pir_get"];
         put?: never;
         /** Post Pir */
@@ -2604,6 +2637,29 @@ export interface paths {
         get: operations["pir_options_api_pir_options_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/pir/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pir Preview
+         * @description Jumlah artikel yang cocok kriteria dalam `days` hari terakhir, untuk form PIR sebelum
+         *     disimpan. Memakai `criteria_filters` + `list_filtered` yang sama dengan `compute_coverage`
+         *     (angka pratinjau == cakupan PIR tersimpan). Tanpa filter client (artikel global, seperti
+         *     `/options`), tanpa tulis/audit; tanggal mulai/akhir PIR diabaikan.
+         */
+        post: operations["pir_preview_api_pir_preview_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3501,6 +3557,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sr/entries/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Sr Entries
+         * @description Export CSV dengan filter yang sama dengan `GET /entries`. Harus dideklarasikan SEBELUM
+         *     `/entries/{entry_id}` supaya `export` tidak diparse sebagai id. Nama file konstan (tidak
+         *     di-escape di Content-Disposition).
+         */
+        get: operations["export_sr_entries_api_sr_entries_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sr/entries/{entry_id}": {
         parameters: {
             query?: never;
@@ -4208,6 +4286,8 @@ export interface components {
         };
         /** AllowlistBody */
         AllowlistBody: {
+            /** Note */
+            note?: string | null;
             /**
              * Type
              * @enum {string}
@@ -5665,8 +5745,12 @@ export interface components {
             profile?: {
                 [key: string]: unknown;
             } | null;
+            /** Profile Article Count */
+            profile_article_count?: number | null;
             /** Profile Generated At */
             profile_generated_at?: string | null;
+            /** Profile Summary */
+            profile_summary?: string | null;
             /** Source */
             source: string;
             /** Stix Id */
@@ -5768,6 +5852,8 @@ export interface components {
             aliases: string[];
             /** External Id */
             external_id: string | null;
+            /** First Seen */
+            first_seen?: string | null;
             /** Id */
             id: number;
             /** Last Seen */
@@ -5793,6 +5879,8 @@ export interface components {
             items: components["schemas"]["EntityListItem"][];
             /** Next Cursor */
             next_cursor: string | null;
+            /** Total */
+            total?: number | null;
         };
         /** EntityProfileOut */
         EntityProfileOut: {
@@ -6941,6 +7029,30 @@ export interface components {
              */
             ttps: string[];
         };
+        /** PIRLinkedRFI */
+        PIRLinkedRFI: {
+            /** Due Date */
+            due_date?: string | null;
+            /** Id */
+            id: number;
+            /** Question */
+            question: string;
+            /** Status */
+            status: string;
+        };
+        /** PIRMatchedCampaign */
+        PIRMatchedCampaign: {
+            /** Cluster Id */
+            cluster_id: string;
+            /** Last Seen */
+            last_seen?: string | null;
+            /** Severity Label */
+            severity_label: string;
+            /** Size */
+            size: number;
+            /** Title */
+            title: string;
+        };
         /** PIRNoteIn */
         PIRNoteIn: {
             /**
@@ -7001,6 +7113,18 @@ export interface components {
             is_gap: boolean;
             /** Last Match */
             last_match?: string | null;
+            /**
+             * Linked Rfi Open
+             * @default 0
+             */
+            linked_rfi_open: number;
+            /**
+             * Linked Rfis
+             * @default []
+             */
+            linked_rfis: components["schemas"]["PIRLinkedRFI"][];
+            /** Matched Campaigns */
+            matched_campaigns?: components["schemas"]["PIRMatchedCampaign"][] | null;
             /** Owner */
             owner: string;
             /** Priority */
@@ -7015,6 +7139,72 @@ export interface components {
             title: string;
             /** Updated At */
             updated_at: string;
+        };
+        /**
+         * PIRPreviewCriteria
+         * @description Kriteria untuk pratinjau: kunci asing ditolak (422) supaya typo tidak diam-diam jadi
+         *     hitungan tanpa filter. `PIRCriteria` bersama tetap longgar agar POST/PUT menerima payload
+         *     lama.
+         */
+        PIRPreviewCriteria: {
+            /**
+             * Countries
+             * @default []
+             */
+            countries: string[];
+            /**
+             * Industries
+             * @default []
+             */
+            industries: string[];
+            /**
+             * Keywords
+             * @default []
+             */
+            keywords: string[];
+            /**
+             * Malware
+             * @default []
+             */
+            malware: string[];
+            /**
+             * News Types
+             * @default []
+             */
+            news_types: string[];
+            /**
+             * Threat Actors
+             * @default []
+             */
+            threat_actors: string[];
+            /**
+             * Ttps
+             * @default []
+             */
+            ttps: string[];
+        };
+        /** PIRPreviewIn */
+        PIRPreviewIn: {
+            criteria: components["schemas"]["PIRPreviewCriteria"];
+            /**
+             * Days
+             * @default 90
+             */
+            days: number;
+        };
+        /** PIRPreviewOut */
+        PIRPreviewOut: {
+            /** Count */
+            count: number;
+            /** Days */
+            days: number;
+            /** Has Criteria */
+            has_criteria: boolean;
+            /**
+             * Since
+             * Format: date
+             */
+            since: string;
         };
         /** PIRUpdate */
         PIRUpdate: {
@@ -7314,6 +7504,7 @@ export interface components {
             page_size: number;
             /** Rfis */
             rfis: components["schemas"]["RFIOut"][];
+            status_counts: components["schemas"]["RFIStatusCounts"];
             /** Total */
             total: number;
         };
@@ -7337,6 +7528,24 @@ export interface components {
             status: string;
             /** Updated At */
             updated_at: string;
+        };
+        /** RFIStatusCounts */
+        RFIStatusCounts: {
+            /**
+             * Closed
+             * @default 0
+             */
+            closed: number;
+            /**
+             * In Progress
+             * @default 0
+             */
+            in_progress: number;
+            /**
+             * Open
+             * @default 0
+             */
+            open: number;
         };
         /** RFIUpdate */
         RFIUpdate: {
@@ -12040,6 +12249,7 @@ export interface operations {
                 include_suppressed?: boolean;
                 cursor?: string | null;
                 limit?: number;
+                sort?: "name" | "mentions";
             };
             header?: {
                 "x-client-id"?: string | null;
@@ -13283,6 +13493,44 @@ export interface operations {
             };
         };
     };
+    export_iocs_api_iocs_export_get: {
+        parameters: {
+            query?: {
+                ioc_type?: string | null;
+                search?: string | null;
+                sort_by?: string | null;
+                actionability?: string | null;
+                include_suppressed?: boolean;
+                state?: ("active" | "expired" | "revoked" | "allowlisted") | null;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     ioc_fp_analytics_api_iocs_fp_analytics_get: {
         parameters: {
             query?: {
@@ -14450,7 +14698,10 @@ export interface operations {
     };
     get_pirs_api_pir_get: {
         parameters: {
-            query?: never;
+            query?: {
+                include_campaigns?: boolean;
+                campaign_days?: number;
+            };
             header?: {
                 "x-client-id"?: string | null;
                 authorization?: string | null;
@@ -14534,6 +14785,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PIROptions"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pir_preview_api_pir_preview_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PIRPreviewIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PIRPreviewOut"];
                 };
             };
             /** @description Validation Error */
@@ -15642,6 +15928,9 @@ export interface operations {
         parameters: {
             query?: {
                 status?: string | null;
+                q?: string | null;
+                linked_pir?: number | null;
+                sort?: "created" | "due";
                 page?: number;
                 page_size?: number;
             };
@@ -16670,6 +16959,7 @@ export interface operations {
             query?: {
                 search?: string | null;
                 grade?: string | null;
+                origin?: ("default" | "analyst") | null;
                 page?: number;
                 page_size?: number;
                 sort_by?: string;
@@ -16727,6 +17017,43 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_sr_entries_api_sr_entries_export_get: {
+        parameters: {
+            query?: {
+                search?: string | null;
+                grade?: string | null;
+                origin?: ("default" | "analyst") | null;
+                sort_by?: string;
+                sort_dir?: string;
+            };
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

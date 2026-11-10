@@ -26,6 +26,10 @@
       'id': int,
       'is_gap': False,
       'last_match': str,
+      'linked_rfi_open': 0,
+      'linked_rfis': list([
+      ]),
+      'matched_campaigns': None,
       'owner': 'analyst1',
       'priority': 'P1',
       'recent_coverage': 1,
@@ -108,6 +112,10 @@
       'id': int,
       'is_gap': False,
       'last_match': str,
+      'linked_rfi_open': 0,
+      'linked_rfis': list([
+      ]),
+      'matched_campaigns': None,
       'owner': 'analyst1',
       'priority': 'P1',
       'recent_coverage': 1,
@@ -181,6 +189,10 @@
     'id': int,
     'is_gap': False,
     'last_match': None,
+    'linked_rfi_open': 0,
+    'linked_rfis': list([
+    ]),
+    'matched_campaigns': None,
     'owner': '',
     'priority': 'P2',
     'recent_coverage': 0,
@@ -216,6 +228,10 @@
     'id': int,
     'is_gap': False,
     'last_match': None,
+    'linked_rfi_open': 0,
+    'linked_rfis': list([
+    ]),
+    'matched_campaigns': None,
     'owner': 'analyst1',
     'priority': 'P1',
     'recent_coverage': 0,
