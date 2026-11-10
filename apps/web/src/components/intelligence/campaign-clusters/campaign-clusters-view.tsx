@@ -8,6 +8,7 @@ import { SimpleClustersPanel } from "@/components/intelligence/campaign-clusters
 import { TabPills } from "@/components/ui/tab-pills";
 
 type View = "campaigns" | "simple";
+const DEFAULT_DAYS = 7;
 
 // `useSearchParams` di client component wajib dibungkus Suspense (Next 16).
 export function CampaignClustersView() {
@@ -27,11 +28,13 @@ function View() {
   const pathname = usePathname();
   const params = useSearchParams();
   const view: View = params.get("view") === "simple" ? "simple" : "campaigns";
-  const [days, setDays] = useState(7);
+  // `?days=` (1-90) = DAYS awal; tautan dari halaman PIR membawa 30 karena PIR mencocokkan campaign 30 hari.
+  const daysParam = Number(params.get("days"));
+  const [days, setDays] = useState(Number.isInteger(daysParam) && daysParam >= 1 && daysParam <= 90 ? daysParam : DEFAULT_DAYS);
   const [minSize, setMinSize] = useState(3);
   const campaigns = useCampaigns(days, minSize);
 
-  function setUrl(next: { view?: View; id?: string | null }) {
+  function setUrl(next: { view?: View; id?: string | null; days?: number }) {
     const qs = new URLSearchParams(params.toString());
     if (next.view !== undefined) {
       if (next.view === "campaigns") qs.delete("view");
@@ -40,6 +43,10 @@ function View() {
     if (next.id !== undefined) {
       if (next.id == null) qs.delete("id");
       else qs.set("id", next.id);
+    }
+    if (next.days !== undefined) {
+      if (next.days === DEFAULT_DAYS) qs.delete("days");
+      else qs.set("days", String(next.days));
     }
     const s = qs.toString();
     router.replace(s ? `${pathname}?${s}` : pathname, { scroll: false });
@@ -63,7 +70,10 @@ function View() {
       tabs={tabs}
       query={campaigns}
       days={days}
-      onDaysChange={setDays}
+      onDaysChange={(d) => {
+        setDays(d);
+        setUrl({ days: d });
+      }}
       minSize={minSize}
       onMinSizeChange={setMinSize}
       selectedId={params.get("id")}

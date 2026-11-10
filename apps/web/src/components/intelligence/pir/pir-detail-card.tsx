@@ -226,7 +226,7 @@ function MatchedCampaigns({ pir, campaigns }: { pir: PIROut; campaigns: UseQuery
       {list.map((c) => (
         <li key={c.cluster_id}>
           <Link
-            href={`/intelligence/campaign-clusters?id=${encodeURIComponent(c.cluster_id)}`}
+            href={`/intelligence/campaign-clusters?id=${encodeURIComponent(c.cluster_id)}&days=30`}
             className={linkClass}
           >
             {c.title}

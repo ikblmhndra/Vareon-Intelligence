@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, type ReactNode } from "react";
+import { useId, useMemo, useState, type ReactNode } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api/client";
@@ -54,7 +54,9 @@ export function SimpleClustersPanel({ tabs }: { tabs: ReactNode }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   // Satu request per jeda 500 ms, bukan per ketikan/klik.
-  const params = useDebounced({ days, threshold, exclLowRel }, 500);
+  // `useMemo`: objek literal baru tiap render membuat efek `useDebounced` (dep `[value]`) jalan terus.
+  const draftParams = useMemo(() => ({ days, threshold, exclLowRel }), [days, threshold, exclLowRel]);
+  const params = useDebounced(draftParams, 500);
 
   const query = useQuery({
     queryKey: ["campaign-clusters", "simple-clusters", params.days, params.threshold, params.exclLowRel],

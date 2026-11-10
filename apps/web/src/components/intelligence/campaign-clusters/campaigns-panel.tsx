@@ -11,6 +11,7 @@ import { FilterSelect } from "@/components/ui/filter-select";
 import { MasterDetail } from "@/components/ui/master-detail";
 import { PresetControl } from "@/components/ui/preset-control";
 import { SelectableList } from "@/components/ui/selectable-list";
+import { Notice } from "@/components/ui/notice";
 import { StatePanel } from "@/components/ui/state-panel";
 import { TrendArrow } from "@/components/intelligence/campaign-clusters/cluster-badges";
 import { CampaignDetailCard } from "@/components/intelligence/campaign-clusters/campaign-detail-card";
@@ -162,7 +163,10 @@ export function CampaignsPanel({ tabs, query, days, onDaysChange, minSize, onMin
   const [articleTarget, setArticleTarget] = useState<number | null>(null);
 
   const campaigns = sortCampaigns(query.data?.campaigns ?? [], sort);
-  const selected = campaigns.find((c) => c.cluster_id === selectedId) ?? campaigns[0] ?? null;
+  const requested = campaigns.find((c) => c.cluster_id === selectedId);
+  const selected = requested ?? campaigns[0] ?? null;
+  // `?id=` yang tak ada di jendela ini (mis. DAYS lebih sempit dari tautan asal): jangan pindah diam-diam.
+  const missing = selectedId != null && query.data !== undefined && !requested && selected !== null;
 
   let list: ReactNode;
   if (query.isPending) list = <StatePanel variant="loading" title="Clustering campaigns" description="This may take a few seconds." />;
@@ -220,7 +224,8 @@ export function CampaignsPanel({ tabs, query, days, onDaysChange, minSize, onMin
         }
         detail={
           selected ? (
-            <div className="lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
+            <div className="flex flex-col gap-3 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
+              {missing && <Notice tone="info" title="This campaign is not in the selected window. Widen DAYS to find it." />}
               <CampaignDetailCard
                 key={selected.cluster_id}
                 campaign={selected}
