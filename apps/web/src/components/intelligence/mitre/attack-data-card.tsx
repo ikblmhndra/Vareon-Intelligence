@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { RowMenu } from "@/components/ui/row-menu";
 import { StatePanel } from "@/components/ui/state-panel";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { api } from "@/lib/api/client";
@@ -19,12 +20,13 @@ const STATUS_QUERY_KEY = ["intelligence", "attack-status"];
 /** Kartu "ATT&CK data" (pindahan `AttackSyncCard` dari Entities, D27). Terbaca untuk semua pemegang
  * `view_intel`; tombol "Sync now" hanya `manage_intel`. Logika sync dan polling sama dengan kartu lama:
  * `POST /api/attack/sync` (semua domain), lalu poll 5 dtk SELAMA ada domain berstatus "syncing", bukan
- * polling terus-menerus. Sync per domain (GET `/sync/{key}`) sengaja tidak dibawa: mockup hanya punya satu
- * tombol dan "Sync now" sudah menyinkronkan semua domain. */
+ * polling terus-menerus. Sync per domain (GET `/sync/{key}`, menu baris) dan hitungan/delta per domain dibawa
+ * dari kartu lama supaya tak ada fitur yang hilang saat kartu itu dihapus. */
 export function AttackDataCard() {
   const queryClient = useQueryClient();
   const canSync = useCan()("manage_intel");
   const [syncing, setSyncing] = useState(false);
+  const [syncingDomain, setSyncingDomain] = useState<string | null>(null);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const query = useQuery({
@@ -63,6 +65,20 @@ export function AttackDataCard() {
     }
   }
 
+  async function syncDomain(key: string) {
+    setSyncingDomain(key);
+    try {
+      const { error } = await api.GET("/api/attack/sync/{domain_key}", { params: { path: { domain_key: key } } });
+      if (error) throw new Error(JSON.stringify(error));
+      toast.success(`Sync started for ${key}.`);
+      void queryClient.invalidateQueries({ queryKey: STATUS_QUERY_KEY });
+    } catch (e) {
+      toast.error(`Sync failed to start: ${(e as Error).message}`);
+    } finally {
+      setSyncingDomain(null);
+    }
+  }
+
   return (
     <Card>
       <div className="flex flex-col gap-3 px-5">
@@ -84,7 +100,13 @@ export function AttackDataCard() {
         {query.data && (
           <ul className="divide-y divide-border">
             {query.data.map((d) => (
-              <DomainRow key={d.domain_key} d={d} />
+              <DomainRow
+                key={d.domain_key}
+                d={d}
+                canSync={canSync}
+                busy={syncingDomain === d.domain_key}
+                onSync={() => void syncDomain(d.domain_key)}
+              />
             ))}
           </ul>
         )}
@@ -97,7 +119,24 @@ export function AttackDataCard() {
   );
 }
 
-function DomainRow({ d }: { d: AttackDomainStatus }) {
+function delta(val: number | null | undefined) {
+  if (val == null || val === 0) return null;
+  return <span className={val > 0 ? "text-success-text" : "text-destructive-text"}> {val > 0 ? `+${val}` : val}</span>;
+}
+
+const mb = (n: number) => (n / 1024 / 1024).toFixed(1);
+
+function DomainRow({
+  d,
+  canSync,
+  busy: syncBusy,
+  onSync,
+}: {
+  d: AttackDomainStatus;
+  canSync: boolean;
+  busy: boolean;
+  onSync: () => void;
+}) {
   const failed = d.status === "error";
   const busy = d.status === "syncing";
   const never = d.status === "never";
@@ -109,25 +148,48 @@ function DomainRow({ d }: { d: AttackDomainStatus }) {
     <span className={cn("text-xs", failed ? "text-warning-text" : "text-muted-foreground")}>{status}</span>
   );
 
+  const progress =
+    busy && d.phase
+      ? d.phase === "downloading" && d.bytes_downloaded
+        ? `↓ downloading ${mb(d.bytes_downloaded)}MB${d.bytes_total ? ` / ${(d.bytes_total / 1024 / 1024).toFixed(0)}MB` : ""} ${d.download_pct ?? ""}`
+        : d.phase
+      : null;
+
   return (
-    <li className="flex items-center justify-between gap-3 py-2">
-      <span className="text-xs font-medium">{d.label || d.domain_key}</span>
-      <span className="flex items-center gap-3">
-        <span className="font-code text-xs text-muted-foreground">{d.version ? `v${d.version}` : "—"}</span>
-        <span className="inline-flex items-center gap-1.5">
-          <span aria-hidden="true" className={cn("size-2 rounded-full", dot)} />
-          {failed && d.error ? (
-            <Tooltip>
-              <TooltipTrigger render={<span tabIndex={0} aria-label={`${status}: ${d.error}`} />}>
-                {text}
-              </TooltipTrigger>
-              <TooltipContent>{d.error}</TooltipContent>
-            </Tooltip>
-          ) : (
-            text
+    <li className="py-2">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-xs font-medium">{d.label || d.domain_key}</span>
+        <span className="flex items-center gap-3">
+          <span className="font-code text-xs text-muted-foreground">{d.version ? `v${d.version}` : "—"}</span>
+          <span className="inline-flex items-center gap-1.5">
+            <span aria-hidden="true" className={cn("size-2 rounded-full", dot)} />
+            {failed && d.error ? (
+              <Tooltip>
+                <TooltipTrigger render={<span tabIndex={0} aria-label={`${status}: ${d.error}`} />}>
+                  {text}
+                </TooltipTrigger>
+                <TooltipContent>{d.error}</TooltipContent>
+              </Tooltip>
+            ) : (
+              text
+            )}
+          </span>
+          {canSync && (
+            <RowMenu
+              label={`Actions for ${d.label || d.domain_key}`}
+              items={[{ label: syncBusy ? "Sync starting…" : "Sync", onSelect: onSync, hidden: syncBusy }]}
+            />
           )}
         </span>
-      </span>
+      </div>
+      {progress && <p className="mt-1 text-xs text-warning-text">{progress}</p>}
+      <p className="mt-1 text-xs text-muted-foreground">
+        MITRE updated {d.mitre_modified ? fmtShortDate(d.mitre_modified) : "—"} · Techniques {d.technique_count ?? "—"}
+        {delta(d.delta_technique_count)} · Groups {d.group_count ?? "—"}
+        {delta(d.delta_group_count)} · Software {d.software_count ?? "—"}
+        {delta(d.delta_software_count)} · Mitigations {d.mitigation_count ?? "—"}
+        {delta(d.delta_mitigation_count)}
+      </p>
     </li>
   );
 }

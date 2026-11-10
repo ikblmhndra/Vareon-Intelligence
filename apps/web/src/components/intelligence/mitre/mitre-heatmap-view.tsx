@@ -41,7 +41,7 @@ function stepOf(val: number, max: number): 1 | 2 | 3 | 4 | 5 {
   return Math.min(5, Math.max(1, Math.ceil((val * 5) / max))) as 1 | 2 | 3 | 4 | 5;
 }
 
-const LEGEND_SWATCHES = ["bg-primary/10", "bg-primary/20", "bg-primary/30", "bg-primary/40", "bg-hero"] as const;
+const LEGEND_SWATCHES = ["bg-primary/20", "bg-primary/30", "bg-primary/40", "bg-primary/45", "bg-hero"] as const;
 
 /** Legenda 0 -> max: sel kosong + lima langkah dengan rentang jumlah artikelnya (hasil `stepOf`, aritmetika
  * bilangan bulat). Langkah yang tak mungkin tercapai (max kecil, mis. 3) dibuang supaya legenda jujur. */
