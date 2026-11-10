@@ -7,10 +7,11 @@ import { toast } from "sonner";
 
 import { errorDetail, invalidateEntity } from "@/components/entities/entity-action-utils";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
+import { StatePanel } from "@/components/ui/state-panel";
 
 type EntityDetail = components["schemas"]["EntityDetail"];
 type Target = { id: number; name: string };
@@ -80,6 +81,7 @@ export function EntityMergeDialog({ entity, onClose }: { entity: EntityDetail; o
       <DialogContent className="max-h-[85vh] w-full max-w-lg overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Merge {entity.name} into another</DialogTitle>
+          <DialogDescription>Merge this entity into another entity of the same type. Review the preview before confirming.</DialogDescription>
         </DialogHeader>
         {target == null ? (
           <div className="space-y-2">
@@ -124,7 +126,7 @@ export function EntityMergeDialog({ entity, onClose }: { entity: EntityDetail; o
                 Change
               </Button>
             </div>
-            {preview.isPending && <p className="text-xs text-muted-foreground">Loading preview…</p>}
+            {preview.isPending && <StatePanel variant="loading" title="Loading merge preview" className="py-6" />}
             {preview.isError && (
               <p role="alert" className="text-sm text-destructive-text">
                 {(preview.error as Error).message}
@@ -156,12 +158,13 @@ export function EntityMergeDialog({ entity, onClose }: { entity: EntityDetail; o
           </p>
         )}
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose} className="max-sm:h-11">
+          <Button type="button" variant="ghost" onClick={onClose} className="max-sm:h-11">
             Cancel
           </Button>
           <Button
             type="button"
-            disabled={saving || target == null || !p}
+            loading={saving}
+            disabled={target == null || !p}
             onClick={() => void merge()}
             className="max-sm:h-11"
           >

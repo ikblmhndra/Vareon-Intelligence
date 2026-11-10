@@ -270,6 +270,7 @@ function RfiView() {
         description="Delete this RFI? This cannot be undone."
         confirmLabel="Delete"
         tone="danger"
+        cancelVariant="ghost"
         confirmLoading={removing}
         onConfirm={() => removeTarget && void removeRfi(removeTarget)}
       />

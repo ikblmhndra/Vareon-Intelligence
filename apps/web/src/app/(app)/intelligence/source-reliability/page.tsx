@@ -243,6 +243,7 @@ export default function SourceReliabilityPage() {
         description={`Remove the source rating for "${removeTarget?.source_name}"?`}
         confirmLabel="Remove"
         tone="danger"
+        cancelVariant="ghost"
         confirmLoading={removing}
         onConfirm={() => removeTarget && void removeEntry(removeTarget)}
       />

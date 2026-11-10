@@ -128,6 +128,7 @@ export function EntityActionsMenu({ entity }: { entity: EntityDetail }) {
             : "The entity will be hidden from lists and search. You can unsuppress it later."
         }
         confirmLabel={entity.suppressed ? "Unsuppress" : "Suppress"}
+        cancelVariant="ghost"
         onConfirm={() => suppress.mutate()}
       />
     </>

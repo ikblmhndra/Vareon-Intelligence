@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { errorDetail, invalidateEntity } from "@/components/entities/entity-action-utils";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { api } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 
@@ -69,6 +69,7 @@ export function EntitySplitDialog({ entity, onClose, required = null }: Props) {
       <DialogContent className="max-h-[85vh] w-full max-w-lg overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{required ? `Undo merge of ${required.name}` : "Split aliases"}</DialogTitle>
+          <DialogDescription>Move the selected aliases into a new entity.</DialogDescription>
         </DialogHeader>
         {entity.aliases.length === 0 ? (
           <p className="text-sm text-muted-foreground">This entity has no aliases to split.</p>
@@ -105,12 +106,13 @@ export function EntitySplitDialog({ entity, onClose, required = null }: Props) {
           </p>
         )}
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose} className="max-sm:h-11">
+          <Button type="button" variant="ghost" onClick={onClose} className="max-sm:h-11">
             Cancel
           </Button>
           <Button
             type="button"
-            disabled={saving || picked.size === 0}
+            loading={saving}
+            disabled={picked.size === 0}
             onClick={() => void split()}
             className="max-sm:h-11"
           >

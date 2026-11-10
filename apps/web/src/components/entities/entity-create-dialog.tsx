@@ -6,13 +6,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -115,6 +109,7 @@ export function EntityCreateDialog({ open, onClose, initialType, initialName }: 
       <DialogContent className="max-h-[85vh] w-full max-w-lg overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>New entity</DialogTitle>
+          <DialogDescription>Add an entity to the registry; it can be watched and linked to articles later.</DialogDescription>
         </DialogHeader>
         <form
           className="space-y-3"
@@ -192,10 +187,10 @@ export function EntityCreateDialog({ open, onClose, initialType, initialName }: 
             </p>
           )}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose} className="max-sm:h-11">
+            <Button type="button" variant="ghost" onClick={onClose} className="max-sm:h-11">
               Cancel
             </Button>
-            <Button type="submit" disabled={saving} className="max-sm:h-11">
+            <Button type="submit" loading={saving} className="max-sm:h-11">
               {saving ? "Creating…" : "Create entity"}
             </Button>
           </DialogFooter>

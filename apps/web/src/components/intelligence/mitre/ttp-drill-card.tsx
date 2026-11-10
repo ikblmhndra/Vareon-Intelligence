@@ -76,7 +76,7 @@ function D3fendSection({ ttpId }: { ttpId: string }) {
       </button>
       {open && (
         <div className="mt-2">
-          {query.isPending && <p className="text-xs text-muted-foreground">Loading…</p>}
+          {query.isPending && <StatePanel variant="loading" title="Loading countermeasures" className="py-4" />}
           {query.isError && <p className="text-xs text-destructive-text">Failed to load.</p>}
           {query.data && query.data.length === 0 && (
             <p className="text-xs text-muted-foreground">No D3FEND countermeasures mapped for this technique.</p>

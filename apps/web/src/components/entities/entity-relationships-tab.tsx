@@ -365,6 +365,7 @@ export function EntityRelationshipsTab({ entity }: { entity: EntityDetail }) {
         title="Revoke relationship?"
         description="It disappears from this page and is marked revoked in the TAXII feed."
         confirmLabel="Revoke"
+        cancelVariant="ghost"
         onConfirm={() => {
           if (revoking) revoke.mutate(revoking.id);
           setRevoking(null);

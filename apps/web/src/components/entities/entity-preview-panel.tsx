@@ -9,6 +9,7 @@ import { api } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { entityTypeMeta } from "@/lib/entities/types";
 import { fmtMonthYear, fmtShortDate } from "@/lib/format";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type EntityListItem = components["schemas"]["EntityListItem"];
 
@@ -80,9 +81,7 @@ export function EntityPreviewPanel({ item }: { item: EntityListItem }) {
             AI profile{d?.profile_generated_at ? ` · generated ${fmtShortDate(d.profile_generated_at)}` : ""}
           </p>
           {detail.isPending ? (
-            <p className="mt-1" role="status">
-              Loading profile…
-            </p>
+            <Skeleton role="status" aria-label="Loading profile" className="mt-2 h-4 w-3/4" />
           ) : d?.profile_summary ? (
             <p className="mt-1 text-hero-foreground">{d.profile_summary}</p>
           ) : (

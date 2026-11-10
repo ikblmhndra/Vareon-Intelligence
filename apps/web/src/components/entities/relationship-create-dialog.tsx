@@ -256,10 +256,10 @@ export function RelationshipCreateDialog({ open, onClose, source, target: initia
             </p>
           )}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose} className="max-sm:h-11">
+            <Button type="button" variant="ghost" onClick={onClose} className="max-sm:h-11">
               Cancel
             </Button>
-            <Button type="submit" disabled={saving} className="max-sm:h-11">
+            <Button type="submit" loading={saving} className="max-sm:h-11">
               {saving ? "Creating…" : "Create relationship"}
             </Button>
           </DialogFooter>

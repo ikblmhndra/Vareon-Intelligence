@@ -284,6 +284,7 @@ function PirView() {
         description={`Delete "${removeTarget?.title ?? ""}"? Its article notes are deleted and linked RFIs are unlinked. This cannot be undone.`}
         confirmLabel="Delete"
         tone="danger"
+        cancelVariant="ghost"
         confirmLoading={removing}
         onConfirm={() => removeTarget && void removePir(removeTarget)}
       />

@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/api/client";
 import { useAuth } from "@/components/providers/auth-provider";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -146,6 +146,7 @@ export function SrEntryDialog({ mode, entry, open, onClose, onSaved, readOnly }:
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Source Rating</DialogTitle>
+            <DialogDescription>Reliability grade and notes for this source.</DialogDescription>
           </DialogHeader>
           <dl className="grid grid-cols-[7rem_1fr] gap-x-3 gap-y-2 text-xs">
             {rows.map(([k, v]) => (
@@ -172,6 +173,7 @@ export function SrEntryDialog({ mode, entry, open, onClose, onSaved, readOnly }:
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{mode === "edit" ? "Edit Source Rating" : "Add Source Rating"}</DialogTitle>
+          <DialogDescription>An analyst grade overrides the automatic grade for this source.</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
           <div className="relative flex flex-col gap-1">
@@ -243,10 +245,10 @@ export function SrEntryDialog({ mode, entry, open, onClose, onSaved, readOnly }:
           {err && <p className="text-xs text-destructive">{err}</p>}
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="ghost" disabled={saving} onClick={onClose}>
             Cancel
           </Button>
-          <Button disabled={saving} onClick={() => void submit()}>
+          <Button loading={saving} onClick={() => void submit()}>
             {saving ? "Saving…" : "Save"}
           </Button>
         </DialogFooter>

@@ -6,6 +6,7 @@ import { useId, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api/client";
+import { useCan } from "@/lib/auth/permissions";
 import { defang } from "@/lib/intelligence/defang";
 import { displayId } from "@/lib/intelligence/format";
 import { fmtShortDate } from "@/lib/format";
@@ -20,6 +21,7 @@ import { GeopoliticalPanel } from "@/components/intelligence/campaign-clusters/g
 import { KillChainView } from "@/components/intelligence/campaign-clusters/kill-chain-view";
 import { LinkTypeBadge } from "@/components/intelligence/campaign-clusters/cluster-badges";
 import type { CampaignEntry, CampaignTrend, MatchedPir, PrioritizedCve } from "@/lib/api/loose-types";
+import { StatePanel } from "@/components/ui/state-panel";
 
 const TREND_COLOR: Record<string, string> = { growing: "var(--severity-critical)", declining: "var(--success)", dormant: "var(--muted-foreground)", stable: "var(--severity-medium)" };
 
@@ -73,7 +75,7 @@ function TrendBody({ clusterId }: { clusterId: string }) {
     },
   });
 
-  if (query.isPending) return <p className="text-muted-foreground">Loading trend…</p>;
+  if (query.isPending) return <StatePanel variant="loading" title="Loading trend" className="py-6" />;
   if (query.isError) return <p className="text-destructive-text">Failed to load trend.</p>;
   const trend = query.data;
   if (!trend.timeline || trend.timeline.length < 2) return <p className="text-muted-foreground">Not enough daily data for a trend yet.</p>;
@@ -251,6 +253,8 @@ export function CampaignDetailCard({
   onOpenPir: (pir: MatchedPir) => void;
   onSelectCampaign: (clusterId: string) => void;
 }) {
+  // Hunt pack adalah ekspor: wajib `export_data`, tombol tidak dirender tanpa izin.
+  const canExport = useCan()("export_data");
   const bd = c.severity_breakdown;
   const factors: [string, number, number, string][] = [
     ["TA sophistication", bd.ta_sophistication, bd.raw.ta_sophistication, "30%"],
@@ -266,9 +270,11 @@ export function CampaignDetailCard({
         <div className="flex flex-col gap-1">
           <div className="flex items-start gap-3">
             <h2 className="min-w-0 flex-1 font-heading text-lg font-semibold">{c.summary_title || c.cluster_id}</h2>
-            <Button variant="outline" size="sm" onClick={() => downloadHuntPack(c)}>
-              Hunt pack
-            </Button>
+            {canExport && (
+              <Button variant="outline" size="sm" onClick={() => downloadHuntPack(c)}>
+                Hunt pack
+              </Button>
+            )}
           </div>
           <p className="text-xs text-muted-foreground">
             First seen {fmtShortDate(c.first_seen)} · last seen {fmtShortDate(c.last_seen)} · {c.new_iocs_24h} new IOCs in 24 h

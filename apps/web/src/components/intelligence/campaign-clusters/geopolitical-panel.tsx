@@ -7,6 +7,7 @@ import { api } from "@/lib/api/client";
 import { EntityChip } from "@/components/entities/entity-chip";
 import { nameChip } from "@/lib/entities/name-chips";
 import type { GeopoliticalSummary } from "@/lib/api/loose-types";
+import { StatePanel } from "@/components/ui/state-panel";
 
 const MOTIVATION_COLOR: Record<string, string> = {
   espionage: "var(--tag-violet)",
@@ -50,7 +51,7 @@ export function GeopoliticalPanel({ days }: { days: number }) {
 
   return (
     <div>
-          {query.isPending && <p className="text-xs text-muted-foreground">Loading geopolitical context…</p>}
+          {query.isPending && <StatePanel variant="loading" title="Loading geopolitical context" className="py-6" />}
           {query.isError && <p className="text-xs text-destructive">Error loading geopolitical overview.</p>}
           {d && (
             <>

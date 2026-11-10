@@ -404,26 +404,30 @@ export function EntitiesListView() {
           >
             Watched only
           </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={<Button variant="outline" size="icon-sm" aria-label="More entity actions" />}
-            >
-              <MoreHorizontalIcon aria-hidden />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {can("manage_entities") && (
-                <DropdownMenuCheckboxItem
-                  checked={includeSuppressed}
-                  onCheckedChange={(c) => setParams({ suppressed: c ? "1" : null, id: null })}
-                >
-                  Include suppressed
-                </DropdownMenuCheckboxItem>
-              )}
-              <DropdownMenuItem onClick={() => void downloadLayer()}>
-                Download watchlist Navigator layer
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {(can("manage_entities") || can("export_data")) && (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={<Button variant="outline" size="icon-sm" aria-label="More entity actions" />}
+              >
+                <MoreHorizontalIcon aria-hidden />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {can("manage_entities") && (
+                  <DropdownMenuCheckboxItem
+                    checked={includeSuppressed}
+                    onCheckedChange={(c) => setParams({ suppressed: c ? "1" : null, id: null })}
+                  >
+                    Include suppressed
+                  </DropdownMenuCheckboxItem>
+                )}
+                {can("export_data") && (
+                  <DropdownMenuItem onClick={() => void downloadLayer()}>
+                    Download watchlist Navigator layer
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
           {can("manage_entities") && (
             <Button
               size="sm"
