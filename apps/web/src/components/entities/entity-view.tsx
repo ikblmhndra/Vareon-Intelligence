@@ -3,12 +3,11 @@
 import { useEffect, useMemo } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ChevronRight } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 
 import { EntityAttackTab } from "@/components/entities/entity-attack-tab";
 import { EntityCvesTab } from "@/components/entities/entity-cves-tab";
-import { EntityHero } from "@/components/entities/entity-hero";
+import { EntityHeader } from "@/components/entities/entity-header";
 import { EntityIndicatorsTab } from "@/components/entities/entity-indicators-tab";
 import { EntityOverviewTab, useEntityTimeline } from "@/components/entities/entity-overview-tab";
 import { EntityRelationshipsTab, useEntityRelationships } from "@/components/entities/entity-relationships-tab";
@@ -16,11 +15,14 @@ import { EntityStoriesTab } from "@/components/entities/entity-stories-tab";
 import { EntityTimelineChart } from "@/components/entities/entity-timeline-chart";
 import { HuntPanel } from "@/components/hunt/hunt-panel";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StatePanel } from "@/components/ui/state-panel";
+import { StatTile } from "@/components/ui/stat-tile";
 import { TabPills, type TabPillItem } from "@/components/ui/tab-pills";
 import { api } from "@/lib/api/client";
 import { useCan } from "@/lib/auth/permissions";
 import type { components } from "@/lib/api/schema";
-import { ENTITY_TABS, entityTypeMeta } from "@/lib/entities/types";
+import { ENTITY_TABS } from "@/lib/entities/types";
+import { fmtCompactAge } from "@/lib/format";
 
 type EntityDetail = components["schemas"]["EntityDetail"];
 
@@ -31,6 +33,12 @@ const ATTACK_TYPES = new Set(["intrusion-set", "malware", "tool", "attack-patter
 
 /** Tab Hunt (P7e): tipe yang bisa menjadi anchor hunting pack. */
 const HUNT_TYPES = new Set(["intrusion-set", "malware", "tool", "campaign", "attack-pattern"]);
+
+/** "now" tidak diberi " ago"; selebihnya "2 d ago". */
+function lastSeen(iso: string): string {
+  const age = fmtCompactAge(iso);
+  return age === "now" ? age : `${age} ago`;
+}
 
 function TimelineTab({ entity }: { entity: EntityDetail }) {
   const timeline = useEntityTimeline(entity.id);
@@ -53,7 +61,7 @@ function TimelineTab({ entity }: { entity: EntityDetail }) {
 }
 
 /**
- * Cangkang halaman entity: ambil detail, redirect entity hasil merge, hero + tab. Isi tab
+ * Cangkang halaman entity: ambil detail, redirect entity hasil merge, header + tile + tab. Isi tab
  * Relationships/Stories/Indicators/CVEs/ATT&CK dan menu Actions ada di komponen terpisah.
  */
 export function EntityView({ id }: { id: number }) {
@@ -103,6 +111,12 @@ export function EntityView({ id }: { id: number }) {
     router.replace(`/intelligence/entities/${mergedInto}${qs}`);
   }, [mergedInto, tabParam, router]);
 
+  // Judul tab browser: layout segmen hanya tahu "Entities", jadi nama entity dipasang setelah dimuat.
+  const entityName = entity?.name;
+  useEffect(() => {
+    if (entityName) document.title = `${entityName} · Entities`;
+  }, [entityName]);
+
   const tabs = useMemo<TabPillItem<TabKey>[]>(() => {
     const items: TabPillItem<TabKey>[] = [
       { value: "overview", label: "Overview" },
@@ -119,30 +133,26 @@ export function EntityView({ id }: { id: number }) {
   }, [entity, relCount, totals.data, can]);
 
   if (detail.isPending || mergedInto != null) {
-    return (
-      <div className="space-y-3" role="status" aria-label="Loading entity">
-        <Skeleton className="h-40 w-full rounded-3xl" />
-        <Skeleton className="h-9 w-2/3" />
-      </div>
-    );
+    return <StatePanel variant="loading" title="Loading entity" />;
   }
   if (detail.isError) {
-    return (
-      <p role="alert" className="text-sm text-destructive">
-        {detail.error instanceof Error && detail.error.cause === 403
-          ? "You don't have access to entity pages."
-          : "Could not load this entity. Try again later."}
-      </p>
+    return detail.error instanceof Error && detail.error.cause === 403 ? (
+      <StatePanel variant="no-access" title="You don't have access to entity pages." />
+    ) : (
+      <StatePanel variant="error" title="Could not load this entity. Try again later." />
     );
   }
   if (entity == null) {
     return (
-      <section className="surface-raised space-y-3 rounded-xl p-5">
-        <h2 className="text-base font-semibold">Entity not found</h2>
-        <Link href="/intelligence/entities" className="text-sm text-primary-text underline">
-          Back to entities
-        </Link>
-      </section>
+      <StatePanel
+        variant="empty"
+        title="Entity not found"
+        action={
+          <Link href="/intelligence/entities" className="text-sm text-primary-text underline">
+            Back to entities
+          </Link>
+        }
+      />
     );
   }
 
@@ -155,7 +165,6 @@ export function EntityView({ id }: { id: number }) {
         (t.identityClass == null ||
           (entity.identity_class === "organization") === (t.identityClass === "organization")),
     ) ?? ENTITY_TABS[0];
-  const meta = entityTypeMeta(entity.type, entity.identity_class);
 
   function setTab(next: TabKey) {
     const sp = new URLSearchParams(params.toString());
@@ -167,24 +176,14 @@ export function EntityView({ id }: { id: number }) {
 
   return (
     <div className="space-y-4">
-      <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
-        <Link href="/intelligence/entities" className="hover:text-foreground hover:underline">
-          Entities
-        </Link>
-        <ChevronRight aria-hidden className="size-3" />
-        <Link
-          href={`/intelligence/entities?tab=${listTab.key}`}
-          className="hover:text-foreground hover:underline"
-        >
-          {listTab.label}
-        </Link>
-        <ChevronRight aria-hidden className="size-3" />
-        <span aria-current="page" className="text-foreground">
-          {entity.name}
-        </span>
-        <span className="sr-only">{meta.label}</span>
-      </nav>
-      <EntityHero entity={entity} totals={totals.data ?? {}} />
+      <EntityHeader entity={entity} listTabKey={listTab.key} />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <StatTile label="Mentions 30 days" value={entity.mentions_30d} />
+        <StatTile label="Stories" value={totals.data?.stories ?? "-"} />
+        <StatTile label="Indicators" value={totals.data?.indicators ?? "-"} />
+        <StatTile label="CVEs" value={totals.data?.cves ?? "-"} />
+        <StatTile label="Last seen" value={entity.last_seen ? lastSeen(entity.last_seen) : "n/a"} />
+      </div>
       <TabPills items={tabs} value={tab} onChange={setTab} aria-label="Entity sections" />
       <div role="tabpanel">
         {tab === "overview" && <EntityOverviewTab entity={entity} onViewAllRelationships={() => setTab("relationships")} />}

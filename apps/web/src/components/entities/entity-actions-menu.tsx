@@ -1,14 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { MoreHorizontal } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { errorDetail, invalidateEntity, normAlias } from "@/components/entities/entity-action-utils";
 import { EntityAliasesDialog } from "@/components/entities/entity-aliases-dialog";
 import { EntityEditDialog } from "@/components/entities/entity-edit-dialog";
-import { heroButtonClass } from "@/components/entities/entity-hero";
 import { EntityMergeDialog } from "@/components/entities/entity-merge-dialog";
 import { EntitySplitDialog } from "@/components/entities/entity-split-dialog";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -32,7 +31,7 @@ type Dialog =
   | { kind: "undo"; aliasId: number; name: string };
 
 /**
- * Menu Actions di hero (mockup C): edit, alias, merge, split, undo merge per tombstone, suppress.
+ * Menu Actions di header entity (spec 2b 6.8): edit, alias, merge, split, undo merge per tombstone, suppress.
  * Seluruh menu disembunyikan tanpa `manage_entities`.
  */
 export function EntityActionsMenu({ entity }: { entity: EntityDetail }) {
@@ -68,12 +67,10 @@ export function EntityActionsMenu({ entity }: { entity: EntityDetail }) {
     <>
       <DropdownMenu>
         <DropdownMenuTrigger
-          render={
-            <Button variant="outline" className={`${heroButtonClass} max-sm:h-11`} aria-label="Entity actions" />
-          }
+          render={<Button variant="secondary" aria-label="Entity actions" />}
         >
-          <MoreHorizontal aria-hidden />
           Actions
+          <ChevronDown aria-hidden />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-60">
           <DropdownMenuGroup>
@@ -81,8 +78,10 @@ export function EntityActionsMenu({ entity }: { entity: EntityDetail }) {
               Edit name and description
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => setDialog({ kind: "aliases" })}>Manage aliases</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setDialog({ kind: "merge" })}>Merge into another …</DropdownMenuItem>
             <DropdownMenuItem onClick={() => setDialog({ kind: "split" })}>Split aliases</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setDialog({ kind: "merge" })}>
+              Merge into another entity…
+            </DropdownMenuItem>
             {entity.merged_from.map((m) => {
               const own = ownAlias(m);
               return (
@@ -102,7 +101,7 @@ export function EntityActionsMenu({ entity }: { entity: EntityDetail }) {
           <DropdownMenuSeparator />
           <DropdownMenuGroup>
             <DropdownMenuItem variant="destructive" onClick={() => setDialog({ kind: "suppress" })}>
-              {entity.suppressed ? "Unsuppress" : "Suppress"}
+              {entity.suppressed ? "Unsuppress" : "Suppress from feeds"}
             </DropdownMenuItem>
           </DropdownMenuGroup>
         </DropdownMenuContent>

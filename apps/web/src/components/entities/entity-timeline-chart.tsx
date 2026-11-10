@@ -15,9 +15,12 @@ function monthLabel(m: string): string {
 export function EntityTimelineChart({
   months,
   height = 180,
+  highlightLast,
 }: {
   months: { month: string; articles: number }[];
   height?: number;
+  /** Sorot n bulan terakhir (kartu Overview: dua batang terakhir primer, sisanya netral). */
+  highlightLast?: number;
 }) {
   const total = months.reduce((s, m) => s + m.articles, 0);
   return (
@@ -25,6 +28,7 @@ export function EntityTimelineChart({
       labels={months.map((m) => monthLabel(m.month))}
       values={months.map((m) => m.articles)}
       height={height}
+      {...(highlightLast ? { highlightLast, tone: "neutral" as const } : {})}
       formatValue={(v) => `${v} stories`}
       aria-label={`Mentions per month, ${total} stories over ${months.length} months`}
     />
