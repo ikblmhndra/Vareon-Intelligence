@@ -70,7 +70,7 @@ async def get_rfis(
     )
     return RFIListResponse(
         rfis=[_serialize(r) for r in rfis],
-        status_counts=RFIStatusCounts(**await repo.status_counts(cid)),
+        status_counts=RFIStatusCounts(**await repo.status_counts(cid, q=q, linked_pir=linked_pir)),
         total=total,
         page=page,
         page_size=page_size,

@@ -19,7 +19,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any, Literal
 
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import Select, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_core.db.models.rfi import RFIRequest
@@ -35,6 +35,21 @@ def _like(text: str) -> str:
     """Pola ILIKE aman: `%`, `_`, dan `\\` dalam input pengguna diperlakukan literal."""
     escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     return f"%{escaped}%"
+
+
+def _apply_search[S: Select[Any]](stmt: S, *, q: str | None, linked_pir: int | None) -> S:
+    """Filter pencarian + PIR yang dipakai bersama oleh daftar dan hitungan chip status."""
+    if q:
+        pattern = _like(q)
+        stmt = stmt.where(
+            or_(
+                RFIRequest.question.ilike(pattern, escape="\\"),
+                RFIRequest.requester.ilike(pattern, escape="\\"),
+            )
+        )
+    if linked_pir is not None:
+        stmt = stmt.where(RFIRequest.linked_pir_id == linked_pir)
+    return stmt
 
 
 class AsyncRFIRepo:
@@ -55,16 +70,7 @@ class AsyncRFIRepo:
         stmt = select(RFIRequest).where(RFIRequest.client_id == client_id)
         if status:
             stmt = stmt.where(RFIRequest.status == status)
-        if q:
-            pattern = _like(q)
-            stmt = stmt.where(
-                or_(
-                    RFIRequest.question.ilike(pattern, escape="\\"),
-                    RFIRequest.requester.ilike(pattern, escape="\\"),
-                )
-            )
-        if linked_pir is not None:
-            stmt = stmt.where(RFIRequest.linked_pir_id == linked_pir)
+        stmt = _apply_search(stmt, q=q, linked_pir=linked_pir)
 
         # `id` jadi tie-breaker supaya halaman stabil saat due_date/created_at sama.
         order = (
@@ -80,14 +86,16 @@ class AsyncRFIRepo:
         result = await self.session.execute(list_stmt)
         return list(result.scalars().all()), total
 
-    async def status_counts(self, client_id: str) -> dict[str, int]:
+    async def status_counts(
+        self, client_id: str, *, q: str | None = None, linked_pir: int | None = None
+    ) -> dict[str, int]:
         """Jumlah RFI per status untuk chip filter: satu `GROUP BY`, tidak ikut filter `status`
-        daftar (chip harus tetap menunjukkan total tiap status). Status tak dikenal diabaikan."""
-        result = await self.session.execute(
-            select(RFIRequest.status, func.count())
-            .where(RFIRequest.client_id == client_id)
-            .group_by(RFIRequest.status)
-        )
+        daftar (chip harus tetap menunjukkan total tiap status). `q` dan `linked_pir` ikut,
+        supaya angka chip sama dengan daftar yang sedang dicari/disaring PIR. Status tak dikenal
+        diabaikan."""
+        stmt = select(RFIRequest.status, func.count()).where(RFIRequest.client_id == client_id)
+        stmt = _apply_search(stmt, q=q, linked_pir=linked_pir)
+        result = await self.session.execute(stmt.group_by(RFIRequest.status))
         found: dict[str, int] = {status: n for status, n in result.all()}
         return {s: int(found.get(s, 0)) for s in _RFI_STATUSES}
 

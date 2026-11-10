@@ -11,7 +11,7 @@ from typing import Any
 
 from sqlalchemy import DateTime, Select, bindparam, delete, func, or_, select, text, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, noload
 
 from cti_core.config import IndicatorSettings, get_settings
 from cti_core.db.models.entity import Entity, EntityMention
@@ -529,6 +529,11 @@ class AsyncIndicatorRepo:
             include_suppressed=include_suppressed,
             state=state,
             include_revoked=include_revoked,
+        ).options(
+            # baris CSV hanya membaca tags + mentions (aktor); riwayat sumber dan feedback
+            # (selectin bawaan model) bisa puluhan kali lipat jumlah IOC, jadi jangan dimuat
+            noload(Indicator.sources),
+            noload(Indicator.feedback),
         )
         remaining = limit
         last: tuple[Any, ...] | None = None

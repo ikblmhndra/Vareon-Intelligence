@@ -188,6 +188,44 @@ async def test_search_and_linked_pir_filter(async_db_session: AsyncSession) -> N
     assert total == 1 and linked[0].id == r1.id
 
 
+async def test_status_counts_respect_q_and_linked_pir(async_db_session: AsyncSession) -> None:
+    """Chip status harus cocok dengan daftar yang sedang dicari/disaring PIR (tab "open" di link
+    PIR menunjukkan angka PIR itu saja), tapi tetap tidak ikut filter `status`."""
+    from cti_core.db.repositories.pir import AsyncPIRRepo
+
+    await _ensure_clients(async_db_session)
+    pir = await AsyncPIRRepo(async_db_session).create({"title": "P"}, client_id="default")
+    repo = AsyncRFIRepo(async_db_session)
+    await repo.create(
+        {"requester": "a", "question": "LockBit infra", "status": "open", "linked_pir": pir.id},
+        client_id="default",
+    )
+    await repo.create(
+        {"requester": "a", "question": "LockBit TTPs", "status": "in_progress"},
+        client_id="default",
+    )
+    await repo.create(
+        {"requester": "a", "question": "Akira", "status": "closed", "linked_pir": pir.id},
+        client_id="default",
+    )
+
+    assert await repo.status_counts("default", q="lockbit") == {
+        "open": 1,
+        "in_progress": 1,
+        "closed": 0,
+    }
+    assert await repo.status_counts("default", linked_pir=pir.id) == {
+        "open": 1,
+        "in_progress": 0,
+        "closed": 1,
+    }
+    assert await repo.status_counts("default", q="lockbit", linked_pir=pir.id) == {
+        "open": 1,
+        "in_progress": 0,
+        "closed": 0,
+    }
+
+
 async def test_sort_due(async_db_session: AsyncSession) -> None:
     await _ensure_clients(async_db_session)
     repo = AsyncRFIRepo(async_db_session)

@@ -187,6 +187,32 @@ async def list_iocs(
     }
 
 
+def _export_row(i: Indicator) -> list[object]:
+    """Satu baris CSV export, urutan sama dengan `_EXPORT_COLUMNS`."""
+    return [
+        i.id,
+        i.type,
+        i.value,
+        i.state,
+        i.tlp,
+        i.pap,
+        i.confidence_score,
+        i.actionability_score,
+        i.actionability_label,
+        i.recommended_action,
+        i.seen_count,
+        i.first_seen_at,
+        i.last_seen_at,
+        i.tp_count,
+        i.fp_count,
+        i.entity_names("intrusion-set"),
+        [t.tag for t in i.tags],
+        i.auto_suppressed,
+        i.suppression_reason,
+        i.revoked_at,
+    ]
+
+
 @router.get("/export", dependencies=[Depends(require_permission("export_data"))])
 async def export_iocs(
     request: Request,
@@ -212,38 +238,15 @@ async def export_iocs(
         "include_suppressed": include_suppressed,
         "state": state,
     }
-    iocs: list[Indicator] = []
+    # baris CSV dibangun per batch lalu ORM-nya dilepas: menampung semua objek `Indicator`
+    # (plus relasinya) sampai cap memakan memori jauh lebih besar daripada list nilai polos
+    rows: list[list[object]] = []
     async for batch in AsyncIndicatorRepo(session).iter_export(
         sort_by=sort_by, limit=_EXPORT_CAP + 1, **filters
     ):
-        iocs.extend(batch)
-    truncated = len(iocs) > _EXPORT_CAP
-    iocs = iocs[:_EXPORT_CAP]
-    rows = [
-        [
-            i.id,
-            i.type,
-            i.value,
-            i.state,
-            i.tlp,
-            i.pap,
-            i.confidence_score,
-            i.actionability_score,
-            i.actionability_label,
-            i.recommended_action,
-            i.seen_count,
-            i.first_seen_at,
-            i.last_seen_at,
-            i.tp_count,
-            i.fp_count,
-            i.entity_names("intrusion-set"),
-            [t.tag for t in i.tags],
-            i.auto_suppressed,
-            i.suppression_reason,
-            i.revoked_at,
-        ]
-        for i in iocs
-    ]
+        rows.extend(_export_row(i) for i in batch)
+    truncated = len(rows) > _EXPORT_CAP
+    rows = rows[:_EXPORT_CAP]
     await AsyncAuditLogRepo(session).write(
         username=user["username"],
         action="export_iocs",

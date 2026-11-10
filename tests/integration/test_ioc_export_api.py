@@ -10,7 +10,7 @@ from collections.abc import Callable
 import pytest
 from cti_api.routers import iocs as iocs_router
 from cti_core.db.models.auth import AuditLogEntry
-from cti_core.db.models.indicator import Indicator
+from cti_core.db.models.indicator import Indicator, IndicatorTag
 from cti_core.db.repositories import indicator as indicator_repo
 from cti_core.db.repositories.auth import AsyncRoleRepo
 from cti_core.db.repositories.indicator import AsyncIndicatorRepo
@@ -221,3 +221,18 @@ async def test_export_batches_ties_complete(
     assert len(ids) == 5
     assert len(set(ids)) == 5
     assert ids == sorted(ids, reverse=True)
+
+
+async def test_iter_export_skips_sources_and_feedback(api_session: AsyncSession) -> None:
+    """Export tidak membaca `sources`/`feedback`: keduanya di-`noload` supaya puluhan ribu baris
+    tidak menarik semua riwayat sumber ke memori. `tags` dan `mentions` tetap dimuat (CSV butuh)."""
+    await _ioc(api_session, "1.1.1.1")
+    ind_id = (await api_session.execute(select(Indicator.id))).scalar_one()
+    api_session.add(IndicatorTag(indicator_id=ind_id, tag="c2"))
+    await api_session.commit()
+    api_session.expunge_all()
+    batches = [b async for b in AsyncIndicatorRepo(api_session).iter_export(sort_by=None, limit=10)]
+    row = batches[0][0]
+    assert row.sources == []
+    assert row.feedback == []
+    assert [t.tag for t in row.tags] == ["c2"]
