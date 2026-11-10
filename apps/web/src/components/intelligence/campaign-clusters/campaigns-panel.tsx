@@ -1,40 +1,56 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, type ReactNode } from "react";
+import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 
 import { api } from "@/lib/api/client";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import { EntityChip } from "@/components/entities/entity-chip";
-import { nameChip } from "@/lib/entities/name-chips";
-import { SeverityBadge, TrendArrow, VelocityBadge } from "@/components/intelligence/campaign-clusters/cluster-badges";
-import { CampaignExpandedPanel } from "@/components/intelligence/campaign-clusters/campaign-expanded-panel";
-import { GeopoliticalPanel } from "@/components/intelligence/campaign-clusters/geopolitical-panel";
+import { Button } from "@/components/ui/button";
+import { Chip } from "@/components/ui/chip";
+import { FilterSelect } from "@/components/ui/filter-select";
+import { MasterDetail } from "@/components/ui/master-detail";
+import { PresetControl } from "@/components/ui/preset-control";
+import { SelectableList } from "@/components/ui/selectable-list";
+import { StatePanel } from "@/components/ui/state-panel";
+import { TrendArrow } from "@/components/intelligence/campaign-clusters/cluster-badges";
+import { CampaignDetailCard } from "@/components/intelligence/campaign-clusters/campaign-detail-card";
 import { ClusterPirDialog } from "@/components/intelligence/campaign-clusters/cluster-pir-dialog";
 import { ArticleByIdDialog } from "@/components/intelligence/campaign-clusters/article-by-id-dialog";
 import type { CampaignEntry, CampaignsResponse, CampaignTrend, MatchedPir } from "@/lib/api/loose-types";
-import { tint } from "@/lib/tint";
 
-type SortKey = "size" | "velocity" | "severity" | "first_seen" | "last_seen";
-const SORT_OPTIONS: { key: SortKey; label: string }[] = [
-  { key: "size", label: "Article Count" },
-  { key: "velocity", label: "Velocity" },
-  { key: "severity", label: "Severity" },
-  { key: "first_seen", label: "First Seen" },
-  { key: "last_seen", label: "Last Seen" },
+type SortKey = "severity" | "size" | "velocity" | "last_seen";
+const SORT_OPTIONS: { value: SortKey; label: string }[] = [
+  { value: "severity", label: "severity" },
+  { value: "size", label: "size" },
+  { value: "velocity", label: "velocity" },
+  { value: "last_seen", label: "last seen" },
+];
+const SORT_PHRASE: Record<SortKey, string> = {
+  severity: "severity score",
+  size: "article count",
+  velocity: "velocity",
+  last_seen: "last seen",
+};
+
+export const DAYS_PRESETS = [
+  { value: 7, label: "7d" },
+  { value: 30, label: "30d" },
+  { value: 90, label: "90d" },
+];
+const MIN_SIZE_PRESETS = [
+  { value: 2, label: "2" },
+  { value: 3, label: "3" },
+  { value: 5, label: "5" },
+  { value: 10, label: "10" },
 ];
 
-function sortCampaigns(campaigns: CampaignEntry[], sort: SortKey): CampaignEntry[] {
+export function sortCampaigns(campaigns: CampaignEntry[], sort: SortKey): CampaignEntry[] {
   const copy = [...campaigns];
   switch (sort) {
     case "velocity":
       return copy.sort((a, b) => b.velocity_articles_per_day - a.velocity_articles_per_day);
     case "severity":
       return copy.sort((a, b) => b.severity_score - a.severity_score);
-    case "first_seen":
-      return copy.sort((a, b) => a.first_seen.localeCompare(b.first_seen));
     case "last_seen":
       return copy.sort((a, b) => b.last_seen.localeCompare(a.last_seen));
     case "size":
@@ -43,43 +59,10 @@ function sortCampaigns(campaigns: CampaignEntry[], sort: SortKey): CampaignEntry
   }
 }
 
-function huntPack(c: CampaignEntry) {
-  const pack = {
-    cluster_id: c.cluster_id,
-    cluster_name: c.summary_title || c.cluster_id,
-    generated_at: new Date().toISOString(),
-    date_range: { first_seen: c.first_seen, last_seen: c.last_seen },
-    article_count: c.size,
-    dominant_tas: c.dominant_tas,
-    dominant_industries: c.dominant_industries,
-    dominant_countries: c.dominant_countries,
-    attack_techniques: c.attack_techniques,
-    cve_ids: c.cve_ids,
-    iocs: c.iocs.map((i) => ({ type: i.type, value: i.value })),
-    matched_pirs: c.matched_pirs,
-  };
-  const blob = new Blob([JSON.stringify(pack, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `hunt-pack-${c.cluster_id}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-/** Port sub-view "Campaigns" Pipeline 2 (`clusters.js:114-261`) --
- * auto-load (beda dari Clusters Pipeline 1 yang manual-generate),
- * enrichment kaya per-campaign. */
-export function CampaignsPanel() {
-  const [days, setDays] = useState(7);
-  const [minSize, setMinSize] = useState(3);
-  const [sort, setSort] = useState<SortKey>("size");
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const [pirTarget, setPirTarget] = useState<MatchedPir | null>(null);
-  const [articleTarget, setArticleTarget] = useState<number | null>(null);
-  const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
-
-  const query = useQuery({
+/** Query campaign (Pipeline 2, auto-load). Dipanggil `CampaignClustersView` supaya jumlah di pil tab
+ * "Campaigns" tetap tersedia saat tab Clusters (Simple) aktif dan hasilnya ter-cache antar-tab. */
+export function useCampaigns(days: number, minSize: number) {
+  return useQuery({
     queryKey: ["campaign-clusters", "campaigns", days, minSize],
     queryFn: async () => {
       const { data, error } = await api.GET("/api/clusters/recent", { params: { query: { days, min_size: minSize } } });
@@ -87,197 +70,175 @@ export function CampaignsPanel() {
       return data as unknown as CampaignsResponse;
     },
   });
+}
 
-  function toggleExpand(clusterId: string) {
-    setExpanded((e) => ({ ...e, [clusterId]: !e[clusterId] }));
-  }
+const VELOCITY_TEXT: Record<CampaignEntry["velocity_label"], string> = {
+  surging: "text-destructive-text",
+  active: "text-warning-text",
+  moderate: "text-foreground",
+  slow: "text-muted-foreground",
+};
+const VELOCITY_DOT: Record<CampaignEntry["velocity_label"], string> = {
+  surging: "bg-destructive",
+  active: "bg-warning",
+  moderate: "bg-foreground",
+  slow: "bg-muted-foreground",
+};
 
-  function jumpToCampaign(clusterId: string) {
-    setExpanded((e) => ({ ...e, [clusterId]: true }));
-    requestAnimationFrame(() => {
-      rowRefs.current[clusterId]?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-  }
+/** Panah tren per kartu: query `/trends` (baca DB murah) berbagi cache dengan bagian Trend di detail. */
+function CardTrend({ clusterId }: { clusterId: string }) {
+  const query = useQuery({
+    queryKey: ["campaign-clusters", "trend", clusterId],
+    queryFn: async () => {
+      const { data, error } = await api.GET("/api/clusters/{cluster_id}/trends", { params: { path: { cluster_id: clusterId } } });
+      if (error) throw error;
+      return data as unknown as CampaignTrend;
+    },
+    staleTime: 5 * 60_000,
+  });
+  if (!query.data) return null;
+  return <TrendArrow direction={query.data.trend_direction} growthRate={query.data.growth_rate} />;
+}
 
-  const campaigns = sortCampaigns(query.data?.campaigns ?? [], sort);
+const tag = "rounded-[6px] bg-panel px-2 py-0.5 text-2xs font-semibold text-foreground";
 
+/** Isi kartu campaign. Kartu adalah tombol option, jadi hanya teks/chip polos (tanpa tautan entity). */
+function CampaignCardBody({ c }: { c: CampaignEntry }) {
+  const actors = c.dominant_tas.slice(0, 2);
+  const extraActors = c.dominant_tas.length - actors.length;
   return (
-    <div>
-      <div className="mb-3 flex flex-wrap items-end gap-2 border-b border-border pb-3">
-        <div className="flex flex-col gap-1">
-          <Label className="text-sm font-medium text-muted-foreground">Days</Label>
-          <Input type="number" aria-label="Days" min={1} max={90} value={days} onChange={(e) => setDays(Number(e.target.value) || 7)} className="w-20 font-mono text-xs" />
-        </div>
-        <div className="flex flex-col gap-1">
-          <Label className="text-sm font-medium text-muted-foreground">Min Size</Label>
-          <Input type="number" aria-label="Min size" min={2} max={50} value={minSize} onChange={(e) => setMinSize(Number(e.target.value) || 3)} className="w-20 font-mono text-xs" />
-        </div>
-        <span className="ml-auto font-mono text-xs text-muted-foreground">
-          {campaigns.length} campaign cluster{campaigns.length !== 1 ? "s" : ""} found
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <Chip kind="severity" value={c.severity_label}>
+          {`${c.severity_label.toUpperCase()} ${c.severity_score}`}
+        </Chip>
+        {c.velocity_alert && <Chip kind="status" value="open">VELOCITY ALERT</Chip>}
+        {c.new_iocs_24h > 0 && (
+          <Chip kind="status" value="completed" className="normal-case">
+            {`NEW ${c.new_iocs_24h} IOCs`}
+          </Chip>
+        )}
+        <CardTrend clusterId={c.cluster_id} />
+        <span className="ml-auto text-xs text-muted-foreground">
+          {c.size} articles · {c.days_active} days active
         </span>
       </div>
-
-      <GeopoliticalPanel days={days} />
-
-      {query.isPending && <p className="py-10 text-center text-xs text-muted-foreground">Clustering campaigns…</p>}
-      {query.isError && <p className="py-10 text-center text-xs text-destructive">Error loading campaigns.</p>}
-      {query.data && campaigns.length === 0 && <p className="py-10 text-center text-xs text-muted-foreground">No campaign clusters found for selected parameters.</p>}
-
-      {campaigns.length > 0 && (
-        <>
-          <div className="mb-2 flex flex-wrap items-center gap-1.5 border-b border-border pb-2 font-mono text-xs text-muted-foreground">
-            Sort:
-            {SORT_OPTIONS.map((o) => (
-              <button
-                key={o.key}
-                type="button"
-                onClick={() => setSort(o.key)}
-                className={cn("rounded-md border px-2 py-1", sort === o.key ? "border-primary/50 bg-primary/15 text-primary-text" : "border-border text-muted-foreground")}
-              >
-                {o.label}
-              </button>
-            ))}
-          </div>
-
-          <table className="w-full border-collapse text-xs">
-            <thead>
-              <tr className="border-b border-border text-left text-muted-foreground">
-                <th className="px-2 py-1.5">Summary Title</th>
-                <th className="w-20 px-2 py-1.5 text-center">Size / Velocity</th>
-                <th className="w-20 px-2 py-1.5 text-left">Severity</th>
-                <th className="w-24 px-2 py-1.5 text-left">First Seen</th>
-                <th className="w-24 px-2 py-1.5 text-left">Last Seen</th>
-                <th className="px-2 py-1.5 text-left">TAs</th>
-                <th className="px-2 py-1.5 text-left">Industries</th>
-                <th className="px-2 py-1.5 text-left">Countries</th>
-                <th className="px-2 py-1.5 text-left">ATT&amp;CK</th>
-                <th className="px-2 py-1.5 text-left">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {campaigns.map((c) => {
-                const isOpen = Boolean(expanded[c.cluster_id]);
-                return (
-                  <CampaignRow
-                    key={c.cluster_id}
-                    campaign={c}
-                    isOpen={isOpen}
-                    rowRef={(el) => {
-                      rowRefs.current[c.cluster_id] = el;
-                    }}
-                    onToggle={() => toggleExpand(c.cluster_id)}
-                    onHuntPack={() => huntPack(c)}
-                    onOpenArticle={setArticleTarget}
-                    onOpenPir={setPirTarget}
-                    onJumpToCampaign={jumpToCampaign}
-                  />
-                );
-              })}
-            </tbody>
-          </table>
-        </>
-      )}
-
-      <ClusterPirDialog pir={pirTarget} onClose={() => setPirTarget(null)} />
-      <ArticleByIdDialog articleId={articleTarget} onClose={() => setArticleTarget(null)} />
+      <p className="font-heading text-base font-semibold text-foreground">{c.summary_title || c.cluster_id}</p>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        {actors.map((a) => (
+          <span key={a} className={tag}>
+            {a}
+          </span>
+        ))}
+        {extraActors > 0 && <span>+{extraActors}</span>}
+        {c.dominant_industries.length > 0 && <span>{c.dominant_industries.slice(0, 3).join(" · ")}</span>}
+        {c.dominant_countries.length > 0 && <span>{c.dominant_countries.slice(0, 4).join(" · ")}</span>}
+        <span className={cn("inline-flex items-center gap-1.5 font-semibold", VELOCITY_TEXT[c.velocity_label])}>
+          <span aria-hidden="true" className={cn("size-1.5 rounded-full", VELOCITY_DOT[c.velocity_label])} />
+          {c.velocity_label} · {c.velocity_articles_per_day.toFixed(1)}/day
+        </span>
+      </div>
     </div>
   );
 }
 
-function CampaignRow({
-  campaign: c,
-  isOpen,
-  rowRef,
-  onToggle,
-  onHuntPack,
-  onOpenArticle,
-  onOpenPir,
-  onJumpToCampaign,
-}: {
-  campaign: CampaignEntry;
-  isOpen: boolean;
-  rowRef: (el: HTMLTableRowElement | null) => void;
-  onToggle: () => void;
-  onHuntPack: () => void;
-  onOpenArticle: (articleId: number) => void;
-  onOpenPir: (pir: MatchedPir) => void;
-  onJumpToCampaign: (clusterId: string) => void;
-}) {
-  const trendQuery = useQuery({
-    queryKey: ["campaign-clusters", "trend", c.cluster_id],
-    queryFn: async () => {
-      const { data, error } = await api.GET("/api/clusters/{cluster_id}/trends", { params: { path: { cluster_id: c.cluster_id } } });
-      if (error) throw error;
-      return data as unknown as CampaignTrend;
-    },
-    enabled: isOpen,
-  });
-
-  return (
-    <>
-      <tr ref={rowRef} className={cn("border-b border-border", c.velocity_alert && "bg-destructive/5")}>
-        <td className="max-w-[260px] cursor-pointer px-2 py-1.5" onClick={onToggle}>
-          <span className="mr-1 text-muted-foreground">{isOpen ? "▼" : "▶"}</span>
-          <span className="text-foreground">{c.summary_title || c.cluster_id}</span>
-          {trendQuery.data && <TrendArrow direction={trendQuery.data.trend_direction} growthRate={trendQuery.data.growth_rate} />}
-          <SeverityBadge label={c.severity_label} score={c.severity_score} />
-          {c.matched_pirs.length > 0 && <span className="ml-1 rounded-full border border-destructive/30 bg-destructive/10 px-1.5 py-0.5 font-mono text-xs text-destructive-text">PIR</span>}
-        </td>
-        <td className="px-2 py-1.5 text-center whitespace-nowrap text-foreground">
-          {c.size}
-          <VelocityBadge label={c.velocity_label} articlesPerDay={c.velocity_articles_per_day} />
-          {c.new_iocs_24h > 0 && <span className="ml-1 rounded-full border border-success/35 bg-success/12 px-1.5 py-0.5 font-mono text-xs text-success-text">NEW: {c.new_iocs_24h} IOCs</span>}
-        </td>
-        <td className="px-2 py-1.5">
-          <SeverityBadge label={c.severity_label} score={c.severity_score} />
-        </td>
-        <td className="px-2 py-1.5 font-mono text-xs text-muted-foreground">{c.first_seen}</td>
-        <td className="px-2 py-1.5 font-mono text-xs text-muted-foreground">{c.last_seen}</td>
-        <td className="max-w-[160px] px-2 py-1.5">
-          <ChipList items={c.dominant_tas} color="var(--severity-high)" entity="intrusion-set" />
-        </td>
-        <td className="max-w-[160px] px-2 py-1.5">
-          <ChipList items={c.dominant_industries} color="var(--info)" entity="identity" />
-        </td>
-        <td className="max-w-[120px] px-2 py-1.5">
-          <ChipList items={c.dominant_countries} color="var(--info)" entity="location" />
-        </td>
-        <td className="max-w-[200px] px-2 py-1.5">
-          <div className="flex flex-wrap items-center gap-1">
-            <ChipList items={c.attack_techniques.slice(0, 5)} color="var(--tag-violet)" entity="attack-pattern" />
-            {c.kill_chain.completeness_label && <span className="font-mono text-xs text-muted-foreground">{c.kill_chain.completeness_score}%</span>}
-          </div>
-        </td>
-        <td className="px-2 py-1.5">
-          <button type="button" onClick={onHuntPack} className="rounded-full border border-primary/30 bg-primary/8 px-2 py-1 font-mono text-xs text-primary-text">
-            Hunt Pack
-          </button>
-        </td>
-      </tr>
-      {isOpen && (
-        <tr>
-          <td colSpan={10} className="p-0">
-            <CampaignExpandedPanel campaign={c} onOpenArticle={onOpenArticle} onOpenPir={onOpenPir} onJumpToCampaign={onJumpToCampaign} />
-          </td>
-        </tr>
-      )}
-    </>
-  );
+interface CampaignsPanelProps {
+  /** Pil tab (Campaigns | Clusters (Simple)) dari view; dirender di baris pertama toolbar. */
+  tabs: ReactNode;
+  query: UseQueryResult<CampaignsResponse>;
+  days: number;
+  onDaysChange: (v: number) => void;
+  minSize: number;
+  onMinSizeChange: (v: number) => void;
+  selectedId: string | null;
+  onSelect: (clusterId: string) => void;
 }
 
-function ChipList({ items, color, entity }: { items: string[]; color: string; entity?: string }) {
-  if (items.length === 0) return <span className="font-mono text-xs text-muted-foreground">—</span>;
+/** Campaigns (spec 2b 6.10, port Pipeline 2 `clusters.js:114-261`): toolbar, daftar kartu urut, dan panel
+ * detail. Campaign terpilih = `?id=` bila ada di daftar, selain itu kartu pertama. */
+export function CampaignsPanel({ tabs, query, days, onDaysChange, minSize, onMinSizeChange, selectedId, onSelect }: CampaignsPanelProps) {
+  const [sort, setSort] = useState<SortKey>("severity");
+  const [pirTarget, setPirTarget] = useState<MatchedPir | null>(null);
+  const [articleTarget, setArticleTarget] = useState<number | null>(null);
+
+  const campaigns = sortCampaigns(query.data?.campaigns ?? [], sort);
+  const selected = campaigns.find((c) => c.cluster_id === selectedId) ?? campaigns[0] ?? null;
+
+  let list: ReactNode;
+  if (query.isPending) list = <StatePanel variant="loading" title="Clustering campaigns" description="This may take a few seconds." />;
+  else if (query.isError)
+    list = (
+      <StatePanel
+        variant="error"
+        title="Failed to load campaigns"
+        action={
+          <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
+            Retry
+          </Button>
+        }
+      />
+    );
+  else if (campaigns.length === 0)
+    list = <StatePanel variant="empty" title="No campaign clusters found" description="Try a longer period or a smaller minimum size." />;
+  else
+    list = (
+      <SelectableList
+        variant="card"
+        aria-label="Campaigns"
+        items={campaigns.map((c) => ({ value: c.cluster_id, c }))}
+        value={selected?.cluster_id ?? null}
+        onChange={onSelect}
+        renderItem={({ c }) => <CampaignCardBody c={c} />}
+      />
+    );
+
   return (
-    <div className="flex flex-wrap gap-1">
-      {items.map((v) =>
-        entity ? (
-          <EntityChip key={v} {...nameChip(entity, v)} className="max-w-36" />
-        ) : (
-          <span key={v} className="rounded-full border px-1.5 py-0.5 font-mono text-xs" style={{ background: tint(color, 9), borderColor: tint(color, 27), color }}>
-            {v}
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+        {tabs}
+        <PresetControl label="Days" aria-label="Days" presets={DAYS_PRESETS} value={days} onChange={onDaysChange} min={1} max={90} />
+        <PresetControl label="Min size (articles)" aria-label="Minimum campaign size" presets={MIN_SIZE_PRESETS} value={minSize} onChange={onMinSizeChange} min={2} max={50} />
+        {query.data && (
+          <span className="ml-auto text-xs text-muted-foreground">
+            {query.data.total} campaigns · {query.data.campaign_links.length} links between them
           </span>
-        ),
-      )}
+        )}
+      </div>
+
+      <MasterDetail
+        list={
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="font-heading text-lg font-semibold">Campaigns</h2>
+                <p className="text-xs text-muted-foreground">Sorted by {SORT_PHRASE[sort]}</p>
+              </div>
+              <FilterSelect prefix="Sort" value={sort} onChange={setSort} options={SORT_OPTIONS} />
+            </div>
+            {list}
+          </div>
+        }
+        detail={
+          selected ? (
+            <div className="lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
+              <CampaignDetailCard
+                key={selected.cluster_id}
+                campaign={selected}
+                // Endpoint geopolitical menolak days < 7 (422); Custom 1-6 hari memakai 7.
+                days={Math.max(7, days)}
+                onOpenArticle={setArticleTarget}
+                onOpenPir={setPirTarget}
+                onSelectCampaign={onSelect}
+              />
+            </div>
+          ) : (
+            query.data && <StatePanel variant="empty" title="Select a campaign to see its detail" />
+          )
+        }
+      />
+
+      <ClusterPirDialog pir={pirTarget} onClose={() => setPirTarget(null)} />
+      <ArticleByIdDialog articleId={articleTarget} onClose={() => setArticleTarget(null)} />
     </div>
   );
 }
