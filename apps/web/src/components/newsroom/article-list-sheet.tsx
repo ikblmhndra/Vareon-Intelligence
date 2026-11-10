@@ -26,7 +26,21 @@ const PAGE_SIZE = 20;
 const RELATED_PAGE_SIZE = 8;
 const ALL = "__all__";
 
-type Source = { rubric: RubricKey } | { actor: string } | { ttp: string } | { story: number };
+/** Filter gabungan dari tautan Intelligence (`/newsroom?actor=...&ttp=...&from=...`). */
+export type SheetQuery = {
+  threat_actor?: string[];
+  industry?: string[];
+  ttp?: string[];
+  country?: string[];
+  posted_on_start?: string;
+};
+
+export type Source =
+  | { rubric: RubricKey }
+  | { actor: string }
+  | { ttp: string }
+  | { story: number }
+  | { query: SheetQuery };
 
 function Row({ item, onSelect }: { item: RubricItem; onSelect: (a: Article) => void }) {
   const cls =
@@ -101,8 +115,19 @@ function useSheetList(
     true,
   );
 
+  // Tautan Intelligence: hanya filter dari URL, TANPA filter masthead (periode/pencarian),
+  // supaya jumlahnya sama dengan angka di halaman sumber.
+  const query = "query" in source ? source.query : {};
+  const byQuery = useArticlesQuery(
+    ["sheet-query", query],
+    { page, page_size: PAGE_SIZE, sort: "recent" as const, ...query },
+    open && "query" in source,
+    true,
+  );
+
   if ("rubric" in source) return rubric;
-  const q = "actor" in source ? byActor : "story" in source ? byStory : byTtp;
+  const q =
+    "actor" in source ? byActor : "story" in source ? byStory : "query" in source ? byQuery : byTtp;
   const items: RubricItem[] = (q.data?.articles ?? []).map(articleRow);
   return {
     items,
@@ -303,7 +328,9 @@ export function ArticleListSheet({
         ? `a:${source.actor}`
         : "story" in source
           ? `s:${source.story}`
-          : `t:${source.ttp}`;
+          : "query" in source
+            ? `q:${JSON.stringify(source.query)}`
+            : `t:${source.ttp}`;
   return (
     <Sheet open={open} onOpenChange={onOpenChange} title={title}>
       {open && <SheetBody key={key} source={source} filters={filters} open={open} onSelect={onSelect} />}
