@@ -13,6 +13,7 @@ sekarang wajib login (`require_auth`).
 from __future__ import annotations
 
 import datetime
+from typing import Literal
 
 from cti_core.celery_client import send_recompute_source
 from cti_core.confidence import suggest_grade
@@ -24,7 +25,7 @@ from cti_core.db.repositories.source_reliability import (
     AsyncSourceReliabilityRepo,
 )
 from cti_core.logging import get_logger
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_api.deps import AuthedUser, get_db, request_ip, require_auth, require_permission
@@ -37,6 +38,7 @@ from cti_api.schemas.source_reliability import (
     SRReviewItem,
     SRReviewResponse,
 )
+from cti_api.services.csv_export import csv_response
 
 log = get_logger()
 
@@ -48,6 +50,24 @@ router = APIRouter(
 
 REVIEW_WINDOW_DAYS = 30
 """Jendela statistik antrean review grade sumber (P6 spec 5.3)."""
+
+_EXPORT_CAP = 5000
+"""Batas baris export CSV: tabel SR kecil (satu baris per sumber), cukup satu query."""
+
+_EXPORT_COLUMNS = [
+    "source_name",
+    "admiralty_code",
+    "reliability_grade",
+    "reliability_label",
+    "credibility_code",
+    "credibility_label",
+    "content_kind",
+    "origin",
+    "analyst_name",
+    "notes",
+    "added_date",
+    "last_updated",
+]
 
 
 def _enqueue_recompute(source_name: str) -> None:
@@ -79,6 +99,7 @@ def _serialize(e: SourceReliabilityEntry) -> SREntryOut:
 async def list_sr_entries(
     search: str | None = None,
     grade: str | None = None,
+    origin: Literal["default", "analyst"] | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=500),
     sort_by: str = Query("source_name"),
@@ -88,6 +109,7 @@ async def list_sr_entries(
     entries, total = await AsyncSourceReliabilityRepo(session).list_entries(
         search=search,
         grade=grade,
+        origin=origin,
         page=page,
         page_size=page_size,
         sort_by=sort_by,
@@ -96,6 +118,66 @@ async def list_sr_entries(
     return SREntryListResponse(
         entries=[_serialize(e) for e in entries], total=total, page=page, page_size=page_size
     )
+
+
+@router.get("/entries/export", dependencies=[Depends(require_permission("export_data"))])
+async def export_sr_entries(
+    request: Request,
+    search: str | None = None,
+    grade: str | None = None,
+    origin: Literal["default", "analyst"] | None = None,
+    sort_by: str = Query("source_name"),
+    sort_dir: str = Query("asc"),
+    session: AsyncSession = Depends(get_db),
+    user: AuthedUser = Depends(require_auth),
+) -> Response:
+    """Export CSV dengan filter yang sama dengan `GET /entries`. Harus dideklarasikan SEBELUM
+    `/entries/{entry_id}` supaya `export` tidak diparse sebagai id. Nama file konstan (tidak
+    di-escape di Content-Disposition)."""
+    entries, _ = await AsyncSourceReliabilityRepo(session).list_entries(
+        search=search,
+        grade=grade,
+        origin=origin,
+        page=1,
+        page_size=_EXPORT_CAP,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
+    )
+    rows = [
+        [
+            e.source_name,
+            e.admiralty_code,
+            e.reliability_grade,
+            RELIABILITY_LABELS.get(e.reliability_grade, ""),
+            e.credibility_code,
+            CREDIBILITY_LABELS.get(e.credibility_code or "", ""),
+            e.content_kind,
+            e.origin,
+            e.analyst_name,
+            e.notes,
+            e.added_date,
+            e.last_updated,
+        ]
+        for e in entries
+    ]
+    await AsyncAuditLogRepo(session).write(
+        username=user["username"],
+        action="export_source_reliability",
+        detail={
+            "filters": {
+                "search": search,
+                "grade": grade,
+                "origin": origin,
+                "sort_by": sort_by,
+                "sort_dir": sort_dir,
+            },
+            "rows": len(rows),
+        },
+        ip_address=request_ip(request),
+    )
+    await session.commit()
+    filename = f"source-reliability-{datetime.date.today().strftime('%Y%m%d')}.csv"
+    return csv_response(_EXPORT_COLUMNS, rows, filename)
 
 
 @router.get("/stats")
