@@ -6,10 +6,10 @@ terpisah di sistem lama (`dbMongo.upsert_ioc_from_feed` sync vs
 from __future__ import annotations
 
 import datetime
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Sequence
 from typing import Any
 
-from sqlalchemy import DateTime, bindparam, delete, func, or_, select, text
+from sqlalchemy import DateTime, Select, bindparam, delete, func, or_, select, text, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -34,6 +34,8 @@ from cti_core.indicator.validity import HASH_TYPES, TTL_TYPES, extend, ttl_days,
 _VALID_VERDICTS = frozenset({"tp", "fp"})
 _VALID_TYPES = frozenset({"ip", "url", "domain", "email", "sha256", "sha1", "md5"})
 _TTL_FINGERPRINT_KEY = "indicator.ttl_fingerprint"
+_EXPORT_BATCH = 2000
+"""Ukuran batch keyset export CSV IOC (dibaca saat dipanggil, jadi test bisa mengecilkannya)."""
 
 
 def _apply_upsert(
@@ -417,6 +419,38 @@ class AsyncIndicatorRepo:
         indicator.enrichment = current
         await self.session.flush()
 
+    def _filtered_stmt(
+        self,
+        *,
+        ioc_type: str | None,
+        search: str | None,
+        tags: Sequence[str] | None,
+        actionability: str | None,
+        include_suppressed: bool,
+        state: str | None,
+        include_revoked: bool,
+    ) -> Select[tuple[Indicator]]:
+        """Hanya filter (tanpa order/paging), dipakai bersama oleh `list_filtered` dan
+        `iter_export` supaya export IOC selalu memakai aturan filter yang sama dengan daftar."""
+        stmt = select(Indicator)
+        if state:
+            # state menggantikan include_suppressed: allowlisted justru butuh baris tersembunyi
+            stmt = stmt.where(Indicator.state == state)
+        elif not include_suppressed:
+            # IOC `auto_suppressed` (cocok allowlist) disembunyikan kecuali diminta eksplisit.
+            stmt = stmt.where(Indicator.auto_suppressed.is_(False))
+        if not include_revoked:
+            stmt = stmt.where(Indicator.revoked_at.is_(None))
+        if ioc_type and ioc_type in _VALID_TYPES:
+            stmt = stmt.where(Indicator.type == ioc_type)
+        if search:
+            stmt = stmt.where(Indicator.value.ilike(f"%{search}%"))
+        if tags:
+            stmt = stmt.join(Indicator.tags).where(IndicatorTag.tag.in_(tags)).distinct()
+        if actionability:
+            stmt = stmt.where(Indicator.actionability_label == actionability)
+        return stmt
+
     async def list_filtered(
         self,
         *,
@@ -437,23 +471,15 @@ class AsyncIndicatorRepo:
         `IOC.actionability_label`), jadi filter ini SEKARANG bisa
         diwire -- ditambahin di sini pas Grup G4 (`/intelligence/
         ioc-management`) baru butuh beneran dari frontend."""
-        stmt = select(Indicator)
-        if state:
-            # state menggantikan include_suppressed: allowlisted justru butuh baris tersembunyi
-            stmt = stmt.where(Indicator.state == state)
-        elif not include_suppressed:
-            # IOC `auto_suppressed` (cocok allowlist) disembunyikan kecuali diminta eksplisit.
-            stmt = stmt.where(Indicator.auto_suppressed.is_(False))
-        if not include_revoked:
-            stmt = stmt.where(Indicator.revoked_at.is_(None))
-        if ioc_type and ioc_type in _VALID_TYPES:
-            stmt = stmt.where(Indicator.type == ioc_type)
-        if search:
-            stmt = stmt.where(Indicator.value.ilike(f"%{search}%"))
-        if tags:
-            stmt = stmt.join(Indicator.tags).where(IndicatorTag.tag.in_(tags)).distinct()
-        if actionability:
-            stmt = stmt.where(Indicator.actionability_label == actionability)
+        stmt = self._filtered_stmt(
+            ioc_type=ioc_type,
+            search=search,
+            tags=tags,
+            actionability=actionability,
+            include_suppressed=include_suppressed,
+            state=state,
+            include_revoked=include_revoked,
+        )
 
         count_stmt = select(func.count()).select_from(stmt.subquery())
         total = (await self.session.execute(count_stmt)).scalar_one()
@@ -461,9 +487,66 @@ class AsyncIndicatorRepo:
         order_col = (
             Indicator.confidence_score if sort_by == "confidence" else Indicator.last_seen_at
         )
-        list_stmt = stmt.order_by(order_col.desc()).offset((page - 1) * page_size).limit(page_size)
+        # `id` sebagai tie-breaker: `last_seen_at`/skor sering kembar, tanpa ini halaman offset
+        # bisa menduplikasi atau melewatkan baris.
+        list_stmt = (
+            stmt.order_by(order_col.desc(), Indicator.id.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
         result = await self.session.execute(list_stmt)
         return list(result.scalars().unique().all()), total
+
+    async def iter_export(
+        self,
+        *,
+        sort_by: str | None,
+        batch_size: int | None = None,
+        limit: int,
+        ioc_type: str | None = None,
+        search: str | None = None,
+        tags: Sequence[str] | None = None,
+        actionability: str | None = None,
+        include_suppressed: bool = False,
+        state: str | None = None,
+        include_revoked: bool = True,
+    ) -> AsyncIterator[list[Indicator]]:
+        """Batch IOC untuk export CSV, maksimal `limit` baris, urutan sama dengan `list_filtered`.
+
+        Keyset `(kolom sort, id)` menurun, bukan offset: offset pada puluhan ribu baris membaca
+        ulang semua baris sebelumnya di tiap batch, dan baris yang masuk/berubah di tengah export
+        menggeser halaman (duplikat/terlewat). Kunci gabungan dengan `id` membuat baris yang
+        kembar di kolom sort tetap terurut total, jadi tidak ada yang hilang di batas batch."""
+        size = batch_size or _EXPORT_BATCH
+        order_col = (
+            Indicator.confidence_score if sort_by == "confidence" else Indicator.last_seen_at
+        )
+        base = self._filtered_stmt(
+            ioc_type=ioc_type,
+            search=search,
+            tags=tags,
+            actionability=actionability,
+            include_suppressed=include_suppressed,
+            state=state,
+            include_revoked=include_revoked,
+        )
+        remaining = limit
+        last: tuple[Any, ...] | None = None
+        while remaining > 0:
+            want = min(size, remaining)
+            stmt = base
+            if last is not None:
+                stmt = stmt.where(tuple_(order_col, Indicator.id) < tuple_(*last))
+            stmt = stmt.order_by(order_col.desc(), Indicator.id.desc()).limit(want)
+            batch = list((await self.session.execute(stmt)).scalars().unique().all())
+            if not batch:
+                return
+            yield batch
+            remaining -= len(batch)
+            if len(batch) < want:  # batch tidak penuh = data habis
+                return
+            tail = batch[-1]
+            last = (getattr(tail, order_col.key), tail.id)
 
     async def list_with_feedback(self) -> list[Indicator]:
         """IOC yang punya minimal satu feedback (tp/fp) -- port filter

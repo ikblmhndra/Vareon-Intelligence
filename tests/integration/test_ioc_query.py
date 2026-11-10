@@ -214,3 +214,24 @@ class TestAsyncIocAllowlistRepo:
         entry = await repo.create(entry_type="ip", value="1.2.3.4", added_by="admin1")
         assert await repo.delete(entry.id) is True
         assert await repo.list_all() == []
+
+
+async def test_list_stable_order_ties(async_db_session: AsyncSession) -> None:
+    """Lima IOC dengan `last_seen_at` sama: tanpa tie-breaker `id`, halaman offset bisa
+    menduplikasi atau melewatkan baris."""
+    repo = AsyncIndicatorRepo(async_db_session)
+    for i in range(5):
+        await repo.upsert(
+            type="ip", value=f"10.0.0.{i}", source_url="https://a.com", source_name="a"
+        )
+    await async_db_session.execute(
+        text("UPDATE indicators SET last_seen_at = '2026-01-01T00:00:00+00'")
+    )
+    seen: list[int] = []
+    for page in (1, 2, 3):
+        rows, total = await repo.list_filtered(page=page, page_size=2)
+        assert total == 5
+        seen.extend(i.id for i in rows)
+    assert len(seen) == 5
+    assert len(set(seen)) == 5
+    assert seen == sorted(seen, reverse=True)
