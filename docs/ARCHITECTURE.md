@@ -601,8 +601,8 @@ rules when the download fails its guards. Spec: `docs/superpowers/specs/2026-11-
   audit row (`AsyncAuditLogRepo.write`, then commit) and neutralise cells that start with a formula character. The IOC export
   stops at 50 000 rows and sets `X-Export-Truncated` when cut; the Source reliability export is capped at 5 000 rows (one row
   per source) and has no truncation header.
-- **Entities `sort=mentions`.** The list orders by the number of mentions in the last 30 days, then by the total. The 30-day
-  count scans `entity_mentions`, so its cost grows with the total number of mentions (about 50 ms per page with 200 000
+- **Entities `sort=mentions`.** The list orders by the number of mentions in the last 30 days (descending); ties are broken
+  by name, then id. `total` is returned on the first page only (`null` once a cursor is sent). The 30-day count scans `entity_mentions`, so its cost grows with the total number of mentions (about 50 ms per page with 200 000
   mentions on a local copy, no extra index).
 - `PUT /api/rfi/{id}` and `PUT /api/pir/{id}` treat an explicit `null` as "clear" for nullable fields; a `null` on a required
   field is ignored.
