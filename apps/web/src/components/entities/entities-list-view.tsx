@@ -275,16 +275,16 @@ export function EntitiesListView() {
       <>
         {/* >= 640 px: tabel; di bawahnya jadi kartu supaya halaman tidak scroll horizontal (D28). */}
         <div className="max-sm:hidden">
-          <Table className="table-fixed">
+          <Table className="min-w-[60rem] table-fixed">
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[32%] pl-5">Name</TableHead>
+                <TableHead className="w-[30%] pl-5">Name</TableHead>
                 <TableHead className="w-28">ATT&amp;CK ID</TableHead>
                 <TableHead>Aliases</TableHead>
-                <TableHead className="w-20 text-right">30 d</TableHead>
-                <TableHead className="w-20 text-right">90 d</TableHead>
+                <TableHead className="w-[4.5rem] text-right">30 d</TableHead>
+                <TableHead className="w-[4.5rem] text-right">90 d</TableHead>
                 <TableHead className={cn("w-28", !allTab && "pr-5")}>Last seen</TableHead>
-                {allTab && <TableHead className="w-32 pr-5">Type</TableHead>}
+                {allTab && <TableHead className="w-28 pr-5">Type</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>

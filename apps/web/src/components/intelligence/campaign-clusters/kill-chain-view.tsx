@@ -37,7 +37,7 @@ export function KillChainView({ killChain: kc }: { killChain: KillChain }) {
       <h3 className="text-2xs font-semibold tracking-wide text-muted-foreground uppercase">
         Kill chain · {phaseName(kc.completeness_label)}, {covered} of {GROUPS.length} phases
       </h3>
-      <ul className="mt-2 grid grid-cols-[repeat(auto-fit,minmax(4.5rem,1fr))] gap-1 lg:grid-cols-7">
+      <ul className="mt-2 grid grid-cols-[repeat(auto-fit,minmax(4.5rem,1fr))] gap-1 sm:grid-cols-4">
         {tiles.map((t) => (
           <li
             key={t.label}
