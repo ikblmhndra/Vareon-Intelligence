@@ -6,7 +6,6 @@ import { useId, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api/client";
-import { useCan } from "@/lib/auth/permissions";
 import { defang } from "@/lib/intelligence/defang";
 import { displayId } from "@/lib/intelligence/format";
 import { fmtShortDate } from "@/lib/format";
@@ -253,8 +252,6 @@ export function CampaignDetailCard({
   onOpenPir: (pir: MatchedPir) => void;
   onSelectCampaign: (clusterId: string) => void;
 }) {
-  // Hunt pack adalah ekspor: wajib `export_data`, tombol tidak dirender tanpa izin.
-  const canExport = useCan()("export_data");
   const bd = c.severity_breakdown;
   const factors: [string, number, number, string][] = [
     ["TA sophistication", bd.ta_sophistication, bd.raw.ta_sophistication, "30%"],
@@ -270,11 +267,9 @@ export function CampaignDetailCard({
         <div className="flex flex-col gap-1">
           <div className="flex items-start gap-3">
             <h2 className="min-w-0 flex-1 font-heading text-lg font-semibold">{c.summary_title || c.cluster_id}</h2>
-            {canExport && (
-              <Button variant="outline" size="sm" onClick={() => downloadHuntPack(c)}>
-                Hunt pack
-              </Button>
-            )}
+            <Button variant="outline" size="sm" onClick={() => downloadHuntPack(c)}>
+              Hunt pack
+            </Button>
           </div>
           <p className="text-xs text-muted-foreground">
             First seen {fmtShortDate(c.first_seen)} · last seen {fmtShortDate(c.last_seen)} · {c.new_iocs_24h} new IOCs in 24 h

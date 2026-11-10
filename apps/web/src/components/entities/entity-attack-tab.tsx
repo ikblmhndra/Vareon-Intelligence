@@ -9,14 +9,12 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api/client";
-import { useCan } from "@/lib/auth/permissions";
 import type { components } from "@/lib/api/schema";
 
 type EntityDetail = components["schemas"]["EntityDetail"];
 
 /** Tab ATT&CK: teknik, mitigasi, dan unduhan layer Navigator (`<nama entity>-layer.json`). */
 export function EntityAttackTab({ entity }: { entity: EntityDetail }) {
-  const canExport = useCan()("export_data");
   const attack = useQuery({
     queryKey: ["entity-attack", entity.id],
     queryFn: async () => {
@@ -60,12 +58,10 @@ export function EntityAttackTab({ entity }: { entity: EntityDetail }) {
             Techniques{" "}
             <span className="text-xs font-normal text-muted-foreground">{techniques.length} total</span>
           </h2>
-          {canExport && (
-            <Button variant="outline" size="sm" className="max-sm:h-11" onClick={downloadLayer}>
-              <Download aria-hidden />
-              Navigator layer
-            </Button>
-          )}
+          <Button variant="outline" size="sm" className="max-sm:h-11" onClick={downloadLayer}>
+            <Download aria-hidden />
+            Navigator layer
+          </Button>
         </div>
         {techniques.length === 0 ? (
           <p className="text-sm text-muted-foreground">No techniques mapped to this entity.</p>

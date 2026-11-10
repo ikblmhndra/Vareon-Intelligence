@@ -18,7 +18,6 @@ import { SegmentedControl } from "@/components/ui/segmented-control";
 import { StatePanel } from "@/components/ui/state-panel";
 import { api } from "@/lib/api/client";
 import { getActiveClientId } from "@/lib/auth/client-id";
-import { useCan } from "@/lib/auth/permissions";
 import type { MitreHeatmapResponse } from "@/lib/api/loose-types";
 
 type View = "ta" | "industry";
@@ -62,7 +61,6 @@ function legendItems(max: number) {
  * kartu drill di bawah (dulu dialog). Layer Navigator memakai view/days/baris/kolom yang dipilih, jadi sama
  * dengan heatmap yang terlihat. */
 export function MitreHeatmapView() {
-  const canExport = useCan()("export_data");
   const [view, setView] = useState<View>("ta");
   const [days, setDays] = useState(90);
   const [topRows, setTopRows] = useState(10);
@@ -209,22 +207,20 @@ export function MitreHeatmapView() {
             </div>
           </div>
         </div>
-        {canExport && (
-          <div className="flex items-center gap-1">
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={exporting}
-              onClick={() => void downloadLayer().catch(() => toast.error("Failed to download the layer."))}
-            >
-              Export ATT&amp;CK Navigator layer
-            </Button>
-            <RowMenu
-              label="More export actions"
-              items={[{ label: "Open in ATT&CK Navigator", onSelect: () => void openNavigator() }]}
-            />
-          </div>
-        )}
+        <div className="flex items-center gap-1">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={exporting}
+            onClick={() => void downloadLayer().catch(() => toast.error("Failed to download the layer."))}
+          >
+            Export ATT&amp;CK Navigator layer
+          </Button>
+          <RowMenu
+            label="More export actions"
+            items={[{ label: "Open in ATT&CK Navigator", onSelect: () => void openNavigator() }]}
+          />
+        </div>
       </div>
 
       {query.isPending && (
