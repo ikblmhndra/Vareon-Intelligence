@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from cti_api.schemas.article import TTP
 
@@ -21,6 +21,28 @@ class PIRCriteria(BaseModel):
     news_types: list[str] = []
     keywords: list[str] = []
     ttps: list[str] = []
+
+
+class PIRPreviewCriteria(PIRCriteria):
+    """Kriteria untuk pratinjau: kunci asing ditolak (422) supaya typo tidak diam-diam jadi
+    hitungan tanpa filter. `PIRCriteria` bersama tetap longgar agar POST/PUT menerima payload
+    lama."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class PIRPreviewIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    criteria: PIRPreviewCriteria
+    days: int = Field(90, ge=1, le=365)
+
+
+class PIRPreviewOut(BaseModel):
+    count: int
+    days: int
+    since: datetime.date
+    has_criteria: bool
 
 
 class PIRCreate(BaseModel):

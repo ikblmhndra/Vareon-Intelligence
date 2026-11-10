@@ -27,7 +27,7 @@ from cti_core.db.models.article import Article
 from cti_core.db.models.pir import PIRNote, PIRRequirement
 from cti_core.db.repositories.article import AsyncArticleRepo, all_country_codes
 from cti_core.db.repositories.auth import AsyncAuditLogRepo
-from cti_core.db.repositories.pir import AsyncPIRRepo
+from cti_core.db.repositories.pir import AsyncPIRRepo, criteria_filters, has_criteria
 from cti_core.logging import get_logger
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
@@ -51,6 +51,8 @@ from cti_api.schemas.pir import (
     PIRNoteOut,
     PIROptions,
     PIROut,
+    PIRPreviewIn,
+    PIRPreviewOut,
     PIRUpdate,
     PIRWeekCount,
     PIRWeeklyCoverage,
@@ -145,6 +147,26 @@ async def _get_pir_or_404(repo: AsyncPIRRepo, pir_id: int, user: AuthedUser) -> 
 async def pir_options(session: AsyncSession = Depends(get_db)) -> PIROptions:
     options = await AsyncPIRRepo(session).get_options(AsyncArticleRepo(session))
     return PIROptions(**options)
+
+
+@router.post(
+    "/preview",
+    response_model=PIRPreviewOut,
+    dependencies=[Depends(require_permission("manage_pir"))],
+)
+async def pir_preview(body: PIRPreviewIn, session: AsyncSession = Depends(get_db)) -> PIRPreviewOut:
+    """Jumlah artikel yang cocok kriteria dalam `days` hari terakhir, untuk form PIR sebelum
+    disimpan. Memakai `criteria_filters` + `list_filtered` yang sama dengan `compute_coverage`
+    (angka pratinjau == cakupan PIR tersimpan). Tanpa filter client (artikel global, seperti
+    `/options`), tanpa tulis/audit; tanggal mulai/akhir PIR diabaikan."""
+    criteria = body.criteria.model_dump()
+    since = datetime.date.today() - datetime.timedelta(days=body.days)
+    _, count = await AsyncArticleRepo(session).list_filtered(
+        page=1, page_size=1, posted_on_start=since, **criteria_filters(criteria)
+    )
+    return PIRPreviewOut(
+        count=count, days=body.days, since=since, has_criteria=has_criteria(criteria)
+    )
 
 
 @router.get("", response_model=list[PIROut])

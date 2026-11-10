@@ -71,11 +71,13 @@ def _values(criteria: Any, key: str) -> list[str] | None:
     return None
 
 
-def _has_criteria(criteria: dict[str, Any]) -> bool:
+def has_criteria(criteria: dict[str, Any]) -> bool:
     return any(_values(criteria, k) for k in _CRITERIA_KEYS)
 
 
-def _criteria_filters(criteria: dict[str, Any]) -> dict[str, Any]:
+def criteria_filters(criteria: dict[str, Any]) -> dict[str, Any]:
+    """Kriteria PIR -> argumen `list_filtered`. Publik karena pratinjau PIR (router) harus
+    memakai definisi yang SAMA dengan cakupan PIR tersimpan, bukan salinan."""
     return {
         "threat_actors": _values(criteria, "threat_actors"),
         "malware": _values(criteria, "malware"),
@@ -85,6 +87,11 @@ def _criteria_filters(criteria: dict[str, Any]) -> dict[str, Any]:
         "title_keywords": _values(criteria, "keywords"),
         "ttps": _values(criteria, "ttps"),
     }
+
+
+# Alias nama lama: pemanggil lain (assessment, pir_alert) tetap memakai underscore.
+_has_criteria = has_criteria
+_criteria_filters = criteria_filters
 
 
 def pir_article_ids_stmt(pir: PIRRequirement, article_ids: Sequence[int]) -> Select[tuple[int]]:
@@ -150,7 +157,7 @@ class AsyncPIRRepo:
     ) -> tuple[int, str | None, int]:
         """`(total, last_match_iso, recent_14d_count)` -- lihat catatan
         kuirk `recent` di docstring modul."""
-        filters = _criteria_filters(criteria)
+        filters = criteria_filters(criteria)
         articles, total = await article_repo.list_filtered(
             page=1,
             page_size=1,
@@ -163,7 +170,7 @@ class AsyncPIRRepo:
         )
 
         recent = 0
-        if _has_criteria(criteria):
+        if has_criteria(criteria):
             cutoff = datetime.date.today() - datetime.timedelta(days=14)
             recent_start = max(cutoff, start_date) if start_date else cutoff
             _, recent = await article_repo.list_filtered(
