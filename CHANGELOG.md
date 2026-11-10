@@ -30,7 +30,7 @@ router `changelog.py`) -- parser-nya expect header persis
 - PIR: preview jumlah artikel di form, daftar RFI terkait dan kampanye yang cocok. `GET /api/pir?include_campaigns=true` menjalankan pipeline kampanye tanpa cache; halaman PIR mengambilnya di latar belakang. Link PIR ke kampanye membawa `&days=30` dan halaman Campaign clusters membaca `?days=`.
 - RFI: hitungan per status dan pencarian.
 - Source reliability: filter origin dan export CSV (`GET /api/sr/entries/export`).
-- IOC: export CSV (`GET /api/iocs/export`) dan catatan pada allowlist. Kedua export butuh izin `export_data`, menulis audit log, melindungi sel dari formula CSV, dan dibatasi 50.000 baris (header `X-Export-Truncated` bila terpotong).
+- IOC: export CSV (`GET /api/iocs/export`) dan catatan pada allowlist. Kedua export butuh izin `export_data`, menulis audit log, dan melindungi sel dari formula CSV. Export IOC dibatasi 50.000 baris dan memberi header `X-Export-Truncated` bila terpotong; export Source reliability dibatasi 5.000 baris tanpa header itu (satu baris per sumber).
 - Entities: ringkasan AI di profil entitas dan jumlah artikel; daftar diurutkan menurut sebutan 30 hari terakhir plus total (`sort=mentions`).
 - Newsroom: parameter URL `actor`, `industry`, `ttp`, `from`.
 

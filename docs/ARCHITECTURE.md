@@ -594,12 +594,13 @@ rules when the download fails its guards. Spec: `docs/superpowers/specs/2026-11-
 ### 3.12 Intelligence pages: PIR campaigns, exports, entity ordering (0.8.16)
 
 - **PIR campaign match.** `GET /api/pir?include_campaigns=true` attaches the matching campaigns to each PIR by running the
-  uncached campaign pipeline, and coverage is counted twice (once for the PIR card, once for the campaign match). The PIR page
-  therefore fetches it in the background after the plain list. PIR to campaign links carry `&days=30`, which the Campaign
+  uncached campaign pipeline. The PIR page fetches the plain `GET /api/pir` first and the `include_campaigns=true` variant in
+  the background, so coverage is computed twice per page load. PIR to campaign links carry `&days=30`, which the Campaign
   clusters page reads as `?days=`.
-- **Exports.** `GET /api/sr/entries/export` and `GET /api/iocs/export` return CSV. Both require `export_data`, write an
-  audit row (`AsyncAuditLogRepo.write`, then commit), neutralise cells that start with a formula character, and stop at
-  50 000 rows, setting `X-Export-Truncated` when the result was cut.
+- **Exports.** `GET /api/sr/entries/export` and `GET /api/iocs/export` return CSV; both require `export_data`, write an
+  audit row (`AsyncAuditLogRepo.write`, then commit) and neutralise cells that start with a formula character. The IOC export
+  stops at 50 000 rows and sets `X-Export-Truncated` when cut; the Source reliability export is capped at 5 000 rows (one row
+  per source) and has no truncation header.
 - **Entities `sort=mentions`.** The list orders by the number of mentions in the last 30 days, then by the total. The 30-day
   count scans `entity_mentions`, so its cost grows with the total number of mentions (about 50 ms per page with 200 000
   mentions on a local copy, no extra index).
