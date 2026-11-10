@@ -489,6 +489,33 @@ async def test_profile_uses_ta_profile_llm_function(
     assert len(calls) == 1
 
 
+async def test_profile_summary_exposed(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Header,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    s = api_session
+    actor = await _make(s, "intrusion-set", "Summary Actor")
+    old = await _make(s, "intrusion-set", "Old Profile Actor")
+    s.add(EntityProfile(entity_id=old.id, profile={"identity": {"primary_name": "Old"}}))
+    await s.commit()
+
+    def fake_llm(user_msg: str) -> dict[str, Any]:
+        return {"summary": "  Summary Actor   targets telcos. ", "identity": {}}
+
+    monkeypatch.setattr("cti_api.services.ta_profile._call_llm", fake_llm)
+    h = auth_header(username="prof2")
+    r = await api_client.post(f"/api/entities/{actor.id}/profile", headers=h)
+    assert r.status_code == 200, r.text
+    detail = (await api_client.get(f"/api/entities/{actor.id}", headers=h)).json()
+    assert detail["profile_summary"] == "Summary Actor targets telcos."
+    assert detail["profile_article_count"] == 0
+    legacy = (await api_client.get(f"/api/entities/{old.id}", headers=h)).json()
+    assert legacy["profile_summary"] is None
+    assert legacy["profile_article_count"] is None
+
+
 async def test_attack_endpoint_techniques_mitigations_layer(
     api_client: AsyncClient, api_session: AsyncSession, auth_header: Header
 ) -> None:

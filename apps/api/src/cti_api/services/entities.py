@@ -397,6 +397,16 @@ async def resolve_entity(
     return None if ent is None else _ref(ent)
 
 
+def _profile_summary(profile: dict[str, Any]) -> str | None:
+    value = profile.get("summary")
+    return value if isinstance(value, str) else None
+
+
+def _profile_article_count(profile: dict[str, Any]) -> int | None:
+    value = profile.get("_article_count")
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
 async def entity_detail(session: AsyncSession, entity_id: int, client_id: str) -> EntityDetail:
     """Tombstone dikembalikan apa adanya dengan `merged_into_id` terisi (web mengalihkan)."""
     ent = await _get(session, entity_id)
@@ -434,6 +444,8 @@ async def entity_detail(session: AsyncSession, entity_id: int, client_id: str) -
         ],
         profile=None if profile is None else profile.profile,
         profile_generated_at=None if profile is None else profile.generated_at,
+        profile_summary=None if profile is None else _profile_summary(profile.profile),
+        profile_article_count=None if profile is None else _profile_article_count(profile.profile),
         merged_from=[_ref(x) for x in tombs],
     )
 
