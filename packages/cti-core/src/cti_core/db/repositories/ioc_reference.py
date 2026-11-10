@@ -71,14 +71,20 @@ class AsyncIocAllowlistRepo:
         )
         return result.scalar_one_or_none()
 
-    async def create(self, *, entry_type: str, value: str, added_by: str) -> IocAllowlistEntry:
+    async def create(
+        self, *, entry_type: str, value: str, added_by: str, note: str | None = None
+    ) -> IocAllowlistEntry:
         if entry_type not in _VALID_ALLOWLIST_TYPES:
             raise ValueError(f"type harus salah satu dari {_VALID_ALLOWLIST_TYPES}")
         value = value.strip().lower()
         existing = await self.get(entry_type, value)
         if existing is not None:
             return existing
-        entry = IocAllowlistEntry(type=entry_type, value=value, added_by=added_by)
+        # catatan kosong/spasi saja disimpan sebagai NULL; entri yang sudah ada tidak ditimpa
+        # (catatan pertama = alasan awal entri dibuat).
+        entry = IocAllowlistEntry(
+            type=entry_type, value=value, added_by=added_by, note=(note or "").strip() or None
+        )
         self.session.add(entry)
         await self.session.flush()
         return entry

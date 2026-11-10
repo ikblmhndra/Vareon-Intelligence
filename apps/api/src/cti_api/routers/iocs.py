@@ -30,7 +30,7 @@ from cti_core.db.repositories.ioc_reference import AsyncIocAllowlistRepo
 from cti_core.indicator.marking import Pap, Tlp
 from cti_core.ioc.canonical import canonical
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_api.deps import (
@@ -74,6 +74,7 @@ class BulkDeleteBody(BaseModel):
 class AllowlistBody(BaseModel):
     type: Literal["url_domain", "email_domain", "ip"]
     value: str
+    note: str | None = Field(None, max_length=300)
 
 
 _EXPORT_CAP = 50_000
@@ -341,7 +342,9 @@ async def ioc_allowlist_add(
 ) -> dict[str, object]:
     repo = AsyncIocAllowlistRepo(session)
     try:
-        entry = await repo.create(entry_type=body.type, value=body.value, added_by=user["username"])
+        entry = await repo.create(
+            entry_type=body.type, value=body.value, added_by=user["username"], note=body.note
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     await AsyncAuditLogRepo(session).write(
@@ -355,6 +358,7 @@ async def ioc_allowlist_add(
         "id": entry.id,
         "type": entry.type,
         "value": entry.value,
+        "note": entry.note,
         "added_by": entry.added_by,
         "added_at": entry.created_at.isoformat(),
     }
