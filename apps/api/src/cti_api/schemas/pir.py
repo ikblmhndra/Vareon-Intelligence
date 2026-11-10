@@ -72,6 +72,21 @@ class PIRNoteIn(BaseModel):
     analyst: str = ""
 
 
+class PIRLinkedRFI(BaseModel):
+    id: int
+    status: str
+    question: str
+    due_date: str | None = None
+
+
+class PIRMatchedCampaign(BaseModel):
+    cluster_id: str
+    title: str
+    size: int
+    severity_label: str
+    last_seen: str | None = None
+
+
 class PIROut(BaseModel):
     id: int
     title: str
@@ -88,6 +103,10 @@ class PIROut(BaseModel):
     last_match: str | None = None
     created_at: str
     updated_at: str
+    linked_rfis: list[PIRLinkedRFI] = []
+    linked_rfi_open: int = 0
+    # `None` = tidak diminta (`include_campaigns=false`, POST/PUT); `[]` = diminta tapi tidak ada.
+    matched_campaigns: list[PIRMatchedCampaign] | None = None
 
 
 class PIRArticleOut(BaseModel):

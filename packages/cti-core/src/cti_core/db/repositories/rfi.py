@@ -16,12 +16,17 @@ instruksi "port apa adanya, flag asimetri, jangan diam-diam diperbaiki"
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_core.db.models.rfi import RFIRequest
+
+# Batas RFI tertaut per PIR yang dikirim ke UI: PIR dengan ratusan RFI tidak boleh membengkakkan
+# respons daftar PIR; yang masih terbuka sudah diurutkan paling depan.
+_LINKED_RFI_CAP = 20
 
 
 class AsyncRFIRepo:
@@ -50,6 +55,34 @@ class AsyncRFIRepo:
         )
         result = await self.session.execute(list_stmt)
         return list(result.scalars().all()), total
+
+    async def list_by_pirs(
+        self, client_id: str, pir_ids: Sequence[int]
+    ) -> dict[int, list[RFIRequest]]:
+        """RFI tertaut per PIR dalam SATU query. `linked_pir_id` hanyalah FK tanpa cek client,
+        jadi RFI client lain yang menunjuk PIR ini harus disaring lewat `client_id`. Urutan:
+        open, in_progress, closed, status tak dikenal; lalu due_date terdekat (NULL terakhir),
+        lalu id. Dipotong `_LINKED_RFI_CAP` di Python supaya SQL tetap satu pernyataan sederhana."""
+        if not pir_ids:
+            return {}
+        rank = case(
+            (RFIRequest.status == "open", 0),
+            (RFIRequest.status == "in_progress", 1),
+            (RFIRequest.status == "closed", 2),
+            else_=3,
+        )
+        result = await self.session.execute(
+            select(RFIRequest)
+            .where(RFIRequest.client_id == client_id, RFIRequest.linked_pir_id.in_(pir_ids))
+            .order_by(rank, RFIRequest.due_date.asc().nulls_last(), RFIRequest.id)
+        )
+        out: dict[int, list[RFIRequest]] = {}
+        for rfi in result.scalars():
+            assert rfi.linked_pir_id is not None
+            bucket = out.setdefault(rfi.linked_pir_id, [])
+            if len(bucket) < _LINKED_RFI_CAP:
+                bucket.append(rfi)
+        return out
 
     async def get_by_id(self, rfi_id: int, client_id: str) -> RFIRequest | None:
         result = await self.session.execute(

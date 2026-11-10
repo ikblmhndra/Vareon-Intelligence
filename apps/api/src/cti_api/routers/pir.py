@@ -25,9 +25,11 @@ from typing import Any
 from cti_core.celery_client import send_recompute_all
 from cti_core.db.models.article import Article
 from cti_core.db.models.pir import PIRNote, PIRRequirement
+from cti_core.db.models.rfi import RFIRequest
 from cti_core.db.repositories.article import AsyncArticleRepo, all_country_codes
 from cti_core.db.repositories.auth import AsyncAuditLogRepo
 from cti_core.db.repositories.pir import AsyncPIRRepo, criteria_filters, has_criteria
+from cti_core.db.repositories.rfi import AsyncRFIRepo
 from cti_core.logging import get_logger
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
@@ -47,6 +49,8 @@ from cti_api.schemas.pir import (
     PIRArticleOut,
     PIRCreate,
     PIRCriteria,
+    PIRLinkedRFI,
+    PIRMatchedCampaign,
     PIRNoteIn,
     PIRNoteOut,
     PIROptions,
@@ -57,6 +61,7 @@ from cti_api.schemas.pir import (
     PIRWeekCount,
     PIRWeeklyCoverage,
 )
+from cti_api.services import campaign as campaign_service
 from cti_api.services.pir_docx import build_docx, export_filename
 
 router = APIRouter(
@@ -78,7 +83,18 @@ def _enqueue_recompute_all() -> None:
         log.warning("recompute_all_enqueue_failed", reason="pir", exc_info=True)
 
 
-def _to_out(pir: PIRRequirement, total: int, last_match: str | None, recent: int) -> PIROut:
+_MAX_CAMPAIGNS_PER_PIR = 5
+
+
+def _to_out(
+    pir: PIRRequirement,
+    total: int,
+    last_match: str | None,
+    recent: int,
+    rfis: list[RFIRequest] | None = None,
+    campaigns: list[PIRMatchedCampaign] | None = None,
+) -> PIROut:
+    rfis = rfis or []
     return PIROut(
         id=pir.id,
         title=pir.title,
@@ -95,7 +111,36 @@ def _to_out(pir: PIRRequirement, total: int, last_match: str | None, recent: int
         last_match=last_match,
         created_at=pir.created_at.isoformat(),
         updated_at=pir.updated_at.isoformat(),
+        linked_rfis=[
+            PIRLinkedRFI(
+                id=r.id,
+                status=r.status,
+                question=r.question[:120],
+                due_date=r.due_date.isoformat() if r.due_date else None,
+            )
+            for r in rfis
+        ],
+        linked_rfi_open=sum(1 for r in rfis if r.status in ("open", "in_progress")),
+        matched_campaigns=campaigns,
     )
+
+
+def _campaigns_by_pir(campaigns: list[dict[str, Any]]) -> dict[int, list[PIRMatchedCampaign]]:
+    """Balik `matched_pirs` per kampanye menjadi {pir_id: kampanye}, terkuat dulu, maks 5."""
+    out: dict[int, list[PIRMatchedCampaign]] = {}
+    for c in sorted(campaigns, key=lambda x: x["severity_score"], reverse=True):
+        item = PIRMatchedCampaign(
+            cluster_id=c["cluster_id"],
+            title=c.get("summary_title") or c["cluster_id"],
+            size=c["size"],
+            severity_label=c["severity_label"],
+            last_seen=c.get("last_seen") or None,
+        )
+        for pir in c.get("matched_pirs", []):
+            bucket = out.setdefault(pir["id"], [])
+            if len(bucket) < _MAX_CAMPAIGNS_PER_PIR:
+                bucket.append(item)
+    return out
 
 
 def _article_out(article: Article, has_note: bool) -> PIRArticleOut:
@@ -171,13 +216,33 @@ async def pir_preview(body: PIRPreviewIn, session: AsyncSession = Depends(get_db
 
 @router.get("", response_model=list[PIROut])
 async def get_pirs(
+    include_campaigns: bool = Query(False),
+    campaign_days: int = Query(30, ge=7, le=90),
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),
     x_client_id: str | None = Header(None),
 ) -> list[PIROut]:
+    """Daftar PIR + RFI tertaut. `linked_pir_id` hanyalah FK tanpa cek client, jadi RFI disaring
+    per client di repo. `include_campaigns` opt-in karena clustering kampanye mahal: satu panggilan
+    `get_recent_campaigns` lalu dibalik per PIR (PIR tanpa kecocokan, termasuk paused/archived,
+    mendapat `[]`). Cakupan dihitung dua kali bila halaman mengambil kedua varian."""
     cid = effective_client_id(user, x_client_id)
     rows = await AsyncPIRRepo(session).list_pirs(AsyncArticleRepo(session), cid)
-    return [_to_out(*row) for row in rows]
+    rfi_map = await AsyncRFIRepo(session).list_by_pirs(cid, [r[0].id for r in rows])
+    by_pir: dict[int, list[PIRMatchedCampaign]] | None = None
+    if include_campaigns:
+        campaigns = await campaign_service.get_recent_campaigns(
+            session, days=campaign_days, client_id=cid, min_size=3
+        )
+        by_pir = _campaigns_by_pir(campaigns)
+    return [
+        _to_out(
+            *row,
+            rfis=rfi_map.get(row[0].id, []),
+            campaigns=None if by_pir is None else by_pir.get(row[0].id, []),
+        )
+        for row in rows
+    ]
 
 
 @router.get("/{pir_id}/articles", response_model=PIRArticleListResponse)
@@ -349,7 +414,8 @@ async def post_pir(
     total, last_match, recent = await repo.compute_coverage(
         AsyncArticleRepo(session), pir.criteria, pir.start_date, pir.end_date
     )
-    return _to_out(pir, total, last_match, recent)
+    rfi_map = await AsyncRFIRepo(session).list_by_pirs(cid, [pir.id])
+    return _to_out(pir, total, last_match, recent, rfis=rfi_map.get(pir.id, []))
 
 
 @router.put(
@@ -386,7 +452,8 @@ async def put_pir(
     total, last_match, recent = await repo.compute_coverage(
         AsyncArticleRepo(session), pir.criteria, pir.start_date, pir.end_date
     )
-    return _to_out(pir, total, last_match, recent)
+    rfi_map = await AsyncRFIRepo(session).list_by_pirs(pir.client_id, [pir.id])
+    return _to_out(pir, total, last_match, recent, rfis=rfi_map.get(pir.id, []))
 
 
 @router.delete("/{pir_id}", dependencies=[Depends(require_permission("manage_pir"))])
