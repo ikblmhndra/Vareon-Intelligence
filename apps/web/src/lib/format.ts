@@ -40,6 +40,13 @@ export function fmtShortDate(
   }).format(d);
 }
 
+/** "Mar 2021" (bulan + tahun, zona browser); dipakai tile "First seen" di pratinjau entity. */
+export function fmtMonthYear(value: string | Date | null | undefined): string {
+  const d = toDate(value);
+  if (!d) return DASH;
+  return new Intl.DateTimeFormat("en-GB", { month: "short", year: "numeric" }).format(d);
+}
+
 function part(parts: Intl.DateTimeFormatPart[], type: Intl.DateTimeFormatPartTypes): string {
   return parts.find((p) => p.type === type)?.value ?? "";
 }

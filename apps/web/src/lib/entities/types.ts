@@ -22,20 +22,22 @@ export type EntityType =
   | "identity"
   | "location";
 
-/** Tab di daftar entity, urutan sesuai spec. `identity` dibelah lewat `identity_class`. */
+/** Tab di daftar entity (spec 2b C5): "All" dulu (tanpa filter tipe), lalu delapan tab; kunci lama tetap
+ * (`actors`, `vulnerabilities`, `countries`) supaya bookmark `?tab=` tidak patah. `identity` dibelah lewat `identity_class`. */
 export const ENTITY_TABS: readonly {
   key: string;
   label: string;
   types: EntityType[];
   identityClass?: "class" | "organization";
 }[] = [
-  { key: "actors", label: "Actors", types: ["intrusion-set"] },
+  { key: "all", label: "All", types: [] },
+  { key: "actors", label: "Threat actors", types: ["intrusion-set"] },
   { key: "malware", label: "Malware & tools", types: ["malware", "tool"] },
   { key: "techniques", label: "Techniques", types: ["attack-pattern"] },
-  { key: "vulnerabilities", label: "Vulnerabilities", types: ["vulnerability"] },
+  { key: "vulnerabilities", label: "CVEs", types: ["vulnerability"] },
   { key: "campaigns", label: "Campaigns", types: ["campaign"] },
   { key: "sectors", label: "Sectors", types: ["identity"], identityClass: "class" },
-  { key: "countries", label: "Countries", types: ["location"] },
+  { key: "countries", label: "Locations", types: ["location"] },
   { key: "victims", label: "Victims", types: ["identity"], identityClass: "organization" },
 ];
 

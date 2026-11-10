@@ -1,21 +1,31 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, Eye, Plus, Search, TrendingDown, TrendingUp } from "lucide-react";
+import { MoreHorizontalIcon, Plus, TrendingDown, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
 
-import { AttackSyncCard } from "@/components/entities/attack-sync-card";
 import { otherAliases } from "@/components/entities/entity-action-utils";
 import { EntityChip } from "@/components/entities/entity-chip";
 import { EntityCreateDialog } from "@/components/entities/entity-create-dialog";
+import { EntityPreviewPanel } from "@/components/entities/entity-preview-panel";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Skeleton } from "@/components/ui/skeleton";
-import { TabPills } from "@/components/ui/tab-pills";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { LoadMoreFooter } from "@/components/ui/load-more-footer";
+import { MasterDetail } from "@/components/ui/master-detail";
+import { Notice } from "@/components/ui/notice";
+import { SearchInput } from "@/components/ui/search-input";
+import { SegmentedControl } from "@/components/ui/segmented-control";
+import { StarToggle } from "@/components/ui/star-toggle";
+import { StatePanel } from "@/components/ui/state-panel";
 import {
   Table,
   TableBody,
@@ -28,8 +38,8 @@ import { api } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { getActiveClientId } from "@/lib/auth/client-id";
 import { useCan } from "@/lib/auth/permissions";
-import { relativeTime } from "@/lib/cve/freshness";
-import { ENTITY_TABS } from "@/lib/entities/types";
+import { ENTITY_TABS, entityTypeMeta } from "@/lib/entities/types";
+import { fmtCompactAge } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 type EntityListItem = components["schemas"]["EntityListItem"];
@@ -75,48 +85,23 @@ function Aliases({ item }: { item: { name: string; external_id?: string | null; 
   if (aliases.length === 0) return <span className="text-xs text-muted-foreground">—</span>;
   return (
     <div className="flex flex-wrap items-center gap-1">
-      {aliases.slice(0, 3).map((a) => (
+      {aliases.slice(0, 2).map((a) => (
         <span key={a} className="rounded-md bg-muted px-1.5 py-0.5 text-xs text-foreground">
           {a}
         </span>
       ))}
-      {aliases.length > 3 && (
-        <span className="text-xs text-muted-foreground">+{aliases.length - 3}</span>
+      {aliases.length > 2 && (
+        <span className="text-xs text-muted-foreground">+{aliases.length - 2}</span>
       )}
     </div>
   );
 }
 
-function WatchButton({
-  item,
-  onToggle,
-  busy,
-}: {
-  item: EntityListItem;
-  onToggle: (item: EntityListItem) => void;
-  busy: boolean;
-}) {
-  return (
-    <Button
-      size="sm"
-      variant={item.watched ? "default" : "outline"}
-      aria-pressed={item.watched}
-      aria-label={`${item.watched ? "Stop watching" : "Watch"} ${item.name}`}
-      disabled={busy}
-      onClick={() => onToggle(item)}
-      className="max-sm:h-11"
-    >
-      <Eye aria-hidden />
-      {item.watched ? "Watching" : "Watch"}
-    </Button>
-  );
-}
-
 /**
- * Daftar entity (P7c): satu halaman untuk semua tipe, tab per tipe. State di URL (`tab`, `q`,
- * `watched=1`, `suppressed=1`) supaya bisa di-bookmark; `?new=1&type=&name=` membuka dialog buat
- * entity (dipakai halaman resolve untuk nama yang belum punya entity). Menggantikan Threat Actor
- * Room dan ATT&CK DB.
+ * Daftar entity (P7c, desain 2b 6.7): tab per tipe + "All", urut 30 hari terbanyak (C6), baris terpilih
+ * tampil di panel pratinjau. State di URL (`tab`, `q`, `watched=1`, `suppressed=1`, `id`) supaya bisa
+ * di-bookmark; `?new=1&type=&name=` membuka dialog buat entity (dipakai halaman resolve untuk nama yang
+ * belum punya entity). Hanya halaman ini yang mengirim `sort=mentions`; picker dan dialog tetap urut nama.
  */
 export function EntitiesListView() {
   const router = useRouter();
@@ -124,12 +109,13 @@ export function EntitiesListView() {
   const queryClient = useQueryClient();
   const can = useCan();
 
-  const tabKey = ENTITY_TABS.some((t) => t.key === params.get("tab")) ? params.get("tab")! : "actors";
+  const tabKey = ENTITY_TABS.some((t) => t.key === params.get("tab")) ? params.get("tab")! : "all";
   const tab = ENTITY_TABS.find((t) => t.key === tabKey)!;
   const q = params.get("q") ?? "";
   const watchedOnly = params.get("watched") === "1";
   const includeSuppressed = params.get("suppressed") === "1" && can("manage_entities");
   const creating = params.get("new") === "1";
+  const idParam = Number(params.get("id"));
 
   const setParams = useCallback(
     (patch: Record<string, string | null>) => {
@@ -143,26 +129,29 @@ export function EntitiesListView() {
     [params, router],
   );
 
-  // Kotak cari: state lokal, ditulis ke URL setelah 300 ms tanpa ketikan.
+  // Kotak cari: state lokal, ditulis ke URL setelah 300 ms tanpa ketikan; pilihan baris dilepas
+  // supaya baris pertama hasil baru jadi default.
   const [qInput, setQInput] = useState(q);
   useEffect(() => {
     if (qInput === q) return;
-    const t = setTimeout(() => setParams({ q: qInput }), 300);
+    const t = setTimeout(() => setParams({ q: qInput, id: null }), 300);
     return () => clearTimeout(t);
   }, [qInput, q, setParams]);
 
   const list = useInfiniteQuery({
-    queryKey: ["entities", "list", tabKey, q, watchedOnly, includeSuppressed],
+    queryKey: ["entities", "list", tabKey, q, watchedOnly, includeSuppressed, "mentions"],
     initialPageParam: null as string | null,
     queryFn: async ({ pageParam }) => {
       const { data, error, response } = await api.GET("/api/entities", {
         params: {
           query: {
-            type: tab.types.join(","),
+            type: tab.types.length ? tab.types.join(",") : undefined,
             identity_class: tab.identityClass ?? undefined,
             q: q || undefined,
             watched: watchedOnly || undefined,
             include_suppressed: includeSuppressed || undefined,
+            // Kursor bergantung pada `sort`: selalu kirim sort yang sama dengan halaman pertama.
+            sort: "mentions",
             cursor: pageParam ?? undefined,
             limit: PAGE_SIZE,
           },
@@ -175,6 +164,34 @@ export function EntitiesListView() {
   });
 
   const items = list.data?.pages.flatMap((p) => p.items) ?? [];
+  // `total` hanya terisi di halaman pertama (null saat ada kursor), jadi diambil dari sana.
+  const total = list.data?.pages[0]?.total ?? items.length;
+  const selected = items.find((i) => i.id === idParam) ?? items[0] ?? null;
+  const rowRefs = useRef(new Map<number, HTMLTableRowElement>());
+
+  function select(item: EntityListItem) {
+    setParams({ id: String(item.id) });
+  }
+
+  // Satu tab stop untuk tabel (baris terpilih); panah memindahkan pilihan, Enter membuka halaman entity.
+  // Hanya bila fokus di baris itu sendiri: tautan nama dan bintang punya Enter sendiri.
+  function onRowKey(e: KeyboardEvent<HTMLTableRowElement>, index: number) {
+    if (e.target !== e.currentTarget) return;
+    if (e.key === "Enter") {
+      e.preventDefault();
+      router.push(`/intelligence/entities/${items[index].id}`);
+      return;
+    }
+    let next: number;
+    if (e.key === "ArrowDown") next = Math.min(items.length - 1, index + 1);
+    else if (e.key === "ArrowUp") next = Math.max(0, index - 1);
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = items.length - 1;
+    else return;
+    e.preventDefault();
+    select(items[next]);
+    rowRefs.current.get(items[next].id)?.focus();
+  }
 
   const [busyId, setBusyId] = useState<number | null>(null);
   async function toggleWatch(item: EntityListItem) {
@@ -212,86 +229,205 @@ export function EntitiesListView() {
     }
   }
 
-  const tabItems = ENTITY_TABS.map((t) => ({ value: t.key, label: t.label }));
-  const singular = tab.label;
+  const tabOptions = ENTITY_TABS.map((t) => ({ value: t.key, label: t.label }));
+  const allTab = tabKey === "all";
+  const starFor = (it: EntityListItem) => (
+    <StarToggle
+      on={it.watched}
+      name={it.name}
+      onToggle={can("manage_pir") ? () => void toggleWatch(it) : undefined}
+      disabled={busyId === it.id}
+    />
+  );
+
+  let body;
+  if (list.isPending) body = <StatePanel variant="loading" title="Loading entities" className="m-4" />;
+  else if (list.isError)
+    body =
+      list.error instanceof Error && list.error.cause === 403 ? (
+        <StatePanel variant="no-access" title="You don't have access to entity pages." className="m-4" />
+      ) : (
+        <StatePanel
+          variant="error"
+          title="Failed to load entities."
+          className="m-4"
+          action={
+            <Button variant="outline" size="sm" onClick={() => void list.refetch()}>
+              Retry
+            </Button>
+          }
+        />
+      );
+  else if (items.length === 0)
+    body = (
+      <StatePanel
+        variant="empty"
+        title={`No ${tab.label.toLowerCase()} match these filters`}
+        description="Clear the search or turn off Watched only to see more."
+        className="m-4"
+      />
+    );
+  else
+    body = (
+      <>
+        {/* >= 640 px: tabel; di bawahnya jadi kartu supaya halaman tidak scroll horizontal (D28). */}
+        <div className="max-sm:hidden">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="pl-5">Name</TableHead>
+                <TableHead>ATT&amp;CK ID</TableHead>
+                <TableHead>Aliases</TableHead>
+                <TableHead className="text-right">30 d</TableHead>
+                <TableHead className="text-right">90 d</TableHead>
+                <TableHead className={cn(!allTab && "pr-5")}>Last seen</TableHead>
+                {allTab && <TableHead className="pr-5">Type</TableHead>}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {items.map((it, i) => {
+                const isSel = it.id === selected?.id;
+                return (
+                  <TableRow
+                    key={it.id}
+                    ref={(el: HTMLTableRowElement | null) => {
+                      if (el) rowRefs.current.set(it.id, el);
+                      else rowRefs.current.delete(it.id);
+                    }}
+                    selected={isSel}
+                    tabIndex={isSel ? 0 : -1}
+                    aria-current={isSel ? "true" : undefined}
+                    onClick={() => select(it)}
+                    onKeyDown={(e) => onRowKey(e, i)}
+                    className={cn(
+                      "cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                      it.suppressed && "text-muted-foreground",
+                    )}
+                  >
+                    <TableCell className="pl-5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {starFor(it)}
+                        <EntityChip type={it.type} name={it.name} id={it.id} />
+                        {it.suppressed && (
+                          <span className="rounded-md bg-muted px-1.5 py-0.5 text-2xs">Suppressed</span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="font-code text-xs text-primary-text">{it.external_id ?? "—"}</TableCell>
+                    <TableCell>
+                      <Aliases item={it} />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Mentions30 item={it} />
+                    </TableCell>
+                    <TableCell className="text-right">{it.mentions_90d}</TableCell>
+                    <TableCell className={cn("text-xs whitespace-nowrap", !allTab && "pr-5")}>
+                      {it.last_seen ? `${fmtCompactAge(it.last_seen)} ago` : "—"}
+                    </TableCell>
+                    {allTab && (
+                      <TableCell className="pr-5 text-xs whitespace-nowrap">
+                        {entityTypeMeta(it.type).label}
+                      </TableCell>
+                    )}
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+        <ul className="divide-y divide-border sm:hidden">
+          {items.map((it) => (
+            <li key={it.id} className="space-y-2 p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                {starFor(it)}
+                <EntityChip type={it.type} name={it.name} id={it.id} />
+                {it.external_id && (
+                  <span className="font-code text-xs text-muted-foreground">{it.external_id}</span>
+                )}
+                {it.suppressed && (
+                  <span className="rounded-md bg-muted px-1.5 py-0.5 text-2xs">Suppressed</span>
+                )}
+              </div>
+              <Aliases item={it} />
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                {allTab && <span>{entityTypeMeta(it.type).label}</span>}
+                <span>
+                  30 d <Mentions30 item={it} />
+                </span>
+                <span>90 d {it.mentions_90d}</span>
+                <span>{it.last_seen ? `${fmtCompactAge(it.last_seen)} ago` : "—"}</span>
+              </div>
+            </li>
+          ))}
+        </ul>
+        <div className="px-5 pb-4">
+          <LoadMoreFooter
+            shown={items.length}
+            total={total}
+            hasMore={!!list.hasNextPage}
+            loading={list.isFetchingNextPage}
+            onLoadMore={() => void list.fetchNextPage()}
+          />
+          <p className="pt-1 text-2xs text-muted-foreground">
+            Trend = 30 d compared with the 90 d monthly average
+          </p>
+        </div>
+      </>
+    );
 
   return (
     <div className="space-y-4">
-      <TabPills
-        aria-label="Entity types"
-        items={tabItems}
-        value={tabKey}
-        onChange={(v) => setParams({ tab: v })}
-      />
-
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="flex flex-wrap items-end gap-4">
-          <div className="flex flex-col gap-1">
-            <Label htmlFor="entity-search" className="text-sm font-medium text-muted-foreground">
-              Search name or alias
-            </Label>
-            <div className="relative">
-              <Search
-                aria-hidden
-                className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
-              />
-              <Input
-                id="entity-search"
-                value={qInput}
-                onChange={(e) => setQInput(e.target.value)}
-                placeholder={`Search ${singular.toLowerCase()}…`}
-                className="w-64 pl-8 text-xs max-sm:h-11 max-sm:w-full"
-              />
-            </div>
-          </div>
-          <div className="flex flex-col gap-1">
-            <span id="entity-show-label" className="text-sm font-medium text-muted-foreground">
-              Show
-            </span>
-            <div role="group" aria-labelledby="entity-show-label" className="flex gap-1.5">
-              <Button
-                size="sm"
-                variant={watchedOnly ? "outline" : "default"}
-                aria-pressed={!watchedOnly}
-                onClick={() => setParams({ watched: null })}
-                className="max-sm:h-11"
-              >
-                All
-              </Button>
-              <Button
-                size="sm"
-                variant={watchedOnly ? "default" : "outline"}
-                aria-pressed={watchedOnly}
-                onClick={() => setParams({ watched: "1" })}
-                className="max-sm:h-11"
-              >
-                Watched
-              </Button>
-            </div>
-          </div>
-          {can("manage_entities") && (
-          <div className="flex h-8 items-center gap-2 max-sm:h-11">
-            <Checkbox
-              id="entity-suppressed"
-              checked={includeSuppressed}
-              onCheckedChange={(c) => setParams({ suppressed: c ? "1" : null })}
-            />
-            <Label htmlFor="entity-suppressed" className="text-sm text-foreground">
-              Include suppressed
-            </Label>
-          </div>
-          )}
+      <div className="flex flex-wrap items-center gap-3">
+        <SearchInput
+          className="w-72 max-sm:w-full"
+          value={qInput}
+          onChange={setQInput}
+          placeholder="Search name, alias or ATT&CK ID"
+          aria-label="Search entities by name, alias or ATT&CK ID"
+        />
+        <div className="max-w-full overflow-x-auto">
+          <SegmentedControl
+            aria-label="Entity types"
+            size="sm"
+            options={tabOptions}
+            value={tabKey}
+            onChange={(v) => setParams({ tab: v, id: null })}
+          />
         </div>
-        <div className="flex flex-wrap gap-2">
-          {tabKey === "actors" && (
-            <Button variant="outline" onClick={() => void downloadLayer()} className="max-sm:h-11">
-              <Download aria-hidden />
-              Watchlist Navigator layer
-            </Button>
-          )}
+        <div className="ml-auto flex items-center gap-2">
+          <Button
+            variant={watchedOnly ? "default" : "outline"}
+            size="sm"
+            aria-pressed={watchedOnly}
+            onClick={() => setParams({ watched: watchedOnly ? null : "1", id: null })}
+            className="max-sm:h-11"
+          >
+            Watched only
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={<Button variant="outline" size="icon-sm" aria-label="More entity actions" />}
+            >
+              <MoreHorizontalIcon aria-hidden />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {can("manage_entities") && (
+                <DropdownMenuCheckboxItem
+                  checked={includeSuppressed}
+                  onCheckedChange={(c) => setParams({ suppressed: c ? "1" : null, id: null })}
+                >
+                  Include suppressed
+                </DropdownMenuCheckboxItem>
+              )}
+              <DropdownMenuItem onClick={() => void downloadLayer()}>
+                Download watchlist Navigator layer
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           {can("manage_entities") && (
             <Button
-              onClick={() => setParams({ new: "1", type: tab.types[0], name: null })}
+              size="sm"
+              onClick={() => setParams({ new: "1", type: tab.types[0] ?? null, name: null })}
               className="max-sm:h-11"
             >
               <Plus aria-hidden />
@@ -301,135 +437,43 @@ export function EntitiesListView() {
         </div>
       </div>
 
-      {tabKey === "techniques" && can("manage_intel") && <AttackSyncCard />}
+      {tabKey === "techniques" && (
+        <Notice
+          tone="info"
+          title="ATT&CK sync status moved to MITRE heatmap"
+          action={
+            <Link
+              href="/intelligence/mitre"
+              className="rounded-sm text-xs font-medium text-primary-text underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            >
+              Open MITRE heatmap
+            </Link>
+          }
+        />
+      )}
 
-      <section aria-label={`${singular} list`} className="rounded-2xl surface-raised">
-        {list.isPending && (
-          <div className="space-y-2 p-4" role="status" aria-label="Loading entities">
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-8 w-full" />
-            <Skeleton className="h-8 w-full" />
-          </div>
-        )}
-        {list.isError && (
-          <p role="alert" className="p-4 text-sm text-destructive-text">
-            {list.error instanceof Error && list.error.cause === 403
-              ? "You don't have access to entity pages."
-              : "Failed to load entities."}
-          </p>
-        )}
-        {list.isSuccess && items.length === 0 && (
-          <p className="p-6 text-center text-sm text-muted-foreground">
-            No {singular.toLowerCase()} match these filters.
-          </p>
-        )}
-        {items.length > 0 && (
-          <>
-            {/* >= 640 px: tabel; di bawahnya jadi kartu supaya halaman tidak scroll horizontal. */}
-            <div className="max-sm:hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Also known as</TableHead>
-                    <TableHead>Source</TableHead>
-                    <TableHead className="text-right">Mentions 30 d</TableHead>
-                    <TableHead className="text-right">90 d</TableHead>
-                    <TableHead>Last seen</TableHead>
-                    <TableHead className="text-right">
-                      <span className="sr-only">Watch</span>
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {items.map((it) => (
-                    <TableRow key={it.id} className={cn(it.suppressed && "text-muted-foreground")}>
-                      <TableCell>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <EntityChip type={it.type} name={it.name} id={it.id} />
-                          {it.external_id && (
-                            <span className="font-code text-xs text-muted-foreground">
-                              {it.external_id}
-                            </span>
-                          )}
-                          {it.suppressed && (
-                            <span className="rounded-md bg-muted px-1.5 py-0.5 text-2xs">Suppressed</span>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Aliases item={it} />
-                      </TableCell>
-                      <TableCell>
-                        <span className="rounded-md bg-muted px-1.5 py-0.5 text-xs">{it.source}</span>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Mentions30 item={it} />
-                      </TableCell>
-                      <TableCell className="text-right">{it.mentions_90d}</TableCell>
-                      <TableCell className="text-xs whitespace-nowrap">
-                        {it.last_seen ? relativeTime(it.last_seen) : "—"}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {can("manage_pir") && (
-                          <WatchButton item={it} onToggle={toggleWatch} busy={busyId === it.id} />
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-            <ul className="divide-y divide-border sm:hidden">
-              {items.map((it) => (
-                <li key={it.id} className="space-y-2 p-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <EntityChip type={it.type} name={it.name} id={it.id} />
-                    {it.external_id && (
-                      <span className="font-code text-xs text-muted-foreground">{it.external_id}</span>
-                    )}
-                    {it.suppressed && (
-                      <span className="rounded-md bg-muted px-1.5 py-0.5 text-2xs">Suppressed</span>
-                    )}
-                  </div>
-                  <Aliases item={it} />
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                    <span className="rounded-md bg-muted px-1.5 py-0.5">{it.source}</span>
-                    <span>
-                      30 d <Mentions30 item={it} />
-                    </span>
-                    <span>90 d {it.mentions_90d}</span>
-                    <span>{it.last_seen ? relativeTime(it.last_seen) : "—"}</span>
-                  </div>
-                  {can("manage_pir") && (
-                    <WatchButton item={it} onToggle={toggleWatch} busy={busyId === it.id} />
-                  )}
-                </li>
-              ))}
-            </ul>
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-3 text-xs text-muted-foreground">
-              <span>Trend = 30 d compared with the 90 d monthly average</span>
-              {list.hasNextPage && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={list.isFetchingNextPage}
-                  onClick={() => void list.fetchNextPage()}
-                  className="max-sm:h-11"
-                >
-                  {list.isFetchingNextPage ? "Loading…" : "Load more"}
-                </Button>
+      <MasterDetail
+        list={
+          <section aria-label={`${tab.label} list`} className="rounded-lg surface-raised">
+            <div className="px-5 pt-4 pb-2">
+              <h2 className="font-heading text-base font-semibold">{tab.label}</h2>
+              {list.isSuccess && (
+                <p className="text-xs text-muted-foreground">
+                  {total} entities · sorted by mentions (30 d)
+                </p>
               )}
             </div>
-          </>
-        )}
-      </section>
+            {body}
+          </section>
+        }
+        detail={selected ? <div className="max-sm:hidden"><EntityPreviewPanel item={selected} /></div> : null}
+      />
 
       <EntityCreateDialog
         key={creating ? `new-${params.get("type")}-${params.get("name")}` : "closed"}
         open={creating && can("manage_entities")}
         onClose={() => setParams({ new: null, type: null, name: null })}
-        initialType={params.get("type") ?? tab.types[0]}
+        initialType={params.get("type") ?? tab.types[0] ?? "intrusion-set"}
         initialName={params.get("name") ?? ""}
       />
     </div>
