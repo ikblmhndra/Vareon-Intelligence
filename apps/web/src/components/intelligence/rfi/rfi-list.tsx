@@ -1,162 +1,120 @@
 "use client";
 
-import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import Link from "next/link";
 
-import { api } from "@/lib/api/client";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { ConfirmDialog } from "@/components/confirm-dialog";
+import { Card } from "@/components/ui/card";
+import { Chip } from "@/components/ui/chip";
+import { LoadMoreFooter } from "@/components/ui/load-more-footer";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useRovingKeys } from "@/components/ui/use-roving-keys";
+import { fmtShortDate } from "@/lib/format";
+import { displayId } from "@/lib/intelligence/format";
+import { DUE_TONE_CLASS, dueInfo, type RFIOut } from "@/lib/intelligence/rfi";
 import { cn } from "@/lib/utils";
-import type { components } from "@/lib/api/schema";
-import { RfiFormDialog } from "@/components/intelligence/rfi/rfi-form-dialog";
-import { useCan } from "@/lib/auth/permissions";
 
-type RFIOut = components["schemas"]["RFIOut"];
-
-const FILTERS = [
-  { key: "", label: "All" },
-  { key: "open", label: "Open" },
-  { key: "in_progress", label: "In Progress" },
-  { key: "closed", label: "Closed" },
-] as const;
-
-const STATUS_CLASS: Record<string, string> = {
-  open: "text-warning border-warning/40",
-  in_progress: "text-primary border-primary/40",
-  closed: "text-muted-foreground border-border",
-};
-const STATUS_LABEL: Record<string, string> = { open: "OPEN", in_progress: "IN PROGRESS", closed: "CLOSED" };
-
-/** Port kartu RFI + CRUD + filter status (`pir.js:289-453`,
- * `loadRfis`/`rfiSetFilter`/`openRfiModal`/`deleteRfi`). */
-export function RfiList() {
-  const can = useCan();
-  const queryClient = useQueryClient();
-  const [filter, setFilter] = useState("");
-  const [formOpen, setFormOpen] = useState(false);
-  // Naik tiap "+ New" -- form add remount fresh, gak bawa isian
-  // submit/cancel sebelumnya (pola sama `addKey` di `sr-table.tsx`).
-  const [addKey, setAddKey] = useState(0);
-  const [editTarget, setEditTarget] = useState<RFIOut | null>(null);
-  const [removeTarget, setRemoveTarget] = useState<RFIOut | null>(null);
-
-  const query = useQuery({
-    queryKey: ["intelligence", "rfis", filter],
-    queryFn: async () => {
-      const { data, error } = await api.GET("/api/rfi", {
-        params: { query: { status: filter || undefined, page_size: 100 } },
-      });
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  function invalidate() {
-    void queryClient.invalidateQueries({ queryKey: ["intelligence", "rfis"] });
+/** Lencana status RFI: open merah, in progress primer, closed netral (selaras dengan tab). */
+export function RfiStatusChip({ status }: { status: string }) {
+  if (status === "open" || status === "in_progress") {
+    return <Chip kind="status" value={status} />;
   }
+  return (
+    <Chip kind="flag" value={status}>
+      {status.replace("_", " ")}
+    </Chip>
+  );
+}
 
-  async function remove(id: number) {
-    const { error } = await api.DELETE("/api/rfi/{rfi_id}", { params: { path: { rfi_id: id } } });
-    if (error) {
-      toast.error("Error deleting RFI");
-      return;
-    }
-    invalidate();
-  }
+interface RfiListProps {
+  rfis: RFIOut[];
+  selectedId: number | null;
+  onSelect: (id: number) => void;
+  shown: number;
+  total: number;
+  hasMore: boolean;
+  loadingMore: boolean;
+  onLoadMore: () => void;
+}
 
-  const rfis = query.data?.rfis ?? [];
+/** Kartu "Requests" (spec 2b 6.5): tabel RFI urut jatuh tempo terdekat. Pemilihan lewat tombol di sel
+ * pertanyaan (panah/Home/End memindahkan sekaligus memilih) dan klik di mana pun pada baris. Tautan PIR
+ * adalah sel sendiri dan menghentikan klik supaya tidak ikut memilih baris. */
+export function RfiList({ rfis, selectedId, onSelect, shown, total, hasMore, loadingMore, onLoadMore }: RfiListProps) {
+  const items = rfis.map((r) => ({ value: String(r.id) }));
+  const { onKeyDown, setRef, tabIndexFor } = useRovingKeys(
+    items,
+    selectedId != null ? String(selectedId) : "",
+    (v) => onSelect(Number(v)),
+  );
 
   return (
-    <div>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
-        <div className="flex gap-1.5">
-          {FILTERS.map((f) => (
-            <Button
-              key={f.key}
-              size="sm"
-              variant={filter === f.key ? "default" : "outline"}
-              onClick={() => setFilter(f.key)}
-            >
-              {f.label}
-            </Button>
-          ))}
+    <Card>
+      <div className="flex flex-col gap-3 px-5">
+        <div>
+          <h2 className="font-heading text-lg font-semibold">Requests</h2>
+          <p className="text-xs text-muted-foreground">Due soonest first</p>
         </div>
-        {can("manage_rfi") && (
-          <Button
-            size="sm"
-            onClick={() => {
-              setAddKey((k) => k + 1);
-              setFormOpen(true);
-            }}
-          >
-            + New RFI
-          </Button>
-        )}
+        <Table
+          aria-label="Requests for information"
+          onKeyDown={(e) => {
+            // Tautan PIR juga ada di tabel; hanya tombol pertanyaan yang memakai panah untuk berpindah baris.
+            if ((e.target as HTMLElement).closest("[data-rfi-select]")) onKeyDown(e);
+          }}
+        >
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead>Question</TableHead>
+              <TableHead>Requester</TableHead>
+              <TableHead>PIR</TableHead>
+              <TableHead>Due</TableHead>
+              <TableHead>Status</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rfis.map((r, i) => {
+              const selected = r.id === selectedId;
+              const due = dueInfo(r.due_date, r.status);
+              return (
+                <TableRow key={r.id} selected={selected} className="cursor-pointer" onClick={() => onSelect(r.id)}>
+                  <TableCell className="max-w-72 min-w-48 whitespace-normal">
+                    <button
+                      ref={setRef(i)}
+                      type="button"
+                      data-rfi-select=""
+                      tabIndex={tabIndexFor(i)}
+                      aria-current={selected ? "true" : undefined}
+                      className="line-clamp-2 rounded-sm text-left text-xs font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                    >
+                      {r.question}
+                    </button>
+                  </TableCell>
+                  <TableCell className="max-w-32 truncate text-xs">{r.requester}</TableCell>
+                  <TableCell className="text-xs">
+                    {r.linked_pir != null ? (
+                      <Link
+                        href={`/intelligence/pir?id=${r.linked_pir}`}
+                        aria-label={`Open ${displayId("PIR", r.linked_pir)}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="rounded-sm font-code font-semibold text-primary-text underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                      >
+                        {displayId("PIR", r.linked_pir)}
+                      </Link>
+                    ) : (
+                      "—"
+                    )}
+                  </TableCell>
+                  <TableCell className={cn("text-xs", due && DUE_TONE_CLASS[due.tone])}>
+                    {fmtShortDate(r.due_date)}
+                  </TableCell>
+                  <TableCell>
+                    <RfiStatusChip status={r.status} />
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+        <LoadMoreFooter shown={shown} total={total} hasMore={hasMore} loading={loadingMore} onLoadMore={onLoadMore} />
       </div>
-
-      <p className="mb-2 font-mono text-xs text-muted-foreground">{query.data?.total ?? 0} RFIs</p>
-
-      {query.isPending && <p className="py-8 text-center text-xs text-muted-foreground">Loading…</p>}
-      {query.isError && <p className="py-8 text-center text-xs text-destructive">Error loading RFIs.</p>}
-      {query.data && rfis.length === 0 && (
-        <p className="py-8 text-center text-xs text-muted-foreground">No RFIs found. Click + New RFI to create one.</p>
-      )}
-
-      <div className="space-y-3">
-        {rfis.map((r) => (
-          <div key={r.id} className="flex items-start gap-3 rounded-xl border border-border bg-background p-3">
-            <Badge variant="outline" className={cn("w-24 shrink-0 justify-center font-mono text-xs", STATUS_CLASS[r.status])}>
-              {STATUS_LABEL[r.status] ?? r.status.toUpperCase()}
-            </Badge>
-            <div className="min-w-0 flex-1">
-              <div className="text-sm font-semibold text-foreground">{r.question}</div>
-              {r.response && (
-                <p className="mt-1 text-xs text-muted-foreground italic">
-                  {r.response.slice(0, 120)}
-                  {r.response.length > 120 ? "…" : ""}
-                </p>
-              )}
-              <div className="mt-1.5 flex flex-wrap gap-3 font-mono text-xs text-muted-foreground">
-                <span>From: {r.requester}</span>
-                {r.due_date && <span>Due: {r.due_date}</span>}
-                {r.created_at && <span>Created: {r.created_at.slice(0, 10)}</span>}
-                {r.linked_pir != null && (
-                  <span className="rounded bg-muted px-1.5 py-0.5 text-xs">PIR #{r.linked_pir}</span>
-                )}
-              </div>
-            </div>
-            {can("manage_rfi") && (
-              <div className="flex shrink-0 flex-col gap-1">
-                <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={() => setEditTarget(r)}>
-                  Edit
-                </Button>
-                <Button size="sm" variant="destructive" className="h-6 px-2 text-xs" onClick={() => setRemoveTarget(r)}>
-                  Del
-                </Button>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-
-      <RfiFormDialog key={`add-${addKey}`} open={formOpen} onClose={() => setFormOpen(false)} onSaved={invalidate} />
-      <RfiFormDialog
-        key={editTarget?.id ?? "edit-none"}
-        rfi={editTarget}
-        open={editTarget !== null}
-        onClose={() => setEditTarget(null)}
-        onSaved={invalidate}
-      />
-      <ConfirmDialog
-        open={removeTarget !== null}
-        onOpenChange={(open) => !open && setRemoveTarget(null)}
-        title="Delete RFI"
-        description="Delete this RFI? This action cannot be undone."
-        confirmLabel="Delete"
-        onConfirm={() => removeTarget && void remove(removeTarget.id)}
-      />
-    </div>
+    </Card>
   );
 }

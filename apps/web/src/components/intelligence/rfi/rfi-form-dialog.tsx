@@ -1,139 +1,223 @@
 "use client";
 
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useId, useRef, useState, type FormEvent } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import { api } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DateField } from "@/components/ui/date-field";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Field, fieldDescribedBy } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Textarea } from "@/components/ui/textarea";
-import type { components } from "@/lib/api/schema";
-import { nativeSelectClass } from "@/components/ui/native-select";
-
-type RFIOut = components["schemas"]["RFIOut"];
-
-const STATUSES = ["open", "in_progress", "closed"];
+import { api } from "@/lib/api/client";
+import { displayId } from "@/lib/intelligence/format";
+import { usePirs } from "@/lib/intelligence/pir";
+import { invalidateRfis, RFI_STATUS_OPTIONS, type RFIOut, type RfiStatus } from "@/lib/intelligence/rfi";
 
 interface RfiFormDialogProps {
-  rfi?: RFIOut | null;
   open: boolean;
-  onClose: () => void;
-  onSaved: () => void;
+  onOpenChange: (open: boolean) => void;
+  /** `null`/kosong = buat baru; terisi = ubah (menambah Status dan Response, D19). */
+  rfi?: RFIOut | null;
+  /** RFI hasil simpan, supaya halaman bisa membuka tab status dan memilihnya. */
+  onSaved?: (saved: RFIOut) => void;
 }
 
-/** Port modal Add/Edit RFI (`pir.js:383-431`, `openRfiModal`/`saveRfi`).
- * `linked_pir` dropdown populate dari `GET /api/pir` (`_rfiLoadPirOptions`). */
-export function RfiFormDialog({ rfi, open, onClose, onSaved }: RfiFormDialogProps) {
+const NONE = "none";
+
+/** Pesan galat API yang bisa dibaca (FastAPI `detail` string atau daftar galat validasi). */
+function apiMessage(error: unknown): string {
+  const detail = (error as { detail?: unknown } | null)?.detail;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((d) => (d as { msg?: string }).msg)
+      .filter(Boolean)
+      .join("; ");
+  }
+  return "Could not save the RFI. Try again.";
+}
+
+/** Dialog buat/ubah RFI (spec 2b 6.5, D19): pertanyaan, peminta, jatuh tempo, dan PIR tertaut tetap bisa
+ * diubah setelah dibuat; mode ubah menambah Status dan Response. Isian tidak dibuang saat API menolak:
+ * galatnya tampil di dalam dialog. Pemanggil me-remount (`key`) per pembukaan supaya isian segar. */
+export function RfiFormDialog({ open, onOpenChange, rfi, onSaved }: RfiFormDialogProps) {
   const isEdit = Boolean(rfi);
-  const [requester, setRequester] = useState(rfi?.requester ?? "");
+  const uid = useId();
+  const queryClient = useQueryClient();
+  const questionRef = useRef<HTMLTextAreaElement>(null);
+  const requesterRef = useRef<HTMLInputElement>(null);
+  const pirs = usePirs();
+
   const [question, setQuestion] = useState(rfi?.question ?? "");
-  const [dueDate, setDueDate] = useState(rfi?.due_date ?? "");
-  const [status, setStatus] = useState(rfi?.status ?? "open");
+  const [requester, setRequester] = useState(rfi?.requester ?? "");
+  const [dueDate, setDueDate] = useState<string | null>(rfi?.due_date ?? null);
+  const [linkedPir, setLinkedPir] = useState(rfi?.linked_pir != null ? String(rfi.linked_pir) : NONE);
+  const [status, setStatus] = useState<RfiStatus>(
+    rfi?.status === "in_progress" || rfi?.status === "closed" ? rfi.status : "open",
+  );
   const [response, setResponse] = useState(rfi?.response ?? "");
-  const [linkedPir, setLinkedPir] = useState(rfi?.linked_pir != null ? String(rfi.linked_pir) : "");
+  const [questionError, setQuestionError] = useState<string | undefined>();
+  const [requesterError, setRequesterError] = useState<string | undefined>();
   const [saving, setSaving] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
 
-  const pirsQuery = useQuery({
-    queryKey: ["intelligence", "pirs-for-rfi"],
-    queryFn: async () => {
-      const { data, error } = await api.GET("/api/pir");
-      if (error) throw error;
-      return data;
-    },
-    enabled: open,
-  });
+  const items: Record<string, string> = { [NONE]: "None" };
+  for (const p of pirs.data ?? []) items[String(p.id)] = `${displayId("PIR", p.id)} ${p.title}`;
+  // PIR tertaut yang belum ada di daftar (masih memuat) tetap punya label, bukan angka mentah.
+  if (!(linkedPir in items)) items[linkedPir] = displayId("PIR", Number(linkedPir));
 
-  async function submit() {
-    if (!requester.trim() || !question.trim()) {
-      toast.error("Requester and Question are required");
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    const missingQuestion = !question.trim();
+    const missingRequester = !requester.trim();
+    setQuestionError(missingQuestion ? "Write the question the requester wants answered." : undefined);
+    setRequesterError(missingRequester ? "Say who is asking, for example CISO." : undefined);
+    if (missingQuestion || missingRequester) {
+      (missingQuestion ? questionRef : requesterRef).current?.focus();
       return;
     }
     setSaving(true);
+    setApiError(null);
+    // Field ber-default di backend tetap dikirim: tipe hasil openapi-typescript mewajibkannya.
+    const base = {
+      question: question.trim(),
+      requester: requester.trim(),
+      due_date: dueDate,
+      linked_pir: linkedPir === NONE ? null : Number(linkedPir),
+    };
     try {
-      const body = {
-        requester: requester.trim(),
-        question: question.trim(),
-        status,
-        response: response.trim(),
-        due_date: dueDate || null,
-        linked_pir: linkedPir ? Number(linkedPir) : null,
-      };
-      if (isEdit && rfi) {
-        const { error } = await api.PUT("/api/rfi/{rfi_id}", { params: { path: { rfi_id: rfi.id } }, body });
-        if (error) throw new Error(JSON.stringify(error));
-        toast.success("RFI updated.");
-      } else {
-        const { error } = await api.POST("/api/rfi", { body });
-        if (error) throw new Error(JSON.stringify(error));
-        toast.success("RFI created.");
+      const res =
+        isEdit && rfi
+          ? await api.PUT("/api/rfi/{rfi_id}", {
+              params: { path: { rfi_id: rfi.id } },
+              body: { ...base, status, response: response.trim() },
+            })
+          : await api.POST("/api/rfi", { body: { ...base, status: "open", response: "" } });
+      if (res.error || !res.data) {
+        setApiError(apiMessage(res.error));
+        return;
       }
-      onSaved();
-      onClose();
-    } catch (e) {
-      toast.error(`Error: ${(e as Error).message}`);
+      toast.success(isEdit ? "RFI updated." : "RFI created.");
+      invalidateRfis(queryClient);
+      onSaved?.(res.data);
+      onOpenChange(false);
+    } catch {
+      setApiError("Could not reach the server. Try again.");
     } finally {
       setSaving(false);
     }
   }
 
+  const id = (name: string) => `${uid}-${name}`;
+  const hint = "One specific question, so the answer can be short.";
+
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-md">
+    <Dialog open={open} onOpenChange={(o) => !saving && onOpenChange(o)}>
+      <DialogContent className="max-h-[90vh] sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{isEdit ? "Edit RFI" : "New RFI"}</DialogTitle>
+          <DialogTitle className="font-heading">
+            {isEdit && rfi ? `Edit ${displayId("RFI", rfi.id)}` : "New RFI"}
+          </DialogTitle>
+          <DialogDescription>A specific question from a stakeholder, tracked until it has an answer.</DialogDescription>
         </DialogHeader>
-        <div className="space-y-3">
-          <div className="flex flex-col gap-1">
-            <Label className="text-sm font-medium text-muted-foreground">Requester</Label>
-            <Input value={requester} onChange={(e) => setRequester(e.target.value)} className="text-xs" />
+
+        <form noValidate onSubmit={(e) => void submit(e)} className="flex flex-col gap-4">
+          <Field label="Question" htmlFor={id("question")} hint={hint} error={questionError}>
+            <Textarea
+              ref={questionRef}
+              id={id("question")}
+              rows={3}
+              value={question}
+              aria-invalid={!!questionError}
+              aria-describedby={fieldDescribedBy(id("question"), { hint, error: questionError })}
+              onChange={(e) => {
+                setQuestion(e.target.value);
+                if (questionError && e.target.value.trim()) setQuestionError(undefined);
+              }}
+            />
+          </Field>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Requester" htmlFor={id("requester")} error={requesterError}>
+              <Input
+                ref={requesterRef}
+                id={id("requester")}
+                value={requester}
+                aria-invalid={!!requesterError}
+                aria-describedby={fieldDescribedBy(id("requester"), { error: requesterError })}
+                onChange={(e) => {
+                  setRequester(e.target.value);
+                  if (requesterError && e.target.value.trim()) setRequesterError(undefined);
+                }}
+              />
+            </Field>
+            <Field label="Due date" htmlFor={id("due")}>
+              <DateField id={id("due")} value={dueDate} onChange={setDueDate} optional />
+            </Field>
           </div>
-          <div className="flex flex-col gap-1">
-            <Label className="text-sm font-medium text-muted-foreground">Question</Label>
-            <Textarea value={question} onChange={(e) => setQuestion(e.target.value)} rows={2} className="text-xs" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1">
-              <Label className="text-sm font-medium text-muted-foreground">Due Date</Label>
-              <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="text-xs" />
-            </div>
-            <div className="flex flex-col gap-1">
-              <Label className="text-sm font-medium text-muted-foreground">Status</Label>
-              <select value={status} onChange={(e) => setStatus(e.target.value)} className={nativeSelectClass()}>
-                {STATUSES.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
+          <Field label="Linked PIR (optional)" htmlFor={id("pir")}>
+            <Select items={items} value={linkedPir} onValueChange={(v) => v != null && setLinkedPir(v)}>
+              <SelectTrigger id={id("pir")} className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(items).map(([value, label]) => (
+                  <SelectItem key={value} value={value}>
+                    {label}
+                  </SelectItem>
                 ))}
-              </select>
-            </div>
-          </div>
-          <div className="flex flex-col gap-1">
-            <Label className="text-sm font-medium text-muted-foreground">Linked PIR</Label>
-            <select value={linkedPir} onChange={(e) => setLinkedPir(e.target.value)} className={nativeSelectClass()}>
-              <option value="">— None —</option>
-              {(pirsQuery.data ?? []).map((p) => (
-                <option key={p.id} value={p.id}>
-                  [{p.priority}] {p.title}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex flex-col gap-1">
-            <Label className="text-sm font-medium text-muted-foreground">Response</Label>
-            <Textarea value={response} onChange={(e) => setResponse(e.target.value)} rows={3} className="text-xs" />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button disabled={saving} onClick={() => void submit()}>
-            {saving ? "Saving…" : "Save"}
-          </Button>
-        </DialogFooter>
+              </SelectContent>
+            </Select>
+          </Field>
+
+          {isEdit && (
+            <>
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs font-semibold text-foreground">Status</span>
+                <SegmentedControl
+                  aria-label="Status"
+                  options={RFI_STATUS_OPTIONS}
+                  value={status}
+                  onChange={setStatus}
+                  className="self-start"
+                />
+              </div>
+              <Field label="Response" htmlFor={id("response")}>
+                <Textarea
+                  id={id("response")}
+                  rows={4}
+                  value={response}
+                  onChange={(e) => setResponse(e.target.value)}
+                />
+              </Field>
+            </>
+          )}
+
+          {apiError && (
+            <p role="alert" className="rounded-lg bg-destructive/10 px-4 py-3 text-sm text-destructive-text">
+              {apiError}
+            </p>
+          )}
+
+          <DialogFooter>
+            <Button type="button" variant="ghost" disabled={saving} onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" loading={saving}>
+              {saving ? (isEdit ? "Saving…" : "Creating…") : isEdit ? "Save" : "Create RFI"}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );
