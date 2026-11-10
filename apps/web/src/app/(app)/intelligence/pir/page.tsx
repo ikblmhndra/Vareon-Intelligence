@@ -54,6 +54,8 @@ function PirView() {
   const can = useCan();
   const canManage = can("manage_pir");
   const canExport = can("export_data");
+  // bundle STIX dilayani `/api/stix/pirs` yang dijaga `view_stix`, bukan `export_data`
+  const canStix = can("view_stix");
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -211,7 +213,7 @@ function PirView() {
         <FilterSelect prefix="Owner" value={owner} onChange={setOwner} options={ownerOptions} />
         <FilterSelect prefix="Priority" value={priority} onChange={setPriority} options={PRIORITY_FILTER} />
         <div className="ml-auto flex items-center gap-2">
-          {canExport && (
+          {canStix && (
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={<Button variant="outline" size="sm" loading={exporting === "stix"} />}

@@ -184,10 +184,14 @@ function period(start: string | null | undefined, end: string | null | undefined
   return `${start ? fmtShortDate(start) : "—"} - ${end ? fmtShortDate(end) : "open-ended"}`;
 }
 
-/** "{n} open" menuju halaman RFI tersaring PIR ini; tooltip mendaftar RFI tertaut (maks. 20 dari backend). */
+/** "{n} open or in progress" (`linked_rfi_open` menghitung keduanya) menuju halaman RFI tersaring PIR ini; tooltip
+ * mendaftar RFI tertaut (maks. 20 dari backend, open diurutkan paling depan). Tanpa RFI open tapi ada yang in progress,
+ * link membuka tab In progress supaya tidak mendarat di tab Open yang kosong. */
 function LinkedRfis({ pir }: { pir: PIROut }) {
-  const href = `/intelligence/rfi?pir=${pir.id}`;
-  const text = `${pir.linked_rfi_open} open`;
+  const onlyInProgress =
+    !pir.linked_rfis.some((r) => r.status === "open") && pir.linked_rfis.some((r) => r.status === "in_progress");
+  const href = `/intelligence/rfi?pir=${pir.id}${onlyInProgress ? "&status=in_progress" : ""}`;
+  const text = `${pir.linked_rfi_open} open or in progress`;
   const label = `${text} linked RFIs for ${displayId("PIR", pir.id)}`;
   if (pir.linked_rfis.length === 0) {
     return (

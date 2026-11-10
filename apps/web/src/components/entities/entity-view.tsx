@@ -22,7 +22,7 @@ import { api } from "@/lib/api/client";
 import { useCan } from "@/lib/auth/permissions";
 import type { components } from "@/lib/api/schema";
 import { ENTITY_TABS } from "@/lib/entities/types";
-import { fmtCompactAge } from "@/lib/format";
+import { fmtAgo } from "@/lib/format";
 
 type EntityDetail = components["schemas"]["EntityDetail"];
 
@@ -33,12 +33,6 @@ const ATTACK_TYPES = new Set(["intrusion-set", "malware", "tool", "attack-patter
 
 /** Tab Hunt (P7e): tipe yang bisa menjadi anchor hunting pack. */
 const HUNT_TYPES = new Set(["intrusion-set", "malware", "tool", "campaign", "attack-pattern"]);
-
-/** "now" tidak diberi " ago"; selebihnya "2 d ago". */
-function lastSeen(iso: string): string {
-  const age = fmtCompactAge(iso);
-  return age === "now" ? age : `${age} ago`;
-}
 
 function TimelineTab({ entity }: { entity: EntityDetail }) {
   const timeline = useEntityTimeline(entity.id);
@@ -118,9 +112,11 @@ export function EntityView({ id }: { id: number }) {
     // Simpan judul sebelumnya dan pulihkan saat unmount/ganti nama: navigasi klien kembali ke daftar tidak
     // selalu memasang ulang metadata layout, jadi tab akan tetap menampilkan nama entity tanpa cleanup ini.
     const previous = document.title;
-    document.title = `${entityName} · Entities`;
+    const mine = `${entityName} · Entities`;
+    document.title = mine;
     return () => {
-      document.title = previous;
+      // halaman tujuan mungkin sudah memasang judulnya sendiri lebih dulu: jangan timpa dengan judul lama
+      if (document.title === mine) document.title = previous;
     };
   }, [entityName]);
 
@@ -189,7 +185,7 @@ export function EntityView({ id }: { id: number }) {
         <StatTile label="Stories" value={totals.data?.stories ?? "-"} />
         <StatTile label="Indicators" value={totals.data?.indicators ?? "-"} />
         <StatTile label="CVEs" value={totals.data?.cves ?? "-"} />
-        <StatTile label="Last seen" value={entity.last_seen ? lastSeen(entity.last_seen) : "n/a"} />
+        <StatTile label="Last seen" value={entity.last_seen ? fmtAgo(entity.last_seen) : "n/a"} />
       </div>
       <TabPills items={tabs} value={tab} onChange={setTab} aria-label="Entity sections" />
       <div role="tabpanel">

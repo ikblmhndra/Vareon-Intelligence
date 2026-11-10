@@ -219,6 +219,8 @@ export function PirFormDialog({ pir, open, onClose, onSaved }: PirFormDialogProp
       const r = guarded(prev, next, resolve);
       set(r.values);
       setChipErrors((e) => ({ ...e, [key]: r.rejected ? message : undefined }));
+      // `false` membuat ChipInput menyimpan teks yang ditolak di kolom (Enter maupun blur), jadi bisa dibetulkan
+      return !r.rejected;
     };
   }
 

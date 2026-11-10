@@ -7,7 +7,9 @@ import { cn } from "@/lib/utils";
 
 interface ChipInputProps {
   values: string[];
-  onChange: (v: string[]) => void;
+  /** Kembalikan `false` bila pemilik menolak nilai baru (mis. negara tak terpetakan): teks yang diketik tetap di
+   * kolom supaya bisa dibetulkan, bukan hilang bersama chip yang ditolak. */
+  onChange: (v: string[]) => void | boolean;
   "aria-label": string;
   placeholder?: string;
   /** Sumber saran async (mis. nama entitas); ditampilkan lewat `<datalist>` native. */
@@ -15,9 +17,9 @@ interface ChipInputProps {
   id?: string;
 }
 
-/** Input tag: chip dengan "×" + kolom teks inline. Enter/koma menambah nilai ber-trim; Backspace pada kolom
- * kosong menghapus chip terakhir. Nilai kosong/spasi dan duplikat tanpa memandang huruf besar-kecil diabaikan:
- * backend PIR tidak membuang keyword kosong, jadi komponen inilah penjaganya. */
+/** Input tag: chip dengan "×" + kolom teks inline. Enter/koma/blur menambah nilai ber-trim (blur supaya teks yang
+ * belum di-Enter tidak hilang diam-diam saat form disimpan); Backspace pada kolom kosong menghapus chip terakhir.
+ * Nilai kosong/spasi dan duplikat tanpa memandang huruf besar-kecil diabaikan: backend PIR tidak membuang keyword kosong, jadi komponen inilah penjaganya. */
 export function ChipInput({
   values,
   onChange,
@@ -32,22 +34,31 @@ export function ChipInput({
   const reqRef = useRef(0);
   const listId = useId();
 
-  function add(raw: string[]) {
+  /** `false` = pemilik menolak nilai baru (lihat `onChange`). */
+  function add(raw: string[]): boolean {
     const next = [...values];
     for (const r of raw) {
       const v = r.trim();
       if (!v || next.some((x) => x.toLowerCase() === v.toLowerCase())) continue;
       next.push(v);
     }
-    if (next.length !== values.length) onChange(next);
+    if (next.length === values.length) return true;
+    return onChange(next) !== false;
+  }
+
+  /** Jadikan teks di kolom chip; teks yang ditolak pemilik dibiarkan agar bisa dibetulkan. */
+  function commit() {
+    if (!add([text])) return;
+    setText("");
+    setOptions([]);
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    // Enter/koma saat IME masih menyusun (Jepang, Tionghoa, ...) milik IME, bukan perintah tambah chip
+    if (e.nativeEvent.isComposing) return;
     if (e.key === "Enter" || e.key === ",") {
       e.preventDefault(); // Enter tidak boleh men-submit form pemilik; koma tidak ikut terketik
-      add([text]);
-      setText("");
-      setOptions([]);
+      commit();
     } else if (e.key === "Backspace" && text === "" && values.length > 0) {
       onChange(values.slice(0, -1));
     }
@@ -111,6 +122,7 @@ export function ChipInput({
         value={text}
         onChange={(e) => onInput(e.target.value)}
         onKeyDown={onKeyDown}
+        onBlur={commit}
         aria-label={ariaLabel}
         placeholder={values.length === 0 ? placeholder : undefined}
         list={suggest ? listId : undefined}

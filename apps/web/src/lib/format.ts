@@ -97,6 +97,13 @@ export function fmtCompactAge(
   return `${Math.floor(d / 365)} y`;
 }
 
+/** Umur relatif untuk kalimat: "just now" (bukan "now ago"), "5 m ago", "2 d ago"; nilai kosong = "—". */
+export function fmtAgo(value: string | Date | null | undefined, nowMs: number = Date.now()): string {
+  const age = fmtCompactAge(value, nowMs);
+  if (age === DASH) return age;
+  return age === "now" ? "just now" : `${age} ago`;
+}
+
 /** ISO dengan offset untuk tengah malam lokal, mis. "2026-11-08T00:00:00+07:00" (batas "hari ini" ke API). */
 export function fmtLocalDayStart(now: Date = new Date()): string {
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());

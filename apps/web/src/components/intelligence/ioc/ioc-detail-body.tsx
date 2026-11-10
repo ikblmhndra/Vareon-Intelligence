@@ -26,7 +26,7 @@ import type {
   IocTaLinksResponse,
 } from "@/lib/api/loose-types";
 import { useCan } from "@/lib/auth/permissions";
-import { fmtCompactAge, fmtShortDate } from "@/lib/format";
+import { fmtAgo, fmtShortDate } from "@/lib/format";
 import { defang } from "@/lib/intelligence/defang";
 import { actionLabel } from "@/lib/intelligence/format";
 import { cn } from "@/lib/utils";
@@ -334,7 +334,7 @@ export function IocDetailBody({ target, onChanged, onDeleted, layout, returnFocu
           />
         </div>
         <p className="text-xs text-muted-foreground">
-          {ioc.type} · first seen {fmtShortDate(ioc.first_seen)} · last seen {fmtCompactAge(ioc.last_seen)} ago
+          {ioc.type} · first seen {fmtShortDate(ioc.first_seen)} · last seen {fmtAgo(ioc.last_seen)}
         </p>
         <div className="flex flex-wrap items-center gap-1.5">
           <IocStateChip state={ioc.state} />

@@ -84,6 +84,9 @@ export function EntityPreviewPanel({ item }: { item: EntityListItem }) {
             <Skeleton role="status" aria-label="Loading profile" className="mt-2 h-4 w-3/4" />
           ) : d?.profile_summary ? (
             <p className="mt-1 text-hero-foreground">{d.profile_summary}</p>
+          ) : d?.profile_generated_at ? (
+            // profil ada tapi ringkasannya kosong (bentuk profil lama/tak lengkap): beda tindakan dari "belum ada"
+            <p className="mt-1">No summary yet. Regenerate on the entity page.</p>
           ) : (
             <p className="mt-1">No AI profile yet</p>
           )}

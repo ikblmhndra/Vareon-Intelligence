@@ -39,7 +39,7 @@ import type { components } from "@/lib/api/schema";
 import { getActiveClientId } from "@/lib/auth/client-id";
 import { useCan } from "@/lib/auth/permissions";
 import { ENTITY_TABS, entityTypeMeta } from "@/lib/entities/types";
-import { fmtCompactAge } from "@/lib/format";
+import { fmtAgo } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 type EntityListItem = components["schemas"]["EntityListItem"];
@@ -258,16 +258,19 @@ export function EntitiesListView() {
           }
         />
       );
-  else if (items.length === 0)
+  else if (items.length === 0) {
+    // kata benda jamak per tab: "All" -> "entities", "CVEs" tetap huruf besar (bukan "No all"/"No cves")
+    const noun = allTab ? "entities" : tab.key === "vulnerabilities" ? "CVEs" : tab.label.toLowerCase();
+    const filtered = Boolean(q) || watchedOnly;
     body = (
       <StatePanel
         variant="empty"
-        title={`No ${tab.label.toLowerCase()} match these filters`}
-        description="Clear the search or turn off Watched only to see more."
+        title={filtered ? `No ${noun} match these filters` : `No ${noun} yet`}
+        description={filtered ? "Clear the search or turn off Watched only to see more." : undefined}
         className="m-4"
       />
     );
-  else
+  } else
     body = (
       <>
         {/* >= 640 px: tabel; di bawahnya jadi kartu supaya halaman tidak scroll horizontal (D28). */}
@@ -322,7 +325,7 @@ export function EntitiesListView() {
                     </TableCell>
                     <TableCell className="text-right">{it.mentions_90d}</TableCell>
                     <TableCell className={cn("text-xs whitespace-nowrap", !allTab && "pr-5")}>
-                      {it.last_seen ? `${fmtCompactAge(it.last_seen)} ago` : "—"}
+                      {it.last_seen ? fmtAgo(it.last_seen) : "—"}
                     </TableCell>
                     {allTab && (
                       <TableCell className="pr-5 text-xs whitespace-nowrap">
@@ -355,7 +358,7 @@ export function EntitiesListView() {
                   30 d <Mentions30 item={it} />
                 </span>
                 <span>90 d {it.mentions_90d}</span>
-                <span>{it.last_seen ? `${fmtCompactAge(it.last_seen)} ago` : "—"}</span>
+                <span>{it.last_seen ? fmtAgo(it.last_seen) : "—"}</span>
               </div>
             </li>
           ))}
@@ -459,7 +462,7 @@ export function EntitiesListView() {
               <h2 className="font-heading text-base font-semibold">{tab.label}</h2>
               {list.isSuccess && (
                 <p className="text-xs text-muted-foreground">
-                  {total} entities · sorted by mentions (30 d)
+                  {total} {total === 1 ? "entity" : "entities"} · sorted by mentions (30 d)
                 </p>
               )}
             </div>

@@ -20,11 +20,16 @@ export function useGridRovingKeys(
   const key = (r: number, c: number) => `${r},${c}`;
   const [focused, setFocused] = useState<[number, number] | null>(null);
 
+  /** Posisi roving dijepit ke ukuran grid sekarang: sesudah grid menyusut (filter/data baru), posisi lama di luar
+   * batas tidak boleh membuat grid tanpa satu pun sel yang bisa di-Tab. */
+  function current(): [number, number] {
+    const [r0, c0] = focused ?? active ?? [0, 0];
+    return [Math.max(0, Math.min(r0, rows - 1)), Math.max(0, Math.min(c0, cols - 1))];
+  }
+
   function onKeyDown(e: KeyboardEvent<HTMLElement>) {
     if (rows === 0 || cols === 0) return;
-    const [r0, c0] = focused ?? active ?? [0, 0];
-    const r = Math.min(r0, rows - 1);
-    const c = Math.min(c0, cols - 1);
+    const [r, c] = current();
     let next: [number, number];
     switch (e.key) {
       case "ArrowRight":
@@ -61,7 +66,7 @@ export function useGridRovingKeys(
 
   // Tanpa fokus maupun `active`, sel pertama yang bisa di-Tab supaya grid tetap terjangkau papan-ketik.
   const tabIndexFor = (r: number, c: number) => {
-    const [ar, ac] = focused ?? active ?? [0, 0];
+    const [ar, ac] = current();
     return ar === r && ac === c ? 0 : -1;
   };
 

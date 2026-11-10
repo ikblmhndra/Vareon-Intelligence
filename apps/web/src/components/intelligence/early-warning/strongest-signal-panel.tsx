@@ -11,8 +11,8 @@ import { newsroomHref } from "@/lib/newsroom/links";
 
 import { CATEGORY_META, dailySeries, spikeName, type CategorizedSpike } from "./model";
 
-/** Panel "Strongest signal" untuk spike terpilih. `period: 7` = jendela spike backend, supaya sheet
- * Newsroom terbatas tanggal dan jumlahnya cocok dengan angka di sini. */
+/** Panel "Strongest signal" untuk spike terpilih. Tautan Newsroom memakai `from` = awal jendela spike backend
+ * (tanggal sumbu server), supaya sheet Newsroom terbatas tanggal dan jumlahnya cocok dengan angka di sini. */
 export function StrongestSignalPanel({ spike, data }: { spike: CategorizedSpike; data: SpikesResponse }) {
   const series = dailySeries(data, spike);
   const dates = data.daily.dates;
@@ -24,14 +24,18 @@ export function StrongestSignalPanel({ spike, data }: { spike: CategorizedSpike;
   // indeks sumbu server, bukan jam browser, supaya batas tak bergeser di zona waktu lain.
   const recentFrom = dates.length - 8;
 
+  // `period: 7` di Newsroom = 7 hari dari jam browser, sedangkan jendela spike 8 tanggal sumbu server; `from` dari
+  // sumbu yang sama menyamakan keduanya. Sumbu terlalu pendek (tak semestinya terjadi): mundur ke `period: 7`.
+  const from = dates[recentFrom];
+  const range = from ? { from } : { period: 7 as const };
   const newsroom = newsroomHref(
     spike.category === "actor"
-      ? { actor: spike.entity, period: 7 }
+      ? { actor: spike.entity, ...range }
       : spike.category === "industry"
-        ? { industry: spike.entity, period: 7 }
+        ? { industry: spike.entity, ...range }
         : spike.category === "country"
-          ? { country: spike.entity, period: 7 }
-          : { period: 7 },
+          ? { country: spike.entity, ...range }
+          : range,
   );
 
   return (

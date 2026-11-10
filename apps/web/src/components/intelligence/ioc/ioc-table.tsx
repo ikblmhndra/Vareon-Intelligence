@@ -22,7 +22,7 @@ import type { IocListResponse, IocStats, IocSummary } from "@/lib/api/loose-type
 import { useCan } from "@/lib/auth/permissions";
 import { downloadBlob } from "@/lib/csv";
 import { useDebounced } from "@/lib/cve/catalog";
-import { fmtCompactAge } from "@/lib/format";
+import { fmtAgo } from "@/lib/format";
 import { defang } from "@/lib/intelligence/defang";
 
 const IOC_TYPES = ["ip", "domain", "url", "email", "sha256", "sha1", "md5"] as const;
@@ -243,10 +243,16 @@ export function IocIndicatorsView() {
                     >
                       {shown}
                     </button>
-                    {(ioc.state !== "active" || ioc.tlp !== "clear") && (
+                    {(ioc.state !== "active" || ioc.tlp !== "clear" || ioc.auto_suppressed) && (
                       <div className="mt-1 flex flex-wrap gap-1">
                         {ioc.state !== "active" && <IocStateChip state={ioc.state} />}
                         {ioc.tlp !== "clear" && <Chip kind="flag" value={`TLP:${ioc.tlp}`} />}
+                        {/* filter "all + suppressed" menampilkan baris tersembunyi: tanpa chip, baris itu tak terbedakan */}
+                        {ioc.auto_suppressed && (
+                          <span title={ioc.suppression_reason ?? undefined}>
+                            <Chip kind="flag" value="SUPPRESSED" />
+                          </span>
+                        )}
                       </div>
                     )}
                   </TableCell>
@@ -273,7 +279,7 @@ export function IocIndicatorsView() {
                   <TableCell>
                     <IocActionChip label={ioc.actionability_label} />
                   </TableCell>
-                  <TableCell className="text-right font-code text-xs text-muted-foreground" title={`last seen ${fmtCompactAge(ioc.last_seen)} ago`}>
+                  <TableCell className="text-right font-code text-xs text-muted-foreground" title={`last seen ${fmtAgo(ioc.last_seen)}`}>
                     {ioc.seen_count || 1}
                   </TableCell>
                   <TableCell className="pr-5 text-xs whitespace-nowrap text-muted-foreground">

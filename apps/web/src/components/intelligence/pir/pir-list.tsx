@@ -4,7 +4,7 @@ import { Chip } from "@/components/ui/chip";
 import { MeterBar } from "@/components/ui/meter-bar";
 import { RowMenu } from "@/components/ui/row-menu";
 import { SelectableList } from "@/components/ui/selectable-list";
-import { fmtCompactAge } from "@/lib/format";
+import { fmtAgo } from "@/lib/format";
 import { displayId, pirPriority } from "@/lib/intelligence/format";
 import { PIR_CRITERIA_ROWS, PIR_PRIORITY_CHIP, type PIROut } from "@/lib/intelligence/pir";
 import { cn } from "@/lib/utils";
@@ -96,7 +96,7 @@ export function PirList({
             )}
             <span className="ml-auto text-2xs text-muted-foreground">
               {p.owner ? `Owner: ${p.owner} · ` : ""}last match{" "}
-              {p.last_match ? `${fmtCompactAge(p.last_match)} ago` : "never"}
+              {p.last_match ? fmtAgo(p.last_match) : "never"}
             </span>
           </div>
           <p className="font-heading text-base font-semibold text-foreground">{p.title}</p>
