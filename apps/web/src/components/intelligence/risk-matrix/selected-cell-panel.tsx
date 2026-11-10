@@ -55,7 +55,7 @@ export function SelectedCellPanel({ cell, hottest, days, generatedAt }: Selected
         <span className="font-heading text-5xl leading-none font-bold text-hero-foreground tabular-nums">
           {cell.risk_score}
         </span>
-        <Chip kind="risk" value={cell.risk_score} />
+        <Chip kind="risk" value={cell.risk_score} className="bg-hero-foreground/15 text-hero-foreground" />
         <Arrow role="img" aria-label={trend} className="size-4 text-hero-foreground" />
         {hottest && <span className="text-xs">hottest cell in the matrix</span>}
       </div>

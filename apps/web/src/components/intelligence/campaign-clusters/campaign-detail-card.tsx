@@ -68,15 +68,19 @@ function TrendBody({ clusterId }: { clusterId: string }) {
   const query = useQuery({
     queryKey: ["campaign-clusters", "trend", clusterId],
     queryFn: async () => {
-      const { data, error } = await api.GET("/api/clusters/{cluster_id}/trends", { params: { path: { cluster_id: clusterId } } });
+      const { data, error, response } = await api.GET("/api/clusters/{cluster_id}/trends", { params: { path: { cluster_id: clusterId } } });
+      // 404 = cluster belum tersimpan: bukan error, jangan diulang-ulang (dulu ~8 request per kartu).
+      if (response.status === 404) return null;
       if (error) throw error;
       return data as unknown as CampaignTrend;
     },
+    retry: false,
   });
 
   if (query.isPending) return <StatePanel variant="loading" title="Loading trend" className="py-6" />;
   if (query.isError) return <p className="text-destructive-text">Failed to load trend.</p>;
   const trend = query.data;
+  if (!trend) return <p className="text-muted-foreground">No trend data for this campaign yet.</p>;
   if (!trend.timeline || trend.timeline.length < 2) return <p className="text-muted-foreground">Not enough daily data for a trend yet.</p>;
   const color = TREND_COLOR[trend.trend_direction] ?? TREND_COLOR.stable;
   const gr = trend.growth_rate != null ? `${trend.growth_rate > 0 ? "+" : ""}${trend.growth_rate}%` : "—";

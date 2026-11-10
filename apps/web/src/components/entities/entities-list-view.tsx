@@ -84,14 +84,14 @@ function Aliases({ item }: { item: { name: string; external_id?: string | null; 
   const aliases = otherAliases(item.aliases, item.name, item.external_id);
   if (aliases.length === 0) return <span className="text-xs text-muted-foreground">—</span>;
   return (
-    <div className="flex flex-wrap items-center gap-1">
+    <div className="flex min-w-0 items-center gap-1">
       {aliases.slice(0, 2).map((a) => (
-        <span key={a} className="rounded-md bg-muted px-1.5 py-0.5 text-xs text-foreground">
+        <span key={a} title={a} className="min-w-0 truncate rounded-md bg-muted px-1.5 py-0.5 text-xs text-foreground">
           {a}
         </span>
       ))}
       {aliases.length > 2 && (
-        <span className="text-xs text-muted-foreground">+{aliases.length - 2}</span>
+        <span className="shrink-0 text-xs text-muted-foreground">+{aliases.length - 2}</span>
       )}
     </div>
   );
@@ -275,16 +275,16 @@ export function EntitiesListView() {
       <>
         {/* >= 640 px: tabel; di bawahnya jadi kartu supaya halaman tidak scroll horizontal (D28). */}
         <div className="max-sm:hidden">
-          <Table>
+          <Table className="table-fixed">
             <TableHeader>
               <TableRow>
-                <TableHead className="pl-5">Name</TableHead>
-                <TableHead>ATT&amp;CK ID</TableHead>
+                <TableHead className="w-[32%] pl-5">Name</TableHead>
+                <TableHead className="w-28">ATT&amp;CK ID</TableHead>
                 <TableHead>Aliases</TableHead>
-                <TableHead className="text-right">30 d</TableHead>
-                <TableHead className="text-right">90 d</TableHead>
-                <TableHead className={cn(!allTab && "pr-5")}>Last seen</TableHead>
-                {allTab && <TableHead className="pr-5">Type</TableHead>}
+                <TableHead className="w-20 text-right">30 d</TableHead>
+                <TableHead className="w-20 text-right">90 d</TableHead>
+                <TableHead className={cn("w-28", !allTab && "pr-5")}>Last seen</TableHead>
+                {allTab && <TableHead className="w-32 pr-5">Type</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -308,11 +308,11 @@ export function EntitiesListView() {
                     )}
                   >
                     <TableCell className="pl-5">
-                      <div className="flex flex-wrap items-center gap-2">
-                        {starFor(it)}
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="shrink-0">{starFor(it)}</span>
                         <EntityChip type={it.type} name={it.name} id={it.id} />
                         {it.suppressed && (
-                          <span className="rounded-md bg-muted px-1.5 py-0.5 text-2xs">Suppressed</span>
+                          <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-2xs">Suppressed</span>
                         )}
                       </div>
                     </TableCell>

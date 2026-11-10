@@ -60,7 +60,7 @@ export function StrongestSignalPanel({ spike, data }: { spike: CategorizedSpike;
       </p>
       <div className="mt-2 flex items-center gap-3">
         <span className="font-heading text-5xl leading-none font-bold text-hero-foreground">{spike.z_score}σ</span>
-        <Chip kind="severity" value={high ? "high" : "medium"}>
+        <Chip kind="severity" value={high ? "high" : "medium"} className="bg-hero-foreground/15 text-hero-foreground">
           {high ? "HIGH" : "MEDIUM"}
         </Chip>
       </div>

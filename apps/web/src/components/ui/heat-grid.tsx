@@ -7,7 +7,8 @@ import { useGridRovingKeys } from "@/components/ui/use-grid-roving-keys";
 import { cn } from "@/lib/utils";
 
 // Kelas ditulis utuh supaya Tailwind menemukannya. Tint dibatasi alpha-nya (bukan membalik warna teks):
-// teks tetap `text-X-text` di semua langkah, kecuali langkah 5 yang memakai band `bg-hero`.
+// teks tetap `text-X-text` di semua langkah, kecuali langkah 5 yang memakai `bg-primary` penuh (terkuat di kedua tema;
+// `bg-hero` hampir hitam di mode gelap sehingga mirip sel kosong).
 const TIER = {
   low: "bg-success/15 text-success-text",
   med: "bg-warning/20 text-warning-text",
@@ -20,7 +21,7 @@ const SCALE = [
   "bg-primary/30 text-primary-text",
   "bg-primary/40 text-primary-text",
   "bg-primary/45 text-primary-text",
-  "bg-hero text-hero-foreground",
+  "bg-primary text-primary-foreground",
 ] as const;
 
 const TREND = {

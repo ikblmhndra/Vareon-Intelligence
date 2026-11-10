@@ -91,11 +91,14 @@ function CardTrend({ clusterId }: { clusterId: string }) {
   const query = useQuery({
     queryKey: ["campaign-clusters", "trend", clusterId],
     queryFn: async () => {
-      const { data, error } = await api.GET("/api/clusters/{cluster_id}/trends", { params: { path: { cluster_id: clusterId } } });
+      const { data, error, response } = await api.GET("/api/clusters/{cluster_id}/trends", { params: { path: { cluster_id: clusterId } } });
+      // 404 = cluster belum tersimpan: bukan error, jangan diulang-ulang (dulu ~8 request per kartu).
+      if (response.status === 404) return null;
       if (error) throw error;
       return data as unknown as CampaignTrend;
     },
     staleTime: 5 * 60_000,
+    retry: false,
   });
   if (!query.data) return null;
   return <TrendArrow direction={query.data.trend_direction} growthRate={query.data.growth_rate} />;
