@@ -4,6 +4,8 @@ adanya dari kode lama -- lihat docstring `cti_core.db.repositories.rfi`."""
 
 from __future__ import annotations
 
+from typing import Literal
+
 from cti_core.db.models.rfi import RFIRequest
 from cti_core.db.repositories.auth import AsyncAuditLogRepo
 from cti_core.db.repositories.rfi import AsyncRFIRepo
@@ -19,7 +21,7 @@ from cti_api.deps import (
     require_auth,
     require_permission,
 )
-from cti_api.schemas.rfi import RFICreate, RFIListResponse, RFIOut, RFIUpdate
+from cti_api.schemas.rfi import RFICreate, RFIListResponse, RFIOut, RFIStatusCounts, RFIUpdate
 
 router = APIRouter(
     prefix="/api/rfi", tags=["rfi"], dependencies=[Depends(require_permission("view_intel"))]
@@ -43,6 +45,9 @@ def _serialize(rfi: RFIRequest) -> RFIOut:
 @router.get("", response_model=RFIListResponse)
 async def get_rfis(
     status: str | None = None,
+    q: str | None = Query(None, max_length=200),
+    linked_pir: int | None = None,
+    sort: Literal["created", "due"] = "created",
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     session: AsyncSession = Depends(get_db),
@@ -50,11 +55,22 @@ async def get_rfis(
     x_client_id: str | None = Header(None),
 ) -> RFIListResponse:
     cid = effective_client_id(user, x_client_id)
-    rfis, total = await AsyncRFIRepo(session).list_filtered(
-        client_id=cid, status=status, page=page, page_size=page_size
+    repo = AsyncRFIRepo(session)
+    rfis, total = await repo.list_filtered(
+        client_id=cid,
+        status=status,
+        q=q,
+        linked_pir=linked_pir,
+        sort=sort,
+        page=page,
+        page_size=page_size,
     )
     return RFIListResponse(
-        rfis=[_serialize(r) for r in rfis], total=total, page=page, page_size=page_size
+        rfis=[_serialize(r) for r in rfis],
+        status_counts=RFIStatusCounts(**await repo.status_counts(cid)),
+        total=total,
+        page=page,
+        page_size=page_size,
     )
 
 

@@ -17,9 +17,9 @@ instruksi "port apa adanya, flag asimetri, jangan diam-diam diperbaiki"
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any
+from typing import Any, Literal
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_core.db.models.rfi import RFIRequest
@@ -27,6 +27,14 @@ from cti_core.db.models.rfi import RFIRequest
 # Batas RFI tertaut per PIR yang dikirim ke UI: PIR dengan ratusan RFI tidak boleh membengkakkan
 # respons daftar PIR; yang masih terbuka sudah diurutkan paling depan.
 _LINKED_RFI_CAP = 20
+
+_RFI_STATUSES = ("open", "in_progress", "closed")
+
+
+def _like(text: str) -> str:
+    """Pola ILIKE aman: `%`, `_`, dan `\\` dalam input pengguna diperlakukan literal."""
+    escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
 
 
 class AsyncRFIRepo:
@@ -40,21 +48,48 @@ class AsyncRFIRepo:
         status: str | None = None,
         page: int = 1,
         page_size: int = 20,
+        q: str | None = None,
+        linked_pir: int | None = None,
+        sort: Literal["created", "due"] = "created",
     ) -> tuple[list[RFIRequest], int]:
         stmt = select(RFIRequest).where(RFIRequest.client_id == client_id)
         if status:
             stmt = stmt.where(RFIRequest.status == status)
+        if q:
+            pattern = _like(q)
+            stmt = stmt.where(
+                or_(
+                    RFIRequest.question.ilike(pattern, escape="\\"),
+                    RFIRequest.requester.ilike(pattern, escape="\\"),
+                )
+            )
+        if linked_pir is not None:
+            stmt = stmt.where(RFIRequest.linked_pir_id == linked_pir)
+
+        # `id` jadi tie-breaker supaya halaman stabil saat due_date/created_at sama.
+        order = (
+            (RFIRequest.due_date.asc().nulls_last(), RFIRequest.id)
+            if sort == "due"
+            else (RFIRequest.created_at.desc(), RFIRequest.id.desc())
+        )
 
         count_stmt = select(func.count()).select_from(stmt.subquery())
         total = (await self.session.execute(count_stmt)).scalar_one()
 
-        list_stmt = (
-            stmt.order_by(RFIRequest.created_at.desc())
-            .offset((page - 1) * page_size)
-            .limit(page_size)
-        )
+        list_stmt = stmt.order_by(*order).offset((page - 1) * page_size).limit(page_size)
         result = await self.session.execute(list_stmt)
         return list(result.scalars().all()), total
+
+    async def status_counts(self, client_id: str) -> dict[str, int]:
+        """Jumlah RFI per status untuk chip filter: satu `GROUP BY`, tidak ikut filter `status`
+        daftar (chip harus tetap menunjukkan total tiap status). Status tak dikenal diabaikan."""
+        result = await self.session.execute(
+            select(RFIRequest.status, func.count())
+            .where(RFIRequest.client_id == client_id)
+            .group_by(RFIRequest.status)
+        )
+        found: dict[str, int] = {status: n for status, n in result.all()}
+        return {s: int(found.get(s, 0)) for s in _RFI_STATUSES}
 
     async def list_by_pirs(
         self, client_id: str, pir_ids: Sequence[int]
