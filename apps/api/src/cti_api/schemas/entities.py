@@ -34,11 +34,14 @@ class EntityListItem(BaseModel):
     mentions_90d: int
     last_seen: datetime.datetime | None
     watched: bool
+    first_seen: datetime.datetime | None = None
 
 
 class EntityListResponse(BaseModel):
     items: list[EntityListItem]
     next_cursor: str | None
+    total: int | None = None
+    """Jumlah baris filter yang sama; hanya di halaman pertama (tanpa kursor), lalu None."""
 
 
 class EntityDetail(BaseModel):
