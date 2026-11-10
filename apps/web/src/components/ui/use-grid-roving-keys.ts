@@ -1,12 +1,14 @@
 "use client";
 
-import { useRef, type KeyboardEvent } from "react";
+import { useRef, useState, type KeyboardEvent } from "react";
 
-/** Navigasi papan-ketik roving 2-D untuk `HeatGrid`: panah menggeser sel (berhenti di tepi, tidak melingkar),
+/** Navigasi papan-ketik roving 2-D untuk `HeatGrid`: panah menggeser sel dari sel yang SEDANG FOKUS (bukan
+ * dari sel terpilih; berhenti di tepi, tidak melingkar),
  * Home/End = awal/akhir baris, Ctrl+Home/End = sel pertama/terakhir grid, Enter/Spasi memilih sel.
  * Berbeda dari `useRovingKeys` (1-D, seleksi mengikuti fokus): di grid, fokus dan seleksi terpisah supaya
- * panel detail tidak berganti tiap panah ditekan. Hanya satu sel (`active`, atau [0,0] bila belum ada) yang
- * bisa di-Tab. */
+ * panel detail tidak berganti tiap panah ditekan. Sel yang bisa di-Tab = sel yang terakhir fokus; sebelum ada
+ * fokus: `active`, atau [0,0]. Pemanggil wajib memasang `onFocusCell(r, c)` pada `onFocus` tiap sel supaya
+ * fokus lewat klik/Tab ikut tercatat. */
 export function useGridRovingKeys(
   rows: number,
   cols: number,
@@ -16,10 +18,11 @@ export function useGridRovingKeys(
 ) {
   const refs = useRef(new Map<string, HTMLElement>());
   const key = (r: number, c: number) => `${r},${c}`;
+  const [focused, setFocused] = useState<[number, number] | null>(null);
 
   function onKeyDown(e: KeyboardEvent<HTMLElement>) {
     if (rows === 0 || cols === 0) return;
-    const [r0, c0] = active ?? [0, 0];
+    const [r0, c0] = focused ?? active ?? [0, 0];
     const r = Math.min(r0, rows - 1);
     const c = Math.min(c0, cols - 1);
     let next: [number, number];
@@ -51,13 +54,14 @@ export function useGridRovingKeys(
         return;
     }
     e.preventDefault();
+    setFocused(next);
     onMove(next[0], next[1]);
     refs.current.get(key(next[0], next[1]))?.focus();
   }
 
-  // Tanpa `active`, sel pertama yang bisa di-Tab supaya grid tetap terjangkau papan-ketik.
+  // Tanpa fokus maupun `active`, sel pertama yang bisa di-Tab supaya grid tetap terjangkau papan-ketik.
   const tabIndexFor = (r: number, c: number) => {
-    const [ar, ac] = active ?? [0, 0];
+    const [ar, ac] = focused ?? active ?? [0, 0];
     return ar === r && ac === c ? 0 : -1;
   };
 
@@ -66,5 +70,7 @@ export function useGridRovingKeys(
     else refs.current.delete(key(r, c));
   };
 
-  return { onKeyDown, tabIndexFor, setRef };
+  const onFocusCell = (r: number, c: number) => setFocused([r, c]);
+
+  return { onKeyDown, tabIndexFor, setRef, onFocusCell };
 }

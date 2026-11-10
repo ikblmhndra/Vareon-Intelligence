@@ -53,9 +53,16 @@ export function ConfirmDialog({
   onConfirm,
 }: ConfirmDialogProps) {
   const [noteText, setNoteText] = useState("");
-  // Catatan dikosongkan tiap dialog dibuka/ditutup supaya tidak bocor ke konfirmasi berikutnya.
-  function handleOpenChange(next: boolean) {
+  // Catatan dikosongkan setiap `open` berubah (bukan hanya lewat handler): pada mode `confirmLoading`
+  // induk menutup dialog dengan membalik `open`, jadi handler tidak jalan. Pola "sesuaikan state saat render".
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (prevOpen !== open) {
+    setPrevOpen(open);
     setNoteText("");
+  }
+  function handleOpenChange(next: boolean) {
+    // Selama permintaan berjalan, Esc/klik di luar tidak boleh menutup dialog.
+    if (confirmLoading && !next) return;
     onOpenChange(next);
   }
   return (

@@ -28,6 +28,8 @@ interface BarSeriesProps {
   referenceLine?: number;
   height?: number;
   "aria-label": string;
+  /** Format nilai di tooltip dan tabel tersembunyi (mis. `${v} stories`); default angka apa adanya. */
+  formatValue?: (v: number) => string;
   /** Warna batang yang tidak disorot. */
   tone?: "neutral" | "primary";
   highlightTone?: "primary" | "destructive";
@@ -43,6 +45,7 @@ export function BarSeries({
   referenceLine,
   height = 180,
   "aria-label": ariaLabel,
+  formatValue = String,
   tone = "primary",
   highlightTone = "primary",
 }: BarSeriesProps) {
@@ -103,6 +106,7 @@ export function BarSeries({
                 borderWidth: 1,
                 padding: 10,
                 cornerRadius: 12,
+                callbacks: { label: (c) => formatValue(c.parsed.y ?? 0) },
               },
             },
             scales: {
@@ -127,7 +131,7 @@ export function BarSeries({
           {labels.map((l, i) => (
             <tr key={`${l}-${i}`}>
               <th scope="row">{l}</th>
-              <td>{values[i]}</td>
+              <td>{formatValue(values[i])}</td>
             </tr>
           ))}
         </tbody>

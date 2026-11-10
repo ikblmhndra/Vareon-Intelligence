@@ -25,6 +25,7 @@ export function EntityTimelineChart({
       labels={months.map((m) => monthLabel(m.month))}
       values={months.map((m) => m.articles)}
       height={height}
+      formatValue={(v) => `${v} stories`}
       aria-label={`Mentions per month, ${total} stories over ${months.length} months`}
     />
   );

@@ -102,7 +102,7 @@ export function HeatGrid({
   onSelect,
   "aria-label": ariaLabel,
 }: HeatGridProps) {
-  const { onKeyDown, tabIndexFor, setRef } = useGridRovingKeys(
+  const { onKeyDown, tabIndexFor, setRef, onFocusCell } = useGridRovingKeys(
     rowLabels.length,
     colLabels.length,
     active,
@@ -142,6 +142,7 @@ export function HeatGrid({
                   ref={setRef(r, c)}
                   tabIndex={tabIndexFor(r, c)}
                   aria-selected={active?.[0] === r && active?.[1] === c}
+                  onFocus={() => onFocusCell(r, c)}
                   onClick={() => onSelect(r, c)}
                   className="cursor-pointer rounded-md p-0 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 >
