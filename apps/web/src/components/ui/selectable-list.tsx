@@ -14,6 +14,9 @@ interface SelectableListProps<T extends string, I extends { value: T }> {
   renderItem: (item: I, selected: boolean) => ReactNode;
   /** `row` (baku): baris dengan garis tinta di kiri. `card`: kartu berbingkai 1 px, terpilih = bingkai tinta 2 px. */
   variant?: "row" | "card";
+  /** Aksi per item (mis. menu "⋯") di pojok kanan atas, DI LUAR tombol option: tombol tak boleh bersarang di
+   * dalam tombol. Panah/Home/End di dalam aksi tidak menggeser pilihan daftar. */
+  renderAction?: (item: I) => ReactNode;
   className?: string;
 }
 
@@ -26,6 +29,7 @@ export function SelectableList<T extends string, I extends { value: T }>({
   "aria-label": ariaLabel,
   renderItem,
   variant = "row",
+  renderAction,
   className,
 }: SelectableListProps<T, I>) {
   // Hook mengetikkan `value` sebagai T; saat tak ada pilihan, string kosong tak cocok item mana pun.
@@ -35,12 +39,16 @@ export function SelectableList<T extends string, I extends { value: T }>({
     <div
       role="listbox"
       aria-label={ariaLabel}
-      onKeyDown={onKeyDown}
+      onKeyDown={(e) => {
+        // Tombol aksi (menu) juga berada di dalam listbox; tombolnya sendiri yang menangani panah.
+        if ((e.target as HTMLElement).closest('[role="option"]')) onKeyDown(e);
+      }}
       className={cn("flex flex-col", variant === "card" ? "gap-2" : "gap-1", className)}
     >
       {items.map((item, i) => {
         const selected = item.value === value;
-        return (
+        const action = renderAction?.(item);
+        const option = (
           <SelectableListItem
             key={item.value}
             selected={selected}
@@ -51,6 +59,13 @@ export function SelectableList<T extends string, I extends { value: T }>({
           >
             {renderItem(item, selected)}
           </SelectableListItem>
+        );
+        if (!action) return option;
+        return (
+          <div key={item.value} role="none" className="relative">
+            {option}
+            <div className="absolute top-2 right-2">{action}</div>
+          </div>
         );
       })}
     </div>
