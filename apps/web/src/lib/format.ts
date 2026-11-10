@@ -23,12 +23,16 @@ function toDate(value: string | Date | null | undefined): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-/** "2 Nov"; "12 Nov 2026" bila tahunnya beda dengan tahun sekarang. Tanggal-saja tidak bergeser.
+/** "2 Nov"; "12 Nov 2026" bila tahunnya beda dengan tahun sekarang (atau `withYear`, dipakai `DateField`
+ * yang butuh tahun selalu tampil). Tanggal-saja tidak bergeser.
  * Contoh: fmtShortDate("2026-11-02") === "2 Nov" (tahun berjalan 2026), di zona UTC-8 juga. */
-export function fmtShortDate(value: string | Date | null | undefined): string {
+export function fmtShortDate(
+  value: string | Date | null | undefined,
+  opts?: { withYear?: boolean },
+): string {
   const d = toDate(value);
   if (!d) return DASH;
-  const sameYear = d.getFullYear() === new Date().getFullYear();
+  const sameYear = !opts?.withYear && d.getFullYear() === new Date().getFullYear();
   return new Intl.DateTimeFormat("en-GB", {
     day: "numeric",
     month: "short",
