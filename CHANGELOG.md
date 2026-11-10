@@ -26,6 +26,13 @@ router `changelog.py`) -- parser-nya expect header persis
 - Lookup CVE langsung (NVD, CIRCL, Exploit-DB, EPSS), di-cache dan dibatasi rate-nya.
 - Dry run lockfile, kolom ecosystem dan path sumber (`monitored_packages.source_path`), parser `Gemfile.lock`, `yarn.lock`, dan `go.sum`.
 - Web: CVEs master/detail dengan urutan risk, tab Open/Acknowledged/False positive, menu More actions dan mode Select; Ticketing master/detail dan Teams.
+- Web: halaman Intelligence (PIR, RFI, Source reliability, IOC, Entities, MITRE) mengikuti mockup FigCraft: header per tab, preset rentang waktu + Custom, dan panel detail.
+- PIR: preview jumlah artikel di form, daftar RFI terkait dan kampanye yang cocok. `GET /api/pir?include_campaigns=true` menjalankan pipeline kampanye tanpa cache; halaman PIR mengambilnya di latar belakang. Link PIR ke kampanye membawa `&days=30` dan halaman Campaign clusters membaca `?days=`.
+- RFI: hitungan per status dan pencarian.
+- Source reliability: filter origin dan export CSV (`GET /api/sr/entries/export`).
+- IOC: export CSV (`GET /api/iocs/export`) dan catatan pada allowlist. Kedua export butuh izin `export_data`, menulis audit log, melindungi sel dari formula CSV, dan dibatasi 50.000 baris (header `X-Export-Truncated` bila terpotong).
+- Entities: ringkasan AI di profil entitas dan jumlah artikel; daftar diurutkan menurut sebutan 30 hari terakhir plus total (`sort=mentions`).
+- Newsroom: parameter URL `actor`, `industry`, `ttp`, `from`.
 
 ### Diubah
 - Deteksi spike (Early Warning dan industry spikes di dashboard eksekutif): mean dan simpangan baku baseline kini menghitung hari tanpa artikel sebagai 0, sama dengan seri `daily`. Dulu hanya hari yang ada artikelnya yang dihitung, sehingga garis baseline lebih tinggi daripada batang hariannya dan entitas yang jarang muncul mendapat z-score terlalu kecil. Akibatnya jumlah dan urutan anomali berubah sesudah deploy, ke dua arah: entitas jarang bisa muncul, entitas yang hitungan hariannya naik-turun bisa hilang. Entitas tetap butuh minimal 5 hari baseline yang ada artikelnya.
@@ -39,6 +46,13 @@ router `changelog.py`) -- parser-nya expect header persis
 - Lockfile: dengan ecosystem "Detect from file", nama file yang tidak dikenali kini membalas 422 (dulu diam-diam diparse sebagai `requirements.txt`); ecosystem eksplisit tetap memaksa parsernya. `source_path` dipotong 500 karakter.
 - Ticket: `owner_email` baru atau yang diubah harus email sah dan paling panjang 200 karakter (spasi pinggir dibuang); nilai lama yang tidak diubah tetap bisa disimpan ulang. Status ticket dengan alias lama (Pending, Completed, Not Affected, Not Applicable) dinormalkan di Ticketing.
 - Lookup CVE langsung: hasil "tidak ditemukan di mana-mana" di-cache 10 menit, bukan 6 jam.
+- Web: dialog detail IOC dan drill TTP jadi panel samping; tab RFI default Open; grid MITRE default 10 x 12.
+- Web: kartu sinkron ATT&CK pindah dari Entities > Techniques ke halaman MITRE heatmap.
+
+### Diperbaiki
+- `PUT /api/rfi/{id}` dan `PUT /api/pir/{id}`: `null` eksplisit kini mengosongkan field yang boleh kosong (RFI `due_date` dan `linked_pir`; PIR `start_date` dan `end_date`). Dulu nilai yang dikosongkan diam-diam diabaikan. `null` pada field wajib tetap diabaikan.
+
+**Catatan 0.8.16 (Intelligence):** tanpa migrasi baru (head tetap `b7d41e9a2c63`) dan tanpa key `.env` baru. Ringkasan profil entitas baru terisi sesudah profil dibuat ulang. Export IOC dan Source reliability butuh `export_data`.
 
 **Saat upgrade dari 0.8.15:** catat jumlah anomali Early Warning per kelompok sebelum deploy untuk dibandingkan (opsional, baca-saja: hitung ticket dengan `owner_email` bukan email dan ticket dengan alias status lama, query di runbook), lalu `make deploy` (migrasi jalan otomatis). Dari prod 0.8.11 (versi yang sedang jalan): ikuti runbook gabungan `docs/PROD_UPGRADE_0.8.11_TO_0.8.16.md`; cek per rilis ada di `docs/prod-upgrade/0.8.16.md`.
 
