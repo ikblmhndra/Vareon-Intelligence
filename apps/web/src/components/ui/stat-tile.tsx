@@ -40,7 +40,7 @@ export function StatTile({ label, value, sub, tone = "neutral", tooltip, selecte
       className={cn("relative gap-1 px-4", onSelect && selected && "ring-2 ring-foreground", !onSelect && className)}
     >
       <span aria-hidden="true" className={cn("absolute inset-x-0 top-0 h-0.5", t.bar)} />
-      {tooltip ? (
+      {tooltip && !onSelect ? (
         <Tooltip>
           <TooltipTrigger render={<span tabIndex={0} className="w-fit outline-none focus-visible:ring-2 focus-visible:ring-ring" />}>
             {labelEl}
@@ -55,17 +55,24 @@ export function StatTile({ label, value, sub, tone = "neutral", tooltip, selecte
     </Card>
   );
   if (!onSelect) return card;
+  // Tile terpilih = tombol. Tooltip dipasang di tombolnya sendiri (bukan span ber-tabIndex di dalam tombol),
+  // supaya hanya ada satu tab stop dan isi tombol tetap terbaca pembaca layar.
+  const buttonClass = cn(
+    "block rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+    className,
+  );
+  if (!tooltip)
+    return (
+      <button type="button" aria-pressed={!!selected} onClick={onSelect} className={buttonClass}>
+        {card}
+      </button>
+    );
   return (
-    <button
-      type="button"
-      aria-pressed={!!selected}
-      onClick={onSelect}
-      className={cn(
-        "block rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-        className,
-      )}
-    >
-      {card}
-    </button>
+    <Tooltip>
+      <TooltipTrigger render={<button type="button" aria-pressed={!!selected} onClick={onSelect} className={buttonClass} />}>
+        {card}
+      </TooltipTrigger>
+      <TooltipContent>{tooltip}</TooltipContent>
+    </Tooltip>
   );
 }
