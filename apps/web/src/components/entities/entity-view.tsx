@@ -114,7 +114,14 @@ export function EntityView({ id }: { id: number }) {
   // Judul tab browser: layout segmen hanya tahu "Entities", jadi nama entity dipasang setelah dimuat.
   const entityName = entity?.name;
   useEffect(() => {
-    if (entityName) document.title = `${entityName} · Entities`;
+    if (!entityName) return;
+    // Simpan judul sebelumnya dan pulihkan saat unmount/ganti nama: navigasi klien kembali ke daftar tidak
+    // selalu memasang ulang metadata layout, jadi tab akan tetap menampilkan nama entity tanpa cleanup ini.
+    const previous = document.title;
+    document.title = `${entityName} · Entities`;
+    return () => {
+      document.title = previous;
+    };
   }, [entityName]);
 
   const tabs = useMemo<TabPillItem<TabKey>[]>(() => {
