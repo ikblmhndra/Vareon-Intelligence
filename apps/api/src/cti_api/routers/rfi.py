@@ -28,6 +28,9 @@ router = APIRouter(
 )
 
 
+_NULLABLE_FIELDS = frozenset({"due_date", "linked_pir"})
+
+
 def _serialize(rfi: RFIRequest) -> RFIOut:
     return RFIOut(
         id=rfi.id,
@@ -127,7 +130,14 @@ async def put_rfi(
 ) -> RFIOut:
     repo = AsyncRFIRepo(session)
     await _ensure_rfi_access(repo, rfi_id, user)
-    rfi = await repo.update(rfi_id, body.model_dump(exclude_none=True))
+    # Null eksplisit hanya berlaku untuk kolom nullable (mengosongkan jatuh tempo / melepas PIR);
+    # kolom NOT NULL yang dikirim null diabaikan seperti sebelumnya.
+    data = {
+        k: v
+        for k, v in body.model_dump(exclude_unset=True).items()
+        if v is not None or k in _NULLABLE_FIELDS
+    }
+    rfi = await repo.update(rfi_id, data)
     if rfi is None:
         raise HTTPException(status_code=404, detail="RFI not found")
     await AsyncAuditLogRepo(session).write(

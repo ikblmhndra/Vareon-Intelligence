@@ -175,7 +175,7 @@ function RfiView() {
         }
       />
     );
-  else if (rfis.length === 0 && (pir === "none" ? hasNextPage : false))
+  else if (rfis.length === 0 && pir === "none" && hasNextPage)
     listPanel = <StatePanel variant="loading" title="Loading RFIs" />;
   else if (rfis.length === 0)
     listPanel = (

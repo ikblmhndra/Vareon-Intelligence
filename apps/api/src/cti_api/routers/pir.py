@@ -64,6 +64,8 @@ from cti_api.schemas.pir import (
 from cti_api.services import campaign as campaign_service
 from cti_api.services.pir_docx import build_docx, export_filename
 
+_NULLABLE_UPDATE_FIELDS = frozenset({"start_date", "end_date"})
+
 router = APIRouter(
     prefix="/api/pir",
     tags=["pir"],
@@ -430,7 +432,13 @@ async def put_pir(
 ) -> PIROut:
     repo = AsyncPIRRepo(session)
     await _get_pir_or_404(repo, pir_id, user)
-    data = body.model_dump(exclude_none=True)
+    # Null eksplisit hanya berlaku untuk kolom nullable (tanggal mulai/akhir); kolom NOT NULL
+    # yang dikirim null diabaikan seperti sebelumnya.
+    data = {
+        k: v
+        for k, v in body.model_dump(exclude_unset=True).items()
+        if v is not None or k in _NULLABLE_UPDATE_FIELDS
+    }
     pir = await repo.update(pir_id, data)
     if pir is None:
         raise HTTPException(status_code=404, detail="PIR not found")
