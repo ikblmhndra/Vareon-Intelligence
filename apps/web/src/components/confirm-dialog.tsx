@@ -29,6 +29,11 @@ interface ConfirmDialogProps {
   /** Bila diberikan, dialog TIDAK menutup sendiri saat konfirmasi: pemanggil menutupnya setelah aksi
    * selesai, dan tombol menampilkan status memuat. Tanpa ini perilaku lama (tutup lalu `onConfirm`). */
   confirmLoading?: boolean;
+  /** Varian tombol batal; baku `outline`. Dialog redesign 2b memakai `ghost` (spec 6.11). */
+  cancelVariant?: "outline" | "ghost";
+  /** Ke mana fokus kembali setelah dialog tertutup (mis. baris terpilih di tabel IOC, yang tetap ada
+   * walau tombol pemicu di panel hilang setelah aksi). Tanpa ini: elemen pemicu, perilaku bawaan Base UI. */
+  finalFocus?: () => HTMLElement | null;
   onConfirm: (note?: string) => void;
 }
 
@@ -50,6 +55,8 @@ export function ConfirmDialog({
   note,
   tone = "default",
   confirmLoading,
+  cancelVariant = "outline",
+  finalFocus,
   onConfirm,
 }: ConfirmDialogProps) {
   const [noteText, setNoteText] = useState("");
@@ -67,7 +74,7 @@ export function ConfirmDialog({
   }
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-sm">
+      <DialogContent className="sm:max-w-sm" finalFocus={finalFocus ? () => finalFocus() ?? true : undefined}>
         <DialogHeader>
           <DialogTitle className="font-heading">{title}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}
@@ -95,7 +102,7 @@ export function ConfirmDialog({
           </div>
         )}
         <DialogFooter>
-          <Button variant="outline" disabled={confirmLoading} onClick={() => handleOpenChange(false)}>
+          <Button variant={cancelVariant} disabled={confirmLoading} onClick={() => handleOpenChange(false)}>
             {cancelLabel}
           </Button>
           <Button

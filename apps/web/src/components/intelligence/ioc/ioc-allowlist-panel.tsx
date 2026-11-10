@@ -1,33 +1,30 @@
 "use client";
 
-import { XIcon } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import { api } from "@/lib/api/client";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { invalidateIocViews } from "@/components/intelligence/ioc/ioc-detail-body";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Chip } from "@/components/ui/chip";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { StatePanel } from "@/components/ui/state-panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import type { IocAllowlistResponse } from "@/lib/api/loose-types";
+import { api } from "@/lib/api/client";
+import type { IocAllowlistEntry, IocAllowlistResponse } from "@/lib/api/loose-types";
 import { useCan } from "@/lib/auth/permissions";
+import { fmtShortDate } from "@/lib/format";
 
-const TYPE_LABEL: Record<string, string> = { url_domain: "URL Domain", email_domain: "Email Domain", ip: "IP Address" };
-const TYPES = Object.keys(TYPE_LABEL);
+const TYPE_LABEL: Record<string, string> = { ip: "IP address", url_domain: "URL domain", email_domain: "Email domain" };
+const TYPES = Object.keys(TYPE_LABEL) as ("ip" | "url_domain" | "email_domain")[];
+const NOTE_MAX = 300;
 
-/** Port bagian "IOC ALLOWLIST" (`ioc_mgmt.js:411-487`) -- domain/email/IP
- * yang dikecualiin dari deteksi IOC. Add sekalian ngehapus IOC existing
- * yang match (`deleted_iocs` di respons, port apa adanya). */
-export function IocAllowlistPanel() {
-  const can = useCan();
-  const queryClient = useQueryClient();
-  const [type, setType] = useState<string>(TYPES[0]);
-  const [value, setValue] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-
-  const query = useQuery({
+/** Daftar allowlist; dipakai juga hitungan pil "Allowlist" (kunci query sama = satu fetch). */
+export function useIocAllowlist() {
+  return useQuery({
     queryKey: ["intelligence", "ioc-allowlist"],
     queryFn: async () => {
       const { data, error } = await api.GET("/api/iocs/allowlist");
@@ -35,117 +32,190 @@ export function IocAllowlistPanel() {
       return data as unknown as IocAllowlistResponse;
     },
   });
+}
+
+/** Tampilan "Allowlist" (spec 2b 6.9): domain/email/IP yang dikecualikan dari deteksi IOC. Form sebaris
+ * Type/Value/Note (Note maks 300, kosong = null di server) hanya untuk `manage_ioc`; hapus lewat konfirmasi. */
+export function IocAllowlistPanel() {
+  const can = useCan();
+  const manage = can("manage_ioc");
+  const qc = useQueryClient();
+  const uid = useId();
+  const [type, setType] = useState<(typeof TYPES)[number]>("url_domain");
+  const [value, setValue] = useState("");
+  const [note, setNote] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [removeTarget, setRemoveTarget] = useState<IocAllowlistEntry | null>(null);
+  const [removing, setRemoving] = useState(false);
+  const query = useIocAllowlist();
 
   async function add() {
     const v = value.trim();
     if (!v) return;
-    setSubmitting(true);
+    setAdding(true);
     try {
-      const { error } = await api.POST("/api/iocs/allowlist", {
-        body: { type: type as "url_domain" | "email_domain" | "ip", value: v },
-      });
+      const { error } = await api.POST("/api/iocs/allowlist", { body: { type, value: v, note: note.trim() || null } });
       if (error) throw new Error(JSON.stringify(error));
       toast.success("Added to allowlist.");
       setValue("");
-      await queryClient.invalidateQueries({ queryKey: ["intelligence", "ioc-allowlist"] });
-      await queryClient.invalidateQueries({ queryKey: ["intelligence", "ioc-list"] });
-      await queryClient.invalidateQueries({ queryKey: ["intelligence", "ioc-stats"] });
+      setNote("");
+      invalidateIocViews(qc);
     } catch (e) {
-      toast.error(`Error: ${(e as Error).message}`);
+      toast.error(`Could not add: ${(e as Error).message}`);
     } finally {
-      setSubmitting(false);
+      setAdding(false);
     }
   }
 
-  async function remove(entryId: number) {
+  async function remove(entry: IocAllowlistEntry) {
+    setRemoving(true);
     try {
-      const { error } = await api.DELETE("/api/iocs/allowlist/{entry_id}", { params: { path: { entry_id: entryId } } });
+      const { error } = await api.DELETE("/api/iocs/allowlist/{entry_id}", { params: { path: { entry_id: entry.id } } });
       if (error) throw new Error(JSON.stringify(error));
-      await queryClient.invalidateQueries({ queryKey: ["intelligence", "ioc-allowlist"] });
+      toast.success("Removed from allowlist.");
+      invalidateIocViews(qc);
     } catch (e) {
       toast.error(`Remove failed: ${(e as Error).message}`);
+    } finally {
+      setRemoving(false);
+      setRemoveTarget(null);
     }
   }
 
-  return (
-    <div>
-      <h2 className="mb-3 text-sm font-semibold text-muted-foreground">IOC Allowlist</h2>
-      {can("manage_ioc") && (
-      <div className="mb-3 flex flex-wrap items-end gap-2">
-        <div className="flex flex-col gap-1">
-          <Label className="text-sm font-medium text-muted-foreground">Type</Label>
-          <Select items={TYPE_LABEL} value={type} onValueChange={(v) => v && setType(v)}>
-            <SelectTrigger size="sm" className="w-36 font-mono text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {TYPES.map((t) => (
-                <SelectItem key={t} value={t} className="font-mono text-xs">
-                  {TYPE_LABEL[t]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex flex-col gap-1">
-          <Label className="text-sm font-medium text-muted-foreground">Value</Label>
-          <Input
-            placeholder="e.g. example.com"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && void add()}
-            className="w-56 font-mono text-xs"
-          />
-        </div>
-        <Button size="sm" disabled={submitting} onClick={() => void add()}>
-          + Add
-        </Button>
-      </div>
-      )}
+  const entries = query.data?.entries ?? [];
 
-      {query.isPending && <p className="py-4 text-center text-xs text-muted-foreground">Loading…</p>}
-      {query.isError && <p className="py-4 text-center text-xs text-destructive">Failed to load allowlist.</p>}
-      {query.data && (
-        <Table framed>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Type</TableHead>
-              <TableHead>Value</TableHead>
-              <TableHead>Added By</TableHead>
-              <TableHead>Added At</TableHead>
-              <TableHead className="text-center">Remove</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {query.data.entries.length === 0 && (
+  return (
+    <Card>
+      <div className="flex flex-col gap-4 px-5">
+        <div>
+          <h2 className="font-heading text-base font-semibold">Allowlist</h2>
+          <p className="text-xs text-muted-foreground">Values here are never extracted as indicators.</p>
+        </div>
+        {manage && (
+          <form
+            className="flex flex-wrap items-end gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void add();
+            }}
+          >
+            <div className="flex flex-col gap-1">
+              <label htmlFor={`${uid}-type`} className="text-2xs font-semibold text-muted-foreground uppercase">
+                Type
+              </label>
+              <Select items={TYPE_LABEL} value={type} onValueChange={(v) => v && setType(v as (typeof TYPES)[number])}>
+                <SelectTrigger id={`${uid}-type`} size="sm" className="w-36 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {TYPES.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {TYPE_LABEL[t]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label htmlFor={`${uid}-value`} className="text-2xs font-semibold text-muted-foreground uppercase">
+                Value
+              </label>
+              <Input
+                id={`${uid}-value`}
+                placeholder="e.g. example.com"
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                className="h-8 w-56 font-code text-xs"
+              />
+            </div>
+            <div className="flex min-w-48 flex-1 flex-col gap-1">
+              <label htmlFor={`${uid}-note`} className="text-2xs font-semibold text-muted-foreground uppercase">
+                Note
+              </label>
+              <Input
+                id={`${uid}-note`}
+                placeholder="Optional"
+                maxLength={NOTE_MAX}
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                className="h-8 text-xs"
+              />
+            </div>
+            <Button type="submit" size="sm" loading={adding} disabled={!value.trim()}>
+              Add to allowlist
+            </Button>
+          </form>
+        )}
+      </div>
+
+      <div className="px-2">
+        {query.isPending && <StatePanel variant="loading" title="Loading allowlist" className="mx-3" />}
+        {query.isError && (
+          <StatePanel
+            variant="error"
+            title="Could not load the allowlist"
+            className="mx-3"
+            action={
+              <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
+                Retry
+              </Button>
+            }
+          />
+        )}
+        {query.data && entries.length === 0 && (
+          <StatePanel variant="empty" title="The allowlist is empty" className="mx-3" />
+        )}
+        {entries.length > 0 && (
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell colSpan={5} className="py-4 text-center text-xs text-muted-foreground">
-                  No allowlist entries
-                </TableCell>
+                <TableHead className="pl-3">Type</TableHead>
+                <TableHead>Value</TableHead>
+                <TableHead>Note</TableHead>
+                <TableHead>Added</TableHead>
+                <TableHead>
+                  <span className="sr-only">Actions</span>
+                </TableHead>
               </TableRow>
-            )}
-            {query.data.entries.map((e) => (
-              <TableRow key={e.id}>
-                <TableCell>
-                  <span className="rounded-full border border-primary/25 bg-primary/10 px-1.5 py-0.5 font-mono text-xs text-primary-text">
-                    {TYPE_LABEL[e.type] || e.type}
-                  </span>
-                </TableCell>
-                <TableCell className="font-code text-xs text-foreground">{e.value}</TableCell>
-                <TableCell className="font-mono text-xs text-muted-foreground">{e.added_by || "—"}</TableCell>
-                <TableCell className="font-mono text-xs text-muted-foreground">{e.added_at.slice(0, 10)}</TableCell>
-                <TableCell className="text-center">
-                  {can("manage_ioc") && (
-                    <button type="button" aria-label={`Remove ${e.value} from allowlist`} onClick={() => void remove(e.id)} className="inline-flex min-h-6 min-w-6 items-center justify-center text-xs text-muted-foreground hover:text-destructive">
-                      <XIcon aria-hidden />
-                    </button>
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      )}
-    </div>
+            </TableHeader>
+            <TableBody>
+              {entries.map((e) => (
+                <TableRow key={e.id}>
+                  <TableCell className="pl-3">
+                    <Chip kind="flag" value={TYPE_LABEL[e.type] ?? e.type} />
+                  </TableCell>
+                  <TableCell className="max-w-64 truncate font-code text-xs text-foreground" title={e.value}>
+                    {e.value}
+                  </TableCell>
+                  <TableCell className="max-w-64 text-xs whitespace-normal text-muted-foreground">{e.note || "—"}</TableCell>
+                  <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
+                    {e.added_by || "—"} · {fmtShortDate(e.added_at)}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {manage && (
+                      <Button variant="link" size="sm" onClick={() => setRemoveTarget(e)} aria-label={`Remove ${e.value} from allowlist`}>
+                        Remove
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </div>
+
+      <ConfirmDialog
+        open={removeTarget !== null}
+        onOpenChange={(open) => !open && setRemoveTarget(null)}
+        title={`Remove ${removeTarget?.value ?? ""} from the allowlist?`}
+        description="New articles can extract it as an indicator again."
+        confirmLabel="Remove"
+        cancelVariant="ghost"
+        tone="danger"
+        confirmLoading={removing}
+        onConfirm={() => removeTarget && void remove(removeTarget)}
+      />
+    </Card>
   );
 }
