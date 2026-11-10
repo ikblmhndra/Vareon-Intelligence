@@ -1,257 +1,230 @@
 "use client";
 
+import { ArrowDownIcon, ArrowUpIcon, ChevronsUpDownIcon } from "lucide-react";
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 
-import { api } from "@/lib/api/client";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SrGrid } from "@/components/intelligence/source-reliability/sr-grid";
+import {
+  gradeChipClass,
+  SR_SORT_LABEL,
+  type SREntry,
+  type SrSortCol,
+  type SrSortDir,
+} from "@/components/intelligence/source-reliability/sr-model";
+import { Card } from "@/components/ui/card";
+import { Chip } from "@/components/ui/chip";
+import { NumberedPager } from "@/components/ui/numbered-pager";
+import { RowMenu } from "@/components/ui/row-menu";
+import { SegmentedControl } from "@/components/ui/segmented-control";
+import { StatePanel } from "@/components/ui/state-panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { SimplePager } from "@/components/pager";
-import { ConfirmDialog } from "@/components/confirm-dialog";
-import { cn } from "@/lib/utils";
-import { GRADE_BADGE_CLASS } from "@/lib/intelligence/format";
-import type { components } from "@/lib/api/schema";
-import type { SrActionResult } from "@/lib/api/loose-types";
-import { SrEntryDialog } from "@/components/intelligence/source-reliability/sr-entry-dialog";
-import { useCan } from "@/lib/auth/permissions";
+import { Button } from "@/components/ui/button";
+import { fmtCompactAge, fmtShortDate } from "@/lib/format";
+import { originLabel } from "@/lib/intelligence/format";
 
-type SREntry = components["schemas"]["SREntryOut"];
+export const SR_PAGE_SIZE = 25;
 
-const PAGE_SIZE = 50;
-const ALL = "__all__";
-const GRADES = ["A", "B", "C", "D", "E", "F"];
-type SortCol = "source_name" | "analyst_name" | "reliability_grade" | "last_updated";
+const MODES = [
+  { value: "table", label: "Table" },
+  { value: "grid", label: "Grid" },
+] as const;
 
-/** Port `source_reliability.js` (327 baris) -- tabel grading Admiralty
- * manual analis (beda dari `source_score.py`'s heuristik otomatis,
- * `GET /api/source-scores` -- endpoint itu KONFIRMASI dead code, gak
- * ada satu pun call site di `intel.js`/file lain, `loadSourceScores()`
- * cuma di-DEFINE gak pernah DIPANGGIL, jadi sengaja gak diporting,
- * sama presedennya kayak `wisemap_service.py`). */
-export function SrTable() {
-  const can = useCan();
-  const queryClient = useQueryClient();
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState("");
-  const [grade, setGrade] = useState("");
-  const [sortBy, setSortBy] = useState<SortCol>("source_name");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
-  const [addOpen, setAddOpen] = useState(false);
-  const [addKey, setAddKey] = useState(0);
-  const [editEntry, setEditEntry] = useState<SREntry | null>(null);
-  const [removeTarget, setRemoveTarget] = useState<SREntry | null>(null);
+interface RowActions {
+  /** Klik baris / nama sumber: buka dialog (ubah bila `manage_sources`, baca-saja bila tidak). */
+  onOpen: (entry: SREntry) => void;
+  onEdit: (entry: SREntry) => void;
+  onRemove: (entry: SREntry) => void;
+  canManage: boolean;
+}
 
-  const listQuery = useQuery({
-    queryKey: ["intelligence", "sr-entries", page, search, grade, sortBy, sortDir],
-    queryFn: async () => {
-      const { data, error } = await api.GET("/api/sr/entries", {
-        params: {
-          query: {
-            page,
-            page_size: PAGE_SIZE,
-            sort_by: sortBy,
-            sort_dir: sortDir,
-            search: search || undefined,
-            grade: grade || undefined,
-          },
-        },
-      });
-      if (error) throw error;
-      return data;
-    },
-  });
+interface SrSortHeaderProps {
+  col: SrSortCol;
+  label: string;
+  sortBy: SrSortCol;
+  sortDir: SrSortDir;
+  onSort: (col: SrSortCol) => void;
+}
 
-  function invalidate() {
-    void queryClient.invalidateQueries({ queryKey: ["intelligence", "sr-entries"] });
-    void queryClient.invalidateQueries({ queryKey: ["intelligence", "ungraded-sources"] });
-  }
-
-  async function removeEntry(id: number) {
-    const { data, error } = await api.DELETE("/api/sr/entries/{entry_id}", { params: { path: { entry_id: id } } });
-    if (error) {
-      toast.error("Delete failed");
-      return;
-    }
-    const d = data as unknown as SrActionResult;
-    if (!d.success) {
-      toast.error("Delete failed.");
-      return;
-    }
-    toast.success("Removed.");
-    invalidate();
-  }
-
-  function sortHeader(col: SortCol, label: string) {
-    return (
-      <TableHead
-        className="cursor-pointer select-none whitespace-nowrap"
-        onClick={() => {
-          if (sortBy === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-          else {
-            setSortBy(col);
-            setSortDir("asc");
-          }
-          setPage(1);
-        }}
+/** Kepala kolom yang bisa diurut: `aria-sort` di `<th>`, pemicunya `<button>` supaya terjangkau papan-ketik. */
+function SortHeader({ col, label, sortBy, sortDir, onSort }: SrSortHeaderProps) {
+  const active = sortBy === col;
+  const Icon = !active ? ChevronsUpDownIcon : sortDir === "asc" ? ArrowUpIcon : ArrowDownIcon;
+  return (
+    <TableHead aria-sort={active ? (sortDir === "asc" ? "ascending" : "descending") : "none"}>
+      <button
+        type="button"
+        onClick={() => onSort(col)}
+        className="inline-flex items-center gap-1 rounded-sm uppercase outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
       >
-        {label} <span className="text-muted-foreground">{sortBy === col ? (sortDir === "asc" ? "↑" : "↓") : "↕"}</span>
-      </TableHead>
-    );
-  }
+        {label}
+        <Icon aria-hidden className="size-3" />
+      </button>
+    </TableHead>
+  );
+}
 
-  const total = listQuery.data?.total ?? 0;
-  const totalPages = Math.ceil(total / PAGE_SIZE) || 1;
+interface SrTableProps extends RowActions {
+  entries: SREntry[];
+  reliability: Record<string, string>;
+  sortBy: SrSortCol;
+  sortDir: SrSortDir;
+  onSort: (col: SrSortCol) => void;
+}
+
+/** Tabel sumber. Baris bisa diklik (D7) tapi tidak menyarangkan tombol di tombol: nama sumber adalah
+ * `<button>` untuk papan-ketik (kliknya naik ke `onClick` baris), `onClick` baris untuk mouse, dan `RowMenu` ada di sel sendiri. */
+export function SrTable({ entries, reliability, sortBy, sortDir, onSort, ...actions }: SrTableProps) {
+  const sortProps = { sortBy, sortDir, onSort };
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <SortHeader col="source_name" label="Source" {...sortProps} />
+          <SortHeader col="reliability_grade" label="Admiralty" {...sortProps} />
+          <TableHead>Reliability</TableHead>
+          <TableHead>Kind</TableHead>
+          <TableHead>Origin</TableHead>
+          <SortHeader col="analyst_name" label="Analyst" {...sortProps} />
+          <SortHeader col="last_updated" label="Updated" {...sortProps} />
+          <TableHead>
+            <span className="sr-only">Actions</span>
+          </TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {entries.map((e) => (
+          <TableRow key={e.id} className="cursor-pointer" onClick={() => actions.onOpen(e)}>
+            <TableCell className="max-w-64 px-4 text-xs whitespace-normal">
+              <button
+                type="button"
+                className="rounded-sm text-left font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              >
+                {e.source_name}
+              </button>
+            </TableCell>
+            <TableCell className="px-4">
+              <Chip kind="grade" value={e.admiralty_code} className={gradeChipClass(e.reliability_grade)} />
+            </TableCell>
+            <TableCell className="px-4 text-xs text-muted-foreground">{reliability[e.reliability_grade] ?? "—"}</TableCell>
+            <TableCell className="px-4">{e.content_kind ? <Chip kind="flag" value={e.content_kind} /> : "—"}</TableCell>
+            <TableCell
+              className="px-4 text-xs text-muted-foreground"
+              title={e.origin === "default" ? "Default grade for this source kind; not set by an analyst" : undefined}
+            >
+              {originLabel(e.origin)}
+            </TableCell>
+            <TableCell className="px-4 text-xs text-muted-foreground">{e.analyst_name}</TableCell>
+            <TableCell className="px-4 text-xs whitespace-nowrap text-muted-foreground" title={fmtShortDate(e.last_updated)}>
+              {fmtCompactAge(e.last_updated || e.added_date)}
+            </TableCell>
+            <TableCell className="px-2" onClick={(ev) => ev.stopPropagation()}>
+              <RowMenu
+                label={`Actions for ${e.source_name}`}
+                items={[
+                  { label: "Edit", onSelect: () => actions.onEdit(e), hidden: !actions.canManage },
+                  { label: "Remove", onSelect: () => actions.onRemove(e), destructive: true, hidden: !actions.canManage },
+                ]}
+              />
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
+
+interface SrSourcesCardProps extends RowActions {
+  state: "loading" | "error" | "ready";
+  onRetry: () => void;
+  entries: SREntry[];
+  total: number;
+  reliability: Record<string, string>;
+  page: number;
+  onPageChange: (page: number) => void;
+  sortBy: SrSortCol;
+  sortDir: SrSortDir;
+  onSort: (col: SrSortCol) => void;
+  filtered: boolean;
+}
+
+/** Kartu "Sources": subjudul, pilihan Table/Grid, isi, dan pager bernomor. Data dan state filter dimiliki
+ * halaman karena hitungan pil toolbar dan kartu samping membacanya juga. */
+export function SrSourcesCard(props: SrSourcesCardProps) {
+  const { state, entries, total, page } = props;
+  const [mode, setMode] = useState<"table" | "grid">("table");
+  const totalPages = Math.max(1, Math.ceil(total / SR_PAGE_SIZE));
+  const from = total === 0 ? 0 : (page - 1) * SR_PAGE_SIZE + 1;
+  const to = Math.min(total, page * SR_PAGE_SIZE);
 
   return (
-    <div>
-      <div className="mb-4 flex flex-wrap items-end gap-2 border-b border-border pb-3">
-        <div className="flex flex-col gap-1">
-          <Label className="text-sm font-medium text-muted-foreground">Search</Label>
-          <Input
-            placeholder="Source name…"
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
-            className="w-48 font-mono text-xs"
+    <Card>
+      <div className="flex flex-wrap items-center justify-between gap-3 px-5">
+        <div>
+          <h2 className="font-heading text-base font-semibold">Sources</h2>
+          <p className="text-xs text-muted-foreground">
+            {total} source{total === 1 ? "" : "s"} · sorted by {SR_SORT_LABEL[props.sortBy]}
+          </p>
+        </div>
+        <SegmentedControl aria-label="Sources view" options={MODES} value={mode} onChange={setMode} />
+      </div>
+      <div className="px-2">
+        {state === "loading" && <StatePanel variant="loading" title="Loading sources" className="mx-3" />}
+        {state === "error" && (
+          <StatePanel
+            variant="error"
+            title="Could not load sources"
+            className="mx-3"
+            action={
+              <Button variant="outline" size="sm" onClick={props.onRetry}>
+                Retry
+              </Button>
+            }
           />
-        </div>
-        <div className="flex flex-col gap-1">
-          <Label className="text-sm font-medium text-muted-foreground">Grade</Label>
-          <Select
-            items={{ [ALL]: "All Grades", ...Object.fromEntries(GRADES.map((g) => [g, g])) }}
-            value={grade || ALL}
-            onValueChange={(v) => {
-              setGrade(v === ALL ? "" : (v ?? ""));
-              setPage(1);
-            }}
-          >
-            <SelectTrigger size="sm" className="w-32 font-mono text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL} className="font-mono text-xs">
-                All Grades
-              </SelectItem>
-              {GRADES.map((g) => (
-                <SelectItem key={g} value={g} className="font-mono text-xs">
-                  {g}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        {can("manage_sources") && (
-          <Button
-            size="sm"
-            className="ml-auto"
-            onClick={() => {
-              setAddKey((k) => k + 1);
-              setAddOpen(true);
-            }}
-          >
-            + Add Source Rating
-          </Button>
+        )}
+        {state === "ready" && entries.length === 0 && (
+          <StatePanel
+            variant="empty"
+            title={props.filtered ? "No sources match these filters" : "No sources rated yet"}
+            description={props.filtered ? "Clear the search, grade or origin filter to see more." : undefined}
+            className="mx-3"
+          />
+        )}
+        {state === "ready" && entries.length > 0 && (
+          <>
+            {mode === "table" ? (
+              <SrTable
+                entries={entries}
+                reliability={props.reliability}
+                sortBy={props.sortBy}
+                sortDir={props.sortDir}
+                onSort={props.onSort}
+                onOpen={props.onOpen}
+                onEdit={props.onEdit}
+                onRemove={props.onRemove}
+                canManage={props.canManage}
+              />
+            ) : (
+              <SrGrid
+                entries={entries}
+                reliability={props.reliability}
+                onOpen={props.onOpen}
+                onEdit={props.onEdit}
+                onRemove={props.onRemove}
+                canManage={props.canManage}
+              />
+            )}
+            <div className="px-3 pb-1">
+              <NumberedPager
+                page={page}
+                totalPages={totalPages}
+                onPageChange={props.onPageChange}
+                label="Sources pagination"
+                summary={`Showing ${from}-${to} of ${total}`}
+              />
+            </div>
+          </>
         )}
       </div>
-
-      {listQuery.isPending && <p className="py-8 text-center text-xs text-muted-foreground">Loading…</p>}
-      {listQuery.isError && <p className="py-8 text-center text-xs text-destructive">Failed to load.</p>}
-
-      {listQuery.data && (
-        <>
-          <p className="mb-2 font-mono text-xs text-muted-foreground">
-            {total} source{total !== 1 ? "s" : ""} rated
-          </p>
-          <Table framed>
-            <TableHeader>
-              <TableRow>
-                {sortHeader("source_name", "Source")}
-                {sortHeader("analyst_name", "Analyst")}
-                {sortHeader("reliability_grade", "Grade")}
-                <TableHead>Kind</TableHead>
-                <TableHead>Notes</TableHead>
-                {sortHeader("last_updated", "Last Updated")}
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {listQuery.data.entries.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={7} className="py-8 text-center text-xs text-muted-foreground">
-                    No entries found
-                  </TableCell>
-                </TableRow>
-              )}
-              {listQuery.data.entries.map((e) => (
-                <TableRow key={e.id}>
-                  <TableCell className="text-xs">
-                    {e.source_name}
-                    {e.origin === "default" && (
-                      <Badge variant="outline" className="ml-2 text-xs text-muted-foreground" title="Default grade for this source kind; not set by an analyst">
-                        default
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{e.analyst_name}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className={cn("text-xs", GRADE_BADGE_CLASS[e.reliability_grade])}>
-                      {e.reliability_grade}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{e.content_kind ?? "—"}</TableCell>
-                  <TableCell className="max-w-[200px] truncate text-xs text-muted-foreground" title={e.notes}>
-                    {e.notes || "—"}
-                  </TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground">
-                    {e.last_updated || e.added_date}
-                  </TableCell>
-                  <TableCell>
-                    {can("manage_sources") && (
-                      <div className="flex gap-1">
-                        <Button size="sm" variant="outline" className="h-6 px-1.5 text-xs" onClick={() => setEditEntry(e)}>
-                          Edit
-                        </Button>
-                        <Button size="sm" variant="destructive" className="h-6 px-1.5 text-xs" onClick={() => setRemoveTarget(e)}>
-                          Remove
-                        </Button>
-                      </div>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          <div className="mt-3 flex justify-center">
-            <SimplePager page={page} totalPages={totalPages} totalLabel={`${total} results`} onPageChange={setPage} />
-          </div>
-        </>
-      )}
-
-      <SrEntryDialog key={addKey} mode="add" open={addOpen} onClose={() => setAddOpen(false)} onSaved={invalidate} />
-      <SrEntryDialog
-        key={editEntry?.id ?? "none"}
-        mode="edit"
-        entry={editEntry}
-        open={editEntry !== null}
-        onClose={() => setEditEntry(null)}
-        onSaved={invalidate}
-      />
-
-      <ConfirmDialog
-        open={removeTarget !== null}
-        onOpenChange={(open) => !open && setRemoveTarget(null)}
-        title="Remove source rating"
-        description={`Remove the source rating for "${removeTarget?.source_name}"?`}
-        confirmLabel="Remove"
-        onConfirm={() => removeTarget && void removeEntry(removeTarget.id)}
-      />
-    </div>
+    </Card>
   );
 }

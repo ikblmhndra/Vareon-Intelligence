@@ -15,6 +15,9 @@ import { cn } from "@/lib/utils";
 import type { components } from "@/lib/api/schema";
 import type { SrActionResult } from "@/lib/api/loose-types";
 import { nativeSelectClass } from "@/components/ui/native-select";
+import { useSrLabels } from "@/components/intelligence/source-reliability/sr-model";
+import { fmtShortDate } from "@/lib/format";
+import { originLabel } from "@/lib/intelligence/format";
 
 type SREntry = components["schemas"]["SREntryOut"];
 
@@ -24,6 +27,8 @@ interface SrEntryDialogProps {
   open: boolean;
   onClose: () => void;
   onSaved: () => void;
+  /** Tampilan baca-saja (pengguna tanpa `manage_sources`): rincian termasuk Notes, hanya tombol Close. */
+  readOnly?: boolean;
 }
 
 /** Port modal Add/Edit Source Rating (`source_reliability.js:113-299`,
@@ -32,7 +37,7 @@ interface SrEntryDialogProps {
  * komponen Combobox siap pakai di `ui/`, dibangun sendiri di sini
  * (Input + dropdown lokal), bukan port Base UI `Select` (itu buat
  * fixed-option, bukan free-text+filter). */
-export function SrEntryDialog({ mode, entry, open, onClose, onSaved }: SrEntryDialogProps) {
+export function SrEntryDialog({ mode, entry, open, onClose, onSaved, readOnly }: SrEntryDialogProps) {
   const { user } = useAuth();
   const [source, setSource] = useState(entry?.source_name ?? "");
   const [ddOpen, setDdOpen] = useState(false);
@@ -44,14 +49,7 @@ export function SrEntryDialog({ mode, entry, open, onClose, onSaved }: SrEntryDi
   const [err, setErr] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const labelsQuery = useQuery({
-    queryKey: ["intelligence", "sr-labels"],
-    queryFn: async () => {
-      const { data, error } = await api.GET("/api/sr/labels");
-      if (error) throw error;
-      return data as { reliability: Record<string, string> };
-    },
-  });
+  const labelsQuery = useSrLabels();
 
   const ungradedQuery = useQuery({
     queryKey: ["intelligence", "ungraded-sources"],
@@ -133,6 +131,41 @@ export function SrEntryDialog({ mode, entry, open, onClose, onSaved }: SrEntryDi
   }
 
   const reliabilityLabels = labelsQuery.data?.reliability ?? {};
+
+  if (readOnly && entry) {
+    const rows: [string, string][] = [
+      ["Source", entry.source_name],
+      ["Admiralty", `${entry.admiralty_code} — ${reliabilityLabels[entry.reliability_grade] ?? entry.reliability_grade}`],
+      ["Kind", entry.content_kind ?? "—"],
+      ["Origin", originLabel(entry.origin)],
+      ["Analyst", entry.analyst_name],
+      ["Last updated", fmtShortDate(entry.last_updated, { withYear: true })],
+    ];
+    return (
+      <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Source Rating</DialogTitle>
+          </DialogHeader>
+          <dl className="grid grid-cols-[7rem_1fr] gap-x-3 gap-y-2 text-xs">
+            {rows.map(([k, v]) => (
+              <div key={k} className="contents">
+                <dt className="text-muted-foreground">{k}</dt>
+                <dd className="break-words">{v}</dd>
+              </div>
+            ))}
+            <dt className="text-muted-foreground">Notes</dt>
+            <dd className="break-words whitespace-pre-wrap">{entry.notes || "—"}</dd>
+          </dl>
+          <DialogFooter>
+            <Button variant="outline" onClick={onClose}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
