@@ -29,8 +29,8 @@ from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from cti_core.db.repositories.ioc_reference import AsyncIocAllowlistRepo
 from cti_core.indicator.marking import Pap, Tlp
 from cti_core.ioc.canonical import canonical
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_api.deps import (
@@ -42,6 +42,7 @@ from cti_api.deps import (
 )
 from cti_api.services import confidence, fp_analytics
 from cti_api.services import ioc_ta_links as ioc_ta_links_service
+from cti_api.services.csv_export import csv_response
 
 router = APIRouter(
     prefix="/api/iocs", tags=["iocs"], dependencies=[Depends(require_permission("view_ioc"))]
@@ -73,6 +74,35 @@ class BulkDeleteBody(BaseModel):
 class AllowlistBody(BaseModel):
     type: Literal["url_domain", "email_domain", "ip"]
     value: str
+    note: str | None = Field(None, max_length=300)
+
+
+_EXPORT_CAP = 50_000
+"""Batas baris export CSV IOC; dibaca `cap + 1` untuk mendeteksi terpotong (header
+`X-Export-Truncated`)."""
+
+_EXPORT_COLUMNS = [
+    "id",
+    "type",
+    "value",
+    "state",
+    "tlp",
+    "pap",
+    "confidence_score",
+    "actionability_score",
+    "actionability_label",
+    "recommended_action",
+    "seen_count",
+    "first_seen",
+    "last_seen",
+    "tp_count",
+    "fp_count",
+    "threat_actors",
+    "tags",
+    "auto_suppressed",
+    "suppression_reason",
+    "revoked_at",
+]
 
 
 def _iso(dt: datetime.datetime | None) -> str | None:
@@ -157,6 +187,86 @@ async def list_iocs(
     }
 
 
+def _export_row(i: Indicator) -> list[object]:
+    """Satu baris CSV export, urutan sama dengan `_EXPORT_COLUMNS`."""
+    return [
+        i.id,
+        i.type,
+        i.value,
+        i.state,
+        i.tlp,
+        i.pap,
+        i.confidence_score,
+        i.actionability_score,
+        i.actionability_label,
+        i.recommended_action,
+        i.seen_count,
+        i.first_seen_at,
+        i.last_seen_at,
+        i.tp_count,
+        i.fp_count,
+        i.entity_names("intrusion-set"),
+        [t.tag for t in i.tags],
+        i.auto_suppressed,
+        i.suppression_reason,
+        i.revoked_at,
+    ]
+
+
+@router.get("/export", dependencies=[Depends(require_permission("export_data"))])
+async def export_iocs(
+    request: Request,
+    ioc_type: str | None = None,
+    search: str | None = None,
+    sort_by: str | None = None,
+    actionability: str | None = None,
+    include_suppressed: bool = False,
+    state: Literal["active", "expired", "revoked", "allowlisted"] | None = None,
+    session: AsyncSession = Depends(get_db),
+    user: AuthedUser = Depends(require_auth),
+) -> Response:
+    """Export CSV dengan filter yang sama dengan `GET /api/iocs`. Semua TLP ikut: IOC bersifat
+    platform-wide (C2, tanpa client_id) dan file membawa kolom `tlp`/`pap` untuk konsumennya.
+    Nilai kanonik (tidak di-defang). Dibaca per batch keyset (bukan offset) lalu dijadikan satu
+    `Response` tanpa streaming; terpotong di `_EXPORT_CAP` ditandai header `X-Export-Truncated`.
+    Harus dideklarasikan sebelum `/{ioc_type}/{value:path}`."""
+    filters = {
+        "ioc_type": ioc_type,
+        # nilai tersimpan kanonik: sama dengan `list_iocs`
+        "search": canonical(ioc_type or "url", search) if search else search,
+        "actionability": actionability,
+        "include_suppressed": include_suppressed,
+        "state": state,
+    }
+    # baris CSV dibangun per batch lalu ORM-nya dilepas: menampung semua objek `Indicator`
+    # (plus relasinya) sampai cap memakan memori jauh lebih besar daripada list nilai polos
+    rows: list[list[object]] = []
+    async for batch in AsyncIndicatorRepo(session).iter_export(
+        sort_by=sort_by, limit=_EXPORT_CAP + 1, **filters
+    ):
+        rows.extend(_export_row(i) for i in batch)
+    truncated = len(rows) > _EXPORT_CAP
+    rows = rows[:_EXPORT_CAP]
+    await AsyncAuditLogRepo(session).write(
+        username=user["username"],
+        action="export_iocs",
+        detail={
+            "filters": {**filters, "sort_by": sort_by},
+            "rows": len(rows),
+            "truncated": truncated,
+        },
+        ip_address=request_ip(request),
+    )
+    await session.commit()
+    filename = f"iocs-{datetime.date.today().strftime('%Y%m%d')}.csv"
+    return csv_response(
+        _EXPORT_COLUMNS,
+        rows,
+        filename,
+        headers={"X-Export-Truncated": "true"} if truncated else None,
+    )
+
+
 @router.get("/stats")
 async def ioc_stats(
     session: AsyncSession = Depends(get_db), _user: AuthedUser = Depends(require_auth)
@@ -235,7 +345,9 @@ async def ioc_allowlist_add(
 ) -> dict[str, object]:
     repo = AsyncIocAllowlistRepo(session)
     try:
-        entry = await repo.create(entry_type=body.type, value=body.value, added_by=user["username"])
+        entry = await repo.create(
+            entry_type=body.type, value=body.value, added_by=user["username"], note=body.note
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     await AsyncAuditLogRepo(session).write(
@@ -249,6 +361,7 @@ async def ioc_allowlist_add(
         "id": entry.id,
         "type": entry.type,
         "value": entry.value,
+        "note": entry.note,
         "added_by": entry.added_by,
         "added_at": entry.created_at.isoformat(),
     }

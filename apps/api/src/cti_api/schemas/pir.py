@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from cti_api.schemas.article import TTP
 
@@ -21,6 +21,28 @@ class PIRCriteria(BaseModel):
     news_types: list[str] = []
     keywords: list[str] = []
     ttps: list[str] = []
+
+
+class PIRPreviewCriteria(PIRCriteria):
+    """Kriteria untuk pratinjau: kunci asing ditolak (422) supaya typo tidak diam-diam jadi
+    hitungan tanpa filter. `PIRCriteria` bersama tetap longgar agar POST/PUT menerima payload
+    lama."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class PIRPreviewIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    criteria: PIRPreviewCriteria
+    days: int = Field(90, ge=1, le=365)
+
+
+class PIRPreviewOut(BaseModel):
+    count: int
+    days: int
+    since: datetime.date
+    has_criteria: bool
 
 
 class PIRCreate(BaseModel):
@@ -50,6 +72,21 @@ class PIRNoteIn(BaseModel):
     analyst: str = ""
 
 
+class PIRLinkedRFI(BaseModel):
+    id: int
+    status: str
+    question: str
+    due_date: str | None = None
+
+
+class PIRMatchedCampaign(BaseModel):
+    cluster_id: str
+    title: str
+    size: int
+    severity_label: str
+    last_seen: str | None = None
+
+
 class PIROut(BaseModel):
     id: int
     title: str
@@ -66,6 +103,10 @@ class PIROut(BaseModel):
     last_match: str | None = None
     created_at: str
     updated_at: str
+    linked_rfis: list[PIRLinkedRFI] = []
+    linked_rfi_open: int = 0
+    # `None` = tidak diminta (`include_campaigns=false`, POST/PUT); `[]` = diminta tapi tidak ada.
+    matched_campaigns: list[PIRMatchedCampaign] | None = None
 
 
 class PIRArticleOut(BaseModel):

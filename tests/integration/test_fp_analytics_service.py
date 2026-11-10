@@ -67,6 +67,23 @@ async def test_get_fp_analytics_suggests_allowlist_for_fp_heavy_ioc(
     assert suggestions[0]["fp_count"] == 3
 
 
+async def test_suggestion_has_tp_count(async_db_session: AsyncSession) -> None:
+    """Saran allowlist membawa `tp_count` (selalu 0 karena syaratnya `tp == 0`) supaya UI bisa
+    menampilkan bukti "0 TP" tanpa menghitung ulang."""
+    svc.invalidate_fp_cache()
+    repo = AsyncIndicatorRepo(async_db_session)
+    await _seeded_ioc_with_feedback(
+        repo,
+        ioc_type="url",
+        value="https://tpcount.example/path",
+        source_name="SourceB",
+        verdicts=["fp", "fp", "fp"],
+    )
+
+    result = await svc.get_fp_analytics(async_db_session, force=True)
+    assert result["suggested_allowlist"][0]["tp_count"] == 0
+
+
 async def test_get_fp_analytics_no_suggestion_when_tp_present(
     async_db_session: AsyncSession,
 ) -> None:

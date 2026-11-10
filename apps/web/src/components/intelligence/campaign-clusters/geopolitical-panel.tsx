@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { TrendingUpIcon, TriangleAlertIcon } from "lucide-react";
 
@@ -8,6 +7,7 @@ import { api } from "@/lib/api/client";
 import { EntityChip } from "@/components/entities/entity-chip";
 import { nameChip } from "@/lib/entities/name-chips";
 import type { GeopoliticalSummary } from "@/lib/api/loose-types";
+import { StatePanel } from "@/components/ui/state-panel";
 
 const MOTIVATION_COLOR: Record<string, string> = {
   espionage: "var(--tag-violet)",
@@ -18,8 +18,11 @@ const MOTIVATION_COLOR: Record<string, string> = {
   unknown: "var(--muted-foreground)",
 };
 
-/** Port "GEOPOLITICAL OVERVIEW" (`clusters.js:766-907`) -- panel
- * collapsible di dalam view Campaigns (BUKAN sub-view terpisah),
+/** Port "GEOPOLITICAL OVERVIEW" (`clusters.js:766-907`) -- isi bagian
+ * lipat "Geopolitical context" di detail campaign (2b 6.10). Tombol lipat
+ * milik pemanggil (`CampaignDetailCard`), jadi panel ini baru di-mount --
+ * dan query-nya baru jalan -- saat bagian itu dibuka. Dulu panel punya
+ * tombol sendiri di atas daftar campaign.
  * `GET /api/intelligence/geopolitical` terima `campaigns` Pipeline 2.
  * **Catatan nuansa data** (bukan bug baru, warisan Fase 7.4 Grup A):
  * `nation_state_activity[nation].targeted_sectors` backend DEDUP per
@@ -30,8 +33,6 @@ const MOTIVATION_COLOR: Record<string, string> = {
  * cuma hasil visualnya beda dari desain original akibat data shape
  * yang udah di-dedup di backend. */
 export function GeopoliticalPanel({ days }: { days: number }) {
-  const [open, setOpen] = useState(false);
-
   const query = useQuery({
     queryKey: ["campaign-clusters", "geopolitical", days],
     queryFn: async () => {
@@ -39,7 +40,6 @@ export function GeopoliticalPanel({ days }: { days: number }) {
       if (error) throw error;
       return data as unknown as GeopoliticalSummary;
     },
-    enabled: open,
   });
 
   const d = query.data;
@@ -50,13 +50,8 @@ export function GeopoliticalPanel({ days }: { days: number }) {
   const motTotal = motEntries.reduce((s, [, v]) => s + v, 0) || 1;
 
   return (
-    <div className="mb-4 rounded-md border border-border">
-      <button type="button" onClick={() => setOpen((o) => !o)} className="w-full px-3 py-2 text-left font-mono text-xs tracking-wider text-muted-foreground uppercase">
-        {open ? "▾" : "▸"} Geopolitical Overview
-      </button>
-      {open && (
-        <div className="border-t border-border p-3">
-          {query.isPending && <p className="text-xs text-muted-foreground">Loading geopolitical context…</p>}
+    <div>
+          {query.isPending && <StatePanel variant="loading" title="Loading geopolitical context" className="py-6" />}
           {query.isError && <p className="text-xs text-destructive">Error loading geopolitical overview.</p>}
           {d && (
             <>
@@ -153,8 +148,6 @@ export function GeopoliticalPanel({ days }: { days: number }) {
               </div>
             </>
           )}
-        </div>
-      )}
     </div>
   );
 }

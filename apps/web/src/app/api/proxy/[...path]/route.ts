@@ -19,7 +19,8 @@ const API_BASE_URL = process.env.API_BASE_URL ?? "http://localhost:8000";
  * Response DIBACA MENTAH (`arrayBuffer`, bukan `.json()`) -- beberapa
  * endpoint balikin binary (export Excel/DOCX, lihat `pir`/`cve` router)
  * yang gak boleh disentuh, `Content-Disposition` diteruskan biar nama
- * file unduhan tetep bener.
+ * file unduhan tetep bener; `X-Export-Truncated` juga diteruskan supaya UI bisa
+ * memberi tahu export yang terpotong di batas baris (`downloadBlob` di `lib/csv.ts`).
  */
 async function proxy(request: NextRequest, path: string[]): Promise<NextResponse> {
   const token = await getSessionToken();
@@ -49,7 +50,7 @@ async function proxy(request: NextRequest, path: string[]): Promise<NextResponse
   }
 
   const responseHeaders = new Headers();
-  for (const name of ["content-type", "content-disposition", "retry-after"]) {
+  for (const name of ["content-type", "content-disposition", "retry-after", "x-export-truncated"]) {
     const value = upstream.headers.get(name);
     if (value) responseHeaders.set(name, value);
   }

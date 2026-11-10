@@ -6,7 +6,7 @@ import { toast } from "sonner";
 
 import { errorDetail, invalidateEntity } from "@/components/entities/entity-action-utils";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -54,6 +54,7 @@ export function EntityEditDialog({ entity, onClose }: { entity: EntityDetail; on
       <DialogContent className="max-h-[85vh] w-full max-w-lg overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Edit name and description</DialogTitle>
+          <DialogDescription>Change the display name and description of this entity.</DialogDescription>
         </DialogHeader>
         <form
           className="space-y-3"
@@ -91,10 +92,10 @@ export function EntityEditDialog({ entity, onClose }: { entity: EntityDetail; on
             </p>
           )}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose} className="max-sm:h-11">
+            <Button type="button" variant="ghost" onClick={onClose} className="max-sm:h-11">
               Cancel
             </Button>
-            <Button type="submit" disabled={saving} className="max-sm:h-11">
+            <Button type="submit" loading={saving} className="max-sm:h-11">
               {saving ? "Saving…" : "Save"}
             </Button>
           </DialogFooter>

@@ -1,20 +1,25 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { api } from "@/lib/api/client";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Chip } from "@/components/ui/chip";
+import { RowMenu } from "@/components/ui/row-menu";
+import { StatePanel } from "@/components/ui/state-panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { GRADE_BADGE_CLASS } from "@/lib/intelligence/format";
-import type { components } from "@/lib/api/schema";
+import {
+  gradeChipClass,
+  invalidateSr,
+  useSrReview,
+  type SREntry,
+} from "@/components/intelligence/source-reliability/sr-model";
 import { SrEntryDialog } from "@/components/intelligence/source-reliability/sr-entry-dialog";
 import { useCan } from "@/lib/auth/permissions";
-
-type SREntry = components["schemas"]["SREntryOut"];
 
 /** Kode alasan saran dari `cti_core.confidence.suggest_grade` -> teks UI (P6 spec 5.3). */
 const REASON_TEXT: Record<string, string> = {
@@ -23,32 +28,23 @@ const REASON_TEXT: Record<string, string> = {
   reports_first: "often reports first",
 };
 
+/** Di atas ini sumber lebih sering salah daripada benar di mata analis: teksnya merah. */
+const IOC_FP_ALERT_PCT = 50;
+
 function pct(v: number) {
   return `${Math.round(v)}%`;
 }
 
-/** Tab "Needs review": baris grade bawaan (`origin='default'`) dengan statistik 30 hari dan saran
+/** Tampilan "Needs review": baris grade bawaan (`origin='default'`) dengan statistik 30 hari dan saran
  * grade dari data. Konfirmasi mengubah baris jadi milik analis (`origin='analyst'`), jadi baris itu
- * keluar dari antrean ini dan muncul sebagai entri analis di tab "All sources". */
+ * keluar dari antrean ini dan muncul sebagai entri analis di "All sources". */
 export function SrReviewTable() {
   const can = useCan();
   const queryClient = useQueryClient();
   const [editEntry, setEditEntry] = useState<SREntry | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
 
-  const reviewQuery = useQuery({
-    queryKey: ["intelligence", "sr-review"],
-    queryFn: async () => {
-      const { data, error } = await api.GET("/api/sr/review");
-      if (error) throw error;
-      return data.items;
-    },
-  });
-
-  function invalidate() {
-    void queryClient.invalidateQueries({ queryKey: ["intelligence", "sr-review"] });
-    void queryClient.invalidateQueries({ queryKey: ["intelligence", "sr-entries"] });
-  }
+  const reviewQuery = useSrReview(true);
 
   async function confirm(entry: SREntry, grade: string | null) {
     setBusyId(entry.id);
@@ -69,127 +65,161 @@ export function SrReviewTable() {
       setBusyId(null);
     }
     toast.success(`${entry.source_name}: grade ${grade ?? entry.reliability_grade} confirmed.`);
-    invalidate();
+    invalidateSr(queryClient);
   }
 
   const manage = can("manage_sources");
+  const items = reviewQuery.data;
 
   return (
-    <div>
-      {reviewQuery.isPending && <p className="py-8 text-center text-xs text-muted-foreground">Loading…</p>}
-      {reviewQuery.isError && <p className="py-8 text-center text-xs text-destructive">Failed to load.</p>}
-
-      {reviewQuery.data && (
-        <>
-          <p className="mb-2 font-mono text-xs text-muted-foreground">
-            {reviewQuery.data.length} default grade{reviewQuery.data.length !== 1 ? "s" : ""} awaiting review
-            (statistics over the last 30 days)
-          </p>
-          <Table framed>
+    <Card>
+      <div className="px-5">
+        <h2 className="font-heading text-base font-semibold">Needs review</h2>
+        <p className="text-xs text-muted-foreground">
+          {items
+            ? `${items.length} auto-graded source${items.length === 1 ? "" : "s"} awaiting review · statistics over the last 30 days`
+            : "Auto-graded sources with their last 30 days of statistics"}
+        </p>
+      </div>
+      <div className="px-2">
+        {reviewQuery.isPending && <StatePanel variant="loading" title="Loading review queue" className="mx-3" />}
+        {reviewQuery.isError && (
+          <StatePanel
+            variant="error"
+            title="Could not load the review queue"
+            className="mx-3"
+            action={
+              <Button variant="outline" size="sm" onClick={() => void reviewQuery.refetch()}>
+                Retry
+              </Button>
+            }
+          />
+        )}
+        {items && items.length === 0 && (
+          <StatePanel
+            variant="empty"
+            title="No default grades left to review"
+            description="Every auto-graded source has been confirmed by an analyst."
+            className="mx-3"
+          />
+        )}
+        {items && items.length > 0 && (
+          <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Source</TableHead>
                 <TableHead>Kind</TableHead>
                 <TableHead>Grade</TableHead>
+                <TableHead title="Multi-source stories this source led / multi-source stories it is in">Leads</TableHead>
                 <TableHead className="whitespace-nowrap">Articles (30 d)</TableHead>
                 <TableHead
                   className="whitespace-nowrap"
                   title="Share of the source's items rejected as not cyber-related (marketing, best practice). Measures off-topic content, not inaccuracy."
                 >
-                  Rejected % <span className="text-muted-foreground">ⓘ</span>
+                  Off-topic
                 </TableHead>
                 <TableHead className="whitespace-nowrap">Artefact %</TableHead>
-                <TableHead title="Multi-source stories this source led / multi-source stories it is in">Leads</TableHead>
                 <TableHead className="whitespace-nowrap">IOC FP %</TableHead>
-                <TableHead>Suggestion</TableHead>
-                {manage && <TableHead />}
+                <TableHead>Why</TableHead>
+                <TableHead>
+                  <span className="sr-only">Actions</span>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {reviewQuery.data.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={manage ? 10 : 9} className="py-8 text-center text-xs text-muted-foreground">
-                    No default grades left to review
-                  </TableCell>
-                </TableRow>
-              )}
-              {reviewQuery.data.map((it) => {
+              {items.map((it) => {
                 const e = it.entry;
                 const busy = busyId === e.id;
+                const suggested = it.suggested_grade;
+                const applyCode = suggested ? `${suggested}${e.credibility_code}` : e.admiralty_code;
                 return (
-                  <TableRow key={e.id}>
-                    <TableCell className="min-w-36 text-xs whitespace-normal">{e.source_name}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{e.content_kind ?? "—"}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className={cn("text-xs", GRADE_BADGE_CLASS[e.reliability_grade])}>
-                        {e.reliability_grade}
-                      </Badge>
+                  <TableRow
+                    key={e.id}
+                    className={manage ? "cursor-pointer" : undefined}
+                    onClick={manage ? () => setEditEntry(e) : undefined}
+                  >
+                    <TableCell className="min-w-36 px-4 text-xs whitespace-normal">
+                      <button
+                        type="button"
+                        disabled={!manage}
+                        className="rounded-sm text-left font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                      >
+                        {e.source_name}
+                      </button>
                     </TableCell>
-                    <TableCell className="font-code text-xs">{it.articles}</TableCell>
-                    <TableCell className="font-code text-xs" title={`${it.rejected} rejected`}>
-                      {pct(it.rejected_pct)}
+                    <TableCell className="px-4">{e.content_kind ? <Chip kind="flag" value={e.content_kind} /> : "—"}</TableCell>
+                    <TableCell className="px-4 whitespace-nowrap">
+                      <span className="inline-flex items-center gap-1.5 font-code text-xs">
+                        <Chip kind="grade" value={e.reliability_grade} className={gradeChipClass(e.reliability_grade)} />
+                        {suggested && suggested !== e.reliability_grade && (
+                          <>
+                            <span aria-hidden="true">→</span>
+                            <span className="sr-only">suggested</span>
+                            <Chip kind="grade" value={applyCode} className={gradeChipClass(suggested)} />
+                          </>
+                        )}
+                      </span>
                     </TableCell>
-                    <TableCell className="font-code text-xs" title={`${it.artefact_articles} with artefacts`}>
-                      {pct(it.artefact_pct)}
-                    </TableCell>
-                    <TableCell className="font-code text-xs">
+                    <TableCell className="px-4 font-code text-xs">
                       {it.lead_count} / {it.multi_source_stories}
                     </TableCell>
-                    <TableCell className="font-code text-xs" title={`${it.ioc_fp} of ${it.ioc_verdicts} IOC verdicts`}>
+                    <TableCell className="px-4 font-code text-xs">{it.articles}</TableCell>
+                    <TableCell className="px-4 font-code text-xs" title={`${it.rejected} rejected`}>
+                      {pct(it.rejected_pct)}
+                    </TableCell>
+                    <TableCell className="px-4 font-code text-xs" title={`${it.artefact_articles} with artefacts`}>
+                      {pct(it.artefact_pct)}
+                    </TableCell>
+                    <TableCell
+                      className={cn(
+                        "px-4 font-code text-xs",
+                        it.ioc_verdicts > 0 && it.ioc_fp_pct > IOC_FP_ALERT_PCT && "text-destructive-text",
+                      )}
+                      title={`${it.ioc_fp} of ${it.ioc_verdicts} IOC verdicts`}
+                    >
                       {it.ioc_verdicts ? pct(it.ioc_fp_pct) : "—"}
                     </TableCell>
                     {/* Alasan saran panjang: dibungkus supaya tombol aksi tidak terdorong keluar layar. */}
-                    <TableCell className="min-w-44 text-xs whitespace-normal">
-                      {it.suggested_grade ? (
-                        <div className="flex flex-col gap-0.5">
-                          <Badge variant="outline" className={cn("w-fit text-xs", GRADE_BADGE_CLASS[it.suggested_grade])}>
-                            {it.suggested_grade}
-                          </Badge>
-                          {it.suggestion_reasons.map((r) => (
-                            <span key={r} className="text-muted-foreground">
-                              {REASON_TEXT[r] ?? r}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
+                    <TableCell className="min-w-44 px-4 text-xs whitespace-normal text-muted-foreground">
+                      {it.suggestion_reasons.length > 0
+                        ? it.suggestion_reasons.map((r) => REASON_TEXT[r] ?? r).join("; ")
+                        : "—"}
                     </TableCell>
-                    {manage && (
-                      <TableCell>
-                        <div className="flex gap-1">
+                    <TableCell className="px-2" onClick={(ev) => ev.stopPropagation()}>
+                      {manage && (
+                        <div className="flex items-center gap-1">
                           <Button
                             size="sm"
                             variant="outline"
-                            className="h-6 px-1.5 text-xs"
+                            className="whitespace-nowrap"
                             disabled={busy}
-                            onClick={() => void confirm(e, null)}
+                            onClick={() => void confirm(e, suggested)}
                           >
-                            Confirm
+                            {suggested ? "Apply" : "Confirm"} {applyCode}
                           </Button>
-                          {it.suggested_grade && (
-                            <Button
-                              size="sm"
-                              className="h-6 whitespace-nowrap px-1.5 text-xs"
-                              disabled={busy}
-                              onClick={() => void confirm(e, it.suggested_grade)}
-                            >
-                              Confirm {it.suggested_grade}
-                            </Button>
-                          )}
-                          <Button size="sm" variant="outline" className="h-6 px-1.5 text-xs" onClick={() => setEditEntry(e)}>
-                            Edit
-                          </Button>
+                          <RowMenu
+                            label={`Actions for ${e.source_name}`}
+                            items={[
+                              // Tanpa saran, tombol utama sudah "Confirm {kode}"; dengan saran, mempertahankan
+                              // grade sekarang tetap tersedia di sini.
+                              {
+                                label: `Confirm ${e.admiralty_code}`,
+                                onSelect: () => void confirm(e, null),
+                                hidden: !suggested || suggested === e.reliability_grade || busy,
+                              },
+                              { label: "Edit", onSelect: () => setEditEntry(e) },
+                            ]}
+                          />
                         </div>
-                      </TableCell>
-                    )}
+                      )}
+                    </TableCell>
                   </TableRow>
                 );
               })}
             </TableBody>
           </Table>
-        </>
-      )}
+        )}
+      </div>
 
       <SrEntryDialog
         key={editEntry?.id ?? "none"}
@@ -197,8 +227,8 @@ export function SrReviewTable() {
         entry={editEntry}
         open={editEntry !== null}
         onClose={() => setEditEntry(null)}
-        onSaved={invalidate}
+        onSaved={() => invalidateSr(queryClient)}
       />
-    </div>
+    </Card>
   );
 }

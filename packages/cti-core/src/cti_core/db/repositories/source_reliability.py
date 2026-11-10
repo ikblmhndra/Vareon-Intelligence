@@ -82,6 +82,7 @@ class AsyncSourceReliabilityRepo:
         *,
         search: str | None = None,
         grade: str | None = None,
+        origin: str | None = None,
         page: int = 1,
         page_size: int = 50,
         sort_by: str = "source_name",
@@ -97,13 +98,20 @@ class AsyncSourceReliabilityRepo:
             )
         if grade:
             stmt = stmt.where(SourceReliabilityEntry.reliability_grade == grade.upper())
+        if origin:
+            stmt = stmt.where(SourceReliabilityEntry.origin == origin)
 
         count_stmt = select(func.count()).select_from(stmt.subquery())
         total = (await self.session.execute(count_stmt)).scalar_one()
 
         order_col = _SORT_FIELDS.get(sort_by, SourceReliabilityEntry.source_name)
         order = order_col.desc() if sort_dir == "desc" else order_col.asc()
-        list_stmt = stmt.order_by(order).offset((page - 1) * page_size).limit(page_size)
+        # `id` sebagai tie-breaker searah sort: kolom seperti `last_updated` (tanggal) banyak
+        # yang kembar, tanpa ini halaman offset bisa menduplikasi/melewatkan baris.
+        id_order = (
+            SourceReliabilityEntry.id.desc() if sort_dir == "desc" else SourceReliabilityEntry.id
+        )
+        list_stmt = stmt.order_by(order, id_order).offset((page - 1) * page_size).limit(page_size)
         result = await self.session.execute(list_stmt)
         return list(result.scalars().all()), total
 

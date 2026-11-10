@@ -84,6 +84,7 @@ export function EntityIndicatorsTab({ entity }: { entity: EntityDetail }) {
       <IocDetailDialog
         target={target}
         onClose={() => setTarget(null)}
+        onChanged={() => void qc.invalidateQueries({ queryKey: ["entity-indicators", entity.id] })}
         onDeleted={() => {
           setTarget(null);
           void qc.invalidateQueries({ queryKey: ["entity-indicators", entity.id] });

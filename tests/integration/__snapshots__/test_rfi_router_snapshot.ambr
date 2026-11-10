@@ -29,6 +29,11 @@
         'updated_at': str,
       }),
     ]),
+    'status_counts': dict({
+      'closed': 0,
+      'in_progress': 0,
+      'open': 1,
+    }),
     'total': 1,
   })
 # ---

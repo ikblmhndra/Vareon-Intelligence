@@ -6,7 +6,7 @@ import { toast } from "sonner";
 
 import { SubListSection, SUBLIST_PAGE_SIZE } from "@/components/entities/entity-subtab";
 import { CveDetailCard } from "@/components/cve/cve-detail-card";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api/client";
@@ -108,6 +108,7 @@ export function EntityCvesTab({ entity }: { entity: EntityDetail }) {
       <Dialog open={cve !== null} onOpenChange={(o) => !o && setCve(null)}>
         <DialogContent showCloseButton className="max-h-[90vh] w-full overflow-y-auto p-0 sm:max-w-2xl">
           <DialogTitle className="sr-only">{cve?.cve_id} details</DialogTitle>
+          <DialogDescription className="sr-only">Severity, scores, affected products and references for this CVE.</DialogDescription>
           {cve && <CveDetailCard cve={cve} className="border-0" onLeaveList={() => setCve(null)} />}
         </DialogContent>
       </Dialog>

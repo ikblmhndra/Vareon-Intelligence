@@ -9,6 +9,7 @@ import pytest
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.auth import AsyncClientRepo
 from cti_core.db.repositories.pir import AsyncPIRRepo
+from cti_core.db.repositories.rfi import AsyncRFIRepo
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.integration.entity_support import seed_entity
@@ -314,3 +315,83 @@ async def test_weekly_coverage_trims_first_week_before_mid_week_start(
     _, _, rows = result
     assert rows[0][0] == week_start
     assert rows[0][1] == 1  # hanya artikel pada start_date
+
+
+async def _rfi(
+    session: AsyncSession,
+    pir_id: int,
+    *,
+    status: str = "open",
+    client_id: str = "default",
+    due: datetime.date | None = None,
+    question: str = "Q",
+) -> int:
+    rfi = await AsyncRFIRepo(session).create(
+        {
+            "requester": "r",
+            "question": question,
+            "status": status,
+            "due_date": due,
+            "linked_pir": pir_id,
+        },
+        client_id=client_id,
+    )
+    return rfi.id
+
+
+async def test_linked_rfis_open_count(async_db_session: AsyncSession) -> None:
+    await _ensure_clients(async_db_session)
+    pir = await AsyncPIRRepo(async_db_session).create({"title": "P"}, client_id="default")
+    closed = await _rfi(async_db_session, pir.id, status="closed")
+    in_prog = await _rfi(async_db_session, pir.id, status="in_progress")
+    opened = await _rfi(async_db_session, pir.id, status="open")
+
+    got = await AsyncRFIRepo(async_db_session).list_by_pirs("default", [pir.id])
+    assert [r.id for r in got[pir.id]] == [opened, in_prog, closed]
+
+
+async def test_linked_rfis_other_client_excluded(async_db_session: AsyncSession) -> None:
+    await _ensure_clients(async_db_session)
+    pir = await AsyncPIRRepo(async_db_session).create({"title": "P"}, client_id="default")
+    await _rfi(async_db_session, pir.id, client_id="acme")
+    mine = await _rfi(async_db_session, pir.id, client_id="default")
+
+    got = await AsyncRFIRepo(async_db_session).list_by_pirs("default", [pir.id])
+    assert [r.id for r in got[pir.id]] == [mine]
+
+
+async def test_linked_rfis_cap_20(async_db_session: AsyncSession) -> None:
+    await _ensure_clients(async_db_session)
+    pir = await AsyncPIRRepo(async_db_session).create({"title": "P"}, client_id="default")
+    for _ in range(25):
+        await _rfi(async_db_session, pir.id)
+
+    got = await AsyncRFIRepo(async_db_session).list_by_pirs("default", [pir.id])
+    assert len(got[pir.id]) == 20
+
+
+async def test_linked_rfis_order_due_nulls_last(async_db_session: AsyncSession) -> None:
+    await _ensure_clients(async_db_session)
+    pir = await AsyncPIRRepo(async_db_session).create({"title": "P"}, client_id="default")
+    today = datetime.date.today()
+    no_due = await _rfi(async_db_session, pir.id)
+    late = await _rfi(async_db_session, pir.id, due=today + datetime.timedelta(days=9))
+    soon = await _rfi(async_db_session, pir.id, due=today + datetime.timedelta(days=1))
+
+    got = await AsyncRFIRepo(async_db_session).list_by_pirs("default", [pir.id])
+    assert [r.id for r in got[pir.id]] == [soon, late, no_due]
+
+
+async def test_linked_rfis_unknown_status_sorts_last(async_db_session: AsyncSession) -> None:
+    await _ensure_clients(async_db_session)
+    pir = await AsyncPIRRepo(async_db_session).create({"title": "P"}, client_id="default")
+    weird = await _rfi(async_db_session, pir.id, status="weird")
+    closed = await _rfi(async_db_session, pir.id, status="closed")
+    opened = await _rfi(async_db_session, pir.id, status="open")
+
+    got = await AsyncRFIRepo(async_db_session).list_by_pirs("default", [pir.id])
+    assert [r.id for r in got[pir.id]] == [opened, closed, weird]
+
+
+async def test_list_by_pirs_empty_input(async_db_session: AsyncSession) -> None:
+    assert await AsyncRFIRepo(async_db_session).list_by_pirs("default", []) == {}

@@ -560,8 +560,8 @@ rollback keeps working; the original tables are kept as `_legacy_*` until the re
 mentions and keep their response shapes (names are entity names, industries are sector display names).
 
 **Web (P7c-2).** Two pages replace TA Room and ATT&CK DB (their URLs redirect permanently, and the routes that only they
-used were removed): `/intelligence/entities` (tabs per type, alias search, watched/suppressed, New entity, Navigator layer,
-ATT&CK sync card) and `/intelligence/entities/[id]` (hero KPIs, Overview with profile and relationship preview,
+used were removed): `/intelligence/entities` (tabs per type, alias search, watched/suppressed, New entity, Navigator layer;
+the ATT&CK sync card now lives on the MITRE heatmap page) and `/intelligence/entities/[id]` (hero KPIs, Overview with profile and relationship preview,
 Relationships, Stories, Indicators, CVEs, Timeline, ATT&CK; Edit, Aliases, Merge with preview, Split, Suppress; a merged id
 redirects). Every entity name elsewhere in the web is an `EntityChip` that links to `/intelligence/entities/[id]`. When a
 response carries no id (older shapes, free text), the chip links to the resolve route, which calls
@@ -590,6 +590,22 @@ indicators of the anchor become template Splunk SPL over the CIM data models (no
 filled from the SigmaHQ snapshot committed in `cti-core` (loaded by the API bootstrap when the table is empty, or with
 `cti-sigma import`) and refreshed by the weekly Celery task `sigma.sync` (maintenance queue, Sunday 03:30), which keeps the old
 rules when the download fails its guards. Spec: `docs/superpowers/specs/2026-11-04-p7e-hunting-packs-design.md`.
+
+### 3.12 Intelligence pages: PIR campaigns, exports, entity ordering (0.8.16)
+
+- **PIR campaign match.** `GET /api/pir?include_campaigns=true` attaches the matching campaigns to each PIR by running the
+  uncached campaign pipeline. The PIR page fetches the plain `GET /api/pir` first and the `include_campaigns=true` variant in
+  the background, so coverage is computed twice per page load. PIR to campaign links carry `&days=30`, which the Campaign
+  clusters page reads as `?days=`.
+- **Exports.** `GET /api/sr/entries/export` and `GET /api/iocs/export` return CSV; both require `export_data`, write an
+  audit row (`AsyncAuditLogRepo.write`, then commit) and neutralise cells that start with a formula character. The IOC export
+  stops at 50 000 rows and sets `X-Export-Truncated` when cut; the Source reliability export is capped at 5 000 rows (one row
+  per source) and has no truncation header.
+- **Entities `sort=mentions`.** The list orders by the number of mentions in the last 30 days (descending); ties are broken
+  by name, then id. `total` is returned on the first page only (`null` once a cursor is sent). The 30-day count scans `entity_mentions`, so its cost grows with the total number of mentions (about 50 ms per page with 200 000
+  mentions on a local copy, no extra index).
+- `PUT /api/rfi/{id}` and `PUT /api/pir/{id}` treat an explicit `null` as "clear" for nullable fields; a `null` on a required
+  field is ignored.
 
 ## 4. Data stores and access patterns
 
@@ -738,3 +754,6 @@ Read these in order. Each starts at a real entry point.
 16. **The `llm.url` allowlist is off when `ENVIRONMENT=dev`, which is also the default.** A prod `.env` that forgets
     `ENVIRONMENT=prod` loses the guard (`.env.prod.template` sets it). In `dev` the probe can also be used as a blind SSRF
     oracle by a superadmin.
+17. **Two Intelligence reads grow with data.** `include_campaigns=true` on `/api/pir` is uncached, and `sort=mentions` on
+    `/api/entities` scans `entity_mentions` for the 30-day count. Both are fine at current sizes; watch them if mentions or
+    PIRs grow by an order of magnitude (a per-day mention rollup would be the next step).

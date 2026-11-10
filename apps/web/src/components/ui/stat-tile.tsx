@@ -19,20 +19,28 @@ interface StatTileProps {
   sub?: ReactNode;
   tone?: keyof typeof TONE;
   tooltip?: ReactNode;
+  /** Tile terpilih (hanya bermakna bersama `onSelect`). */
+  selected?: boolean;
+  /** Bila ada, tile dirender sebagai `<button aria-pressed>` (filter tipe IOC). */
+  onSelect?: () => void;
   className?: string;
 }
 
 /** Kotak angka ringkas: batang warna 2 px di atas, label 11 px kapital, angka besar, keterangan kecil.
  * `tooltip` (opsional) menjelaskan label saat di-hover/fokus. */
-export function StatTile({ label, value, sub, tone = "neutral", tooltip, className }: StatTileProps) {
+export function StatTile({ label, value, sub, tone = "neutral", tooltip, selected, onSelect, className }: StatTileProps) {
   const t = TONE[tone];
   const labelEl = (
     <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
   );
-  return (
-    <Card variant="tile" size="sm" className={cn("relative gap-1 px-4", className)}>
+  const card = (
+    <Card
+      variant="tile"
+      size="sm"
+      className={cn("relative gap-1 px-4", onSelect && selected && "ring-2 ring-foreground", !onSelect && className)}
+    >
       <span aria-hidden="true" className={cn("absolute inset-x-0 top-0 h-0.5", t.bar)} />
-      {tooltip ? (
+      {tooltip && !onSelect ? (
         <Tooltip>
           <TooltipTrigger render={<span tabIndex={0} className="w-fit outline-none focus-visible:ring-2 focus-visible:ring-ring" />}>
             {labelEl}
@@ -45,5 +53,26 @@ export function StatTile({ label, value, sub, tone = "neutral", tooltip, classNa
       <p className={cn("text-[32px] font-bold leading-tight", t.value)}>{value}</p>
       {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
     </Card>
+  );
+  if (!onSelect) return card;
+  // Tile terpilih = tombol. Tooltip dipasang di tombolnya sendiri (bukan span ber-tabIndex di dalam tombol),
+  // supaya hanya ada satu tab stop dan isi tombol tetap terbaca pembaca layar.
+  const buttonClass = cn(
+    "block rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+    className,
+  );
+  if (!tooltip)
+    return (
+      <button type="button" aria-pressed={!!selected} onClick={onSelect} className={buttonClass}>
+        {card}
+      </button>
+    );
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<button type="button" aria-pressed={!!selected} onClick={onSelect} className={buttonClass} />}>
+        {card}
+      </TooltipTrigger>
+      <TooltipContent>{tooltip}</TooltipContent>
+    </Tooltip>
   );
 }

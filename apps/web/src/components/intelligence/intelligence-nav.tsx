@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { routeFor } from "@/lib/intelligence/routes";
 import { tabPillClass } from "@/components/ui/tab-pills";
 
 /** Port `intelSwitchView()` (`intel.js:5-10`) -- legacy nge-switch 11
@@ -27,6 +28,8 @@ const NAV_ITEMS = [
 
 export function IntelligenceNav() {
   const pathname = usePathname();
+  // Detail entitas tidak menampilkan pil (halaman itu punya header sendiri).
+  if (!routeFor(pathname)) return null;
   // "Entities" aktif untuk semua /intelligence/entities* (daftar, detail, resolve).
   const isActive = (href: string) =>
     href === "/intelligence/entities" ? pathname.startsWith(href) : pathname === href;

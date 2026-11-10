@@ -401,6 +401,21 @@ Release: not yet tagged (branch `claude/figcraft-design-data`; merge to `origin/
   Select mode; Ticketing master-detail and Teams; Monitored Tech, All Tech, CVE DB, Dashboard and Packages restyled;
   all times render in the browser timezone. The Ticketing tab is hidden for roles without `manage_cve`, and the detail
   modal is replaced by a side panel.
+- Intelligence pages (PIR, RFI, Source reliability, IOC, Entities, MITRE) follow the FigCraft mockup. Data changes:
+  - `GET /api/pir?include_campaigns=true` runs the uncached campaign pipeline (the PIR page fetches it in the background).
+    PIR to campaign links now carry `&days=30`; the Campaign clusters page reads `?days=`.
+  - New CSV exports `GET /api/sr/entries/export` and `GET /api/iocs/export`: both need `export_data`, write an audit row
+    and guard against CSV formulas. The IOC export is capped at 50 000 rows and sets `X-Export-Truncated` when cut; the
+    Source reliability export is capped at 5 000 rows (one row per source) and has no truncation header.
+  - Entities list `sort=mentions` orders by the 30-day mention count (descending), ties by name then id; `total` is
+    returned on the first page only. Measured about 50 ms per page with 200 000 mentions on a local copy, no new index;
+    the 30-day count scans `entity_mentions`, so cost grows with the total number of mentions.
+  - `PUT /api/rfi/{id}` and `PUT /api/pir/{id}` accept an explicit `null` to clear nullable fields (RFI `due_date`,
+    `linked_pir`; PIR `start_date`, `end_date`). Before, a cleared value was silently ignored; `null` on a required field
+    is still ignored.
+  - Entity profile AI summaries fill in only after a profile is regenerated. The ATT&CK sync card moved from
+    Entities > Techniques to the MITRE heatmap page.
+  - No migration (Alembic head stays `b7d41e9a2c63`) and no new env keys for this part.
 
 ### Migrations
 
@@ -452,6 +467,13 @@ Nothing else to check; all other changes are read-only endpoints and web styling
    draft in the shared mailbox, once, and not again on re-save (needs the existing Microsoft Graph config and a team
    lead email; nothing is sent). Teams list shows the names backfilled from ticket owner teams. Run one live lookup
    of a known CVE, and a lockfile dry run (e.g. a `yarn.lock`) in Packages. A `cve_reader` user must not see Ticketing.
+8. Intelligence > Entities: the Entities page requests `sort=mentions` (the API default sort is `name`). Watch the latency of
+   the first pages; expect tens of ms, and investigate if it grows into seconds, since the 30-day count scans `entity_mentions`.
+9. PIR page: the campaign matches fill in after the list renders; a PIR campaign link opens Campaign clusters with the
+   30-day window. IOC and Source reliability CSV exports download for a role with `export_data`.
+
+Optional, only with the operator's go: regenerate the profiles of watched actors to fill the new AI summaries (one LLM
+call each).
 
 ### One-off commands
 
@@ -469,3 +491,5 @@ and new tables the old code ignores), so it is safe to leave in place; no manual
 - Early Warning anomalies change by design (zero-filled baseline). Analysts used to the old list may see entities
   appear or drop out; rollback to 0.8.15 restores the old detection.
 - The weekly coverage query scans article rows by week for one PIR; check its latency on prod-sized data on first use.
+- Entities `sort=mentions` and `include_campaigns=true` cost grows with data (mention rows; uncached campaign pipeline).
+  Check latency on prod-sized data after deploy.

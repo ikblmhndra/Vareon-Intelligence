@@ -10,11 +10,12 @@ import { EntityRelationshipsSummary } from "@/components/entities/entity-relatio
 import { EntityTimelineChart } from "@/components/entities/entity-timeline-chart";
 import { MindmapWidget } from "@/components/mindmap/mindmap-widget";
 import { Button } from "@/components/ui/button";
+import { Chip } from "@/components/ui/chip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { useCan } from "@/lib/auth/permissions";
-import { relativeTime } from "@/lib/cve/freshness";
+import { fmtShortDate } from "@/lib/format";
 
 type EntityDetail = components["schemas"]["EntityDetail"];
 
@@ -65,11 +66,35 @@ function Chips({ type, names }: { type: string; names: string[] }) {
   );
 }
 
-/** Kartu About: deskripsi entity, dan untuk actor profil LLM tersimpan + tombol Generate/Regenerate. */
+/** Deskripsi markdown entity (sitasi ATT&CK dibuang). */
+function DescriptionBody({ text }: { text: string }) {
+  return (
+    <div className="prose prose-sm max-w-none text-sm">
+      <Markdown
+        components={{
+          a: ({ href, children }) => (
+            <a href={href} target="_blank" rel="noreferrer">
+              {children}
+            </a>
+          ),
+        }}
+      >
+        {stripCitations(text)}
+      </Markdown>
+    </div>
+  );
+}
+
+/**
+ * Kartu kiri Overview (spec 2b 6.8, D24/D26). Actor: "AI profile" = ringkasan AI + tabel profil LLM + tombol
+ * Generate/Regenerate + deskripsi yang bisa dilipat. Tipe lain: "About" berisi deskripsi saja. Profil yang dibuat
+ * sebelum 0.8.16 belum punya `profile_summary`; analis diberi petunjuk untuk meregenerasi.
+ */
 function AboutCard({ entity }: { entity: EntityDetail }) {
   const can = useCan();
   const qc = useQueryClient();
   const isActor = entity.type === "intrusion-set";
+  const canGenerate = isActor && can("manage_intel");
   const generate = useMutation({
     mutationFn: async () => {
       const { error } = await api.POST("/api/entities/{entity_id}/profile", {
@@ -96,47 +121,46 @@ function AboutCard({ entity }: { entity: EntityDetail }) {
   const sectors = strs(targeting.targeted_sectors);
   const geos = strs(targeting.targeted_geographies);
   const tools = strs(capability.known_tools);
+  const summary = entity.profile_summary?.trim() ?? "";
+  const count = entity.profile_article_count;
 
+  const title = isActor ? "AI profile" : "About";
   return (
     <section className="surface-raised space-y-3 rounded-xl p-5" aria-labelledby="entity-about">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 id="entity-about" className="text-base font-semibold">
-          About
-        </h2>
-        {isActor && can("manage_intel") && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="max-sm:h-11"
-            disabled={generate.isPending}
-            onClick={() => generate.mutate()}
-          >
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0 space-y-1">
+          <h2 id="entity-about" className="text-base font-semibold">
+            {title}
+          </h2>
+          {hasProfile && entity.profile_generated_at && (
+            <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <span>
+                Generated {fmtShortDate(entity.profile_generated_at)}
+                {count != null && ` from ${count} recent ${count === 1 ? "article" : "articles"}`}
+              </span>
+              <Chip kind="status" value="watch">
+                REVIEW BEFORE SHARING
+              </Chip>
+            </p>
+          )}
+        </div>
+        {canGenerate && (
+          <Button variant="outline" size="sm" disabled={generate.isPending} onClick={() => generate.mutate()}>
             <Sparkles aria-hidden />
-            {generate.isPending
-              ? "Generating..."
-              : hasProfile
-                ? "Regenerate profile"
-                : "Generate profile"}
+            {generate.isPending ? "Generating..." : hasProfile ? "Regenerate" : "Generate profile"}
           </Button>
         )}
       </div>
-      {entity.description ? (
-        <div className="prose prose-sm max-w-none text-sm">
-          <Markdown
-            components={{
-              a: ({ href, children }) => (
-                <a href={href} target="_blank" rel="noreferrer">
-                  {children}
-                </a>
-              ),
-            }}
-          >
-            {stripCitations(entity.description)}
-          </Markdown>
+      {hasProfile && summary && (
+        <div>
+          <p className="text-2xs font-semibold tracking-wide text-muted-foreground uppercase">AI summary</p>
+          <p className="mt-1 text-sm">{summary}</p>
         </div>
-      ) : (
-        !hasProfile && <p className="text-sm text-muted-foreground">No description yet.</p>
       )}
+      {hasProfile && !summary && canGenerate && (
+        <p className="text-xs text-muted-foreground">Regenerate to add a summary</p>
+      )}
+      {isActor && !hasProfile && <p className="text-sm text-muted-foreground">No AI profile yet.</p>}
       {hasProfile && (
         <dl className="grid grid-cols-[8rem_1fr] items-baseline gap-x-3 gap-y-2.5 max-sm:grid-cols-1 max-sm:gap-y-1">
           {actorType && <Row label="Actor type">{actorType}</Row>}
@@ -168,15 +192,21 @@ function AboutCard({ entity }: { entity: EntityDetail }) {
           )}
         </dl>
       )}
-      {hasProfile && (
-        <p className="flex flex-wrap justify-between gap-2 border-t border-border pt-2 text-xs text-muted-foreground">
-          <span>
-            <Sparkles aria-hidden className="mr-1 inline size-3" />
-            Profile written by the LLM
-            {entity.profile_generated_at && ` · ${relativeTime(entity.profile_generated_at)}`}
-          </span>
-          <span>Review before sharing</span>
-        </p>
+      {isActor ? (
+        entity.description && (
+          <details className="group border-t border-border pt-3">
+            <summary className="cursor-pointer rounded-sm text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
+              Description
+            </summary>
+            <div className="mt-2">
+              <DescriptionBody text={entity.description} />
+            </div>
+          </details>
+        )
+      ) : entity.description ? (
+        <DescriptionBody text={entity.description} />
+      ) : (
+        <p className="text-sm text-muted-foreground">No description yet.</p>
       )}
     </section>
   );
@@ -191,17 +221,16 @@ export function EntityOverviewTab({
 }) {
   const timeline = useEntityTimeline(entity.id);
   const last12 = timeline.data?.slice(-12) ?? [];
+  // Spec 2b 6.8: kiri = kartu profil/About; kanan = bulanan, ringkasan relasi, lalu mind map (actor).
   return (
-    <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+    <div className="grid items-start gap-4 lg:grid-cols-2">
       <div className="min-w-0 space-y-4">
         <AboutCard entity={entity} />
-        <section
-          className="surface-raised space-y-3 rounded-xl p-5"
-          aria-labelledby="entity-mentions"
-        >
+      </div>
+      <div className="min-w-0 space-y-4">
+        <section className="surface-raised space-y-3 rounded-xl p-5" aria-labelledby="entity-mentions">
           <h2 id="entity-mentions" className="text-base font-semibold">
-            Mentions per month{" "}
-            <span className="text-xs font-normal text-muted-foreground">last 12 months</span>
+            Mentions by month <span className="text-xs font-normal text-muted-foreground">last 12 months</span>
           </h2>
           {timeline.isPending ? (
             <Skeleton className="h-44 w-full" />
@@ -210,14 +239,16 @@ export function EntityOverviewTab({
               Could not load the timeline.
             </p>
           ) : (
-            <EntityTimelineChart months={last12} />
+            <EntityTimelineChart months={last12} highlightLast={2} />
           )}
         </section>
+        <EntityRelationshipsSummary entity={entity} onViewAll={onViewAllRelationships} />
         {entity.type === "intrusion-set" && (
-          <MindmapWidget featureType="threat_actor" docId={entity.name} title={entity.name} />
+          <section className="surface-raised rounded-xl p-5" aria-label="Mind map">
+            <MindmapWidget featureType="threat_actor" docId={entity.name} title={entity.name} />
+          </section>
         )}
       </div>
-      <EntityRelationshipsSummary entity={entity} onViewAll={onViewAllRelationships} />
     </div>
   );
 }

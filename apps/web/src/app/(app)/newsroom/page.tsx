@@ -4,10 +4,11 @@ import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { TabPills, type TabPillItem } from "@/components/ui/tab-pills";
+import { parseLocalDate } from "@/lib/format";
 import { defaultNewsroomFilters, periodStart, type NewsroomFilters } from "@/lib/newsroom/filters";
 import type { components } from "@/lib/api/schema";
 import { ArticleModal } from "@/components/newsroom/article-modal";
-import { ArticleListSheet } from "@/components/newsroom/article-list-sheet";
+import { ArticleListSheet, type SheetQuery, type Source as SheetSource } from "@/components/newsroom/article-list-sheet";
 import { FilteredView } from "@/components/newsroom/filtered-view";
 import { FrontSection, useFrontQuery } from "@/components/newsroom/front-section";
 import { Masthead } from "@/components/newsroom/masthead";
@@ -17,7 +18,6 @@ import { TopicsStrip } from "@/components/newsroom/topics-strip";
 import { useCan } from "@/lib/auth/permissions";
 
 type Article = components["schemas"]["ArticleOut"];
-type SheetSource = { rubric: RubricKey } | { actor: string } | { ttp: string } | { story: number };
 
 const RUBRIC_TITLES: Record<RubricKey, string> = {
   apac: "APAC",
@@ -40,12 +40,46 @@ function isRubricKey(v: string | null): v is RubricKey {
 /** `?period=` dari dashboard: hanya 1|7|30 (chip yang ada); nilai lain diabaikan (default 7). */
 const URL_PERIODS = new Set(["1", "7", "30"]);
 
+/** `?from=YYYY-MM-DD`: harus tanggal lokal yang valid (2026-13-40 atau 2026-02-30 ditolak, bukan digeser). */
+function validFrom(v: string | null): string | null {
+  if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
+  const d = parseLocalDate(v);
+  const [y, m, day] = v.split("-").map(Number);
+  // Date menggeser tanggal tak ada (30 Feb -> 2 Mar), jadi cocokkan balik komponennya.
+  const ok = d.getFullYear() === y && d.getMonth() + 1 === m && d.getDate() === day;
+  return ok ? v : null;
+}
+
+/** Nilai param tak kosong (setelah trim); `actor=` dan spasi saja diabaikan. */
+function paramValues(sp: URLSearchParams, key: string): string[] {
+  return sp.getAll(key).map((v) => v.trim()).filter(Boolean);
+}
+
+/** Tautan Intelligence: aktor/industri/TTP membuka sheet gabungan; `country` sendirian tetap filter masthead. */
+function linkedSheet(sp: URLSearchParams, dateStart: string): { title: string; source: SheetSource } | null {
+  const actors = paramValues(sp, "actor");
+  const industries = paramValues(sp, "industry");
+  const ttps = paramValues(sp, "ttp");
+  if (!actors.length && !industries.length && !ttps.length) return null;
+  const country = (sp.get("country")?.trim().toUpperCase() ?? "") || null;
+  const query: SheetQuery = {
+    threat_actor: actors.length ? actors : undefined,
+    industry: industries.length ? industries : undefined,
+    ttp: ttps.length ? ttps : undefined,
+    country: country ? [country] : undefined,
+    posted_on_start: dateStart || undefined,
+  };
+  return { title: [...actors, ...industries, ...ttps].join(" × "), source: { query } };
+}
+
 /**
  * Newsroom: masthead + filter, halaman depan (4 artikel prioritas), topik aktif,
  * lalu rubrik. Filter berlaku langsung (tanpa Apply). Dashboard menaut ke sini
  * lewat `?country=XX`, `?rubric=ransomware|watchlist` dan `?period=1|7|30`, dibaca
  * sekali saat dimuat; `rubric` langsung membuka daftar lengkapnya dan `period`
- * memilih chip periode.
+ * memilih chip periode. Tautan Intelligence memakai `actor`, `industry`, `ttp` (berulang) dan
+ * `from=YYYY-MM-DD` (menang atas `period`): sheet gabungan terbuka dengan jumlah yang sama
+ * dengan halaman sumber (lihat `lib/newsroom/links.ts`).
  *
  * Auto-refresh countdown legacy (`autorefresh.js`) sengaja tidak diport; tiap
  * query di-refetch lewat react-query.
@@ -56,18 +90,25 @@ function NewsroomContent() {
   const isAdmin = can("manage_sources") || can("manage_scraper");
   const searchParams = useSearchParams();
 
+  // `from` valid menang atas `period` (1|7|30); null bila tak satu pun ada/valid.
+  const urlFrom = validFrom(searchParams.get("from"));
+  const urlPeriod = searchParams.get("period");
+  const urlDateStart =
+    urlFrom ?? (urlPeriod && URL_PERIODS.has(urlPeriod) ? periodStart(Number(urlPeriod)) : null);
+
   const [view, setView] = useState<"cyber" | "filtered">("cyber");
   const [filters, setFilters] = useState<NewsroomFilters>(() => {
-    const period = searchParams.get("period");
     const base = defaultNewsroomFilters();
     return {
       ...base,
-      dateStart: period && URL_PERIODS.has(period) ? periodStart(Number(period)) : base.dateStart,
+      dateStart: urlDateStart ?? base.dateStart,
       country: searchParams.get("country")?.toUpperCase() || null,
     };
   });
   const [selected, setSelected] = useState<Article | null>(null);
   const [sheet, setSheet] = useState<{ open: boolean; title: string; source: SheetSource }>(() => {
+    const linked = linkedSheet(searchParams, urlDateStart ?? "");
+    if (linked) return { open: true, ...linked };
     const r = searchParams.get("rubric");
     return isRubricKey(r)
       ? { open: true, title: sheetTitle(r), source: { rubric: r } }

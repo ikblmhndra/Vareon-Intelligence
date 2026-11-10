@@ -169,6 +169,9 @@ async def get_fp_analytics(session: AsyncSession, *, force: bool = False) -> dic
                     "value": ioc.value,
                     "allowlist_type": al_type,
                     "fp_count": fp,
+                    # selalu 0 (syarat saran: `tp == 0`), tetap dibawa supaya UI menampilkan
+                    # bukti "FP n / TP 0" tanpa asumsi tersirat.
+                    "tp_count": tp,
                 }
 
         for fb in ioc.feedback:

@@ -23,17 +23,28 @@ function toDate(value: string | Date | null | undefined): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-/** "2 Nov"; "12 Nov 2026" bila tahunnya beda dengan tahun sekarang. Tanggal-saja tidak bergeser.
+/** "2 Nov"; "12 Nov 2026" bila tahunnya beda dengan tahun sekarang (atau `withYear`, dipakai `DateField`
+ * yang butuh tahun selalu tampil). Tanggal-saja tidak bergeser.
  * Contoh: fmtShortDate("2026-11-02") === "2 Nov" (tahun berjalan 2026), di zona UTC-8 juga. */
-export function fmtShortDate(value: string | Date | null | undefined): string {
+export function fmtShortDate(
+  value: string | Date | null | undefined,
+  opts?: { withYear?: boolean },
+): string {
   const d = toDate(value);
   if (!d) return DASH;
-  const sameYear = d.getFullYear() === new Date().getFullYear();
+  const sameYear = !opts?.withYear && d.getFullYear() === new Date().getFullYear();
   return new Intl.DateTimeFormat("en-GB", {
     day: "numeric",
     month: "short",
     ...(sameYear ? {} : { year: "numeric" }),
   }).format(d);
+}
+
+/** "Mar 2021" (bulan + tahun, zona browser); dipakai tile "First seen" di pratinjau entity. */
+export function fmtMonthYear(value: string | Date | null | undefined): string {
+  const d = toDate(value);
+  if (!d) return DASH;
+  return new Intl.DateTimeFormat("en-GB", { month: "short", year: "numeric" }).format(d);
 }
 
 function part(parts: Intl.DateTimeFormatPart[], type: Intl.DateTimeFormatPartTypes): string {
@@ -84,6 +95,13 @@ export function fmtCompactAge(
   if (d < 60) return `${Math.floor(d / 7)} w`;
   if (d < 365) return `${Math.floor(d / 30)} mo`;
   return `${Math.floor(d / 365)} y`;
+}
+
+/** Umur relatif untuk kalimat: "just now" (bukan "now ago"), "5 m ago", "2 d ago"; nilai kosong = "—". */
+export function fmtAgo(value: string | Date | null | undefined, nowMs: number = Date.now()): string {
+  const age = fmtCompactAge(value, nowMs);
+  if (age === DASH) return age;
+  return age === "now" ? "just now" : `${age} ago`;
 }
 
 /** ISO dengan offset untuk tengah malam lokal, mis. "2026-11-08T00:00:00+07:00" (batas "hari ini" ke API). */

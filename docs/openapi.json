@@ -64,6 +64,18 @@
       },
       "AllowlistBody": {
         "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
           "type": {
             "enum": [
               "url_domain",
@@ -3715,6 +3727,17 @@
             ],
             "title": "Profile"
           },
+          "profile_article_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Article Count"
+          },
           "profile_generated_at": {
             "anyOf": [
               {
@@ -3726,6 +3749,17 @@
               }
             ],
             "title": "Profile Generated At"
+          },
+          "profile_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Summary"
           },
           "source": {
             "title": "Source",
@@ -4034,6 +4068,18 @@
             ],
             "title": "External Id"
           },
+          "first_seen": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Seen"
+          },
           "id": {
             "title": "Id",
             "type": "integer"
@@ -4114,6 +4160,17 @@
               }
             ],
             "title": "Next Cursor"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
           }
         },
         "required": [
@@ -6834,6 +6891,79 @@
         "title": "PIRCriteria",
         "type": "object"
       },
+      "PIRLinkedRFI": {
+        "properties": {
+          "due_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "question": {
+            "title": "Question",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "question"
+        ],
+        "title": "PIRLinkedRFI",
+        "type": "object"
+      },
+      "PIRMatchedCampaign": {
+        "properties": {
+          "cluster_id": {
+            "title": "Cluster Id",
+            "type": "string"
+          },
+          "last_seen": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen"
+          },
+          "severity_label": {
+            "title": "Severity Label",
+            "type": "string"
+          },
+          "size": {
+            "title": "Size",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cluster_id",
+          "title",
+          "size",
+          "severity_label"
+        ],
+        "title": "PIRMatchedCampaign",
+        "type": "object"
+      },
       "PIRNoteIn": {
         "properties": {
           "analyst": {
@@ -6993,6 +7123,33 @@
             ],
             "title": "Last Match"
           },
+          "linked_rfi_open": {
+            "default": 0,
+            "title": "Linked Rfi Open",
+            "type": "integer"
+          },
+          "linked_rfis": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PIRLinkedRFI"
+            },
+            "title": "Linked Rfis",
+            "type": "array"
+          },
+          "matched_campaigns": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/PIRMatchedCampaign"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matched Campaigns"
+          },
           "owner": {
             "title": "Owner",
             "type": "string"
@@ -7044,6 +7201,119 @@
           "updated_at"
         ],
         "title": "PIROut",
+        "type": "object"
+      },
+      "PIRPreviewCriteria": {
+        "additionalProperties": false,
+        "description": "Kriteria untuk pratinjau: kunci asing ditolak (422) supaya typo tidak diam-diam jadi\nhitungan tanpa filter. `PIRCriteria` bersama tetap longgar agar POST/PUT menerima payload\nlama.",
+        "properties": {
+          "countries": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Countries",
+            "type": "array"
+          },
+          "industries": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Industries",
+            "type": "array"
+          },
+          "keywords": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Keywords",
+            "type": "array"
+          },
+          "malware": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Malware",
+            "type": "array"
+          },
+          "news_types": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "News Types",
+            "type": "array"
+          },
+          "threat_actors": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Threat Actors",
+            "type": "array"
+          },
+          "ttps": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Ttps",
+            "type": "array"
+          }
+        },
+        "title": "PIRPreviewCriteria",
+        "type": "object"
+      },
+      "PIRPreviewIn": {
+        "additionalProperties": false,
+        "properties": {
+          "criteria": {
+            "$ref": "#/components/schemas/PIRPreviewCriteria"
+          },
+          "days": {
+            "default": 90,
+            "maximum": 365.0,
+            "minimum": 1.0,
+            "title": "Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "criteria"
+        ],
+        "title": "PIRPreviewIn",
+        "type": "object"
+      },
+      "PIRPreviewOut": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "days": {
+            "title": "Days",
+            "type": "integer"
+          },
+          "has_criteria": {
+            "title": "Has Criteria",
+            "type": "boolean"
+          },
+          "since": {
+            "format": "date",
+            "title": "Since",
+            "type": "string"
+          }
+        },
+        "required": [
+          "count",
+          "days",
+          "since",
+          "has_criteria"
+        ],
+        "title": "PIRPreviewOut",
         "type": "object"
       },
       "PIRUpdate": {
@@ -7832,6 +8102,9 @@
             "title": "Rfis",
             "type": "array"
           },
+          "status_counts": {
+            "$ref": "#/components/schemas/RFIStatusCounts"
+          },
           "total": {
             "title": "Total",
             "type": "integer"
@@ -7839,6 +8112,7 @@
         },
         "required": [
           "rfis",
+          "status_counts",
           "total",
           "page",
           "page_size"
@@ -7909,6 +8183,27 @@
           "updated_at"
         ],
         "title": "RFIOut",
+        "type": "object"
+      },
+      "RFIStatusCounts": {
+        "properties": {
+          "closed": {
+            "default": 0,
+            "title": "Closed",
+            "type": "integer"
+          },
+          "in_progress": {
+            "default": 0,
+            "title": "In Progress",
+            "type": "integer"
+          },
+          "open": {
+            "default": 0,
+            "title": "Open",
+            "type": "integer"
+          }
+        },
+        "title": "RFIStatusCounts",
         "type": "object"
       },
       "RFIUpdate": {
@@ -19343,6 +19638,7 @@
     },
     "/api/entities": {
       "get": {
+        "description": "`sort=mentions` hanya untuk halaman Entities (C6); picker/dialog memakai default nama.",
         "operationId": "list_entities_api_entities_get",
         "parameters": [
           {
@@ -19439,6 +19735,20 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "name",
+              "enum": [
+                "name",
+                "mentions"
+              ],
+              "title": "Sort",
+              "type": "string"
             }
           },
           {
@@ -22120,6 +22430,150 @@
         ]
       }
     },
+    "/api/iocs/export": {
+      "get": {
+        "description": "Export CSV dengan filter yang sama dengan `GET /api/iocs`. Semua TLP ikut: IOC bersifat\nplatform-wide (C2, tanpa client_id) dan file membawa kolom `tlp`/`pap` untuk konsumennya.\nNilai kanonik (tidak di-defang). Dibaca per batch keyset (bukan offset) lalu dijadikan satu\n`Response` tanpa streaming; terpotong di `_EXPORT_CAP` ditandai header `X-Export-Truncated`.\nHarus dideklarasikan sebelum `/{ioc_type}/{value:path}`.",
+        "operationId": "export_iocs_api_iocs_export_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "ioc_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ioc Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort_by",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sort By"
+            }
+          },
+          {
+            "in": "query",
+            "name": "actionability",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actionability"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_suppressed",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Suppressed",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "active",
+                    "expired",
+                    "revoked",
+                    "allowlisted"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Iocs",
+        "tags": [
+          "iocs"
+        ]
+      }
+    },
     "/api/iocs/fp-analytics": {
       "get": {
         "operationId": "ioc_fp_analytics_api_iocs_fp_analytics_get",
@@ -24609,8 +25063,31 @@
     },
     "/api/pir": {
       "get": {
+        "description": "Daftar PIR + RFI tertaut. `linked_pir_id` hanyalah FK tanpa cek client, jadi RFI disaring\nper client di repo. `include_campaigns` opt-in karena clustering kampanye mahal: satu panggilan\n`get_recent_campaigns` lalu dibalik per PIR (PIR tanpa kecocokan, termasuk paused/archived,\nmendapat `[]`). Cakupan dihitung dua kali bila halaman mengambil kedua varian.",
         "operationId": "get_pirs_api_pir_get",
         "parameters": [
+          {
+            "in": "query",
+            "name": "include_campaigns",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Campaigns",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "campaign_days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 90,
+              "minimum": 7,
+              "title": "Campaign Days",
+              "type": "integer"
+            }
+          },
           {
             "in": "header",
             "name": "x-client-id",
@@ -24793,6 +25270,66 @@
           }
         },
         "summary": "Pir Options",
+        "tags": [
+          "pir"
+        ]
+      }
+    },
+    "/api/pir/preview": {
+      "post": {
+        "description": "Jumlah artikel yang cocok kriteria dalam `days` hari terakhir, untuk form PIR sebelum\ndisimpan. Memakai `criteria_filters` + `list_filtered` yang sama dengan `compute_coverage`\n(angka pratinjau == cakupan PIR tersimpan). Tanpa filter client (artikel global, seperti\n`/options`), tanpa tulis/audit; tanggal mulai/akhir PIR diabaikan.",
+        "operationId": "pir_preview_api_pir_preview_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PIRPreviewIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PIRPreviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Pir Preview",
         "tags": [
           "pir"
         ]
@@ -27233,6 +27770,53 @@
           },
           {
             "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "linked_pir",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Linked Pir"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "created",
+              "enum": [
+                "created",
+                "due"
+              ],
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
             "name": "page",
             "required": false,
             "schema": {
@@ -29003,6 +29587,26 @@
           },
           {
             "in": "query",
+            "name": "origin",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "default",
+                    "analyst"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Origin"
+            }
+          },
+          {
+            "in": "query",
             "name": "page",
             "required": false,
             "schema": {
@@ -29143,6 +29747,126 @@
           }
         },
         "summary": "Add Sr Entry",
+        "tags": [
+          "source-reliability"
+        ]
+      }
+    },
+    "/api/sr/entries/export": {
+      "get": {
+        "description": "Export CSV dengan filter yang sama dengan `GET /entries`. Harus dideklarasikan SEBELUM\n`/entries/{entry_id}` supaya `export` tidak diparse sebagai id. Nama file konstan (tidak\ndi-escape di Content-Disposition).",
+        "operationId": "export_sr_entries_api_sr_entries_export_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "grade",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Grade"
+            }
+          },
+          {
+            "in": "query",
+            "name": "origin",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "default",
+                    "analyst"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Origin"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort_by",
+            "required": false,
+            "schema": {
+              "default": "source_name",
+              "title": "Sort By",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort_dir",
+            "required": false,
+            "schema": {
+              "default": "asc",
+              "title": "Sort Dir",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Sr Entries",
         "tags": [
           "source-reliability"
         ]

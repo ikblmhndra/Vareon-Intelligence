@@ -3,32 +3,54 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
+import { AnomalyList } from "@/components/intelligence/early-warning/anomaly-list";
+import {
+  byZ,
+  categorize,
+  CATEGORY_META,
+  CATEGORY_ORDER,
+  spikeName,
+} from "@/components/intelligence/early-warning/model";
+import { StrongestSignalPanel } from "@/components/intelligence/early-warning/strongest-signal-panel";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { PresetControl } from "@/components/ui/preset-control";
+import { StatePanel } from "@/components/ui/state-panel";
+import { StatTile } from "@/components/ui/stat-tile";
 import { api } from "@/lib/api/client";
-import { Badge } from "@/components/ui/badge";
-import { EntityChip } from "@/components/entities/entity-chip";
-import { countryName } from "@/lib/countries";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
-import type { SpikeEntry, SpikesResponse } from "@/lib/api/loose-types";
+import type { SpikesResponse } from "@/lib/api/loose-types";
+import { fmtTime } from "@/lib/format";
 
-interface CategorizedSpike extends SpikeEntry {
-  category: string;
-}
+const LOOKBACKS = [
+  { value: 14, label: "14d" },
+  { value: 30, label: "30d" },
+  { value: 60, label: "60d" },
+  { value: 90, label: "90d" },
+] as const;
 
-/** Tipe entity per kategori spike; "Overall Volume" tidak punya entity di baliknya. */
-const SPIKE_TYPE: Record<string, string> = {
-  "Threat Actor": "intrusion-set",
-  Country: "location",
-  Industry: "identity",
-};
+const Z_PRESETS = [
+  { value: 1.5, label: "1.5σ" },
+  { value: 2, label: "2σ" },
+  { value: 2.5, label: "2.5σ" },
+  { value: 3, label: "3σ" },
+] as const;
 
-/** Port `loadSpikes()` (`intel.js:177-223`) -- gabung 4 kategori
- * (`overall`→"Overall Volume", `threat_actors`, `countries`,
- * `industries`), urut z-score desc, dikelompokin per kategori. */
+// Teks langkah dari kode `services/spike.py` (C9): ubah bersama kodenya.
+const STEPS = [
+  "Count articles per day for each threat actor, industry, country and the overall volume over the lookback period.",
+  "The baseline is every day before the last 7; days without articles count as 0.",
+  "Skip any entity with fewer than 5 baseline days that have articles.",
+  "z = (day count − baseline mean) / baseline deviation. Days in the last 7 with z at or above the threshold are anomalies.",
+  "z of 3 or more is HIGH, otherwise MEDIUM. At most 20 anomalies per group.",
+];
+
+/** Early Warning (spec 2b 6.3): toolbar preset, empat tile, daftar anomali dan panel sinyal terkuat.
+ * Port `loadSpikes()` (`intel.js:177-223`); sumber data tetap `GET /api/spikes`. */
 export function EarlyWarningView() {
   const [lookbackDays, setLookbackDays] = useState(30);
-  const [zThreshold, setZThreshold] = useState(2.0);
+  const [zThreshold, setZThreshold] = useState(2);
+  // Pilihan baris disimpan sebagai kunci; bila hilang setelah parameter berubah, jatuh ke z tertinggi.
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
 
   const query = useQuery({
     queryKey: ["intelligence", "spikes", lookbackDays, zThreshold],
@@ -42,92 +64,130 @@ export function EarlyWarningView() {
   });
 
   const d = query.data;
-  const allSpikes: CategorizedSpike[] = d
-    ? [
-        ...d.overall.map((s) => ({ ...s, category: "Overall Volume" })),
-        ...d.threat_actors.map((s) => ({ ...s, category: "Threat Actor" })),
-        ...d.countries.map((s) => ({ ...s, category: "Country" })),
-        ...d.industries.map((s) => ({ ...s, category: "Industry" })),
-      ].sort((a, b) => b.z_score - a.z_score)
-    : [];
-
-  const sections = new Map<string, CategorizedSpike[]>();
-  for (const s of allSpikes) {
-    const arr = sections.get(s.category) ?? [];
-    arr.push(s);
-    sections.set(s.category, arr);
-  }
+  const spikes = d ? categorize(d) : [];
+  const strongest = [...spikes].sort(byZ)[0];
+  const selected = spikes.find((s) => s.value === selectedKey) ?? strongest ?? null;
 
   return (
-    <div>
-      <div className="mb-4 flex flex-wrap items-end gap-3 border-b border-border pb-3">
-        <div className="flex flex-col gap-1">
-          <Label className="text-sm font-medium text-muted-foreground">Lookback days</Label>
-          <Input
-            type="number" aria-label="Lookback days"
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+        <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+          <PresetControl
+            label="Lookback"
+            aria-label="Lookback days"
+            presets={LOOKBACKS}
+            value={lookbackDays}
+            onChange={setLookbackDays}
             min={14}
             max={90}
-            value={lookbackDays}
-            onChange={(e) => setLookbackDays(Number(e.target.value) || 30)}
-            className="w-24 font-mono text-xs"
           />
-        </div>
-        <div className="flex flex-col gap-1">
-          <Label className="text-sm font-medium text-muted-foreground">Z-score threshold</Label>
-          <Input
-            type="number" aria-label="Z-score threshold"
+          <PresetControl
+            label="Z-score threshold"
+            aria-label="Z-score threshold"
+            presets={Z_PRESETS}
+            value={zThreshold}
+            onChange={setZThreshold}
             min={1.5}
             max={4}
             step={0.1}
-            value={zThreshold}
-            onChange={(e) => setZThreshold(Number(e.target.value) || 2.0)}
-            className="w-24 font-mono text-xs"
           />
         </div>
-        <span className="mb-1.5 font-mono text-xs text-muted-foreground">{allSpikes.length} anomalies</span>
+        {d && (
+          <p className="text-xs text-muted-foreground">
+            {spikes.length} anomalies · recent window: last 7 days · updated {fmtTime(d.generated_at)}, refreshes every 15
+            min
+          </p>
+        )}
       </div>
 
-      {query.isPending && <p className="py-8 text-center font-mono text-xs text-muted-foreground">Analyzing signals…</p>}
-      {query.isError && <p className="py-8 text-center text-xs text-destructive">Failed to load early warning data.</p>}
-
-      {d && allSpikes.length === 0 && (
-        <p className="py-8 text-center font-mono text-xs text-muted-foreground">
-          No anomalies detected in the selected window — baseline activity appears normal
-        </p>
+      {query.isPending && (
+        <StatePanel variant="loading" title="Analyzing signals" description="Counting daily articles against each baseline." />
+      )}
+      {query.isError && (
+        <StatePanel
+          variant="error"
+          title="Could not load early warning data"
+          action={
+            <Button variant="outline" size="sm" onClick={() => query.refetch()}>
+              Retry
+            </Button>
+          }
+        />
       )}
 
-      {[...sections.entries()].map(([cat, spikes]) => (
-        <div key={cat} className="mb-4">
-          <div className="mb-1.5 text-sm font-semibold text-muted-foreground">{cat} Spikes</div>
-          <div className="space-y-1.5">
-            {spikes.map((s, i) => (
-              <div key={i} className="flex flex-wrap items-center gap-2.5 rounded-xl border border-border bg-background px-3 py-1.5">
-                {SPIKE_TYPE[s.category] && s.entity ? (
-                  <EntityChip
-                    type={SPIKE_TYPE[s.category]}
-                    name={s.entity}
-                    id={s.entity_id}
-                    label={s.category === "Country" ? countryName(s.entity) : undefined}
-                  />
-                ) : (
-                  <span className="min-w-[100px] font-mono text-xs text-foreground">{s.entity || "Overall"}</span>
-                )}
-                <span className="font-mono text-xs text-muted-foreground">date: {s.date}</span>
-                <span className="font-mono text-xs text-muted-foreground">
-                  count: <strong className="text-foreground">{s.count}</strong>
-                </span>
-                <span className="font-mono text-xs text-muted-foreground">baseline: {s.baseline_mean}/day</span>
-                <Badge variant={s.severity === "high" ? "destructive" : "outline"} className="text-xs">
-                  {s.severity.toUpperCase()}
-                </Badge>
-                <span className={cn("font-mono text-xs", s.severity === "high" ? "text-destructive" : "text-primary")}>
-                  z={s.z_score}σ
-                </span>
-              </div>
-            ))}
+      {d && (
+        <>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            {CATEGORY_ORDER.map((cat) => {
+              const items = spikes.filter((s) => s.category === cat).sort(byZ);
+              const high = items.filter((s) => s.severity === "high").length;
+              const top = items[0];
+              return (
+                <StatTile
+                  key={cat}
+                  label={CATEGORY_META[cat].tile}
+                  value={items.length}
+                  tone={high > 0 ? "destructive" : "neutral"}
+                  sub={
+                    top ? (
+                      <>
+                        <span className="block truncate">
+                          top: {spikeName(top)} · z {top.z_score}
+                        </span>
+                        <span className="block">
+                          <span className={high > 0 ? "text-destructive-text" : undefined}>{high} high</span> ·{" "}
+                          {items.length - high} medium
+                        </span>
+                      </>
+                    ) : (
+                      "no anomalies"
+                    )
+                  }
+                />
+              );
+            })}
           </div>
-        </div>
-      ))}
+
+          {spikes.length === 0 ? (
+            <StatePanel
+              variant="empty"
+              title={`No anomalies above ${zThreshold}σ in the last ${lookbackDays} days`}
+              description="Baseline activity looks normal. Lower the z-score threshold to surface weaker signals."
+            />
+          ) : (
+            <div className="grid items-start gap-4 lg:grid-cols-[3fr_2fr]">
+              <AnomalyList spikes={spikes} selected={selected?.value ?? null} onSelect={setSelectedKey} />
+              <div className="flex flex-col gap-4">
+                {selected && <StrongestSignalPanel spike={selected} data={d} />}
+                <HowDetectionWorks />
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
+  );
+}
+
+function HowDetectionWorks() {
+  return (
+    <Card>
+      <div className="flex flex-col gap-3 px-5">
+        <h2 className="font-heading text-base font-semibold">How detection works</h2>
+        <ol className="flex flex-col gap-2.5">
+          {STEPS.map((text, i) => (
+            <li key={i} className="flex gap-3 text-sm text-muted-foreground">
+              <span
+                aria-hidden="true"
+                className="flex size-5 shrink-0 items-center justify-center rounded-full bg-surface text-2xs font-semibold text-foreground"
+              >
+                {i + 1}
+              </span>
+              <span>{text}</span>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </Card>
   );
 }

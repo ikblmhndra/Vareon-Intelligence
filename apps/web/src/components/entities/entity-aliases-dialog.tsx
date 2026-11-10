@@ -7,7 +7,7 @@ import { toast } from "sonner";
 
 import { errorDetail, invalidateEntity } from "@/components/entities/entity-action-utils";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api/client";
@@ -71,6 +71,7 @@ export function EntityAliasesDialog({ entity, onClose }: { entity: EntityDetail;
       <DialogContent className="max-h-[85vh] w-full max-w-lg overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Manage aliases</DialogTitle>
+          <DialogDescription>Add or remove aliases used to match this entity in articles.</DialogDescription>
         </DialogHeader>
         {entity.aliases.length === 0 ? (
           <p className="text-sm text-muted-foreground">No aliases yet.</p>

@@ -15,6 +15,8 @@ interface NumberedPagerProps {
   totalPages: number;
   onPageChange: (page: number) => void;
   label?: string;
+  /** Teks kiri pengganti "Page {page} of {N}" (mis. "Showing 1-25 of 96"); tetap tampil walau hanya satu halaman. */
+  summary?: string;
 }
 
 /** Halaman yang ditampilkan: selalu 1 dan N, jendela +-1 di sekitar halaman aktif, "..." untuk celah. */
@@ -30,8 +32,14 @@ function pageList(page: number, total: number): (number | "gap-start" | "gap-end
 }
 
 /** Pager bernomor `< 1 2 3 ... N >` + teks "Page {page} of {N}". Disusun dari bagian `pagination.tsx`. */
-export function NumberedPager({ page, totalPages, onPageChange, label = "pagination" }: NumberedPagerProps) {
-  if (totalPages <= 1) return null;
+export function NumberedPager({
+  page,
+  totalPages,
+  onPageChange,
+  label = "pagination",
+  summary,
+}: NumberedPagerProps) {
+  if (totalPages <= 1) return summary ? <p className="pt-3 text-xs text-muted-foreground">{summary}</p> : null;
   const go = (p: number) => (e: React.MouseEvent) => {
     e.preventDefault();
     if (p >= 1 && p <= totalPages && p !== page) onPageChange(p);
@@ -39,7 +47,7 @@ export function NumberedPager({ page, totalPages, onPageChange, label = "paginat
   return (
     <div className="flex items-center justify-between gap-3 pt-3 max-lg:flex-col">
       <p className="text-xs text-muted-foreground">
-        Page {page} of {totalPages}
+        {summary ?? `Page ${page} of ${totalPages}`}
       </p>
       <Pagination aria-label={label} className="mx-0 w-auto">
         <PaginationContent>

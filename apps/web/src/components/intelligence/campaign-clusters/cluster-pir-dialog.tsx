@@ -4,7 +4,7 @@ import { useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { EntityChip } from "@/components/entities/entity-chip";
 import { nameChip } from "@/lib/entities/name-chips";
 import { PirArticlesDialog } from "@/components/intelligence/pir/pir-articles-dialog";
@@ -54,6 +54,7 @@ export function ClusterPirDialog({ pir, onClose }: { pir: MatchedPir | null; onC
                   <span className="font-mono text-xs text-muted-foreground">{pir.status}</span>
                 </div>
                 <DialogTitle className="text-base">{pir.title}</DialogTitle>
+                <DialogDescription className="sr-only">PIR matched by this campaign.</DialogDescription>
               </DialogHeader>
 
               {pir.description && <p className="rounded-xl border border-border bg-background p-2.5 text-xs leading-relaxed text-foreground">{pir.description}</p>}

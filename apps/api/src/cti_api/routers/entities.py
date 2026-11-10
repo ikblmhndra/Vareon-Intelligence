@@ -9,6 +9,7 @@ mis. split tanpa alias nama sendiri, Ruling 17). Endpoint TA/ATT&CK lama tetap a
 from __future__ import annotations
 
 from collections.abc import Awaitable
+from typing import Literal
 
 from cti_core.entity import ENTITY_TYPES
 from cti_core.logging import get_logger
@@ -87,10 +88,12 @@ async def list_entities(
     include_suppressed: bool = False,
     cursor: str | None = None,
     limit: int = Query(50, ge=1, le=200),
+    sort: Literal["name", "mentions"] = "name",
     x_client_id: str | None = Header(None),
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(_view),
 ) -> EntityListResponse:
+    """`sort=mentions` hanya untuk halaman Entities (C6); picker/dialog memakai default nama."""
     _check_types(type)
     try:
         return await svc.list_entities(
@@ -103,8 +106,9 @@ async def list_entities(
             include_suppressed=include_suppressed,
             cursor=cursor,
             limit=limit,
+            sort=sort,
         )
-    except ValueError as exc:  # kursor cacat
+    except ValueError as exc:  # kursor cacat / bentuknya tidak cocok dengan `sort`
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 

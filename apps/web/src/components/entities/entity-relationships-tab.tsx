@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { ArrowRight, Plus, Undo2 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -13,6 +14,7 @@ import {
 } from "@/components/entities/relationship-create-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Chip } from "@/components/ui/chip";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -25,6 +27,8 @@ import {
 import { api } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { useCan } from "@/lib/auth/permissions";
+import { entityHref, entityTypeMeta } from "@/lib/entities/types";
+import { confidenceWord } from "@/lib/intelligence/format";
 
 type EntityDetail = components["schemas"]["EntityDetail"];
 type RelationshipOut = components["schemas"]["RelationshipOut"];
@@ -158,7 +162,37 @@ function CoMentionRows({
   );
 }
 
-/** Ringkasan untuk kolom kanan Overview: 3 relasi pertama + "Often mentioned together". */
+/** Kalimat co-mention untuk ringkasan: tiga nama teratas dengan jumlah story. */
+function coMentionSentence(items: CoMention[]): string | null {
+  if (items.length === 0) return null;
+  const top = items
+    .slice(0, 3)
+    .map((c) => `${c.entity.name} (${c.stories} ${c.stories === 1 ? "story" : "stories"})`);
+  return `Often mentioned together with ${top.join(", ")} in the last 365 days.`;
+}
+
+/** Ujung lain relasi sebagai teks "{nama} · {tipe}" (spec 2b 6.8); sumber indikator tidak punya entity. */
+function OtherEndText({ rel, entityId }: { rel: RelationshipOut; entityId: number }) {
+  const incoming = rel.source?.id !== entityId && rel.target.id === entityId;
+  const end = incoming ? rel.source : rel.target;
+  if (!end) {
+    return (
+      <span className="font-code text-xs">
+        {rel.source_indicator_id != null ? `indicator #${rel.source_indicator_id}` : "indicator"}
+      </span>
+    );
+  }
+  return (
+    <Link
+      href={entityHref(end)}
+      className="min-w-0 rounded-sm text-sm break-words outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+    >
+      {end.name} · {entityTypeMeta(end.type).label}
+    </Link>
+  );
+}
+
+/** Ringkasan untuk kolom kanan Overview: tiga relasi pertama + kalimat co-mention + "See all". */
 export function EntityRelationshipsSummary({
   entity,
   onViewAll,
@@ -166,72 +200,47 @@ export function EntityRelationshipsSummary({
   entity: EntityDetail;
   onViewAll: () => void;
 }) {
-  const can = useCan();
   const rels = useEntityRelationships(entity.id);
-  const create = useCreateTarget();
-  const source: RelationshipEnd = { id: entity.id, type: entity.type, name: entity.name };
   const total = rels.data?.relationships.length ?? 0;
-  const coMentions = (rels.data?.co_mentions ?? []).slice(0, 5);
+  const sentence = coMentionSentence(rels.data?.co_mentions ?? []);
 
   return (
-    <div className="space-y-4">
-      <section className="surface-raised space-y-3 rounded-xl p-5" aria-labelledby="entity-rel-preview">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 id="entity-rel-preview" className="text-base font-semibold">
-            Relationships
-          </h2>
-          {total > 0 && (
-            <Button variant="ghost" size="sm" className="max-sm:h-11" onClick={onViewAll}>
-              View all {total}
-              <ArrowRight aria-hidden />
-            </Button>
-          )}
-        </div>
-        {rels.isPending ? (
-          <Skeleton className="h-24 w-full" />
-        ) : rels.isError ? (
-          <p role="alert" className="text-sm text-destructive">
-            Could not load relationships.
-          </p>
-        ) : total === 0 ? (
-          <p className="text-sm text-muted-foreground">No relationships yet.</p>
-        ) : (
-          <ul className="space-y-2">
-            {rels.data.relationships.slice(0, 3).map((r) => (
-              <li key={r.id} className="flex flex-wrap items-center gap-2">
-                <Verb rel={r} entityId={entity.id} />
-                <OtherEnd rel={r} entityId={entity.id} />
-                <ProvenanceBadge provenance={r.provenance} />
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-      <section className="surface-raised space-y-3 rounded-xl p-5" aria-labelledby="entity-co-mentions">
-        <h2 id="entity-co-mentions" className="text-base font-semibold">
-          Often mentioned together{" "}
-          <span className="text-xs font-normal text-muted-foreground">365 days</span>
+    <section className="surface-raised space-y-3 rounded-xl p-5" aria-labelledby="entity-rel-preview">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 id="entity-rel-preview" className="text-base font-semibold">
+          Relationships{" "}
+          <span className="text-xs font-normal text-muted-foreground">
+            · {total} {total === 1 ? "link" : "links"} · {Math.min(3, total)} shown
+          </span>
         </h2>
-        {rels.isPending ? (
-          <Skeleton className="h-24 w-full" />
-        ) : coMentions.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No co-mentions in the last year.</p>
-        ) : (
-          <CoMentionRows
-            items={coMentions}
-            canRelate={can("manage_entities")}
-            onRelate={(e) => create.start(e)}
-          />
+        {total > 0 && (
+          <Button variant="ghost" size="sm" onClick={onViewAll}>
+            See all
+            <ArrowRight aria-hidden />
+          </Button>
         )}
-      </section>
-      <RelationshipCreateDialog
-        key={create.nonce}
-        open={create.open}
-        onClose={create.close}
-        source={source}
-        target={create.target}
-      />
-    </div>
+      </div>
+      {rels.isPending ? (
+        <Skeleton className="h-24 w-full" />
+      ) : rels.isError ? (
+        <p role="alert" className="text-sm text-destructive">
+          Could not load relationships.
+        </p>
+      ) : total === 0 ? (
+        <p className="text-sm text-muted-foreground">No relationships yet.</p>
+      ) : (
+        <ul className="space-y-2">
+          {rels.data.relationships.slice(0, 3).map((r) => (
+            <li key={r.id} className="flex flex-wrap items-center gap-2">
+              <Chip kind="flag" value={r.relationship_type} />
+              <OtherEndText rel={r} entityId={entity.id} />
+              <span className="ml-auto text-xs text-muted-foreground">{confidenceWord(r.confidence)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {sentence && <p className="border-t border-border pt-2 text-xs text-muted-foreground">{sentence}</p>}
+    </section>
   );
 }
 
@@ -356,6 +365,7 @@ export function EntityRelationshipsTab({ entity }: { entity: EntityDetail }) {
         title="Revoke relationship?"
         description="It disappears from this page and is marked revoked in the TAXII feed."
         confirmLabel="Revoke"
+        cancelVariant="ghost"
         onConfirm={() => {
           if (revoking) revoke.mutate(revoking.id);
           setRevoking(null);
