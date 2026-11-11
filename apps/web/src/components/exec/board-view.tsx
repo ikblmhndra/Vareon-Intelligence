@@ -5,7 +5,7 @@ import { NewsTypesCard, SectorTrendCard, VictimCountryTrendCard } from "@/compon
 import { ExecKpiRow } from "@/components/exec/exec-kpi-row";
 import { ActorSectorDots } from "@/components/exec/actor-sector-dots";
 import { ActorVelocityCard } from "@/components/exec/actor-velocity-card";
-import { ExecLegacySignalCharts } from "@/components/exec/charts-section";
+import { MoreSignals } from "@/components/exec/more-signals";
 import { QueuesRow } from "@/components/exec/role-gated-panels";
 import { SectorHeatmap } from "@/components/exec/sector-heatmap";
 import type { ExecFilters } from "@/lib/exec/filters";
@@ -33,8 +33,7 @@ export function BoardView({ d, filters }: { d: ExecDashboardV2; filters: ExecFil
       </div>
 
       <QueuesRow d={d} />
-      <DashboardSectionLabel>More signals</DashboardSectionLabel>
-      <ExecLegacySignalCharts d={d} />
+      <MoreSignals d={d} />
     </>
   );
 }

@@ -1,5 +1,4 @@
-import { ChartCard } from "@/components/dashboard/stat-box";
-import { GradedDoughnutChart, MultiLineChart, StackedBarChart } from "@/components/dashboard/charts";
+import { MultiLineChart, StackedBarChart } from "@/components/dashboard/charts";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ShareBar, SHARE_BAR_SEGMENT } from "@/components/ui/share-bar";
 import { execCountNoun, type ExecFilters } from "@/lib/exec/filters";
@@ -120,26 +119,5 @@ export function VictimCountryTrendCard({ d, className }: { d: ExecDashboardV2; c
         )}
       </CardContent>
     </Card>
-  );
-}
-
-/** Sisa grafik lama yang dimiliki Task 17 ("More signals": Country trend + Source reliability spread). Tinggal
- * di sini, tidak berubah, sampai Task 17 memindahkannya supaya tidak ada grafik yang hilang. */
-export function ExecLegacySignalCharts({ d }: { d: ExecDashboardV2 }) {
-  const showSrSpread = d.view_config.sections.source_reliability_spread && Object.keys(d.source_reliability_spread).length > 0;
-  return (
-    <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-      <ChartCard title="Country Trend" height={260}>
-        <MultiLineChart
-          labels={d.months}
-          series={d.country_trend.map((c) => ({ label: toTitleCase(c.country), data: c.data }))}
-        />
-      </ChartCard>
-      {showSrSpread && (
-        <ChartCard title="Source Reliability Spread" height={260}>
-          <GradedDoughnutChart counts={d.source_reliability_spread} />
-        </ChartCard>
-      )}
-    </div>
   );
 }
