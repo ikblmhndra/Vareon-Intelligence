@@ -344,8 +344,8 @@ async def test_monthly_totals_align_with_months(async_db_session: AsyncSession) 
 async def test_leaderboard_velocity_for_actor_outside_velocity_top10(
     async_db_session: AsyncSession,
 ) -> None:
-    """Aktor leaderboard yang menurun terdorong keluar dari `ta_velocity` (top 10 naik) tapi barisnya
-    tetap membawa velocity sendiri; tanpa riwayat usable -> None."""
+    """Aktor leaderboard yang menurun terdorong keluar dari `ta_velocity` (top 10 naik) tapi
+    barisnya tetap membawa velocity sendiri."""
     await _ensure_clients(async_db_session)
     prev = _TODAY - datetime.timedelta(days=40)
 
