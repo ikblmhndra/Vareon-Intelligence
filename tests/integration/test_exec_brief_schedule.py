@@ -14,7 +14,7 @@ import redis
 import structlog.testing
 from cti_api.services import exec_brief as eb
 from cti_core.config import get_settings
-from cti_core.db.engine import get_sync_engine
+from cti_core.db.engine import get_sync_engine, reset_engines
 from cti_core.db.models.exec_brief import ExecBrief
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -27,10 +27,15 @@ def _env(
     kw = redis_client.connection_pool.connection_kwargs
     monkeypatch.setenv("REDIS__URL", f"redis://{quote(str(kw['host']))}:{kw['port']}/0")
     get_settings.cache_clear()
+    # Test sebelumnya meninggalkan engine async ber-cache yang terikat ke loop pytest; task memakai
+    # `asyncio.run` (loop baru), jadi tanpa reset koneksi pool lama menimbulkan "attached to a
+    # different loop". `_run_async` me-reset sesudah tiap panggilan, tapi tidak sebelumnya.
+    reset_engines()
     redis_client.flushall()
     _wipe()
     yield
     _wipe()
+    reset_engines()
     get_settings.cache_clear()
 
 
