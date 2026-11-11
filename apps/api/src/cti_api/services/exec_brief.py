@@ -249,11 +249,3 @@ async def store_brief(
         prompt_version=draft.prompt_version,
         replace=replace,
     )
-
-
-async def generate_exec_brief(
-    session: AsyncSession, days: int, incident_only: bool, confirmed_only: bool
-) -> str:
-    """Pembungkus sementara agar router lama tetap jalan; dihapus bersama router lama di Task 4."""
-    draft = await draft_brief(session, filters=BriefFilters(days, incident_only, confirmed_only))
-    return draft.markdown

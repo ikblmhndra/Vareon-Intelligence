@@ -51,8 +51,14 @@ async def test_exec_brief(
     snapshot: SnapshotAssertion,
 ) -> None:
     with patch.object(
-        exec_brief_service, "_call_llm", MagicMock(return_value="# Executive Brief\n\nAll quiet.")
+        exec_brief_service,
+        "_call_llm",
+        MagicMock(return_value=("# Executive Brief\n\nAll quiet.", "model-x")),
     ):
         resp = await api_client.post("/api/exec/brief", headers=auth_header())
     assert resp.status_code == 200
+    body = resp.json()
+    assert body["markdown"] == "# Executive Brief\n\nAll quiet."
+    assert (body["model"], body["generated_by"]) == ("model-x", "tester")
+    assert body["is_default_filters"] is True
     assert resp.json() == snapshot(matcher=_NORMALIZE)
