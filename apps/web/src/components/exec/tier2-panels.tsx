@@ -6,39 +6,6 @@ function toTitleCase(s: string): string {
   return s.replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1));
 }
 
-/** Port Top TTPs (`exec.js:350-370`). */
-export function TtpList({ d }: { d: ExecDashboardV2 }) {
-  if (d.top_ttps.length === 0) {
-    return <p className="py-2 font-mono text-xs text-muted-foreground">No TTP data for this period</p>;
-  }
-  const maxTtp = d.top_ttps[0]?.count || 1;
-  return (
-    <div className="space-y-1.5">
-      {/* `ttp_counts()` (repo) group-by `(ttp_id, ttp_name)`, bukan
-          `ttp_id` doang -- id yang sama kadang muncul 2 baris beda nama
-          kalau enrichment nyimpen varian nama beda (mis. "T1583" pernah
-          ke-tag "Acquire Infrastructure" vs "Resource Development").
-          KETEMU LIVE (React duplicate-key warning). Bukan bug frontend,
-          key gabung id+name biar cocok sama data yang emang 2 entry
-          beda konten. */}
-      {d.top_ttps.map((t, i) => (
-        <div key={`${t.id}::${t.name}::${i}`} className="flex items-center gap-2">
-          <div className="min-w-[70px]">
-            <EntityChip type="attack-pattern" name={t.id} />
-          </div>
-          <div className="flex-1 truncate font-mono text-xs text-muted-foreground" title={t.name}>
-            {t.name}
-          </div>
-          <div className="h-1.5 w-20 shrink-0 overflow-hidden rounded-full bg-muted">
-            <div className="h-full rounded-full bg-primary/50" style={{ width: `${Math.round((t.count / maxTtp) * 100)}%` }} />
-          </div>
-          <span className="min-w-[24px] text-right font-mono text-xs text-muted-foreground">{t.count}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 /** Port TA Velocity (`exec.js:372-392`). */
 export function TaVelocity({ d }: { d: ExecDashboardV2 }) {
   if (d.ta_velocity.length === 0) {

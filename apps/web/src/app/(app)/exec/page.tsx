@@ -13,8 +13,9 @@ import { ExecFilterBar } from "@/components/exec/exec-filter-bar";
 import { BriefingView } from "@/components/exec/briefing-view";
 import { ExecFootnote } from "@/components/exec/exec-footnote";
 import { ExecPageHeader } from "@/components/exec/exec-page-header";
-import { TtpList, TaVelocity, SectorCooccurrence } from "@/components/exec/tier2-panels";
-import { CveExposureTable } from "@/components/exec/cve-exposure-table";
+import { TaVelocity, SectorCooccurrence } from "@/components/exec/tier2-panels";
+import { CveExposureCard } from "@/components/exec/cve-exposure-card";
+import { TopTechniquesCard } from "@/components/exec/top-techniques-card";
 import { SectorHeatmap } from "@/components/exec/sector-heatmap";
 import { SectorActorMatrix } from "@/components/exec/sector-actor-matrix";
 import { ClusterList, CriticalCveFeed, FpQueue } from "@/components/exec/role-gated-panels";
@@ -57,24 +58,21 @@ function initialFilters(): ExecFilters {
 }
 
 /** Isi sementara Analyst board: bagian lama yang rinci; diganti `BoardView` (Task 14). */
-function BoardContent({ d }: { d: ExecDashboardV2 }) {
+function BoardContent({ d, days }: { d: ExecDashboardV2; days: number }) {
   return (
     <>
           <DashboardSectionLabel>CVE Exposure</DashboardSectionLabel>
           <p className="-mt-2 mb-2 text-xs text-muted-foreground">
             All tracked CVEs across clients (false positives excluded), not filtered by the period above.
           </p>
-          <CveExposureTable d={d} />
+          <CveExposureCard d={d} />
 
           <DashboardSectionLabel>Sector Activity Heatmap</DashboardSectionLabel>
           <SectorHeatmap d={d} />
 
           <DashboardSectionLabel>Secondary Signals</DashboardSectionLabel>
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <div className="rounded-xl border border-border bg-background p-3">
-              <div className="mb-2 font-mono text-xs text-muted-foreground">Top TTPs</div>
-              <TtpList d={d} />
-            </div>
+            <TopTechniquesCard d={d} days={days} />
             <div className="rounded-xl border border-border bg-background p-3">
               <div className="mb-2 font-mono text-xs text-muted-foreground">Threat Actor Velocity</div>
               <TaVelocity d={d} />
@@ -253,7 +251,7 @@ function ExecDashboardPage() {
           />
         ))}
 
-      {d && (view === "briefing" ? <BriefingView d={d} filters={filters} brief={null} /> : <BoardContent d={d} />)}
+      {d && (view === "briefing" ? <BriefingView d={d} filters={filters} brief={null} today={today} /> : <BoardContent d={d} days={filters.days} />)}
       {d && <ExecFootnote filters={filters} />}
 
       <ExecBriefModal brief={brief} days={filters.days} onOpenChange={(open) => !open && setBrief(null)} />

@@ -134,3 +134,25 @@ export function downloadExecCsv(d: import("@/lib/api/loose-types").ExecDashboard
 export function toTitleCase(s: string): string {
   return s.replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1));
 }
+
+/** Rumus skor risiko sektor, ditampilkan di tooltip "How is risk scored?" (kartu Sector risk). */
+export const RISK_FORMULA_TITLE =
+  "Risk Score = Volume(0-50) + Trend(0-20) + Spike(0-30)\n• Volume: (last_month / max_sector) × 50\n• Trend: increase first→second half, max 20\n• Spike: z-score × 10, capped at 30";
+
+/** Awal jendela dashboard sebagai "YYYY-MM-DD" lokal (hari ini − `days`), sama dengan awal rentang di header
+ * halaman. Tautan hitungan ke Newsroom membawanya sebagai `from` supaya jumlah artikel di sheet sama dengan
+ * angka di kartu. */
+export function execWindowFrom(days: number, today: Date): string {
+  const s = new Date(today.getFullYear(), today.getMonth(), today.getDate() - days);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${s.getFullYear()}-${p(s.getMonth() + 1)}-${p(s.getDate())}`;
+}
+
+/** Velocity aktor: merah hanya di atas +20% (C15); `null` (riwayat belum cukup) tampil "—". */
+export function velocityDisplay(pct: number | null): { text: string; colorClass: string } {
+  if (pct === null) return { text: "—", colorClass: "text-muted-foreground" };
+  return {
+    text: `${pct > 0 ? "+" : ""}${pct}%`,
+    colorClass: pct > 20 ? "text-destructive-text" : "text-muted-foreground",
+  };
+}
