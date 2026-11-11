@@ -16,8 +16,13 @@ Di sini pakai key yang BENERAN dihasilin `_compute_ta_velocity()`
 from __future__ import annotations
 
 import asyncio
+import datetime
+from dataclasses import dataclass
 from typing import Any
 
+from cti_core.config import get_settings
+from cti_core.db.models.exec_brief import ExecBrief
+from cti_core.db.repositories.exec_brief import AsyncExecBriefRepo
 from cti_core.llm.client import get_llm_client
 from cti_core.llm.usage import prompt_version
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -144,7 +149,9 @@ Now produce the 1-page executive briefing in Markdown as instructed."""
 _PROMPT_VERSION = prompt_version(SYSTEM_PROMPT)
 
 
-def _call_llm(user_msg: str) -> str:
+def _call_llm(user_msg: str) -> tuple[str, str]:
+    """Panggil LLM; mengembalikan `(markdown, model)` supaya model yang dipakai ikut tersimpan
+    di `exec_briefs.model` (sama dengan `llm_calls.model`)."""
     client, model_name = get_llm_client(task="exec_brief")
     completion = client.chat.completions.create(
         model=model_name,
@@ -154,14 +161,99 @@ def _call_llm(user_msg: str) -> str:
         ],
         prompt_version=_PROMPT_VERSION,
     )
-    return completion.choices[0].message.content or ""
+    return completion.choices[0].message.content or "", model_name
+
+
+# Role dashboard untuk brief (C5): brief satu untuk seluruh platform, tidak boleh bergantung pada
+# peran pemanggil maupun klien. Role "exec" mematikan cluster_list, fp_feedback_queue,
+# source_reliability_spread dan critical_cve_feed, jadi bagian analyst/klien itu tidak dihitung.
+BRIEF_ROLE = "exec"
+RETENTION_DAYS = 30
+
+
+@dataclass(frozen=True)
+class BriefFilters:
+    days: int
+    incident_only: bool
+    confirmed_only: bool
+
+    def as_json(self) -> dict[str, object]:
+        return {
+            "days": self.days,
+            "incident_only": self.incident_only,
+            "confirmed_only": self.confirmed_only,
+        }
+
+
+DEFAULT_FILTERS = BriefFilters(90, True, False)
+
+
+def brief_today(now: datetime.datetime | None = None) -> datetime.date:
+    """Tanggal brief hari ini (UTC + `worker.report_utc_offset_hours`, default Jakarta). Ada di
+    sini supaya API dan worker sepakat soal "hari ini" untuk satu baris `exec_briefs`."""
+    now = now or datetime.datetime.now(datetime.UTC)
+    offset = datetime.timedelta(hours=get_settings().worker.report_utc_offset_hours)
+    return (now + offset).date()
+
+
+class BriefGenerationError(Exception):
+    """Pembuatan brief gagal di sisi LLM (error atau jawaban kosong); tidak ada yang ditulis."""
+
+    def __init__(self, error_type: str) -> None:
+        super().__init__(error_type)
+        self.error_type = error_type
+
+
+@dataclass
+class BriefDraft:
+    markdown: str
+    model: str
+    prompt_version: str
+
+
+async def draft_brief(session: AsyncSession, *, filters: BriefFilters) -> BriefDraft:
+    """Susun brief tanpa menyimpannya. Error DB merambat apa adanya; error LLM atau jawaban
+    kosong menjadi `BriefGenerationError`."""
+    data = await get_exec_dashboard_v2(
+        session,
+        days=filters.days,
+        incident_only=filters.incident_only,
+        confirmed_only=filters.confirmed_only,
+        role=BRIEF_ROLE,
+    )
+    user_msg = _build_user_message(filters.days, data)
+    try:
+        markdown, model = await asyncio.to_thread(_call_llm, user_msg)
+    except Exception as exc:
+        raise BriefGenerationError(type(exc).__name__) from exc
+    if not markdown.strip():
+        raise BriefGenerationError("empty")
+    return BriefDraft(markdown=markdown, model=model, prompt_version=_PROMPT_VERSION)
+
+
+async def store_brief(
+    session: AsyncSession,
+    *,
+    brief_date: datetime.date,
+    draft: BriefDraft,
+    filters: BriefFilters,
+    generated_by: str,
+    replace: bool,
+) -> ExecBrief | None:
+    return await AsyncExecBriefRepo(session).upsert(
+        brief_date=brief_date,
+        markdown=draft.markdown,
+        filters=filters.as_json(),
+        generated_by=generated_by,
+        model=draft.model,
+        prompt_version=draft.prompt_version,
+        replace=replace,
+    )
 
 
 async def generate_exec_brief(
     session: AsyncSession, days: int, incident_only: bool, confirmed_only: bool
 ) -> str:
-    data = await get_exec_dashboard_v2(
-        session, days=days, incident_only=incident_only, confirmed_only=confirmed_only
-    )
-    user_msg = _build_user_message(days, data)
-    return await asyncio.to_thread(_call_llm, user_msg)
+    """Pembungkus sementara agar router lama tetap jalan; dihapus bersama router lama di Task 4."""
+    draft = await draft_brief(session, filters=BriefFilters(days, incident_only, confirmed_only))
+    return draft.markdown
