@@ -165,3 +165,29 @@ def test_manual_row_between_recheck_and_insert_survives(monkeypatch) -> None:
     (row,) = _rows()
     assert (row.generated_by, row.markdown) == ("manual", "MANUAL")
     assert llm.calls == 1
+
+
+def test_purge_keeps_30_days() -> None:
+    import datetime
+
+    import cti_worker.celery_app  # noqa: F401  -- registrasi task dulu (impor melingkar)
+    from cti_worker.tasks.periodic import exec_purge_briefs
+
+    today = eb.brief_today()
+    with Session(get_sync_engine()) as s:
+        for back in (31, 30, 0):
+            s.add(
+                ExecBrief(
+                    brief_date=today - datetime.timedelta(days=back),
+                    markdown=f"d{back}",
+                    filters=eb.DEFAULT_FILTERS.as_json(),
+                    generated_by="scheduler",
+                    model="m",
+                    prompt_version="pv",
+                )
+            )
+        s.commit()
+
+    assert exec_purge_briefs.run() == {"removed": 1}
+
+    assert sorted(r.markdown for r in _rows()) == ["d0", "d30"]

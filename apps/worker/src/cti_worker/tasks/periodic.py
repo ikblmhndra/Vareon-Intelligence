@@ -371,3 +371,19 @@ def exec_brief_daily(self: Any) -> dict[str, object]:
         return {"status": "failed"}
     finally:
         lock.release()
+
+
+async def _run_purge_briefs() -> int:
+    from cti_api.services.exec_brief import purge_old_briefs
+    from cti_core.db.engine import async_session
+
+    async with async_session() as session:
+        return await purge_old_briefs(session, datetime.datetime.now(datetime.UTC))
+
+
+@app.task(name="exec.purge_briefs", queue=QUEUE_MAINTENANCE)
+def exec_purge_briefs() -> dict[str, int]:
+    """Buang brief eksekutif yang lebih tua dari 30 hari (tabel `exec_briefs` tumbuh satu baris
+    per hari tanpa batas kalau tidak dipangkas). Harian 03:45 UTC, di antara `llm.purge_calls`
+    dan `story.purge_empty`."""
+    return {"removed": _run_async(_run_purge_briefs())}

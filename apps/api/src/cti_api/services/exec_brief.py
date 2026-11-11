@@ -20,6 +20,7 @@ import datetime
 from dataclasses import dataclass
 from typing import Any
 
+import structlog
 from cti_core.config import get_settings
 from cti_core.db.models.exec_brief import ExecBrief
 from cti_core.db.repositories.exec_brief import AsyncExecBriefRepo
@@ -28,6 +29,8 @@ from cti_core.llm.usage import prompt_version
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_api.services.exec_dashboard import get_exec_dashboard_v2
+
+log = structlog.get_logger()
 
 SYSTEM_PROMPT = """You are a Senior Cyber Threat Intelligence Analyst producing a concise 1-page executive briefing for C-suite and board-level audiences.
 
@@ -273,3 +276,14 @@ async def generate_scheduled_brief(session: AsyncSession, now: datetime.datetime
     )
     await session.commit()
     return "stored" if row is not None else "raced"
+
+
+async def purge_old_briefs(session: AsyncSession, now: datetime.datetime) -> int:
+    """Hapus brief lebih tua dari `RETENTION_DAYS` hari (tanggal brief, bukan jam). Batasnya
+    `brief_today - 30`, jadi baris tepat 30 hari lalu masih ada dan 31 hari lalu dibuang.
+    Mengembalikan jumlah baris yang dihapus."""
+    cutoff = brief_today(now) - datetime.timedelta(days=RETENTION_DAYS)
+    removed = await AsyncExecBriefRepo(session).purge_before(cutoff)
+    await session.commit()
+    log.info("exec_briefs_purged", removed=removed, cutoff=cutoff.isoformat())
+    return removed

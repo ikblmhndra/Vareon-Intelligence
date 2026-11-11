@@ -289,6 +289,11 @@ def _periodic_schedule() -> dict[str, dict[str, object]]:
             # < visibility_timeout Redis (60 menit): pesan yang dikirim ulang sudah kedaluwarsa.
             "options": {"queue": QUEUE_MAINTENANCE, "expires": 55 * 60},
         },
+        "exec-brief-purge": {
+            "task": "exec.purge_briefs",
+            "schedule": crontab(hour=3, minute=45),
+            "options": {"queue": QUEUE_MAINTENANCE},
+        },
         **_report_schedule(w.report_utc_offset_hours),
     }
 

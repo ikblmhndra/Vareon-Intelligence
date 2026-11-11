@@ -394,3 +394,11 @@ def test_exec_brief_entries(monkeypatch) -> None:
         assert entry["schedule"].minute == {0}
         assert entry["schedule"].hour == hours
         assert entry["options"] == {"queue": "maintenance", "expires": 3300}
+
+
+def test_exec_brief_purge_entry(monkeypatch) -> None:
+    monkeypatch.setattr(beat, "_scraper_configs", lambda: {})
+    entry = beat.build_beat_schedule()["exec-brief-purge"]
+    assert entry["task"] == "exec.purge_briefs"
+    assert (entry["schedule"].hour, entry["schedule"].minute) == ({3}, {45})
+    assert entry["options"] == {"queue": "maintenance"}
