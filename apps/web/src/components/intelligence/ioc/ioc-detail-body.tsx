@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { EntityChip } from "@/components/entities/entity-chip";
 import { ArticleByIdDialog } from "@/components/intelligence/campaign-clusters/article-by-id-dialog";
+import { IocRemoveDialog } from "@/components/intelligence/ioc/ioc-remove-dialog";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Chip } from "@/components/ui/chip";
@@ -21,6 +22,7 @@ import { api } from "@/lib/api/client";
 import type {
   IocDetail,
   IocEnrichmentProvider,
+  IocFeedbackResponse,
   IocSummary,
   IocTaLink,
   IocTaLinksResponse,
@@ -145,7 +147,7 @@ export function IocDetailBody({ target, onChanged, onDeleted, layout, returnFocu
   const qc = useQueryClient();
   const uid = useId();
   const [taInput, setTaInput] = useState("");
-  const [busy, setBusy] = useState<null | "tp" | "fp" | "allowlist" | "delete" | "ta">(null);
+  const [busy, setBusy] = useState<null | "tp" | "allowlist" | "delete" | "ta">(null);
   const [removeOpen, setRemoveOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [fpWarning, setFpWarning] = useState<IocDetail["source_fp_warning"] | null>(null);
@@ -185,25 +187,30 @@ export function IocDetailBody({ target, onChanged, onDeleted, layout, returnFocu
     onChanged();
   }
 
-  async function feedback(verdict: "tp" | "fp", note?: string) {
+  /** Verdict "tp" langsung; "fp" lewat `IocRemoveDialog` (catatan + POST ada di sana) lalu `afterRemove`. */
+  async function restore() {
     if (!ioc) return;
-    setBusy(verdict);
+    setBusy("tp");
     try {
-      const { data, error } = await api.POST("/api/iocs/{ioc_id}/feedback", {
+      const { error } = await api.POST("/api/iocs/{ioc_id}/feedback", {
         params: { path: { ioc_id: ioc.id } },
-        body: { verdict, note: note || null },
+        body: { verdict: "tp", note: null },
       });
       if (error) throw new Error(JSON.stringify(error));
-      const res = data as unknown as IocDetail;
-      setFpWarning(verdict === "fp" ? (res.source_fp_warning ?? null) : null);
-      toast.success(verdict === "tp" ? "Marked as true positive." : "Removed from feeds.");
+      setFpWarning(null);
+      toast.success("Marked as true positive.");
       changed();
     } catch (e) {
       toast.error(`Feedback failed: ${(e as Error).message}`);
     } finally {
       setBusy(null);
-      setRemoveOpen(false);
     }
+  }
+
+  function afterRemove(res: IocFeedbackResponse) {
+    setFpWarning((res as unknown as IocDetail).source_fp_warning ?? null);
+    toast.success("Removed from feeds.");
+    changed();
   }
 
   async function allowlist() {
@@ -528,7 +535,7 @@ export function IocDetailBody({ target, onChanged, onDeleted, layout, returnFocu
 
       {manage && (
         <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
-          <Button size="sm" variant="outline" loading={busy === "tp"} disabled={busy !== null} onClick={() => void feedback("tp")}>
+          <Button size="sm" variant="outline" loading={busy === "tp"} disabled={busy !== null} onClick={() => void restore()}>
             TP / restore
           </Button>
           <Button size="sm" variant="destructive" disabled={busy !== null || ioc.state === "revoked"} onClick={() => setRemoveOpen(true)}>
@@ -552,18 +559,12 @@ export function IocDetailBody({ target, onChanged, onDeleted, layout, returnFocu
         </div>
       )}
 
-      <ConfirmDialog
+      <IocRemoveDialog
         open={removeOpen}
         onOpenChange={setRemoveOpen}
-        title={`Remove ${shown} from feeds?`}
-        description="It stops appearing in STIX and CSV exports for every client. Analysts can restore it with TP."
-        note={{ label: "Note", placeholder: "Optional: why this is a false positive", maxLength: 2000 }}
-        confirmLabel="Remove from feeds"
-        cancelVariant="ghost"
-        tone="danger"
-        confirmLoading={busy === "fp"}
+        ioc={{ id: ioc.id, value: shown }}
         finalFocus={returnFocus}
-        onConfirm={(note) => void feedback("fp", note)}
+        onDone={afterRemove}
       />
       <ConfirmDialog
         open={deleteOpen}
