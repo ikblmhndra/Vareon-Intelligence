@@ -524,7 +524,18 @@ export interface ExecViewConfig {
  * itu buat bedain "gak berhak lihat" vs "emang belom ada data". */
 export interface ExecDashboardV2 extends ExecDashboardV1 {
   prev_ta_names: string[];
-  sector_risk_scores: { sector: string; risk_score: number }[];
+  /** `top_actor` = pelaku teratas per sektor (`get_exec_dashboard_v2`); null bila tak ada. */
+  sector_risk_scores: { sector: string; risk_score: number; top_actor: string | null }[];
+  /** Total insiden per bulan (urut bulan), dari `get_exec_dashboard_v2`. */
+  monthly_totals: number[];
+  /** Menimpa `ta_leaderboard` v1 dengan kolom tren dan sektor teratas (`get_exec_dashboard_v2`);
+   * velocity/last_month/avg_prev null bila riwayat belum cukup. */
+  ta_leaderboard: (ExecNamedCount & {
+    velocity_pct: number | null;
+    last_month: number | null;
+    avg_prev: number | null;
+    top_sectors: string[];
+  })[];
   cve_exposure_v2: ExecCveExposureRow[];
   /** Total UTUH buat dua kartu KPI (BUKAN jumlah 10 tech di `cve_exposure_v2`): CVE berseverity
    * critical, dan CVE ber-flag KEV (semua severity). Cakupannya sama dengan tabel exposure
@@ -570,11 +581,6 @@ export interface ExecDashboardV2 extends ExecDashboardV1 {
   /** Total antrean FP; `pending_fp_queue` cuma memuat 20 teratas. */
   pending_fp_total: number;
   source_reliability_spread: Record<string, number>;
-}
-
-export interface ExecBriefResponse {
-  brief: string;
-  generated_at: string;
 }
 
 /**

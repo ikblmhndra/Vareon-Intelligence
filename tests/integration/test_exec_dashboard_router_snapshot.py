@@ -19,7 +19,8 @@ from syrupy.matchers import path_type
 
 pytestmark = pytest.mark.asyncio
 
-_NORMALIZE = path_type({r"(.*\.)?generated_at$": (str,)}, regex=True, strict=False)
+# `brief_date` = tanggal Jakarta hari ini, jadi dinormalkan seperti `generated_at`.
+_NORMALIZE = path_type({r"(.*\.)?(generated_at|brief_date)$": (str,)}, regex=True, strict=False)
 
 
 async def test_dashboard_v1(
