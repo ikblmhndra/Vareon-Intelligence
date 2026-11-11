@@ -8,7 +8,7 @@ router `changelog.py`) -- parser-nya expect header persis
 
 ## [0.8.16] - 2026-11-08
 
-**Redesain FigCraft: tiga sumber data baru untuk halaman PIR, Intelligence, dan MITRE, penyeragaman tema web, dan redesain CVE Tracker beserta tambahan backend-nya.** API mendapat cakupan PIR per minggu, seri harian per entitas yang melonjak, dan layer ATT&CK Navigator yang sama persis dengan heatmap yang terlihat. Web memakai satu skala tier risiko, border field yang terbaca, dan fokus yang jelas. Satu migrasi aditif (`b7d41e9a2c63`) dijalankan otomatis oleh `make deploy`, dan satu dependency baru (`email-validator`). Tanpa kunci `.env`.
+**Redesain FigCraft: tiga sumber data baru untuk halaman PIR, Intelligence, dan MITRE, penyeragaman tema web, dan redesain CVE Tracker beserta tambahan backend-nya.** API mendapat cakupan PIR per minggu, seri harian per entitas yang melonjak, dan layer ATT&CK Navigator yang sama persis dengan heatmap yang terlihat. Web memakai satu skala tier risiko, border field yang terbaca, dan fokus yang jelas. Halaman Exec dirombak: brief eksekutif harian tersimpan dan papan Analyst. Dua migrasi aditif (`b7d41e9a2c63`, `c4e8a1f2b9d6`) dijalankan otomatis oleh `make deploy`, dan satu dependency baru (`email-validator`). Tanpa kunci `.env`.
 
 ### Ditambahkan
 - `GET /api/pir/{pir_id}/coverage/weekly`: jumlah artikel per minggu untuk grafik cakupan PIR.
@@ -33,6 +33,10 @@ router `changelog.py`) -- parser-nya expect header persis
 - IOC: export CSV (`GET /api/iocs/export`) dan catatan pada allowlist. Kedua export butuh izin `export_data`, menulis audit log, dan melindungi sel dari formula CSV. Export IOC dibatasi 50.000 baris dan memberi header `X-Export-Truncated` bila terpotong; export Source reliability dibatasi 5.000 baris tanpa header itu (satu baris per sumber).
 - Entities: ringkasan AI di profil entitas dan jumlah artikel; daftar diurutkan menurut sebutan 30 hari terakhir (`sort=mentions`), seri dipecah nama lalu id; `total` hanya dikirim di halaman pertama.
 - Newsroom: parameter URL `actor`, `industry`, `ttp`, `from`.
+- Exec, brief eksekutif harian tersimpan: satu untuk seluruh platform dan sama untuk semua klien (tabel `exec_briefs`, per tanggal Jakarta). Dibuat otomatis oleh task `exec.brief_daily` mulai 06:00 WIB dengan filter default 90 hari, dicoba lagi tiap jam sampai 18:00 WIB kalau belum ada (paling banyak satu panggilan LLM sukses per hari), dan disimpan 30 hari (`exec.purge_briefs`, 03:45 UTC). `beat` harus di-restart supaya jadwalnya terbaca.
+- `GET /api/exec/brief` dan `GET /api/exec/brief/dates`: baca brief tersimpan dan tanggal yang tersedia.
+- `GET /api/exec/dashboard-v2`: `monthly_totals`, velocity dan dua sektor teratas per aktor di leaderboard, serta aktor teratas per sektor.
+- Web: halaman Exec dipecah jadi Briefing dan Analyst board (`?view=`), dengan baris More signals (campaign clusters, source reliability, tren negara); dialog IOC "Remove from feeds" menampilkan error di dalam dialog.
 
 ### Diubah
 - Deteksi spike (Early Warning dan industry spikes di dashboard eksekutif): mean dan simpangan baku baseline kini menghitung hari tanpa artikel sebagai 0, sama dengan seri `daily`. Dulu hanya hari yang ada artikelnya yang dihitung, sehingga garis baseline lebih tinggi daripada batang hariannya dan entitas yang jarang muncul mendapat z-score terlalu kecil. Akibatnya jumlah dan urutan anomali berubah sesudah deploy, ke dua arah: entitas jarang bisa muncul, entitas yang hitungan hariannya naik-turun bisa hilang. Entitas tetap butuh minimal 5 hari baseline yang ada artikelnya.
@@ -48,11 +52,15 @@ router `changelog.py`) -- parser-nya expect header persis
 - Lookup CVE langsung: hasil "tidak ditemukan di mana-mana" di-cache 10 menit, bukan 6 jam.
 - Web: dialog detail IOC dan drill TTP jadi panel samping; tab RFI default Open; grid MITRE default 10 x 12.
 - Web: kartu sinkron ATT&CK pindah dari Entities > Techniques ke halaman MITRE heatmap.
+- `POST /api/exec/brief`: `days` dibatasi 7-365, tidak lagi menghitung bagian khusus analis atau per klien, menyimpan hasilnya sebagai brief bersama hari ini (menggantikan brief scheduler untuk semua klien) dan mengembalikan `ExecBriefOut` (dulu `{brief, generated_at}`). Gagal LLM membalas 502. Tetap butuh `manage_intel`.
+- Web: tombol Export CSV di Exec hanya tampil untuk role dengan `export_data`.
 
 ### Diperbaiki
 - `PUT /api/rfi/{id}` dan `PUT /api/pir/{id}`: `null` eksplisit kini mengosongkan field yang boleh kosong (RFI `due_date` dan `linked_pir`; PIR `start_date` dan `end_date`). Dulu nilai yang dikosongkan diam-diam diabaikan. `null` pada field wajib tetap diabaikan.
 
-**Catatan 0.8.16 (Intelligence):** tanpa migrasi baru (head tetap `b7d41e9a2c63`) dan tanpa key `.env` baru. Ringkasan profil entitas baru terisi sesudah profil dibuat ulang. Export IOC dan Source reliability butuh `export_data`.
+**Catatan 0.8.16 (Intelligence):** tanpa migrasi untuk bagian ini (head sebelum Exec `b7d41e9a2c63`) dan tanpa key `.env` baru. Ringkasan profil entitas baru terisi sesudah profil dibuat ulang. Export IOC dan Source reliability butuh `export_data`.
+
+**Catatan 0.8.16 (Exec):** migrasi `c4e8a1f2b9d6` membuat tabel `exec_briefs`; tanpa key `.env` baru (jadwal memakai `WORKER__REPORT_UTC_OFFSET_HOURS`). Biaya LLM sekitar satu panggilan per hari; cek lewat `llm_calls` dengan `task = 'exec_brief'`. Brief hari ini muncul sesudah 06:00 WIB.
 
 **Saat upgrade dari 0.8.15:** catat jumlah anomali Early Warning per kelompok sebelum deploy untuk dibandingkan (opsional, baca-saja: hitung ticket dengan `owner_email` bukan email dan ticket dengan alias status lama, query di runbook), lalu `make deploy` (migrasi jalan otomatis). Dari prod 0.8.11 (versi yang sedang jalan): ikuti runbook gabungan `docs/PROD_UPGRADE_0.8.11_TO_0.8.16.md`; cek per rilis ada di `docs/prod-upgrade/0.8.16.md`.
 
