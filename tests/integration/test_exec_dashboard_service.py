@@ -319,3 +319,121 @@ async def test_exec_dashboard_v2_reports_fp_queue_depth_and_volume_only_risk(
         async_db_session, days=90, client_id="default", role="soc"
     )
     assert soc["pending_fp_total"] == 0  # section FP tidak aktif untuk role soc
+
+
+async def test_monthly_totals_align_with_months(async_db_session: AsyncSession) -> None:
+    """`monthly_totals` = jumlah insiden per bulan, sejajar `months` (dasar sparkline KPI Exec)."""
+    await _ensure_clients(async_db_session)
+    for i, day in enumerate([_TODAY, _TODAY, _TODAY - datetime.timedelta(days=40)]):
+        await _seed_incident_article(
+            async_db_session,
+            url=f"https://x.com/mt/{i}",
+            industries=["Manufacturing"],
+            actors=[],
+            posted_on=day,
+        )
+
+    result = await exec_dashboard_service.get_exec_dashboard_v2(
+        async_db_session, days=90, client_id="default", role="analyst"
+    )
+    assert len(result["monthly_totals"]) == len(result["months"])
+    assert sum(result["monthly_totals"]) == result["total_incidents"] == 3
+    assert result["monthly_totals"][-1] == 2
+
+
+async def test_leaderboard_velocity_for_actor_outside_velocity_top10(
+    async_db_session: AsyncSession,
+) -> None:
+    """Aktor leaderboard yang menurun terdorong keluar dari `ta_velocity` (top 10 naik) tapi barisnya
+    tetap membawa velocity sendiri; tanpa riwayat usable -> None."""
+    await _ensure_clients(async_db_session)
+    prev = _TODAY - datetime.timedelta(days=40)
+
+    async def seed(tag: str, actor: str, n: int, day: datetime.date) -> None:
+        for i in range(n):
+            await _seed_incident_article(
+                async_db_session,
+                url=f"https://x.com/vel/{tag}/{i}",
+                industries=["Manufacturing"],
+                actors=[actor],
+                posted_on=day,
+            )
+
+    await seed("dec-p", "Decliner", 20, prev)
+    await seed("dec-l", "Decliner", 1, _TODAY)
+    for k in range(12):
+        await seed(f"r{k}-p", f"Riser{k}", 1, prev)
+        await seed(f"r{k}-l", f"Riser{k}", 5, _TODAY)
+
+    result = await exec_dashboard_service.get_exec_dashboard_v2(
+        async_db_session, days=90, client_id="default", role="analyst"
+    )
+    assert "Decliner" not in {r["actor"] for r in result["ta_velocity"]}
+    row = next(r for r in result["ta_leaderboard"] if r["name"] == "Decliner")
+    assert row["velocity_pct"] < 0
+    assert row["last_month"] == 1
+    assert row["avg_prev"] == 20.0
+
+
+async def test_leaderboard_velocity_is_none_without_usable_history(
+    async_db_session: AsyncSession,
+) -> None:
+    await _ensure_clients(async_db_session)
+    await _seed_incident_article(
+        async_db_session,
+        url="https://x.com/vel-none",
+        industries=["Manufacturing"],
+        actors=["Apt41"],
+        posted_on=_TODAY,
+    )
+    result = await exec_dashboard_service.get_exec_dashboard_v2(
+        async_db_session, days=90, client_id="default", role="analyst"
+    )
+    row = result["ta_leaderboard"][0]
+    assert (row["velocity_pct"], row["last_month"], row["avg_prev"]) == (None, None, None)
+
+
+async def test_leaderboard_top_sectors(async_db_session: AsyncSession) -> None:
+    """Dua sektor teratas per aktor: urut jumlah lalu nama, "General" tidak ikut."""
+    await _ensure_clients(async_db_session)
+    plan = [("Finance", 3), ("Energy", 2), ("Health", 2), ("General", 5)]
+    for sector, n in plan:
+        for i in range(n):
+            await _seed_incident_article(
+                async_db_session,
+                url=f"https://x.com/ts/{sector}/{i}",
+                industries=[sector],
+                actors=["Apt41"],
+                posted_on=_TODAY,
+            )
+    result = await exec_dashboard_service.get_exec_dashboard_v2(
+        async_db_session, days=90, client_id="default", role="analyst"
+    )
+    assert result["ta_leaderboard"][0]["top_sectors"] == ["Finance", "Energy"]
+
+
+async def test_sector_risk_top_actor(async_db_session: AsyncSession) -> None:
+    """Aktor terbanyak per sektor, seri diputus nama; None bila sektor tak punya mention aktor."""
+    await _ensure_clients(async_db_session)
+    plan = [("Finance", "Zeta", 2), ("Finance", "Alpha", 2), ("Finance", "Beta", 1)]
+    for sector, actor, n in plan:
+        for i in range(n):
+            await _seed_incident_article(
+                async_db_session,
+                url=f"https://x.com/ta/{sector}/{actor}/{i}",
+                industries=[sector],
+                actors=[actor],
+                posted_on=_TODAY,
+            )
+    await _seed_incident_article(
+        async_db_session,
+        url="https://x.com/ta/none",
+        industries=["Energy"],
+        actors=[],
+        posted_on=_TODAY,
+    )
+    result = await exec_dashboard_service.get_exec_dashboard_v2(
+        async_db_session, days=90, client_id="default", role="analyst"
+    )
+    by = {r["sector"]: r["top_actor"] for r in result["sector_risk_scores"]}
+    assert by == {"Finance": "Alpha", "Energy": None}
