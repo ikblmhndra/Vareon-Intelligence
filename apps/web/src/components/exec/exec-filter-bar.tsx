@@ -32,6 +32,8 @@ interface ExecFilterBarProps {
   exportDisabled?: boolean;
   /** Hanya dikirim bila user punya `manage_intel`. */
   onGenerateBrief?: () => void;
+  /** Generate menunggu brief hari ini diketahui (konfirmasi timpa bergantung padanya). */
+  generateDisabled?: boolean;
   generating: boolean;
 }
 
@@ -46,6 +48,7 @@ export function ExecFilterBar({
   onExportCsv,
   exportDisabled,
   onGenerateBrief,
+  generateDisabled,
   generating,
 }: ExecFilterBarProps) {
   function set<K extends keyof ExecFilters>(key: K, value: ExecFilters[K]) {
@@ -115,7 +118,7 @@ export function ExecFilterBar({
           </Button>
         )}
         {onGenerateBrief && (
-          <Button size="sm" loading={generating} onClick={onGenerateBrief}>
+          <Button size="sm" loading={generating} disabled={generateDisabled} onClick={onGenerateBrief}>
             {generating ? "Generating…" : "✦ Generate brief"}
           </Button>
         )}

@@ -9,6 +9,7 @@ import { EntityChipList } from "@/components/entities/entity-chip";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { HeatCell, HeatGrid } from "@/components/ui/heat-grid";
+import { Skeleton } from "@/components/ui/skeleton";
 import { StatePanel } from "@/components/ui/state-panel";
 import { heatInsight, heatStep, monthEnd, monthLong, monthShort, monthsCopy } from "@/lib/exec/heat";
 import { toTitleCase } from "@/lib/exec/format";
@@ -101,7 +102,7 @@ function DrillDialog({ drill, onClose }: { drill: { sector: string; month: strin
     queryKey: ["exec", "drill", drill?.sector, drill?.month],
     queryFn: async () => {
       if (!drill) return null;
-      const { data, error } = await api.GET("/api/articles", {
+      const { data, error, response } = await api.GET("/api/articles", {
         params: {
           query: {
             industry: [drill.sector],
@@ -111,7 +112,7 @@ function DrillDialog({ drill, onClose }: { drill: { sector: string; month: strin
           },
         },
       });
-      if (error) throw error;
+      if (!response.ok || data === undefined) throw error ?? new Error(`articles ${response.status}`);
       return data;
     },
     enabled: drill !== null,
@@ -128,9 +129,16 @@ function DrillDialog({ drill, onClose }: { drill: { sector: string; month: strin
               ? "Could not load the articles."
               : query.data
                 ? `${query.data.total} article${query.data.total !== 1 ? "s" : ""}`
-                : "Loading…"}
+                : "Articles for this month"}
           </DialogDescription>
         </DialogHeader>
+        {query.isPending && drill && (
+          <div className="space-y-3" aria-hidden="true">
+            {Array.from({ length: 3 }, (_, i) => (
+              <Skeleton key={i} className="h-10 w-full" />
+            ))}
+          </div>
+        )}
         {query.data && query.data.articles.length === 0 && (
           <p className="py-6 text-center text-xs text-muted-foreground">No articles found.</p>
         )}

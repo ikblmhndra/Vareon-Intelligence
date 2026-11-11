@@ -33,12 +33,13 @@ interface BriefCardProps {
   onSelectDate: (date: string | null) => void;
   onOpenDialog: () => void;
   onGenerate: () => void;
+  generateDisabled?: boolean;
   generating: boolean;
 }
 
 /** Kartu brief di baris utama Briefing (6.3). Menarik brief sendiri lewat react-query (key sama dengan
  * halaman, jadi satu request). `filters` tidak dibaca di sini; induk yang memakainya saat `onGenerate`. */
-export function BriefCard({ selectedDate, onSelectDate, onOpenDialog, onGenerate, generating }: BriefCardProps) {
+export function BriefCard({ selectedDate, onSelectDate, onOpenDialog, onGenerate, generateDisabled, generating }: BriefCardProps) {
   const can = useCan();
   const q = useBrief(selectedDate);
   const datesQ = useBriefDates();
@@ -111,7 +112,7 @@ export function BriefCard({ selectedDate, onSelectDate, onOpenDialog, onGenerate
         }
         action={
           can("manage_intel") && isToday ? (
-            <Button size="sm" loading={generating} onClick={onGenerate}>
+            <Button size="sm" loading={generating} disabled={generateDisabled} onClick={onGenerate}>
               Generate brief
             </Button>
           ) : undefined

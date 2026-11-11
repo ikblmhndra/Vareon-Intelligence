@@ -19,7 +19,8 @@ export function useBrief(selectedDate: string | null) {
       const { data, error, response } = await api.GET("/api/exec/brief", {
         params: { query: selectedDate ? { date: selectedDate } : {} },
       });
-      if (error) throw new Error(`exec brief gagal (${response.status})`, { cause: response.status });
+      // `error` kosong pada 502 tanpa body: cek `response.ok`, bukan `error`.
+      if (!response.ok || data === undefined) throw new Error(`exec brief gagal (${response.status})`, { cause: response.status });
       return data;
     },
   });
@@ -31,7 +32,7 @@ export function useBriefDates() {
     retry,
     queryFn: async () => {
       const { data, error, response } = await api.GET("/api/exec/brief/dates");
-      if (error) throw new Error(`exec brief dates gagal (${response.status})`, { cause: response.status });
+      if (!response.ok || data === undefined) throw new Error(`exec brief dates gagal (${response.status})`, { cause: response.status });
       return data;
     },
   });
@@ -46,8 +47,8 @@ export function useGenerateBrief() {
       const { data, error, response } = await api.POST("/api/exec/brief", {
         params: { query: { days: f.days, incident_only: f.incident_only, confirmed_only: f.confirmed_only } },
       });
-      if (error) {
-        const detail = (error as { detail?: unknown }).detail;
+      if (!response.ok || data === undefined) {
+        const detail = (error as { detail?: unknown } | undefined)?.detail;
         throw new Error(typeof detail === "string" ? detail : "Brief generation failed. Try again later.", {
           cause: response.status,
         });

@@ -105,7 +105,7 @@ function ExecDashboardPage() {
           },
         },
       });
-      if (error) throw new Error(`exec dashboard gagal (${response.status})`, { cause: response.status });
+      if (!response.ok || data === undefined) throw new Error(`exec dashboard gagal (${response.status})`, { cause: response.status });
       return data as unknown as ExecDashboardV2;
     },
   });
@@ -123,6 +123,9 @@ function ExecDashboardPage() {
   }
 
   /** Ada brief hari ini -> tanya dulu (menimpa baris bersama semua klien); belum ada -> langsung. */
+  // Generate menunggu query bawaan selesai sukses: sebelum itu `todayBrief` null dan POST akan menimpa tanpa konfirmasi.
+  const briefReady = defaultBrief.isSuccess;
+
   function requestGenerate(f: ExecBriefFilters) {
     if (todayBrief) setConfirmFilters(f);
     else runGenerate(f);
@@ -181,6 +184,7 @@ function ExecDashboardPage() {
         onExportCsv={can("export_data") ? () => d && downloadExecCsv(d, execCountLabel(filters)) : undefined}
         exportDisabled={!d}
         onGenerateBrief={can("manage_intel") ? () => requestGenerate(pageBriefFilters) : undefined}
+        generateDisabled={!briefReady}
         generating={generate.isPending}
       />
 
@@ -221,6 +225,7 @@ function ExecDashboardPage() {
                 onOpenDialog={() => setDialogOpen(true)}
                 onGenerate={() => requestGenerate(pageBriefFilters)}
                 generating={generate.isPending}
+                generateDisabled={!briefReady}
               />
             }
             today={today}
@@ -231,7 +236,7 @@ function ExecDashboardPage() {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         brief={shown}
-        canRegenerate={can("manage_intel") && shown !== null && shown.brief_date === briefQuery.data?.today}
+        canRegenerate={can("manage_intel") && briefReady && shown !== null && shown.brief_date === briefQuery.data?.today}
         onRegenerate={() => shown && requestGenerate(shown.filters)}
         regenerating={generate.isPending}
       />
