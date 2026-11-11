@@ -1,7 +1,5 @@
 import type { ReactNode } from "react";
 
-import { DashboardSectionLabel } from "@/components/dashboard/stat-box";
-import { ExecChartsSection } from "@/components/exec/charts-section";
 import { ExecKpiRow } from "@/components/exec/exec-kpi-row";
 import { CveExposureCard } from "@/components/exec/cve-exposure-card";
 import { SectorRiskCard } from "@/components/exec/sector-risk-card";
@@ -13,8 +11,7 @@ import type { ExecFilters } from "@/lib/exec/filters";
 import type { ExecDashboardV2 } from "@/lib/api/loose-types";
 
 /** Tampilan Briefing: baris utama (brief + spike sektor), baris KPI, dua baris kartu (Sector risk | Threat
- * actors, CVE exposure | Top techniques) lalu tren. Tren (`ExecChartsSection`) masih tinggal di sini sampai
- * Analyst board (Task 14) mengambilnya, jadi tidak ada grafik yang hilang. `today` dari halaman, bukan
+ * actors, CVE exposure | Top techniques) (tren pindah ke Analyst board, Task 14). `today` dari halaman, bukan
  * `new Date()` di render, supaya `from` tautan Newsroom stabil dan sama dengan rentang di header.
  * `brief` kosong (Analyst board tidak memakainya) -> panel spike memakai lebar penuh. */
 export function BriefingView({
@@ -43,9 +40,6 @@ export function BriefingView({
         <CveExposureCard d={d} className="lg:col-span-3" />
         <TopTechniquesCard d={d} days={filters.days} className="lg:col-span-2" />
       </div>
-
-      <DashboardSectionLabel>Trends</DashboardSectionLabel>
-      <ExecChartsSection d={d} />
     </>
   );
 }

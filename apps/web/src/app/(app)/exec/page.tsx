@@ -8,17 +8,11 @@ import { toast } from "sonner";
 import { api } from "@/lib/api/client";
 import { useCan } from "@/lib/auth/permissions";
 import { useAuth } from "@/components/providers/auth-provider";
-import { DashboardSectionLabel } from "@/components/dashboard/stat-box";
 import { ExecFilterBar } from "@/components/exec/exec-filter-bar";
+import { BoardView } from "@/components/exec/board-view";
 import { BriefingView } from "@/components/exec/briefing-view";
 import { ExecFootnote } from "@/components/exec/exec-footnote";
 import { ExecPageHeader } from "@/components/exec/exec-page-header";
-import { TaVelocity, SectorCooccurrence } from "@/components/exec/tier2-panels";
-import { CveExposureCard } from "@/components/exec/cve-exposure-card";
-import { TopTechniquesCard } from "@/components/exec/top-techniques-card";
-import { SectorHeatmap } from "@/components/exec/sector-heatmap";
-import { SectorActorMatrix } from "@/components/exec/sector-actor-matrix";
-import { ClusterList, CriticalCveFeed, FpQueue } from "@/components/exec/role-gated-panels";
 import { BriefCard } from "@/components/exec/brief-card";
 import { ExecBriefModal } from "@/components/exec/brief-modal";
 import { Button } from "@/components/ui/button";
@@ -59,65 +53,6 @@ function initialFilters(): ExecFilters {
     confirmedOnly: r?.confirmedOnly ?? base.confirmedOnly,
     rolePreview: getStoredRolePreview(),
   };
-}
-
-/** Isi sementara Analyst board: bagian lama yang rinci; diganti `BoardView` (Task 14). */
-function BoardContent({ d, days }: { d: ExecDashboardV2; days: number }) {
-  return (
-    <>
-          <DashboardSectionLabel>CVE Exposure</DashboardSectionLabel>
-          <p className="-mt-2 mb-2 text-xs text-muted-foreground">
-            All tracked CVEs across clients (false positives excluded), not filtered by the period above.
-          </p>
-          <CveExposureCard d={d} />
-
-          <DashboardSectionLabel>Sector Activity Heatmap</DashboardSectionLabel>
-          <SectorHeatmap d={d} />
-
-          <DashboardSectionLabel>Secondary Signals</DashboardSectionLabel>
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <TopTechniquesCard d={d} days={days} />
-            <div className="rounded-xl border border-border bg-background p-3">
-              <div className="mb-2 font-mono text-xs text-muted-foreground">Threat Actor Velocity</div>
-              <TaVelocity d={d} />
-            </div>
-            <div className="rounded-xl border border-border bg-background p-3">
-              <div className="mb-2 font-mono text-xs text-muted-foreground">Sector Co-occurrence</div>
-              <SectorCooccurrence d={d} />
-            </div>
-            <div className="rounded-xl border border-border bg-background p-3">
-              <div className="mb-2 font-mono text-xs text-muted-foreground">Sector × Actor Matrix</div>
-              <SectorActorMatrix d={d} />
-            </div>
-          </div>
-
-          {(d.view_config.sections.cluster_list || d.view_config.sections.fp_feedback_queue || d.view_config.sections.critical_cve_feed) && (
-            <>
-              <DashboardSectionLabel>Role View — {d.view_config.role.toUpperCase()}</DashboardSectionLabel>
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                {d.view_config.sections.cluster_list && (
-                  <div className="rounded-xl border border-border bg-background p-3">
-                    <div className="mb-2 font-mono text-xs text-muted-foreground">Recent Campaign Clusters</div>
-                    <ClusterList d={d} />
-                  </div>
-                )}
-                {d.view_config.sections.fp_feedback_queue && (
-                  <div className="rounded-xl border border-border bg-background p-3">
-                    <div className="mb-2 font-mono text-xs text-muted-foreground">IOC False-Positive Queue</div>
-                    <FpQueue d={d} />
-                  </div>
-                )}
-                {d.view_config.sections.critical_cve_feed && (
-                  <div className="rounded-xl border border-border bg-background p-3 lg:col-span-2">
-                    <div className="mb-2 font-mono text-xs text-muted-foreground">KEV CVE Feed — CISA known exploited</div>
-                    <CriticalCveFeed d={d} />
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-    </>
-  );
 }
 
 /**
@@ -289,7 +224,7 @@ function ExecDashboardPage() {
               />
             }
             today={today}
-          /> : <BoardContent d={d} days={filters.days} />)}
+          /> : <BoardView d={d} filters={filters} />)}
       {d && <ExecFootnote filters={filters} />}
 
       <ExecBriefModal

@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 
 // Kelas ditulis utuh supaya Tailwind menemukannya; urutan = seri `--chart-1..10` yang sama dengan grafik.
-const SEGMENT = [
+export const SHARE_BAR_SEGMENT = [
   "bg-chart-1",
   "bg-chart-2",
   "bg-chart-3",
@@ -36,7 +36,7 @@ export function ShareBar({ items, "aria-label": ariaLabel }: ShareBarProps) {
           it.value > 0 ? (
             <span
               key={it.label}
-              className={cn("h-full", SEGMENT[i % SEGMENT.length])}
+              className={cn("h-full", SHARE_BAR_SEGMENT[i % SHARE_BAR_SEGMENT.length])}
               style={{ width: `${(it.value / total) * 100}%` }}
             />
           ) : null,
