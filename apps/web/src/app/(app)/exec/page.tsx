@@ -1,14 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { api } from "@/lib/api/client";
+import { useCan } from "@/lib/auth/permissions";
 import { useAuth } from "@/components/providers/auth-provider";
 import { DashboardSectionLabel } from "@/components/dashboard/stat-box";
 import { ExecFilterBar } from "@/components/exec/exec-filter-bar";
-import { KpiStrip, KpiStripSkeleton } from "@/components/exec/kpi-strip";
+import { ExecFootnote } from "@/components/exec/exec-footnote";
+import { ExecPageHeader } from "@/components/exec/exec-page-header";
+import { KpiStrip } from "@/components/exec/kpi-strip";
 import { SpikeBanner, TtpList, TaVelocity, SectorCooccurrence } from "@/components/exec/tier2-panels";
 import { SectorRiskMatrix } from "@/components/exec/sector-risk";
 import { TaLeaderboard } from "@/components/exec/ta-leaderboard";
@@ -18,114 +22,47 @@ import { SectorHeatmap } from "@/components/exec/sector-heatmap";
 import { SectorActorMatrix } from "@/components/exec/sector-actor-matrix";
 import { ClusterList, CriticalCveFeed, FpQueue } from "@/components/exec/role-gated-panels";
 import { ExecBriefModal } from "@/components/exec/brief-modal";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { StatePanel } from "@/components/ui/state-panel";
 import {
+  clearExecWatchlist,
   defaultExecFilters,
   execCountLabel,
   getStoredRolePreview,
+  parseExecView,
   restoreExecWatchlist,
   saveExecWatchlist,
   setStoredRolePreview,
   type ExecFilters,
+  type ExecView,
 } from "@/lib/exec/filters";
 import { downloadExecCsv } from "@/lib/exec/format";
-import type { ExecBriefResponse, ExecDashboardV2 } from "@/lib/api/loose-types";
+import { errorStatus, isClientError } from "@/lib/exec/query";
+import { PLATFORM_NAME } from "@/lib/brand";
+import type { ExecDashboardV2 } from "@/lib/api/loose-types";
+import type { components } from "@/lib/api/schema";
+
+type ExecBriefOut = components["schemas"]["ExecBriefOut"];
+
+const VIEW_TITLE: Record<ExecView, string> = { briefing: "Exec briefing", board: "Analyst board" };
 
 function initialFilters(): ExecFilters {
   if (typeof window === "undefined") return defaultExecFilters();
   const base = defaultExecFilters();
-  const restored = restoreExecWatchlist();
-  const rolePreview = getStoredRolePreview();
-  return { ...base, ...restored, rolePreview };
+  const r = restoreExecWatchlist();
+  return {
+    days: r?.days ?? base.days,
+    incidentOnly: r?.incidentOnly ?? base.incidentOnly,
+    confirmedOnly: r?.confirmedOnly ?? base.confirmedOnly,
+    rolePreview: getStoredRolePreview(),
+  };
 }
 
-/**
- * Port `exec.js` (869 baris) -- Executive Dashboard: 6 chart+2 heatmap+
- * AI brief+FP-vote widget, area "Besar" tunggal terbesar kedua Fase 8
- * (setelah CVE Tracker). Backend (`exec_dashboard.py`/`exec_brief.py`/
- * `spike.py`) udah lengkap sejak Fase 7 -- satu-satunya perubahan
- * backend di Grup ini adalah nambah `id` ke `pending_fp_queue` row
- * (gap #7, lihat `services/exec_dashboard.py`).
- *
- * PIR (`_pirXxx` functions, `exec.js:757+`) TIDAK ikut diport --
- * itu fitur beda (Priority Intelligence Requirements, `/intelligence`
- * Grup G2), cuma numpang 1 file fisik sama legacy (pola disorganisasi
- * yang sama kayak newsroom panel loaders numpang di `cve.js`/`ta.js`).
- */
-export default function ExecDashboardPage() {
-  const { user } = useAuth();
-  const isAdmin = user?.role === "admin" || user?.role === "superadmin";
-  const [filters, setFilters] = useState<ExecFilters>(initialFilters);
-  const [watchlistSaved, setWatchlistSaved] = useState(() => (typeof window === "undefined" ? false : restoreExecWatchlist() !== null));
-  const [brief, setBrief] = useState<ExecBriefResponse | null>(null);
-  // Pilihan "Role preview" tersimpan per browser (localStorage). Non-admin yang memakai browser
-  // bekas admin ikut mengirimnya, dan API menjawab 403 "Role preview is admin-only" untuk SELURUH
-  // halaman. Hanya admin yang mengirim role preview.
-  const rolePreview = isAdmin ? filters.rolePreview : "";
-
-  const dashboard = useQuery({
-    queryKey: ["exec", "dashboard-v2", filters.days, filters.incidentOnly, filters.confirmedOnly, rolePreview],
-    queryFn: async () => {
-      const { data, error } = await api.GET("/api/exec/dashboard-v2", {
-        params: {
-          query: {
-            days: filters.days,
-            incident_only: filters.incidentOnly,
-            confirmed_only: filters.confirmedOnly,
-            role: rolePreview || undefined,
-          },
-        },
-      });
-      if (error) throw error;
-      return data as unknown as ExecDashboardV2;
-    },
-  });
-
-  const briefMutation = useMutation({
-    mutationFn: async () => {
-      const { data, error } = await api.POST("/api/exec/brief", {
-        params: { query: { days: filters.days, incident_only: filters.incidentOnly, confirmed_only: filters.confirmedOnly } },
-      });
-      if (error) throw new Error(JSON.stringify(error));
-      return data as unknown as ExecBriefResponse;
-    },
-    onSuccess: (data) => setBrief(data),
-    onError: (e) => toast.error(`Brief generation failed: ${(e as Error).message}`),
-  });
-
-  function onFiltersChange(next: ExecFilters) {
-    setFilters(next);
-    setStoredRolePreview(next.rolePreview);
-  }
-
-  const d = dashboard.data;
-
+/** Isi sementara tampilan Briefing: bagian lama yang ringkas; diganti `BriefingView` (Task 10). */
+function BriefingContent({ d, filters }: { d: ExecDashboardV2; filters: ExecFilters }) {
   return (
-    <div className="space-y-1 pb-10">
-      <ExecFilterBar
-        filters={filters}
-        onChange={onFiltersChange}
-        isAdmin={isAdmin}
-        viewRole={d?.view_config.role ?? null}
-        watchlistSaved={watchlistSaved}
-        onSaveWatchlist={() => {
-          saveExecWatchlist(filters);
-          setWatchlistSaved(true);
-        }}
-        onClearWatchlist={() => {
-          localStorage.removeItem("cti_exec_idea_watchlist_v1");
-          setWatchlistSaved(false);
-        }}
-        onGenerateBrief={() => briefMutation.mutate()}
-        briefPending={briefMutation.isPending}
-        onExportCsv={() => d && downloadExecCsv(d, execCountLabel(filters))}
-        exportDisabled={!d}
-      />
-
-      {dashboard.isPending && <KpiStripSkeleton />}
-      {dashboard.isError && <p className="text-sm text-destructive">Failed to load exec dashboard.</p>}
-
-      {d && (
-        <>
+    <>
           <KpiStrip d={d} countLabel={execCountLabel(filters)} />
           <SpikeBanner d={d} />
 
@@ -143,6 +80,14 @@ export default function ExecDashboardPage() {
           <DashboardSectionLabel>Trends</DashboardSectionLabel>
           <ExecChartsSection d={d} />
 
+    </>
+  );
+}
+
+/** Isi sementara Analyst board: bagian lama yang rinci; diganti `BoardView` (Task 14). */
+function BoardContent({ d }: { d: ExecDashboardV2 }) {
+  return (
+    <>
           <DashboardSectionLabel>CVE Exposure</DashboardSectionLabel>
           <p className="-mt-2 mb-2 text-xs text-muted-foreground">
             All tracked CVEs across clients (false positives excluded), not filtered by the period above.
@@ -197,10 +142,158 @@ export default function ExecDashboardPage() {
               </div>
             </>
           )}
-        </>
+    </>
+  );
+}
+
+/**
+ * Halaman Exec: satu query dashboard-v2 dipakai bersama kedua tampilan (Briefing | Analyst board, `?view=`),
+ * jadi berpindah tampilan tidak memicu fetch ulang. Filter, role preview, dan watchlist hidup di sini.
+ * Asal halaman: port `exec.js` (Fase 8); PIR ada di `/intelligence`, bukan di sini.
+ */
+function ExecDashboardPage() {
+  const { user } = useAuth();
+  const can = useCan();
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const isAdmin = user?.role === "admin" || user?.role === "superadmin";
+  const [filters, setFilters] = useState<ExecFilters>(initialFilters);
+  const [saved] = useState(() => (typeof window === "undefined" ? null : restoreExecWatchlist()));
+  const [watchlistSaved, setWatchlistSaved] = useState(saved !== null);
+  const [brief, setBrief] = useState<ExecBriefOut | null>(null);
+  const today = useMemo(() => new Date(), []);
+  // `?view=` eksplisit menang atas tampilan tersimpan; nilai tak valid jatuh ke Briefing.
+  const rawView = params.get("view");
+  const view: ExecView = rawView !== null ? (parseExecView(rawView) ?? "briefing") : (saved?.view ?? "briefing");
+  // Pilihan "Role preview" tersimpan per browser (localStorage). Non-admin yang memakai browser
+  // bekas admin ikut mengirimnya, dan API menjawab 403 "Role preview is admin-only" untuk SELURUH
+  // halaman. Hanya admin yang mengirim role preview.
+  const rolePreview = isAdmin ? filters.rolePreview : "";
+
+  const dashboard = useQuery({
+    queryKey: ["exec", "dashboard-v2", filters.days, filters.incidentOnly, filters.confirmedOnly, rolePreview],
+    retry: (n, e) => n < 2 && !isClientError(e),
+    queryFn: async () => {
+      const { data, error, response } = await api.GET("/api/exec/dashboard-v2", {
+        params: {
+          query: {
+            days: filters.days,
+            incident_only: filters.incidentOnly,
+            confirmed_only: filters.confirmedOnly,
+            role: rolePreview || undefined,
+          },
+        },
+      });
+      if (error) throw new Error(`exec dashboard gagal (${response.status})`, { cause: response.status });
+      return data as unknown as ExecDashboardV2;
+    },
+  });
+
+  const briefMutation = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await api.POST("/api/exec/brief", {
+        params: { query: { days: filters.days, incident_only: filters.incidentOnly, confirmed_only: filters.confirmedOnly } },
+      });
+      if (error) throw new Error(JSON.stringify(error));
+      return data;
+    },
+    onSuccess: (data) => setBrief(data),
+    onError: (e) => toast.error(`Brief generation failed: ${(e as Error).message}`),
+  });
+
+  // Judul tab per tampilan; dipulihkan saat ganti tampilan/unmount (pola entity-view).
+  useEffect(() => {
+    const previous = document.title;
+    const mine = `${VIEW_TITLE[view]} · ${PLATFORM_NAME}`;
+    document.title = mine;
+    return () => {
+      if (document.title === mine) document.title = previous;
+    };
+  }, [view]);
+
+  function onFiltersChange(next: ExecFilters) {
+    setFilters(next);
+    setStoredRolePreview(next.rolePreview);
+  }
+
+  function onViewChange(next: ExecView) {
+    router.replace(`${pathname}?view=${next}`, { scroll: false });
+  }
+
+  const d = dashboard.data;
+  const status = errorStatus(dashboard.error);
+
+  return (
+    <div className="pb-10">
+      <ExecPageHeader
+        days={filters.days}
+        today={today}
+        data={d}
+        updatedAt={dashboard.dataUpdatedAt}
+        filters={filters}
+        view={view}
+        onViewChange={onViewChange}
+      />
+      <ExecFilterBar
+        filters={filters}
+        onChange={onFiltersChange}
+        isAdmin={isAdmin}
+        viewRole={d?.view_config.role ?? null}
+        watchlistSaved={watchlistSaved}
+        onToggleWatchlist={() => {
+          if (watchlistSaved) clearExecWatchlist();
+          else saveExecWatchlist(filters, view);
+          setWatchlistSaved(!watchlistSaved);
+        }}
+        onExportCsv={can("export_data") ? () => d && downloadExecCsv(d, execCountLabel(filters)) : undefined}
+        exportDisabled={!d}
+        onGenerateBrief={can("manage_intel") ? () => briefMutation.mutate() : undefined}
+        generating={briefMutation.isPending}
+      />
+
+      {dashboard.isPending && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5" aria-hidden="true">
+            {Array.from({ length: 5 }, (_, i) => (
+              <Skeleton key={i} className="h-24 rounded-lg" />
+            ))}
+          </div>
+          <StatePanel variant="loading" title="Loading exec dashboard…" />
+        </div>
       )}
+      {dashboard.isError &&
+        (status === 403 ? (
+          <StatePanel
+            variant="no-access"
+            title="No access to the Exec dashboard"
+            description="Your role cannot view this page. Ask an administrator if you need it."
+          />
+        ) : (
+          <StatePanel
+            variant="error"
+            title="Could not load the exec dashboard"
+            action={
+              <Button size="sm" variant="outline" onClick={() => void dashboard.refetch()}>
+                Retry
+              </Button>
+            }
+          />
+        ))}
+
+      {d && (view === "briefing" ? <BriefingContent d={d} filters={filters} /> : <BoardContent d={d} />)}
+      {d && <ExecFootnote filters={filters} />}
 
       <ExecBriefModal brief={brief} days={filters.days} onOpenChange={(open) => !open && setBrief(null)} />
     </div>
+  );
+}
+
+/** `useSearchParams` butuh batas Suspense agar build tidak gagal pada prerender. */
+export default function ExecPage() {
+  return (
+    <Suspense>
+      <ExecDashboardPage />
+    </Suspense>
   );
 }

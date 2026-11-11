@@ -5,10 +5,12 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import type { ExecBriefResponse } from "@/lib/api/loose-types";
+import type { components } from "@/lib/api/schema";
+
+type ExecBriefOut = components["schemas"]["ExecBriefOut"];
 
 interface ExecBriefModalProps {
-  brief: ExecBriefResponse | null;
+  brief: ExecBriefOut | null;
   days: number;
   onOpenChange: (open: boolean) => void;
 }
@@ -31,14 +33,14 @@ export function ExecBriefModal({ brief, days, onOpenChange }: ExecBriefModalProp
           )}
         </DialogHeader>
         <div className="prose prose-sm max-w-none text-xs leading-relaxed">
-          <Markdown>{brief?.brief ?? ""}</Markdown>
+          <Markdown>{brief?.markdown ?? ""}</Markdown>
         </div>
         <DialogFooter>
           <Button
             variant="outline"
             onClick={() => {
               if (!brief) return;
-              void navigator.clipboard.writeText(brief.brief).then(() => toast.success("Copied to clipboard"));
+              void navigator.clipboard.writeText(brief.markdown).then(() => toast.success("Copied to clipboard"));
             }}
           >
             Copy

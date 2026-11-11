@@ -1,3 +1,5 @@
+import { csvCell } from "@/lib/csv";
+
 /** Port `_execTrend()` (`exec.js:11-19`) -- buat metrik keamanan: naik =
  * lebih banyak insiden/aktor = BURUK (merah), turun = baik (hijau). */
 export function execTrend(current: number, prev: number): { text: string; colorClass: string } | null {
@@ -62,21 +64,31 @@ export function cvssColorClass(score: number | null | undefined): string {
   return "text-muted-foreground";
 }
 
-function csvRow(cells: (string | number | null | undefined)[]): string {
-  return cells.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(",");
-}
+const csvRow = (cells: unknown[]): string => cells.map(csvCell).join(",");
 
-/** Port `exportExecCsv()` (`exec.js:687-728`). */
+/** Port `exportExecCsv()` (`exec.js:687-728`). Sel lewat `csvCell` (guard formula Excel + kutip). */
 export function buildExecCsv(d: import("@/lib/api/loose-types").ExecDashboardV2, countLabel: string): string {
   const prevSet = new Set(d.prev_ta_names.map((n) => n.toLowerCase()));
   const rows: string[] = [
     csvRow(["=== SECTOR RISK MATRIX ==="]),
-    csvRow(["Sector", "Risk Score"]),
-    ...d.sector_risk_scores.map((r) => csvRow([r.sector, r.risk_score])),
+    csvRow(["Sector", "Risk Score", "Top Actor"]),
+    ...d.sector_risk_scores.map((r) => csvRow([r.sector, r.risk_score, r.top_actor])),
     "",
     csvRow(["=== TOP THREAT ACTORS ==="]),
-    csvRow(["Threat Actor", "Incident Count", "Status"]),
-    ...d.ta_leaderboard.map((ta) => csvRow([ta.name, ta.count, !d.prev_period_reliable ? "n/a" : prevSet.has(ta.name.toLowerCase()) ? "RECURRING" : "NEW"])),
+    csvRow(["Threat Actor", "Incident Count", "Status", "Velocity %", "Top Sectors"]),
+    ...d.ta_leaderboard.map((ta) =>
+      csvRow([
+        ta.name,
+        ta.count,
+        !d.prev_period_reliable ? "n/a" : prevSet.has(ta.name.toLowerCase()) ? "RECURRING" : "NEW",
+        ta.velocity_pct,
+        ta.top_sectors,
+      ]),
+    ),
+    "",
+    csvRow(["=== MONTHLY TOTALS ==="]),
+    csvRow(["Month", "Incidents"]),
+    ...d.months.map((m, i) => csvRow([m, d.monthly_totals[i] ?? 0])),
     "",
     csvRow(["=== CVE EXPOSURE ==="]),
     csvRow(["Technology", "Total", "Critical", "High", "Medium", "Max CVSS", "PoC Count"]),
