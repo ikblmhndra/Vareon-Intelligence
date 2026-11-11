@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { Sparkline } from "@/components/ui/sparkline";
 import { cn } from "@/lib/utils";
 
 interface StatBoxProps {
@@ -142,21 +143,5 @@ function CardHeader({ title, note }: { title: string; note?: ReactNode }) {
       <h3 className="text-base font-semibold text-foreground">{title}</h3>
       {note && <div className="mt-0.5 text-xs text-muted-foreground">{note}</div>}
     </div>
-  );
-}
-
-function Sparkline({ data }: { data: number[] }) {
-  const W = 120;
-  const H = 36;
-  const max = Math.max(...data);
-  const min = Math.min(...data);
-  const span = Math.max(1, max - min);
-  const pts = data
-    .map((v, i) => `${((i / (data.length - 1)) * W).toFixed(1)},${(H - 4 - ((v - min) / span) * (H - 8)).toFixed(1)}`)
-    .join(" ");
-  return (
-    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} aria-hidden className="shrink-0 text-info">
-      <polyline points={pts} fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
   );
 }
