@@ -4,10 +4,10 @@ import { DashboardSectionLabel } from "@/components/dashboard/stat-box";
 import { CveExposureCard } from "@/components/exec/cve-exposure-card";
 import { ExecLegacySignalCharts, NewsTypesCard, SectorTrendCard, VictimCountryTrendCard } from "@/components/exec/charts-section";
 import { ExecKpiRow } from "@/components/exec/exec-kpi-row";
-import { SectorActorMatrix } from "@/components/exec/sector-actor-matrix";
+import { ActorSectorDots } from "@/components/exec/actor-sector-dots";
+import { ActorVelocityCard } from "@/components/exec/actor-velocity-card";
 import { SectorHeatmap } from "@/components/exec/sector-heatmap";
 import { ClusterList, CriticalCveFeed, FpQueue } from "@/components/exec/role-gated-panels";
-import { SectorCooccurrence, TaVelocity } from "@/components/exec/tier2-panels";
 import { TopTechniquesCard } from "@/components/exec/top-techniques-card";
 import type { ExecFilters } from "@/lib/exec/filters";
 import type { ExecDashboardV2 } from "@/lib/api/loose-types";
@@ -37,18 +37,8 @@ export function BoardView({ d, filters }: { d: ExecDashboardV2; filters: ExecFil
       <DashboardSectionLabel>Secondary Signals</DashboardSectionLabel>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <TopTechniquesCard d={d} days={filters.days} />
-        <div className="rounded-xl border border-border bg-background p-3">
-          <div className="mb-2 font-mono text-xs text-muted-foreground">Threat Actor Velocity</div>
-          <TaVelocity d={d} />
-        </div>
-        <div className="rounded-xl border border-border bg-background p-3">
-          <div className="mb-2 font-mono text-xs text-muted-foreground">Sector Co-occurrence</div>
-          <SectorCooccurrence d={d} />
-        </div>
-        <div className="rounded-xl border border-border bg-background p-3">
-          <div className="mb-2 font-mono text-xs text-muted-foreground">Sector × Actor Matrix</div>
-          <SectorActorMatrix d={d} />
-        </div>
+        <ActorSectorDots matrix={d.sector_actor_matrix} />
+        <ActorVelocityCard d={d} />
       </div>
 
       {(d.view_config.sections.cluster_list || d.view_config.sections.fp_feedback_queue || d.view_config.sections.critical_cve_feed) && (

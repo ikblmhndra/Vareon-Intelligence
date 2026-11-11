@@ -156,3 +156,20 @@ export function velocityDisplay(pct: number | null): { text: string; colorClass:
     colorClass: pct > 20 ? "text-destructive-text" : "text-muted-foreground",
   };
 }
+
+/** Singkatan header kolom matriks aktor × sektor (6.2). Kunci = nama sektor dari API (huruf kecil); sektor yang
+ * belum terdaftar jatuh ke 7 huruf pertama kapital, nama lengkap selalu ada di `<abbr title>`. */
+export const SECTOR_ABBR: Record<string, string> = {
+  "financial services": "FINANCE",
+  finance: "FINANCE",
+  government: "GOV",
+  healthcare: "HEALTH",
+  telecommunications: "TELECOM",
+  telecom: "TELECOM",
+  manufacturing: "MANUF.",
+  retail: "RETAIL",
+  energy: "ENERGY",
+};
+
+export const sectorAbbr = (sector: string): string =>
+  SECTOR_ABBR[sector.toLowerCase()] ?? sector.slice(0, 7).toUpperCase();
