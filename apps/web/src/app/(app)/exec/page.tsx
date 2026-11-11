@@ -122,11 +122,17 @@ function ExecDashboardPage() {
     });
   }
 
-  /** Ada brief hari ini -> tanya dulu (menimpa baris bersama semua klien); belum ada -> langsung. */
-  // Generate menunggu query bawaan selesai sukses: sebelum itu `todayBrief` null dan POST akan menimpa tanpa konfirmasi.
+  // Tanpa brief bawaan yang sukses, `todayBrief` null dan POST akan menimpa tanpa konfirmasi.
   const briefReady = defaultBrief.isSuccess;
 
+  /** Ada brief hari ini -> tanya dulu (menimpa baris bersama semua klien); belum ada -> langsung. */
   function requestGenerate(f: ExecBriefFilters) {
+    // Query bawaan galat (mis. saat tanggal lampau dipilih): ulangi, jangan POST tanpa tahu ada brief hari ini.
+    if (!briefReady) {
+      void defaultBrief.refetch();
+      toast.error("Could not check today's brief. Retrying, try again in a moment.");
+      return;
+    }
     if (todayBrief) setConfirmFilters(f);
     else runGenerate(f);
   }
@@ -184,7 +190,7 @@ function ExecDashboardPage() {
         onExportCsv={can("export_data") ? () => d && downloadExecCsv(d, execCountLabel(filters)) : undefined}
         exportDisabled={!d}
         onGenerateBrief={can("manage_intel") ? () => requestGenerate(pageBriefFilters) : undefined}
-        generateDisabled={!briefReady}
+        generateDisabled={defaultBrief.isPending}
         generating={generate.isPending}
       />
 
@@ -225,7 +231,7 @@ function ExecDashboardPage() {
                 onOpenDialog={() => setDialogOpen(true)}
                 onGenerate={() => requestGenerate(pageBriefFilters)}
                 generating={generate.isPending}
-                generateDisabled={!briefReady}
+                generateDisabled={defaultBrief.isPending}
               />
             }
             today={today}
