@@ -249,3 +249,27 @@ async def store_brief(
         prompt_version=draft.prompt_version,
         replace=replace,
     )
+
+
+async def generate_scheduled_brief(session: AsyncSession, now: datetime.datetime) -> str:
+    """Lapis kedua dan ketiga anti-panggilan-ganda untuk task `exec.brief_daily` (lapis pertama:
+    lock Redis di task). Baca ulang baris hari ini; hanya kalau masih kosong, panggil LLM.
+    `replace=False` (`INSERT ... ON CONFLICT DO NOTHING`) menjamin brief manual yang masuk di
+    antara baca-ulang dan insert (POST manual tidak mengambil lock) tidak pernah ditimpa
+    scheduler. Mengembalikan `"present"` | `"stored"` | `"raced"`; `BriefGenerationError`
+    merambat ke task dan tidak ada yang ditulis."""
+    brief_date = brief_today(now)
+    repo = AsyncExecBriefRepo(session)
+    if await repo.get(brief_date) is not None:
+        return "present"
+    draft = await draft_brief(session, filters=DEFAULT_FILTERS)
+    row = await store_brief(
+        session,
+        brief_date=brief_date,
+        draft=draft,
+        filters=DEFAULT_FILTERS,
+        generated_by="scheduler",
+        replace=False,
+    )
+    await session.commit()
+    return "stored" if row is not None else "raced"
