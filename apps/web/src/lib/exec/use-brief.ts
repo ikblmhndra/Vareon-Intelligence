@@ -54,7 +54,9 @@ export function useGenerateBrief() {
       }
       return data;
     },
-    onSuccess: async () => {
+    onSuccess: async (data) => {
+      // Brief baru langsung tersedia untuk key tanggalnya (dialog terbuka tidak berkedip kosong); lalu refetch.
+      qc.setQueryData(["exec", "brief", data.brief_date], { today: data.brief_date, brief: data });
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["exec", "brief"] }),
         qc.invalidateQueries({ queryKey: ["exec", "brief-dates"] }),

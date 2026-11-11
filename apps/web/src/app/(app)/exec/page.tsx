@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { api } from "@/lib/api/client";
@@ -38,12 +38,14 @@ import {
 } from "@/lib/exec/filters";
 import { downloadExecCsv } from "@/lib/exec/format";
 import { errorStatus, isClientError } from "@/lib/exec/query";
-import { useBrief } from "@/lib/exec/use-brief";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { useBrief, useGenerateBrief } from "@/lib/exec/use-brief";
+import { fmtTime } from "@/lib/format";
 import { PLATFORM_NAME } from "@/lib/brand";
 import type { ExecDashboardV2 } from "@/lib/api/loose-types";
 import type { components } from "@/lib/api/schema";
 
-type ExecBriefOut = components["schemas"]["ExecBriefOut"];
+type ExecBriefFilters = components["schemas"]["ExecBriefFilters"];
 
 const VIEW_TITLE: Record<ExecView, string> = { briefing: "Exec briefing", board: "Analyst board" };
 
@@ -133,10 +135,18 @@ function ExecDashboardPage() {
   const [filters, setFilters] = useState<ExecFilters>(initialFilters);
   const [saved] = useState(() => (typeof window === "undefined" ? null : restoreExecWatchlist()));
   const [watchlistSaved, setWatchlistSaved] = useState(saved !== null);
-  const [brief, setBrief] = useState<ExecBriefOut | null>(null);
-  // `null` = bawaan server (hari ini, atau yang terbaru); sukses generate mengembalikannya ke hari ini (Task 13).
+  const [dialogOpen, setDialogOpen] = useState(false);
+  // Filter yang menunggu konfirmasi "Replace today's brief?"; null = dialog konfirmasi tertutup.
+  const [confirmFilters, setConfirmFilters] = useState<ExecBriefFilters | null>(null);
+  // `null` = bawaan server (hari ini, atau yang terbaru); sukses generate mengembalikannya ke hari ini.
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const briefQuery = useBrief(selectedDate);
+  const defaultBrief = useBrief(null);
+  const generate = useGenerateBrief();
+  const shown = briefQuery.data?.brief ?? null;
+  // Brief hari ini (bila ada) dari query bawaan: dasar keputusan perlu-tidaknya konfirmasi timpa.
+  const todayBrief =
+    defaultBrief.data?.brief && defaultBrief.data.brief.brief_date === defaultBrief.data.today ? defaultBrief.data.brief : null;
   const today = useMemo(() => new Date(), []);
   // `?view=` eksplisit menang atas tampilan tersimpan; nilai tak valid jatuh ke Briefing.
   const rawView = params.get("view");
@@ -165,17 +175,29 @@ function ExecDashboardPage() {
     },
   });
 
-  const briefMutation = useMutation({
-    mutationFn: async () => {
-      const { data, error } = await api.POST("/api/exec/brief", {
-        params: { query: { days: filters.days, incident_only: filters.incidentOnly, confirmed_only: filters.confirmedOnly } },
-      });
-      if (error) throw new Error(JSON.stringify(error));
-      return data;
-    },
-    onSuccess: (data) => setBrief(data),
-    onError: (e) => toast.error(`Brief generation failed: ${(e as Error).message}`),
-  });
+  function runGenerate(f: ExecBriefFilters) {
+    generate.mutate(f, {
+      onSuccess: (data) => {
+        setSelectedDate(data.brief_date);
+        toast.success("Brief generated", { action: { label: "Open", onClick: () => setDialogOpen(true) } });
+      },
+      // 502: detail server jadi pesan; brief lama tidak berubah.
+      onError: (e) => toast.error(e.message),
+      onSettled: () => setConfirmFilters(null),
+    });
+  }
+
+  /** Ada brief hari ini -> tanya dulu (menimpa baris bersama semua klien); belum ada -> langsung. */
+  function requestGenerate(f: ExecBriefFilters) {
+    if (todayBrief) setConfirmFilters(f);
+    else runGenerate(f);
+  }
+
+  const pageBriefFilters: ExecBriefFilters = {
+    days: filters.days,
+    incident_only: filters.incidentOnly,
+    confirmed_only: filters.confirmedOnly,
+  };
 
   // Judul tab per tampilan; dipulihkan saat ganti tampilan/unmount (pola entity-view).
   useEffect(() => {
@@ -223,8 +245,8 @@ function ExecDashboardPage() {
         }}
         onExportCsv={can("export_data") ? () => d && downloadExecCsv(d, execCountLabel(filters)) : undefined}
         exportDisabled={!d}
-        onGenerateBrief={can("manage_intel") ? () => briefMutation.mutate() : undefined}
-        generating={briefMutation.isPending}
+        onGenerateBrief={can("manage_intel") ? () => requestGenerate(pageBriefFilters) : undefined}
+        generating={generate.isPending}
       />
 
       {dashboard.isPending && (
@@ -261,16 +283,33 @@ function ExecDashboardPage() {
                 filters={filters}
                 selectedDate={selectedDate}
                 onSelectDate={setSelectedDate}
-                onOpenDialog={() => setBrief(briefQuery.data?.brief ?? null)}
-                onGenerate={() => briefMutation.mutate()}
-                generating={briefMutation.isPending}
+                onOpenDialog={() => setDialogOpen(true)}
+                onGenerate={() => requestGenerate(pageBriefFilters)}
+                generating={generate.isPending}
               />
             }
             today={today}
           /> : <BoardContent d={d} days={filters.days} />)}
       {d && <ExecFootnote filters={filters} />}
 
-      <ExecBriefModal brief={brief} days={filters.days} onOpenChange={(open) => !open && setBrief(null)} />
+      <ExecBriefModal
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        brief={shown}
+        canRegenerate={can("manage_intel") && shown !== null && shown.brief_date === briefQuery.data?.today}
+        onRegenerate={() => shown && requestGenerate(shown.filters)}
+        regenerating={generate.isPending}
+      />
+      <ConfirmDialog
+        open={confirmFilters !== null}
+        onOpenChange={(open) => !open && setConfirmFilters(null)}
+        title="Replace today's brief?"
+        description={`Everyone who opens Exec, for every client, sees the new brief. The current one (${todayBrief?.generated_by ?? ""}, ${todayBrief ? fmtTime(todayBrief.generated_at) : ""}) is overwritten. Generating takes up to a minute and is one LLM call.`}
+        confirmLabel="Generate brief"
+        confirmLoading={generate.isPending}
+        cancelVariant="ghost"
+        onConfirm={() => confirmFilters && runGenerate(confirmFilters)}
+      />
     </div>
   );
 }
