@@ -5,6 +5,7 @@ import { DashboardSectionLabel } from "@/components/dashboard/stat-box";
 import { ClusterList } from "@/components/exec/role-gated-panels";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toTitleCase } from "@/lib/exec/format";
+import { cn } from "@/lib/utils";
 import type { ExecDashboardV2 } from "@/lib/api/loose-types";
 
 /** Baris "More signals" (D6): tiga kartu sinyal sekunder yang dulu tersebar. Kartu klaster dan spread
@@ -13,10 +14,11 @@ import type { ExecDashboardV2 } from "@/lib/api/loose-types";
 export function MoreSignals({ d }: { d: ExecDashboardV2 }) {
   const { cluster_list: clusters, source_reliability_spread: sr } = d.view_config.sections;
   const showSr = sr && Object.keys(d.source_reliability_spread).length > 0;
+  const count = Number(clusters) + Number(showSr) + 1;
   return (
     <section>
       <DashboardSectionLabel>More signals</DashboardSectionLabel>
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <div className={cn("grid grid-cols-1 gap-4", count === 3 ? "lg:grid-cols-3" : count === 2 ? "lg:grid-cols-2" : "")}>
         {clusters && <ClusterList d={d} />}
         {showSr && (
           <Card>

@@ -14,7 +14,7 @@ import { Chip } from "@/components/ui/chip";
 import { api } from "@/lib/api/client";
 import { useCan } from "@/lib/auth/permissions";
 import { cvssColorClass } from "@/lib/exec/format";
-import { fmtCompactAge } from "@/lib/format";
+import { fmtAgo, fmtCompactAge } from "@/lib/format";
 import { defang } from "@/lib/intelligence/defang";
 import { nameChips } from "@/lib/entities/name-chips";
 import { cn } from "@/lib/utils";
@@ -27,13 +27,6 @@ const COLLAPSED = 5;
 const MAX = 20;
 const CLUSTER_COLLAPSED = 4;
 const CLUSTER_MAX = 10;
-
-/** Umur untuk kalimat ("5 m ago"): `fmtCompactAge` mengembalikan "now" tanpa "ago", jadi kasus itu ditulis
- * "just now" supaya tidak pernah muncul "now ago". */
-function agoText(value: string): string {
-  const age = fmtCompactAge(value);
-  return age === "now" ? "just now" : `${age} ago`;
-}
 
 function invalidateDashboard(qc: ReturnType<typeof useQueryClient>) {
   void qc.invalidateQueries({ queryKey: ["exec", "dashboard-v2"] });
@@ -105,6 +98,9 @@ export function FpQueue({ d, className }: { d: ExecDashboardV2; className?: stri
   const manage = can("manage_ioc");
   const [expanded, setExpanded] = useState(false);
   const [voting, setVoting] = useState<number | null>(null);
+  // Dialog tetap terpasang (open dipisah dari target) supaya fokus kembali ke tombol "FP: remove" saat ditutup;
+  // target terakhir dipertahankan selama animasi tutup.
+  const [removeOpen, setRemoveOpen] = useState(false);
   const [removing, setRemoving] = useState<{ id: number; value: string } | null>(null);
 
   const all = d.pending_fp_queue.slice(0, MAX);
@@ -155,7 +151,7 @@ export function FpQueue({ d, className }: { d: ExecDashboardV2; className?: stri
                         {ioc.type && <Chip kind="flag" value={ioc.type} className="shrink-0" />}
                       </div>
                       <p className="text-2xs text-muted-foreground">
-                        confidence {ioc.confidence_score ?? "—"} · last seen {agoText(ioc.last_seen)}
+                        confidence {ioc.confidence_score ?? "—"} · last seen {fmtAgo(ioc.last_seen)}
                       </p>
                     </div>
                     {manage ? (
@@ -173,7 +169,10 @@ export function FpQueue({ d, className }: { d: ExecDashboardV2; className?: stri
                           size="sm"
                           variant="destructive"
                           disabled={voting !== null}
-                          onClick={() => setRemoving({ id: ioc.id, value: shown })}
+                          onClick={() => {
+                            setRemoving({ id: ioc.id, value: shown });
+                            setRemoveOpen(true);
+                          }}
                         >
                           FP: remove
                         </Button>
@@ -199,8 +198,8 @@ export function FpQueue({ d, className }: { d: ExecDashboardV2; className?: stri
       </CardContent>
       {removing && (
         <IocRemoveDialog
-          open
-          onOpenChange={(o) => !o && setRemoving(null)}
+          open={removeOpen}
+          onOpenChange={setRemoveOpen}
           ioc={removing}
           onDone={(res) => {
             toast.success("Marked as false positive.");
@@ -248,7 +247,6 @@ export function CriticalCveFeed({ d, className }: { d: ExecDashboardV2; classNam
                     {c.tech || "—"}
                   </span>
                   {c.cisa_kev && <Chip kind="cve" value="kev" className="shrink-0" />}
-                  <Chip kind="severity" value="critical" className="shrink-0" />
                 </li>
               ))}
             </ul>
