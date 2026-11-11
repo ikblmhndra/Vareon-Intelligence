@@ -19,6 +19,7 @@ import { TopTechniquesCard } from "@/components/exec/top-techniques-card";
 import { SectorHeatmap } from "@/components/exec/sector-heatmap";
 import { SectorActorMatrix } from "@/components/exec/sector-actor-matrix";
 import { ClusterList, CriticalCveFeed, FpQueue } from "@/components/exec/role-gated-panels";
+import { BriefCard } from "@/components/exec/brief-card";
 import { ExecBriefModal } from "@/components/exec/brief-modal";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -37,6 +38,7 @@ import {
 } from "@/lib/exec/filters";
 import { downloadExecCsv } from "@/lib/exec/format";
 import { errorStatus, isClientError } from "@/lib/exec/query";
+import { useBrief } from "@/lib/exec/use-brief";
 import { PLATFORM_NAME } from "@/lib/brand";
 import type { ExecDashboardV2 } from "@/lib/api/loose-types";
 import type { components } from "@/lib/api/schema";
@@ -132,6 +134,9 @@ function ExecDashboardPage() {
   const [saved] = useState(() => (typeof window === "undefined" ? null : restoreExecWatchlist()));
   const [watchlistSaved, setWatchlistSaved] = useState(saved !== null);
   const [brief, setBrief] = useState<ExecBriefOut | null>(null);
+  // `null` = bawaan server (hari ini, atau yang terbaru); sukses generate mengembalikannya ke hari ini (Task 13).
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const briefQuery = useBrief(selectedDate);
   const today = useMemo(() => new Date(), []);
   // `?view=` eksplisit menang atas tampilan tersimpan; nilai tak valid jatuh ke Briefing.
   const rawView = params.get("view");
@@ -251,7 +256,18 @@ function ExecDashboardPage() {
           />
         ))}
 
-      {d && (view === "briefing" ? <BriefingView d={d} filters={filters} brief={null} today={today} /> : <BoardContent d={d} days={filters.days} />)}
+      {d && (view === "briefing" ? <BriefingView d={d} filters={filters} brief={
+              <BriefCard
+                filters={filters}
+                selectedDate={selectedDate}
+                onSelectDate={setSelectedDate}
+                onOpenDialog={() => setBrief(briefQuery.data?.brief ?? null)}
+                onGenerate={() => briefMutation.mutate()}
+                generating={briefMutation.isPending}
+              />
+            }
+            today={today}
+          /> : <BoardContent d={d} days={filters.days} />)}
       {d && <ExecFootnote filters={filters} />}
 
       <ExecBriefModal brief={brief} days={filters.days} onOpenChange={(open) => !open && setBrief(null)} />

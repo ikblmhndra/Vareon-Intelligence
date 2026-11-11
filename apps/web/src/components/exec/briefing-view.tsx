@@ -16,7 +16,7 @@ import type { ExecDashboardV2 } from "@/lib/api/loose-types";
  * actors, CVE exposure | Top techniques) lalu tren. Tren (`ExecChartsSection`) masih tinggal di sini sampai
  * Analyst board (Task 14) mengambilnya, jadi tidak ada grafik yang hilang. `today` dari halaman, bukan
  * `new Date()` di render, supaya `from` tautan Newsroom stabil dan sama dengan rentang di header.
- * `brief` kosong (Task 12 belum ada) -> panel spike memakai lebar penuh. */
+ * `brief` kosong (Analyst board tidak memakainya) -> panel spike memakai lebar penuh. */
 export function BriefingView({
   d,
   filters,
