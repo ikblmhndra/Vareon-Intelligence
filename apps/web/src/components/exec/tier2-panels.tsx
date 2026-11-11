@@ -1,43 +1,9 @@
 import { EntityChip } from "@/components/entities/entity-chip";
 import { cn } from "@/lib/utils";
-import { ZapIcon } from "lucide-react";
 import type { ExecDashboardV2 } from "@/lib/api/loose-types";
 
 function toTitleCase(s: string): string {
   return s.replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1));
-}
-
-/** Port banner spike (`exec.js:115-133`). */
-export function SpikeBanner({ d }: { d: ExecDashboardV2 }) {
-  if (d.industry_spikes.length === 0) return null;
-  return (
-    <div className="mb-4 rounded-xl border border-border bg-background p-3">
-      <div className="mb-2 text-sm font-semibold text-primary">
-        <ZapIcon aria-hidden /> Anomaly Alerts — Sectors above their recent baseline (z ≥ 1.5)
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {d.industry_spikes.map((sp, i) => (
-          <div key={i} className="flex shrink-0 items-center gap-2.5 rounded-md border border-primary/25 bg-primary/5 px-3 py-1.5">
-            <span className="text-base text-primary">⚡</span>
-            <div>
-              <EntityChip type="identity" name={sp.entity} label={toTitleCase(sp.entity)} />
-              <div className="font-mono text-xs text-muted-foreground">
-                z={sp.z_score} · {sp.count} incidents · {sp.date}
-              </div>
-            </div>
-            <span
-              className={cn(
-                "rounded px-1.5 py-0.5 text-xs",
-                sp.severity === "high" ? "bg-destructive/20 text-destructive-text" : "bg-primary/20 text-primary-text",
-              )}
-            >
-              {sp.severity.toUpperCase()}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
 }
 
 /** Port Top TTPs (`exec.js:350-370`). */

@@ -1,14 +1,21 @@
 import { csvCell } from "@/lib/csv";
 
-/** Port `_execTrend()` (`exec.js:11-19`) -- buat metrik keamanan: naik =
- * lebih banyak insiden/aktor = BURUK (merah), turun = baik (hijau). */
-export function execTrend(current: number, prev: number): { text: string; colorClass: string } | null {
-  if (!prev) return null;
+/** Selisih KPI vs periode sebelumnya (D14): `percent` untuk jumlah artikel, `absolute` untuk sektor dan aktor.
+ * Naik = lebih banyak berita/aktor = BURUK (merah), turun = baik (hijau). Teks tanpa kata "vs prev": pemanggil
+ * menambahkannya (Briefing ringkas, Analyst board lengkap dengan jumlah hari, C13). `percent` dengan pembanding
+ * 0 mengembalikan null (persen dari nol tak bermakna); `absolute` tetap bermakna. */
+export function execDelta(
+  current: number,
+  prev: number,
+  mode: "percent" | "absolute",
+): { text: string; colorClass: string } | null {
+  if (mode === "percent" && !prev) return null;
   const delta = current - prev;
-  const pct = Math.abs(Math.round((delta / prev) * 100));
-  const colorClass = delta > 0 ? "text-destructive" : delta < 0 ? "text-success" : "text-muted-foreground";
-  const arrow = delta > 0 ? "↑" : delta < 0 ? "↓" : "→";
-  return { text: `${arrow}${pct}% vs prev period`, colorClass };
+  const colorClass =
+    delta > 0 ? "text-destructive-text" : delta < 0 ? "text-success-text" : "text-muted-foreground";
+  const sign = delta > 0 ? "+" : delta < 0 ? "-" : "";
+  const amount = mode === "percent" ? `${Math.abs(Math.round((delta / prev) * 100))}%` : String(Math.abs(delta));
+  return { text: `${sign}${amount}`, colorClass };
 }
 
 /** Batas tier risiko (satu skala: LOW <40, MED 40-69, HIGH >=70), dipakai juga
@@ -121,4 +128,9 @@ export function downloadExecCsv(d: import("@/lib/api/loose-types").ExecDashboard
   a.download = `cti-exec-dashboard-${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+/** Nama sektor dari API huruf kecil ("financial services"); tampil sebagai judul kata. */
+export function toTitleCase(s: string): string {
+  return s.replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1));
 }

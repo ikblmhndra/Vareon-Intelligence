@@ -10,13 +10,10 @@ import { useCan } from "@/lib/auth/permissions";
 import { useAuth } from "@/components/providers/auth-provider";
 import { DashboardSectionLabel } from "@/components/dashboard/stat-box";
 import { ExecFilterBar } from "@/components/exec/exec-filter-bar";
+import { BriefingView } from "@/components/exec/briefing-view";
 import { ExecFootnote } from "@/components/exec/exec-footnote";
 import { ExecPageHeader } from "@/components/exec/exec-page-header";
-import { KpiStrip } from "@/components/exec/kpi-strip";
-import { SpikeBanner, TtpList, TaVelocity, SectorCooccurrence } from "@/components/exec/tier2-panels";
-import { SectorRiskMatrix } from "@/components/exec/sector-risk";
-import { TaLeaderboard } from "@/components/exec/ta-leaderboard";
-import { ExecChartsSection } from "@/components/exec/charts-section";
+import { TtpList, TaVelocity, SectorCooccurrence } from "@/components/exec/tier2-panels";
 import { CveExposureTable } from "@/components/exec/cve-exposure-table";
 import { SectorHeatmap } from "@/components/exec/sector-heatmap";
 import { SectorActorMatrix } from "@/components/exec/sector-actor-matrix";
@@ -57,31 +54,6 @@ function initialFilters(): ExecFilters {
     confirmedOnly: r?.confirmedOnly ?? base.confirmedOnly,
     rolePreview: getStoredRolePreview(),
   };
-}
-
-/** Isi sementara tampilan Briefing: bagian lama yang ringkas; diganti `BriefingView` (Task 10). */
-function BriefingContent({ d, filters }: { d: ExecDashboardV2; filters: ExecFilters }) {
-  return (
-    <>
-          <KpiStrip d={d} countLabel={execCountLabel(filters)} />
-          <SpikeBanner d={d} />
-
-          <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <div>
-              <DashboardSectionLabel>Sector Risk Matrix</DashboardSectionLabel>
-              <SectorRiskMatrix d={d} />
-            </div>
-            <div>
-              <DashboardSectionLabel>Threat Actor Leaderboard</DashboardSectionLabel>
-              <TaLeaderboard d={d} />
-            </div>
-          </div>
-
-          <DashboardSectionLabel>Trends</DashboardSectionLabel>
-          <ExecChartsSection d={d} />
-
-    </>
-  );
 }
 
 /** Isi sementara Analyst board: bagian lama yang rinci; diganti `BoardView` (Task 14). */
@@ -281,7 +253,7 @@ function ExecDashboardPage() {
           />
         ))}
 
-      {d && (view === "briefing" ? <BriefingContent d={d} filters={filters} /> : <BoardContent d={d} />)}
+      {d && (view === "briefing" ? <BriefingView d={d} filters={filters} brief={null} /> : <BoardContent d={d} />)}
       {d && <ExecFootnote filters={filters} />}
 
       <ExecBriefModal brief={brief} days={filters.days} onOpenChange={(open) => !open && setBrief(null)} />
