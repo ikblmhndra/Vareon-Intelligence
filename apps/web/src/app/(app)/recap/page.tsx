@@ -110,7 +110,7 @@ function useGenerateRecap() {
 
 /**
  * Halaman Recap. Periode yang dipilih hidup di URL (`?kind=weekly|daily&date=YYYY-MM-DD`; keduanya
- * kosong = recap mingguan terbaru), jadi tautan dan tombol Back berfungsi dan `selected` tidak punya
+ * kosong = recap mingguan terbaru), jadi tautan berfungsi (pilihan memakai `router.replace`, jadi Back tidak menelusuri pilihan) dan `selected` tidak punya
  * state sendiri. Riwayat dipilih lewat Select di header; membuat/ulang lewat dialog.
  */
 function RecapPageInner() {
@@ -143,6 +143,9 @@ function RecapPageInner() {
   const shown: Selection | null = selected ?? (recap ? { kind: recap.kind, date: recap.date } : null);
   const list = history.data ?? [];
   const existing = new Set(list.map((it) => `${it.kind}:${it.date}`));
+  // Riwayat bisa belum termuat/gagal/lebih tua dari 60 teratas: recap yang sedang tampil tetap "ada",
+  // kalau tidak dialog mengirim force=false dan backend mengembalikan cache tanpa regenerate.
+  if (shown) existing.add(`${shown.kind}:${shown.date}`);
 
   usePageTitle(
     recap
@@ -170,8 +173,7 @@ function RecapPageInner() {
           if (made) select(made.kind, made.date);
           toast.success("Recap generated");
         },
-        // Dialog tetap terbuka supaya pengguna bisa memperbaiki periodenya (400/502).
-        onError: (e) => toast.error((e as Error).message),
+        // Dialog tetap terbuka dan menampilkan galatnya inline (400/502), jadi tanpa toast.
       },
     );
   }

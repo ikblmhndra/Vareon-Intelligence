@@ -207,8 +207,6 @@ class AsyncTweetRepo:
         posted_on_start: datetime.datetime,
         posted_before: datetime.datetime,
         limit: int,
-        has_cve: bool = False,
-        signal: str | None = None,
     ) -> tuple[list[Tweet], int]:
         """`(tweet terkuat di [posted_on_start, posted_before), maksimal limit, total sebenarnya)`.
 
@@ -226,8 +224,6 @@ class AsyncTweetRepo:
             apac_only=False,
             ot_only=False,
             confirmed_only=False,
-            has_cve=has_cve,
-            signal=signal,
         )
         total = (
             await self.session.execute(select(func.count()).select_from(window.subquery()))

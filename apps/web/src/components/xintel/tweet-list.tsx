@@ -100,7 +100,7 @@ export function TweetList({
         <XIntelRail stats={stats.data} filters={filters} onPickAccount={onSearchHandle} />
       )}
 
-      <TweetDetailDialog tweet={selected} onOpenChange={(open) => !open && setSelected(null)} />
+      <TweetDetailDialog key={selected?.id} tweet={selected} onOpenChange={(open) => !open && setSelected(null)} />
     </div>
   );
 }

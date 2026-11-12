@@ -106,7 +106,7 @@ export function NewsletterPreviewDialog({ state, onOpenChange, onSendDraft, send
 
         <DialogFooter className="items-center sm:justify-between">
           <p className="font-code text-xs text-muted-foreground">
-            {compose && state.body ? `${placedInBody(state.body)} articles · ${toCheck} summary to check` : ""}
+            {compose && state.body ? `${placedInBody(state.body)} articles · ${toCheck} ${toCheck === 1 ? "summary" : "summaries"} to check` : ""}
           </p>
           <div className="flex flex-col-reverse gap-2 sm:flex-row">
             <Button ref={closeRef} variant="ghost" onClick={() => onOpenChange(false)}>

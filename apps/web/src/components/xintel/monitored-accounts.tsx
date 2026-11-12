@@ -14,6 +14,7 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { useCan } from "@/lib/auth/permissions";
+import { apiErrorMessage } from "@/lib/recap/quality";
 import { isClientError } from "@/lib/exec/query";
 import { fmtShortDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -33,9 +34,8 @@ export function useAccounts() {
   });
 }
 
-async function failure(response: Response): Promise<Error> {
-  const body = await response.json().catch(() => null);
-  return new Error(body?.detail || `HTTP ${response.status}`, { cause: response.status });
+function failure(error: unknown, response: Response): Error {
+  return new Error(apiErrorMessage(error, response.status), { cause: response.status });
 }
 
 /** Tab Monitored Accounts. Daftar terbuka untuk `view_tweets`; tulis (tambah/ubah/hapus) butuh `manage_tweets`
@@ -53,10 +53,10 @@ export function MonitoredAccounts() {
 
   const addMutation = useMutation({
     mutationFn: async () => {
-      const { data, response } = await api.POST("/api/monitored-accounts", {
+      const { data, error, response } = await api.POST("/api/monitored-accounts", {
         body: { username: username.trim(), display_name: displayName.trim(), notes: notes.trim() },
       });
-      if (!response.ok) throw await failure(response);
+      if (!response.ok) throw failure(error, response);
       return data;
     },
     onSuccess: () => {
@@ -69,10 +69,10 @@ export function MonitoredAccounts() {
 
   const removeMutation = useMutation({
     mutationFn: async (target: string) => {
-      const { response } = await api.DELETE("/api/monitored-accounts/{username}", {
+      const { error, response } = await api.DELETE("/api/monitored-accounts/{username}", {
         params: { path: { username: target } },
       });
-      if (!response.ok) throw await failure(response);
+      if (!response.ok) throw failure(error, response);
     },
     onSuccess: refresh,
     onError: (e) => toast.error(`Could not remove account: ${e.message}`),
@@ -80,11 +80,11 @@ export function MonitoredAccounts() {
 
   const toggleMutation = useMutation({
     mutationFn: async ({ target, active }: { target: string; active: boolean }) => {
-      const { response } = await api.PATCH("/api/monitored-accounts/{username}/toggle", {
+      const { error, response } = await api.PATCH("/api/monitored-accounts/{username}/toggle", {
         params: { path: { username: target } },
         body: { active },
       });
-      if (!response.ok) throw await failure(response);
+      if (!response.ok) throw failure(error, response);
     },
     onSuccess: refresh,
     onError: (e) => toast.error(`Could not update account: ${e.message}`),

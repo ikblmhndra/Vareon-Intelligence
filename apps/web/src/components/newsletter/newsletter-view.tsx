@@ -27,6 +27,7 @@ import {
   mergeSuggestion,
   move,
   place,
+  placedCount,
   placedIds,
   remove,
   swap,
@@ -536,9 +537,11 @@ export function NewsletterView() {
   const suggestedIntro = suggestion ? summaryToIntro(suggestion.summary_text) : "";
   usePageTitle("Newsletter composer");
   // Composer kosong -> lupa asalnya; terisi tanpa saran (susun manual) -> asalnya bulan terpilih.
-  if (cardCount === 0 && slotsPeriod !== null) setSlotsPeriod(null);
-  else if (cardCount > 0 && slotsPeriod === null) setSlotsPeriod(period);
-  const periodMismatch = cardCount > 0 && slotsPeriod !== null && slotsPeriod !== period;
+  // Hitung semua yang ditempatkan (termasuk baris compact), bukan cuma slot penuh.
+  const placedTotal = placedCount(state);
+  if (placedTotal === 0 && slotsPeriod !== null) setSlotsPeriod(null);
+  else if (placedTotal > 0 && slotsPeriod === null) setSlotsPeriod(period);
+  const periodMismatch = placedTotal > 0 && slotsPeriod !== null && slotsPeriod !== period;
   const monthName = (v: string) => monthWindow(v)?.label.split(" ").slice(-2).join(" ") ?? v;
   // Blok bawaan: section pertama yang berisi (Indonesia, APAC, Global), selain itu Highlights;
   // berlaku sampai analis memilih sendiri.
