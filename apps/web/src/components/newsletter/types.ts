@@ -30,6 +30,8 @@ export interface PreviewDialogState {
   label: string;
   html: string | null;
   mode: "compose" | "saved";
+  /** Tombol header yang membuka dialog: "Preview" (hanya melihat) atau "Generate edition" (menuju draft). */
+  origin: "preview" | "generate";
   savedId?: number;
   /** Request yang baru di-preview. Draft dibuat dari PERSIS ini, bukan dari composer yang bisa saja
    * sudah berubah, jadi yang dibuat = yang barusan dilihat analis. */
@@ -45,6 +47,7 @@ export const PREVIEW_DIALOG_CLOSED: PreviewDialogState = {
   label: "",
   html: null,
   mode: "compose",
+  origin: "preview",
   warnings: [],
   metadataTitles: [],
 };

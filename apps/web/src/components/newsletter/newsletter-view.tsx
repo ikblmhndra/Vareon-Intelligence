@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/page-header";
+import { Sheet } from "@/components/ui/sheet";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { components } from "@/lib/api/schema";
 import type {
@@ -140,6 +141,7 @@ export function NewsletterView() {
   const [preview, setPreview] = useState<PreviewDialogState>(PREVIEW_DIALOG_CLOSED);
   const [sending, setSending] = useState(false);
   const [resendingId, setResendingId] = useState<number | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
 
   // Callback async (muat saran, rebuild) membaca keadaan TERKINI lewat ref: closure-nya dibuat
@@ -421,7 +423,7 @@ export function NewsletterView() {
     return `<body style="font-family:sans-serif;padding:20px;color:#d32f2f">Error: ${escapeHtml(message)}</body>`;
   }
 
-  async function handlePreview() {
+  async function handlePreview(origin: PreviewDialogState["origin"]) {
     const built = buildRequestBody(state, template, {
       language,
       period: selected ? { start: selected.start, end: selected.end } : null,
@@ -432,7 +434,7 @@ export function NewsletterView() {
       return;
     }
     const body = built.body;
-    setPreview({ ...PREVIEW_DIALOG_CLOSED, open: true });
+    setPreview({ ...PREVIEW_DIALOG_CLOSED, open: true, origin });
     try {
       const { data, error, response } = await api.POST("/api/newsletter/preview", { body });
       if (!response.ok) throw httpError(error, response.status);
@@ -458,12 +460,13 @@ export function NewsletterView() {
         label: result.period_label ?? `Week ${result.week}, ${result.year}`,
         html: result.html,
         mode: "compose",
+        origin,
         body,
         warnings,
         metadataTitles,
       });
     } catch (e) {
-      setPreview({ ...PREVIEW_DIALOG_CLOSED, open: true, html: errorPage(errorMessage(e)) });
+      setPreview({ ...PREVIEW_DIALOG_CLOSED, open: true, origin, html: errorPage(errorMessage(e)) });
       toast.error(`Preview failed: ${errorMessage(e)}`);
     }
   }
@@ -531,14 +534,19 @@ export function NewsletterView() {
         title="Newsletter composer"
         description="Monthly client newsletter: pick the articles, the AI writes the summaries, you approve"
         actions={
-          can("manage_newsletter") ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <Button variant="outline" onClick={handlePreview}>
-                Preview
-              </Button>
-              <Button onClick={handlePreview}>Generate edition</Button>
-            </div>
-          ) : undefined
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" onClick={() => setHistoryOpen(true)}>
+              History
+            </Button>
+            {can("manage_newsletter") && (
+              <>
+                <Button variant="outline" onClick={() => void handlePreview("preview")}>
+                  Preview
+                </Button>
+                <Button onClick={() => void handlePreview("generate")}>Generate edition</Button>
+              </>
+            )}
+          </div>
         }
       />
 
@@ -605,9 +613,18 @@ export function NewsletterView() {
         />
       </div>
 
-      <div className="mt-6">
-        <NewsletterHistoryPanel refreshKey={historyRefreshKey} onPreview={handlePreviewSaved} onResend={handleResend} resendingId={resendingId} />
-      </div>
+      <Sheet open={historyOpen} onOpenChange={setHistoryOpen} title="Saved newsletters">
+        <NewsletterHistoryPanel
+          open={historyOpen}
+          refreshKey={historyRefreshKey}
+          onPreview={(id, label) => {
+            setHistoryOpen(false);
+            void handlePreviewSaved(id, label);
+          }}
+          onResend={handleResend}
+          resendingId={resendingId}
+        />
+      </Sheet>
 
       <NewsletterPreviewDialog
         state={preview}
