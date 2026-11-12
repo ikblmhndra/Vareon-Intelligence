@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -15,10 +15,9 @@ import {
 } from "@/components/ui/dialog";
 import type { components } from "@/lib/api/schema";
 import { fmtDateTime } from "@/lib/format";
-import { addToQueue } from "@/lib/newsletter/queue";
+import { safeHttpUrl } from "@/lib/recap/quality";
 
 type Tweet = components["schemas"]["TweetOut"];
-type Article = components["schemas"]["ArticleOut"];
 
 function MetaRow({ label, items, mono }: { label: string; items?: string[]; mono?: boolean }) {
   if (!items || !items.length) return null;
@@ -34,19 +33,32 @@ function MetaRow({ label, items, mono }: { label: string; items?: string[]; mono
   );
 }
 
+const NEWSLETTER_QUEUE_KEY = "newsletter_queue";
+
 /**
- * Masukkan tweet ke antrean Newsletter bersama (key `newsletter_queue`, `lib/newsletter/queue.ts`).
- * Antrean memakai id numerik artikel; id tweet dibuat NEGATIF supaya tak pernah bertabrakan dengan id
- * artikel. Hanya field tampilan antrean yang diisi, jadi objeknya parsial (di-cast).
+ * Antrean tweet untuk Newsletter: tulis ke key `newsletter_queue` dengan kontrak lama persis
+ * (`_id` = tweet_id, `_is_tweet`). Sengaja TIDAK lewat `addToQueue`: id numerik/negatif palsu akan
+ * ikut terkirim ke API draft sebagai id artikel. localStorage bisa tak tersedia atau berisi JSON rusak.
  */
-function queueForNewsletter(t: Tweet): "queued" | "already" {
-  return addToQueue({
-    id: -t.id,
-    title: t.text.replace(/https:\/\/t\.co\/\S+/g, "").trim().slice(0, 120),
-    source: t.author_username ? `@${t.author_username}` : "𝕏 Intel",
-    posted_on: t.posted_on || "",
-    url: t.url || "",
-  } as unknown as Article);
+function queueForNewsletter(t: Tweet): "queued" | "already" | "failed" {
+  try {
+    const raw = localStorage.getItem(NEWSLETTER_QUEUE_KEY);
+    const queue: Array<{ _id: string | number | null }> = raw ? JSON.parse(raw) : [];
+    const id = t.tweet_id ?? t.id;
+    if (queue.some((x) => x._id === id)) return "already";
+    queue.push({
+      _id: id,
+      title: t.text.replace(/https:\/\/t\.co\/\S+/g, "").trim().slice(0, 120),
+      source: t.author_username ? `@${t.author_username}` : "𝕏 Intel",
+      posted_on: t.posted_on || "",
+      url: t.url || "",
+      _is_tweet: true,
+    } as never);
+    localStorage.setItem(NEWSLETTER_QUEUE_KEY, JSON.stringify(queue));
+    return "queued";
+  } catch {
+    return "failed";
+  }
 }
 
 /** Port `openXiModal()`/`_xiMetaRow()` -- detail tweet penuh. */
@@ -58,11 +70,15 @@ export function TweetDetailDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const [queueLabel, setQueueLabel] = useState("+ Newsletter");
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // Timer umpan balik dibersihkan saat dialog ditutup (tweet null) atau komponen dilepas.
+  useEffect(() => () => clearTimeout(timer.current), [tweet]);
 
   if (!tweet) return null;
   const t = tweet;
   const cleanText = t.text.replace(/https:\/\/t\.co\/\S+/g, "").trim();
-  const media = t.media_urls ?? [];
+  const media = (t.media_urls ?? []).flatMap((u) => safeHttpUrl(u) ?? []);
+  const postUrl = safeHttpUrl(t.url);
   const apacItems = [...(t.mentioned_apac_country ?? []), ...(t.mentioned_apac_people ?? [])];
   const countryRoleItems = [
     ...(t.victim_countries ?? []).map((c) => `${c} (victim)`),
@@ -73,8 +89,9 @@ export function TweetDetailDialog({
 
   function handleQueue() {
     const result = queueForNewsletter(t);
-    setQueueLabel(result === "already" ? "Already queued" : "Queued");
-    setTimeout(() => setQueueLabel("+ Newsletter"), 1500);
+    setQueueLabel(result === "already" ? "Already queued" : result === "failed" ? "Could not queue" : "Queued");
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setQueueLabel("+ Newsletter"), 1500);
   }
 
   return (
@@ -194,9 +211,11 @@ export function TweetDetailDialog({
           <Button variant="outline" onClick={handleQueue}>
             {queueLabel}
           </Button>
-          <Button nativeButton={false} render={<a href={t.url} target="_blank" rel="noopener noreferrer" />}>
-            Open on X ↗
-          </Button>
+          {postUrl && (
+            <Button nativeButton={false} render={<a href={postUrl} target="_blank" rel="noopener noreferrer" />}>
+              Open on X ↗
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

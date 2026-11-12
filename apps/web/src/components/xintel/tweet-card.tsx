@@ -1,6 +1,7 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Chip } from "@/components/ui/chip";
 import type { components } from "@/lib/api/schema";
+import { safeHttpUrl } from "@/lib/recap/quality";
 import { fmtAgo, fmtDateTime } from "@/lib/format";
 
 type Tweet = components["schemas"]["TweetOut"];
@@ -51,7 +52,8 @@ function chipRow(t: Tweet): CardChip[] {
  * media dan "Open on X" adalah tautan saudara, bukan elemen interaktif bersarang. */
 export function TweetCard({ tweet: t, onOpen }: { tweet: Tweet; onOpen: () => void }) {
   const cleanText = t.text.replace(/https:\/\/t\.co\/\S+/g, "").trim();
-  const media = (t.media_urls ?? []).slice(0, 2);
+  const postUrl = safeHttpUrl(t.url);
+  const media = (t.media_urls ?? []).flatMap((u) => safeHttpUrl(u) ?? []).slice(0, 2);
   const chips = chipRow(t);
   const confidence = tweetConfidence(t);
   const name = t.author_name || t.author_username;
@@ -105,26 +107,35 @@ export function TweetCard({ tweet: t, onOpen }: { tweet: Tweet; onOpen: () => vo
       </button>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        {media.map((url) => (
+        {media.map((url) => {
+          const img = (
+            // eslint-disable-next-line @next/next/no-img-element -- URL eksternal dari X CDN, bukan aset lokal
+            <img src={url} alt="Post media" className="h-[72px] w-auto rounded-xl border border-border object-cover" />
+          );
+          return postUrl ? (
+            <a
+              key={url}
+              href={postUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            >
+              {img}
+            </a>
+          ) : (
+            <span key={url}>{img}</span>
+          );
+        })}
+        {postUrl && (
           <a
-            key={url}
-            href={t.url}
+            href={postUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            className="ml-auto rounded text-xs font-semibold text-primary-text underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
-            {/* eslint-disable-next-line @next/next/no-img-element -- URL eksternal dari X CDN, bukan aset lokal */}
-            <img src={url} alt="Post media" className="h-[72px] w-auto rounded-xl border border-border object-cover" />
+            Open on X ↗
           </a>
-        ))}
-        <a
-          href={t.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="ml-auto rounded text-xs font-semibold text-primary-text underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-        >
-          Open on X ↗
-        </a>
+        )}
       </div>
     </article>
   );
