@@ -1,14 +1,11 @@
 "use client";
 
 import { NewsletterView } from "@/components/newsletter/newsletter-view";
-import { PageHeader } from "@/components/page-header";
-import { usePageTitle } from "@/lib/use-page-title";
 
+// Header dan judul tab dirender `NewsletterView`: aksi header (Preview, Generate edition, History) memakai state komposer.
 export default function NewsletterPage() {
-  usePageTitle("Newsletter");
   return (
     <div className="pb-10">
-      <PageHeader title="Newsletter" description="Compose the newsletter from suggested articles, then preview it." />
       <NewsletterView />
     </div>
   );
