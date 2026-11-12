@@ -16,7 +16,7 @@ from __future__ import annotations
 import datetime
 from typing import Any
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import ColumnElement, Select, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -61,6 +61,14 @@ class TweetRepo:
         if not rows:
             return None
         return max(rows, key=int)
+
+
+def _has_items(key: str) -> ColumnElement[bool]:
+    """Kunci `scan_results` berisi list tidak kosong. Kunci hilang, `[]` dan JSON `null`
+    semuanya dihitung tidak ada. Dijaga `jsonb_typeof` karena `jsonb_array_length` melempar
+    error pada non-array; `CASE` dievaluasi malas, jadi cabang `else` tidak memanggilnya."""
+    col = Tweet.scan_results[key]
+    return case((func.jsonb_typeof(col) == "array", func.jsonb_array_length(col)), else_=0) > 0
 
 
 def _apply_tweet_filters(
@@ -204,8 +212,10 @@ class AsyncTweetRepo:
         ot_only: bool = False,
         confirmed_only: bool = False,
     ) -> dict[str, object]:
+        # Semua angka (header + rail) harus menggambarkan tweet yang tampil di daftar, jadi
+        # filternya sama persis dengan `list_filtered`.
         base_filter = _apply_tweet_filters(
-            select(Tweet.id, Tweet.author_username),
+            select(Tweet.id, Tweet.author_username, Tweet.victim_name),
             search=search,
             author=author,
             lang=lang,
@@ -227,9 +237,54 @@ class AsyncTweetRepo:
             .limit(10)
         )
         top_authors = (await self.session.execute(top_stmt)).all()
+
+        # Counter dihitung langsung di atas `Tweet` (kolom JSONB-nya dibutuhkan `_has_items`),
+        # dengan filter yang sama.
+        counters_stmt = _apply_tweet_filters(
+            select(
+                func.count().filter(Tweet.confirmed_incident.is_(True)),
+                func.count().filter(Tweet.scan_results["apac_indicator"].as_boolean()),
+                func.count().filter(Tweet.scan_results["ot_status"].as_boolean()),
+                func.count().filter(_has_items("cve_list")),
+                func.count().filter(_has_items("databreach_list")),
+                func.count().filter(_has_items("zero_day_list")),
+            ),
+            search=search,
+            author=author,
+            lang=lang,
+            posted_on_start=posted_on_start,
+            posted_on_end=posted_on_end,
+            posted_before=posted_before,
+            apac_only=apac_only,
+            ot_only=ot_only,
+            confirmed_only=confirmed_only,
+        )
+        confirmed, apac, ot, with_cve, databreach, zero_day = (
+            await self.session.execute(counters_stmt)
+        ).one()
+
+        # Label = `max(victim_name)`: varian huruf/spasi melebur ke satu grup, dan max
+        # memberi label yang deterministik.
+        victim_key = func.lower(func.btrim(base_filter.c.victim_name))
+        label = func.max(base_filter.c.victim_name)
+        victims_stmt = (
+            select(label, func.count())
+            .where(base_filter.c.victim_name.is_not(None), victim_key != "")
+            .group_by(victim_key)
+            .order_by(func.count().desc(), label)
+            .limit(5)
+        )
+        top_victims = (await self.session.execute(victims_stmt)).all()
         return {
             "total": total,
             "top_authors": [{"author": a, "count": c} for a, c in top_authors],
+            "confirmed": confirmed,
+            "apac": apac,
+            "ot": ot,
+            "with_cve": with_cve,
+            "databreach": databreach,
+            "zero_day": zero_day,
+            "top_victims": [{"victim": v, "count": c} for v, c in top_victims],
         }
 
 
