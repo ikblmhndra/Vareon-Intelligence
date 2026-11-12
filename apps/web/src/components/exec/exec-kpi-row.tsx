@@ -76,7 +76,7 @@ export function ExecKpiRow({
           <DeltaSub current={uniqueTas} prev={d.prev_unique_ta} mode="absolute" days={filters.days} reliable={reliable} longSuffix={board} />
           {board && d.ta_leaderboard[0] && (
             <span className="block">
-              top: {d.ta_leaderboard[0].name} · {d.ta_leaderboard[0].count}
+              top: {toTitleCase(d.ta_leaderboard[0].name)} · {d.ta_leaderboard[0].count}
             </span>
           )}
         </>

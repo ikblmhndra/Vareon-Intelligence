@@ -192,11 +192,12 @@ export function IocDetailBody({ target, onChanged, onDeleted, layout, returnFocu
     if (!ioc) return;
     setBusy("tp");
     try {
-      const { error } = await api.POST("/api/iocs/{ioc_id}/feedback", {
+      const { error, response } = await api.POST("/api/iocs/{ioc_id}/feedback", {
         params: { path: { ioc_id: ioc.id } },
         body: { verdict: "tp", note: null },
       });
-      if (error) throw new Error(JSON.stringify(error));
+      // Body kosong pada 5xx: `error` undefined tetapi `response.ok` false.
+      if (error || !response.ok) throw new Error(error ? JSON.stringify(error) : `HTTP ${response.status}`);
       setFpWarning(null);
       toast.success("Marked as true positive.");
       changed();

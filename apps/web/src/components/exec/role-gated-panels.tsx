@@ -110,11 +110,12 @@ export function FpQueue({ d, className }: { d: ExecDashboardV2; className?: stri
   async function restore(id: number) {
     setVoting(id);
     try {
-      const { error } = await api.POST("/api/iocs/{ioc_id}/feedback", {
+      const { error, response } = await api.POST("/api/iocs/{ioc_id}/feedback", {
         params: { path: { ioc_id: id } },
         body: { verdict: "tp" },
       });
-      if (error) throw new Error(JSON.stringify(error));
+      // Body kosong pada 5xx: `error` undefined tetapi `response.ok` false.
+      if (error || !response.ok) throw new Error(error ? JSON.stringify(error) : `HTTP ${response.status}`);
       toast.success("Marked as true positive.");
       invalidateDashboard(qc);
     } catch (e) {

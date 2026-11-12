@@ -36,11 +36,12 @@ export function IocRemoveDialog({ open, onOpenChange, ioc, onDone, finalFocus }:
     setBusy(true);
     setError(null);
     try {
-      const { data, error: err } = await api.POST("/api/iocs/{ioc_id}/feedback", {
+      const { data, error: err, response } = await api.POST("/api/iocs/{ioc_id}/feedback", {
         params: { path: { ioc_id: ioc.id } },
         body: { verdict: "fp", note: note || null },
       });
-      if (err) throw new Error(JSON.stringify(err));
+      // Body kosong pada 5xx: `error` undefined tetapi `response.ok` false.
+      if (err || !response.ok || data === undefined) throw new Error(err ? JSON.stringify(err) : `HTTP ${response.status}`);
       onOpenChange(false);
       onDone(data as unknown as IocFeedbackResponse);
     } catch (e) {

@@ -22,8 +22,8 @@ import type { ExecDashboardV2 } from "@/lib/api/loose-types";
 // Kelas ditulis utuh (Tailwind). Langkah 2..5 `SCALE` di heat-grid; swatch pertama = sel kosong berbingkai.
 const LEGEND_SWATCH = [
   "border border-border bg-background",
-  "bg-primary/20",
   "bg-primary/30",
+  "bg-primary/40",
   "bg-primary/45",
   "bg-primary",
 ] as const;

@@ -102,7 +102,8 @@ export function SectorRiskCard({ d, className }: { d: ExecDashboardV2; className
         {/* Catatan penyebut: apa yang TIDAK ikut peringkat dan kenapa skor bisa tampak datar. */}
         <p className="mt-3 text-xs text-muted-foreground">
           {first && last && `Trend covers ${fmtMonthYear(`${first}-01`)} – ${fmtMonthYear(`${last}-01`)}. `}
-          Articles tagged “General” ({d.sector_unspecified.toLocaleString()}) have no sector and are left out.
+          {d.sector_unspecified > 0 &&
+            `Articles tagged “General” (${d.sector_unspecified.toLocaleString()}) have no sector and are left out.`}
           {d.risk_volume_only && " Not enough monthly history yet, so risk uses volume only."}
         </p>
       </CardContent>
