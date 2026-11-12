@@ -8,7 +8,7 @@ import { StatePanel } from "@/components/ui/state-panel";
 import { Button } from "@/components/ui/button";
 import { MindmapWidget } from "@/components/mindmap/mindmap-widget";
 import type { NewsletterSections } from "@/lib/api/loose-types";
-import { formatPeriodRange } from "@/lib/newsletter/format";
+import { errorMessage, formatPeriodRange } from "@/lib/newsletter/format";
 import { useCan } from "@/lib/auth/permissions";
 import { isClientError } from "@/lib/exec/query";
 
@@ -36,7 +36,7 @@ export function NewsletterHistoryPanel({ open, refreshKey, onPreview, onResend, 
         params: { query: { page: 1, page_size: 20 } },
       });
       if (!response.ok || !data) {
-        const detail = error && typeof error === "object" && "detail" in error ? String((error as { detail: unknown }).detail) : `HTTP ${response.status}`;
+        const detail = error ? errorMessage(error) : `HTTP ${response.status}`;
         throw new Error(detail, { cause: response.status });
       }
       return data;

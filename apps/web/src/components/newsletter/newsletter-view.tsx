@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { api } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
+import { Notice } from "@/components/ui/notice";
 import { PageHeader } from "@/components/page-header";
 import { Sheet } from "@/components/ui/sheet";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -151,6 +152,14 @@ export function NewsletterView() {
     latest.current = { state, template, queue, introPrefill };
   });
   const appliedKeyRef = useRef<string | null>(null);
+  // Bulan terpilih terkini untuk rebuild yang masih di udara: hasilnya dibuang kalau bulan sudah pindah.
+  const periodRef = useRef(period);
+  useEffect(() => {
+    periodRef.current = period;
+  });
+  // Bulan asal artikel di composer (bulan saran yang dipasang/digabung, atau bulan terpilih saat analis
+  // mulai menyusun); null selama composer kosong.
+  const [slotsPeriod, setSlotsPeriod] = useState<string | null>(null);
 
   const hintsQuery = useQuery({
     queryKey: ["newsletter", "source-hints"],
@@ -214,6 +223,7 @@ export function NewsletterView() {
     const key = suggestionKey(s);
     appliedKeyRef.current = key;
     setAppliedKey(key);
+    setSlotsPeriod(s.period_start.slice(0, 7));
     setState(result.state);
     return result;
   }, []);
@@ -290,12 +300,15 @@ export function NewsletterView() {
   const introEdited = template.customIntro.trim() !== "" && template.customIntro !== introPrefill;
 
   async function doRebuild() {
+    const sentFor = period;
     setRebuilding(true);
     try {
       const { data, error, response } = await api.POST("/api/newsletter/suggestion/rebuild", {
         body: selected ? { period_start: selected.start, period_end: selected.end } : undefined,
       });
       if (!response.ok || !data) throw httpError(error, response.status);
+      // Bulan berpindah selagi rebuild jalan: hasil bulan lama tidak boleh menimpa saran bulan baru.
+      if (periodRef.current !== sentFor) return;
       receiveSuggestion(data);
       const meta = data.summary_meta as { error?: string | null };
       if (meta.error) toast.warning(`Suggestion rebuilt for ${data.label}, but the summary model was unavailable (${meta.error}).`);
@@ -522,6 +535,11 @@ export function NewsletterView() {
   const cardCount = (["highlights", "apac_full", "global_news_full", "indonesia_full"] as const).reduce((n, k) => n + state.slots[k].length, 0);
   const suggestedIntro = suggestion ? summaryToIntro(suggestion.summary_text) : "";
   usePageTitle("Newsletter composer");
+  // Composer kosong -> lupa asalnya; terisi tanpa saran (susun manual) -> asalnya bulan terpilih.
+  if (cardCount === 0 && slotsPeriod !== null) setSlotsPeriod(null);
+  else if (cardCount > 0 && slotsPeriod === null) setSlotsPeriod(period);
+  const periodMismatch = cardCount > 0 && slotsPeriod !== null && slotsPeriod !== period;
+  const monthName = (v: string) => monthWindow(v)?.label.split(" ").slice(-2).join(" ") ?? v;
   // Blok bawaan: section pertama yang berisi (Indonesia, APAC, Global), selain itu Highlights;
   // berlaku sampai analis memilih sendiri.
   const defaultBlock: BlockId = SECTION_BLOCKS.slice(1).find((b) => state.slots[b.full].length + (b.compact ? state.slots[b.compact].length : 0) > 0)?.id ?? "highlights";
@@ -560,6 +578,12 @@ export function NewsletterView() {
         onMerge={mergeSuggestionIn}
         onRebuild={requestRebuild}
       />
+
+      {periodMismatch && slotsPeriod && (
+        <Notice tone="warning" title="Different month" className="mb-4">
+          The articles in the composer were picked for {monthName(slotsPeriod)}. Rebuild or adjust them before generating this edition.
+        </Notice>
+      )}
 
       <div className="grid gap-5 xl:grid-cols-[300px_minmax(0,640px)_minmax(0,356px)] xl:justify-between">
         <NewsletterTemplateColumn

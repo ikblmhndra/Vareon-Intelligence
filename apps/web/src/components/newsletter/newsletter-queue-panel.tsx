@@ -7,7 +7,9 @@ import { DestinationMenu } from "@/components/newsletter/article-parts";
 import type { PoolEntry } from "@/components/newsletter/newsletter-composer-sections";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { EntityChip } from "@/components/entities/entity-chip";
 import { Chip } from "@/components/ui/chip";
+import { actorChips, countryChip } from "@/lib/entities/article-refs";
 import type { NewsletterSourceHint } from "@/lib/api/loose-types";
 import type { components } from "@/lib/api/schema";
 import type { ComposerState, SectionName, SlotKey } from "@/lib/newsletter/composer";
@@ -137,6 +139,10 @@ function PoolRow({
   onDiscard?: () => void;
 }) {
   const a = entry.article;
+  // Negara bisa ada di victim DAN mentioned: satu chip saja (key kembar). Chip aktor/negara tetap
+  // terjangkau dari antrean (fitur lama), di baris sendiri supaya tidak bersarang di kontrol lain.
+  const countries = [...new Set([...(a.victim_countries ?? []), ...(a.mentioned_countries ?? [])])].slice(0, 3);
+  const actors = actorChips(a).slice(0, 2);
   return (
     <div className="rounded-lg border border-border bg-background p-2.5">
       <div className="flex items-start gap-2">
@@ -148,6 +154,16 @@ function PoolRow({
               {a.source} · {a.posted_on}
             </span>
           </div>
+          {(countries.length > 0 || actors.length > 0) && (
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {countries.map((c) => (
+                <EntityChip key={c} {...countryChip(a, c)} />
+              ))}
+              {actors.map((t) => (
+                <EntityChip key={t.name} {...t} />
+              ))}
+            </div>
+          )}
           {entry.reasons && entry.reasons.length > 0 && (
             <p className="mt-1.5 text-2xs text-muted-foreground">
               <span className="font-semibold">Why suggested:</span> {entry.reasons.map((r) => r.text).join(" · ")}
