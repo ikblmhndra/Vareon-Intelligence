@@ -59,3 +59,28 @@ export function recapTitle(
   }
   return `Daily Recap · ${date}`;
 }
+
+/** Nomor pekan ISO dari Senin `mondayIso`: pekan ISO ditentukan oleh hari KAMIS-nya (pekan 1 =
+ * pekan yang memuat Kamis pertama tahun itu), jadi 2026-12-28 jatuh di pekan 53 dan 2027-01-04 di
+ * pekan 1. Semua dalam UTC, tidak disimpan di mana pun (spec C8). */
+export function isoWeek(mondayIso: string): number {
+  const thursday = new Date(parseIso(mondayIso).getTime() + 3 * DAY_MS);
+  const jan1 = Date.UTC(thursday.getUTCFullYear(), 0, 1);
+  const dayOfYear = Math.floor((thursday.getTime() - jan1) / DAY_MS) + 1;
+  return Math.ceil(dayOfYear / 7);
+}
+
+/** Tahun ISO dari Senin `mondayIso` = tahun Kamis pekannya (2025-12-29 -> 2026, 2026-12-28 -> 2026). */
+export function isoWeekYear(mondayIso: string): number {
+  return new Date(parseIso(mondayIso).getTime() + 3 * DAY_MS).getUTCFullYear();
+}
+
+/** `"2026-10-27", "2026-11-02"` -> `"Week 45: 27 Oct – 2 Nov"`. */
+export function weekHeading(start: string, end: string): string {
+  return `Week ${isoWeek(start)}: ${dayMonth(start)} – ${dayMonth(end)}`;
+}
+
+/** Senin pekan sebelumnya (weekly) atau hari sebelumnya (daily). */
+export function previousPeriod(kind: RecapKind, date: string): string {
+  return toIso(new Date(parseIso(date).getTime() - (kind === "weekly" ? 7 : 1) * DAY_MS));
+}

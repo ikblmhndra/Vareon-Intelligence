@@ -217,9 +217,17 @@ export interface AuthorCount {
   count: number;
 }
 
+// Diserialisasi `AsyncTweetRepo.get_stats` (endpoint tetap `dict[str, object]`, jadi tipe ini ditulis tangan).
 export interface TweetStats {
   total: number;
   top_authors: AuthorCount[];
+  confirmed: number;
+  apac: number;
+  ot: number;
+  with_cve: number;
+  databreach: number;
+  zero_day: number;
+  top_victims: { victim: string; count: number }[];
 }
 
 export interface AdminUser {

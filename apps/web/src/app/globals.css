@@ -363,3 +363,24 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* Ekspor PDF Recap (`window.print()`): halaman putih tanpa bayangan, kartu tidak terbelah antar
+   halaman, tautan mencetak teksnya saja. Masthead, utility bar, nav HP, dan aksi halaman memakai
+   `print:hidden`. */
+@media print {
+  html,
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+  * {
+    box-shadow: none !important;
+  }
+  [data-slot="card"] {
+    break-inside: avoid;
+  }
+  a {
+    color: inherit !important;
+    text-decoration: none !important;
+  }
+}

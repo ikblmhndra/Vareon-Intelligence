@@ -2,181 +2,188 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 import { api } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { StatePanel } from "@/components/ui/state-panel";
+import { Switch } from "@/components/ui/switch";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { useCan } from "@/lib/auth/permissions";
+import { apiErrorMessage } from "@/lib/recap/quality";
+import { isClientError } from "@/lib/exec/query";
+import { fmtShortDate } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 const QUERY_KEY = ["xintel", "accounts"] as const;
 
-function useAccounts() {
+/** Dipakai juga header halaman untuk hitungan tab: satu key, jadi mutasi di sini menyegarkan keduanya. */
+export function useAccounts() {
   return useQuery({
     queryKey: QUERY_KEY,
+    retry: (n, e) => n < 2 && !isClientError(e),
     queryFn: async () => {
       const { data, response } = await api.GET("/api/monitored-accounts");
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`, { cause: response.status });
       return data;
     },
   });
 }
 
-/** Port sub-tab Monitored Accounts. Mutasi (add/remove/toggle) butuh
- * `require_admin` di backend -- form/tombol tetap tampil ke semua user
- * (port apa adanya, sama asimetri kayak kode lama), backend yang nolak
- * kalau bukan admin. */
+function failure(error: unknown, response: Response): Error {
+  return new Error(apiErrorMessage(error, response.status), { cause: response.status });
+}
+
+/** Tab Monitored Accounts. Daftar terbuka untuk `view_tweets`; tulis (tambah/ubah/hapus) butuh `manage_tweets`
+ * di backend, jadi kontrolnya hanya aktif untuk izin itu (bukan yang lebih ketat). */
 export function MonitoredAccounts() {
   const can = useCan();
+  const canManage = can("manage_tweets");
   const queryClient = useQueryClient();
   const accounts = useAccounts();
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [notes, setNotes] = useState("");
   const [removeTarget, setRemoveTarget] = useState<string | null>(null);
+  const refresh = () => void queryClient.invalidateQueries({ queryKey: QUERY_KEY });
 
   const addMutation = useMutation({
     mutationFn: async () => {
-      const { data, response } = await api.POST("/api/monitored-accounts", {
+      const { data, error, response } = await api.POST("/api/monitored-accounts", {
         body: { username: username.trim(), display_name: displayName.trim(), notes: notes.trim() },
       });
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        throw new Error(body?.detail || `HTTP ${response.status}`);
-      }
+      if (!response.ok) throw failure(error, response);
       return data;
     },
     onSuccess: () => {
       setUsername("");
       setDisplayName("");
       setNotes("");
-      void queryClient.invalidateQueries({ queryKey: QUERY_KEY });
+      refresh();
     },
   });
 
   const removeMutation = useMutation({
     mutationFn: async (target: string) => {
-      const { response } = await api.DELETE("/api/monitored-accounts/{username}", {
+      const { error, response } = await api.DELETE("/api/monitored-accounts/{username}", {
         params: { path: { username: target } },
       });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (!response.ok) throw failure(error, response);
     },
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: QUERY_KEY }),
+    onSuccess: refresh,
+    onError: (e) => toast.error(`Could not remove account: ${e.message}`),
   });
 
   const toggleMutation = useMutation({
     mutationFn: async ({ target, active }: { target: string; active: boolean }) => {
-      const { response } = await api.PATCH("/api/monitored-accounts/{username}/toggle", {
+      const { error, response } = await api.PATCH("/api/monitored-accounts/{username}/toggle", {
         params: { path: { username: target } },
         body: { active },
       });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (!response.ok) throw failure(error, response);
     },
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: QUERY_KEY }),
+    onSuccess: refresh,
+    onError: (e) => toast.error(`Could not update account: ${e.message}`),
   });
+
+  const list = accounts.data;
+  const activeCount = list?.filter((a) => a.active).length ?? 0;
 
   return (
     <div>
-      {can("manage_tweets") && (
-      <div className="mb-4 flex flex-wrap items-end gap-2 border-b border-border pb-3">
-        <div className="flex flex-col gap-1">
-          <Label className="text-sm font-medium text-muted-foreground">Handle</Label>
-          <Input
-            placeholder="@username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            className="w-40 font-mono text-xs"
-          />
-        </div>
-        <div className="flex flex-col gap-1">
-          <Label className="text-sm font-medium text-muted-foreground">Display name</Label>
-          <Input
-            placeholder="optional"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            className="w-40 font-mono text-xs"
-          />
-        </div>
-        <div className="flex flex-col gap-1">
-          <Label className="text-sm font-medium text-muted-foreground">Notes</Label>
-          <Input
-            placeholder="optional"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            className="w-52 font-mono text-xs"
-          />
-        </div>
-        <Button
-          size="sm"
-          disabled={!username.trim() || addMutation.isPending}
-          onClick={() => addMutation.mutate()}
+      {canManage && (
+        <form
+          className="mb-5 flex flex-wrap items-end gap-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (username.trim() && !addMutation.isPending) addMutation.mutate();
+          }}
         >
-          + Add Account
-        </Button>
-        {addMutation.isError && (
-          <span className="text-xs text-destructive">{(addMutation.error as Error).message}</span>
-        )}
-      </div>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="xi-handle">Handle</Label>
+            <Input id="xi-handle" placeholder="@FalconFeedsio" value={username} onChange={(e) => setUsername(e.target.value)} className="w-48 font-code" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="xi-display-name">Display name</Label>
+            <Input id="xi-display-name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} className="w-48" />
+          </div>
+          <div className="flex min-w-48 flex-1 flex-col gap-1">
+            <Label htmlFor="xi-notes">Notes (optional)</Label>
+            <Input id="xi-notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </div>
+          <Button type="submit" disabled={!username.trim()} loading={addMutation.isPending}>
+            Add account
+          </Button>
+          {addMutation.isError && (
+            <p role="alert" className="basis-full text-xs text-destructive-text">
+              {addMutation.error.message}
+            </p>
+          )}
+        </form>
       )}
 
       {accounts.isPending && (
-        <div className="space-y-1.5">
-          <Skeleton className="h-8 w-full" />
-          <Skeleton className="h-8 w-full" />
+        <div className="space-y-1.5" role="status" aria-label="Loading accounts">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
         </div>
       )}
-      {accounts.isError && <p className="text-sm text-destructive">Failed to load accounts.</p>}
-      {accounts.data && accounts.data.length === 0 && (
-        <p className="text-sm text-muted-foreground">No accounts monitored yet.</p>
+      {accounts.isError && (
+        <StatePanel
+          variant="error"
+          title="Failed to load accounts"
+          action={
+            <Button variant="outline" onClick={() => void accounts.refetch()}>
+              Retry
+            </Button>
+          }
+        />
       )}
-      {accounts.data && accounts.data.length > 0 && (
+      {list && list.length === 0 && <StatePanel variant="empty" title="No accounts monitored yet" />}
+      {list && list.length > 0 && (
         <>
-          <Table framed>
+          <Table framed className="table-fixed">
             <TableHeader>
               <TableRow>
-                <TableHead>Handle</TableHead>
-                <TableHead>Display Name</TableHead>
-                <TableHead>Notes</TableHead>
-                <TableHead>Added</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead />
+                <TableHead className="w-[18%]">Handle</TableHead>
+                <TableHead className="w-[18%]">Display name</TableHead>
+                <TableHead className="w-[30%]">Notes</TableHead>
+                <TableHead className="w-[12%]">Added</TableHead>
+                <TableHead className="w-[10%]">Active</TableHead>
+                <TableHead className="w-[12%]">
+                  <span className="sr-only">Remove</span>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {accounts.data.map((a) => (
-                <TableRow key={a.id}>
-                  <TableCell className="font-mono text-xs text-primary">@{a.username}</TableCell>
-                  <TableCell className="text-xs">{a.display_name || "—"}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{a.notes || "—"}</TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground">
-                    {a.added_at ? a.added_at.slice(0, 10) : "—"}
+              {list.map((a) => (
+                <TableRow key={a.id} className={cn(!a.active && "text-muted-foreground")}>
+                  <TableCell className="truncate font-code text-xs">@{a.username}</TableCell>
+                  <TableCell className="truncate text-xs">{a.display_name || "—"}</TableCell>
+                  <TableCell className="truncate text-xs text-muted-foreground">{a.notes || "—"}</TableCell>
+                  <TableCell className="font-code text-xs text-muted-foreground">{fmtShortDate(a.added_at)}</TableCell>
+                  <TableCell>
+                    <Switch
+                      aria-label={`Active: @${a.username}`}
+                      checked={a.active}
+                      disabled={!canManage || toggleMutation.isPending}
+                      onCheckedChange={(active) => toggleMutation.mutate({ target: a.username, active })}
+                    />
                   </TableCell>
                   <TableCell>
-                    <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
-                      <Checkbox
-                        disabled={!can("manage_tweets")}
-                        checked={a.active}
-                        onCheckedChange={(checked) =>
-                          toggleMutation.mutate({ target: a.username, active: checked === true })
-                        }
-                      />
-                      Active
-                    </label>
-                  </TableCell>
-                  <TableCell>
-                    {can("manage_tweets") && (
-                      <Button size="sm" variant="destructive" onClick={() => setRemoveTarget(a.username)}>
+                    {canManage && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive-text"
+                        aria-label={`Remove @${a.username}`}
+                        onClick={() => setRemoveTarget(a.username)}
+                      >
                         Remove
                       </Button>
                     )}
@@ -185,8 +192,8 @@ export function MonitoredAccounts() {
               ))}
             </TableBody>
           </Table>
-          <p className="mt-2.5 font-mono text-xs text-muted-foreground">
-            {accounts.data.length} account{accounts.data.length !== 1 ? "s" : ""} monitored
+          <p className="mt-2.5 text-xs text-muted-foreground">
+            <span className="font-code">{list.length}</span> accounts monitored · <span className="font-code">{activeCount}</span> active
           </p>
         </>
       )}
@@ -195,8 +202,9 @@ export function MonitoredAccounts() {
         open={removeTarget !== null}
         onOpenChange={(open) => !open && setRemoveTarget(null)}
         title="Remove monitored account"
-        description={`Remove @${removeTarget} from monitored accounts?`}
+        description={`Remove @${removeTarget} from monitored accounts? Its posts stay in the feed.`}
         confirmLabel="Remove"
+        tone="danger"
         onConfirm={() => removeTarget && removeMutation.mutate(removeTarget)}
       />
     </div>

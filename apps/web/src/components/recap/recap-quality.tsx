@@ -6,19 +6,17 @@ import { api } from "@/lib/api/client";
 import type {
   RecapComparison,
   RecapEnvelope,
-  RecapGrounding,
   RecapHitBucket,
   RecapHitRate,
   RecapScorecard,
   RecapScorecardEvent,
   RecapVerdict,
 } from "@/lib/api/loose-types";
-import { formatRange, sundayOf } from "@/lib/recap/period";
+import { formatRange } from "@/lib/recap/period";
 import {
   VERDICTS,
   VERDICT_LABEL,
   apiErrorMessage,
-  dropReason,
   effectiveVerdict,
   signed,
 } from "@/lib/recap/quality";
@@ -33,7 +31,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ConfidenceBadge, Chips, EmptyNote, Section } from "@/components/recap/recap-parts";
+import { ConfidenceBadge, Chips, EmptyNote } from "@/components/recap/recap-parts";
 
 /**
  * Blok kualitas recap mingguan (#21, PR 4): perbandingan dengan pekan lalu, hasil cek grounding,
@@ -80,8 +78,18 @@ export function ComparisonBlock({ comparison }: { comparison: RecapComparison })
   const prev = comparison.previous;
 
   return (
-    <Section title={`Week over Week · vs ${formatRange(prev.period_start, prev.period_end)}`}>
-      <Table>
+    <div>
+      <p className="mb-2 text-xs text-muted-foreground">
+        Compared with {formatRange(prev.period_start, prev.period_end)}
+      </p>
+      <Table className="table-fixed">
+        <colgroup>
+          <col className="w-[36%]" />
+          <col className="w-[16%]" />
+          <col className="w-[16%]" />
+          <col className="w-[16%]" />
+          <col className="w-[16%]" />
+        </colgroup>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
             <TableHead className={HEAD}>Metric</TableHead>
@@ -142,59 +150,13 @@ export function ComparisonBlock({ comparison }: { comparison: RecapComparison })
           </div>
         ))}
       </div>
-    </Section>
+    </div>
   );
 }
 
 function orderOf(key: string): number {
   const i = Object.keys(COUNT_LABEL).indexOf(key);
   return i === -1 ? Object.keys(COUNT_LABEL).length : i;
-}
-
-/**
- * Hasil cek grounding: apa yang dibuang dari keluaran model karena tidak ada di data masukannya.
- * Selalu satu baris yang terlihat (jumlahnya), rinciannya di `<details>`: tidak ada yang dibuang
- * diam-diam, tapi daftarnya tidak memenuhi halaman.
- */
-export function GroundingBlock({ grounding }: { grounding: RecapGrounding }) {
-  const dropped = grounding.dropped ?? [];
-  if (!grounding.count && !dropped.length) {
-    return (
-      <p className="mt-3 rounded-md border border-border px-3 py-2 text-xs text-muted-foreground">
-        Grounding check: nothing was dropped. Every CVE, actor, campaign, source and story in this
-        recap was found in the data given to the model.
-      </p>
-    );
-  }
-  const count = grounding.count || dropped.length;
-  return (
-    <details className="group mt-3 rounded-md border border-warning/40 bg-warning/[0.04] px-3 py-2">
-      <summary className="cursor-pointer text-sm font-semibold text-warning">
-        Grounding check: {count} {count === 1 ? "item" : "items"} dropped
-        <span className="ml-2 text-xs font-normal text-muted-foreground group-open:hidden">
-          show details
-        </span>
-      </summary>
-      <p className="mt-2 text-xs text-muted-foreground">
-        The model wrote these, but they are not in the data it was given, so they were removed from
-        this recap instead of being shown.
-      </p>
-      <ul className="mt-2 space-y-1.5">
-        {dropped.map((d, i) => (
-          <li
-            key={i}
-            className="grid grid-cols-1 gap-x-3 gap-y-0.5 border-t border-border/60 pt-1.5 text-sm first:border-t-0 first:pt-0 sm:grid-cols-[10rem_1fr]"
-          >
-            <span className="font-mono text-xs text-muted-foreground">{d.field}</span>
-            <span className="min-w-0">
-              <span className="break-words">{d.value || "(empty)"}</span>
-              <span className="ml-2 text-xs text-muted-foreground">· {dropReason(d.reason)}</span>
-            </span>
-          </li>
-        ))}
-      </ul>
-    </details>
-  );
 }
 
 const VERDICT_TONE: Record<RecapVerdict, string> = {
@@ -295,12 +257,9 @@ export function ScorecardBlock({
   recapId: number;
   scorecard: RecapScorecard;
 }) {
-  const { reviewed } = scorecard;
   const events = scorecard.events ?? [];
   return (
-    <Section
-      title={`Forecast Scorecard · how the ${formatRange(reviewed.period_start, reviewed.period_end)} forecast held up`}
-    >
+    <div>
       {events.length ? (
         <ul className="space-y-2">
           {events.map((e) => (
@@ -314,7 +273,7 @@ export function ScorecardBlock({
         Verdicts are the model&apos;s; changing one records who did it and replaces the model&apos;s
         verdict in the hit rate. Confidence is what was stated when the forecast was made.
       </p>
-    </Section>
+    </div>
   );
 }
 
@@ -335,11 +294,11 @@ function RateCell({ bucket }: { bucket: RecapHitBucket }) {
         className="hidden h-1.5 w-16 overflow-hidden rounded-full bg-muted sm:block"
       >
         <span
-          className="block h-full rounded-full bg-primary"
+          className="block h-full rounded-full bg-primary-text"
           style={{ width: `${Math.min(100, Math.max(0, bucket.rate_pct))}%` }}
         />
       </span>
-      <span className="font-mono">{bucket.rate_pct}%</span>
+      <span className="font-code text-primary-text">{bucket.rate_pct}%</span>
     </span>
   );
 }
@@ -350,76 +309,75 @@ function hits(n: number): string {
 }
 
 export function HitRateBlock({ hitRate }: { hitRate: RecapHitRate }) {
-  const range =
-    hitRate.first_week && hitRate.last_week
-      ? ` (${formatRange(hitRate.first_week, sundayOf(hitRate.last_week))})`
-      : "";
-  return (
-    <Section title="Forecast Hit Rate · does the stated confidence hold up?">
-      <p className="mb-2 text-xs text-muted-foreground">
-        Last {hitRate.weeks} weekly {hitRate.weeks === 1 ? "recap" : "recaps"}
-        {range} · {hitRate.reviewed_weeks} with a reviewed forecast. Covers all of them, not only
-        the week shown.
+  if (hitRate.reviewed_weeks === 0) {
+    return (
+      <p className="text-xs text-muted-foreground italic">
+        No forecast has been reviewed yet: the first scorecard appears with the next weekly recap
+        that has a previous week.
       </p>
-      {hitRate.reviewed_weeks === 0 ? (
-        <p className="text-xs text-muted-foreground italic">
-          No forecast has been reviewed yet: the first scorecard appears with the next weekly recap
-          that has a previous week.
-        </p>
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead className={HEAD}>Confidence</TableHead>
-              <TableHead className={cn(HEAD, "text-right")}>Hits / judged</TableHead>
-              <TableHead className={cn(HEAD, "text-right")}>Unclear</TableHead>
-              <TableHead className={cn(HEAD, "text-right")}>Hit rate</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {BUCKETS.map(({ key, label }) => {
-              const b = hitRate.by_confidence[key];
-              return (
-                <TableRow key={key}>
-                  <TableCell className={CELL}>
-                    <ConfidenceBadge confidence={label} />
-                  </TableCell>
-                  <TableCell className={cn(CELL, "text-right font-mono")}>
-                    {hits(b.hits)} / {b.judged}
-                  </TableCell>
-                  <TableCell className={cn(CELL, "text-right font-mono text-muted-foreground")}>
-                    {b.unclear}
-                  </TableCell>
-                  <TableCell className={cn(CELL, "text-right")}>
-                    <RateCell bucket={b} />
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-            <TableRow className="font-semibold">
-              <TableCell className={CELL}>
-                <Badge variant="outline" className="font-mono text-xs uppercase">
-                  all
-                </Badge>
-              </TableCell>
-              <TableCell className={cn(CELL, "text-right font-mono")}>
-                {hits(hitRate.overall.hits)} / {hitRate.overall.judged}
-              </TableCell>
-              <TableCell className={cn(CELL, "text-right font-mono text-muted-foreground")}>
-                {hitRate.overall.unclear}
-              </TableCell>
-              <TableCell className={cn(CELL, "text-right")}>
-                <RateCell bucket={hitRate.overall} />
-              </TableCell>
-            </TableRow>
-          </TableBody>
-        </Table>
-      )}
-      <p className="mt-1.5 text-xs text-muted-foreground">
-        Hit rate = hits ÷ judged events. &ldquo;Partly&rdquo; counts as half a hit and
+    );
+  }
+  return (
+    <div>
+      <Table className="table-fixed">
+        <colgroup>
+          <col className="w-[28%]" />
+          <col className="w-[26%]" />
+          <col className="w-[28%]" />
+          <col className="w-[18%]" />
+        </colgroup>
+        <TableHeader>
+          <TableRow className="hover:bg-transparent">
+            <TableHead className={HEAD}>Confidence</TableHead>
+            <TableHead className={cn(HEAD, "text-right")}>Hits / judged</TableHead>
+            <TableHead className={cn(HEAD, "text-right")}>Hit rate</TableHead>
+            <TableHead className={cn(HEAD, "text-right")}>Unclear</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {BUCKETS.map(({ key, label }) => {
+            const b = hitRate.by_confidence[key];
+            return (
+              <TableRow key={key}>
+                <TableCell className={CELL}>
+                  <ConfidenceBadge confidence={label} />
+                </TableCell>
+                <TableCell className={cn(CELL, "text-right font-code")}>
+                  {hits(b.hits)} / {b.judged}
+                </TableCell>
+                <TableCell className={cn(CELL, "text-right")}>
+                  <RateCell bucket={b} />
+                </TableCell>
+                <TableCell className={cn(CELL, "text-right font-code text-muted-foreground")}>
+                  {b.unclear}
+                </TableCell>
+              </TableRow>
+            );
+          })}
+          <TableRow className="font-semibold">
+            <TableCell className={CELL}>
+              <Badge variant="outline" className="font-mono text-xs uppercase">
+                all
+              </Badge>
+            </TableCell>
+            <TableCell className={cn(CELL, "text-right font-code")}>
+              {hits(hitRate.overall.hits)} / {hitRate.overall.judged}
+            </TableCell>
+            <TableCell className={cn(CELL, "text-right")}>
+              <RateCell bucket={hitRate.overall} />
+            </TableCell>
+            <TableCell className={cn(CELL, "text-right font-code text-muted-foreground")}>
+              {hitRate.overall.unclear}
+            </TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+      <p className="mt-2 text-2xs text-muted-foreground">
+        {hitRate.reviewed_weeks} {hitRate.reviewed_weeks === 1 ? "week" : "weeks"} reviewed. Hit
+        rate = hits ÷ judged events. &ldquo;Partly&rdquo; counts as half a hit and
         &ldquo;unclear&rdquo; events are left out of the denominator. An analyst&apos;s verdict
         replaces the model&apos;s. n/a = nothing judged yet.
       </p>
-    </Section>
+    </div>
   );
 }

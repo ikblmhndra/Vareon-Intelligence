@@ -435,6 +435,15 @@ Release: not yet tagged (branch `claude/figcraft-design-data`; merge to `origin/
 - Executive dashboard redesign, web: `/exec` has a Briefing | Analyst board switch (`?view=`); the Export CSV button
   is shown only with `export_data`; a "More signals" row (campaign clusters, source reliability, country trend); the
   IOC "Remove from feeds" dialog shows errors inline.
+- X Intel, Recap and Newsletter redesign (4a), backend and web:
+  - **Migrations:** none. **Settings:** none. Image rollback only, no data change.
+  - **Contract (additive).** `GET /api/tweets` and `GET /api/tweets/stats` accept two new optional query parameters:
+    `has_cve` (bool) and `signal` (`zero_day|databreach|ot|report`). The stats response is untyped and gains keys: six
+    period counters (confirmed incidents, APAC, CVE, data breach, zero-day, OT) and `top_victims`. Existing keys are
+    unchanged.
+  - **Behaviour.** Free-text search now matches handle, victim and CVE (before, fewer fields), and `%` and `_` are
+    matched literally. A search can therefore return more rows than before.
+  - Web: X Intel filters apply live (the Apply/Reset buttons are gone); Newsletter uses a three-column composer; Recap has a History select, a Generate dialog and exports PDF through the browser print dialog, and newsletter history opens as a side sheet.
 
 ### Migrations
 
@@ -527,6 +536,10 @@ Nothing else to check; all other changes are read-only endpoints and web styling
     `export_data` there is no Export CSV button. The More signals row renders, and a failing IOC "Remove from feeds"
     shows its error inside the dialog.
 
+13. X Intel, Recap and Newsletter (read-only): `GET /api/tweets/stats?signal=ot` and `?has_cve=true` return 200 with
+    the new counters and `top_victims`; searching a victim name or a CVE id on X Intel finds rows. Recap opens, and
+    Export PDF opens the browser print dialog. Newsletter history opens as a side sheet.
+
 Optional, only with the operator's go: regenerate the profiles of watched actors to fill the new AI summaries (one LLM
 call each).
 
@@ -540,7 +553,7 @@ None.
 to 0.8.15 removes the new endpoints and the `daily` block. The `b7d41e9a2c63` migration is additive (nullable columns
 and new tables the old code ignores), so it is safe to leave in place; no manual downgrade is needed. The same holds for
 `c4e8a1f2b9d6`: after an image rollback `exec_briefs` is simply unused. Downgrading that migration (`alembic downgrade
--1`, never automatic) drops the stored briefs; they are regenerated from the next 06:00 run.
+-1`, never automatic) drops the stored briefs; they are regenerated from the next 06:00 run. The X Intel, Recap and Newsletter part (4a) has no migration or data change: an image rollback just drops the two optional parameters and the extra stats keys.
 
 ### Known risks
 

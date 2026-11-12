@@ -1,20 +1,24 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { TriangleAlertIcon, XIcon } from "lucide-react";
+import { XIcon } from "lucide-react";
 
-import { DestinationMenu, ReasonChips } from "@/components/newsletter/article-parts";
+import { DestinationMenu } from "@/components/newsletter/article-parts";
 import type { PoolEntry } from "@/components/newsletter/newsletter-composer-sections";
-import { Badge } from "@/components/ui/badge";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EntityChip } from "@/components/entities/entity-chip";
+import { Chip } from "@/components/ui/chip";
 import { actorChips, countryChip } from "@/lib/entities/article-refs";
-import { Button } from "@/components/ui/button";
 import type { NewsletterSourceHint } from "@/lib/api/loose-types";
 import type { components } from "@/lib/api/schema";
-import type { ComposerState, SlotKey } from "@/lib/newsletter/composer";
+import type { ComposerState, SectionName, SlotKey } from "@/lib/newsletter/composer";
 import type { QueueArticle } from "@/lib/newsletter/queue";
+import { cn } from "@/lib/utils";
 
 type Article = components["schemas"]["ArticleOut"];
+
+const SECTION_LABEL: Record<SectionName, string> = { apac: "Asia Pacific", global_news: "Global", indonesia: "Indonesia" };
 
 interface Props {
   state: ComposerState;
@@ -28,33 +32,43 @@ interface Props {
 }
 
 /** Kolam artikel di luar composer, dua kelompok: "Suggested, not placed" (dari saran server,
- * dengan alasannya) dan "Queued Articles" (tombol "+ Newsletter" di Newsroom, lewat localStorage
- * key `newsletter_queue`, lihat `lib/newsletter/queue.ts`, kontraknya tidak berubah). Port panel
- * kiri `newsletter.html:287-305`; kelompok saran baru (ROADMAP #22, PR 9). */
+ * dengan alasannya) dan "Queued articles" (tombol "+ Newsletter" di Newsroom, lewat localStorage
+ * key `newsletter_queue`, lihat `lib/newsletter/queue.ts`, kontraknya tidak berubah). Tautan
+ * "+ Add articles" membuka Newsroom di tab baru (spec D31); `storage` listener di view
+ * menyegarkan antrean saat artikel masuk dari tab itu. */
 export function NewsletterQueuePanel({ state, queue, suggested, paywallHints, onAssign, onRemove, onClearAll }: Props) {
-  const empty = queue.length === 0 && suggested.length === 0;
-  return (
-    <div className="flex h-full flex-col">
-      <div className="mb-3 flex items-center justify-between border-b border-border pb-3">
-        <div className="text-base font-semibold text-foreground">Articles</div>
-        <span className="font-mono text-xs text-primary">
-          {suggested.length + queue.length} available
-        </span>
-      </div>
+  const total = suggested.length + queue.length;
+  const addLink = (
+    <div className="space-y-1">
+      <a href="/newsroom" target="_blank" rel="noopener" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "w-full")}>
+        + Add articles
+      </a>
+      <p className="text-center text-2xs text-muted-foreground">Use + Newsletter on any article</p>
+    </div>
+  );
 
-      <div className="flex-1 space-y-4 overflow-y-auto">
-        {empty && (
-          <p className="py-10 text-center text-xs text-muted-foreground">
-            Nothing waiting — go to Newsroom and click &quot;+ Newsletter&quot; on an article.
-          </p>
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Your queue</CardTitle>
+        <CardDescription>
+          {total} {total === 1 ? "article" : "articles"} · {suggested.length} suggested, not placed
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {total === 0 && (
+          <div className="space-y-3 py-4 text-center">
+            <p className="text-sm font-semibold text-foreground">Your queue is empty</p>
+          </div>
         )}
 
         {suggested.length > 0 && (
           <PoolGroup title="Suggested, not placed" count={suggested.length}>
             {suggested.map((entry) => (
-              <PoolCard
+              <PoolRow
                 key={entry.article.id}
                 entry={entry}
+                section={entry.section ? SECTION_LABEL[entry.section] : null}
                 state={state}
                 paywall={paywallHints[entry.article.source]?.paywall_likely}
                 onAssign={onAssign}
@@ -65,18 +79,20 @@ export function NewsletterQueuePanel({ state, queue, suggested, paywallHints, on
 
         {queue.length > 0 && (
           <PoolGroup
-            title="Queued Articles"
+            title="Queued articles"
             count={queue.length}
             action={
-              <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={onClearAll}>
-                Clear All
+              <Button variant="ghost" size="xs" onClick={onClearAll}>
+                Clear all
               </Button>
             }
           >
             {queue.map((a) => (
-              <PoolCard
+              <PoolRow
                 key={a._id}
                 entry={{ article: a as Article, origin: "queue" }}
+                // Sama dengan aturan server: Indonesia bila ID ada di negara korban atau yang disebut.
+                section={[...(a.victim_countries ?? []), ...(a.mentioned_countries ?? [])].includes("ID") ? SECTION_LABEL.indonesia : null}
                 state={state}
                 paywall={paywallHints[a.source]?.paywall_likely}
                 onAssign={onAssign}
@@ -85,8 +101,10 @@ export function NewsletterQueuePanel({ state, queue, suggested, paywallHints, on
             ))}
           </PoolGroup>
         )}
-      </div>
-    </div>
+
+        {addLink}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -94,8 +112,8 @@ function PoolGroup({ title, count, action, children }: { title: string; count: n
   return (
     <section>
       <div className="mb-1.5 flex items-center justify-between">
-        <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-          {title} <span className="font-mono text-primary">{count}</span>
+        <h3 className="text-2xs font-bold tracking-[0.1em] text-muted-foreground uppercase">
+          {title} <span className="font-code text-foreground">{count}</span>
         </h3>
         {action}
       </div>
@@ -104,14 +122,16 @@ function PoolGroup({ title, count, action, children }: { title: string; count: n
   );
 }
 
-function PoolCard({
+function PoolRow({
   entry,
+  section,
   state,
   paywall,
   onAssign,
   onDiscard,
 }: {
   entry: PoolEntry;
+  section: string | null;
   state: ComposerState;
   paywall: boolean | undefined;
   onAssign: (slot: SlotKey, entry: PoolEntry) => void;
@@ -119,66 +139,51 @@ function PoolCard({
   onDiscard?: () => void;
 }) {
   const a = entry.article;
-  // Satu negara bisa ada di victim DAN mentioned (Indonesia di artikel insiden lokal): satu badge saja,
-  // kalau tidak key-nya kembar.
+  // Negara bisa ada di victim DAN mentioned: satu chip saja (key kembar). Chip aktor/negara tetap
+  // terjangkau dari antrean (fitur lama), di baris sendiri supaya tidak bersarang di kontrol lain.
   const countries = [...new Set([...(a.victim_countries ?? []), ...(a.mentioned_countries ?? [])])].slice(0, 3);
-  // Salinan antrean lama (localStorage) tak punya `entities`: helper jatuh ke chip tanpa id (resolve by name).
   const actors = actorChips(a).slice(0, 2);
   return (
-    <div className="rounded-xl border border-border bg-background p-2.5">
+    <div className="rounded-lg border border-border bg-background p-2.5">
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <div className="text-xs font-semibold text-foreground">{a.title}</div>
-          <div className="mt-0.5 font-mono text-xs text-muted-foreground">
-            {a.source} · {a.posted_on}
+          <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+            {section && <Chip kind="flag" value={section} />}
+            <span className="font-code text-2xs text-muted-foreground">
+              {a.source} · {a.posted_on}
+            </span>
           </div>
-          <div className="mt-1.5 flex flex-wrap gap-1">
-            {a.news_type && (
-              <Badge variant="outline" className="text-xs">
-                {a.news_type}
-              </Badge>
-            )}
-            {countries.map((c) => (
-              <EntityChip key={c} {...countryChip(a, c)} />
-            ))}
-            {actors.map((t) => (
-              <EntityChip key={t.name} {...t} />
-            ))}
-            {paywall && (
-              <Badge
-                variant="outline"
-                className="border-warning/40 bg-warning/10 text-xs text-warning-text"
-                title="Paywall detected — summary will use metadata"
-              >
-                <TriangleAlertIcon aria-hidden /> Paywall
-              </Badge>
-            )}
-          </div>
-          {entry.reasons && (
-            <div className="mt-1.5">
-              <ReasonChips reasons={entry.reasons} />
+          {(countries.length > 0 || actors.length > 0) && (
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {countries.map((c) => (
+                <EntityChip key={c} {...countryChip(a, c)} />
+              ))}
+              {actors.map((t) => (
+                <EntityChip key={t.name} {...t} />
+              ))}
             </div>
           )}
+          {entry.reasons && entry.reasons.length > 0 && (
+            <p className="mt-1.5 text-2xs text-muted-foreground">
+              <span className="font-semibold">Why suggested:</span> {entry.reasons.map((r) => r.text).join(" · ")}
+            </p>
+          )}
+          {paywall && <p className="mt-1 text-2xs text-warning-text">Paywall likely: the summary will use metadata only.</p>}
         </div>
-        <div className="flex shrink-0 flex-col items-end gap-1.5">
+        <div className="flex shrink-0 items-center gap-1">
           <DestinationMenu
             state={state}
             onPick={(slot) => onAssign(slot, entry)}
             triggerLabel="Add to the edition"
-            trigger={<Button variant="outline" size="sm" className="h-6 w-6 p-0 text-sm leading-none" />}
+            trigger={<Button variant="outline" size="icon-xs" />}
           >
             +
           </DestinationMenu>
           {onDiscard && (
-            <button
-              type="button"
-              onClick={onDiscard}
-              title="Remove from queue"
-              aria-label="Remove from queue"
-              className="font-mono text-xs text-muted-foreground transition-colors hover:text-destructive"
-            >
+            <Button variant="ghost" size="icon-xs" title="Remove from queue" aria-label="Remove from queue" onClick={onDiscard} className="hover:text-destructive">
               <XIcon aria-hidden />
-            </button>
+            </Button>
           )}
         </div>
       </div>

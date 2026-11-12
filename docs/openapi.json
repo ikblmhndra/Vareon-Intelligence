@@ -31928,6 +31928,38 @@
             }
           },
           {
+            "in": "query",
+            "name": "has_cve",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Has Cve",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "signal",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "ot",
+                    "zero_day",
+                    "databreach",
+                    "report"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Signal"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -32106,6 +32138,38 @@
               "default": false,
               "title": "Confirmed Only",
               "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "has_cve",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Has Cve",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "signal",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "ot",
+                    "zero_day",
+                    "databreach",
+                    "report"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Signal"
             }
           },
           {
