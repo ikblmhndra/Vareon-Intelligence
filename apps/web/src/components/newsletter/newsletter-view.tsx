@@ -49,11 +49,10 @@ import {
   type TemplateState,
 } from "@/components/newsletter/types";
 import { NewsletterQueuePanel } from "@/components/newsletter/newsletter-queue-panel";
-import { NewsletterComposerSections, type PoolEntry } from "@/components/newsletter/newsletter-composer-sections";
-import { NewsletterSummaryField } from "@/components/newsletter/newsletter-summary-field";
+import { NewsletterContentColumn } from "@/components/newsletter/newsletter-content-column";
+import type { PoolEntry } from "@/components/newsletter/newsletter-composer-sections";
 import { NewsletterSuggestionBar, type SuggestionPhase } from "@/components/newsletter/newsletter-suggestion-bar";
 import { NewsletterTemplateColumn } from "@/components/newsletter/newsletter-template-column";
-import { NewsletterTemplatePanel } from "@/components/newsletter/newsletter-template-panel";
 import { NewsletterPreviewDialog } from "@/components/newsletter/newsletter-preview-dialog";
 import { NewsletterHistoryPanel } from "@/components/newsletter/newsletter-history-panel";
 import { useCan } from "@/lib/auth/permissions";
@@ -347,7 +346,7 @@ export function NewsletterView() {
   const suggestedPool: PoolEntry[] = suggestion
     ? unplacedSuggestion(state, suggestion.items)
         .filter((i) => !queuedIds.has(i.article_id))
-        .map((i) => ({ article: i.article, origin: "suggestion" as const, reasons: i.reasons }))
+        .map((i) => ({ article: i.article, origin: "suggestion" as const, reasons: i.reasons, section: i.section }))
     : [];
   const queuePool: PoolEntry[] = queue.filter((a) => !placed.has(a._id)).map((a) => ({ article: a as Article, origin: "queue" as const }));
   const pool = [...suggestedPool, ...queuePool];
@@ -568,43 +567,46 @@ export function NewsletterView() {
           onBlockChange={setBlock}
         />
 
-        <div className="min-w-0 rounded-2xl surface-raised p-5">
-          <NewsletterSummaryField
-            value={template.customIntro}
-            onChange={(customIntro) => setTemplate((t) => ({ ...t, customIntro }))}
-            suggestion={suggestion}
-            suggestedIntro={suggestedIntro}
-            rebuilding={rebuilding}
-            onUseSuggested={() => (introEdited ? setConfirm({ kind: "use-summary" }) : applySuggestedSummary())}
-            onRebuild={requestRebuild}
-          />
+        <NewsletterContentColumn
+          block={activeBlock}
+          template={template}
+          onTemplateChange={setTemplate}
+          summary={{
+            value: template.customIntro,
+            onChange: (customIntro) => setTemplate((t) => ({ ...t, customIntro })),
+            suggestion,
+            suggestedIntro,
+            rebuilding,
+            onUseSuggested: () => (introEdited ? setConfirm({ kind: "use-summary" }) : applySuggestedSummary()),
+            onRebuild: requestRebuild,
+          }}
+          sections={{
+            state,
+            pool,
+            bodySources,
+            paywallHints: hintsQuery.data ?? {},
+            regenerate,
+            onMove: moveArticle,
+            onRemove: removeArticle,
+            onSwap: swapArticle,
+            onNoteChange: updateNote,
+            onToggleRegenerate: toggleRegenerate,
+          }}
+        />
 
-          <NewsletterComposerSections
-            state={state}
-            pool={pool}
-            bodySources={bodySources}
-            regenerate={regenerate}
-            onMove={moveArticle}
-            onRemove={removeArticle}
-            onSwap={swapArticle}
-            onNoteChange={updateNote}
-            onToggleRegenerate={toggleRegenerate}
-          />
-          <NewsletterTemplatePanel value={template} onChange={setTemplate} />
-          <NewsletterHistoryPanel refreshKey={historyRefreshKey} onPreview={handlePreviewSaved} onResend={handleResend} resendingId={resendingId} />
-        </div>
+        <NewsletterQueuePanel
+          state={state}
+          queue={queue}
+          suggested={suggestedPool}
+          paywallHints={hintsQuery.data ?? {}}
+          onAssign={assign}
+          onRemove={popFromQueue}
+          onClearAll={handleClearQueue}
+        />
+      </div>
 
-        <div className="rounded-2xl surface-raised p-5">
-          <NewsletterQueuePanel
-            state={state}
-            queue={queue}
-            suggested={suggestedPool}
-            paywallHints={hintsQuery.data ?? {}}
-            onAssign={assign}
-            onRemove={popFromQueue}
-            onClearAll={handleClearQueue}
-          />
-        </div>
+      <div className="mt-6">
+        <NewsletterHistoryPanel refreshKey={historyRefreshKey} onPreview={handlePreviewSaved} onResend={handleResend} resendingId={resendingId} />
       </div>
 
       <NewsletterPreviewDialog

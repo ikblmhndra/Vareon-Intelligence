@@ -1,11 +1,14 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { ArrowDownIcon, ArrowRightLeftIcon, ArrowUpIcon, ReplaceIcon, TriangleAlertIcon, XIcon } from "lucide-react";
+import { ArrowDownIcon, ArrowRightLeftIcon, ArrowUpIcon, ReplaceIcon, XIcon } from "lucide-react";
 
 import { DestinationMenu, ReasonChips } from "@/components/newsletter/article-parts";
-import { SectionIcon } from "@/components/newsletter/section-icon";
-import { Badge } from "@/components/ui/badge";
+import type { SECTION_BLOCKS } from "@/components/newsletter/types";
+import { Chip } from "@/components/ui/chip";
+import { Disclosure } from "@/components/ui/disclosure";
+import { SegmentedControl } from "@/components/ui/segmented-control";
+import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -16,9 +19,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
+import type { NewsletterSourceHint } from "@/lib/api/loose-types";
 import type { components } from "@/lib/api/schema";
-import { SECTIONS, SLOT_BY_KEY, type ComposerState, type SectionName, type SlotKey } from "@/lib/newsletter/composer";
-import { cn } from "@/lib/utils";
+import { SLOT_BY_KEY, type ComposerState, type SectionName, type SlotKey } from "@/lib/newsletter/composer";
 
 type Article = components["schemas"]["ArticleOut"];
 type Reason = components["schemas"]["NewsletterSuggestionReason"];
@@ -28,13 +31,22 @@ export interface PoolEntry {
   article: Article;
   origin: "suggestion" | "queue";
   reasons?: Reason[];
+  /** Section dari saran (hanya entri saran); antrean menurunkannya dari negara artikel. */
+  section?: SectionName;
 }
 
+export type TierView = "full" | "compact";
+
 interface Props {
+  /** Blok yang ditampilkan (Highlights atau satu section). */
+  block: (typeof SECTION_BLOCKS)[number];
+  view: TierView;
+  onViewChange: (view: TierView) => void;
   state: ComposerState;
   pool: PoolEntry[];
   /** `body_sources` dari preview terakhir: `metadata` = ringkasan dari metadata saja. */
   bodySources: Record<string, string>;
+  paywallHints: Record<string, NewsletterSourceHint>;
   /** Id yang akan dibangun ulang (fetch + LLM) pada preview berikutnya. */
   regenerate: ReadonlySet<number>;
   onMove: (articleId: number, to: SlotKey) => void;
@@ -44,115 +56,101 @@ interface Props {
   onToggleRegenerate: (articleId: number) => void;
 }
 
-const GROUPS: { key: "highlights" | SectionName; title: string; colorClass: string; full: SlotKey; compact: SlotKey | null }[] = [
-  { key: "highlights", title: "Highlights", colorClass: "text-warning", full: "highlights", compact: null },
-  ...SECTIONS.map((s) => ({
-    key: s.key,
-    title: s.label,
-    colorClass: { apac: "text-primary", global_news: "text-tag-violet", indonesia: "text-destructive" }[s.key],
-    full: `${s.key}_full` as SlotKey,
-    compact: `${s.key}_compact` as SlotKey,
-  })),
-];
+const EMPTY = "No articles here yet. Place some from the queue.";
 
 /**
- * Blok bagian composer: Highlights, Asia Pacific, Global, Indonesia. Tiap section punya kartu penuh
- * (key points + ringkasan, butuh fetch + LLM) dan daftar "Also Noted" (satu baris dari metadata,
- * tanpa fetch dan tanpa LLM); analis bisa menaikkan baris jadi kartu, menurunkan kartu jadi baris,
- * memindah, menukar dengan artikel lain, atau membuang. Batas jumlah ditegakkan `lib/newsletter/composer`.
+ * Isi SATU blok bagian composer (Highlights atau satu section), dipilih di kolom Template. Tiap
+ * section punya kartu penuh (ringkasan butuh fetch + LLM) dan daftar "Also Noted" (satu baris dari
+ * metadata, tanpa fetch dan tanpa LLM); analis bisa menaikkan baris jadi kartu, menurunkan kartu
+ * jadi baris, memindah, menukar dengan artikel lain, atau membuang. Batas jumlah ditegakkan
+ * `lib/newsletter/composer`. Tidak ada seret-untuk-urut (spec D30).
  */
-export function NewsletterComposerSections({
-  state,
-  pool,
-  bodySources,
-  regenerate,
-  onMove,
-  onRemove,
-  onSwap,
-  onNoteChange,
-  onToggleRegenerate,
-}: Props) {
+export function NewsletterComposerSections({ block, view, onViewChange, state, pool, bodySources, paywallHints, regenerate, ...handlers }: Props) {
+  const fullDef = SLOT_BY_KEY[block.full];
+  const compactDef = block.compact ? SLOT_BY_KEY[block.compact] : null;
+  const cards = state.slots[block.full];
+  const rows = block.compact ? state.slots[block.compact] : [];
+  const showRows = compactDef !== null && view === "compact";
+
   return (
-    <div className="space-y-5">
-      {GROUPS.map((g) => {
-        const fullDef = SLOT_BY_KEY[g.full];
-        const compactDef = g.compact ? SLOT_BY_KEY[g.compact] : null;
-        const cards = state.slots[g.full];
-        const rows = g.compact ? state.slots[g.compact] : [];
-        return (
-          <section key={g.key} aria-label={g.title}>
-            <div
-              className={cn(
-                "mb-3 flex flex-wrap items-center justify-between gap-x-3 border-b border-border pb-2 text-sm font-semibold",
-                g.colorClass,
-              )}
+    <section aria-label={block.title}>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+        <div>
+          <h2 className="font-heading text-lg leading-snug font-semibold text-foreground">{block.title}</h2>
+          <p className="font-code text-xs text-muted-foreground">
+            {compactDef ? `${cards.length} full cards · ${rows.length} compact` : `${cards.length} of ${fullDef.cap}`}
+          </p>
+        </div>
+        {compactDef && (
+          <SegmentedControl
+            aria-label="Card style shown"
+            value={view}
+            onChange={onViewChange}
+            options={[
+              { value: "full", label: "Full" },
+              { value: "compact", label: "Compact" },
+            ]}
+          />
+        )}
+      </div>
+
+      {!showRows && (
+        <div className="space-y-2">
+          {cards.length === 0 && <p className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">{EMPTY}</p>}
+          {cards.map((art) => (
+            <ArticleCard
+              key={art.id}
+              article={art}
+              slot={block.full}
+              state={state}
+              pool={pool}
+              bodySource={bodySources[String(art.id)]}
+              paywall={paywallHints[art.source]?.paywall_likely === true}
+              regenerate={regenerate.has(art.id)}
+              note={state.notes[String(art.id)] ?? ""}
+              onMove={handlers.onMove}
+              onRemove={handlers.onRemove}
+              onSwap={handlers.onSwap}
+              onNoteChange={handlers.onNoteChange}
+              onToggleRegenerate={handlers.onToggleRegenerate}
+            />
+          ))}
+          {compactDef && rows.length > 0 && (
+            <button
+              type="button"
+              onClick={() => onViewChange("compact")}
+              className="w-full rounded-lg bg-surface px-3 py-2 text-left text-2xs font-bold tracking-[0.1em] text-muted-foreground uppercase hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
             >
-              <span className="flex items-center gap-2">
-                <SectionIcon section={g.key} /> {g.title}
-              </span>
-              <span className="font-mono text-xs font-normal text-muted-foreground">
-                {cards.length} / {fullDef.cap} {g.key === "highlights" ? "" : "cards"}
-                {compactDef && ` · ${rows.length} / ${compactDef.cap} Also Noted`}
-              </span>
-            </div>
+              Also noted · {rows.length} compact items
+            </button>
+          )}
+        </div>
+      )}
 
-            <div className="space-y-1.5">
-              {cards.length === 0 && (
-                <div className="flex min-h-12 items-center justify-center rounded-xl border border-dashed border-border bg-background px-3 py-3 text-center">
-                  <span className="text-sm text-muted-foreground">
-                    No {g.key === "highlights" ? "highlights" : "cards"} yet — add from the suggested or queued articles (max {fullDef.cap})
-                  </span>
-                </div>
-              )}
-              {cards.map((art) => (
-                <ArticleCard
-                  key={art.id}
-                  article={art}
-                  slot={g.full}
-                  state={state}
-                  pool={pool}
-                  bodySource={bodySources[String(art.id)]}
-                  regenerate={regenerate.has(art.id)}
-                  note={state.notes[String(art.id)] ?? ""}
-                  onMove={onMove}
-                  onRemove={onRemove}
-                  onSwap={onSwap}
-                  onNoteChange={onNoteChange}
-                  onToggleRegenerate={onToggleRegenerate}
-                />
+      {showRows && block.compact && (
+        <>
+          {rows.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">{EMPTY}</p>
+          ) : (
+            <ul className="space-y-1">
+              {rows.map((art) => (
+                <li key={art.id}>
+                  <ArticleRow
+                    article={art}
+                    slot={block.compact!}
+                    state={state}
+                    pool={pool}
+                    onMove={handlers.onMove}
+                    onRemove={handlers.onRemove}
+                    onSwap={handlers.onSwap}
+                  />
+                </li>
               ))}
-            </div>
-
-            {compactDef && g.compact && (
-              <div className="mt-3">
-                <div className="mb-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">Also Noted</div>
-                {rows.length === 0 ? (
-                  <p className="rounded-xl border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
-                    No rows. These are one-line entries (title, source, date) that cost no page fetch and no model call.
-                  </p>
-                ) : (
-                  <ul className="space-y-1">
-                    {rows.map((art) => (
-                      <li key={art.id}>
-                        <ArticleRow
-                          article={art}
-                          slot={g.compact!}
-                          state={state}
-                          pool={pool}
-                          onMove={onMove}
-                          onRemove={onRemove}
-                          onSwap={onSwap}
-                        />
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
-          </section>
-        );
-      })}
-    </div>
+            </ul>
+          )}
+        </>
+      )}
+    </section>
   );
 }
 
@@ -244,7 +242,7 @@ function SwapMenu({ outId, pool, onSwap }: { outId: number; pool: PoolEntry[]; o
                 <DropdownMenuItem key={p.article.id} onClick={() => onSwap(outId, p)} className="items-start">
                   <span className="min-w-0 flex-1">
                     <span className="line-clamp-2 text-xs font-medium">{p.article.title}</span>
-                    <span className="block font-mono text-xs text-muted-foreground">
+                    <span className="block font-code text-xs text-muted-foreground">
                       {p.article.source} · {p.article.posted_on}
                     </span>
                   </span>
@@ -261,56 +259,57 @@ function SwapMenu({ outId, pool, onSwap }: { outId: number; pool: PoolEntry[]; o
 interface CardProps extends ItemProps {
   note: string;
   bodySource: string | undefined;
+  paywall: boolean;
   regenerate: boolean;
   onNoteChange: (articleId: number, value: string) => void;
   onToggleRegenerate: (articleId: number) => void;
 }
 
-/** Kartu penuh (Highlights atau kartu section): judul, sumber, alasan saran, tanda ringkasan dari
- * metadata, dan catatan analis. */
-function ArticleCard({ article, note, bodySource, regenerate, onNoteChange, onToggleRegenerate, state, ...rest }: CardProps) {
-  const metadataOnly = bodySource === "metadata";
+/** Kartu penuh (Highlights atau kartu section): judul, sumber, tanda periksa-ringkasan, alasan
+ * saran, dan "Note and options" (catatan analis + bangun ulang ringkasan). Tombol aksi saudara
+ * dari judul, bukan bersarang di dalam tombol lain. */
+function ArticleCard({ article, note, bodySource, paywall, regenerate, onNoteChange, onToggleRegenerate, state, ...rest }: CardProps) {
+  // Bukti dari preview ("halaman tidak terbaca") mengalahkan dugaan dari riwayat sumber.
+  const flag =
+    bodySource === "metadata"
+      ? "CHECK SUMMARY · page could not be read"
+      : paywall
+        ? "CHECK SUMMARY · source is often paywalled"
+        : null;
   return (
-    <div className="rounded-xl border border-border bg-background p-2.5">
+    <div className="rounded-lg border border-border bg-background p-3">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="text-xs font-semibold text-foreground">{article.title}</div>
-          <div className="mt-0.5 font-mono text-xs text-muted-foreground">
+          <div className="text-sm font-semibold text-foreground">{article.title}</div>
+          <div className="mt-0.5 font-code text-xs text-muted-foreground">
             {article.source} · {article.posted_on}
           </div>
         </div>
         <ItemActions article={article} state={state} {...rest} />
       </div>
-      <div className="mt-1.5 space-y-1.5">
+      <div className="mt-2 space-y-2">
+        {flag && <Chip kind="flag" value="check" className="bg-warning/15 text-warning-text">{flag}</Chip>}
         <ReasonChips reasons={state.reasons[article.id]} />
-        {metadataOnly && (
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge
-              variant="outline"
-              className="border-warning/40 bg-warning/10 text-xs text-warning-text"
-              title="The page could not be read (paywall or fetch failure), so the summary was written from the title and metadata only. Check it before sending."
-            >
-              <TriangleAlertIcon aria-hidden /> Summary from metadata only
-            </Badge>
-            <Button
-              type="button"
-              variant="ghost"
-              size="xs"
-              aria-pressed={regenerate}
-              onClick={() => onToggleRegenerate(article.id)}
-              title="Fetch the page again and rewrite the summary on the next preview"
-            >
-              {regenerate ? "Will re-summarise on next preview" : "Re-summarise"}
-            </Button>
+        <Disclosure title="Note and options" defaultOpen={note !== "" || regenerate}>
+          <div className="space-y-2 pt-1">
+            <Textarea
+              aria-label={`Analyst note for ${article.title}`}
+              placeholder="Analyst notes (optional)…"
+              value={note}
+              onChange={(e) => onNoteChange(article.id, e.target.value)}
+              className="h-16 resize-y bg-panel text-xs"
+            />
+            <Switch
+              checked={regenerate}
+              onCheckedChange={() => onToggleRegenerate(article.id)}
+              aria-label="Regenerate summary"
+              label="Regenerate summary"
+              className="text-xs"
+            />
+            <p className="text-xs text-muted-foreground">Fetches the page again and rewrites the summary on the next preview.</p>
           </div>
-        )}
+        </Disclosure>
       </div>
-      <Textarea
-        placeholder="Analyst notes (optional)…"
-        value={note}
-        onChange={(e) => onNoteChange(article.id, e.target.value)}
-        className="mt-2 h-14 resize-y bg-panel font-mono text-xs"
-      />
     </div>
   );
 }
@@ -324,7 +323,7 @@ function ArticleRow({ article, state, ...rest }: ItemProps) {
           <div className="truncate text-xs font-medium text-foreground" title={article.title}>
             {article.title}
           </div>
-          <div className="font-mono text-xs text-muted-foreground">
+          <div className="font-code text-xs text-muted-foreground">
             {article.source} · {article.posted_on}
             {article.news_type ? ` · ${article.news_type}` : ""}
           </div>
