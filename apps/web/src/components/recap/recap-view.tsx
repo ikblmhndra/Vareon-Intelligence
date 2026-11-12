@@ -1,222 +1,336 @@
-import { Badge } from "@/components/ui/badge";
-import type { RecapDoc, RecapHitRate, RecapTopStory } from "@/lib/api/loose-types";
-import { recapTitle } from "@/lib/recap/period";
-import { safeHttpUrl } from "@/lib/recap/quality";
-import { ConfidenceBadge, Chips, EmptyNote, Section } from "@/components/recap/recap-parts";
-import {
-  ComparisonBlock,
-  GroundingBlock,
-  HitRateBlock,
-  ScorecardBlock,
-} from "@/components/recap/recap-quality";
+import type { ReactNode } from "react";
 
-/** Judul cerita; bertaut ke artikelnya kalau ada `url` (cerita yang lolos grounding membawanya,
- * recap lama tidak: judulnya tampil polos seperti dulu). */
-function StoryTitle({ story }: { story: RecapTopStory }) {
-  const href = safeHttpUrl(story.url);
-  if (!href) return <span className="font-medium">{story.title}</span>;
+import type { RecapDoc, RecapHitRate, RecapVerdict } from "@/lib/api/loose-types";
+import { isoWeek } from "@/lib/recap/period";
+import { dropReason, effectiveVerdict, safeHttpUrl } from "@/lib/recap/quality";
+import { fmtDateTime } from "@/lib/format";
+import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Disclosure } from "@/components/ui/disclosure";
+import { Notice } from "@/components/ui/notice";
+import { ConfidenceBadge, Chips, EmptyNote } from "@/components/recap/recap-parts";
+import { ComparisonBlock, HitRateBlock, ScorecardBlock } from "@/components/recap/recap-quality";
+import { RecapTiles } from "@/components/recap/recap-tiles";
+
+const VERDICT_WORD: Record<RecapVerdict, string> = {
+  happened: "hit",
+  partly: "partly",
+  not_happened: "miss",
+  unclear: "unclear",
+};
+
+function SideCard({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="font-medium text-primary underline-offset-2 hover:underline"
-    >
-      {story.title}
-    </a>
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+      </CardHeader>
+      <CardContent>{children}</CardContent>
+    </Card>
+  );
+}
+
+/** Peringatan grounding: yang dibuang cek grounding tidak hilang diam-diam, rinciannya di `<details>`. */
+function GroundingNotice({ doc }: { doc: RecapDoc }) {
+  const grounding = doc.quality?.grounding;
+  const dropped = grounding?.dropped ?? [];
+  const count = grounding?.count || dropped.length;
+  if (!count) return null;
+  return (
+    <Notice tone="warning" title={`Grounding check: ${count} ${count === 1 ? "item" : "items"} dropped`}>
+      <details>
+        <summary className="cursor-pointer text-xs font-medium text-foreground">Show details</summary>
+        <p className="mt-2">
+          The model wrote these, but they are not in the data it was given, so they were removed from
+          this recap instead of being shown.
+        </p>
+        <ul className="mt-2 space-y-1.5">
+          {dropped.map((d, i) => (
+            <li
+              key={i}
+              className="grid grid-cols-1 gap-x-3 gap-y-0.5 border-t border-border/60 pt-1.5 text-sm first:border-t-0 first:pt-0 sm:grid-cols-[10rem_1fr]"
+            >
+              <span className="font-code text-xs text-muted-foreground">{d.field}</span>
+              <span className="min-w-0">
+                <span className="break-words text-foreground">{d.value || "(empty)"}</span>
+                <span className="ml-2 text-xs text-muted-foreground">· {dropReason(d.reason)}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </details>
+    </Notice>
   );
 }
 
 /**
- * Render satu dokumen recap (harian atau mingguan) -- port `_recapRender()` di
- * `legacy/static/js/newsroom/recap.js`, ditulis pakai token Tailwind +
- * `Badge` shadcn gantiin string HTML inline-style manual. Isi recap mingguan juga ada di
- * `doc.yesterday` (nama kolom lama), bentuknya sama dengan yang harian.
- *
- * Kualitas (#21 PR 4): `doc.quality` membawa tiga blok opsional (perbandingan, grounding,
- * scorecard) dan `hitRate` datang dari amplop balasan; masing-masing dipasang hanya kalau
- * datanya ada, jadi recap lama (`quality` = `{}`) dan recap harian tampil seperti sebelumnya.
+ * Satu dokumen recap (harian atau mingguan). Isi mingguan juga ada di `doc.yesterday` (nama kolom
+ * lama). Blok kualitas (`doc.quality`, `hitRate`) dipasang hanya kalau datanya ada, jadi recap lama
+ * dan recap harian tetap tampil utuh. Tidak ada elemen interaktif di dalam baris cerita: tautan
+ * sumber adalah saudara judul, bukan pembungkusnya.
  */
 export function RecapView({ doc, hitRate }: { doc: RecapDoc; hitRate?: RecapHitRate }) {
   const recap = doc.yesterday || {};
   const fcast = doc.forecast || {};
-  const counts = doc.counts || {};
-  const gen = doc.generated_at ? new Date(doc.generated_at).toLocaleString() : "—";
-  const tokens = doc.token_usage?.total_tokens;
   const weekly = doc.kind === "weekly";
   const quality = doc.quality ?? {};
+  const stories = recap.top_stories ?? [];
+  const events = fcast.likely_events ?? [];
+  const tokens = doc.token_usage?.total_tokens;
+  const isEmpty = !doc.headline && !recap.summary;
+  // Pekan depan = ISO week dari Senin + 7 hari (bukan nomor + 1: pekan 53 diikuti pekan 1).
+  const nextWeek = weekly
+    ? isoWeek(new Date(Date.parse(doc.period_start) + 7 * 86_400_000).toISOString().slice(0, 10))
+    : null;
+  const scorecard = quality.scorecard;
+  // "Each links to its source article" hanya benar bila SEMUA cerita punya url (recap lama tidak).
+  const allLinked = stories.length > 0 && stories.every((s) => !!safeHttpUrl(s.url));
+  const groundingClean = !quality.grounding || !(quality.grounding.count || quality.grounding.dropped?.length);
 
   return (
-    <div>
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-gradient-to-br from-primary/5 to-primary/[0.04] px-4 py-3">
-        <div>
-          <div className="mb-1 text-sm font-semibold text-muted-foreground">
-            {recapTitle(doc.kind, doc.date, doc.period_start, doc.period_end)}
-          </div>
-          <div className="text-sm leading-snug">{doc.headline || "(no headline)"}</div>
-          {weekly && (
-            <div className="mt-1 text-xs text-muted-foreground">
-              Monday–Sunday by UTC date (Monday 07:00 to Monday 07:00 WIB)
-            </div>
+    <div className="space-y-4">
+      {isEmpty ? (
+        <Notice tone="warning" title="This recap is empty">
+          The model reply {doc.raw_llm ? "could not be read (raw text below)" : "had no content"}. Generate it
+          again from Regenerate.
+          {doc.raw_llm && (
+            <Disclosure title="Raw LLM output (parse fallback)" className="mt-2">
+              <pre className="mt-1.5 rounded-md border border-border p-2.5 text-xs whitespace-pre-wrap text-muted-foreground">
+                {doc.raw_llm}
+              </pre>
+            </Disclosure>
+          )}
+        </Notice>
+      ) : (
+        <GroundingNotice doc={doc} />
+      )}
+
+      <RecapTiles doc={doc} />
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_432px]">
+        <div className="min-w-0 space-y-4">
+          <Card>
+            <CardHeader>
+              <CardDescription className="text-2xs font-semibold tracking-wide uppercase">
+                Summary
+              </CardDescription>
+              <CardTitle className="text-xl">{doc.headline || "(no headline)"}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm leading-relaxed">{recap.summary || "(no summary)"}</p>
+              <p className="text-2xs text-muted-foreground">
+                {doc.token_usage?.skipped
+                  ? "LLM skipped (no activity)"
+                  : `Generated ${fmtDateTime(doc.generated_at)} · ${doc.model}${tokens ? ` · ${tokens} tokens` : ""}`}
+                {!isEmpty && groundingClean && " · Grounding check: nothing was dropped"}
+                {weekly && " · Weeks run Monday-Sunday by UTC date."}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Top stories</CardTitle>
+              <CardDescription>
+                {allLinked
+                  ? "Each links to its source article"
+                  : "Links appear for stories matched to an article."}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {stories.length ? (
+                <ol className="divide-y divide-border">
+                  {stories.map((s, i) => {
+                    const href = safeHttpUrl(s.url);
+                    return (
+                      <li key={i} className="flex gap-3 py-3 first:pt-0 last:pb-0">
+                        <span className="font-code text-xs text-muted-foreground">
+                          {String(i + 1).padStart(2, "0")}
+                        </span>
+                        <div className="min-w-0 space-y-1">
+                          <p className="text-sm font-semibold">{s.title}</p>
+                          {s.why_it_matters && (
+                            <p className="text-sm text-muted-foreground">{s.why_it_matters}</p>
+                          )}
+                          {href ? (
+                            <a
+                              href={href}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs font-medium text-primary-text underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                            >
+                              {s.source || "Source"} ↗
+                            </a>
+                          ) : (
+                            <p className="text-xs text-muted-foreground">{s.source || "?"}</p>
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
+              ) : (
+                <EmptyNote />
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="min-w-0 space-y-4">
+          <SideCard title="Active threat actors">
+            <Chips items={recap.active_threat_actors} entity="intrusion-set" />
+          </SideCard>
+          <SideCard title="Notable CVEs">
+            <Chips items={recap.notable_cves} entity="vulnerability" />
+          </SideCard>
+          {(recap.apac_signals ?? []).length > 0 && (
+            <SideCard title="APAC signals">
+              <ul className="list-disc space-y-1 pl-4 text-sm leading-snug">
+                {recap.apac_signals!.map((s, i) => (
+                  <li key={i}>{s}</li>
+                ))}
+              </ul>
+            </SideCard>
           )}
         </div>
-        <div className="text-right font-mono text-xs text-muted-foreground">
-          <div>
-            {counts.articles ?? 0} articles · {counts.tweets ?? 0} tweets
-          </div>
-          <div>
-            {counts.cves ?? 0} CVEs · {counts.iocs ?? 0} IOCs · {counts.campaigns ?? 0} campaigns
-          </div>
-          <div className="mt-1">
-            gen: {gen}
-            {doc.token_usage?.skipped ? " · LLM skipped (no activity)" : ""}
-            {tokens ? ` · ${tokens} tokens` : ""}
-          </div>
-        </div>
       </div>
 
-      {/* Recap tanpa headline dan ringkasan = generate gagal; "nothing was dropped" di atas isi kosong
-          menyesatkan (audit UI U13), jadi blok grounding diganti peringatan. */}
-      {!doc.headline && !recap.summary ? (
-        <p className="mt-3 rounded-md border border-destructive/40 px-3 py-2 text-xs text-destructive-text">
-          This recap is empty: the model reply {doc.raw_llm ? "could not be read (raw text below)" : "had no content"}.
-          Generate it again with Force Regen.
-        </p>
-      ) : (
-        quality.grounding && <GroundingBlock grounding={quality.grounding} />
-      )}
+      <div className={cn("grid grid-cols-1 gap-4", weekly && "lg:grid-cols-2")}>
+        <Card>
+          <CardHeader>
+            <CardTitle>{weekly ? `Forecast for week ${nextWeek}` : "Forecast for the next 1-3 days"}</CardTitle>
+            <CardDescription>
+              {weekly ? "Each forecast is scored next week" : "Daily forecasts are not scored."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              {fcast.summary || "(no forecast)"}
+            </p>
+            {events.length ? (
+              <ul className="divide-y divide-border">
+                {events.map((e, i) => (
+                  <li key={i} className="space-y-1 py-2.5 first:pt-0 last:pb-0">
+                    <div className="flex items-start gap-2">
+                      {e.id && <span className="font-code text-xs text-muted-foreground">{e.id}</span>}
+                      <span className="min-w-0 flex-1 text-sm font-medium">{e.event}</span>
+                      <ConfidenceBadge confidence={e.confidence} />
+                    </div>
+                    <p className="text-xs text-muted-foreground">Basis: {e.basis}</p>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyNote />
+            )}
+            {(fcast.watch_items ?? []).length > 0 && (
+              <div>
+                <h3 className="mb-1.5 text-sm font-semibold">Watch items</h3>
+                <ul className="list-disc space-y-1 pl-4 text-sm">
+                  {fcast.watch_items!.map((w, i) => (
+                    <li key={i}>{w}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-      {quality.comparison && <ComparisonBlock comparison={quality.comparison} />}
+        {weekly && (hitRate || scorecard) ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Forecast hit rate</CardTitle>
+              <CardDescription>
+                Does the stated confidence hold up?
+                {hitRate ? ` · last ${hitRate.weeks} weeks` : ""}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {hitRate && <HitRateBlock hitRate={hitRate} />}
+              {scorecard && (
+                <>
+                  <p className="text-sm">
+                    Week {isoWeek(scorecard.reviewed.period_start)} scorecard:{" "}
+                    {scorecard.events.length
+                      ? scorecard.events.map((e) => `${e.id} ${VERDICT_WORD[effectiveVerdict(e)]}`).join(", ") + "."
+                      : "no events."}
+                  </p>
+                  <Disclosure title="Review verdicts">
+                    <ScorecardBlock recapId={doc.id} scorecard={scorecard} />
+                  </Disclosure>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        ) : null}
+      </div>
 
-      <Section title="Summary">
-        <p className="text-sm leading-relaxed">{recap.summary || "(no summary)"}</p>
-      </Section>
-
-      <Section title={`Top Stories (${(recap.top_stories ?? []).length})`}>
-        {recap.top_stories?.length ? (
-          <ul className="list-disc space-y-1.5 pl-4 text-sm leading-snug">
-            {recap.top_stories.map((s, i) => (
-              <li key={i}>
-                <StoryTitle story={s} />{" "}
-                <span className="font-mono text-xs text-muted-foreground">[{s.source || "?"}]</span>
-                {s.why_it_matters && (
-                  <div className="mt-1 text-sm text-muted-foreground">{s.why_it_matters}</div>
-                )}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <EmptyNote />
-        )}
-      </Section>
-
-      <Section title={`Top Tweets (${(recap.top_tweets ?? []).length})`}>
-        {recap.top_tweets?.length ? (
-          <ul className="list-disc space-y-1.5 pl-4 text-sm leading-snug">
-            {recap.top_tweets.map((t, i) => (
-              <li key={i}>
-                <span className="font-medium">@{t.author || "?"}</span>{" "}
-                <Badge variant="outline" className="border-primary/40 bg-primary/10 font-mono text-xs text-primary-text">
-                  {t.signal || "other"}
-                </Badge>
-                {t.summary && <div className="mt-1 text-sm">{t.summary}</div>}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <EmptyNote />
-        )}
-      </Section>
-
-      <Section title="Active Threat Actors">
-        <Chips items={recap.active_threat_actors} entity="intrusion-set" />
-      </Section>
-
-      <Section title="Notable CVEs">
-        <Chips items={recap.notable_cves} entity="vulnerability" />
-      </Section>
-
-      <Section title={`Active Campaigns (${(recap.active_campaigns ?? []).length})`}>
-        {recap.active_campaigns?.length ? (
-          <ul className="list-disc space-y-1.5 pl-4 text-sm leading-snug">
-            {recap.active_campaigns.map((c, i) => (
-              <li key={i}>
-                <span className="font-medium">{c.theme || "(unlabeled)"}</span>{" "}
-                <span className="font-mono text-xs text-muted-foreground">
-                  · {c.article_count ?? 0} articles
-                </span>
-                {c.why_it_matters && (
-                  <div className="mt-1 text-sm text-muted-foreground">{c.why_it_matters}</div>
-                )}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <EmptyNote />
-        )}
-      </Section>
-
-      {(recap.apac_signals ?? []).length > 0 && (
-        <Section title="APAC Signals">
-          <ul className="list-disc space-y-1 pl-4 text-sm leading-snug">
-            {recap.apac_signals!.map((s, i) => (
-              <li key={i}>{s}</li>
-            ))}
-          </ul>
-        </Section>
-      )}
-
-      <div className="mt-6 rounded-md border border-warning/40 bg-warning/[0.04] px-4 py-3">
-        <div className="mb-2 font-mono text-sm tracking-widest text-warning uppercase">
-          ▲ Forecast · Next {weekly ? "1-2 Weeks" : "1-3 Days"}
-        </div>
-        <p className="mb-2 text-sm leading-relaxed">{fcast.summary || "(no forecast)"}</p>
-
-        <div className="mb-1.5 text-sm font-semibold text-muted-foreground">
-          Likely Events ({(fcast.likely_events ?? []).length})
-        </div>
-        {fcast.likely_events?.length ? (
-          <ul className="list-disc space-y-2 pl-4 text-sm">
-            {fcast.likely_events.map((e, i) => (
-              <li key={i}>
-                <span className="font-medium">{e.event}</span> <ConfidenceBadge confidence={e.confidence} />
-                <div className="mt-1 text-sm text-muted-foreground">
-                  <span className="font-mono text-xs uppercase">Basis:</span> {e.basis}
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <EmptyNote />
-        )}
-
-        {(fcast.watch_items ?? []).length > 0 && (
-          <>
-            <div className="mt-3 mb-1.5 text-sm font-semibold text-muted-foreground">
-              Watch Items
+      <section>
+        <h2 className="mb-1 font-heading text-lg font-semibold">More signals</h2>
+        <Disclosure title="Week over week, top tweets and active campaigns" printOpen>
+          <div className="space-y-6 pt-2">
+            {quality.comparison && (
+              <div>
+                <h3 className="mb-2 text-sm font-semibold">Week over week</h3>
+                <ComparisonBlock comparison={quality.comparison} />
+              </div>
+            )}
+            <div>
+              <h3 className="mb-2 text-sm font-semibold">
+                Top tweets ({(recap.top_tweets ?? []).length})
+              </h3>
+              {recap.top_tweets?.length ? (
+                <ul className="space-y-2">
+                  {recap.top_tweets.map((t, i) => (
+                    <li key={i} className="text-sm leading-snug">
+                      <span className="font-code font-medium">@{t.author || "?"}</span>{" "}
+                      <Badge
+                        variant="outline"
+                        className="border-primary/40 bg-primary/10 font-mono text-xs text-primary-text"
+                      >
+                        {t.signal || "other"}
+                      </Badge>
+                      {t.summary && <p className="mt-1">{t.summary}</p>}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <EmptyNote />
+              )}
             </div>
-            <ul className="list-disc space-y-1 pl-4 text-sm">
-              {fcast.watch_items!.map((w, i) => (
-                <li key={i}>{w}</li>
-              ))}
-            </ul>
-          </>
-        )}
-      </div>
+            <div>
+              <h3 className="mb-2 text-sm font-semibold">
+                Active campaigns ({(recap.active_campaigns ?? []).length})
+              </h3>
+              {recap.active_campaigns?.length ? (
+                <ul className="space-y-2">
+                  {recap.active_campaigns.map((c, i) => (
+                    <li key={i} className="text-sm leading-snug">
+                      <span className="font-medium">{c.theme || "(unlabeled)"}</span>{" "}
+                      <span className="font-code text-xs text-muted-foreground">
+                        · {c.article_count ?? 0} articles
+                      </span>
+                      {c.why_it_matters && (
+                        <p className="mt-1 text-muted-foreground">{c.why_it_matters}</p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <EmptyNote />
+              )}
+            </div>
+          </div>
+        </Disclosure>
+      </section>
 
-      {quality.scorecard && <ScorecardBlock recapId={doc.id} scorecard={quality.scorecard} />}
-
-      {hitRate && <HitRateBlock hitRate={hitRate} />}
-
-      {doc.raw_llm && (
-        <details className="mt-4">
-          <summary className="cursor-pointer text-sm font-semibold text-muted-foreground">
-            Raw LLM output (parse fallback)
-          </summary>
-          <pre className="mt-1.5 rounded-md border border-border p-2.5 text-sm whitespace-pre-wrap text-muted-foreground">
+      {doc.raw_llm && !isEmpty && (
+        <Disclosure title="Raw LLM output (parse fallback)" printOpen>
+          <pre className="mt-1.5 rounded-md border border-border p-2.5 text-xs whitespace-pre-wrap text-muted-foreground">
             {doc.raw_llm}
           </pre>
-        </details>
+        </Disclosure>
       )}
     </div>
   );

@@ -1,5 +1,3 @@
-import type { ReactNode } from "react";
-
 import { Badge } from "@/components/ui/badge";
 import { EntityChip } from "@/components/entities/entity-chip";
 import { cveIdsIn } from "@/lib/entities/name-chips";
@@ -7,20 +5,8 @@ import { cn } from "@/lib/utils";
 
 /**
  * Potongan kecil yang dipakai bersama `recap-view.tsx` dan `recap-quality.tsx`. Dipisah dari
- * `recap-view.tsx` supaya blok kualitas bisa memakainya tanpa import melingkar (view memuat
- * kualitas, kualitas memakai `Section`).
+ * `recap-view.tsx` supaya blok kualitas bisa memakainya tanpa import melingkar.
  */
-
-export function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <div className="mt-5 first:mt-0">
-      <div className="mb-2 border-b border-border pb-1 text-sm font-semibold text-muted-foreground">
-        {title}
-      </div>
-      {children}
-    </div>
-  );
-}
 
 export function EmptyNote() {
   return <p className="text-xs text-muted-foreground italic">(none)</p>;
