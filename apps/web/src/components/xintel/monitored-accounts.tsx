@@ -22,7 +22,7 @@ import { useCan } from "@/lib/auth/permissions";
 
 const QUERY_KEY = ["xintel", "accounts"] as const;
 
-function useAccounts() {
+export function useAccounts() {
   return useQuery({
     queryKey: QUERY_KEY,
     queryFn: async () => {
