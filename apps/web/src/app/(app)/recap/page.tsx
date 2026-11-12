@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -11,7 +11,9 @@ import { isClientError } from "@/lib/exec/query";
 import {
   formatRange,
   isoWeek,
+  isoWeekYear,
   lastFinishedWeekStart,
+  mondayOf,
   previousPeriod,
   sundayOf,
 } from "@/lib/recap/period";
@@ -117,10 +119,16 @@ function RecapPageInner() {
   const params = useSearchParams();
   const kindParam = params.get("kind");
   const dateParam = params.get("date") ?? "";
+  // Tanggal mingguan ketikan tangan yang bukan Senin dipaku ke Senin pekannya.
+  const snapped = kindParam === "weekly" ? mondayOf(dateParam) : dateParam;
   const selected: Selection | null =
     (kindParam === "weekly" || kindParam === "daily") && ISO_DATE.test(dateParam)
-      ? { kind: kindParam, date: dateParam }
+      ? { kind: kindParam, date: snapped }
       : null;
+  useEffect(() => {
+    if (kindParam === "weekly" && ISO_DATE.test(dateParam) && snapped !== dateParam)
+      router.replace(`${pathname}?kind=weekly&date=${snapped}`);
+  }, [kindParam, snapped, dateParam, pathname, router]);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const history = useRecapHistory();
@@ -139,7 +147,7 @@ function RecapPageInner() {
   usePageTitle(
     recap
       ? recap.kind === "weekly"
-        ? `Weekly recap ${recap.period_start.slice(0, 4)}-W${String(isoWeek(recap.period_start)).padStart(2, "0")}`
+        ? `Weekly recap ${isoWeekYear(recap.period_start)}-W${String(isoWeek(recap.period_start)).padStart(2, "0")}`
         : `Daily recap ${recap.date}`
       : "Recap",
   );

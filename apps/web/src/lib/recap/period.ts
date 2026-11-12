@@ -70,6 +70,11 @@ export function isoWeek(mondayIso: string): number {
   return Math.ceil(dayOfYear / 7);
 }
 
+/** Tahun ISO dari Senin `mondayIso` = tahun Kamis pekannya (2025-12-29 -> 2026, 2026-12-28 -> 2026). */
+export function isoWeekYear(mondayIso: string): number {
+  return new Date(parseIso(mondayIso).getTime() + 3 * DAY_MS).getUTCFullYear();
+}
+
 /** `"2026-10-27", "2026-11-02"` -> `"Week 45: 27 Oct – 2 Nov"`. */
 export function weekHeading(start: string, end: string): string {
   return `Week ${isoWeek(start)}: ${dayMonth(start)} – ${dayMonth(end)}`;

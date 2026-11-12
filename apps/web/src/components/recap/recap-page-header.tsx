@@ -5,12 +5,10 @@ import { ChevronLeftIcon } from "lucide-react";
 
 import type { RecapDoc, RecapKind, RecapListItem } from "@/lib/api/loose-types";
 import { fmtShortDate } from "@/lib/format";
-import { formatRange, isoWeek, previousPeriod, weekHeading } from "@/lib/recap/period";
+import { formatRange, isoWeek, isoWeekYear, previousPeriod, weekHeading } from "@/lib/recap/period";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-
-const DAY_MS = 86_400_000;
 
 interface RecapPageHeaderProps {
   /** Recap yang tampil; null saat memuat atau kosong (judul jatuh ke "Recap"). */
@@ -66,15 +64,13 @@ export function RecapPageHeader(props: RecapPageHeaderProps) {
   const current = kind && date ? histKey(kind, date) : null;
 
   function exportPdf() {
-    if (!kind || !date) return;
+    if (!kind || !date || restoreRef.current) return; // klik kedua sebelum afterprint
     const root = document.documentElement;
     const previousTitle = document.title;
     const wasDark = root.classList.contains("dark");
-    // Tahun ISO = tahun Kamis pekannya (2026-12-28 tetap "2026-W53").
-    const year = new Date(Date.parse(date) + 3 * DAY_MS).getUTCFullYear();
     document.title =
       kind === "weekly"
-        ? `Weekly recap ${year}-W${String(isoWeek(date)).padStart(2, "0")}`
+        ? `Weekly recap ${isoWeekYear(date)}-W${String(isoWeek(date)).padStart(2, "0")}`
         : `Daily recap ${date}`;
     // Cetak selalu terang di kertas putih; gelapnya dikembalikan sesudah dialog cetak ditutup.
     root.classList.remove("dark");

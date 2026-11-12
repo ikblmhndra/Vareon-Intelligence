@@ -6,7 +6,6 @@ import { api } from "@/lib/api/client";
 import type {
   RecapComparison,
   RecapEnvelope,
-  RecapGrounding,
   RecapHitBucket,
   RecapHitRate,
   RecapScorecard,
@@ -18,7 +17,6 @@ import {
   VERDICTS,
   VERDICT_LABEL,
   apiErrorMessage,
-  dropReason,
   effectiveVerdict,
   signed,
 } from "@/lib/recap/quality";
@@ -161,52 +159,6 @@ function orderOf(key: string): number {
   return i === -1 ? Object.keys(COUNT_LABEL).length : i;
 }
 
-/**
- * Hasil cek grounding: apa yang dibuang dari keluaran model karena tidak ada di data masukannya.
- * Selalu satu baris yang terlihat (jumlahnya), rinciannya di `<details>`: tidak ada yang dibuang
- * diam-diam, tapi daftarnya tidak memenuhi halaman.
- */
-export function GroundingBlock({ grounding }: { grounding: RecapGrounding }) {
-  const dropped = grounding.dropped ?? [];
-  if (!grounding.count && !dropped.length) {
-    return (
-      <p className="mt-3 rounded-md border border-border px-3 py-2 text-xs text-muted-foreground">
-        Grounding check: nothing was dropped. Every CVE, actor, campaign, source and story in this
-        recap was found in the data given to the model.
-      </p>
-    );
-  }
-  const count = grounding.count || dropped.length;
-  return (
-    <details className="group mt-3 rounded-md border border-warning/40 bg-warning/[0.04] px-3 py-2">
-      <summary className="cursor-pointer text-sm font-semibold text-warning">
-        Grounding check: {count} {count === 1 ? "item" : "items"} dropped
-        <span className="ml-2 text-xs font-normal text-muted-foreground group-open:hidden">
-          show details
-        </span>
-      </summary>
-      <p className="mt-2 text-xs text-muted-foreground">
-        The model wrote these, but they are not in the data it was given, so they were removed from
-        this recap instead of being shown.
-      </p>
-      <ul className="mt-2 space-y-1.5">
-        {dropped.map((d, i) => (
-          <li
-            key={i}
-            className="grid grid-cols-1 gap-x-3 gap-y-0.5 border-t border-border/60 pt-1.5 text-sm first:border-t-0 first:pt-0 sm:grid-cols-[10rem_1fr]"
-          >
-            <span className="font-mono text-xs text-muted-foreground">{d.field}</span>
-            <span className="min-w-0">
-              <span className="break-words">{d.value || "(empty)"}</span>
-              <span className="ml-2 text-xs text-muted-foreground">· {dropReason(d.reason)}</span>
-            </span>
-          </li>
-        ))}
-      </ul>
-    </details>
-  );
-}
-
 const VERDICT_TONE: Record<RecapVerdict, string> = {
   happened: "bg-success/10 text-success-text",
   partly: "bg-warning/10 text-warning-text",
@@ -342,7 +294,7 @@ function RateCell({ bucket }: { bucket: RecapHitBucket }) {
         className="hidden h-1.5 w-16 overflow-hidden rounded-full bg-muted sm:block"
       >
         <span
-          className="block h-full rounded-full bg-primary"
+          className="block h-full rounded-full bg-primary-text"
           style={{ width: `${Math.min(100, Math.max(0, bucket.rate_pct))}%` }}
         />
       </span>
