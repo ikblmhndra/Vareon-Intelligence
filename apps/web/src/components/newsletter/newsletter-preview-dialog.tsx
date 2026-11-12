@@ -5,6 +5,7 @@ import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Notice } from "@/components/ui/notice";
+import { StatePanel } from "@/components/ui/state-panel";
 import type { PreviewDialogState } from "@/components/newsletter/types";
 import { useCan } from "@/lib/auth/permissions";
 
@@ -97,7 +98,7 @@ export function NewsletterPreviewDialog({ state, onOpenChange, onSendDraft, send
 
         <div className="h-[60vh] min-h-0 shrink overflow-hidden rounded-lg border border-border bg-white">
           {state.html === null ? (
-            <div className="flex h-full items-center justify-center text-xs text-muted-foreground">Loading…</div>
+            <StatePanel variant="loading" title="Loading preview" className="h-full rounded-none border-0 bg-background" />
           ) : (
             <iframe title="Newsletter preview" sandbox="allow-same-origin" srcDoc={state.html} className="h-full w-full border-0" />
           )}

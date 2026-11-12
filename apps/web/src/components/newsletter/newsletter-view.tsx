@@ -637,7 +637,7 @@ export function NewsletterView() {
         />
       </div>
 
-      <Sheet open={historyOpen} onOpenChange={setHistoryOpen} title="Saved newsletters">
+      <Sheet open={historyOpen} onOpenChange={setHistoryOpen} title="Saved newsletters" description="Past editions: preview, resend or open the mind map.">
         <NewsletterHistoryPanel
           open={historyOpen}
           refreshKey={historyRefreshKey}
