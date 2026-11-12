@@ -10,6 +10,7 @@ import { MindmapWidget } from "@/components/mindmap/mindmap-widget";
 import type { NewsletterSections } from "@/lib/api/loose-types";
 import { errorMessage, formatPeriodRange } from "@/lib/newsletter/format";
 import { useCan } from "@/lib/auth/permissions";
+import { fmtDateTime } from "@/lib/format";
 import { isClientError } from "@/lib/exec/query";
 
 interface Props {
@@ -79,7 +80,7 @@ export function NewsletterHistoryPanel({ open, refreshKey, onPreview, onResend, 
                     <div className="font-code text-xs text-muted-foreground">{formatPeriodRange(n.period_start, n.period_end)}</div>
                   )}
                   <div className="mt-0.5 font-code text-xs text-muted-foreground">
-                    {n.generated_at} · by {n.created_by}
+                    {fmtDateTime(n.generated_at)} · by {n.created_by}
                   </div>
                   {highlightTitle && (
                     <div className="mt-1.5 truncate text-xs text-foreground" title={highlightTitle}>
