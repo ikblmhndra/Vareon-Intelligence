@@ -81,7 +81,7 @@ export function TweetList({
           <>
             <div className="flex flex-col gap-3">
               {tweets.data.tweets.map((t) => (
-                <TweetCard key={t.id} tweet={t} onClick={() => setSelected(t)} />
+                <TweetCard key={t.id} tweet={t} onOpen={() => setSelected(t)} />
               ))}
             </div>
             <NumberedPager

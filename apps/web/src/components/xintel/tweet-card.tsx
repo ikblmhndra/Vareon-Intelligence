@@ -1,94 +1,131 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Chip } from "@/components/ui/chip";
 import type { components } from "@/lib/api/schema";
-import { TweetBadges } from "@/components/xintel/tweet-badges";
+import { fmtAgo, fmtDateTime } from "@/lib/format";
 
 type Tweet = components["schemas"]["TweetOut"];
 
-function timeAgo(iso: string): string {
-  if (!iso) return "—";
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diffMs / 60_000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString();
+const CHIP_CAP = 6;
+const followersFmt = new Intl.NumberFormat("en", { notation: "compact" });
+
+/** Confidence bilangan bulat (C1): insiden terkonfirmasi memakai `incident_confidence`, selain itu `confidence`. */
+export function tweetConfidence(t: Tweet): number | null {
+  const v = t.confirmed_incident && t.incident_confidence != null ? t.incident_confidence : t.confidence;
+  return v == null ? null : Math.round(v);
 }
 
-/** Port `renderTweetCard()`. */
-export function TweetCard({ tweet: t, onClick }: { tweet: Tweet; onClick: () => void }) {
+interface CardChip {
+  key: string;
+  node: React.ReactNode;
+}
+
+/** Baris chip kartu, urutan dan batas sesuai spec 6.1; sisanya "+n" dan tetap ada di dialog. */
+function chipRow(t: Tweet): CardChip[] {
+  const out: CardChip[] = [];
+  const flag = (key: string, text: string, className?: string) =>
+    out.push({
+      key,
+      node: (
+        <Chip kind="flag" value={text} className={className ?? "normal-case"}>
+          {text}
+        </Chip>
+      ),
+    });
+  if (t.victim_name) flag("victim", `victim · ${t.victim_name}`);
+  (t.mentioned_group ?? []).slice(0, 2).forEach((g) => flag(`grp-${g}`, g));
+  if ((t.databreach_list ?? []).length > 0) {
+    const country = (t.victim_countries ?? [])[0];
+    flag("breach", country ? `${country} / data breach` : "data breach");
+  }
+  (t.cve_list ?? []).slice(0, 2).forEach((c) => flag(`cve-${c}`, c.toUpperCase(), "font-code"));
+  (t.industries_impacted ?? []).slice(0, 2).forEach((i) => flag(`ind-${i}`, i));
+  if (t.apac_indicator) flag("apac", "APAC", "");
+  if (t.ot_status) flag("ot", "OT", "");
+  if ((t.zero_day_list ?? []).length > 0)
+    out.push({ key: "0day", node: <Chip kind="severity" value="critical">0-DAY</Chip> });
+  if (t.report_status) flag("report", "REPORT", "");
+  return out;
+}
+
+/** Port `renderTweetCard()`. Satu `<button>` untuk membuka dialog (hanya teks dan chip di dalamnya);
+ * media dan "Open on X" adalah tautan saudara, bukan elemen interaktif bersarang. */
+export function TweetCard({ tweet: t, onOpen }: { tweet: Tweet; onOpen: () => void }) {
   const cleanText = t.text.replace(/https:\/\/t\.co\/\S+/g, "").trim();
   const media = (t.media_urls ?? []).slice(0, 2);
-  const industries = (t.industries_impacted ?? []).slice(0, 2);
+  const chips = chipRow(t);
+  const confidence = tweetConfidence(t);
+  const name = t.author_name || t.author_username;
 
   return (
-    // Bukan `<button>`: kartu berisi tautan "Open" (interaktif bersarang tidak sah di dalam button).
-    // `role`/`tabIndex`/Enter-Spasi supaya modal tweet tetap bisa dibuka dari keyboard.
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={onClick}
-      onKeyDown={(e) => {
-        if (e.target !== e.currentTarget) return;
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onClick();
-        }
-      }}
-      className="flex cursor-pointer gap-3 surface-raised rounded-2xl p-5 transition-shadow outline-none hover:border-primary/40 focus-visible:ring-3 focus-visible:ring-focus"
-    >
-      <Avatar className="size-9 shrink-0">
-        <AvatarImage src={t.author_avatar || undefined} alt={t.author_username} />
-        <AvatarFallback className="text-muted-foreground">𝕏</AvatarFallback>
-      </Avatar>
-      <div className="min-w-0 flex-1">
-        <div className="mb-1 flex flex-wrap items-baseline gap-2">
-          {/* tweet dari jalur alert (X resmi) tak membawa nama penulis: jangan render span kosong */}
-          {t.author_name && (
-            <span className="text-sm font-semibold text-foreground">{t.author_name}</span>
-          )}
-          <span className="font-mono text-xs text-muted-foreground">@{t.author_username}</span>
-          <span className="ml-auto text-xs text-muted-foreground">{timeAgo(t.posted_on)}</span>
+    <article className="surface-raised rounded-2xl p-5">
+      <div className="flex items-start gap-3">
+        <Avatar className="size-10 shrink-0">
+          <AvatarImage src={t.author_avatar || undefined} alt="" />
+          <AvatarFallback className="text-muted-foreground">{name.charAt(0).toUpperCase()}</AvatarFallback>
+        </Avatar>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-foreground">{name}</p>
+          <p className="text-xs text-muted-foreground">
+            <span className="font-code">@{t.author_username}</span>
+            {t.author_followers > 0 && ` · ${followersFmt.format(t.author_followers)} followers`}
+            {" · "}
+            <span title={fmtDateTime(t.posted_on)}>{fmtAgo(t.posted_on)}</span>
+          </p>
         </div>
-        <div className="mb-2 line-clamp-4 text-sm leading-relaxed break-words">{cleanText}</div>
-        {media.length > 0 && (
-          <div className="mb-2 flex gap-1.5">
-            {media.map((url) => (
-              // eslint-disable-next-line @next/next/no-img-element -- URL eksternal dari X CDN, bukan aset lokal
-              <img
-                key={url}
-                src={url}
-                alt=""
-                className="h-[72px] w-auto cursor-pointer rounded-xl border border-border object-cover"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  window.open(t.url, "_blank");
-                }}
-              />
-            ))}
-          </div>
-        )}
-        <div className="flex flex-wrap items-center gap-1.5">
-          <TweetBadges tweet={t} limit={2} />
-          {industries.length > 0 && (
-            <span className="ml-auto text-xs text-muted-foreground">{industries.join(" · ")}</span>
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+          {t.confirmed_incident && (
+            <Chip kind="status" value="action">
+              CONFIRMED INCIDENT
+            </Chip>
           )}
+          {confidence !== null && (
+            <Chip kind="flag" value="confidence" className="normal-case">
+              confidence <span className="ml-1 font-code">{confidence}</span>
+            </Chip>
+          )}
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={onOpen}
+        className="mt-3 block w-full rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+      >
+        <span className="line-clamp-4 block text-sm leading-relaxed break-words text-foreground">{cleanText}</span>
+        {chips.length > 0 && (
+          <span className="mt-3 flex flex-wrap items-center gap-1.5">
+            {chips.slice(0, CHIP_CAP).map((c) => (
+              <span key={c.key}>{c.node}</span>
+            ))}
+            {chips.length > CHIP_CAP && (
+              <span className="font-code text-2xs text-muted-foreground">+{chips.length - CHIP_CAP}</span>
+            )}
+          </span>
+        )}
+      </button>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {media.map((url) => (
           <a
+            key={url}
             href={t.url}
             target="_blank"
             rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
-            className={
-              (industries.length > 0 ? "" : "ml-auto ") +
-              "rounded border border-primary/30 px-2 py-0.5 font-mono text-xs text-primary no-underline outline-none focus-visible:ring-3 focus-visible:ring-focus"
-            }
+            className="rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
-            ↗ Open
+            {/* eslint-disable-next-line @next/next/no-img-element -- URL eksternal dari X CDN, bukan aset lokal */}
+            <img src={url} alt="Post media" className="h-[72px] w-auto rounded-xl border border-border object-cover" />
           </a>
-        </div>
+        ))}
+        <a
+          href={t.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="ml-auto rounded text-xs font-semibold text-primary-text underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        >
+          Open on X ↗
+        </a>
       </div>
-    </div>
+    </article>
   );
 }
