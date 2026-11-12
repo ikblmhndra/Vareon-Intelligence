@@ -48,7 +48,12 @@ function XIntelContent() {
             confirmed={stats.data?.confirmed}
             onRefresh={() => setAnchor(Date.now())}
           />
-          <TweetList />
+          <TweetList
+            filters={filters}
+            anchor={anchor}
+            onSearchHandle={(h) => onFilters({ ...filters, search: `@${h}` })}
+            onClear={() => onFilters(DEFAULT_FILTERS)}
+          />
         </>
       ) : (
         <MonitoredAccounts />
