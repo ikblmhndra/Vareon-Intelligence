@@ -28,6 +28,7 @@ export function Disclosure({
     <div className={className}>
       <button
         type="button"
+        id={`${id}-trigger`}
         aria-expanded={open}
         aria-controls={id}
         onClick={() => setOpen((o) => !o)}
@@ -39,7 +40,13 @@ export function Disclosure({
         <ChevronDownIcon aria-hidden className={cn("size-4 shrink-0 transition-transform", !open && "-rotate-90")} />
         {title}
       </button>
-      <div id={id} role="region" hidden={!open} className={cn(!open && printOpen && "print:block")}>
+      {/* Bukan atribut `hidden`: preflight Tailwind v4 memaksa [hidden] display:none !important, jadi print:block kalah. */}
+      <div
+        id={id}
+        role="region"
+        aria-labelledby={`${id}-trigger`}
+        className={cn(!open && "hidden", !open && printOpen && "print:block")}
+      >
         {children}
       </div>
     </div>
