@@ -8,7 +8,7 @@ router `changelog.py`) -- parser-nya expect header persis
 
 ## [0.8.16] - 2026-11-08
 
-**Redesain FigCraft: tiga sumber data baru untuk halaman PIR, Intelligence, dan MITRE, penyeragaman tema web, dan redesain CVE Tracker beserta tambahan backend-nya.** API mendapat cakupan PIR per minggu, seri harian per entitas yang melonjak, dan layer ATT&CK Navigator yang sama persis dengan heatmap yang terlihat. Web memakai satu skala tier risiko, border field yang terbaca, dan fokus yang jelas. Halaman Exec dirombak: brief eksekutif harian tersimpan dan papan Analyst. Dua migrasi aditif (`b7d41e9a2c63`, `c4e8a1f2b9d6`) dijalankan otomatis oleh `make deploy`, dan satu dependency baru (`email-validator`). Tanpa kunci `.env`.
+**Redesain FigCraft: tiga sumber data baru untuk halaman PIR, Intelligence, dan MITRE, penyeragaman tema web, dan redesain CVE Tracker beserta tambahan backend-nya.** API mendapat cakupan PIR per minggu, seri harian per entitas yang melonjak, dan layer ATT&CK Navigator yang sama persis dengan heatmap yang terlihat. Web memakai satu skala tier risiko, border field yang terbaca, dan fokus yang jelas. Halaman Exec dirombak: brief eksekutif harian tersimpan dan papan Analyst. Dua migrasi aditif (`b7d41e9a2c63`, `c4e8a1f2b9d6`) dijalankan otomatis oleh `make deploy`, dan satu dependency baru (`email-validator`). Tanpa kunci `.env`. Halaman X Intel, Recap, dan Newsletter ikut didesain ulang (tanpa migrasi).
 
 ### Ditambahkan
 - `GET /api/pir/{pir_id}/coverage/weekly`: jumlah artikel per minggu untuk grafik cakupan PIR.
@@ -37,6 +37,9 @@ router `changelog.py`) -- parser-nya expect header persis
 - `GET /api/exec/brief` dan `GET /api/exec/brief/dates`: baca brief tersimpan dan tanggal yang tersedia.
 - `GET /api/exec/dashboard-v2`: `monthly_totals`, velocity dan dua sektor teratas per aktor di leaderboard, serta aktor teratas per sektor.
 - Web: halaman Exec dipecah jadi Briefing dan Analyst board (`?view=`), dengan baris More signals (campaign clusters, source reliability, tren negara); dialog IOC "Remove from feeds" menampilkan error di dalam dialog.
+- X Intel: pencarian kini juga mencocokkan handle, nama korban, dan CVE (`%` dan `_` dicocokkan apa adanya). `GET /api/tweets` dan `/api/tweets/stats` punya filter opsional `has_cve` dan `signal` (`ot`, `zero_day`, `databreach`, `report`).
+- X Intel: `GET /api/tweets/stats` menambah statistik periode (insiden terkonfirmasi, APAC, CVE, data breach, zero-day, OT) dan `top_victims` (korban paling sering disebut).
+- Web: halaman X Intel, Recap, dan Newsletter didesain ulang mengikuti mockup FigCraft (komposer tiga kolom; Export PDF recap lewat cetak browser).
 
 ### Diubah
 - Deteksi spike (Early Warning dan industry spikes di dashboard eksekutif): mean dan simpangan baku baseline kini menghitung hari tanpa artikel sebagai 0, sama dengan seri `daily`. Dulu hanya hari yang ada artikelnya yang dihitung, sehingga garis baseline lebih tinggi daripada batang hariannya dan entitas yang jarang muncul mendapat z-score terlalu kecil. Akibatnya jumlah dan urutan anomali berubah sesudah deploy, ke dua arah: entitas jarang bisa muncul, entitas yang hitungan hariannya naik-turun bisa hilang. Entitas tetap butuh minimal 5 hari baseline yang ada artikelnya.
@@ -54,6 +57,7 @@ router `changelog.py`) -- parser-nya expect header persis
 - Web: kartu sinkron ATT&CK pindah dari Entities > Techniques ke halaman MITRE heatmap.
 - `POST /api/exec/brief`: `days` dibatasi 7-365, tidak lagi menghitung bagian khusus analis atau per klien, menyimpan hasilnya sebagai brief bersama hari ini (menggantikan brief scheduler untuk semua klien) dan mengembalikan `ExecBriefOut` (dulu `{brief, generated_at}`). Gagal LLM membalas 502. Tetap butuh `manage_intel`.
 - Web: tombol Export CSV di Exec hanya tampil untuk role dengan `export_data`.
+- Web: tombol Apply/Reset di X Intel diganti filter langsung; riwayat newsletter dibuka sebagai panel samping.
 
 ### Diperbaiki
 - `PUT /api/rfi/{id}` dan `PUT /api/pir/{id}`: `null` eksplisit kini mengosongkan field yang boleh kosong (RFI `due_date` dan `linked_pir`; PIR `start_date` dan `end_date`). Dulu nilai yang dikosongkan diam-diam diabaikan. `null` pada field wajib tetap diabaikan.
