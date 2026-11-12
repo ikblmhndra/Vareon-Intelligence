@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -119,16 +119,14 @@ function RecapPageInner() {
   const params = useSearchParams();
   const kindParam = params.get("kind");
   const dateParam = params.get("date") ?? "";
-  // Tanggal mingguan ketikan tangan yang bukan Senin dipaku ke Senin pekannya.
+  // Tanggal mingguan ketikan tangan yang bukan Senin dipaku ke Senin pekannya. URL sengaja tidak
+  // ditulis ulang: `router.replace` ke rute yang sama membuat Next memasang lagi judul metadata layout
+  // sesudah efek `usePageTitle` jalan, jadi judul tab kembali "Recap".
   const snapped = kindParam === "weekly" ? mondayOf(dateParam) : dateParam;
   const selected: Selection | null =
     (kindParam === "weekly" || kindParam === "daily") && ISO_DATE.test(dateParam)
       ? { kind: kindParam, date: snapped }
       : null;
-  useEffect(() => {
-    if (kindParam === "weekly" && ISO_DATE.test(dateParam) && snapped !== dateParam)
-      router.replace(`${pathname}?kind=weekly&date=${snapped}`);
-  }, [kindParam, snapped, dateParam, pathname, router]);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const history = useRecapHistory();
@@ -156,6 +154,8 @@ function RecapPageInner() {
   );
 
   function select(kind: RecapKind, date: string) {
+    // Pilihan yang sama (mis. regenerate periode yang sedang tampil) tidak bernavigasi: alasan judul di atas.
+    if (selected?.kind === kind && selected.date === date) return;
     router.replace(`${pathname}?kind=${kind}&date=${date}`);
   }
 
