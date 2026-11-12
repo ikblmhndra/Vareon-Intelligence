@@ -1,14 +1,13 @@
 import type { Metadata } from "next";
 
-import { PageHeader } from "@/components/page-header";
+import { PLATFORM_NAME } from "@/lib/brand";
 
-export const metadata: Metadata = { title: "X Intel" };
+// Template dipasang ulang: `title` string di layout segmen ini akan membuang template root untuk anak-anaknya.
+// Header halaman dirender `page.tsx` karena bergantung pada data.
+export const metadata: Metadata = {
+  title: { default: "X Intel", template: `%s · ${PLATFORM_NAME}` },
+};
 
 export default function XIntelLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <>
-      <PageHeader title="X Intel" description="Tweets from monitored X accounts, and the accounts being watched." />
-      {children}
-    </>
-  );
+  return children;
 }

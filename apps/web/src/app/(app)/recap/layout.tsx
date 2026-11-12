@@ -1,14 +1,13 @@
 import type { Metadata } from "next";
 
-import { PageHeader } from "@/components/page-header";
+import { PLATFORM_NAME } from "@/lib/brand";
 
-export const metadata: Metadata = { title: "Recap" };
+// Template dipasang ulang: `title` string di layout segmen ini akan membuang template root untuk anak-anaknya.
+// Header halaman dirender `page.tsx` karena bergantung pada data.
+export const metadata: Metadata = {
+  title: { default: "Recap", template: `%s · ${PLATFORM_NAME}` },
+};
 
 export default function RecapLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <>
-      <PageHeader title="Recap" description="Daily and weekly intelligence recaps, with the full history." />
-      {children}
-    </>
-  );
+  return children;
 }

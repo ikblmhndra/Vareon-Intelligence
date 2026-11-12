@@ -14,6 +14,8 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { RecapHistory } from "@/components/recap/recap-history";
 import { RecapView } from "@/components/recap/recap-view";
 import { useCan } from "@/lib/auth/permissions";
+import { PageHeader } from "@/components/page-header";
+import { usePageTitle } from "@/lib/use-page-title";
 
 type Mode = "day" | "week";
 /** Recap yang dipilih; `null` = recap MINGGUAN terbaru yang tersimpan (halaman membuka itu). */
@@ -106,6 +108,7 @@ function useGenerateRecap() {
  * tetap satu hari seperti dulu.
  */
 export default function RecapPage() {
+  usePageTitle("Recap");
   const [mode, setMode] = useState<Mode>("week");
   const [inputDate, setInputDate] = useState(lastFinishedWeekStart);
   const [selected, setSelected] = useState<Selection | null>(null);
@@ -174,6 +177,7 @@ export default function RecapPage() {
 
   return (
     <div className="pb-10">
+      <PageHeader title="Recap" description="Daily and weekly intelligence recaps, with the full history." />
       <div className="mb-4 flex flex-wrap items-center gap-2.5 border-b border-border pb-3">
         <div role="group" aria-label="Recap period" className="flex items-center gap-1">
           <Button
