@@ -19,7 +19,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         Skip to content
       </a>
-      <header className={SHELL_COLUMN}>
+      <header className={`${SHELL_COLUMN} print:hidden`}>
         <UtilityBar />
         <Masthead />
       </header>

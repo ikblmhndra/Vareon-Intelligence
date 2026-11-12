@@ -1,34 +1,48 @@
 "use client";
 
-import { RefreshCwIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Suspense, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 import { api } from "@/lib/api/client";
 import type { RecapDoc, RecapEnvelope, RecapKind, RecapListItem } from "@/lib/api/loose-types";
-import { formatRange, lastFinishedWeekStart, mondayOf, sundayOf } from "@/lib/recap/period";
+import { isClientError } from "@/lib/exec/query";
+import {
+  formatRange,
+  isoWeek,
+  lastFinishedWeekStart,
+  previousPeriod,
+  sundayOf,
+} from "@/lib/recap/period";
+import { apiErrorMessage } from "@/lib/recap/quality";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Notice } from "@/components/ui/notice";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ConfirmDialog } from "@/components/confirm-dialog";
-import { RecapHistory } from "@/components/recap/recap-history";
+import { StatePanel } from "@/components/ui/state-panel";
+import { RecapGenerateDialog } from "@/components/recap/recap-generate-dialog";
+import { RecapPageHeader } from "@/components/recap/recap-page-header";
 import { RecapView } from "@/components/recap/recap-view";
 import { useCan } from "@/lib/auth/permissions";
-import { PageHeader } from "@/components/page-header";
 import { usePageTitle } from "@/lib/use-page-title";
 
-type Mode = "day" | "week";
 /** Recap yang dipilih; `null` = recap MINGGUAN terbaru yang tersimpan (halaman membuka itu). */
 type Selection = { kind: RecapKind; date: string };
+
+/** Query tidak diulang untuk 4xx (izin/validasi tidak sembuh sendiri); 5xx maksimal dua kali. */
+const retry = (n: number, e: unknown) => n < 2 && !isClientError(e);
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 function useRecapHistory() {
   return useQuery({
     queryKey: ["recap", "list"],
+    retry,
     queryFn: async () => {
       const { data, response } = await api.GET("/api/recap/list", {
         params: { query: { limit: 60 } },
       });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`, { cause: response.status });
       return (data as { recaps?: RecapListItem[] } | undefined)?.recaps ?? [];
     },
   });
@@ -39,17 +53,18 @@ function useRecapHistory() {
 function useRecapDoc(selected: Selection | null) {
   return useQuery<RecapEnvelope>({
     queryKey: selected ? ["recap", "doc", selected.kind, selected.date] : ["recap", "doc", "latest"],
+    retry,
     queryFn: async () => {
       if (!selected) {
         const { data, response } = await api.GET("/api/recap/latest");
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`, { cause: response.status });
         return (data as RecapEnvelope | undefined) ?? { recap: null };
       }
       const { data, response } = await api.GET("/api/recap/{date}", {
         params: { path: { date: selected.date }, query: { kind: selected.kind } },
       });
       if (response.status === 404) return { recap: null };
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`, { cause: response.status });
       return (data as RecapEnvelope | undefined) ?? { recap: null };
     },
   });
@@ -68,12 +83,8 @@ function useGenerateRecap() {
         params: { query },
       });
       if (!response.ok) {
-        // `openapi-fetch` sudah membaca body-nya (`response.text()` di sini selalu kosong), jadi
-        // alasannya diambil dari `error`. Pesan penolakan server, mis. pekan yang belum selesai di
-        // UTC, adalah satu-satunya petunjuk buat pengguna.
-        const detail = (error as { detail?: unknown } | undefined)?.detail;
-        const text = typeof detail === "string" ? detail : error ? JSON.stringify(error) : "";
-        throw new Error(`HTTP ${response.status}${text ? `: ${text.slice(0, 200)}` : ""}`);
+        // Pesan penolakan server (mis. pekan yang belum selesai di UTC) satu-satunya petunjuk buat pengguna.
+        throw new Error(apiErrorMessage(error, response.status), { cause: response.status });
       }
       return (data as { recap: RecapDoc } | undefined)?.recap ?? null;
     },
@@ -96,202 +107,148 @@ function useGenerateRecap() {
 }
 
 /**
- * Port `legacy/static/js/newsroom/recap.js` + `tab_recap.html`. Dua state
- * tanggal terpisah kayak lama: `inputDate` (nilai date-picker mentah) vs
- * `selected` (recap yang beneran di-query) -- LOAD baru nge-sync keduanya,
- * generate baca `inputDate` langsung (independen dari yang lagi ke-render),
- * sama persis perilaku `recapLoad()`/`recapGenerate()` lama.
- *
- * Recap MINGGUAN (#21): halaman membuka recap mingguan terbaru, history memuat dua jenis (tiap
- * item dibaca dengan `kind`-nya), dan toggle Day/Week di kontrol generate memilih jenis yang
- * di-load/di-generate. Mode Week meng-snap tanggal pilihan ke hari Senin pekannya; mode Day
- * tetap satu hari seperti dulu.
+ * Halaman Recap. Periode yang dipilih hidup di URL (`?kind=weekly|daily&date=YYYY-MM-DD`; keduanya
+ * kosong = recap mingguan terbaru), jadi tautan dan tombol Back berfungsi dan `selected` tidak punya
+ * state sendiri. Riwayat dipilih lewat Select di header; membuat/ulang lewat dialog.
  */
-export default function RecapPage() {
-  usePageTitle("Recap");
-  const [mode, setMode] = useState<Mode>("week");
-  const [inputDate, setInputDate] = useState(lastFinishedWeekStart);
-  const [selected, setSelected] = useState<Selection | null>(null);
-  const [confirm, setConfirm] = useState<{ force: boolean } | null>(null);
+function RecapPageInner() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const kindParam = params.get("kind");
+  const dateParam = params.get("date") ?? "";
+  const selected: Selection | null =
+    (kindParam === "weekly" || kindParam === "daily") && ISO_DATE.test(dateParam)
+      ? { kind: kindParam, date: dateParam }
+      : null;
 
+  const [dialogOpen, setDialogOpen] = useState(false);
   const history = useRecapHistory();
   const doc = useRecapDoc(selected);
   const generate = useGenerateRecap();
   // Generate memanggil LLM: butuh `manage_intel` (0.8.4); tanpa itu tombolnya disembunyikan.
   const canGenerate = useCan()("manage_intel");
 
-  const weekStart = mondayOf(inputDate);
-  const target: Selection =
-    mode === "week" ? { kind: "weekly", date: weekStart } : { kind: "daily", date: inputDate };
-  const weekLabel = weekStart
-    ? `${formatRange(weekStart, sundayOf(weekStart))} (Mon–Sun, UTC)`
-    : "the last finished week";
-  const dateLabel = mode === "week" ? weekLabel : inputDate || "yesterday";
-  const noun = mode === "week" ? "week" : "date";
   const recap: RecapDoc | null = doc.data?.recap ?? null;
   const empty = doc.data !== undefined && recap === null;
   // Yang tampil: pilihan eksplisit, atau recap mingguan terbaru yang dimuat `/latest`.
   const shown: Selection | null = selected ?? (recap ? { kind: recap.kind, date: recap.date } : null);
+  const list = history.data ?? [];
+  const existing = new Set(list.map((it) => `${it.kind}:${it.date}`));
 
-  const status = useMemo(() => {
-    if (generate.isPending) return { text: "Generating… this can take 10-30s", tone: "info" as const };
-    if (generate.isError) return { text: (generate.error as Error).message, tone: "err" as const };
-    if (generate.isSuccess) return { text: "Generated · saved", tone: "ok" as const };
-    if (doc.isFetching) return { text: "Loading…", tone: "info" as const };
-    if (doc.isError) return { text: (doc.error as Error).message, tone: "err" as const };
-    if (empty) {
-      const text = selected
-        ? `No ${selected.kind === "weekly" ? "weekly " : ""}recap stored for that ${selected.kind === "weekly" ? "week" : "date"}`
-        : "No weekly recap stored yet";
-      return { text, tone: "warn" as const };
-    }
-    if (recap) return { text: "Loaded", tone: "ok" as const };
-    return { text: "", tone: "info" as const };
-  }, [generate.isPending, generate.isError, generate.isSuccess, generate.error, doc.isFetching, doc.isError, doc.error, empty, recap, selected]);
+  usePageTitle(
+    recap
+      ? recap.kind === "weekly"
+        ? `Weekly recap ${recap.period_start.slice(0, 4)}-W${String(isoWeek(recap.period_start)).padStart(2, "0")}`
+        : `Daily recap ${recap.date}`
+      : "Recap",
+  );
 
-  const statusColor = {
-    info: "text-muted-foreground",
-    ok: "text-primary",
-    err: "text-destructive",
-    warn: "text-warning",
-  }[status.tone];
-
-  function handleSelectHistory(item: RecapListItem) {
-    setMode(item.kind === "weekly" ? "week" : "day");
-    setInputDate(item.date);
-    setSelected({ kind: item.kind, date: item.date });
+  function select(kind: RecapKind, date: string) {
+    router.replace(`${pathname}?kind=${kind}&date=${date}`);
   }
 
-  function handleConfirmGenerate() {
-    if (!confirm) return;
+  function openDialog() {
+    generate.reset();
+    setDialogOpen(true);
+  }
+
+  function confirm(req: { kind: RecapKind; date: string; force: boolean }) {
     generate.mutate(
-      { target, force: confirm.force },
+      { target: { kind: req.kind, date: req.date }, force: req.force },
       {
-        onSuccess: (recap) => {
-          if (recap) setSelected({ kind: recap.kind, date: recap.date });
+        onSuccess: (made) => {
+          setDialogOpen(false);
+          if (made) select(made.kind, made.date);
+          toast.success("Recap generated");
         },
+        // Dialog tetap terbuka supaya pengguna bisa memperbaiki periodenya (400/502).
+        onError: (e) => toast.error((e as Error).message),
       },
     );
-    setConfirm(null);
   }
+
+  const emptyRange = selected
+    ? selected.kind === "weekly"
+      ? formatRange(selected.date, sundayOf(selected.date))
+      : selected.date
+    : null;
 
   return (
     <div className="pb-10">
-      <PageHeader title="Recap" description="Daily and weekly intelligence recaps, with the full history." />
-      <div className="mb-4 flex flex-wrap items-center gap-2.5 border-b border-border pb-3">
-        <div role="group" aria-label="Recap period" className="flex items-center gap-1">
-          <Button
-            size="sm"
-            variant={mode === "week" ? "default" : "outline"}
-            aria-pressed={mode === "week"}
-            onClick={() => setMode("week")}
-          >
-            Week
-          </Button>
-          <Button
-            size="sm"
-            variant={mode === "day" ? "default" : "outline"}
-            aria-pressed={mode === "day"}
-            onClick={() => setMode("day")}
-          >
-            Day
-          </Button>
-        </div>
-        <span className="text-sm font-semibold text-muted-foreground">
-          {mode === "week" ? "Week of" : "Recap Date"}
-        </span>
-        <Input
-          type="date" aria-label={mode === "week" ? "Week of" : "Recap date"}
-          value={inputDate}
-          onChange={(e) => setInputDate(e.target.value)}
-          className="w-auto font-mono text-xs"
-        />
-        {mode === "week" && (
-          <span className="font-mono text-xs text-muted-foreground">{weekLabel}</span>
-        )}
-        <Button size="sm" disabled={!target.date} onClick={() => setSelected(target)}>
-          Load
-        </Button>
-        {canGenerate && (
-          <>
-            <Button size="sm" variant="secondary" onClick={() => setConfirm({ force: false })}>
-              ↻ Generate
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => setConfirm({ force: true })}>
-              <RefreshCwIcon aria-hidden /> Force Regen
-            </Button>
-          </>
-        )}
-        <span className={`ml-auto font-mono text-xs ${statusColor}`}>{status.text}</span>
-      </div>
+      <RecapPageHeader
+        doc={recap}
+        kind={shown?.kind ?? null}
+        date={shown?.date ?? null}
+        list={list}
+        canGenerate={canGenerate}
+        onSelect={select}
+        onPrevious={() => shown && select(shown.kind, previousPeriod(shown.kind, shown.date))}
+        onRegenerate={openDialog}
+        generating={generate.isPending}
+      />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[240px_1fr]">
-        <div className="max-h-[calc(100dvh-220px)] overflow-y-auto rounded-2xl surface-raised p-2.5">
-          <div className="mb-2 border-b border-border pb-1.5 text-sm font-semibold text-muted-foreground">
-            Recap History
-          </div>
-          {history.isPending && (
-            <div className="space-y-1.5">
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-10 w-full" />
-            </div>
-          )}
-          {history.isError && <p className="p-1.5 text-xs text-destructive">Failed to load history.</p>}
-          {history.data && (
-            <RecapHistory items={history.data} selected={shown} onSelect={handleSelectHistory} />
-          )}
-        </div>
-
-        <div className="min-h-[300px]">
+      {generate.isPending ? (
+        <Notice busy tone="info" title="Generating the recap. This can take up to 30 seconds." />
+      ) : (
+        <>
           {doc.isPending && (
-            <div className="space-y-2">
+            <div className="space-y-3">
               <Skeleton className="h-24 w-full" />
-              <Skeleton className="h-32 w-full" />
+              <Skeleton className="h-48 w-full" />
             </div>
           )}
-          {doc.isError && <p className="text-sm text-destructive">{(doc.error as Error).message}</p>}
+          {doc.isError && (
+            <StatePanel
+              variant="error"
+              title="Could not load the recap"
+              description={(doc.error as Error).message}
+              action={
+                <Button variant="outline" onClick={() => void doc.refetch()}>
+                  Retry
+                </Button>
+              }
+            />
+          )}
           {recap && <RecapView doc={recap} hitRate={doc.data?.hit_rate} />}
           {empty && (
-            <div className="rounded-md border border-dashed border-border px-6 py-8 text-center">
-              <p className="mb-3 font-mono text-xs text-muted-foreground">
-                {selected ? (
-                  <>
-                    No {selected.kind === "weekly" ? "weekly " : ""}recap stored for{" "}
-                    <span className="font-medium text-foreground">
-                      {selected.kind === "weekly"
-                        ? formatRange(selected.date, sundayOf(selected.date))
-                        : selected.date}
-                    </span>
-                    .
-                  </>
-                ) : (
-                  "No weekly recap has been generated yet."
-                )}
-              </p>
-              {canGenerate && (
-                <Button size="sm" onClick={() => setConfirm({ force: false })}>
-                  ↻ Generate Now
-                </Button>
-              )}
-            </div>
+            <StatePanel
+              variant="empty"
+              title={
+                !selected
+                  ? "No weekly recap yet"
+                  : selected.kind === "weekly"
+                    ? `No weekly recap for ${emptyRange}`
+                    : `No recap for ${emptyRange}`
+              }
+              description={
+                canGenerate ? undefined : "Weekly recaps are generated automatically early on Mondays (UTC)."
+              }
+              action={canGenerate ? <Button onClick={openDialog}>Generate recap</Button> : undefined}
+            />
           )}
-        </div>
-      </div>
+        </>
+      )}
 
-      <ConfirmDialog
-        open={confirm !== null}
-        onOpenChange={(open) => !open && setConfirm(null)}
-        title={mode === "week" ? "Generate Weekly Recap" : "Generate Daily Recap"}
-        description={
-          mode === "week"
-            ? `Generate the weekly recap for ${weekLabel}? This calls the LLM and may take 10–30 seconds. A week can only be generated after its Sunday has ended in UTC.`
-            : `Generate recap for ${dateLabel}? This calls the LLM and may take 10–30 seconds.`
-        }
-        warning={confirm?.force ? `FORCE REGEN will overwrite the existing recap for this ${noun}.` : undefined}
-        confirmLabel={confirm?.force ? "Force Regen" : "Generate"}
-        onConfirm={handleConfirmGenerate}
+      <RecapGenerateDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        defaultKind={shown?.kind ?? "weekly"}
+        defaultDate={shown?.date ?? lastFinishedWeekStart()}
+        existing={existing}
+        pending={generate.isPending}
+        error={generate.isError ? (generate.error as Error).message : null}
+        onConfirm={confirm}
       />
     </div>
+  );
+}
+
+/** `useSearchParams` butuh batas Suspense agar build tidak gagal pada prerender. */
+export default function RecapPage() {
+  return (
+    <Suspense>
+      <RecapPageInner />
+    </Suspense>
   );
 }
