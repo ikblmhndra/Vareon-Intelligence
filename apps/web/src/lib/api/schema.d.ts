@@ -18044,6 +18044,8 @@ export interface operations {
                 apac_only?: boolean;
                 ot_only?: boolean;
                 confirmed_only?: boolean;
+                has_cve?: boolean;
+                signal?: ("ot" | "zero_day" | "databreach" | "report") | null;
             };
             header?: {
                 authorization?: string | null;
@@ -18088,6 +18090,8 @@ export interface operations {
                 apac_only?: boolean;
                 ot_only?: boolean;
                 confirmed_only?: boolean;
+                has_cve?: boolean;
+                signal?: ("ot" | "zero_day" | "databreach" | "report") | null;
             };
             header?: {
                 authorization?: string | null;
