@@ -127,6 +127,11 @@ def _report_schedule(offset: int) -> dict[str, dict[str, object]]:
     }
 
 
+def _brief_hours(offset: int) -> str:
+    """Jam UTC dari 06:00-18:00 lokal sebagai daftar cron (`0,1,...,11,23` pada offset 7)."""
+    return ",".join(str(h) for h in sorted({(h - offset) % 24 for h in range(6, 19)}))
+
+
 def _periodic_schedule() -> dict[str, dict[str, object]]:
     w = get_settings().worker
     offset = w.report_utc_offset_hours
@@ -277,6 +282,17 @@ def _periodic_schedule() -> dict[str, dict[str, object]]:
             "task": "scraper.health_digest",
             "schedule": crontab(minute=f"*/{w.scraper_health_sweep_interval_min}"),
             "options": {"queue": QUEUE_NOTIFY},
+        },
+        "exec-brief-daily": {
+            "task": "exec.brief_daily",
+            "schedule": crontab(minute=0, hour=_brief_hours(offset)),
+            # < visibility_timeout Redis (60 menit): pesan yang dikirim ulang sudah kedaluwarsa.
+            "options": {"queue": QUEUE_MAINTENANCE, "expires": 55 * 60},
+        },
+        "exec-brief-purge": {
+            "task": "exec.purge_briefs",
+            "schedule": crontab(hour=3, minute=45),
+            "options": {"queue": QUEUE_MAINTENANCE},
         },
         **_report_schedule(w.report_utc_offset_hours),
     }

@@ -1,17 +1,13 @@
 import type { Metadata } from "next";
 
-import { PageHeader } from "@/components/page-header";
+import { PLATFORM_NAME } from "@/lib/brand";
 
-export const metadata: Metadata = { title: "Exec" };
+// Template dipasang ulang: `title` string di layout segmen ini akan membuang template root untuk anak-anaknya.
+// Header halaman (kicker, judul dinamis, pemilih tampilan) dirender `page.tsx` karena bergantung pada periode & data.
+export const metadata: Metadata = {
+  title: { default: "Exec", template: `%s · ${PLATFORM_NAME}` },
+};
 
 export default function ExecLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <>
-      <PageHeader
-        title="Exec"
-        description="Incident trends, sector risk, threat actors and CVE exposure at a glance."
-      />
-      {children}
-    </>
-  );
+  return children;
 }

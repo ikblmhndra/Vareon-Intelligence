@@ -299,3 +299,91 @@ def cve_enrichment_sweep(self: Any) -> dict[str, object]:
         return _run_async(_run_cve_enrichment())
     finally:
         lock.release()
+
+
+# ── Executive brief harian ───────────────────────────────────────────────────
+
+_BRIEF_LOCK_TTL_MS = 15 * 60 * 1000
+"""Jauh di atas satu build dashboard + `LLM__TIMEOUT_S` x (1 + `LLM__MAX_RETRIES`); lock yang
+tertinggal karena worker mati habis sendiri sebelum tick berikutnya (>= 45 menit lagi)."""
+
+
+def _brief_lock(brief_date: datetime.date) -> Any:
+    import redis
+    from cti_core.config import get_settings
+
+    from cti_worker.beat_lock import BeatLock
+
+    client = redis.Redis.from_url(get_settings().redis.url)
+    return BeatLock(client, ttl_ms=_BRIEF_LOCK_TTL_MS, key=f"exec_brief:{brief_date.isoformat()}")
+
+
+async def _brief_present(brief_date: datetime.date) -> bool:
+    from cti_core.db.engine import async_session
+    from cti_core.db.repositories.exec_brief import AsyncExecBriefRepo
+
+    async with async_session() as session:
+        return await AsyncExecBriefRepo(session).get(brief_date) is not None
+
+
+async def _run_generate_scheduled_brief() -> str:
+    from cti_api.services.exec_brief import generate_scheduled_brief
+    from cti_core.db.engine import async_session
+
+    async with async_session() as session:
+        return await generate_scheduled_brief(session, datetime.datetime.now(datetime.UTC))
+
+
+@app.task(bind=True, name="exec.brief_daily", queue=QUEUE_MAINTENANCE)
+def exec_brief_daily(self: Any) -> dict[str, object]:
+    """Brief eksekutif bersama, dicoba tiap jam lokal 06:00-18:00 (tick 06:00 hanyalah yang
+    pertama; tick berikutnya = catch-up bila LLM mati). Satu percobaan per jam, tanpa retry
+    Celery, tanpa baris gagal/job: `enrich_jobs` (kunci URL artikel, CHECK `classify`/`ttp`) dan
+    breaker (hanya dihitung dari `classify`/`ttp`) sengaja tidak dipakai, supaya brief tidak
+    mengubah dispatch artikel. Jaga panggilan ganda ada tiga lapis: (a) lock Redis
+    `exec_brief:{tanggal}` menyerialkan tick yang tumpang tindih atau `celery call` manual;
+    (b) baca ulang baris di bawah lock membuat pemegang kedua no-op; (c) `ON CONFLICT DO
+    NOTHING` melindungi brief manual. `expires` 55 menit < `visibility_timeout` Redis 60 menit:
+    pesan yang dikirim ulang sesudah worker mati sudah kedaluwarsa dan dibuang."""
+    from cti_api.services.exec_brief import BriefGenerationError, brief_today
+    from cti_core.config import get_settings
+
+    brief_date = brief_today()
+    # Cek murah dulu: sebagian besar tick hari itu berhenti di sini, tanpa lock dan tanpa LLM.
+    if _run_async(_brief_present(brief_date)):
+        return {"status": "present"}
+    lock = _brief_lock(brief_date)
+    if not lock.acquire():
+        log.info("exec_brief_daily_skipped_running", brief_date=brief_date.isoformat())
+        return {"status": "skipped_running"}
+    try:
+        return {"status": _run_async(_run_generate_scheduled_brief())}
+    except BriefGenerationError as exc:
+        log.warning(
+            "exec_brief_daily_failed",
+            brief_date=brief_date.isoformat(),
+            error_type=exc.error_type,
+            local_hour=(
+                datetime.datetime.now(datetime.UTC)
+                + datetime.timedelta(hours=get_settings().worker.report_utc_offset_hours)
+            ).hour,
+        )
+        return {"status": "failed"}
+    finally:
+        lock.release()
+
+
+async def _run_purge_briefs() -> int:
+    from cti_api.services.exec_brief import purge_old_briefs
+    from cti_core.db.engine import async_session
+
+    async with async_session() as session:
+        return await purge_old_briefs(session, datetime.datetime.now(datetime.UTC))
+
+
+@app.task(name="exec.purge_briefs", queue=QUEUE_MAINTENANCE)
+def exec_purge_briefs() -> dict[str, int]:
+    """Buang brief eksekutif yang lebih tua dari 30 hari (tabel `exec_briefs` tumbuh satu baris
+    per hari tanpa batas kalau tidak dipangkas). Harian 03:45 UTC, di antara `llm.purge_calls`
+    dan `story.purge_empty`."""
+    return {"removed": _run_async(_run_purge_briefs())}

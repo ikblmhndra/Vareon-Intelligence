@@ -1,12 +1,21 @@
-/** Port `_execTrend()` (`exec.js:11-19`) -- buat metrik keamanan: naik =
- * lebih banyak insiden/aktor = BURUK (merah), turun = baik (hijau). */
-export function execTrend(current: number, prev: number): { text: string; colorClass: string } | null {
-  if (!prev) return null;
+import { csvCell } from "@/lib/csv";
+
+/** Selisih KPI vs periode sebelumnya (D14): `percent` untuk jumlah artikel, `absolute` untuk sektor dan aktor.
+ * Naik = lebih banyak berita/aktor = BURUK (merah), turun = baik (hijau). Teks tanpa kata "vs prev": pemanggil
+ * menambahkannya (Briefing ringkas, Analyst board lengkap dengan jumlah hari, C13). `percent` dengan pembanding
+ * 0 mengembalikan null (persen dari nol tak bermakna); `absolute` tetap bermakna. */
+export function execDelta(
+  current: number,
+  prev: number,
+  mode: "percent" | "absolute",
+): { text: string; colorClass: string } | null {
+  if (mode === "percent" && !prev) return null;
   const delta = current - prev;
-  const pct = Math.abs(Math.round((delta / prev) * 100));
-  const colorClass = delta > 0 ? "text-destructive" : delta < 0 ? "text-success" : "text-muted-foreground";
-  const arrow = delta > 0 ? "↑" : delta < 0 ? "↓" : "→";
-  return { text: `${arrow}${pct}% vs prev period`, colorClass };
+  const colorClass =
+    delta > 0 ? "text-destructive-text" : delta < 0 ? "text-success-text" : "text-muted-foreground";
+  const sign = delta > 0 ? "+" : delta < 0 ? "-" : "";
+  const amount = mode === "percent" ? `${Math.abs(Math.round((delta / prev) * 100))}%` : String(Math.abs(delta));
+  return { text: `${sign}${amount}`, colorClass };
 }
 
 /** Batas tier risiko (satu skala: LOW <40, MED 40-69, HIGH >=70), dipakai juga
@@ -62,21 +71,39 @@ export function cvssColorClass(score: number | null | undefined): string {
   return "text-muted-foreground";
 }
 
-function csvRow(cells: (string | number | null | undefined)[]): string {
-  return cells.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(",");
-}
+const csvRow = (cells: unknown[]): string => cells.map(csvCell).join(",");
 
-/** Port `exportExecCsv()` (`exec.js:687-728`). */
+/** Port `exportExecCsv()` (`exec.js:687-728`). Sel lewat `csvCell` (guard formula Excel + kutip). */
 export function buildExecCsv(d: import("@/lib/api/loose-types").ExecDashboardV2, countLabel: string): string {
   const prevSet = new Set(d.prev_ta_names.map((n) => n.toLowerCase()));
   const rows: string[] = [
     csvRow(["=== SECTOR RISK MATRIX ==="]),
-    csvRow(["Sector", "Risk Score"]),
-    ...d.sector_risk_scores.map((r) => csvRow([r.sector, r.risk_score])),
+    csvRow(["Sector", "Risk Score", "Top Actor"]),
+    ...d.sector_risk_scores.map((r) => csvRow([r.sector, r.risk_score, r.top_actor])),
     "",
     csvRow(["=== TOP THREAT ACTORS ==="]),
-    csvRow(["Threat Actor", "Incident Count", "Status"]),
-    ...d.ta_leaderboard.map((ta) => csvRow([ta.name, ta.count, !d.prev_period_reliable ? "n/a" : prevSet.has(ta.name.toLowerCase()) ? "RECURRING" : "NEW"])),
+    csvRow(["Threat Actor", "Incident Count", "Status", "Velocity %", "Top Sectors"]),
+    ...d.ta_leaderboard.map((ta) =>
+      csvRow([
+        ta.name,
+        ta.count,
+        !d.prev_period_reliable ? "n/a" : prevSet.has(ta.name.toLowerCase()) ? "RECURRING" : "NEW",
+        ta.velocity_pct,
+        ta.top_sectors,
+      ]),
+    ),
+    "",
+    csvRow(["=== MONTHLY TOTALS ==="]),
+    csvRow(["Month", "Incidents"]),
+    ...d.months.map((m, i) => csvRow([m, d.monthly_totals[i] ?? 0])),
+    "",
+    csvRow(["=== SECTOR TREND ==="]),
+    csvRow(["Name", ...d.months]),
+    ...d.sector_trend.map((s) => csvRow([s.sector, ...s.data])),
+    "",
+    csvRow(["=== VICTIM COUNTRY TREND ==="]),
+    csvRow(["Name", ...d.months]),
+    ...d.victim_country_trend.map((s) => csvRow([s.country, ...s.data])),
     "",
     csvRow(["=== CVE EXPOSURE ==="]),
     csvRow(["Technology", "Total", "Critical", "High", "Medium", "Max CVSS", "PoC Count"]),
@@ -110,3 +137,74 @@ export function downloadExecCsv(d: import("@/lib/api/loose-types").ExecDashboard
   a.click();
   URL.revokeObjectURL(url);
 }
+
+/** Nama sektor dari API huruf kecil ("financial services"); tampil sebagai judul kata. */
+export function toTitleCase(s: string): string {
+  return s.replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1));
+}
+
+/** Rumus skor risiko sektor, ditampilkan di tooltip "How is risk scored?" (kartu Sector risk). */
+export const RISK_FORMULA_TITLE =
+  "Risk Score = Volume(0-50) + Trend(0-20) + Spike(0-30)\n• Volume: (last_month / max_sector) × 50\n• Trend: increase first→second half, max 20\n• Spike: z-score × 10, capped at 30";
+
+/** Awal jendela dashboard sebagai "YYYY-MM-DD" lokal (hari ini − `days`), sama dengan awal rentang di header
+ * halaman. Tautan hitungan ke Newsroom membawanya sebagai `from` supaya jumlah artikel di sheet sama dengan
+ * angka di kartu. */
+export function execWindowFrom(days: number, today: Date): string {
+  const s = new Date(today.getFullYear(), today.getMonth(), today.getDate() - days);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${s.getFullYear()}-${p(s.getMonth() + 1)}-${p(s.getDate())}`;
+}
+
+/** Velocity aktor: merah hanya di atas +20% (C15); `null` (riwayat belum cukup) tampil "—". */
+export function velocityDisplay(pct: number | null): { text: string; colorClass: string } {
+  if (pct === null) return { text: "—", colorClass: "text-muted-foreground" };
+  return {
+    text: `${pct > 0 ? "+" : ""}${pct}%`,
+    colorClass: pct > 20 ? "text-destructive-text" : "text-muted-foreground",
+  };
+}
+
+/** Singkatan header kolom matriks aktor × sektor (6.2). Kunci = nama sektor dari API (huruf kecil); sektor yang
+ * belum terdaftar jatuh ke 7 huruf pertama kapital, nama lengkap selalu ada di `<abbr title>`. */
+// Kunci = nama tampilan di packages/cti-core/src/cti_core/entity/sectors.py (huruf kecil); varian ber-kurung
+// harus berbeda supaya header kolom tak bentrok.
+export const SECTOR_ABBR: Record<string, string> = {
+  aerospace: "AERO",
+  agriculture: "AGRI",
+  automotive: "AUTO",
+  chemical: "CHEM",
+  commercial: "COMM.",
+  communications: "COMMS",
+  construction: "CONSTR",
+  defense: "DEFENSE",
+  education: "EDU",
+  "emergency services": "EMERG.",
+  energy: "ENERGY",
+  entertainment: "ENTERT.",
+  "financial services": "FINANCE",
+  government: "GOV",
+  "government (local)": "GOV-LOC",
+  "government (national)": "GOV-NAT",
+  "government (public services)": "GOV-PUB",
+  "government (regional)": "GOV-REG",
+  healthcare: "HEALTH",
+  "hospitality & leisure": "HOSP.",
+  infrastructure: "INFRA",
+  "infrastructure (dams)": "INF-DAM",
+  "infrastructure (nuclear)": "INF-NUC",
+  "infrastructure (water)": "INF-WAT",
+  insurance: "INSUR.",
+  manufacturing: "MANUF.",
+  mining: "MINING",
+  "non-profit": "NONPROF",
+  pharmaceuticals: "PHARMA",
+  retail: "RETAIL",
+  technology: "TECH",
+  telecommunications: "TELECOM",
+  transportation: "TRANSP.",
+  utilities: "UTIL.",
+};
+
+export const sectorAbbr = (sector: string): string =>
+  SECTOR_ABBR[sector.toLowerCase()] ?? sector.slice(0, 7).toUpperCase();

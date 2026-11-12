@@ -182,7 +182,8 @@ def test_periodic_report_tasks_never_expire(monkeypatch) -> None:
     schedule = beat.build_beat_schedule()
 
     for name, entry in schedule.items():
-        if not name.startswith("scrape-"):
+        # exec-brief-daily sengaja kedaluwarsa 55 menit: tick jam berikutnya = percobaan ulang.
+        if not name.startswith("scrape-") and name != "exec-brief-daily":
             assert "expires" not in entry["options"], name
 
 
@@ -379,3 +380,25 @@ def test_sigma_sync_disabled_setting_skips(monkeypatch: pytest.MonkeyPatch) -> N
         assert sigma.sync() == {"skipped": "disabled"}
     finally:
         get_settings.cache_clear()
+
+
+def test_exec_brief_entries(monkeypatch) -> None:
+    from cti_core.config import get_settings
+
+    monkeypatch.setattr(beat, "_scraper_configs", lambda: {})
+    assert beat._brief_hours(7) == "0,1,2,3,4,5,6,7,8,9,10,11,23"
+    for offset, hours in ((7, set(range(12)) | {23}), (0, set(range(6, 19)))):
+        monkeypatch.setattr(get_settings().worker, "report_utc_offset_hours", offset)
+        entry = beat.build_beat_schedule()["exec-brief-daily"]
+        assert entry["task"] == "exec.brief_daily"
+        assert entry["schedule"].minute == {0}
+        assert entry["schedule"].hour == hours
+        assert entry["options"] == {"queue": "maintenance", "expires": 3300}
+
+
+def test_exec_brief_purge_entry(monkeypatch) -> None:
+    monkeypatch.setattr(beat, "_scraper_configs", lambda: {})
+    entry = beat.build_beat_schedule()["exec-brief-purge"]
+    assert entry["task"] == "exec.purge_briefs"
+    assert (entry["schedule"].hour, entry["schedule"].minute) == ({3}, {45})
+    assert entry["options"] == {"queue": "maintenance"}

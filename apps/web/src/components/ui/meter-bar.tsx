@@ -19,6 +19,8 @@ interface MeterBarProps {
   variant?: "default" | "baseline" | "diverging";
   baseline?: number;
   label?: ReactNode;
+  /** Di atas `HeroPanel` (burgundy tetap): jalur, isi, dan tick memakai token `hero-*` yang kontras di kedua tema. */
+  onHero?: boolean;
   "aria-label": string;
   className?: string;
 }
@@ -34,6 +36,7 @@ export function MeterBar({
   variant = "default",
   baseline,
   label,
+  onHero,
   "aria-label": ariaLabel,
   className,
 }: MeterBarProps) {
@@ -46,7 +49,7 @@ export function MeterBar({
       : `${value} of ${max}`;
 
   let fillStyle: { left: string; width: string };
-  let fillClass: string = FILL[tone];
+  let fillClass: string = onHero ? "bg-hero-accent" : FILL[tone];
   if (diverging) {
     const v = Math.min(max, Math.max(-max, value));
     const half = max > 0 ? (Math.abs(v) / max) * 50 : 0;
@@ -65,7 +68,7 @@ export function MeterBar({
         aria-valuemin={min}
         aria-valuemax={max}
         aria-valuetext={text}
-        className="relative h-2 min-w-16 flex-1 overflow-hidden rounded-full bg-surface"
+        className={cn("relative h-2 min-w-16 flex-1 overflow-hidden rounded-full", onHero ? "bg-hero-foreground/20" : "bg-surface")}
       >
         <span aria-hidden="true" className={cn("absolute inset-y-0 rounded-full", fillClass)} style={fillStyle} />
         {diverging && (
@@ -74,7 +77,7 @@ export function MeterBar({
         {variant === "baseline" && baseline !== undefined && (
           <span
             aria-hidden="true"
-            className="absolute inset-y-0 w-0.5 bg-foreground"
+            className={cn("absolute inset-y-0 w-0.5", onHero ? "bg-hero-foreground" : "bg-foreground")}
             style={{ left: `${clampPct((baseline / span) * 100)}%` }}
           />
         )}

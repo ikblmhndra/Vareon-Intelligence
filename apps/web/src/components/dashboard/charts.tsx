@@ -100,46 +100,6 @@ export function HorizontalBarChart({ labels, data, tone = "primary" }: Horizonta
   );
 }
 
-interface DoughnutChartProps {
-  labels: string[];
-  data: number[];
-}
-
-export function DoughnutChart({ labels, data }: DoughnutChartProps) {
-  const t = useChartTheme();
-  return (
-    <Doughnut
-      data={{
-        labels,
-        datasets: [
-          {
-            data,
-            backgroundColor: t.series,
-            borderColor: t.surface,
-            borderWidth: 3,
-            borderRadius: 6,
-            hoverOffset: 8,
-          },
-        ],
-      }}
-      options={{
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { position: "right", labels: { color: t.textBright, padding: 12, usePointStyle: true, pointStyle: "circle", font: { size: 12 } } },
-          tooltip: {
-            ...tooltipBase(t),
-            callbacks: {
-              label: (ctx: TooltipItem<"doughnut">) => ` ${ctx.label}: ${ctx.parsed} articles`,
-            },
-          },
-        },
-        cutout: "72%",
-      }}
-    />
-  );
-}
-
 interface MultiLineSeries {
   label: string;
   data: number[];

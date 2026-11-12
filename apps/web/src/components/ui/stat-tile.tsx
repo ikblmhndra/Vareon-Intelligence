@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { Card } from "@/components/ui/card";
+import { Sparkline } from "@/components/ui/sparkline";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
@@ -19,6 +20,8 @@ interface StatTileProps {
   sub?: ReactNode;
   tone?: keyof typeof TONE;
   tooltip?: ReactNode;
+  /** Deret kecil di pojok kanan bawah (min. 2 titik); dekoratif, angka tetap ada di `value`/`sub`. */
+  spark?: number[];
   /** Tile terpilih (hanya bermakna bersama `onSelect`). */
   selected?: boolean;
   /** Bila ada, tile dirender sebagai `<button aria-pressed>` (filter tipe IOC). */
@@ -28,7 +31,7 @@ interface StatTileProps {
 
 /** Kotak angka ringkas: batang warna 2 px di atas, label 11 px kapital, angka besar, keterangan kecil.
  * `tooltip` (opsional) menjelaskan label saat di-hover/fokus. */
-export function StatTile({ label, value, sub, tone = "neutral", tooltip, selected, onSelect, className }: StatTileProps) {
+export function StatTile({ label, value, sub, tone = "neutral", tooltip, spark, selected, onSelect, className }: StatTileProps) {
   const t = TONE[tone];
   const labelEl = (
     <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
@@ -52,6 +55,7 @@ export function StatTile({ label, value, sub, tone = "neutral", tooltip, selecte
       )}
       <p className={cn("text-[32px] font-bold leading-tight", t.value)}>{value}</p>
       {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
+      {spark && spark.length >= 2 && <Sparkline data={spark} className="absolute right-4 bottom-3 h-6 w-20" />}
     </Card>
   );
   if (!onSelect) return card;

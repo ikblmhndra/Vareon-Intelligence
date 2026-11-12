@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import datetime
 
+from cti_core.db.models.exec_brief import ExecBrief
 from cti_core.db.repositories.auth import AsyncAuditLogRepo
+from cti_core.db.repositories.exec_brief import AsyncExecBriefRepo
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,8 +22,22 @@ from cti_api.deps import (
     require_auth,
     require_permission,
 )
-from cti_api.services import exec_brief as exec_brief_service
+from cti_api.schemas.exec_brief import (
+    ExecBriefDates,
+    ExecBriefFilters,
+    ExecBriefOut,
+    ExecBriefRead,
+)
 from cti_api.services import exec_dashboard as exec_dashboard_service
+from cti_api.services.exec_brief import (
+    DEFAULT_FILTERS,
+    RETENTION_DAYS,
+    BriefFilters,
+    BriefGenerationError,
+    brief_today,
+    draft_brief,
+    store_brief,
+)
 
 router = APIRouter(
     prefix="/api/exec",
@@ -74,23 +90,83 @@ async def dashboard_v2(
     return result
 
 
-@router.post("/brief", dependencies=[Depends(require_permission("manage_intel"))])
+def _brief_out(row: ExecBrief) -> ExecBriefOut:
+    return ExecBriefOut(
+        brief_date=row.brief_date,
+        markdown=row.markdown,
+        filters=ExecBriefFilters(**row.filters),
+        is_default_filters=row.filters == DEFAULT_FILTERS.as_json(),
+        generated_at=row.generated_at,
+        generated_by=row.generated_by,
+        model=row.model,
+        prompt_version=row.prompt_version,
+    )
+
+
+@router.get("/brief", response_model=ExecBriefRead)
+async def read_brief(
+    date: datetime.date | None = None, session: AsyncSession = Depends(get_db)
+) -> ExecBriefRead:
+    """Brief bersama untuk semua klien (C5): sengaja tanpa `X-Client-ID`/`effective_client_id`.
+    Tanpa `date`: brief hari ini, kalau belum ada brief terbaru dalam 30 hari terakhir."""
+    today = brief_today()
+    repo = AsyncExecBriefRepo(session)
+    if date is not None:
+        row = await repo.get(date)
+    else:
+        row = await repo.get(today) or await repo.latest(
+            since=today - datetime.timedelta(days=RETENTION_DAYS)
+        )
+    return ExecBriefRead(today=today, brief=_brief_out(row) if row else None)
+
+
+@router.get("/brief/dates", response_model=ExecBriefDates)
+async def brief_dates(session: AsyncSession = Depends(get_db)) -> ExecBriefDates:
+    today = brief_today()
+    dates = await AsyncExecBriefRepo(session).list_dates(
+        since=today - datetime.timedelta(days=RETENTION_DAYS)
+    )
+    return ExecBriefDates(today=today, dates=dates)
+
+
+@router.post(
+    "/brief",
+    response_model=ExecBriefOut,
+    dependencies=[Depends(require_permission("manage_intel"))],
+)
 async def exec_brief(
     request: Request,
-    days: int = Query(90),
+    days: int = Query(90, ge=7, le=365),
     incident_only: bool = True,
     confirmed_only: bool = False,
     user: AuthedUser = Depends(require_auth),
     session: AsyncSession = Depends(get_db),
-) -> dict[str, object]:
-    text = await exec_brief_service.generate_exec_brief(
-        session, days, incident_only, confirmed_only
+) -> ExecBriefOut:
+    """Buat ulang brief hari ini dan timpa baris bersama milik semua klien. Bentuk respons
+    berubah dari `{brief, generated_at}`; web satu-satunya konsumen dan berubah di PR yang sama.
+    Gagal di sisi LLM -> 502 dan baris yang ada tidak disentuh."""
+    filters = BriefFilters(days, incident_only, confirmed_only)
+    try:
+        draft = await draft_brief(session, filters=filters)
+    except BriefGenerationError as exc:
+        raise HTTPException(
+            status_code=502, detail="Brief generation failed. Try again later."
+        ) from exc
+    row = await store_brief(
+        session,
+        brief_date=brief_today(),
+        draft=draft,
+        filters=filters,
+        generated_by=user["username"],
+        replace=True,
     )
+    assert row is not None  # replace=True selalu mengembalikan baris
     await AsyncAuditLogRepo(session).write(
         username=user["username"],
         action="generate_exec_brief",
-        detail={"days": days, "incident_only": incident_only, "confirmed_only": confirmed_only},
+        detail={**filters.as_json(), "brief_date": row.brief_date.isoformat()},
         ip_address=request_ip(request),
     )
+    out = _brief_out(row)
     await session.commit()
-    return {"brief": text, "generated_at": datetime.datetime.now(datetime.UTC).isoformat()}
+    return out

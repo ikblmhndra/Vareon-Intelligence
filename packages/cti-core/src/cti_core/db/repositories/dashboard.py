@@ -375,6 +375,70 @@ class AsyncDashboardRepo:
         rows = (await self.session.execute(stmt)).all()
         return [(sector, actor, cnt) for sector, actor, cnt in rows]
 
+    async def top_sectors_by_actor(
+        self,
+        *,
+        actors: Sequence[str],
+        limit: int = 2,
+        exclude: Sequence[str] = ("General",),
+        **filters: Any,
+    ) -> dict[str, list[str]]:
+        """`limit` sektor teratas per aktor (jumlah artikel, seri diputus nama), satu query
+        berkelompok. `exclude` default "General" = label "tanpa sektor spesifik" (lihat
+        `exec_dashboard.UNSPECIFIED_INDUSTRY`), bukan sektor sungguhan."""
+        if not actors:
+            return {}
+        sec = mention_rows(SECTOR)
+        act = mention_rows(ACTOR)
+        cnt = func.count().label("cnt")
+        inner = _apply_article_filters(
+            _joined(select(act.c.name.label("actor"), sec.c.name.label("sector"), cnt), sec)
+            .join(act, act.c.article_id == Article.id)
+            .where(act.c.name.in_(actors), sec.c.name.not_in(exclude)),
+            **filters,
+        ).group_by(act.c.name, sec.c.name)
+        sub = inner.subquery()
+        rn = func.row_number().over(
+            partition_by=sub.c.actor, order_by=(sub.c.cnt.desc(), sub.c.sector)
+        )
+        ranked = select(sub.c.actor, sub.c.sector, rn.label("rn")).subquery()
+        stmt = (
+            select(ranked.c.actor, ranked.c.sector)
+            .where(ranked.c.rn <= limit)
+            .order_by(ranked.c.actor, ranked.c.rn)
+        )
+        out: dict[str, list[str]] = {}
+        for actor, sector in (await self.session.execute(stmt)).all():
+            out.setdefault(actor, []).append(sector)
+        return out
+
+    async def top_actor_by_sector(
+        self, *, sectors: Sequence[str], **filters: Any
+    ) -> dict[str, str]:
+        """Aktor dengan artikel terbanyak per sektor (seri diputus nama); sektor tanpa mention
+        aktor tidak muncul di hasil."""
+        if not sectors:
+            return {}
+        sec = mention_rows(SECTOR)
+        act = mention_rows(ACTOR)
+        cnt = func.count().label("cnt")
+        sub = (
+            _apply_article_filters(
+                _joined(select(sec.c.name.label("sector"), act.c.name.label("actor"), cnt), sec)
+                .join(act, act.c.article_id == Article.id)
+                .where(sec.c.name.in_(sectors)),
+                **filters,
+            )
+            .group_by(sec.c.name, act.c.name)
+            .subquery()
+        )
+        rn = func.row_number().over(
+            partition_by=sub.c.sector, order_by=(sub.c.cnt.desc(), sub.c.actor)
+        )
+        ranked = select(sub.c.sector, sub.c.actor, rn.label("rn")).subquery()
+        stmt = select(ranked.c.sector, ranked.c.actor).where(ranked.c.rn == 1)
+        return {sector: actor for sector, actor in (await self.session.execute(stmt)).all()}
+
     async def ta_confidence_raw(
         self, *, posted_on_start: datetime.date, actors: Sequence[str]
     ) -> list[tuple[str, int, int, int]]:
