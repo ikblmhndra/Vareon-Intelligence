@@ -16,7 +16,7 @@ from __future__ import annotations
 import datetime
 from typing import Any
 
-from sqlalchemy import ColumnElement, Select, case, func, select
+from sqlalchemy import ColumnElement, Select, Text, case, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -71,6 +71,12 @@ def _has_items(key: str) -> ColumnElement[bool]:
     return case((func.jsonb_typeof(col) == "array", func.jsonb_array_length(col)), else_=0) > 0
 
 
+def _like(text: str) -> str:
+    """Pola ILIKE aman: `%`, `_`, dan `\\` dalam input pengguna diperlakukan literal."""
+    escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
 def _apply_tweet_filters(
     stmt: Select[tuple[Any, ...]],
     *,
@@ -83,6 +89,8 @@ def _apply_tweet_filters(
     apac_only: bool,
     ot_only: bool,
     confirmed_only: bool,
+    has_cve: bool = False,
+    signal: str | None = None,
 ) -> Select[tuple[Any, ...]]:
     """`apac_indicator`/`ot_status` ada DI DALAM `scan_results` JSONB
     (bukan kolom top-level) -- lihat docstring `Tweet.scan_results`
@@ -99,9 +107,26 @@ def _apply_tweet_filters(
 
     `author`: `@` di depan dibuang (QA BUG-B6) -- placeholder UI "@handle…"
     dan `author_username` disimpan TANPA `@` (lihat
-    `AsyncMonitoredAccountRepo.create`), jadi "@rst_cloud" dulu 0 hasil."""
+    `AsyncMonitoredAccountRepo.create`), jadi "@rst_cloud" dulu 0 hasil.
+
+    `search` (satu kotak di UI, menggantikan filter handle terpisah) cocok dengan teks, handle
+    (tanpa `@` di depan, alasan sama dengan `author`), nama korban, atau CVE di
+    `scan_results.cve_list` (di-cast ke teks); salah satu cukup (OR). `%`, `_` dan `\\`
+    dibaca literal. Semua syarat lain di-AND, jadi pencarian dan filter hanya mempersempit.
+
+    `has_cve`: `cve_list` berisi. `signal`: `zero_day`/`databreach` = list-nya berisi,
+    `ot`/`report` = flag boolean di `scan_results`; nilai lain ditolak router (422)."""
     if search:
-        stmt = stmt.where(Tweet.text.ilike(f"%{search}%"))
+        pattern = _like(search)
+        handle = _like(search.lstrip("@")) if search.lstrip("@") else pattern
+        stmt = stmt.where(
+            or_(
+                Tweet.text.ilike(pattern, escape="\\"),
+                Tweet.author_username.ilike(handle, escape="\\"),
+                Tweet.victim_name.ilike(pattern, escape="\\"),
+                cast(Tweet.scan_results["cve_list"], Text).ilike(pattern, escape="\\"),
+            )
+        )
     author = author.strip().lstrip("@").strip() if author else None
     if author:
         stmt = stmt.where(Tweet.author_username.ilike(f"%{author}%"))
@@ -119,6 +144,12 @@ def _apply_tweet_filters(
         stmt = stmt.where(Tweet.scan_results["ot_status"].as_boolean())
     if confirmed_only:
         stmt = stmt.where(Tweet.confirmed_incident.is_(True))
+    if has_cve:
+        stmt = stmt.where(_has_items("cve_list"))
+    if signal in ("zero_day", "databreach"):
+        stmt = stmt.where(_has_items(f"{signal}_list"))
+    elif signal in ("ot", "report"):
+        stmt = stmt.where(Tweet.scan_results[f"{signal}_status"].as_boolean())
     return stmt
 
 
@@ -140,6 +171,8 @@ class AsyncTweetRepo:
         apac_only: bool = False,
         ot_only: bool = False,
         confirmed_only: bool = False,
+        has_cve: bool = False,
+        signal: str | None = None,
     ) -> tuple[list[Tweet], int]:
         stmt = _apply_tweet_filters(
             select(Tweet),
@@ -152,6 +185,8 @@ class AsyncTweetRepo:
             apac_only=apac_only,
             ot_only=ot_only,
             confirmed_only=confirmed_only,
+            has_cve=has_cve,
+            signal=signal,
         )
         total = (
             await self.session.execute(select(func.count()).select_from(stmt.subquery()))
@@ -167,7 +202,13 @@ class AsyncTweetRepo:
         return list(result.scalars().all()), total
 
     async def list_top_between(
-        self, *, posted_on_start: datetime.datetime, posted_before: datetime.datetime, limit: int
+        self,
+        *,
+        posted_on_start: datetime.datetime,
+        posted_before: datetime.datetime,
+        limit: int,
+        has_cve: bool = False,
+        signal: str | None = None,
     ) -> tuple[list[Tweet], int]:
         """`(tweet terkuat di [posted_on_start, posted_before), maksimal limit, total sebenarnya)`.
 
@@ -185,6 +226,8 @@ class AsyncTweetRepo:
             apac_only=False,
             ot_only=False,
             confirmed_only=False,
+            has_cve=has_cve,
+            signal=signal,
         )
         total = (
             await self.session.execute(select(func.count()).select_from(window.subquery()))
@@ -211,6 +254,8 @@ class AsyncTweetRepo:
         apac_only: bool = False,
         ot_only: bool = False,
         confirmed_only: bool = False,
+        has_cve: bool = False,
+        signal: str | None = None,
     ) -> dict[str, object]:
         # Semua angka (header + rail) harus menggambarkan tweet yang tampil di daftar, jadi
         # filternya sama persis dengan `list_filtered`.
@@ -225,6 +270,8 @@ class AsyncTweetRepo:
             apac_only=apac_only,
             ot_only=ot_only,
             confirmed_only=confirmed_only,
+            has_cve=has_cve,
+            signal=signal,
         ).subquery()
 
         total = (
@@ -258,6 +305,8 @@ class AsyncTweetRepo:
             apac_only=apac_only,
             ot_only=ot_only,
             confirmed_only=confirmed_only,
+            has_cve=has_cve,
+            signal=signal,
         )
         confirmed, apac, ot, with_cve, databreach, zero_day = (
             await self.session.execute(counters_stmt)

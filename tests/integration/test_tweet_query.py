@@ -264,6 +264,82 @@ class TestAsyncTweetRepo:
         # urutan: count desc lalu label
         assert [v["victim"] for v in victims[1:]] == ["Alpha", "Bravo", "Charlie", "Delta"]
 
+    async def test_search_matches_text_handle_victim_and_cve(
+        self, async_db_session: AsyncSession
+    ) -> None:
+        await _seed_signals(async_db_session)
+        async_db_session.add(
+            Tweet(tweet_id="4001", url="u", text="plain", author_username="rst_cloud")
+        )
+        await async_db_session.flush()
+        repo = AsyncTweetRepo(async_db_session)
+
+        async def ids(q: str) -> set[str]:
+            rows, _ = await repo.list_filtered(search=q)
+            return {t.tweet_id for t in rows}
+
+        assert await ids("post 2003") == {"2003"}  # teks
+        assert await ids("rst_cl") == {"4001"}  # handle
+        assert await ids("zeta") == {"2003"}  # korban
+        assert await ids("CVE-2026-0002") == {"2005"}  # CVE di scan_results
+        # metakarakter LIKE dibaca literal: "_" bukan wildcard satu karakter, "%" bukan semua
+        assert await ids("rst_cloud") == {"4001"}
+        assert await ids("rstXcloud") == set()
+        assert await ids("100%") == set()
+
+    async def test_search_handle_with_at(self, async_db_session: AsyncSession) -> None:
+        await _seed_signals(async_db_session)
+        async_db_session.add(
+            Tweet(tweet_id="4001", url="u", text="plain", author_username="rst_cloud")
+        )
+        await async_db_session.flush()
+        rows, total = await AsyncTweetRepo(async_db_session).list_filtered(search="@rst_cloud")
+        assert total == 1
+        assert rows[0].tweet_id == "4001"
+
+    async def test_list_filtered_has_cve(self, async_db_session: AsyncSession) -> None:
+        await _seed_signals(async_db_session)
+        rows, total = await AsyncTweetRepo(async_db_session).list_filtered(has_cve=True)
+        assert total == 2
+        assert {t.tweet_id for t in rows} == {"2001", "2005"}
+
+    async def test_list_filtered_signal_each_value(self, async_db_session: AsyncSession) -> None:
+        await _seed_signals(async_db_session)
+        async_db_session.add(
+            Tweet(
+                tweet_id="4002",
+                url="u",
+                text="r",
+                author_username="x",
+                scan_results={"report_status": True, "ot_status": False},
+            )
+        )
+        await async_db_session.flush()
+        repo = AsyncTweetRepo(async_db_session)
+
+        async def ids(signal: str) -> set[str]:
+            rows, _ = await repo.list_filtered(signal=signal)
+            return {t.tweet_id for t in rows}
+
+        assert await ids("ot") == {"2001"}
+        assert await ids("zero_day") == {"2001"}
+        assert await ids("databreach") == {"2001"}
+        assert await ids("report") == {"4002"}
+
+    async def test_filters_combine_with_and(self, async_db_session: AsyncSession) -> None:
+        await _seed_signals(async_db_session)
+        repo = AsyncTweetRepo(async_db_session)
+        kw = {"search": "lockbit", "signal": "ot", "confirmed_only": True, "has_cve": True}
+        rows, total = await repo.list_filtered(**kw)
+        assert (total, [t.tweet_id for t in rows]) == (1, ["2001"])
+        stats = await repo.get_stats(**kw)
+        assert stats["total"] == total
+        # satu syarat yang tidak cocok mempersempit jadi kosong, tidak pernah melebar
+        for narrow in ({"signal": "report"}, {"search": "zeta"}):
+            rows, total = await repo.list_filtered(**{**kw, **narrow})
+            assert total == 0
+            assert (await repo.get_stats(**{**kw, **narrow}))["total"] == 0
+
 
 class TestAsyncMonitoredAccountRepo:
     async def test_create_normalizes_username(self, async_db_session: AsyncSession) -> None:
