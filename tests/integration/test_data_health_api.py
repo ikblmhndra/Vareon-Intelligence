@@ -127,6 +127,7 @@ async def test_data_health_survives_a_redis_outage(
     monkeypatch.setattr(fake_redis, "llen", boom)
     body = (await api_client.get("/api/data-health", headers=auth_header())).json()
     assert body["queues"]["enrich_depth"] is None
+    assert body["queues"]["depths"] is None
 
 
 def _call(
@@ -380,3 +381,45 @@ async def test_data_health_pipeline_empty(
     body = (await api_client.get("/api/data-health", headers=auth_header())).json()
     zero = {"items_found": 0, "items_new": 0, "articles_published": 0}
     assert body["pipeline"] == {"last_24h": zero, "last_7d": zero}
+
+
+async def test_data_health_queue_depths(api_client: AsyncClient, auth_header, fake_redis) -> None:
+    fake_redis.lists["enrich"] = 7
+    fake_redis.lists["cve"] = 2
+    queues = (await api_client.get("/api/data-health", headers=auth_header())).json()["queues"]
+    assert queues["depths"] == {
+        "scrape.rss": 0,
+        "scrape.api": 0,
+        "scrape.browser": 0,
+        "enrich": 7,
+        "notify": 0,
+        "maintenance": 0,
+        "cve": 2,
+    }
+    assert list(queues["depths"]) == [
+        "scrape.rss",
+        "scrape.api",
+        "scrape.browser",
+        "enrich",
+        "notify",
+        "maintenance",
+        "cve",
+    ]
+    assert queues["enrich_depth"] == 7
+
+
+async def test_data_health_queue_depths_all_or_nothing(
+    api_client: AsyncClient, auth_header, fake_redis, monkeypatch
+) -> None:
+    fake_redis.lists["enrich"] = 7
+    real = fake_redis.llen
+
+    async def flaky(key: str) -> int:
+        if key == "notify":
+            raise ConnectionError("redis down")
+        return await real(key)
+
+    monkeypatch.setattr(fake_redis, "llen", flaky)
+    queues = (await api_client.get("/api/data-health", headers=auth_header())).json()["queues"]
+    assert queues["depths"] is None
+    assert queues["enrich_depth"] is None

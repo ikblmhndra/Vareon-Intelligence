@@ -25,6 +25,7 @@ from cti_core.db.repositories.relevance import AsyncRelevanceModelRepo
 from cti_core.db.repositories.story import AsyncStoryRepo, StoryStats
 from cti_core.hunt.sigma import SIGMA_SNAPSHOT
 from cti_core.llm.breaker import BREAKER_TASKS, RECENT_CALLS, breaker_state
+from cti_scraper.queues import ALL_SCRAPE_QUEUES
 from redis.asyncio import Redis
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -54,6 +55,11 @@ _cache: tuple[DataHealthOut, float] | None = None
 # Nama list Celery untuk queue `enrich` (sama dengan `cti_scraper.sinks._ENRICH_QUEUE`).
 _ENRICH_QUEUE = "enrich"
 
+# Semua queue Celery, urutan = urutan tampil di web. Empat literal di belakang ada karena `cti_api`
+# tidak boleh meng-import `cti_worker`; `tests/unit/test_queue_names.py` menjaganya: queue yang
+# diganti nama diam-diam terbaca 0 (`LLEN` kunci yang tidak ada = 0, sama dengan queue yang idle).
+_QUEUES: tuple[str, ...] = (*ALL_SCRAPE_QUEUES, "enrich", "notify", "maintenance", "cve")
+
 # Task yang menentukan status model: jalur enrichment artikel (kegagalan di sini memarkir artikel).
 _STATUS_TASKS = ("classify", "ttp")
 
@@ -72,10 +78,11 @@ async def get_data_health(session: AsyncSession, redis: Redis) -> DataHealthOut:
     return result
 
 
-async def _enrich_depth(redis: Redis) -> int | None:
-    """Redis gangguan = `None` (halaman tetap tampil), bukan 500."""
+async def _queue_depths(redis: Redis) -> dict[str, int] | None:
+    """Redis gangguan = `None` untuk SELURUH blok (halaman tetap tampil, bukan 500): daftar
+    antrean setengah terisi menyesatkan, jadi semua-atau-tidak-sama-sekali."""
     try:
-        return int(await redis.llen(_ENRICH_QUEUE))
+        return {name: int(await redis.llen(name)) for name in _QUEUES}
     except Exception:
         return None
 
@@ -247,6 +254,7 @@ async def _build(session: AsyncSession, redis: Redis, now: datetime.datetime) ->
     processed = await repo.processed_since(now - datetime.timedelta(days=7))
     coverage = await repo.ioc_coverage_by_type()
     totals = await repo.pipeline_totals(now)
+    depths = await _queue_depths(redis)
     return DataHealthOut(
         generated_at=now.isoformat(),
         scrapers=scrapers,
@@ -262,7 +270,8 @@ async def _build(session: AsyncSession, redis: Redis, now: datetime.datetime) ->
             last_7d=PipelineWindowOut(**asdict(totals.last_7d)),
         ),
         queues=QueueHealthOut(
-            enrich_depth=await _enrich_depth(redis),
+            depths=depths,
+            enrich_depth=depths[_ENRICH_QUEUE] if depths is not None else None,
             enrich_max_depth=get_settings().scraper.enrich_queue_max_depth,
         ),
         sources=SourceFreshnessOut(

@@ -36,6 +36,9 @@ class PipelineHealthOut(BaseModel):
 
 
 class QueueHealthOut(BaseModel):
+    depths: dict[str, int] | None
+    """`LLEN` tiap queue Celery (hanya pesan yang menunggu; task yang sudah di-reserve belum di-ack
+    tidak ada di list). `None` kalau Redis tidak bisa dibaca."""
     enrich_depth: int | None
     """`LLEN enrich` di broker; `None` kalau Redis tidak bisa dibaca."""
     enrich_max_depth: int
