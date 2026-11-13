@@ -11,11 +11,12 @@ di sini karena lifespan `create_app()` sengaja gak jalan lewat
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Callable
 from typing import Any
 
 import pytest
-from cti_api.security import hash_password
+from cti_api.security import decode_token, hash_password
 from cti_api.services.roles import ensure_system_roles
 from cti_core.db.repositories.auth import AsyncClientRepo, AsyncUserRepo
 from httpx import AsyncClient
@@ -239,6 +240,83 @@ async def test_reset_user_password(
     )
     assert resp.status_code == 200
     assert resp.json() == snapshot
+    # reset admin menandai akun: admin tahu password yang diketiknya (D4)
+    login = await api_client.post(
+        "/api/auth/login", json={"username": "analyst1", "password": "NewP@ssw0rd456"}
+    )
+    assert login.status_code == 200
+    assert login.json()["force_pw_change"] is True
+
+
+async def _reset_then_login(
+    api_client: AsyncClient,
+    auth_header: Callable[..., dict[str, str]],
+    fake_redis: Any,
+    api_session: AsyncSession,
+) -> str:
+    await _seed_user(api_session)
+    resp = await api_client.post(
+        "/api/auth/users/analyst1/reset-password",
+        headers=auth_header(role="admin"),
+        json={"new_password": "NewP@ssw0rd456"},
+    )
+    assert resp.status_code == 200
+    # reset mencabut token user di detik yang sama; mundurkan agar login berikutnya tidak ikut
+    await fake_redis.set("revoked_user:analyst1", int(time.time()) - 5)
+    login = await api_client.post(
+        "/api/auth/login", json={"username": "analyst1", "password": "NewP@ssw0rd456"}
+    )
+    assert login.status_code == 200
+    return str(login.json()["access_token"])
+
+
+async def test_change_password_clears_force_pw_change(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+    fake_redis: Any,
+) -> None:
+    token = await _reset_then_login(api_client, auth_header, fake_redis, api_session)
+    resp = await api_client.post(
+        "/api/auth/change-password",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"current_password": "NewP@ssw0rd456", "new_password": "Third#Pass789"},
+    )
+    assert resp.status_code == 200
+    login = await api_client.post(
+        "/api/auth/login", json={"username": "analyst1", "password": "Third#Pass789"}
+    )
+    assert login.status_code == 200
+    assert login.json()["force_pw_change"] is False
+
+
+async def test_forced_user_is_blocked_until_change(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+    fake_redis: Any,
+) -> None:
+    token = await _reset_then_login(api_client, auth_header, fake_redis, api_session)
+    headers = {"Authorization": f"Bearer {token}"}
+    blocked = await api_client.get("/api/auth/users", headers=headers)
+    assert blocked.status_code == 403
+    assert blocked.json()["detail"] == "Password change required"
+    assert (await api_client.get("/api/auth/policy", headers=headers)).status_code == 200
+    assert (await api_client.get("/api/auth/me", headers=headers)).status_code == 200
+
+
+async def test_token_issued_in_revocation_second_is_revoked(
+    api_client: AsyncClient,
+    auth_header: Callable[..., dict[str, str]],
+    fake_redis: Any,
+) -> None:
+    """Menjelaskan mengapa web menunggu 1.200 ms sebelum login ulang: iat <= detik cabut = mati."""
+    headers = auth_header(username="analyst1")
+    iat = decode_token(headers["Authorization"].split(" ", 1)[1])["iat"]
+    await fake_redis.set("revoked_user:analyst1", iat)
+    assert (await api_client.get("/api/auth/me", headers=headers)).status_code == 401
+    await fake_redis.set("revoked_user:analyst1", iat - 1)
+    assert (await api_client.get("/api/auth/me", headers=headers)).status_code == 200
 
 
 async def test_update_user_client_list(

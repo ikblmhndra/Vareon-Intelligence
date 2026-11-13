@@ -192,7 +192,7 @@ async def change_password(
     if errors:
         raise _pw_error(errors)
     ok = await AsyncUserRepo(session).reset_password(
-        user["username"], hash_password(body.new_password)
+        user["username"], hash_password(body.new_password), force_change=False
     )
     if not ok:
         raise HTTPException(status_code=404, detail="User not found")
@@ -348,7 +348,9 @@ async def reset_user_password(
     errors = policy_service.validate_password(body.new_password, policy)
     if errors:
         raise _pw_error(errors)
-    ok = await user_repo.reset_password(username, hash_password(body.new_password))
+    ok = await user_repo.reset_password(
+        username, hash_password(body.new_password), force_change=True
+    )
     if not ok:
         raise HTTPException(status_code=404, detail="User not found")
     await AsyncAuditLogRepo(session).write(
