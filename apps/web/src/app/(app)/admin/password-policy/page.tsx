@@ -1,12 +1,7 @@
 "use client";
 
-import { AdminFrame } from "@/components/admin/admin-frame";
-import { PasswordPolicySection } from "@/components/admin/password-policy-section";
+import { PasswordPolicyView } from "@/components/admin/password-policy-view";
 
 export default function AdminPasswordPolicyPage() {
-  return (
-    <AdminFrame page="password-policy">
-      <PasswordPolicySection />
-    </AdminFrame>
-  );
+  return <PasswordPolicyView />;
 }
