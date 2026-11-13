@@ -9,6 +9,8 @@ import {
   EditClientsDialog,
   ResetPasswordDialog,
 } from "@/components/admin/user-dialogs";
+import { UsersMiniCards, UsersTiles } from "@/components/admin/users-overview";
+import { useAuditExport } from "@/lib/admin/audit-export";
 import { useAdminUsers, useClients, useRoles, adminErrorMessage } from "@/components/admin/hooks";
 import { useAuth } from "@/components/providers/auth-provider";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -79,7 +81,7 @@ function UsersCard({
   const { user: me } = useAuth();
   const canManage = can("manage_users");
   const users = useAdminUsers(canManage);
-  const roles = useRoles();
+  const roles = useRoles(canManage);
   const clients = useClients(canManage);
   const [search, setSearch] = useState("");
   const [role, setRole] = useState("all");
@@ -269,6 +271,7 @@ function UsersCard({
 
 export function UsersView() {
   const can = useCan();
+  const exp = useAuditExport();
   const [addOpen, setAddOpen] = useState(false);
   const [resetTarget, setResetTarget] = useState<AdminUser | null>(null);
   const [roleTarget, setRoleTarget] = useState<AdminUser | null>(null);
@@ -277,9 +280,24 @@ export function UsersView() {
   return (
     <AdminFrame
       page="users"
-      headerActions={can("manage_users") ? <Button onClick={() => setAddOpen(true)}>+ Add user</Button> : undefined}
+      headerActions={
+        <>
+          {can("view_audit_log") && (
+            <Button
+              variant="outline"
+              disabled={exp.pending}
+              onClick={() => exp.run({ user: "", action: "" })}
+            >
+              {exp.pending ? (exp.label ?? "Exporting…") : "Export audit log"}
+            </Button>
+          )}
+          {can("manage_users") && <Button onClick={() => setAddOpen(true)}>+ Add user</Button>}
+        </>
+      }
     >
+      <UsersTiles />
       <UsersCard onReset={setResetTarget} onRole={setRoleTarget} onClients={setClientsTarget} />
+      <UsersMiniCards />
       <AddUserDialog open={addOpen} onOpenChange={setAddOpen} />
       <ResetPasswordDialog target={resetTarget} onOpenChange={(o) => !o && setResetTarget(null)} />
       <ChangeRoleDialog target={roleTarget} onOpenChange={(o) => !o && setRoleTarget(null)} />

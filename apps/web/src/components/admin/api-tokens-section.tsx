@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
+import { useApiTokens } from "@/components/admin/hooks";
 import { api } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { Badge } from "@/components/ui/badge";
@@ -76,14 +77,7 @@ export function ApiTokensSection() {
   const [created, setCreated] = useState<string | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<ApiToken | null>(null);
 
-  const tokens = useQuery({
-    queryKey: KEY,
-    queryFn: async () => {
-      const { data, response } = await api.GET("/api/api-tokens");
-      if (!response.ok || !data) throw new Error(`HTTP ${response.status}`);
-      return data;
-    },
-  });
+  const tokens = useApiTokens();
 
   const revoke = useMutation({
     mutationFn: async (id: number) => {
@@ -125,7 +119,7 @@ export function ApiTokensSection() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {tokens.data.map((t) => {
+              {tokens.data.tokens.map((t) => {
                 const left = daysLeft(t);
                 return (
                   <TableRow key={t.id}>

@@ -44,6 +44,7 @@ export async function exportAuditLog(opts: {
     opts.onProgress(Math.min(rows.length, target), target);
     if (data.logs.length === 0) break; // tidak ada halaman lagi
   }
+  opts.signal.throwIfAborted();
   const kept = rows.slice(0, MAX_ROWS);
   const d = new Date();
   const p = (n: number) => String(n).padStart(2, "0");

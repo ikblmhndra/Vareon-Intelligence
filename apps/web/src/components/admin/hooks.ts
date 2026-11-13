@@ -35,9 +35,10 @@ export function useAdminUsers(enabled = true) {
   });
 }
 
-export function useRoles() {
+export function useRoles(enabled = true) {
   return useQuery({
     queryKey: ["admin", "roles"],
+    enabled,
     queryFn: async () =>
       unwrap(await api.GET("/api/roles"), "Failed to load roles") as unknown as Role[],
     retry: noClientRetry,

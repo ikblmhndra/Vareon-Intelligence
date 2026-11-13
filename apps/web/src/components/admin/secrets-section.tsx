@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
+import { useSecrets } from "@/components/admin/hooks";
 import { api } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { Badge } from "@/components/ui/badge";
@@ -66,14 +67,7 @@ const SOURCE_LABEL: Record<Provider["source"], string> = {
  */
 export function SecretsSection() {
   const queryClient = useQueryClient();
-  const secrets = useQuery({
-    queryKey: SECRETS_KEY,
-    queryFn: async () => {
-      const { data, response } = await api.GET("/api/secrets");
-      if (!response.ok || !data) throw new Error(`HTTP ${response.status}`);
-      return data;
-    },
-  });
+  const secrets = useSecrets();
   const [editTarget, setEditTarget] = useState<Provider | null>(null);
   const [revertTarget, setRevertTarget] = useState<Provider | null>(null);
   const [tests, setTests] = useState<Record<string, TestResult | "running">>({});
