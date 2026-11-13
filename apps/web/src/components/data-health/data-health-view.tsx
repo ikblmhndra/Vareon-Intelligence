@@ -28,6 +28,7 @@ import {
 } from "@/lib/data-health/tones";
 import { usePageTitle } from "@/lib/use-page-title";
 import { NeedsAttentionCard, PipelineCard } from "@/components/data-health/pipeline-card";
+import { LlmCard } from "@/components/data-health/llm-card";
 import { HowToRead } from "@/components/data-health/how-to-read";
 import { ToneChip } from "@/components/data-health/tone-chip";
 import { PageHeader } from "@/components/page-header";
@@ -36,7 +37,6 @@ import { Notice } from "@/components/ui/notice";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatePanel } from "@/components/ui/state-panel";
 import { StatTile } from "@/components/ui/stat-tile";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
 /** "3h 12m ago · 23 Oct 2026, 10:04 WIB", atau "never" -- dengan penjaga nilai kosong/tidak valid.
@@ -49,16 +49,6 @@ function when(iso: string | null | undefined): string {
 function pct(part: number, whole: number): string {
   return whole > 0 ? `${Math.round((part / whole) * 100)}%` : "0%";
 }
-const CELL = "px-2 py-1.5 text-xs sm:text-sm";
-const HEAD = "h-8 px-2 text-xs";
-const NUM = cn(CELL, "text-right tabular-nums whitespace-nowrap");
-
-/** "12 / 340"; `—` untuk nilai kosong (token/latensi nullable, atau tugas tanpa panggilan di jendela itu). */
-function pair(a: number | null | undefined, b: number | null | undefined, unit = ""): string {
-  const f = (n: number | null | undefined) => (n === null || n === undefined ? "—" : `${n.toLocaleString()}${unit}`);
-  return `${f(a)} / ${f(b)}`;
-}
-
 
 function plural(n: number, one: string, many: string): string {
   return n === 1 ? one : many.replace("{n}", String(n));
@@ -248,19 +238,6 @@ export function DataHealthView() {
 
     const llm = d.llm;
     const pendingJobs = llm.queue.pending_classify + llm.queue.pending_ttp;
-    const llmStatusTone: Tone = llm.status === "ok" ? "ok" : llm.status === "failing" ? "bad" : "unknown";
-    const le = llm.last_error;
-    const llmStatusValue =
-      llm.status === "failing"
-        ? le
-          ? `${[le.http_status, le.error_type].filter((x) => x !== null).join(" ") || "error"} · ${le.task} · ${when(le.at)}`
-          : "latest call returned no choices"
-        : llm.status === "ok"
-          ? `last successful call ${when(llm.last_ok_at)}`
-          : "no calls recorded yet";
-    const usage7d = new Map(llm.usage_7d.map((u) => [u.task, u]));
-    const llmTasks = [...new Set([...llm.usage_24h.map((u) => u.task), ...usage7d.keys()])].sort();
-    const usage24h = new Map(llm.usage_24h.map((u) => [u.task, u]));
 
     header = (
       <>
@@ -332,6 +309,8 @@ export function DataHealthView() {
           <NeedsAttentionCard scrapers={d.scrapers} />
         </div>
 
+        <LlmCard llm={llm} nowMs={nowMs} />
+
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Section title="Enrichment" tone={failT}>
           <Row label="Failed jobs created, last 24 hours" value={e.failed_24h.toLocaleString()} />
@@ -395,20 +374,9 @@ export function DataHealthView() {
         </Section>
 
         <div className="space-y-4 lg:col-span-2">
-          <Section title="LLM" tone={llmT}>
-            <Row label="Model status" value={llmStatusValue} tone={llmStatusTone} />
-            <Row
-              label="Circuit breaker"
-              value={`${llm.queue.breaker.replace("_", "-")}${llm.queue.retry_at ? ` · retry at ${when(llm.queue.retry_at)}` : ""}`}
-              tone={llm.queue.breaker === "closed" ? "ok" : llm.queue.breaker === "open" ? "bad" : "warn"}
-            />
-            <Row label="Pending classify jobs" value={llm.queue.pending_classify.toLocaleString()} tone={llm.queue.pending_classify ? "warn" : "ok"} />
-            <Row label="Pending TTP jobs" value={llm.queue.pending_ttp.toLocaleString()} />
-            <Row label="Failed jobs" value={llm.queue.failed.toLocaleString()} tone={llm.queue.failed ? "warn" : "ok"} />
-            <Row label="Oldest pending job" value={llm.queue.oldest_pending_at ? when(llm.queue.oldest_pending_at) : "none pending"} />
+          <Section title="Stories">
             <Row label="Stories, last 24 hours" value={storySummary(llm.stories_24h)} />
             <Row label="Stories, last 7 days" value={storySummary(llm.stories_7d)} />
-            <MoreLink href="/newsroom">Review jobs in Newsroom › Filtered Articles › Enrichment queue</MoreLink>
           </Section>
           <Section title="Relevance model" tone={relT}>
             <Row
@@ -481,42 +449,6 @@ export function DataHealthView() {
             <Row label="Fetched" value={when(sigma.fetched_at)} />
             {sigma.last_error && <Row label="Last error" value={sigma.last_error} tone="warn" />}
           </Section>
-          <Table framed>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead className={HEAD}>Task</TableHead>
-                <TableHead className={cn(HEAD, "text-right")}>Calls 24 h / 7 d</TableHead>
-                <TableHead className={cn(HEAD, "text-right")}>Errors 24 h / 7 d</TableHead>
-                <TableHead className={cn(HEAD, "text-right")}>Prompt tokens 24 h / 7 d</TableHead>
-                <TableHead className={cn(HEAD, "text-right")}>Completion tokens 24 h / 7 d</TableHead>
-                <TableHead className={cn(HEAD, "text-right")}>Median latency 24 h / 7 d</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {llmTasks.length === 0 ? (
-                <TableRow className="hover:bg-transparent">
-                  <TableCell colSpan={6} className="px-2 py-3 text-sm text-muted-foreground">
-                    No LLM calls recorded in the last 7 days.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                llmTasks.map((task) => {
-                  const a = usage24h.get(task);
-                  const b = usage7d.get(task);
-                  return (
-                    <TableRow key={task}>
-                      <TableCell className={cn(CELL, "font-code")}>{task}</TableCell>
-                      <TableCell className={NUM}>{pair(a?.calls, b?.calls)}</TableCell>
-                      <TableCell className={NUM}>{pair(a?.errors, b?.errors)}</TableCell>
-                      <TableCell className={NUM}>{pair(a?.prompt_tokens, b?.prompt_tokens)}</TableCell>
-                      <TableCell className={NUM}>{pair(a?.completion_tokens, b?.completion_tokens)}</TableCell>
-                      <TableCell className={NUM}>{pair(a?.median_latency_ms, b?.median_latency_ms, " ms")}</TableCell>
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
         </div>
         </div>
       </>
