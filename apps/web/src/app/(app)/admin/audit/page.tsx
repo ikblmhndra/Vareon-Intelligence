@@ -1,12 +1,7 @@
 "use client";
 
-import { AdminFrame } from "@/components/admin/admin-frame";
-import { AuditLogSection } from "@/components/admin/audit-log-section";
+import { AuditView } from "@/components/admin/audit-view";
 
 export default function AdminAuditPage() {
-  return (
-    <AdminFrame page="audit">
-      <AuditLogSection />
-    </AdminFrame>
-  );
+  return <AuditView />;
 }
