@@ -29,6 +29,14 @@ export function DisableScraperDialog({
 }) {
   const queryClient = useQueryClient();
   const [reason, setReason] = useState("");
+  // Judul tetap terbaca selama animasi tutup (target sudah null); `open` tetap dari `target`.
+  const [shown, setShown] = useState(target);
+  if (target && target !== shown) setShown(target);
+  // Satu instance dipakai semua baris: alasan yang dibatalkan tidak boleh terbawa ke scraper berikutnya.
+  const handleOpenChange = (open: boolean) => {
+    if (!open) setReason("");
+    onOpenChange(open);
+  };
 
   const mutation = useMutation({
     mutationFn: async (id: string) =>
@@ -42,17 +50,16 @@ export function DisableScraperDialog({
     onSuccess: (_data, id) => {
       toast.success(`${id} disabled`);
       void queryClient.invalidateQueries({ queryKey: ["scrapers"] });
-      setReason("");
-      onOpenChange(false);
+      handleOpenChange(false);
     },
     onError: (e: Error) => toast.error(`Disable failed: ${writeErrorMessage(e)}`),
   });
 
   return (
-    <Dialog open={target !== null} onOpenChange={onOpenChange}>
+    <Dialog open={target !== null} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
-          <DialogTitle className="font-heading">Disable {target?.source}?</DialogTitle>
+          <DialogTitle className="font-heading">Disable {shown?.source}?</DialogTitle>
           <DialogDescription>
             Beat stops scheduling it after the next restart; a run already queued is skipped. Seen items are
             kept, so enabling it later does not re-alert.
@@ -73,7 +80,7 @@ export function DisableScraperDialog({
           </p>
         </div>
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+          <Button variant="ghost" onClick={() => handleOpenChange(false)}>
             Cancel
           </Button>
           <Button

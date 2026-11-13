@@ -64,7 +64,7 @@ export function ScrapersView() {
   const health = useScraperHealth();
 
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("all");
+  const [statusFilter, setStatus] = useState("all");
   const [runtime, setRuntime] = useState("all");
   const [queue, setQueue] = useState("all");
   const [legendOpen, setLegendOpen] = useState(false);
@@ -106,6 +106,8 @@ export function ScrapersView() {
   // Health belum datang atau gagal: jangan tulis "ok" untuk scraper yang belum dinilai (ROADMAP #24).
   // Data lama dari refetch yang gagal tetap dipakai (halaman tidak boleh kosong karena satu refetch gagal).
   const healthFailed = health.isError && !health.data;
+  // "unknown" hanya ditawarkan saat health gagal; begitu pulih, filter itu dianggap "all" (tanpa effect).
+  const status = statusFilter === "unknown" && !healthFailed ? "all" : statusFilter;
   const problemById = new Map((health.data?.problems ?? []).map((p) => [p.id, p.status]));
   function statusFor(id: string, enabled: boolean): string {
     if (!enabled) return "disabled";
