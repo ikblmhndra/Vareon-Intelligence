@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { createContext, useContext, useState, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -32,6 +32,9 @@ function returnFocusTo(username: string | undefined) {
     username ? document.querySelector<HTMLElement>(`[aria-label="Actions for ${CSS.escape(username)}"]`) : null;
 }
 
+/** Dialog tidak boleh ditutup di tengah simpan (Esc, klik luar, Cancel): `useSubmit` menyalakan ini. */
+const BusyContext = createContext<(busy: boolean) => void>(() => undefined);
+
 /** Kerangka dialog: anatomi 6.6 (judul, deskripsi, error `role="alert"`, Cancel + satu tombol utama).
  * Form hanya dimount saat dialog terbuka, jadi state (termasuk password) hilang saat ditutup. */
 function DialogShell({
@@ -49,14 +52,15 @@ function DialogShell({
   focusUsername?: string;
   children: React.ReactNode;
 }) {
+  const [busy, setBusy] = useState(false);
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(o) => !busy && onOpenChange(o)}>
       <DialogContent className="sm:max-w-sm" finalFocus={returnFocusTo(focusUsername)}>
         <DialogHeader>
           <DialogTitle className="font-heading">{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
-        {open && children}
+        <BusyContext.Provider value={setBusy}>{open && children}</BusyContext.Provider>
       </DialogContent>
     </Dialog>
   );
@@ -70,6 +74,7 @@ function useSubmit(
   onDone: () => void,
 ) {
   const queryClient = useQueryClient();
+  const setBusy = useContext(BusyContext);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -77,16 +82,19 @@ function useSubmit(
     e.preventDefault();
     setError(null);
     setPending(true);
+    setBusy(true);
     try {
       const message = await run(fallback);
       await queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
       toast.success(message);
+      setBusy(false);
       onDone();
     } catch (err) {
       // 403 membawa alasan spesifik server (klien asing, superadmin); kalimat permission hanya bila kosong.
       const detail = err instanceof Error && err.message !== fallback ? err.message : null;
       setError(detail ?? adminErrorMessage(err, permission));
       setPending(false);
+      setBusy(false);
     }
   }
   return { pending, error, submit };
@@ -101,7 +109,7 @@ function Footer({ pending, pendingLabel, label, disabled, onCancel }: {
 }) {
   return (
     <DialogFooter>
-      <Button type="button" variant="outline" onClick={onCancel}>
+      <Button type="button" variant="outline" disabled={pending} onClick={onCancel}>
         Cancel
       </Button>
       <Button type="submit" disabled={pending || disabled}>
@@ -148,6 +156,16 @@ function RoleSelect({ id, value, onChange }: { id: string; value: string; onChan
   );
 }
 
+/** Client yang dipegang target tapi di luar jangkauan viewer: tetap tercentang, tak bisa diubah. */
+function useHiddenClients(selected: Set<string>) {
+  const clients = useClients();
+  const { user: me } = useAuth();
+  const own = me?.role === "superadmin" ? null : new Set(me?.client_ids ?? []);
+  const list = (clients.data ?? []).filter((c) => own === null || own.has(c.client_id));
+  const hidden = (clients.data ?? []).filter((c) => !list.includes(c) && selected.has(c.client_id));
+  return { clients, list, hidden };
+}
+
 /** Daftar client yang boleh dipilih viewer (P14): superadmin semua, lainnya hanya `client_ids` sendiri. */
 function ClientChecklist({
   selected,
@@ -156,16 +174,11 @@ function ClientChecklist({
   selected: Set<string>;
   onToggle: (id: string) => void;
 }) {
-  const clients = useClients();
-  const { user: me } = useAuth();
-  const own = me?.role === "superadmin" ? null : new Set(me?.client_ids ?? []);
-  const list = (clients.data ?? []).filter((c) => own === null || own.has(c.client_id));
+  const { clients, list, hidden } = useHiddenClients(selected);
 
   if (clients.isPending) return <p className="text-xs text-muted-foreground">Loading clients…</p>;
   if (clients.isError)
     return <p className="text-xs text-destructive-text">{adminErrorMessage(clients.error, "manage_users")}</p>;
-  // Client yang dipegang target tapi di luar jangkauan viewer: tetap tercentang, tak bisa diubah.
-  const hidden = (clients.data ?? []).filter((c) => !list.includes(c) && selected.has(c.client_id));
   return (
     <div role="group" aria-label="Clients" className="flex max-h-52 flex-col gap-1 overflow-y-auto">
       {hidden.map((c) => (
@@ -453,6 +466,8 @@ function EditClientsForm({ target, onClose }: { target: AdminUser; onClose: () =
     onClose,
   );
 
+  // Client di luar jangkauan viewer akan terhapus oleh PUT (daftar penuh): Save dikunci, catatan di checklist.
+  const { hidden } = useHiddenClients(selected);
   return (
     <form onSubmit={submit} className="grid gap-4">
       <ErrorNotice error={error} />
@@ -461,7 +476,7 @@ function EditClientsForm({ target, onClose }: { target: AdminUser; onClose: () =
         pending={pending}
         pendingLabel="Saving…"
         label="Save clients"
-        disabled={selected.size === 0}
+        disabled={selected.size === 0 || hidden.length > 0}
         onCancel={onClose}
       />
     </form>

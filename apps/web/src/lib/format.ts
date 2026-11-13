@@ -104,6 +104,12 @@ export function fmtAgo(value: string | Date | null | undefined, nowMs: number = 
   return age === "now" ? "just now" : `${age} ago`;
 }
 
+/** Sisa hari kedaluwarsa: "today", "in 1 day", "in 5 days" (nilai negatif dianggap hari ini). */
+export function fmtDaysLeft(days: number): string {
+  const n = Math.max(Math.round(days), 0);
+  return n === 0 ? "today" : `in ${n} ${n === 1 ? "day" : "days"}`;
+}
+
 /** ISO dengan offset untuk tengah malam lokal, mis. "2026-11-08T00:00:00+07:00" (batas "hari ini" ke API). */
 export function fmtLocalDayStart(now: Date = new Date()): string {
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());

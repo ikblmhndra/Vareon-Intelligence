@@ -80,6 +80,8 @@ router `changelog.py`) -- parser-nya expect header persis
 
 **Catatan 0.8.16 (Access):** tanpa migrasi, tanpa key `.env` baru; pengguna yang sudah ada tidak terpengaruh.
 
+**Catatan 0.8.16 (Audit log):** halaman Audit log memakai ukuran halaman tetap 50 baris, dan cap waktu di ekspor CSV memakai UTC.
+
 **Saat upgrade dari 0.8.15:** catat jumlah anomali Early Warning per kelompok sebelum deploy untuk dibandingkan (opsional, baca-saja: hitung ticket dengan `owner_email` bukan email dan ticket dengan alias status lama, query di runbook), lalu `make deploy` (migrasi jalan otomatis). Dari prod 0.8.11 (versi yang sedang jalan): ikuti runbook gabungan `docs/PROD_UPGRADE_0.8.11_TO_0.8.16.md`; cek per rilis ada di `docs/prod-upgrade/0.8.16.md`.
 
 ## [0.8.15] - 2026-11-08

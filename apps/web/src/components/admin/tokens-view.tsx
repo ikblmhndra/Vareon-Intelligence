@@ -31,7 +31,7 @@ import { api } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { useAuth } from "@/components/providers/auth-provider";
 import { useCan } from "@/lib/auth/permissions";
-import { fmtAgo, fmtShortDate } from "@/lib/format";
+import { fmtAgo, fmtDaysLeft, fmtShortDate } from "@/lib/format";
 import { unwrap } from "@/lib/scrapers/queries";
 
 type ApiToken = components["schemas"]["ApiTokenOut"];
@@ -426,7 +426,7 @@ export function TokensView() {
                 <TableCell className="whitespace-normal text-xs">
                   <div className="text-muted-foreground">{t.expires_at ? fmtShortDate(t.expires_at) : "never"}</div>
                   {left !== null && left <= 30 && (
-                    <div className="text-2xs text-warning-text">{`in ${Math.max(left, 0)} days`}</div>
+                    <div className="text-2xs text-warning-text">{fmtDaysLeft(left)}</div>
                   )}
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground">

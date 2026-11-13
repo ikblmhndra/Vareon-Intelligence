@@ -27,6 +27,24 @@ function detailText(detail: Record<string, unknown> | null): string {
     .join(" · ");
 }
 
+/** Sel DETAIL: tombol buka/tutup hanya bila ada detail; tombolnya bisa difokus keyboard (title saja tak
+ * terjangkau). State per sel, jadi baris yang di-key ulang (halaman/filter lain) otomatis menutup. */
+function DetailCell({ detail }: { detail: string }) {
+  const [open, setOpen] = useState(false);
+  if (detail === "–") return <span>{detail}</span>;
+  return (
+    <button
+      type="button"
+      aria-expanded={open}
+      title={open ? "Collapse detail" : "Show full detail"}
+      onClick={() => setOpen((v) => !v)}
+      className="rounded-sm text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
+    >
+      <span className={open ? undefined : "line-clamp-2"}>{detail}</span>
+    </button>
+  );
+}
+
 /** Halaman Audit log. `GET /api/auth/audit-log` dan ekspor CSV butuh `view_audit_log`. */
 export function AuditView() {
   const can = useCan();
@@ -42,8 +60,6 @@ export function AuditView() {
   const page = pageState.key === filterKey ? pageState.n : 1;
   const log = useAuditLog({ page, pageSize: PAGE_SIZE, ...filters }, canView);
   const exporter = useAuditExport();
-  // Baris DETAIL yang dibuka penuh; tombolnya bisa difokus keyboard (title saja tak terjangkau).
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
 
   let body;
   if (!canView) {
@@ -98,9 +114,8 @@ export function AuditView() {
             {log.data.logs.map((l, i) => {
               const detail = detailText(l.detail);
               const rowKey = `${l.timestamp}-${i}`;
-              const open = expanded.has(rowKey);
               return (
-                <TableRow key={rowKey}>
+                <TableRow key={`${filterKey}-${page}-${rowKey}`}>
                   <TableCell className="text-xs text-muted-foreground">{fmtDateTime(l.timestamp)}</TableCell>
                   <TableCell className="truncate font-code text-xs text-foreground" title={l.user}>
                     {l.user}
@@ -114,25 +129,7 @@ export function AuditView() {
                   <TableCell
                     className="whitespace-normal break-words text-xs text-muted-foreground"
                   >
-                    {detail ? (
-                      <button
-                        type="button"
-                        aria-expanded={open}
-                        title={open ? "Collapse detail" : "Show full detail"}
-                        onClick={() =>
-                          setExpanded((prev) => {
-                            const next = new Set(prev);
-                            if (!next.delete(rowKey)) next.add(rowKey);
-                            return next;
-                          })
-                        }
-                        className="rounded-sm text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
-                      >
-                        <span className={open ? undefined : "line-clamp-2"}>{detail}</span>
-                      </button>
-                    ) : (
-                      <span>{detail}</span>
-                    )}
+                    <DetailCell detail={detail} />
                   </TableCell>
                   <TableCell className="truncate font-code text-xs text-muted-foreground" title={l.ip || undefined}>
                     {l.ip || "–"}

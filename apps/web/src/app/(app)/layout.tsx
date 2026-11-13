@@ -9,7 +9,7 @@ import { SessionExpiredHost, signInAgain } from "@/components/session-expired";
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getSessionState } from "@/lib/auth/session-expired";
+import { getSessionState, useSessionState } from "@/lib/auth/session-expired";
 
 /** Kerangka shell selama `/api/auth/me` belum menjawab: bentuknya meniru utility bar + masthead +
  * konten (`AppShell`), jadi halaman tidak berkedip dari teks "Loading..." ke layout penuh. */
@@ -48,6 +48,7 @@ function ShellSkeleton() {
  * gak decode JWT, lihat docstring situ). */
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { status, user, logout } = useAuth();
+  const sessionState = useSessionState();
 
   useEffect(() => {
     // Cookie yang tidak valid HARUS dihapus dulu (`logout()` = POST /api/auth/logout lalu ke
@@ -60,7 +61,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     }
   }, [status, logout]);
 
-  if (status === "loading") {
+  // Logout disengaja: tampilkan kerangka, bukan notice "signed out" yang berkedip sebelum /login.
+  if (status === "loading" || sessionState === "signing-out") {
     return <ShellSkeleton />;
   }
 

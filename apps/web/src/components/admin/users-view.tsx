@@ -205,7 +205,7 @@ function UsersCard({
                       <RowMenu
                         label={`Actions for ${u.username}`}
                         items={[
-                          { label: "Reset password", onSelect: () => onReset(u), hidden: !can("reset_password") },
+                          { label: "Reset password", onSelect: () => onReset(u), hidden: !can("reset_password") || u.username === me?.username },
                           { label: "Change role", onSelect: () => onRole(u), hidden: !canManage },
                           { label: "Edit clients", onSelect: () => onClients(u), hidden: !canManage },
                         ]}

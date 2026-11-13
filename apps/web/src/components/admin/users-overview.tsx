@@ -18,7 +18,7 @@ import { StatTile } from "@/components/ui/stat-tile";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useCan } from "@/lib/auth/permissions";
 import { usePasswordPolicyQuery } from "@/lib/auth/password-policy";
-import { fmtAgo, fmtShortDate, fmtTime } from "@/lib/format";
+import { fmtAgo, fmtDaysLeft, fmtShortDate, fmtTime } from "@/lib/format";
 
 const DAY_MS = 86_400_000;
 const AUDIT_PARAMS = { page: 1, pageSize: 6, user: "", action: "" };
@@ -105,7 +105,7 @@ export function UsersTiles() {
               left.length === 0
                 ? "none expire within 30 days"
                 : left.length === 1
-                  ? `1 expires in ${left[0]} days`
+                  ? `1 expires ${fmtDaysLeft(left[0])}`
                   : `${left.length} expire within 30 days`;
             return (
               <StatTile
@@ -363,9 +363,9 @@ function KeysCard() {
                   <Chip kind="status" value="watch">not set</Chip>
                 )}
                 {p.last_test_ok === false ? (
-                  <span className="text-xs text-destructive-text">Test failed · {fmtAgo(p.last_test_at)}</span>
+                  <span className="text-xs text-destructive-text">Test failed · {fmtAgo(p.last_test_at, secrets.dataUpdatedAt)}</span>
                 ) : p.last_test_ok === true ? (
-                  <span className="text-xs text-muted-foreground">ok · {fmtAgo(p.last_test_at)}</span>
+                  <span className="text-xs text-muted-foreground">ok · {fmtAgo(p.last_test_at, secrets.dataUpdatedAt)}</span>
                 ) : (
                   <span className="text-xs text-muted-foreground">not tested</span>
                 )}
