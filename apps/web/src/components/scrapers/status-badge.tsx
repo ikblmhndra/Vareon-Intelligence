@@ -54,6 +54,11 @@ const RUN_STATUS_STYLE: Record<string, string> = {
   running: "text-severity-medium-text",
 };
 
+/** Kelas warna teks untuk status run (`ScraperRun.status`); dipakai tabel sumber untuk hasil run terakhir. */
+export function runStatusClass(status: string): string {
+  return RUN_STATUS_STYLE[status] ?? "";
+}
+
 /** Warna teks status run (`ScraperRun.status`), inline di tabel runs. */
 export function RunStatusText({ status }: { status: string }) {
   return <span className={`font-code text-xs ${RUN_STATUS_STYLE[status] ?? ""}`}>{status}</span>;

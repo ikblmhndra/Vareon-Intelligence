@@ -7,6 +7,8 @@ import { PageHeader } from "@/components/page-header";
 import { HealthTiles } from "@/components/scrapers/health-summary-bar";
 import { SchedulerChip, SchedulerNotice } from "@/components/scrapers/scheduler-status";
 import { ScraperDetailDialog } from "@/components/scrapers/scraper-detail-dialog";
+import { DisableScraperDialog } from "@/components/scrapers/disable-scraper-dialog";
+import { StatusLegend } from "@/components/scrapers/status-legend";
 import { ScrapersTable, type ScraperRow } from "@/components/scrapers/scrapers-table";
 import { Button } from "@/components/ui/button";
 import { FilterSelect } from "@/components/ui/filter-select";
@@ -16,7 +18,7 @@ import { StatePanel } from "@/components/ui/state-panel";
 import { useCan } from "@/lib/auth/permissions";
 import { errorStatus } from "@/lib/exec/query";
 import { useScraperHealth } from "@/lib/scrapers/health";
-import { useScraperList } from "@/lib/scrapers/queries";
+import { useEnableScraper, useScraperList } from "@/lib/scrapers/queries";
 import { usePageTitle } from "@/lib/use-page-title";
 
 const STATUS_OPTIONS = [
@@ -56,6 +58,9 @@ export function ScrapersView() {
   const [status, setStatus] = useState("all");
   const [runtime, setRuntime] = useState("all");
   const [queue, setQueue] = useState("all");
+  const [legendOpen, setLegendOpen] = useState(false);
+  const [disableTarget, setDisableTarget] = useState<{ id: string; source: string } | null>(null);
+  const enable = useEnableScraper();
 
   /** `router.replace` ke URL yang sama membuat Next memasang ulang judul layout, jadi no-op bila tak berubah. */
   function select(id: string | null) {
@@ -144,6 +149,7 @@ export function ScrapersView() {
             <FilterSelect prefix="Queue" value={queue} onChange={setQueue} options={QUEUE_OPTIONS} />
             <a
               href="#status-legend"
+              onClick={() => setLegendOpen(true)}
               className="ml-auto rounded-md text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
             >
               What the statuses mean →
@@ -160,12 +166,20 @@ export function ScrapersView() {
               nowMs={list.data.nowMs}
               selectedId={selectedId}
               canManage={canManage}
+              enablingId={enable.isPending ? enable.variables : null}
               onSelect={select}
+              onDisable={(row) => setDisableTarget({ id: row.id, source: row.source })}
+              onEnable={(id) => enable.mutate(id)}
               onClearFilters={clearFilters}
             />
           )}
+          <StatusLegend open={legendOpen} onOpenChange={setLegendOpen} />
         </>
       )}
+      <DisableScraperDialog
+        target={disableTarget}
+        onOpenChange={(open) => !open && setDisableTarget(null)}
+      />
       <ScraperDetailDialog
         scraperId={selectedId}
         healthStatus={allRows.find((s) => s.id === selectedId)?.status}
