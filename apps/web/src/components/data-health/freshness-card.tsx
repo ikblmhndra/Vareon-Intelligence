@@ -5,6 +5,7 @@ import { MeterBar } from "@/components/ui/meter-bar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { components } from "@/lib/api/schema";
+import { statusTone } from "@/components/scrapers/status-badge";
 import { pct, type FreshnessRow } from "@/lib/data-health/tones";
 import { fmtCompactAge, fmtDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -46,7 +47,7 @@ export function FreshnessCard({
                 )}
                 <p className="text-2xs text-muted-foreground">{r.caption}</p>
                 {r.key === "tweet" && monitorX && (
-                  <p className="text-2xs text-warning-text">
+                  <p className={cn("text-2xs", statusTone(monitorX.status) === "bad" ? "text-destructive-text" : "text-warning-text")}>
                     <span className="font-code">monitor_x</span> {monitorX.status.replace("_", " ")}
                     {monitorX.reason ? `: ${monitorX.reason}` : ""}
                   </p>

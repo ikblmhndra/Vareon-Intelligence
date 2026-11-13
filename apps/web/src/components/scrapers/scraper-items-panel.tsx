@@ -7,6 +7,7 @@ import { CheckIcon, XIcon } from "lucide-react";
 import { api } from "@/lib/api/client";
 import { fmtDateTime } from "@/lib/format";
 import { noClientRetry, unwrap } from "@/lib/scrapers/queries";
+import { StatePanel } from "@/components/ui/state-panel";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SimplePager } from "@/components/pager";
@@ -64,8 +65,8 @@ export function ScraperItemsPanel({ scraperId }: { scraperId: string }) {
         </Select>
       </div>
 
-      {query.isPending && <p className="py-4 text-center text-xs text-muted-foreground">Loading…</p>}
-      {query.isError && <p className="py-4 text-center text-xs text-destructive">Failed to load items.</p>}
+      {query.isPending && <StatePanel variant="loading" title="Loading items" className="py-6" />}
+      {query.isError && <StatePanel variant="error" title="Failed to load items" className="py-6" />}
       {query.data && query.data.items.length === 0 && (
         <p className="py-4 text-center text-xs text-muted-foreground">No items logged yet.</p>
       )}

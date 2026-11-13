@@ -206,6 +206,7 @@ function ConfigForm({ id, detail, onClose }: { id: string; detail: ScraperDetail
         title="Reset config to defaults?"
         description={`All overrides for ${id} (schedule, rate limit, max items, paused reason${detail.options.length > 0 ? ", options" : ""}) are removed and the code defaults apply again.`}
         confirmLabel="Reset to defaults"
+        confirmLoading={reset.isPending}
         onConfirm={() => reset.mutate()}
       />
     </>

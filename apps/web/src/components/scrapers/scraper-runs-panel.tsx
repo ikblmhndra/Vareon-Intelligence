@@ -9,6 +9,7 @@ import { noClientRetry, unwrap } from "@/lib/scrapers/queries";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SimplePager } from "@/components/pager";
 import { RunStatusText } from "@/components/scrapers/status-badge";
+import { StatePanel } from "@/components/ui/state-panel";
 
 const PAGE_SIZE = 10;
 
@@ -53,8 +54,8 @@ export function ScraperRunsPanel({ scraperId }: { scraperId: string }) {
 
   return (
     <div>
-      {query.isPending && <p className="py-4 text-center text-xs text-muted-foreground">Loading…</p>}
-      {query.isError && <p className="py-4 text-center text-xs text-destructive">Failed to load runs.</p>}
+      {query.isPending && <StatePanel variant="loading" title="Loading runs" className="py-6" />}
+      {query.isError && <StatePanel variant="error" title="Failed to load runs" className="py-6" />}
       {query.data && query.data.runs.length === 0 && (
         <p className="py-4 text-center text-xs text-muted-foreground">No runs recorded yet.</p>
       )}
