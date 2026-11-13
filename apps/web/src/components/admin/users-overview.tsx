@@ -17,7 +17,7 @@ import { StatePanel } from "@/components/ui/state-panel";
 import { StatTile } from "@/components/ui/stat-tile";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useCan } from "@/lib/auth/permissions";
-import { usePasswordPolicy } from "@/lib/auth/password-policy";
+import { usePasswordPolicyQuery } from "@/lib/auth/password-policy";
 import { fmtAgo, fmtShortDate, fmtTime } from "@/lib/format";
 
 const DAY_MS = 86_400_000;
@@ -30,11 +30,11 @@ function TileSlot({
   label,
   render,
 }: {
-  q: { isPending: boolean; isError: boolean };
+  q: { data: unknown; isPending: boolean; isError: boolean };
   label: string;
   render: () => ReactNode;
 }) {
-  if (q.isPending) {
+  if (q.data === undefined && q.isPending) {
     return (
       <div role="status">
         <Skeleton aria-hidden className="h-[104px] w-full" />
@@ -42,7 +42,7 @@ function TileSlot({
       </div>
     );
   }
-  if (q.isError) return <StatTile label={label} value="–" sub="failed to load" />;
+  if (q.data === undefined && q.isError) return <StatTile label={label} value="–" sub="failed to load" />;
   return render();
 }
 
@@ -185,11 +185,11 @@ function CardState({
   failed,
   children,
 }: {
-  q: { isPending: boolean; isError: boolean; refetch: () => unknown };
+  q: { data: unknown; isPending: boolean; isError: boolean; refetch: () => unknown };
   failed: string;
   children: ReactNode;
 }) {
-  if (q.isPending) {
+  if (q.data === undefined && q.isPending) {
     return (
       <div role="status">
         <Skeleton aria-hidden className="h-40 w-full" />
@@ -197,7 +197,7 @@ function CardState({
       </div>
     );
   }
-  if (q.isError) {
+  if (q.data === undefined && q.isError) {
     return (
       <StatePanel
         variant="error"
@@ -254,9 +254,12 @@ function AuditCard() {
 
 function PolicyCard() {
   const can = useCan();
-  const p = usePasswordPolicy();
-  const rows: [string, string][] = [
-    ["Minimum length", `${p.min_length || 8} characters`],
+  const policy = usePasswordPolicyQuery();
+  const p = policy.data;
+  const rows: [string, string][] = !p
+    ? []
+    : [
+    ["Minimum length", `${p.min_length} characters`],
     ["Uppercase letter", p.require_upper ? "Required" : "Not required"],
     ["Lowercase letter", p.require_lower ? "Required" : "Not required"],
     ["Number", p.require_number ? "Required" : "Not required"],
@@ -268,6 +271,7 @@ function PolicyCard() {
       subtitle="Applies at the next password change"
       link={can("manage_policy") ? { href: "/admin/password-policy", label: "Edit" } : undefined}
     >
+      <CardState q={policy} failed="Failed to load the password policy">
       <dl className="divide-y divide-border text-sm">
         {rows.map(([k, v]) => (
           <div key={k} className="flex justify-between gap-3 py-2">
@@ -276,6 +280,7 @@ function PolicyCard() {
           </div>
         ))}
       </dl>
+      </CardState>
     </MiniCard>
   );
 }
@@ -337,7 +342,11 @@ function KeysCard() {
   return (
     <MiniCard
       title="Third-party keys"
-      subtitle={`${all.length} providers · ${shown.length} shown · db overrides .env`}
+      subtitle={
+        secrets.data
+          ? `${all.length} providers · ${shown.length} shown · db overrides .env`
+          : "Provider keys · db overrides .env"
+      }
       link={{ href: "/admin/keys", label: "View all →" }}
     >
       <CardState q={secrets} failed="Failed to load third-party keys">
