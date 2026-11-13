@@ -60,7 +60,7 @@ router `changelog.py`) -- parser-nya expect header persis
 - `POST /api/exec/brief`: `days` dibatasi 7-365, tidak lagi menghitung bagian khusus analis atau per klien, menyimpan hasilnya sebagai brief bersama hari ini (menggantikan brief scheduler untuk semua klien) dan mengembalikan `ExecBriefOut` (dulu `{brief, generated_at}`). Gagal LLM membalas 502. Tetap butuh `manage_intel`.
 - Web: tombol Export CSV di Exec hanya tampil untuk role dengan `export_data`.
 - Web: tombol Apply/Reset di X Intel diganti filter langsung; riwayat newsletter dibuka sebagai panel samping.
-- Web: waktu di halaman Scrapers dan Data health memakai zona waktu browser; label nada Data health menjadi OK / WATCH / ACTION; tombol tulis scraper (enable, disable, config, reset, run) disembunyikan tanpa izin `manage_scraper`.
+- Web: waktu di halaman Scrapers dan Data health memakai zona waktu browser; label nada Data health menjadi OK / WATCH / ACTION; tombol tulis scraper disembunyikan tanpa izin `manage_scraper`.
 - Web: Recap mengganti bar Week/Day + tanggal + Load dan sidebar riwayat dengan state URL, Select History dan tombol Previous; Generate dan Force Regen digabung jadi satu dialog.
 
 ### Diperbaiki
