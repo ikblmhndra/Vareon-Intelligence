@@ -84,13 +84,23 @@ export function ChangePasswordDialog({
     onError: (e: Error) => setError(e.message),
   });
 
+  // Tutup lewat jalur mana pun (Cancel, Esc, klik luar): ketikan tidak boleh tertinggal di state.
+  function handleOpenChange(next: boolean) {
+    if (!next) {
+      setCurrentPw("");
+      setPw("");
+      setError(null);
+    }
+    onOpenChange(next);
+  }
+
   function handleSubmit() {
     setError(null);
     mutation.mutate();
   }
 
   return (
-    <Dialog open={open} onOpenChange={forced ? () => undefined : onOpenChange}>
+    <Dialog open={open} onOpenChange={forced ? () => undefined : handleOpenChange}>
       <DialogContent className="sm:max-w-sm" finalFocus={finalFocus}>
         <DialogHeader>
           <DialogTitle className="font-heading">
@@ -136,7 +146,7 @@ export function ChangePasswordDialog({
           <PasswordRules id="new-password-rules" password={pw} policy={policy} />
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => (forced ? void signOutAfterChange() : onOpenChange(false))}>
+          <Button variant="outline" onClick={() => (forced ? void signOutAfterChange() : handleOpenChange(false))}>
             {forced ? "Sign out" : "Cancel"}
           </Button>
           <Button

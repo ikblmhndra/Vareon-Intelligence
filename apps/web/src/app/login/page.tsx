@@ -42,12 +42,14 @@ function PasswordField({
   value,
   onChange,
   describedBy,
+  autoFocus,
 }: {
   id: string;
   label: string;
   value: string;
   onChange: (v: string) => void;
   describedBy?: string;
+  autoFocus?: boolean;
 }) {
   const [show, setShow] = useState(false);
   return (
@@ -59,6 +61,7 @@ function PasswordField({
           type={show ? "text" : "password"}
           autoComplete="new-password"
           aria-describedby={describedBy}
+          autoFocus={autoFocus}
           className="pr-14"
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -154,6 +157,21 @@ function LoginForm() {
   const passwordRef = useRef<HTMLInputElement>(null);
   usePageTitle(stage === "forced" ? "Choose a new password" : null);
   const redirect = searchParams.get("redirect");
+  // Unmount (mis. tombol Back) selama jeda sign-in ulang: batalkan timer supaya closure berhenti
+  // dan password baru tidak ikut tertahan, lalu jangan login/push lagi.
+  const aliveRef = useRef(true);
+  const submittingRef = useRef(false);
+  const waitRef = useRef<{ timer: ReturnType<typeof setTimeout>; cancel: () => void } | null>(null);
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+      if (waitRef.current) {
+        clearTimeout(waitRef.current.timer);
+        waitRef.current.cancel();
+      }
+    };
+  }, []);
 
   // Hitung mundur 429: satu interval per deadline, dibersihkan saat unmount atau deadline berubah.
   useEffect(() => {
@@ -220,6 +238,16 @@ function LoginForm() {
 
   async function handleForcedSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    try {
+      await runForcedChange();
+    } finally {
+      submittingRef.current = false;
+    }
+  }
+
+  async function runForcedChange() {
     setFailure(null);
     setForcedPhase("saving");
     const res = await api
@@ -268,7 +296,14 @@ function LoginForm() {
     }
     setPassword("");
     setForcedPhase("signing-in");
-    await new Promise((r) => setTimeout(r, RELOGIN_DELAY_MS));
+    const waited = await new Promise<boolean>((resolve) => {
+      waitRef.current = {
+        timer: setTimeout(() => resolve(true), RELOGIN_DELAY_MS),
+        cancel: () => resolve(false),
+      };
+    });
+    waitRef.current = null;
+    if (!waited || !aliveRef.current) return;
     try {
       const result = await login(username, newPassword);
       if (result.ok) {
@@ -313,6 +348,7 @@ function LoginForm() {
         <PasswordField
           id="new-password"
           label="New password"
+          autoFocus
           value={newPassword}
           onChange={setNewPassword}
           describedBy="new-password-rules"
