@@ -37,10 +37,12 @@ export async function POST(request: Request): Promise<NextResponse> {
   const payload = await upstream.json().catch(() => null);
 
   if (!upstream.ok || !payload?.access_token) {
-    return NextResponse.json(
-      payload ?? { detail: "Login failed" },
-      { status: upstream.status || 401 },
-    );
+    // `Retry-After` dari limiter API diteruskan supaya form bisa menghitung mundur 429.
+    const retryAfter = upstream.headers.get("Retry-After");
+    return NextResponse.json(payload ?? { detail: "Login failed" }, {
+      status: upstream.status || 401,
+      ...(retryAfter ? { headers: { "Retry-After": retryAfter } } : {}),
+    });
   }
 
   await setSessionCookie(payload.access_token as string);

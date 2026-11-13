@@ -28,13 +28,26 @@ export interface AuthUser {
 interface AuthContextValue {
   user: AuthUser | null;
   status: "loading" | "authenticated" | "unauthenticated";
-  login: (username: string, password: string) => Promise<{ ok: true } | { ok: false; detail: string }>;
+  login: (
+    username: string,
+    password: string,
+  ) => Promise<
+    { ok: true; forcePwChange: boolean } | { ok: false; status: number; retryAfterS: number | null }
+  >;
   logout: (redirectTo?: string) => Promise<void>;
 }
 
 export const ME_QUERY_KEY = ["auth", "me"] as const;
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+
+/** `Retry-After` detik: hanya bilangan bulat desimal murni 1..3600, selain itu `null` (tombol tidak
+ * boleh terkunci selamanya karena header aneh; pemanggil jatuh ke 60 detik). */
+export function parseRetryAfter(value: string | null): number | null {
+  if (value === null || !/^\d+$/.test(value)) return null;
+  const n = Number(value);
+  return n >= 1 && n <= 3600 ? n : null;
+}
 
 async function fetchMe(): Promise<AuthUser | null> {
   const res = await fetch("/api/auth/me", { cache: "no-store" });
@@ -88,14 +101,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         body: JSON.stringify({ username, password }),
       });
       if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        return { ok: false, detail: body?.detail ?? "Login failed" };
+        // Body sengaja tidak dibaca: `detail` API tidak pernah ditampilkan di /login.
+        return {
+          ok: false,
+          status: res.status,
+          retryAfterS: parseRetryAfter(res.headers.get("Retry-After")),
+        };
       }
-      const loggedInUser = (await res.json()) as AuthUser;
-      syncActiveClient(loggedInUser);
-      queryClient.setQueryData(ME_QUERY_KEY, loggedInUser);
+      const user = (await res.json()) as AuthUser;
+      // /auth/me yang sedang jalan dengan cookie lama tidak boleh menimpa user baru.
+      await queryClient.cancelQueries({ queryKey: ME_QUERY_KEY });
+      syncActiveClient(user);
+      queryClient.setQueryData(ME_QUERY_KEY, {
+        ...user,
+        signed_in_at: user.signed_in_at ?? new Date().toISOString(),
+      });
       resetSessionExpired();
-      return { ok: true };
+      return { ok: true, forcePwChange: Boolean(user.force_pw_change) };
     },
     [queryClient],
   );
