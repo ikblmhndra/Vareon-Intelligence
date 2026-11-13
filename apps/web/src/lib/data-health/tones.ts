@@ -22,6 +22,11 @@ export function worstTone(tones: readonly Tone[]): Tone {
   return tones.reduce<Tone | null>((w, t) => (w === null || RANK[t] > RANK[w] ? t : w), null) ?? "unknown";
 }
 
+/** "42%"; penyebut 0 dicetak "0%" (bukan NaN). */
+export function pct(part: number, whole: number): string {
+  return whole > 0 ? `${Math.round((part / whole) * 100)}%` : "0%";
+}
+
 const HOUR_MS = 3_600_000;
 
 /** Umur dalam jam terhadap `nowMs` (dibaca pemanggil di dalam queryFn); `null` untuk kosong/tidak valid. */

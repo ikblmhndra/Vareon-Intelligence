@@ -8,7 +8,7 @@ import { Chip } from "@/components/ui/chip";
 import { MeterBar } from "@/components/ui/meter-bar";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import type { components } from "@/lib/api/schema";
-import { TONE_STYLE, queueTone } from "@/lib/data-health/tones";
+import { TONE_STYLE, pct, queueTone } from "@/lib/data-health/tones";
 import { byProblemSeverity, tickAge } from "@/lib/scrapers/health";
 
 type Health = components["schemas"]["DataHealthOut"];
@@ -22,10 +22,6 @@ const WINDOWS = [
 const QUEUES = ["scrape.rss", "scrape.api", "scrape.browser", "enrich", "notify", "maintenance", "cve"] as const;
 
 const CARD = "surface-raised rounded-2xl p-5";
-
-function pct(part: number, whole: number): string {
-  return whole > 0 ? `${Math.round((part / whole) * 100)}%` : "0%";
-}
 
 /** Alur scraper ke newsroom: angka jendela (24h / 7d) dari `pipeline`, angka "sekarang" dari antrean.
  * Pergantian jendela hanya memilih kunci lain dari data yang sudah ada (tanpa request). */

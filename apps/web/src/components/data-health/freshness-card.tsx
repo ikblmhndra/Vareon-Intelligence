@@ -5,7 +5,7 @@ import { MeterBar } from "@/components/ui/meter-bar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { components } from "@/lib/api/schema";
-import type { FreshnessRow } from "@/lib/data-health/tones";
+import { pct, type FreshnessRow } from "@/lib/data-health/tones";
 import { fmtCompactAge, fmtDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -13,10 +13,6 @@ type Health = components["schemas"]["DataHealthOut"];
 
 const CARD = "surface-raised rounded-2xl p-5";
 const H2 = "font-heading text-xl font-bold tracking-tight text-foreground";
-
-function pct(part: number, whole: number): string {
-  return whole > 0 ? `${Math.round((part / whole) * 100)}%` : "0%";
-}
 
 /** Lima baris kesegaran dari `freshnessRows`; ambang pada caption berasal dari baris itu sendiri. */
 export function FreshnessCard({

@@ -1,12 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api/client";
 import type { AttackDomainStatus } from "@/lib/api/loose-types";
-import { relativeTime, formatWib } from "@/lib/cve/freshness";
 import { errorStatus } from "@/lib/exec/query";
 import { fmtCompactAge, fmtTime, browserZoneName } from "@/lib/format";
 import { byProblemSeverity, useScraperHealth } from "@/lib/scrapers/health";
@@ -30,6 +28,7 @@ import { usePageTitle } from "@/lib/use-page-title";
 import { NeedsAttentionCard, PipelineCard } from "@/components/data-health/pipeline-card";
 import { CoverageCard, FreshnessCard, StoriesCard } from "@/components/data-health/freshness-card";
 import { LlmCard } from "@/components/data-health/llm-card";
+import { MoreChecks } from "@/components/data-health/more-checks";
 import { RelevanceCard } from "@/components/data-health/relevance-card";
 import { HowToRead } from "@/components/data-health/how-to-read";
 import { ToneChip } from "@/components/data-health/tone-chip";
@@ -39,18 +38,6 @@ import { Notice } from "@/components/ui/notice";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatePanel } from "@/components/ui/state-panel";
 import { StatTile } from "@/components/ui/stat-tile";
-import { cn } from "@/lib/utils";
-
-/** "3h 12m ago · 23 Oct 2026, 10:04 WIB", atau "never" -- dengan penjaga nilai kosong/tidak valid.
- * Sementara: dipakai kartu lama sampai Task 14 menggantinya dengan `fmtAgo`/`fmtDateTime`. */
-function when(iso: string | null | undefined): string {
-  if (!iso || Number.isNaN(Date.parse(iso))) return "never";
-  return `${relativeTime(iso)} · ${formatWib(iso)}`;
-}
-
-function pct(part: number, whole: number): string {
-  return whole > 0 ? `${Math.round((part / whole) * 100)}%` : "0%";
-}
 
 function plural(n: number, one: string, many: string): string {
   return n === 1 ? one : many.replace("{n}", String(n));
@@ -242,9 +229,6 @@ export function DataHealthView() {
     const q = d.queues;
     const monitorX = (scrapers.data?.problems ?? []).find((p) => p.id === "monitor_x");
     const rel = d.relevance;
-    const sigma = d.sigma;
-    const ingest = d.cve_ingest;
-    const cveReport = ingest.last_reconcile;
 
     const llm = d.llm;
     const pendingJobs = llm.queue.pending_classify + llm.queue.pending_ttp;
@@ -328,59 +312,7 @@ export function DataHealthView() {
           <StoriesCard day={llm.stories_24h} week={llm.stories_7d} />
         </div>
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Section title="Enrichment" tone={failT}>
-          <Row label="Failed jobs created, last 24 hours" value={e.failed_24h.toLocaleString()} />
-          <Row
-            label="Failed jobs created, last 7 days"
-            value={`${e.failed_7d.toLocaleString()} of ${e.processed_7d.toLocaleString()} processed (${pct(e.failed_7d, e.processed_7d)}) · snapshot of jobs still failed`}
-          />
-          <Row label="Failed jobs waiting for a retry" value={e.pending_replay.toLocaleString()} tone={e.pending_replay ? "warn" : "ok"} />
-          <Row label="Newest failed job created" value={when(e.last_failure_at)} />
-          <Row
-            label="Enrich queue"
-            value={q.enrich_depth === null ? "unknown (Redis not reachable)" : `${q.enrich_depth.toLocaleString()} waiting · backpressure at ${q.enrich_max_depth.toLocaleString()}`}
-            tone={queueT}
-          />
-          <MoreLink href="/newsroom">Review jobs in Newsroom › Filtered Articles › Enrichment queue</MoreLink>
-        </Section>
-
-        <div className="space-y-4 lg:col-span-2">
-          <Section title="CVE ingest" tone={cveT}>
-            {!ingest.enabled ? (
-              <Row label="Mirror" value="Off (CVE_MIRROR__ENABLED is false)" />
-            ) : (
-              <>
-                <Row label="Promote mode" value={ingest.promote} />
-                <Row
-                  label="Last sync"
-                  value={when(ingest.last_sync_at)}
-                  tone={ingest.status === "red" ? "bad" : "ok"}
-                />
-                <Row label="Pending items" value={ingest.pending.toLocaleString()} />
-                <Row label="Last reconcile" value={when(ingest.last_reconcile_at)} />
-                {cveReport && (
-                  <Row
-                    label="Reconcile result"
-                    value={
-                      cveReport.status === "error"
-                        ? `error · ${String(cveReport.error || "unknown")}`
-                        : `${Number(cveReport.fixed ?? 0).toLocaleString()} fixed · ${Number(cveReport.missing ?? 0).toLocaleString()} missing · ${Number(cveReport.outdated ?? 0).toLocaleString()} outdated · ${Number(cveReport.failed ?? 0).toLocaleString()} failed`
-                    }
-                    tone={cveReport.status === "error" ? "warn" : undefined}
-                  />
-                )}
-              </>
-            )}
-          </Section>
-          <Section title="Sigma rules" tone={sigT}>
-            <Row label="Release" value={sigma.release ?? "none loaded"} />
-            <Row label="Rules" value={sigma.rules.toLocaleString()} tone={sigma.rules ? "ok" : "bad"} />
-            <Row label="Fetched" value={when(sigma.fetched_at)} />
-            {sigma.last_error && <Row label="Last error" value={sigma.last_error} tone="warn" />}
-          </Section>
-        </div>
-        </div>
+        <MoreChecks d={d} tones={{ cve: cveT, sigma: sigT, failed: failT }} nowMs={nowMs} />
       </>
     );
   }
@@ -391,40 +323,5 @@ export function DataHealthView() {
       {content}
       <HowToRead open={howOpen} onOpenChange={setHowOpen} />
     </div>
-  );
-}
-
-function Section({ title, tone, children }: { title: string; tone?: Tone; children: ReactNode }) {
-  return (
-    <section className="surface-raised rounded-2xl p-5">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <h2 className="font-heading text-xl font-bold tracking-tight text-foreground">{title}</h2>
-        {tone && <ToneChip tone={tone} />}
-      </div>
-      <dl className="divide-y divide-border/70">{children}</dl>
-    </section>
-  );
-}
-
-function Row({ label, value, tone, code }: { label: string; value: string; tone?: Tone; code?: boolean }) {
-  return (
-    <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2">
-      <dt className={cn("text-sm text-muted-foreground", code && "font-code")}>{label}</dt>
-      <dd className="flex min-w-0 items-baseline gap-2 text-right text-sm text-foreground tabular-nums">
-        <span className="min-w-0 break-words">{value}</span>
-        {tone && <ToneChip tone={tone} />}
-      </dd>
-    </div>
-  );
-}
-
-function MoreLink({ href, children }: { href: string; children: ReactNode }) {
-  return (
-    <Link
-      href={href}
-      className="mt-3 inline-block text-sm font-medium text-primary-text rounded-sm underline-offset-4 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-focus"
-    >
-      {children}
-    </Link>
   );
 }
