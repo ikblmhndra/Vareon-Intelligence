@@ -29,7 +29,7 @@ import { unwrap } from "@/lib/scrapers/queries";
 /** Fokus kembali ke pemicu menu baris; item menu yang membuka dialog sudah di-unmount. */
 function returnFocusTo(username: string | undefined) {
   return () =>
-    username ? document.querySelector<HTMLElement>(`[aria-label="Actions for ${username}"]`) : null;
+    username ? document.querySelector<HTMLElement>(`[aria-label="Actions for ${CSS.escape(username)}"]`) : null;
 }
 
 /** Kerangka dialog: anatomi 6.6 (judul, deskripsi, error `role="alert"`, Cancel + satu tombol utama).
@@ -63,7 +63,12 @@ function DialogShell({
 }
 
 /** Submit tanpa `useMutation`: password dibaca dari closure dan tidak pernah masuk `variables`/cache. */
-function useSubmit(permission: string, run: () => Promise<string>, onDone: () => void) {
+function useSubmit(
+  permission: string,
+  fallback: string,
+  run: (fallback: string) => Promise<string>,
+  onDone: () => void,
+) {
   const queryClient = useQueryClient();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -73,12 +78,14 @@ function useSubmit(permission: string, run: () => Promise<string>, onDone: () =>
     setError(null);
     setPending(true);
     try {
-      const message = await run();
+      const message = await run(fallback);
       await queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
       toast.success(message);
       onDone();
     } catch (err) {
-      setError(adminErrorMessage(err, permission));
+      // 403 membawa alasan spesifik server (klien asing, superadmin); kalimat permission hanya bila kosong.
+      const detail = err instanceof Error && err.message !== fallback ? err.message : null;
+      setError(detail ?? adminErrorMessage(err, permission));
       setPending(false);
     }
   }
@@ -157,8 +164,20 @@ function ClientChecklist({
   if (clients.isPending) return <p className="text-xs text-muted-foreground">Loading clients…</p>;
   if (clients.isError)
     return <p className="text-xs text-destructive-text">{adminErrorMessage(clients.error, "manage_users")}</p>;
+  // Client yang dipegang target tapi di luar jangkauan viewer: tetap tercentang, tak bisa diubah.
+  const hidden = (clients.data ?? []).filter((c) => !list.includes(c) && selected.has(c.client_id));
   return (
     <div role="group" aria-label="Clients" className="flex max-h-52 flex-col gap-1 overflow-y-auto">
+      {hidden.map((c) => (
+        <label key={c.client_id} className="flex items-center gap-2 py-0.5 text-sm opacity-70">
+          <Checkbox checked disabled />
+          <span className="text-foreground">{c.name}</span>
+          <span className="font-code text-xs text-muted-foreground">{c.client_id}</span>
+        </label>
+      ))}
+      {hidden.length > 0 && (
+        <p className="text-xs text-muted-foreground">Assigned by another administrator; you cannot change it.</p>
+      )}
       {list.map((c) => (
         <label key={c.client_id} className="flex cursor-pointer items-center gap-2 py-0.5 text-sm">
           <Checkbox checked={selected.has(c.client_id)} onCheckedChange={() => onToggle(c.client_id)} />
@@ -210,12 +229,13 @@ function AddUserForm({ onClose }: { onClose: () => void }) {
   const name = username.trim();
   const { pending, error, submit } = useSubmit(
     "manage_users",
-    async () => {
+    "Could not add the user",
+    async (fb) => {
       unwrap(
         await api.POST("/api/auth/users", {
           body: { username: name, password, role, client_ids: Array.from(clientIds) },
         }),
-        "Could not add the user",
+        fb,
       );
       return `${name} added`;
     },
@@ -298,13 +318,14 @@ function ResetPasswordForm({ target, onClose }: { target: AdminUser; onClose: ()
   const [pw, setPw] = useState("");
   const { pending, error, submit } = useSubmit(
     "reset_password",
-    async () => {
+    "Could not reset the password",
+    async (fb) => {
       unwrap(
         await api.POST("/api/auth/users/{username}/reset-password", {
           params: { path: { username: target.username } },
           body: { new_password: pw },
         }),
-        "Could not reset the password",
+        fb,
       );
       return `${target.username} must choose a new password at next sign-in`;
     },
@@ -364,13 +385,14 @@ function ChangeRoleForm({ target, onClose }: { target: AdminUser; onClose: () =>
   const [role, setRole] = useState(target.role);
   const { pending, error, submit } = useSubmit(
     "manage_users",
-    async () => {
+    "Could not change the role",
+    async (fb) => {
       unwrap(
         await api.PUT("/api/auth/users/{username}/role", {
           params: { path: { username: target.username } },
           body: { role },
         }),
-        "Could not change the role",
+        fb,
       );
       return `${target.username} is now ${role}`;
     },
@@ -417,13 +439,14 @@ function EditClientsForm({ target, onClose }: { target: AdminUser; onClose: () =
   );
   const { pending, error, submit } = useSubmit(
     "manage_users",
-    async () => {
+    "Could not update the clients",
+    async (fb) => {
       unwrap(
         await api.PUT("/api/auth/users/{username}/clients", {
           params: { path: { username: target.username } },
           body: { client_ids: Array.from(selected) },
         }),
-        "Could not update the clients",
+        fb,
       );
       return `Clients updated for ${target.username}`;
     },
