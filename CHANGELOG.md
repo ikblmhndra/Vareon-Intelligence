@@ -8,7 +8,7 @@ router `changelog.py`) -- parser-nya expect header persis
 
 ## [0.8.16] - 2026-11-08
 
-**Redesain FigCraft: tiga sumber data baru untuk halaman PIR, Intelligence, dan MITRE, penyeragaman tema web, dan redesain CVE Tracker beserta tambahan backend-nya.** API mendapat cakupan PIR per minggu, seri harian per entitas yang melonjak, dan layer ATT&CK Navigator yang sama persis dengan heatmap yang terlihat. Web memakai satu skala tier risiko, border field yang terbaca, dan fokus yang jelas. Halaman Exec dirombak: brief eksekutif harian tersimpan dan papan Analyst. Dua migrasi aditif (`b7d41e9a2c63`, `c4e8a1f2b9d6`) dijalankan otomatis oleh `make deploy`, dan satu dependency baru (`email-validator`). Tanpa kunci `.env`. Halaman X Intel, Recap, dan Newsletter ikut didesain ulang (tanpa migrasi).
+**Redesain FigCraft: tiga sumber data baru untuk halaman PIR, Intelligence, dan MITRE, penyeragaman tema web, dan redesain CVE Tracker beserta tambahan backend-nya.** API mendapat cakupan PIR per minggu, seri harian per entitas yang melonjak, dan layer ATT&CK Navigator yang sama persis dengan heatmap yang terlihat. Web memakai satu skala tier risiko, border field yang terbaca, dan fokus yang jelas. Halaman Exec dirombak: brief eksekutif harian tersimpan dan papan Analyst. Dua migrasi aditif (`b7d41e9a2c63`, `c4e8a1f2b9d6`) dijalankan otomatis oleh `make deploy`, dan satu dependency baru (`email-validator`). Tanpa kunci `.env`. Halaman X Intel, Recap, dan Newsletter ikut didesain ulang (tanpa migrasi), begitu juga halaman operasi Scrapers dan Data health (tiga field aditif di `GET /api/data-health`, tanpa migrasi).
 
 ### Ditambahkan
 - `GET /api/pir/{pir_id}/coverage/weekly`: jumlah artikel per minggu untuk grafik cakupan PIR.
@@ -40,6 +40,8 @@ router `changelog.py`) -- parser-nya expect header persis
 - X Intel: pencarian kini juga mencocokkan handle, nama korban, dan CVE (`%` dan `_` dicocokkan apa adanya). `GET /api/tweets` dan `/api/tweets/stats` punya filter opsional `has_cve` dan `signal` (`ot`, `zero_day`, `databreach`, `report`).
 - X Intel: `GET /api/tweets/stats` menambah statistik periode (insiden terkonfirmasi, APAC, CVE, data breach, zero-day, OT) dan `top_victims` (korban paling sering disebut).
 - Web: halaman X Intel, Recap, dan Newsletter didesain ulang mengikuti mockup FigCraft (komposer tiga kolom; Export PDF recap lewat cetak browser).
+- Data health: alur pipeline 24 jam / 7 hari (item diambil, item baru, artikel terbit, field `pipeline`), kedalaman tujuh antrean Celery (`queues.depths`, null kalau Redis tidak terbaca), dan grafik panggilan LLM per jam untuk 24 jam terakhir (`llm.calls_per_hour`, 24 bucket UTC `{hour, ok, failed}`).
+- Web: halaman Scrapers dan Data health didesain ulang mengikuti mockup FigCraft; panel samping (riwayat run, ringkasan config, aksi, hasil dry run) menggantikan dialog detail scraper, ditambah tile status dan bagian "More checks" di Data health.
 
 ### Diubah
 - Deteksi spike (Early Warning dan industry spikes di dashboard eksekutif): mean dan simpangan baku baseline kini menghitung hari tanpa artikel sebagai 0, sama dengan seri `daily`. Dulu hanya hari yang ada artikelnya yang dihitung, sehingga garis baseline lebih tinggi daripada batang hariannya dan entitas yang jarang muncul mendapat z-score terlalu kecil. Akibatnya jumlah dan urutan anomali berubah sesudah deploy, ke dua arah: entitas jarang bisa muncul, entitas yang hitungan hariannya naik-turun bisa hilang. Entitas tetap butuh minimal 5 hari baseline yang ada artikelnya.
@@ -58,6 +60,7 @@ router `changelog.py`) -- parser-nya expect header persis
 - `POST /api/exec/brief`: `days` dibatasi 7-365, tidak lagi menghitung bagian khusus analis atau per klien, menyimpan hasilnya sebagai brief bersama hari ini (menggantikan brief scheduler untuk semua klien) dan mengembalikan `ExecBriefOut` (dulu `{brief, generated_at}`). Gagal LLM membalas 502. Tetap butuh `manage_intel`.
 - Web: tombol Export CSV di Exec hanya tampil untuk role dengan `export_data`.
 - Web: tombol Apply/Reset di X Intel diganti filter langsung; riwayat newsletter dibuka sebagai panel samping.
+- Web: waktu di halaman Scrapers dan Data health memakai zona waktu browser; label nada Data health menjadi OK / WATCH / ACTION; tombol tulis scraper disembunyikan tanpa izin `manage_scraper`.
 - Web: Recap mengganti bar Week/Day + tanggal + Load dan sidebar riwayat dengan state URL, Select History dan tombol Previous; Generate dan Force Regen digabung jadi satu dialog.
 
 ### Diperbaiki
@@ -66,6 +69,8 @@ router `changelog.py`) -- parser-nya expect header persis
 **Catatan 0.8.16 (Intelligence):** tanpa migrasi untuk bagian ini (head sebelum Exec `b7d41e9a2c63`) dan tanpa key `.env` baru. Ringkasan profil entitas baru terisi sesudah profil dibuat ulang. Export IOC dan Source reliability butuh `export_data`.
 
 **Catatan 0.8.16 (Exec):** migrasi `c4e8a1f2b9d6` membuat tabel `exec_briefs`; tanpa key `.env` baru (jadwal memakai `WORKER__REPORT_UTC_OFFSET_HOURS`). Biaya LLM sekitar satu panggilan per hari; cek lewat `llm_calls` dengan `task = 'exec_brief'`. Brief hari ini muncul sesudah 06:00 WIB.
+
+**Catatan 0.8.16 (Operations):** tanpa migrasi dan tanpa key `.env` baru. Tiga field aditif di `GET /api/data-health` (`pipeline`, `queues.depths`, `llm.calls_per_hour`); rollback cukup image.
 
 **Saat upgrade dari 0.8.15:** catat jumlah anomali Early Warning per kelompok sebelum deploy untuk dibandingkan (opsional, baca-saja: hitung ticket dengan `owner_email` bukan email dan ticket dengan alias status lama, query di runbook), lalu `make deploy` (migrasi jalan otomatis). Dari prod 0.8.11 (versi yang sedang jalan): ikuti runbook gabungan `docs/PROD_UPGRADE_0.8.11_TO_0.8.16.md`; cek per rilis ada di `docs/prod-upgrade/0.8.16.md`.
 

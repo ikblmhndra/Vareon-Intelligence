@@ -5611,6 +5611,7 @@ export interface components {
             /** Ioc Enrichment */
             ioc_enrichment: components["schemas"]["IocEnrichmentTypeOut"][];
             llm: components["schemas"]["LlmHealthOut"];
+            pipeline: components["schemas"]["PipelineHealthOut"];
             queues: components["schemas"]["QueueHealthOut"];
             relevance: components["schemas"]["RelevanceHealthOut"];
             scrapers: components["schemas"]["ScraperHealthSummary"];
@@ -6382,6 +6383,8 @@ export interface components {
         };
         /** LlmHealthOut */
         LlmHealthOut: {
+            /** Calls Per Hour */
+            calls_per_hour: components["schemas"]["LlmHourOut"][];
             /** Last Call At */
             last_call_at: string | null;
             last_error: components["schemas"]["LlmErrorOut"] | null;
@@ -6399,6 +6402,15 @@ export interface components {
             usage_24h: components["schemas"]["LlmTaskUsageOut"][];
             /** Usage 7D */
             usage_7d: components["schemas"]["LlmTaskUsageOut"][];
+        };
+        /** LlmHourOut */
+        LlmHourOut: {
+            /** Failed */
+            failed: number;
+            /** Hour */
+            hour: string;
+            /** Ok */
+            ok: number;
         };
         /**
          * LlmQueueOut
@@ -7469,6 +7481,20 @@ export interface components {
             /** New Password */
             new_password: string;
         };
+        /** PipelineHealthOut */
+        PipelineHealthOut: {
+            last_24h: components["schemas"]["PipelineWindowOut"];
+            last_7d: components["schemas"]["PipelineWindowOut"];
+        };
+        /** PipelineWindowOut */
+        PipelineWindowOut: {
+            /** Articles Published */
+            articles_published: number;
+            /** Items Found */
+            items_found: number;
+            /** Items New */
+            items_new: number;
+        };
         /** PirReason */
         PirReason: {
             /** Id */
@@ -7549,6 +7575,10 @@ export interface components {
         };
         /** QueueHealthOut */
         QueueHealthOut: {
+            /** Depths */
+            depths: {
+                [key: string]: number;
+            } | null;
             /** Enrich Depth */
             enrich_depth: number | null;
             /** Enrich Max Depth */

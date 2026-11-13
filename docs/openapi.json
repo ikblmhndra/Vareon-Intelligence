@@ -3205,6 +3205,9 @@
           "llm": {
             "$ref": "#/components/schemas/LlmHealthOut"
           },
+          "pipeline": {
+            "$ref": "#/components/schemas/PipelineHealthOut"
+          },
           "queues": {
             "$ref": "#/components/schemas/QueueHealthOut"
           },
@@ -3225,6 +3228,7 @@
           "generated_at",
           "scrapers",
           "enrichment",
+          "pipeline",
           "queues",
           "sources",
           "ioc_enrichment",
@@ -5396,6 +5400,13 @@
       },
       "LlmHealthOut": {
         "properties": {
+          "calls_per_hour": {
+            "items": {
+              "$ref": "#/components/schemas/LlmHourOut"
+            },
+            "title": "Calls Per Hour",
+            "type": "array"
+          },
           "last_call_at": {
             "anyOf": [
               {
@@ -5470,9 +5481,33 @@
           "usage_24h",
           "usage_7d",
           "stories_24h",
-          "stories_7d"
+          "stories_7d",
+          "calls_per_hour"
         ],
         "title": "LlmHealthOut",
+        "type": "object"
+      },
+      "LlmHourOut": {
+        "properties": {
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "hour": {
+            "title": "Hour",
+            "type": "string"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "hour",
+          "ok",
+          "failed"
+        ],
+        "title": "LlmHourOut",
         "type": "object"
       },
       "LlmQueueOut": {
@@ -7993,6 +8028,45 @@
         "title": "PasswordResetRequest",
         "type": "object"
       },
+      "PipelineHealthOut": {
+        "properties": {
+          "last_24h": {
+            "$ref": "#/components/schemas/PipelineWindowOut"
+          },
+          "last_7d": {
+            "$ref": "#/components/schemas/PipelineWindowOut"
+          }
+        },
+        "required": [
+          "last_24h",
+          "last_7d"
+        ],
+        "title": "PipelineHealthOut",
+        "type": "object"
+      },
+      "PipelineWindowOut": {
+        "properties": {
+          "articles_published": {
+            "title": "Articles Published",
+            "type": "integer"
+          },
+          "items_found": {
+            "title": "Items Found",
+            "type": "integer"
+          },
+          "items_new": {
+            "title": "Items New",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items_found",
+          "items_new",
+          "articles_published"
+        ],
+        "title": "PipelineWindowOut",
+        "type": "object"
+      },
       "PirReason": {
         "properties": {
           "id": {
@@ -8138,6 +8212,20 @@
       },
       "QueueHealthOut": {
         "properties": {
+          "depths": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Depths"
+          },
           "enrich_depth": {
             "anyOf": [
               {
@@ -8155,6 +8243,7 @@
           }
         },
         "required": [
+          "depths",
           "enrich_depth",
           "enrich_max_depth"
         ],

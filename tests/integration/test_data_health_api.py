@@ -5,17 +5,22 @@ reproduksi audit -- antrian job enrichment (`enrich_jobs`) dan breaker LLM, keda
 from __future__ import annotations
 
 import datetime
+import itertools
+import uuid
 
-from cti_core.db.models.article import RejectedArticle
+from cti_api.services import data_health as service
+from cti_core.db.models.article import Article, RejectedArticle
 from cti_core.db.models.enrich_job import EnrichJob
 from cti_core.db.models.indicator import Indicator
 from cti_core.db.models.llm_call import LlmCall
+from cti_core.db.models.scraper import ScraperRun
 from cti_core.db.models.story import Story
 from cti_core.db.repositories.article import AsyncArticleRepo
+from cti_core.db.repositories.llm_call import AsyncLlmCallRepo
 from cti_core.db.repositories.story import AsyncStoryRepo
 from cti_core.urlkit import url_hash
 from httpx import AsyncClient
-from sqlalchemy import delete
+from sqlalchemy import delete, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -125,6 +130,7 @@ async def test_data_health_survives_a_redis_outage(
     monkeypatch.setattr(fake_redis, "llen", boom)
     body = (await api_client.get("/api/data-health", headers=auth_header())).json()
     assert body["queues"]["enrich_depth"] is None
+    assert body["queues"]["depths"] is None
 
 
 def _call(
@@ -323,3 +329,172 @@ async def test_data_health_queue_reports_open_and_half_open_breaker(
     await api_session.flush()
     queue = (await api_client.get("/api/data-health", headers=auth_header())).json()["llm"]["queue"]
     assert queue["breaker"] == "half_open"
+
+
+def _run(status: str, age: datetime.timedelta, found: int, new: int) -> ScraperRun:
+    return ScraperRun(
+        run_id=str(uuid.uuid4()),
+        scraper_id="pipe-test",
+        status=status,
+        started_at=datetime.datetime.now(datetime.UTC) - age,
+        items_found=found,
+        items_new=new,
+    )
+
+
+async def test_data_health_pipeline_windows(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header, fake_redis
+) -> None:
+    await api_session.execute(delete(ScraperRun))
+    await api_session.execute(delete(Article))
+    await api_session.execute(delete(RejectedArticle))
+    h = datetime.timedelta(hours=1)
+    d = 24 * h
+    api_session.add_all(
+        [
+            _run("ok", h, 10, 4),
+            _run("running", 2 * h, 3, 1),  # semua status ikut dihitung
+            _run("ok", 30 * h, 20, 5),
+            _run("ok", 8 * d, 100, 50),  # di luar 7 hari
+            _rejected(1, None, h),  # RejectedArticle tidak dibaca
+        ]
+    )
+    repo = AsyncArticleRepo(api_session)
+    now = datetime.datetime.now(datetime.UTC)
+    for n, age in enumerate((h, 3 * d, 8 * d)):
+        art = await repo.upsert(
+            url=f"https://example.com/p{n}", title=f"P{n}", source="S", posted_on=now.date()
+        )
+        art.first_seen_at = now - age
+    await api_session.flush()
+
+    body = (await api_client.get("/api/data-health", headers=auth_header())).json()
+    assert body["pipeline"] == {
+        "last_24h": {"items_found": 13, "items_new": 5, "articles_published": 1},
+        "last_7d": {"items_found": 33, "items_new": 10, "articles_published": 2},
+    }
+
+
+async def test_data_health_pipeline_empty(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header, fake_redis
+) -> None:
+    await api_session.execute(delete(ScraperRun))
+    await api_session.execute(delete(Article))
+    await api_session.flush()
+    body = (await api_client.get("/api/data-health", headers=auth_header())).json()
+    zero = {"items_found": 0, "items_new": 0, "articles_published": 0}
+    assert body["pipeline"] == {"last_24h": zero, "last_7d": zero}
+
+
+async def test_data_health_queue_depths(api_client: AsyncClient, auth_header, fake_redis) -> None:
+    fake_redis.lists["enrich"] = 7
+    fake_redis.lists["cve"] = 2
+    queues = (await api_client.get("/api/data-health", headers=auth_header())).json()["queues"]
+    assert queues["depths"] == {
+        "scrape.rss": 0,
+        "scrape.api": 0,
+        "scrape.browser": 0,
+        "enrich": 7,
+        "notify": 0,
+        "maintenance": 0,
+        "cve": 2,
+    }
+    assert list(queues["depths"]) == [
+        "scrape.rss",
+        "scrape.api",
+        "scrape.browser",
+        "enrich",
+        "notify",
+        "maintenance",
+        "cve",
+    ]
+    assert queues["enrich_depth"] == 7
+
+
+async def test_data_health_queue_depths_all_or_nothing(
+    api_client: AsyncClient, auth_header, fake_redis, monkeypatch
+) -> None:
+    fake_redis.lists["enrich"] = 7
+    real = fake_redis.llen
+
+    async def flaky(key: str) -> int:
+        if key == "notify":
+            raise ConnectionError("redis down")
+        return await real(key)
+
+    monkeypatch.setattr(fake_redis, "llen", flaky)
+    queues = (await api_client.get("/api/data-health", headers=auth_header())).json()["queues"]
+    assert queues["depths"] is None
+    assert queues["enrich_depth"] is None
+
+
+_FIXED_NOW = datetime.datetime(2026, 11, 10, 14, 30, tzinfo=datetime.UTC)
+
+
+def _call_at(task: str, status: str, at: datetime.datetime) -> LlmCall:
+    row = _call(task, status, datetime.timedelta(0))
+    row.at = at
+    return row
+
+
+def _seed_hours() -> list[LlmCall]:
+    at = datetime.datetime(2026, 11, 10, 12, 10, tzinfo=datetime.UTC)
+    return [
+        _call_at("classify", "ok", at),
+        _call_at("ttp", "error", at),
+        _call_at("exec_brief", "empty", at),
+        _call_at("classify", "ok", datetime.datetime(2026, 11, 9, 15, 0, tzinfo=datetime.UTC)),
+        _call_at("classify", "ok", datetime.datetime(2026, 11, 9, 14, 59, 59, tzinfo=datetime.UTC)),
+    ]
+
+
+def _check_hours(hours: list) -> None:
+    assert len(hours) == 24
+    assert hours[0]["hour"] == "2026-11-09T15:00:00+00:00"
+    assert hours[-1]["hour"] == "2026-11-10T14:00:00+00:00"
+    assert hours[0]["ok"] == 1
+    twelve = next(x for x in hours if x["hour"] == "2026-11-10T12:00:00+00:00")
+    assert (twelve["ok"], twelve["failed"]) == (1, 2)  # task berbeda dijumlahkan
+    assert sum(x["ok"] for x in hours) == 2  # 14:59:59 tanggal 9 di luar jendela
+
+
+async def test_data_health_llm_calls_per_hour(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header, fake_redis
+) -> None:
+    await api_session.execute(delete(LlmCall))
+    await api_session.flush()
+    hours = (await api_client.get("/api/data-health", headers=auth_header())).json()["llm"][
+        "calls_per_hour"
+    ]
+    assert len(hours) == 24
+    assert all(x["ok"] == 0 and x["failed"] == 0 for x in hours)
+    stamps = [datetime.datetime.fromisoformat(x["hour"]) for x in hours]
+    assert all(b - a == datetime.timedelta(hours=1) for a, b in itertools.pairwise(stamps))
+    assert hours[-1]["hour"] == (
+        datetime.datetime.now(datetime.UTC).replace(minute=0, second=0, microsecond=0).isoformat()
+    )
+
+    await api_session.execute(delete(LlmCall))
+    api_session.add_all(_seed_hours())
+    await api_session.flush()
+    _check_hours(
+        [
+            h.model_dump()
+            for h in await service._calls_per_hour(AsyncLlmCallRepo(api_session), _FIXED_NOW)
+        ]
+    )
+
+
+async def test_data_health_llm_calls_per_hour_ignores_session_timezone(
+    api_session: AsyncSession,
+) -> None:
+    await api_session.execute(delete(LlmCall))
+    api_session.add_all(_seed_hours())
+    await api_session.flush()
+    await api_session.execute(text("SET LOCAL TIME ZONE 'Asia/Kolkata'"))
+    _check_hours(
+        [
+            h.model_dump()
+            for h in await service._calls_per_hour(AsyncLlmCallRepo(api_session), _FIXED_NOW)
+        ]
+    )

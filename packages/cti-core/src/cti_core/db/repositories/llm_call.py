@@ -116,6 +116,29 @@ class AsyncLlmCallRepo:
         ).all()
         return [CallOutcome(status, at) for status, at in rows]
 
+    async def calls_per_hour(
+        self, since: datetime.datetime
+    ) -> dict[datetime.datetime, tuple[int, int]]:
+        """`{awal jam UTC: (ok, gagal)}` untuk panggilan sejak `since`, semua task.
+
+        Pemotongan jam dilakukan eksplisit di UTC (`timezone('UTC', at)`): `TimeZone` sesi
+        Postgres tidak boleh menggeser bucket. Semua task dihitung karena grafiknya lalu lintas
+        gateway. Gagal = `error` + `empty`, aturan yang sama dengan `TaskUsage.errors`. Jam tanpa
+        panggilan tidak ada di hasil; pemanggil yang mengisi nol."""
+        hour = func.date_trunc("hour", func.timezone("UTC", LlmCall.at))
+        rows = (
+            await self.session.execute(
+                select(
+                    hour,
+                    func.count().filter(LlmCall.status == "ok"),
+                    func.count().filter(LlmCall.status.in_(("error", "empty"))),
+                )
+                .where(LlmCall.at >= since)
+                .group_by(hour)
+            )
+        ).all()
+        return {h.replace(tzinfo=datetime.UTC): (int(ok), int(bad)) for h, ok, bad in rows}
+
     async def latest_call_at(self) -> datetime.datetime | None:
         """Cap waktu baris terbaru dari task APA PUN."""
         return (await self.session.execute(select(func.max(LlmCall.at)))).scalar_one_or_none()

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import datetime
 import time
+from dataclasses import asdict
 from typing import Literal
 
 from cti_core.config import get_settings
@@ -24,6 +25,7 @@ from cti_core.db.repositories.relevance import AsyncRelevanceModelRepo
 from cti_core.db.repositories.story import AsyncStoryRepo, StoryStats
 from cti_core.hunt.sigma import SIGMA_SNAPSHOT
 from cti_core.llm.breaker import BREAKER_TASKS, RECENT_CALLS, breaker_state
+from cti_scraper.queues import ALL_SCRAPE_QUEUES
 from redis.asyncio import Redis
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,8 +37,11 @@ from cti_api.schemas.data_health import (
     IocEnrichmentTypeOut,
     LlmErrorOut,
     LlmHealthOut,
+    LlmHourOut,
     LlmQueueOut,
     LlmTaskUsageOut,
+    PipelineHealthOut,
+    PipelineWindowOut,
     QueueHealthOut,
     RelevanceHealthOut,
     SigmaHealthOut,
@@ -50,6 +55,11 @@ _cache: tuple[DataHealthOut, float] | None = None
 
 # Nama list Celery untuk queue `enrich` (sama dengan `cti_scraper.sinks._ENRICH_QUEUE`).
 _ENRICH_QUEUE = "enrich"
+
+# Semua queue Celery, urutan = urutan tampil di web. Empat literal di belakang ada karena `cti_api`
+# tidak boleh meng-import `cti_worker`; `tests/unit/test_queue_names.py` menjaganya: queue yang
+# diganti nama diam-diam terbaca 0 (`LLEN` kunci yang tidak ada = 0, sama dengan queue yang idle).
+_QUEUES: tuple[str, ...] = (*ALL_SCRAPE_QUEUES, "enrich", "notify", "maintenance", "cve")
 
 # Task yang menentukan status model: jalur enrichment artikel (kegagalan di sini memarkir artikel).
 _STATUS_TASKS = ("classify", "ttp")
@@ -69,10 +79,11 @@ async def get_data_health(session: AsyncSession, redis: Redis) -> DataHealthOut:
     return result
 
 
-async def _enrich_depth(redis: Redis) -> int | None:
-    """Redis gangguan = `None` (halaman tetap tampil), bukan 500."""
+async def _queue_depths(redis: Redis) -> dict[str, int] | None:
+    """Redis gangguan = `None` untuk SELURUH blok (halaman tetap tampil, bukan 500): daftar
+    antrean setengah terisi menyesatkan, jadi semua-atau-tidak-sama-sekali."""
     try:
-        return int(await redis.llen(_ENRICH_QUEUE))
+        return {name: int(await redis.llen(name)) for name in _QUEUES}
     except Exception:
         return None
 
@@ -100,6 +111,18 @@ def _story_out(stats: StoryStats) -> StoryHealthOut:
         llm_calls_avoided=stats.inherited * 2,
         by_embedding=stats.by_embedding,
     )
+
+
+async def _calls_per_hour(calls: AsyncLlmCallRepo, now: datetime.datetime) -> list[LlmHourOut]:
+    """24 jam penuh berakhir di jam berjalan; jam kosong diisi nol supaya grafik tidak bolong."""
+    start = now.replace(minute=0, second=0, microsecond=0) - datetime.timedelta(hours=23)
+    found = await calls.calls_per_hour(start)
+    out: list[LlmHourOut] = []
+    for i in range(24):
+        bucket = start + datetime.timedelta(hours=i)
+        ok, failed = found.get(bucket, (0, 0))
+        out.append(LlmHourOut(hour=bucket.isoformat(), ok=ok, failed=failed))
+    return out
 
 
 async def _llm_health(
@@ -141,6 +164,7 @@ async def _llm_health(
         usage_7d=_usage_out(await calls.usage_by_task(now - datetime.timedelta(days=7))),
         stories_24h=_story_out(await stories.stats_since(now - datetime.timedelta(hours=24))),
         stories_7d=_story_out(await stories.stats_since(now - datetime.timedelta(days=7))),
+        calls_per_hour=await _calls_per_hour(calls, now),
     )
 
 
@@ -243,6 +267,8 @@ async def _build(session: AsyncSession, redis: Redis, now: datetime.datetime) ->
     failures = await repo.enrichment_failures(now)
     processed = await repo.processed_since(now - datetime.timedelta(days=7))
     coverage = await repo.ioc_coverage_by_type()
+    totals = await repo.pipeline_totals(now)
+    depths = await _queue_depths(redis)
     return DataHealthOut(
         generated_at=now.isoformat(),
         scrapers=scrapers,
@@ -253,8 +279,13 @@ async def _build(session: AsyncSession, redis: Redis, now: datetime.datetime) ->
             pending_replay=failures.pending_replay,
             last_failure_at=_iso(failures.last_failure_at),
         ),
+        pipeline=PipelineHealthOut(
+            last_24h=PipelineWindowOut(**asdict(totals.last_24h)),
+            last_7d=PipelineWindowOut(**asdict(totals.last_7d)),
+        ),
         queues=QueueHealthOut(
-            enrich_depth=await _enrich_depth(redis),
+            depths=depths,
+            enrich_depth=depths[_ENRICH_QUEUE] if depths is not None else None,
             enrich_max_depth=get_settings().scraper.enrich_queue_max_depth,
         ),
         sources=SourceFreshnessOut(

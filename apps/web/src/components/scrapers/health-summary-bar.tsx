@@ -1,75 +1,75 @@
 "use client";
 
-import { byProblemSeverity, useScraperHealth } from "@/lib/scrapers/health";
-import { StatusBadge } from "@/components/scrapers/status-badge";
+import { Button } from "@/components/ui/button";
+import { Notice } from "@/components/ui/notice";
+import { Skeleton } from "@/components/ui/skeleton";
+import { StatTile } from "@/components/ui/stat-tile";
+import { browserZoneName, fmtTime } from "@/lib/format";
+import { statusTileTone } from "@/components/scrapers/status-badge";
 
-const STATUS_ORDER = ["dead", "degraded", "zero_yield", "stale", "disabled", "ok"];
+const TILES = [
+  { status: "ok", label: "OK" },
+  { status: "degraded", label: "DEGRADED" },
+  { status: "stale", label: "STALE" },
+  { status: "zero_yield", label: "ZERO YIELD" },
+  { status: "dead", label: "DEAD" },
+  { status: "disabled", label: "DISABLED" },
+] as const;
 
-/** Overview kesehatan fleet -- `GET /api/scraper/health` (Fase 9 H3),
- * SATU query dipakai bareng (bukan digabung) task digest Telegram
- * periodik worker. Problem row diklik -> `onSelectProblem` (buka detail
- * dialog scraper itu langsung dari sini). */
-export function HealthSummaryBar({
-  onSelectProblem,
+/** Enam tile kesehatan armada (`GET /api/scraper/health`). Klik tile = filter Status di tabel (klik lagi
+ * = kembali ke "all"); `selected` adalah nilai filter Status yang aktif. */
+export function HealthTiles({
+  counts,
+  generatedAt,
+  state,
+  selected,
+  onSelect,
+  onRetry,
 }: {
-  onSelectProblem: (scraperId: string, status: string) => void;
+  counts: Record<string, number>;
+  generatedAt: string | null;
+  state: "loading" | "error" | "ready";
+  selected: string;
+  onSelect: (status: string) => void;
+  onRetry: () => void;
 }) {
-  const query = useScraperHealth();
-
-  if (query.isPending) {
-    return <div className="mb-4 h-16 animate-pulse rounded-2xl surface-raised" />;
-  }
-  if (query.isError || !query.data) {
-    return (
-      <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-xs text-destructive-text">
-        Failed to load scraper health.
-      </div>
-    );
-  }
-
-  const { counts, problems, generated_at } = query.data;
-  const total = Object.values(counts).reduce((a, b) => a + b, 0);
-
   return (
-    <div className="mb-4 rounded-2xl surface-raised p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <div className="text-sm font-semibold text-muted-foreground">
-          Fleet Health — {total} scraper
-        </div>
-        <div className="font-mono text-xs text-muted-foreground">
-          as of {generated_at.replace("T", " ").split(".")[0]} UTC
-        </div>
+    <div className="mb-4">
+      <div className="grid grid-cols-3 gap-3 lg:grid-cols-6">
+        {TILES.map((t) =>
+          state === "loading" ? (
+            <Skeleton key={t.status} className="h-[88px] rounded-lg" />
+          ) : (
+            <StatTile
+              key={t.status}
+              label={t.label}
+              tone={statusTileTone(t.status)}
+              value={<span className="font-code">{state === "error" ? "–" : (counts[t.status] ?? 0)}</span>}
+              selected={selected === t.status}
+              onSelect={() => onSelect(t.status)}
+              className="w-full"
+            />
+          ),
+        )}
       </div>
-
-      <div className="flex flex-wrap gap-2">
-        {STATUS_ORDER.filter((s) => counts[s]).map((s) => (
-          <div key={s} className="flex items-center gap-1.5 rounded-full border border-border bg-background px-2 py-1">
-            <StatusBadge status={s} />
-            <span className="font-mono text-xs text-foreground">{counts[s]}</span>
-          </div>
-        ))}
-      </div>
-
-      {problems.length > 0 && (
-        <div className="mt-3 border-t border-border pt-3">
-          <div className="mb-1.5 text-sm font-semibold text-muted-foreground">
-            Needs attention ({problems.length})
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {byProblemSeverity(problems).map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => onSelectProblem(p.id, p.status)}
-                className="flex max-w-full items-center gap-1.5 rounded-2xl border border-border bg-background px-2 py-1 text-left transition-colors outline-none hover:border-primary/40 focus-visible:ring-3 focus-visible:ring-focus"
-              >
-                <StatusBadge status={p.status} />
-                <span className="font-code text-xs text-foreground">{p.id}</span>
-                {p.reason && <span className="min-w-0 text-xs text-muted-foreground">{p.reason}</span>}
-              </button>
-            ))}
-          </div>
-        </div>
+      {state === "ready" && generatedAt && (
+        <p className="mt-2 text-2xs text-muted-foreground">
+          Health as of {fmtTime(generatedAt)} {browserZoneName()} · refreshes every minute
+        </p>
+      )}
+      {state === "error" && (
+        <Notice
+          tone="warning"
+          title="Scraper health could not be loaded"
+          className="mt-3"
+          action={
+            <Button variant="outline" size="sm" onClick={onRetry}>
+              Retry
+            </Button>
+          }
+        >
+          Enabled scrapers show UNKNOWN instead of a status.
+        </Notice>
       )}
     </div>
   );
