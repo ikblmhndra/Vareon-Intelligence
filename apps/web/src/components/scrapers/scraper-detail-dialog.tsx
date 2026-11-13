@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { api } from "@/lib/api/client";
@@ -22,6 +22,7 @@ import { StatusBadge } from "@/components/scrapers/status-badge";
 import { ScraperRunsPanel } from "@/components/scrapers/scraper-runs-panel";
 import { ScraperItemsPanel } from "@/components/scrapers/scraper-items-panel";
 import { useCan } from "@/lib/auth/permissions";
+import { useScraperDetail } from "@/lib/scrapers/queries";
 
 type ScraperDetail = components["schemas"]["ScraperDetail"];
 type ScraperOption = components["schemas"]["ScraperOptionOut"];
@@ -59,16 +60,7 @@ function ScraperDetailBody({
   healthStatus?: string;
   onClose: () => void;
 }) {
-  const query = useQuery({
-    queryKey: ["scrapers", scraperId, "detail"],
-    queryFn: async () => {
-      const { data, error } = await api.GET("/api/scraper/{scraper_id}", {
-        params: { path: { scraper_id: scraperId } },
-      });
-      if (error) throw error;
-      return data;
-    },
-  });
+  const query = useScraperDetail(scraperId);
 
   return (
     <>

@@ -29,16 +29,19 @@ export function statusSentence(
   if (status === "ok") return "The latest run finished without errors.";
   if (status === "disabled") return disabledReasonText(item.disabled_by, item.paused_reason) ?? "Disabled.";
   if (status === "unknown") return "Health could not be loaded.";
-  const parts = [entry?.reason ?? ""];
+  // Alasan dari registry (`explain_health`) tanpa titik akhir ("never ran", "3 empty runs in a row"):
+  // diberi titik dan huruf besar, supaya kalimat berikutnya tidak menempel padanya.
+  const reason = entry?.reason?.trim().replace(/\.+$/, "");
+  const parts: string[] = reason ? [`${reason[0].toUpperCase()}${reason.slice(1)}.`] : [];
   if (entry && entry.consecutive_failing > 0) {
-    parts.push(` Failing ${entry.consecutive_failing} of the last 3 runs.`);
+    parts.push(`Failing ${entry.consecutive_failing} of the last 3 runs.`);
   }
   parts.push(
     entry?.last_success_at
-      ? ` Last success ${fmtAgo(entry.last_success_at, nowMs)}.`
-      : " No successful run on record.",
+      ? `Last success ${fmtAgo(entry.last_success_at, nowMs)}.`
+      : "No successful run on record.",
   );
-  return parts.join("").trim();
+  return parts.join(" ");
 }
 
 /** Hasil run terakhir untuk satu baris: "12 new", "0 items", "fetch error", atau "never". */

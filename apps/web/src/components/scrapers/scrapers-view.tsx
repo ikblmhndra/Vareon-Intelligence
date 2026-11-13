@@ -1,16 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { PageHeader } from "@/components/page-header";
 import { HealthTiles } from "@/components/scrapers/health-summary-bar";
 import { SchedulerChip, SchedulerNotice } from "@/components/scrapers/scheduler-status";
 import { ScraperDetailDialog } from "@/components/scrapers/scraper-detail-dialog";
+import { ScraperPanel } from "@/components/scrapers/scraper-panel";
 import { DisableScraperDialog } from "@/components/scrapers/disable-scraper-dialog";
 import { StatusLegend } from "@/components/scrapers/status-legend";
 import { ScrapersTable, type ScraperRow } from "@/components/scrapers/scrapers-table";
 import { Button } from "@/components/ui/button";
+import { MasterDetail } from "@/components/ui/master-detail";
 import { FilterSelect } from "@/components/ui/filter-select";
 import { SearchInput } from "@/components/ui/search-input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -59,13 +61,23 @@ export function ScrapersView() {
   const [runtime, setRuntime] = useState("all");
   const [queue, setQueue] = useState("all");
   const [legendOpen, setLegendOpen] = useState(false);
-  const [disableTarget, setDisableTarget] = useState<{ id: string; source: string } | null>(null);
+  const [disableTarget, setDisableTarget] = useState<{
+    id: string;
+    source: string;
+  } | null>(null);
   const enable = useEnableScraper();
+  // Sementara (sampai dialog config baru): config, reset dedup, dan riwayat masih lewat dialog lama.
+  const [legacyOpen, setLegacyOpen] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   /** `router.replace` ke URL yang sama membuat Next memasang ulang judul layout, jadi no-op bila tak berubah. */
   function select(id: string | null) {
     if (id === selectedId) return;
     router.replace(id ? `/scrapers?scraper=${encodeURIComponent(id)}` : "/scrapers", { scroll: false });
+    // Di bawah 1024 px panel menumpuk di bawah tabel: bawa ke layar saat baris dipilih.
+    if (id && !window.matchMedia("(min-width: 1024px)").matches) {
+      panelRef.current?.scrollIntoView({ block: "start" });
+    }
   }
 
   // Health belum datang atau gagal: jangan tulis "ok" untuk scraper yang belum dinilai (ROADMAP #24).
@@ -131,7 +143,13 @@ export function ScrapersView() {
           <HealthTiles
             counts={health.data?.counts ?? {}}
             generatedAt={health.data?.generated_at ?? null}
-            state={list.isPending || (health.isPending && !health.data) ? "loading" : healthFailed ? "error" : "ready"}
+            state={
+              list.isPending || (health.isPending && !health.data)
+                ? "loading"
+                : healthFailed
+                  ? "error"
+                  : "ready"
+            }
             selected={status}
             onSelect={(s) => setStatus((cur) => (cur === s ? "all" : s))}
             onRetry={() => void health.refetch()}
@@ -158,32 +176,50 @@ export function ScrapersView() {
           {list.isPending || !list.data ? (
             <Skeleton className="h-96 w-full" />
           ) : (
-            <ScrapersTable
-              rows={rows}
-              total={list.data.scrapers.length}
-              filtered={filtering ? rows.length : null}
-              schedulerOk={list.data.scheduler.state === "ok"}
-              nowMs={list.data.nowMs}
-              selectedId={selectedId}
-              canManage={canManage}
-              enablingId={enable.isPending ? enable.variables : null}
-              onSelect={select}
-              onDisable={(row) => setDisableTarget({ id: row.id, source: row.source })}
-              onEnable={(id) => enable.mutate(id)}
-              onClearFilters={clearFilters}
+            <MasterDetail
+              list={
+                <ScrapersTable
+                  rows={rows}
+                  total={list.data.scrapers.length}
+                  filtered={filtering ? rows.length : null}
+                  schedulerOk={list.data.scheduler.state === "ok"}
+                  nowMs={list.data.nowMs}
+                  selectedId={selectedId}
+                  canManage={canManage}
+                  enablingId={enable.isPending ? enable.variables : null}
+                  onSelect={select}
+                  onDisable={(row) => setDisableTarget({ id: row.id, source: row.source })}
+                  onEnable={(id) => enable.mutate(id)}
+                  onClearFilters={clearFilters}
+                />
+              }
+              detail={
+                <div ref={panelRef}>
+                  <ScraperPanel
+                    id={selectedId}
+                    row={allRows.find((r) => r.id === selectedId)}
+                    entry={health.data?.problems.find((p) => p.id === selectedId)}
+                    listReady={!!list.data}
+                    nowMs={list.data.nowMs}
+                    canManage={canManage}
+                    onClose={() => select(null)}
+                    onDisable={(row) => setDisableTarget({ id: row.id, source: row.source })}
+                    onEditConfig={() => setLegacyOpen(true)}
+                    onResetDedup={() => setLegacyOpen(true)}
+                    onOpenHistory={() => setLegacyOpen(true)}
+                  />
+                </div>
+              }
             />
           )}
           <StatusLegend open={legendOpen} onOpenChange={setLegendOpen} />
         </>
       )}
-      <DisableScraperDialog
-        target={disableTarget}
-        onOpenChange={(open) => !open && setDisableTarget(null)}
-      />
+      <DisableScraperDialog target={disableTarget} onOpenChange={(open) => !open && setDisableTarget(null)} />
       <ScraperDetailDialog
-        scraperId={selectedId}
+        scraperId={legacyOpen ? selectedId : null}
         healthStatus={allRows.find((s) => s.id === selectedId)?.status}
-        onOpenChange={(open) => !open && select(null)}
+        onOpenChange={(open) => !open && setLegacyOpen(false)}
       />
     </div>
   );
