@@ -15,23 +15,36 @@ export function Disclosure({
   printOpen = false,
   children,
   className,
+  open: controlledOpen,
+  onOpenChange,
+  id: wrapperId,
 }: {
   title: ReactNode;
   defaultOpen?: boolean;
   printOpen?: boolean;
   children: ReactNode;
   className?: string;
+  /** Terkendali bila diisi; `onOpenChange` dipanggil saat tombol ditekan. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Id pembungkus, supaya tautan header bisa membuka dan men-scroll ke bagian ini. */
+  id?: string;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const [innerOpen, setInnerOpen] = useState(defaultOpen);
+  const open = controlledOpen ?? innerOpen;
+  const toggle = () => {
+    onOpenChange?.(!open);
+    if (controlledOpen === undefined) setInnerOpen(!open);
+  };
   const id = useId();
   return (
-    <div className={className}>
+    <div id={wrapperId} className={className}>
       <button
         type="button"
         id={`${id}-trigger`}
         aria-expanded={open}
         aria-controls={id}
-        onClick={() => setOpen((o) => !o)}
+        onClick={toggle}
         className={cn(
           "flex w-full items-center gap-2 rounded-md py-1.5 text-left text-sm font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
           printOpen && "print:hidden",

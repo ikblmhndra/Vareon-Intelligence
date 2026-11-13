@@ -1,41 +1,60 @@
-const STATUS_STYLE: Record<string, string> = {
-  ok: "bg-success/12 border-success/40 text-success-text",
-  disabled: "bg-muted-foreground/12 border-muted-foreground/35 text-muted-foreground",
-  stale: "bg-severity-medium/12 border-severity-medium/40 text-severity-medium-text",
-  dead: "bg-destructive/18 border-destructive/50 text-destructive-text",
-  degraded: "bg-warning/15 border-warning/45 text-warning-text",
-  zero_yield: "bg-severity-medium/12 border-severity-medium/40 text-severity-medium-text",
-  unknown: "bg-muted-foreground/12 border-muted-foreground/35 text-muted-foreground",
-};
+import { Chip } from "@/components/ui/chip";
 
-/** Pill status kesehatan scraper -- `cti_scraper.health.HealthStatus`
- * (Fase 9 H3): ok/disabled/stale/dead/degraded/zero_yield. */
+export type ScraperTone = "ok" | "warn" | "bad" | "unknown";
+
+/** Status kesehatan scraper (`cti_scraper.health.HealthStatus`) ke nada tunggal untuk chip, tile,
+ * tabel, panel, dan Needs attention. */
+export function statusTone(status: string): ScraperTone {
+  switch (status) {
+    case "ok":
+      return "ok";
+    case "degraded":
+    case "stale":
+    case "zero_yield":
+      return "warn";
+    case "dead":
+      return "bad";
+    default:
+      return "unknown";
+  }
+}
+
+/** Chip status kesehatan scraper; teks = status dengan "_" jadi spasi. `loading` ditangani pemanggil. */
 export function StatusBadge({ status }: { status: string }) {
-  const cls = STATUS_STYLE[status] ?? STATUS_STYLE.stale;
-  return (
-    <span className={`inline-block rounded-full border px-1.5 py-0.5 font-mono text-xs font-bold uppercase ${cls}`}>
-      {status.replace("_", " ")}
-    </span>
-  );
+  const text = status.replaceAll("_", " ");
+  switch (statusTone(status)) {
+    case "ok":
+      return <Chip kind="status" value="ok">{text}</Chip>;
+    case "warn":
+      return <Chip kind="status" value="watch">{text}</Chip>;
+    case "bad":
+      return <Chip kind="status" value="action">{text}</Chip>;
+    default:
+      return <Chip kind="flag" value={text} />;
+  }
+}
+
+const TILE_TONE = { ok: "success", warn: "warning", bad: "destructive", unknown: "neutral" } as const;
+
+export function statusTileTone(status: string): "success" | "warning" | "destructive" | "neutral" {
+  return TILE_TONE[statusTone(status)];
 }
 
 const RUN_STATUS_STYLE: Record<string, string> = {
-  ok: "text-success",
+  ok: "text-success-text",
   empty: "text-muted-foreground",
-  partial: "text-warning",
-  fetch_error: "text-destructive",
-  parse_error: "text-destructive",
-  rate_limited: "text-warning",
-  timeout: "text-destructive",
-  backpressure: "text-warning",
+  partial: "text-warning-text",
+  fetch_error: "text-destructive-text",
+  parse_error: "text-destructive-text",
+  rate_limited: "text-warning-text",
+  timeout: "text-destructive-text",
+  backpressure: "text-warning-text",
   disabled: "text-muted-foreground",
   overlap: "text-muted-foreground",
-  running: "text-severity-medium",
+  running: "text-severity-medium-text",
 };
 
-/** Warna teks status run (`ScraperRun.status`) -- BUKAN pill kayak
- * `StatusBadge`, dipakai inline di tabel runs (lebih banyak baris, pill
- * penuh kebesaran). */
+/** Warna teks status run (`ScraperRun.status`), inline di tabel runs. */
 export function RunStatusText({ status }: { status: string }) {
-  return <span className={`font-mono text-xs ${RUN_STATUS_STYLE[status] ?? ""}`}>{status}</span>;
+  return <span className={`font-code text-xs ${RUN_STATUS_STYLE[status] ?? ""}`}>{status}</span>;
 }
