@@ -1,17 +1,13 @@
 import type { Metadata } from "next";
 
-import { PageHeader } from "@/components/page-header";
+import { PLATFORM_NAME } from "@/lib/brand";
 
-export const metadata: Metadata = { title: "Admin" };
+// Template dipasang ulang: `title` string di layout segmen ini akan membuang template root untuk anak-anaknya.
+// Header (kicker, judul tetap) dirender `AdminFrame` karena kickernya bergantung pada role pengguna.
+export const metadata: Metadata = {
+  title: { default: "Admin", template: `%s · ${PLATFORM_NAME}` },
+};
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <>
-      <PageHeader
-        title="Admin"
-        description="Users, roles, password policy, audit log, clients, API tokens and third-party keys."
-      />
-      {children}
-    </>
-  );
+  return children;
 }

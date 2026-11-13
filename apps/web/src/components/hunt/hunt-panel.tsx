@@ -12,7 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { api } from "@/lib/api/client";
+import { api, proxyFetch } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { getActiveClientId } from "@/lib/auth/client-id";
 
@@ -77,7 +77,7 @@ export function HuntPanel({ anchorType, anchorId }: { anchorType: AnchorType; an
     try {
       const qs = new URLSearchParams([["format", "zip"], ["sigma_per_technique", String(sigmaPerTechnique)], ...include.map((i) => ["include", i])]);
       const clientId = getActiveClientId();
-      const resp = await fetch(
+      const resp = await proxyFetch(
         `/api/proxy/api/hunt-packs/${anchorType}/${anchorId}?${qs}`,
         clientId ? { headers: { "X-Client-ID": clientId } } : undefined,
       );

@@ -4,7 +4,7 @@ import { useId, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import { api } from "@/lib/api/client";
+import { api, proxyFetch } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -181,7 +181,7 @@ async function postLockfile(file: File, ecosystem: string, project: string, dryR
   fd.append("ecosystem", ecosystem);
   fd.append("project", project);
   const clientId = getActiveClientId();
-  const resp = await fetch("/api/proxy/api/pkgvuln/import-lockfile", {
+  const resp = await proxyFetch("/api/proxy/api/pkgvuln/import-lockfile", {
     method: "POST",
     headers: clientId ? { "X-Client-ID": clientId } : undefined,
     body: fd,

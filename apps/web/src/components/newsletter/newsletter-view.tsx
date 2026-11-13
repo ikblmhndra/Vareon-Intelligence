@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import { api } from "@/lib/api/client";
+import { api, proxyFetch } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { Notice } from "@/components/ui/notice";
 import { PageHeader } from "@/components/page-header";
@@ -508,7 +508,7 @@ export function NewsletterView() {
     setPreview({ ...PREVIEW_DIALOG_CLOSED, open: true, label, mode: "saved", savedId: id });
     try {
       const clientId = getActiveClientId();
-      const resp = await fetch(`/api/proxy/api/newsletter/${id}/html`, clientId ? { headers: { "X-Client-ID": clientId } } : undefined);
+      const resp = await proxyFetch(`/api/proxy/api/newsletter/${id}/html`, clientId ? { headers: { "X-Client-ID": clientId } } : undefined);
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const html = await resp.text();
       setPreview((p) => (p.savedId === id ? { ...p, html } : p));

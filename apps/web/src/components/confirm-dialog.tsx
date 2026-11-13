@@ -29,6 +29,8 @@ interface ConfirmDialogProps {
   /** Bila diberikan, dialog TIDAK menutup sendiri saat konfirmasi: pemanggil menutupnya setelah aksi
    * selesai, dan tombol menampilkan status memuat. Tanpa ini perilaku lama (tutup lalu `onConfirm`). */
   confirmLoading?: boolean;
+  /** Tombol konfirmasi nonaktif (mis. peran masih dipakai pengguna). */
+  confirmDisabled?: boolean;
   /** Varian tombol batal; baku `outline`. Dialog redesign 2b memakai `ghost` (spec 6.11). */
   cancelVariant?: "outline" | "ghost";
   /** Ke mana fokus kembali setelah dialog tertutup (mis. baris terpilih di tabel IOC, yang tetap ada
@@ -55,6 +57,7 @@ export function ConfirmDialog({
   note,
   tone = "default",
   confirmLoading,
+  confirmDisabled,
   cancelVariant = "outline",
   finalFocus,
   onConfirm,
@@ -108,6 +111,7 @@ export function ConfirmDialog({
           <Button
             variant={tone === "danger" ? "destructive" : "default"}
             loading={confirmLoading}
+            disabled={confirmDisabled}
             onClick={() => {
               const text = noteText.trim();
               if (confirmLoading === undefined) handleOpenChange(false);

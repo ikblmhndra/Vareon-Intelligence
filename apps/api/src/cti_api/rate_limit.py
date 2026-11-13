@@ -31,6 +31,15 @@ async def is_rate_limited(
     return cast(int, results[-1]) > max_requests
 
 
+async def retry_after_seconds(redis: Redis, key: str, *, window_seconds: int = 60) -> int:
+    """Detik tunggu untuk header `Retry-After` setelah `is_rate_limited` menolak `key`. Redis
+    menjawab -2 untuk key yang tidak ada dan -1 untuk key tanpa expiry; jendela ini tetap
+    (percobaan saat terkunci tidak memperpanjangnya), jadi TTL adalah waktu tunggu yang tepat.
+    Clamp ke 1..`window_seconds` supaya klien tidak pernah disuruh menunggu 0 detik/selamanya."""
+    ttl = await redis.ttl(f"ratelimit:{key}")
+    return ttl if 1 <= ttl <= window_seconds else window_seconds
+
+
 PASSWORD_FAILURE_LIMIT = 5
 PASSWORD_FAILURE_WINDOW_S = 900
 

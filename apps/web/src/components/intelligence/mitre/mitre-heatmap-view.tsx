@@ -16,7 +16,7 @@ import { PresetControl } from "@/components/ui/preset-control";
 import { RowMenu } from "@/components/ui/row-menu";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { StatePanel } from "@/components/ui/state-panel";
-import { api } from "@/lib/api/client";
+import { api, proxyFetch } from "@/lib/api/client";
 import { getActiveClientId } from "@/lib/auth/client-id";
 import type { MitreHeatmapResponse } from "@/lib/api/loose-types";
 
@@ -86,7 +86,7 @@ export function MitreHeatmapView() {
     setExporting(true);
     try {
       const clientId = getActiveClientId();
-      const resp = await fetch(
+      const resp = await proxyFetch(
         `/api/proxy/api/mitre/navigator-export?view=${view}&days=${days}&top_rows=${topRows}&top_ttps=${topTtps}`,
         clientId ? { headers: { "X-Client-ID": clientId } } : undefined,
       );

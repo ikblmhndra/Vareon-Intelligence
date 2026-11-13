@@ -5,7 +5,11 @@ import { useEffect } from "react";
 import { AppShell, SHELL_COLUMN } from "@/components/app-shell/app-shell";
 import { ChangePasswordDialog } from "@/components/change-password-dialog";
 import { useAuth } from "@/components/providers/auth-provider";
+import { SessionExpiredHost, signInAgain } from "@/components/session-expired";
+import { Button } from "@/components/ui/button";
+import { Notice } from "@/components/ui/notice";
 import { Skeleton } from "@/components/ui/skeleton";
+import { getSessionState, useSessionState } from "@/lib/auth/session-expired";
 
 /** Kerangka shell selama `/api/auth/me` belum menjawab: bentuknya meniru utility bar + masthead +
  * konten (`AppShell`), jadi halaman tidak berkedip dari teks "Loading..." ke layout penuh. */
@@ -44,27 +48,48 @@ function ShellSkeleton() {
  * gak decode JWT, lihat docstring situ). */
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { status, user, logout } = useAuth();
+  const sessionState = useSessionState();
 
   useEffect(() => {
     // Cookie yang tidak valid HARUS dihapus dulu (`logout()` = POST /api/auth/logout lalu ke
     // /login). Cuma `router.replace("/login")` bikin loop: `proxy.ts` melempar /login + cookie
     // apa pun balik ke /dashboard.
-    if (status === "unauthenticated") {
-      void logout();
+    // Load penuh dengan cookie mati menyimpan tempat user (`?redirect=`); logout disengaja
+    // (`signing-out`) harus berakhir di /login polos, jadi tidak membawa path user sebelumnya.
+    if (status === "unauthenticated" && getSessionState() !== "signing-out") {
+      void logout(location.pathname + location.search);
     }
   }, [status, logout]);
 
-  if (status === "loading") {
+  // Logout disengaja: tampilkan kerangka, bukan notice "signed out" yang berkedip sebelum /login.
+  if (status === "loading" || sessionState === "signing-out") {
     return <ShellSkeleton />;
   }
 
   if (status !== "authenticated") {
-    return null;
+    // Efek di atas sedang (atau sudah gagal) keluar; jangan tampilkan layar kosong. Tombol = load
+    // penuh ke /login (hapus cookie dulu), bukan efek, jadi tidak membuat loop baru.
+    return (
+      <div className="mx-auto max-w-xl p-6">
+        <Notice
+          tone="warning"
+          title="You are signed out."
+          action={<Button onClick={() => void signInAgain()}>Sign in</Button>}
+        >
+          Sign in to continue.
+        </Notice>
+      </div>
+    );
   }
 
   if (user?.force_pw_change) {
     return <ChangePasswordDialog open forced onOpenChange={() => undefined} />;
   }
 
-  return <AppShell>{children}</AppShell>;
+  return (
+    <AppShell>
+      <SessionExpiredHost />
+      {children}
+    </AppShell>
+  );
 }
