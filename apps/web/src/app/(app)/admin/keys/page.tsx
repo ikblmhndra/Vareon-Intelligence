@@ -1,12 +1,7 @@
 "use client";
 
-import { AdminFrame } from "@/components/admin/admin-frame";
-import { SecretsSection } from "@/components/admin/secrets-section";
+import { KeysView } from "@/components/admin/keys-view";
 
 export default function AdminKeysPage() {
-  return (
-    <AdminFrame page="keys">
-      <SecretsSection />
-    </AdminFrame>
-  );
+  return <KeysView />;
 }
