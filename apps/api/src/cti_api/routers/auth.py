@@ -4,6 +4,8 @@ storage-nya yang pindah dari koleksi Mongo ke repo Postgres (Fase 2/7)."""
 
 from __future__ import annotations
 
+import datetime
+
 from cti_core.config import get_settings
 from cti_core.db.models.auth import User
 from cti_core.db.repositories.auth import (
@@ -231,7 +233,9 @@ async def init_admin(
 
 @router.get("/me")
 async def me(
-    session: AsyncSession = Depends(get_db), user: AuthedUser = Depends(require_auth)
+    session: AsyncSession = Depends(get_db),
+    user: AuthedUser = Depends(require_auth),
+    authorization: str | None = Header(None),
 ) -> dict[str, object]:
     client_ids = user["client_ids"]
     client_repo = AsyncClientRepo(session)
@@ -243,8 +247,18 @@ async def me(
         for cid, doc in zip(client_ids, client_docs, strict=True)
     }
     first_countries = clients_map.get(client_ids[0], []) if client_ids else []
+    # `require_auth` sudah menerima header ini, jadi decode tidak bisa gagal. Tidak ada refresh
+    # token, jadi `iat` = waktu sign-in sesi ini. Sengaja tidak ditaruh di `AuthedUser`: akan
+    # bocor ke setiap `{**user}`.
+    iat = decode_token(authorization.split(" ", 1)[1]).get("iat") if authorization else None
+    signed_in_at = (
+        datetime.datetime.fromtimestamp(iat, datetime.UTC).isoformat()
+        if isinstance(iat, int)
+        else None
+    )
     return {
         **user,
+        "signed_in_at": signed_in_at,
         "client_countries": first_countries,
         "clients_map": clients_map,
         "permissions": await permissions_for(session, user["role"]),

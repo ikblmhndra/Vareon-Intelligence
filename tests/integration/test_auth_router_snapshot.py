@@ -11,6 +11,7 @@ di sini karena lifespan `create_app()` sengaja gak jalan lewat
 from __future__ import annotations
 
 import asyncio
+import datetime
 import time
 from collections.abc import Callable
 from typing import Any
@@ -33,6 +34,7 @@ _NORMALIZE = path_type(
         r"(.*\.)?access_token$": (str,),
         r"(.*\.)?created_at$": (str,),
         r"(.*\.)?last_sign_in$": (str,),
+        r"(.*\.)?signed_in_at$": (str,),
         r"(.*\.)?timestamp$": (str,),
     },
     regex=True,
@@ -150,7 +152,21 @@ async def test_me(
 ) -> None:
     resp = await api_client.get("/api/auth/me", headers=auth_header())
     assert resp.status_code == 200
-    assert resp.json() == snapshot
+    assert resp.json() == snapshot(matcher=_NORMALIZE)
+
+
+async def test_me_signed_in_at_matches_token_iat(
+    api_client: AsyncClient, auth_header: Callable[..., dict[str, str]]
+) -> None:
+    headers = auth_header()
+    iat = decode_token(headers["Authorization"].split(" ", 1)[1])["iat"]
+    resp = await api_client.get("/api/auth/me", headers=headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert datetime.datetime.fromisoformat(body["signed_in_at"]) == datetime.datetime.fromtimestamp(
+        iat, datetime.UTC
+    )
+    assert body["signed_in_at"].endswith("+00:00")
 
 
 async def test_me_multiple_clients(

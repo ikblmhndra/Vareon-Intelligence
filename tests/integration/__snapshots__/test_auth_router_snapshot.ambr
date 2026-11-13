@@ -151,6 +151,7 @@
       'manage_api_tokens',
     ]),
     'role': 'superadmin',
+    'signed_in_at': str,
     'username': 'tester',
   })
 # ---
