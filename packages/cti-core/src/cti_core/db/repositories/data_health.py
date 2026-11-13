@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from cti_core.db.models.article import Article, RejectedArticle
 from cti_core.db.models.enrich_job import EnrichJob
 from cti_core.db.models.indicator import Indicator
+from cti_core.db.models.scraper import ScraperRun
 from cti_core.db.models.tweet import Tweet
 
 # Kartu yang benar-benar dicek provider: `raw.skipped` kosong. Ditulis sebagai SQL mentah
@@ -44,6 +45,19 @@ class IocCoverage:
     enriched: int
 
 
+@dataclass(frozen=True)
+class PipelineWindow:
+    items_found: int
+    items_new: int
+    articles_published: int
+
+
+@dataclass(frozen=True)
+class PipelineTotals:
+    last_24h: PipelineWindow
+    last_7d: PipelineWindow
+
+
 class AsyncDataHealthRepo:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -61,6 +75,32 @@ class AsyncDataHealthRepo:
         ).where(EnrichJob.state == "failed")
         f24, f7, pending, last = (await self.session.execute(stmt)).one()
         return EnrichmentFailures(int(f24), int(f7), int(pending), last)
+
+    async def pipeline_totals(self, now: datetime.datetime) -> PipelineTotals:
+        """Item yang diambil, item baru, dan artikel terbit per jendela 24 jam / 7 hari.
+
+        Semua status `scraper_runs` ikut dihitung (termasuk `running`): angka ini volume kerja
+        pipeline, bukan keberhasilan. Dry run tidak menulis baris, jadi tidak pernah masuk.
+        "Terbit" = `articles.first_seen_at` (C8; tabel `articles` tidak punya `created_at`).
+        Kedua scan sengaja tanpa indeks baru: tabelnya dibatasi retensi dan 4b tanpa migrasi
+        (spec 9)."""
+        d1 = now - datetime.timedelta(hours=24)
+        d7 = now - datetime.timedelta(days=7)
+        at = ScraperRun.started_at
+        runs = select(
+            func.coalesce(func.sum(ScraperRun.items_found).filter(at >= d1), 0),
+            func.coalesce(func.sum(ScraperRun.items_new).filter(at >= d1), 0),
+            func.coalesce(func.sum(ScraperRun.items_found), 0),
+            func.coalesce(func.sum(ScraperRun.items_new), 0),
+        ).where(at >= d7)
+        f1, n1, f7, n7 = (await self.session.execute(runs)).one()
+        first = Article.first_seen_at
+        arts = select(func.count().filter(first >= d1), func.count()).where(first >= d7)
+        a1, a7 = (await self.session.execute(arts)).one()
+        return PipelineTotals(
+            PipelineWindow(int(f1), int(n1), int(a1)),
+            PipelineWindow(int(f7), int(n7), int(a7)),
+        )
 
     async def processed_since(self, since: datetime.datetime) -> int:
         """Artikel yang SELESAI diproses pipeline sejak `since`: diterima (`articles`) ditambah

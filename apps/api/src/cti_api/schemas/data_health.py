@@ -22,6 +22,19 @@ class EnrichmentHealthOut(BaseModel):
     last_failure_at: str | None
 
 
+class PipelineWindowOut(BaseModel):
+    items_found: int
+    """Jumlah `items_found` semua run scraper yang dimulai dalam jendela (semua status)."""
+    items_new: int
+    articles_published: int
+    """Artikel dengan `first_seen_at` dalam jendela."""
+
+
+class PipelineHealthOut(BaseModel):
+    last_24h: PipelineWindowOut
+    last_7d: PipelineWindowOut
+
+
 class QueueHealthOut(BaseModel):
     enrich_depth: int | None
     """`LLEN enrich` di broker; `None` kalau Redis tidak bisa dibaca."""
@@ -150,6 +163,7 @@ class DataHealthOut(BaseModel):
     """ISO UTC saat angka dihitung (cache 60 detik per proses)."""
     scrapers: ScraperHealthSummary
     enrichment: EnrichmentHealthOut
+    pipeline: PipelineHealthOut
     queues: QueueHealthOut
     sources: SourceFreshnessOut
     ioc_enrichment: list[IocEnrichmentTypeOut]

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import datetime
 import time
+from dataclasses import asdict
 from typing import Literal
 
 from cti_core.config import get_settings
@@ -37,6 +38,8 @@ from cti_api.schemas.data_health import (
     LlmHealthOut,
     LlmQueueOut,
     LlmTaskUsageOut,
+    PipelineHealthOut,
+    PipelineWindowOut,
     QueueHealthOut,
     RelevanceHealthOut,
     SigmaHealthOut,
@@ -243,6 +246,7 @@ async def _build(session: AsyncSession, redis: Redis, now: datetime.datetime) ->
     failures = await repo.enrichment_failures(now)
     processed = await repo.processed_since(now - datetime.timedelta(days=7))
     coverage = await repo.ioc_coverage_by_type()
+    totals = await repo.pipeline_totals(now)
     return DataHealthOut(
         generated_at=now.isoformat(),
         scrapers=scrapers,
@@ -252,6 +256,10 @@ async def _build(session: AsyncSession, redis: Redis, now: datetime.datetime) ->
             processed_7d=processed,
             pending_replay=failures.pending_replay,
             last_failure_at=_iso(failures.last_failure_at),
+        ),
+        pipeline=PipelineHealthOut(
+            last_24h=PipelineWindowOut(**asdict(totals.last_24h)),
+            last_7d=PipelineWindowOut(**asdict(totals.last_7d)),
         ),
         queues=QueueHealthOut(
             enrich_depth=await _enrich_depth(redis),

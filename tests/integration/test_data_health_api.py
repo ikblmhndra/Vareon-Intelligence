@@ -5,11 +5,13 @@ reproduksi audit -- antrian job enrichment (`enrich_jobs`) dan breaker LLM, keda
 from __future__ import annotations
 
 import datetime
+import uuid
 
-from cti_core.db.models.article import RejectedArticle
+from cti_core.db.models.article import Article, RejectedArticle
 from cti_core.db.models.enrich_job import EnrichJob
 from cti_core.db.models.indicator import Indicator
 from cti_core.db.models.llm_call import LlmCall
+from cti_core.db.models.scraper import ScraperRun
 from cti_core.db.models.story import Story
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.story import AsyncStoryRepo
@@ -323,3 +325,58 @@ async def test_data_health_queue_reports_open_and_half_open_breaker(
     await api_session.flush()
     queue = (await api_client.get("/api/data-health", headers=auth_header())).json()["llm"]["queue"]
     assert queue["breaker"] == "half_open"
+
+
+def _run(status: str, age: datetime.timedelta, found: int, new: int) -> ScraperRun:
+    return ScraperRun(
+        run_id=str(uuid.uuid4()),
+        scraper_id="pipe-test",
+        status=status,
+        started_at=datetime.datetime.now(datetime.UTC) - age,
+        items_found=found,
+        items_new=new,
+    )
+
+
+async def test_data_health_pipeline_windows(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header, fake_redis
+) -> None:
+    await api_session.execute(delete(ScraperRun))
+    await api_session.execute(delete(Article))
+    await api_session.execute(delete(RejectedArticle))
+    h = datetime.timedelta(hours=1)
+    d = 24 * h
+    api_session.add_all(
+        [
+            _run("ok", h, 10, 4),
+            _run("running", 2 * h, 3, 1),  # semua status ikut dihitung
+            _run("ok", 30 * h, 20, 5),
+            _run("ok", 8 * d, 100, 50),  # di luar 7 hari
+            _rejected(1, None, h),  # RejectedArticle tidak dibaca
+        ]
+    )
+    repo = AsyncArticleRepo(api_session)
+    now = datetime.datetime.now(datetime.UTC)
+    for n, age in enumerate((h, 3 * d, 8 * d)):
+        art = await repo.upsert(
+            url=f"https://example.com/p{n}", title=f"P{n}", source="S", posted_on=now.date()
+        )
+        art.first_seen_at = now - age
+    await api_session.flush()
+
+    body = (await api_client.get("/api/data-health", headers=auth_header())).json()
+    assert body["pipeline"] == {
+        "last_24h": {"items_found": 13, "items_new": 5, "articles_published": 1},
+        "last_7d": {"items_found": 33, "items_new": 10, "articles_published": 2},
+    }
+
+
+async def test_data_health_pipeline_empty(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header, fake_redis
+) -> None:
+    await api_session.execute(delete(ScraperRun))
+    await api_session.execute(delete(Article))
+    await api_session.flush()
+    body = (await api_client.get("/api/data-health", headers=auth_header())).json()
+    zero = {"items_found": 0, "items_new": 0, "articles_published": 0}
+    assert body["pipeline"] == {"last_24h": zero, "last_7d": zero}
