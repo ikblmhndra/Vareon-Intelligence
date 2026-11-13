@@ -5,8 +5,10 @@ reproduksi audit -- antrian job enrichment (`enrich_jobs`) dan breaker LLM, keda
 from __future__ import annotations
 
 import datetime
+import itertools
 import uuid
 
+from cti_api.services import data_health as service
 from cti_core.db.models.article import Article, RejectedArticle
 from cti_core.db.models.enrich_job import EnrichJob
 from cti_core.db.models.indicator import Indicator
@@ -14,10 +16,11 @@ from cti_core.db.models.llm_call import LlmCall
 from cti_core.db.models.scraper import ScraperRun
 from cti_core.db.models.story import Story
 from cti_core.db.repositories.article import AsyncArticleRepo
+from cti_core.db.repositories.llm_call import AsyncLlmCallRepo
 from cti_core.db.repositories.story import AsyncStoryRepo
 from cti_core.urlkit import url_hash
 from httpx import AsyncClient
-from sqlalchemy import delete
+from sqlalchemy import delete, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -423,3 +426,75 @@ async def test_data_health_queue_depths_all_or_nothing(
     queues = (await api_client.get("/api/data-health", headers=auth_header())).json()["queues"]
     assert queues["depths"] is None
     assert queues["enrich_depth"] is None
+
+
+_FIXED_NOW = datetime.datetime(2026, 11, 10, 14, 30, tzinfo=datetime.UTC)
+
+
+def _call_at(task: str, status: str, at: datetime.datetime) -> LlmCall:
+    row = _call(task, status, datetime.timedelta(0))
+    row.at = at
+    return row
+
+
+def _seed_hours() -> list[LlmCall]:
+    at = datetime.datetime(2026, 11, 10, 12, 10, tzinfo=datetime.UTC)
+    return [
+        _call_at("classify", "ok", at),
+        _call_at("ttp", "error", at),
+        _call_at("exec_brief", "empty", at),
+        _call_at("classify", "ok", datetime.datetime(2026, 11, 9, 15, 0, tzinfo=datetime.UTC)),
+        _call_at("classify", "ok", datetime.datetime(2026, 11, 9, 14, 59, 59, tzinfo=datetime.UTC)),
+    ]
+
+
+def _check_hours(hours: list) -> None:
+    assert len(hours) == 24
+    assert hours[0]["hour"] == "2026-11-09T15:00:00+00:00"
+    assert hours[-1]["hour"] == "2026-11-10T14:00:00+00:00"
+    assert hours[0]["ok"] == 1
+    twelve = next(x for x in hours if x["hour"] == "2026-11-10T12:00:00+00:00")
+    assert (twelve["ok"], twelve["failed"]) == (1, 2)  # task berbeda dijumlahkan
+    assert sum(x["ok"] for x in hours) == 2  # 14:59:59 tanggal 9 di luar jendela
+
+
+async def test_data_health_llm_calls_per_hour(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header, fake_redis
+) -> None:
+    await api_session.execute(delete(LlmCall))
+    await api_session.flush()
+    hours = (await api_client.get("/api/data-health", headers=auth_header())).json()["llm"][
+        "calls_per_hour"
+    ]
+    assert len(hours) == 24
+    assert all(x["ok"] == 0 and x["failed"] == 0 for x in hours)
+    stamps = [datetime.datetime.fromisoformat(x["hour"]) for x in hours]
+    assert all(b - a == datetime.timedelta(hours=1) for a, b in itertools.pairwise(stamps))
+    assert hours[-1]["hour"] == (
+        datetime.datetime.now(datetime.UTC).replace(minute=0, second=0, microsecond=0).isoformat()
+    )
+
+    await api_session.execute(delete(LlmCall))
+    api_session.add_all(_seed_hours())
+    await api_session.flush()
+    _check_hours(
+        [
+            h.model_dump()
+            for h in await service._calls_per_hour(AsyncLlmCallRepo(api_session), _FIXED_NOW)
+        ]
+    )
+
+
+async def test_data_health_llm_calls_per_hour_ignores_session_timezone(
+    api_session: AsyncSession,
+) -> None:
+    await api_session.execute(delete(LlmCall))
+    api_session.add_all(_seed_hours())
+    await api_session.flush()
+    await api_session.execute(text("SET LOCAL TIME ZONE 'Asia/Kolkata'"))
+    _check_hours(
+        [
+            h.model_dump()
+            for h in await service._calls_per_hour(AsyncLlmCallRepo(api_session), _FIXED_NOW)
+        ]
+    )

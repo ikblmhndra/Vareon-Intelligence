@@ -37,6 +37,7 @@ from cti_api.schemas.data_health import (
     IocEnrichmentTypeOut,
     LlmErrorOut,
     LlmHealthOut,
+    LlmHourOut,
     LlmQueueOut,
     LlmTaskUsageOut,
     PipelineHealthOut,
@@ -112,6 +113,18 @@ def _story_out(stats: StoryStats) -> StoryHealthOut:
     )
 
 
+async def _calls_per_hour(calls: AsyncLlmCallRepo, now: datetime.datetime) -> list[LlmHourOut]:
+    """24 jam penuh berakhir di jam berjalan; jam kosong diisi nol supaya grafik tidak bolong."""
+    start = now.replace(minute=0, second=0, microsecond=0) - datetime.timedelta(hours=23)
+    found = await calls.calls_per_hour(start)
+    out: list[LlmHourOut] = []
+    for i in range(24):
+        bucket = start + datetime.timedelta(hours=i)
+        ok, failed = found.get(bucket, (0, 0))
+        out.append(LlmHourOut(hour=bucket.isoformat(), ok=ok, failed=failed))
+    return out
+
+
 async def _llm_health(
     session: AsyncSession, repo: AsyncDataHealthRepo, now: datetime.datetime
 ) -> LlmHealthOut:
@@ -151,6 +164,7 @@ async def _llm_health(
         usage_7d=_usage_out(await calls.usage_by_task(now - datetime.timedelta(days=7))),
         stories_24h=_story_out(await stories.stats_since(now - datetime.timedelta(hours=24))),
         stories_7d=_story_out(await stories.stats_since(now - datetime.timedelta(days=7))),
+        calls_per_hour=await _calls_per_hour(calls, now),
     )
 
 

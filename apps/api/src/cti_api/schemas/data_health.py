@@ -102,6 +102,14 @@ class StoryHealthOut(BaseModel):
     """Artikel yang menempel ke story lewat aturan judul-embedding (`title_embedding`)."""
 
 
+class LlmHourOut(BaseModel):
+    hour: str
+    """Awal jam UTC, ISO 8601 (`...T14:00:00+00:00`)."""
+    ok: int
+    failed: int
+    """Baris `error` + `empty`, semua task."""
+
+
 class LlmHealthOut(BaseModel):
     status: Literal["ok", "failing", "unknown"]
     """Panggilan terbaru task classify/ttp: ok -> ok, error/empty -> failing, kosong -> unknown."""
@@ -113,6 +121,8 @@ class LlmHealthOut(BaseModel):
     usage_7d: list[LlmTaskUsageOut]
     stories_24h: StoryHealthOut
     stories_7d: StoryHealthOut
+    calls_per_hour: list[LlmHourOut]
+    """24 bucket per jam UTC, terlama dulu; jam tanpa panggilan = nol, bukan hilang."""
 
 
 class RelevanceHealthOut(BaseModel):
