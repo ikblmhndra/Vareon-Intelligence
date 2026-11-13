@@ -1,11 +1,15 @@
 import type { NextConfig } from "next";
 
+import pkg from "./package.json";
+
 const nextConfig: NextConfig = {
   // Build "standalone": `.next/standalone/server.js` + cuma node_modules yang
   // beneran dipakai (file tracing) -- image `web` (docker/web.Dockerfile)
   // jalan tanpa `pnpm install` penuh, jauh lebih kecil.
   output: "standalone",
   poweredByHeader: false,
+  // Versi build untuk UI (login/footer); di-inline saat build, bukan kunci env file.
+  env: { NEXT_PUBLIC_APP_VERSION: pkg.version },
   // Halaman lama digantikan Entities (P7c); bookmark lama tetap sampai.
   async redirects() {
     return [
