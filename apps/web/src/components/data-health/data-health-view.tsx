@@ -71,12 +71,20 @@ function Tile({
   chip?: string;
 }) {
   return (
-    <div className="relative">
-      <StatTile label={label} value={<span className="font-code">{value}</span>} sub={sub} tone={TONE_STYLE[tone]} />
-      <div className="absolute top-3 right-3">
-        <ToneChip tone={tone}>{chip}</ToneChip>
-      </div>
-    </div>
+    <StatTile
+      className="h-full"
+      label={label}
+      value={<span className="font-code text-2xl break-words">{value}</span>}
+      sub={
+        <>
+          <span className="mb-1 block">
+            <ToneChip tone={tone}>{chip}</ToneChip>
+          </span>
+          {sub}
+        </>
+      }
+      tone={TONE_STYLE[tone]}
+    />
   );
 }
 
@@ -194,7 +202,9 @@ export function DataHealthView() {
         ? plural(status.bad, "1 area needs action", "{n} areas need action")
         : status.warn > 0
           ? plural(status.warn, "1 area to watch", "{n} areas to watch")
-          : "All areas OK";
+          : status.tone === "unknown"
+            ? "Status unknown"
+            : "All areas OK";
     const statusSub =
       (problems.length === 0
         ? "No scraper needs attention"
