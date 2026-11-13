@@ -1,54 +1,54 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api/client";
 import type { AttackDomainStatus } from "@/lib/api/loose-types";
-import { formatWib, relativeTime } from "@/lib/cve/freshness";
+import { relativeTime, formatWib } from "@/lib/cve/freshness";
+import { errorStatus } from "@/lib/exec/query";
+import { fmtCompactAge, fmtTime, browserZoneName } from "@/lib/format";
 import { byProblemSeverity, useScraperHealth } from "@/lib/scrapers/health";
+import { noClientRetry, unwrap } from "@/lib/scrapers/queries";
+import {
+  TONE_STYLE,
+  cveIngestTone,
+  failedJobsTone,
+  freshnessRows,
+  llmJobsTone,
+  pageStatus,
+  pipelineTone,
+  queueTone,
+  relevanceTone,
+  sigmaTone,
+  worstFreshness,
+  type FreshnessRow,
+  type Tone,
+} from "@/lib/data-health/tones";
+import { usePageTitle } from "@/lib/use-page-title";
+import { HowToRead } from "@/components/data-health/how-to-read";
+import { ToneChip } from "@/components/data-health/tone-chip";
+import { PageHeader } from "@/components/page-header";
+import { Button } from "@/components/ui/button";
+import { Notice } from "@/components/ui/notice";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StatePanel } from "@/components/ui/state-panel";
+import { StatTile } from "@/components/ui/stat-tile";
 import { StatusBadge } from "@/components/scrapers/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
-type Tone = "ok" | "warn" | "bad" | "unknown";
-
-const HOUR_MS = 3_600_000;
-
-const TONE_STYLE: Record<Tone, string> = {
-  ok: "bg-success/12 text-success-text",
-  warn: "bg-warning/15 text-warning-text",
-  bad: "bg-destructive/15 text-destructive-text",
-  unknown: "bg-muted-foreground/12 text-muted-foreground",
-};
-
-const TONE_LABEL: Record<Tone, string> = { ok: "OK", warn: "Check", bad: "Problem", unknown: "Unknown" };
-
-/** Umur cap waktu dalam jam; `null` kalau kosong/tidak valid (`relativeTime` menulis "NaNd ago"). */
-function ageHours(iso: string | null | undefined): number | null {
-  if (!iso) return null;
-  const ms = Date.parse(iso);
-  return Number.isNaN(ms) ? null : (Date.now() - ms) / HOUR_MS;
-}
-
-/** "3h 12m ago · 23 Oct 2026, 10:04 WIB", atau "never" -- dengan penjaga nilai kosong/tidak valid. */
+/** "3h 12m ago · 23 Oct 2026, 10:04 WIB", atau "never" -- dengan penjaga nilai kosong/tidak valid.
+ * Sementara: dipakai kartu lama sampai Task 14 menggantinya dengan `fmtAgo`/`fmtDateTime`. */
 function when(iso: string | null | undefined): string {
   if (!iso || Number.isNaN(Date.parse(iso))) return "never";
   return `${relativeTime(iso)} · ${formatWib(iso)}`;
 }
 
-function byAge(iso: string | null | undefined, warnH: number, badH: number): Tone {
-  const h = ageHours(iso);
-  if (h === null) return "unknown";
-  return h > badH ? "bad" : h > warnH ? "warn" : "ok";
-}
-
 function pct(part: number, whole: number): string {
-  return whole > 0 ? `${Math.round((part / whole) * 100)}%` : "—";
+  return whole > 0 ? `${Math.round((part / whole) * 100)}%` : "0%";
 }
-
 const CELL = "px-2 py-1.5 text-xs sm:text-sm";
 const HEAD = "h-8 px-2 text-xs";
 const NUM = cn(CELL, "text-right tabular-nums whitespace-nowrap");
@@ -59,132 +59,276 @@ function pair(a: number | null | undefined, b: number | null | undefined, unit =
   return `${f(a)} / ${f(b)}`;
 }
 
+
+function plural(n: number, one: string, many: string): string {
+  return n === 1 ? one : many.replace("{n}", String(n));
+}
+
+/** Tile statis: `StatTile` tidak punya slot chip, jadi chip nada ditempel di pojok kanan atas. */
+function Tile({
+  label,
+  value,
+  sub,
+  tone,
+  chip,
+}: {
+  label: string;
+  value: ReactNode;
+  sub: ReactNode;
+  tone: Tone;
+  chip?: string;
+}) {
+  return (
+    <div className="relative">
+      <StatTile label={label} value={<span className="font-code">{value}</span>} sub={sub} tone={TONE_STYLE[tone]} />
+      <div className="absolute top-3 right-3">
+        <ToneChip tone={tone}>{chip}</ToneChip>
+      </div>
+    </div>
+  );
+}
+
+function LoadingSkeleton() {
+  return (
+    <>
+      <p role="status" className="sr-only">
+        Loading data health
+      </p>
+      <div aria-hidden>
+        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          {Array.from({ length: 6 }, (_, i) => (
+            <Skeleton key={i} className="h-[88px] rounded-lg" />
+          ))}
+        </div>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {Array.from({ length: 4 }, (_, i) => (
+            <Skeleton key={i} className="h-56 rounded-2xl" />
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
+
 /** Halaman Data health (ROADMAP #24 PR-B): `GET /api/data-health` + kesegaran CVE (`/api/cve/freshness`)
- * dan ATT&CK (`/api/attack/status`) yang sudah ada, plus cakupan artikel dari `/api/dashboard`. Ambang
- * warna ditulis di "How to read this page" (bukan `title=`), dan setiap nada punya label teks. */
+ * dan ATT&CK (`/api/attack/status`) yang sudah ada, plus cakupan artikel dari `/api/dashboard`. Aturan nada
+ * ada di `lib/data-health/tones.ts`; ambangnya ditulis di "How to read this page" (bukan `title=`). "Sekarang"
+ * dibaca sekali di queryFn (`nowMs`) dan dipakai semua umur di halaman, bukan `Date.now()` saat render. */
 export function DataHealthView() {
+  usePageTitle("Data health");
+  const [howOpen, setHowOpen] = useState(false);
   const health = useQuery({
     queryKey: ["data-health"],
-    queryFn: async () => {
-      const { data, error } = await api.GET("/api/data-health");
-      if (error) throw error;
-      return data;
-    },
+    queryFn: async () => ({
+      d: unwrap(await api.GET("/api/data-health"), "Could not load data health"),
+      nowMs: Date.now(),
+    }),
     refetchInterval: 60_000,
+    retry: noClientRetry,
   });
   // Query yang sama dengan `/scrapers` (cache dibagi): status scraper `monitor_x` untuk X Intel.
   const scrapers = useScraperHealth();
   const cve = useQuery({
     queryKey: ["cve", "freshness", null],
-    queryFn: async () => {
-      const { data, error } = await api.GET("/api/cve/freshness", { params: { query: {} } });
-      if (error) throw error;
-      return data;
-    },
+    queryFn: async () =>
+      unwrap(await api.GET("/api/cve/freshness", { params: { query: {} } }), "Could not load CVE freshness"),
+    retry: noClientRetry,
   });
   const attack = useQuery({
     queryKey: ["intelligence", "attack-status"],
-    queryFn: async () => {
-      const { data, error } = await api.GET("/api/attack/status");
-      if (error) throw error;
-      return data as unknown as AttackDomainStatus[];
-    },
+    queryFn: async () =>
+      unwrap(await api.GET("/api/attack/status"), "Could not load ATT&CK status") as unknown as AttackDomainStatus[],
+    retry: noClientRetry,
   });
   const dashboard = useQuery({
     queryKey: ["data-health", "coverage"],
-    queryFn: async () => {
-      const { data, error } = await api.GET("/api/dashboard");
-      if (error) throw error;
-      return data;
-    },
+    queryFn: async () => unwrap(await api.GET("/api/dashboard"), "Could not load coverage"),
+    retry: noClientRetry,
   });
 
-  if (health.isPending) {
-    return (
-      <div aria-hidden className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        {Array.from({ length: 4 }, (_, i) => (
-          <Skeleton key={i} className="h-56 rounded-2xl" />
-        ))}
-      </div>
+  const loaded = health.data;
+  let header: ReactNode;
+  let content: ReactNode;
+
+  if (!loaded) {
+    header = (
+      <PageHeader kicker="OPERATIONS" title="Data health" description="Is the pipeline feeding the newsroom?" />
     );
-  }
-  if (health.isError || !health.data) {
-    return <p className="text-sm text-destructive-text">Failed to load data health.</p>;
-  }
+    content = health.isError ? (
+      errorStatus(health.error) === 403 ? (
+        <StatePanel variant="no-access" title="You need the view_ops permission to see data health" />
+      ) : (
+        <StatePanel
+          variant="error"
+          title="Failed to load data health"
+          action={
+            <Button variant="outline" size="sm" onClick={() => void health.refetch()}>
+              Retry
+            </Button>
+          }
+        />
+      )
+    ) : (
+      <LoadingSkeleton />
+    );
+  } else {
+    const { d, nowMs } = loaded;
+    const sched = d.scrapers.scheduler;
+    const problems = byProblemSeverity(d.scrapers.problems);
+    const fleetTotal = Object.values(d.scrapers.counts).reduce((a, b) => a + b, 0);
 
-  const d = health.data;
-  const sched = d.scrapers.scheduler;
-  const problems = byProblemSeverity(d.scrapers.problems);
-  const fleetTotal = Object.values(d.scrapers.counts).reduce((a, b) => a + b, 0);
-  const pipelineTone: Tone = sched.state !== "ok" ? "bad" : problems.length ? "warn" : "ok";
+    const pipeT = pipelineTone(d.scrapers);
+    const queueT = queueTone(d.queues);
+    const llmT = llmJobsTone(d.llm);
+    const fresh = freshnessRows(
+      {
+        sources: d.sources,
+        cveCheckedAt: cve.data?.last_checked_at,
+        cveState: cve.data ? "ready" : cve.isError ? "failed" : "loading",
+        attack: attack.data,
+        attackState: attack.data ? "ready" : attack.isError ? "failed" : "loading",
+      },
+      nowMs,
+    );
+    const worst: FreshnessRow = worstFreshness(fresh);
+    const relT = relevanceTone(d.relevance);
+    const failT = failedJobsTone(d.enrichment);
+    const cveT = cveIngestTone(d.cve_ingest);
+    const sigT = sigmaTone(d.sigma);
+    const status = pageStatus([pipeT, queueT, llmT, worst.tone, relT, failT, cveT, sigT]);
 
-  const e = d.enrichment;
-  const failRate = e.processed_7d > 0 ? e.failed_7d / e.processed_7d : 0;
-  const enrichTone: Tone = failRate >= 0.1 || e.failed_24h >= 5 ? "bad" : e.pending_replay > 0 ? "warn" : "ok";
+    const statusTitle =
+      status.bad > 0
+        ? plural(status.bad, "1 area needs action", "{n} areas need action")
+        : status.warn > 0
+          ? plural(status.warn, "1 area to watch", "{n} areas to watch")
+          : "All areas OK";
+    const statusSub =
+      (problems.length === 0
+        ? "No scraper needs attention"
+        : plural(problems.length, "1 scraper needs attention", "{n} scrapers need attention")) +
+      (status.bad > 0 && status.warn > 0 ? ` · ${status.warn} to watch` : "") +
+      (status.unknown > 0 ? ` · ${status.unknown} unknown` : "");
 
-  const q = d.queues;
-  const queueTone: Tone =
-    q.enrich_depth === null
-      ? "unknown"
-      : q.enrich_depth >= q.enrich_max_depth
-        ? "bad"
-        : q.enrich_depth >= q.enrich_max_depth / 2
-          ? "warn"
-          : "ok";
+    header = (
+      <PageHeader
+        kicker="OPERATIONS"
+        title="Data health"
+        description={`Generated ${fmtTime(d.generated_at)} ${browserZoneName()} · numbers cached for up to 60 s · is the pipeline feeding the newsroom?`}
+        actions={
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+            <a
+              href="#how-to-read"
+              onClick={() => setHowOpen(true)}
+              className="rounded-md text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
+            >
+              How to read this page →
+            </a>
+            <div className="flex items-start gap-2.5">
+              <ToneChip tone={status.tone} />
+              <div>
+                <p className="text-sm font-semibold text-foreground">{statusTitle}</p>
+                <p className="text-xs text-muted-foreground">{statusSub}</p>
+              </div>
+            </div>
+          </div>
+        }
+      />
+    );
 
-  const monitorX = (scrapers.data?.problems ?? []).find((p) => p.id === "monitor_x");
-  const attackDomains = attack.data ?? [];
-  const attackTone: Tone = attack.isError
-    ? "unknown"
-    : attackDomains.some((x) => x.status === "error")
-      ? "bad"
-      : attackDomains.some((x) => (ageHours(x.last_sync) ?? Infinity) > 30 * 24)
-        ? "warn"
-        : attackDomains.length
-          ? "ok"
-          : "unknown";
-  const newestAttackSync = attackDomains
-    .map((x) => x.last_sync)
-    .filter((x): x is string => !!x && !Number.isNaN(Date.parse(x)))
-    .sort()
-    .at(-1);
+    const e = d.enrichment;
+    const q = d.queues;
+    const monitorX = (scrapers.data?.problems ?? []).find((p) => p.id === "monitor_x");
+    const rel = d.relevance;
+    const frac = (x: number | null) => (x === null ? "—" : `${Math.round(x * 100)}%`);
+    const cov = dashboard.data;
+    const sigma = d.sigma;
+    const ingest = d.cve_ingest;
+    const cveReport = ingest.last_reconcile;
 
-  const rel = d.relevance;
-  const relTone: Tone = rel.mode === "off" || rel.gate_state === null ? "unknown" : "ok";
-  const frac = (x: number | null) => (x === null ? "—" : `${Math.round(x * 100)}%`);
+    const llm = d.llm;
+    const pendingJobs = llm.queue.pending_classify + llm.queue.pending_ttp;
+    const llmStatusTone: Tone = llm.status === "ok" ? "ok" : llm.status === "failing" ? "bad" : "unknown";
+    const le = llm.last_error;
+    const llmStatusValue =
+      llm.status === "failing"
+        ? le
+          ? `${[le.http_status, le.error_type].filter((x) => x !== null).join(" ") || "error"} · ${le.task} · ${when(le.at)}`
+          : "latest call returned no choices"
+        : llm.status === "ok"
+          ? `last successful call ${when(llm.last_ok_at)}`
+          : "no calls recorded yet";
+    const usage7d = new Map(llm.usage_7d.map((u) => [u.task, u]));
+    const llmTasks = [...new Set([...llm.usage_24h.map((u) => u.task), ...usage7d.keys()])].sort();
+    const usage24h = new Map(llm.usage_24h.map((u) => [u.task, u]));
 
-  const cov = dashboard.data;
+    header = (
+      <>
+        {header}
+        {health.isError && (
+          <Notice tone="warning" title={`Could not refresh · showing numbers from ${fmtTime(d.generated_at)}`} className="mb-4" />
+        )}
+      </>
+    );
 
-  const sigma = d.sigma;
-  const ingest = d.cve_ingest;
-  const cveTone: Tone =
-    ingest.status === "ok" ? "ok" : ingest.status === "amber" ? "warn" : ingest.status === "red" ? "bad" : "unknown";
-  const cveReport = ingest.last_reconcile;
-  const sigmaTone: Tone = sigma.status === "ok" ? "ok" : sigma.status === "amber" ? "warn" : "bad";
+    content = (
+      <>
+        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <Tile
+            label="PIPELINE"
+            value={`${d.scrapers.counts.ok ?? 0} / ${fleetTotal}`}
+            sub={`scrapers healthy, beat ${sched.state === "ok" ? "alive" : sched.state === "stale" ? "stale" : "heartbeat missing"}`}
+            tone={pipeT}
+          />
+          <Tile
+            label="ENRICH QUEUE"
+            value={q.enrich_depth ?? "–"}
+            sub={q.enrich_depth === null ? "Redis not reachable" : `of ${q.enrich_max_depth} before backpressure`}
+            tone={queueT}
+          />
+          <Tile
+            label="LLM JOBS"
+            value={pendingJobs}
+            sub={
+              pendingJobs === 0
+                ? "none pending"
+                : llm.queue.oldest_pending_at
+                  ? `pending, oldest ${fmtCompactAge(llm.queue.oldest_pending_at, nowMs)} ago`
+                  : "pending"
+            }
+            tone={llmT}
+          />
+          <Tile
+            label="FRESHNESS"
+            value={worst.state === "ready" && worst.at ? fmtCompactAge(worst.at, nowMs) : "–"}
+            sub={worst.tileSub}
+            tone={worst.tone}
+          />
+          <Tile
+            label="RELEVANCE"
+            value={
+              rel.mode === "off" ? "Off" : rel.holdout_agreement === null ? "–" : `${(rel.holdout_agreement * 100).toFixed(1)}%`
+            }
+            sub={
+              rel.mode === "off"
+                ? "relevance model is off"
+                : rel.gate_state === null
+                  ? "no active model yet"
+                  : `holdout agreement, gate ${rel.gate_state === "gate" ? "on" : "off (shadow)"}`
+            }
+            tone={relT}
+            chip={rel.mode === "off" ? "OFF" : undefined}
+          />
+          <Tile
+            label="FAILED JOBS"
+            value={e.failed_24h}
+            sub={`created in 24 h, ${e.pending_replay} waiting`}
+            tone={failT}
+          />
+        </div>
 
-  const llm = d.llm;
-  const llmTone: Tone = llm.status === "ok" ? "ok" : llm.status === "failing" ? "bad" : "unknown";
-  const le = llm.last_error;
-  const llmStatusValue =
-    llm.status === "failing"
-      ? le
-        ? `${[le.http_status, le.error_type].filter((x) => x !== null).join(" ") || "error"} · ${le.task} · ${when(le.at)}`
-        : "latest call returned no choices"
-      : llm.status === "ok"
-        ? `last successful call ${when(llm.last_ok_at)}`
-        : "no calls recorded yet";
-  const usage7d = new Map(llm.usage_7d.map((u) => [u.task, u]));
-  const llmTasks = [...new Set([...llm.usage_24h.map((u) => u.task), ...usage7d.keys()])].sort();
-  const usage24h = new Map(llm.usage_24h.map((u) => [u.task, u]));
-
-  return (
-    <div className="pb-10">
-      <p className="mb-6 text-sm text-muted-foreground">
-        Updated {when(d.generated_at)}. Numbers are cached for up to 60 seconds and refresh every minute.
-      </p>
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Section title="Pipeline" tone={pipelineTone}>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <Section title="Pipeline" tone={pipeT}>
           <Row label="Scheduler (beat)" value={sched.state === "ok" ? `alive, last tick ${when(sched.last_tick_at)}` : `${sched.state.toUpperCase()}, last tick ${when(sched.last_tick_at)}`} tone={sched.state === "ok" ? "ok" : "bad"} />
           <Row label="Scrapers" value={`${fleetTotal} total · ${d.scrapers.counts.ok ?? 0} ok · ${d.scrapers.counts.disabled ?? 0} disabled · ${problems.length} need attention`} />
           {problems.length > 0 && (
@@ -204,7 +348,7 @@ export function DataHealthView() {
           <MoreLink href="/scrapers">Open Scrapers</MoreLink>
         </Section>
 
-        <Section title="Enrichment" tone={enrichTone}>
+        <Section title="Enrichment" tone={failT}>
           <Row label="Failed jobs created, last 24 hours" value={e.failed_24h.toLocaleString()} />
           <Row
             label="Failed jobs created, last 7 days"
@@ -215,28 +359,28 @@ export function DataHealthView() {
           <Row
             label="Enrich queue"
             value={q.enrich_depth === null ? "unknown (Redis not reachable)" : `${q.enrich_depth.toLocaleString()} waiting · backpressure at ${q.enrich_max_depth.toLocaleString()}`}
-            tone={queueTone}
+            tone={queueT}
           />
           <MoreLink href="/newsroom">Review jobs in Newsroom › Filtered Articles › Enrichment queue</MoreLink>
         </Section>
 
         <Section title="Source freshness">
-          <Row label="Newest article" value={when(d.sources.articles_newest_at)} tone={byAge(d.sources.articles_newest_at, 6, 24)} />
+          <Row label="Newest article" value={when(d.sources.articles_newest_at)} tone={fresh[0].tone} />
           <Row
             label="Newest tweet (X Intel)"
             value={`${when(d.sources.tweets_newest_at)}${monitorX ? ` · monitor_x ${monitorX.status.replace("_", " ")}${monitorX.reason ? `: ${monitorX.reason}` : ""}` : ""}`}
-            tone={byAge(d.sources.tweets_newest_at, 24, 72)}
+            tone={fresh[1].tone}
           />
-          <Row label="Newest IOC extracted" value={when(d.sources.iocs_newest_at)} tone={byAge(d.sources.iocs_newest_at, 24, 72)} />
+          <Row label="Newest IOC extracted" value={when(d.sources.iocs_newest_at)} tone={fresh[2].tone} />
           <Row
             label="CVE check"
             value={cve.isError ? "unknown (failed to load)" : cve.data ? `last successful check ${when(cve.data.last_checked_at)}` : "loading…"}
-            tone={cve.isError ? "unknown" : cve.data ? byAge(cve.data.last_checked_at, 6, 24) : "unknown"}
+            tone={fresh[3].tone}
           />
           <Row
             label="ATT&CK"
-            value={attack.isError ? "unknown (failed to load)" : attack.data ? `last sync ${when(newestAttackSync)}` : "loading…"}
-            tone={attackTone}
+            value={attack.isError ? "unknown (failed to load)" : attack.data ? `last sync ${when(fresh[4].at)}` : "loading…"}
+            tone={fresh[4].tone}
           />
         </Section>
 
@@ -266,8 +410,8 @@ export function DataHealthView() {
         </Section>
 
         <div className="space-y-4 lg:col-span-2">
-          <Section title="LLM" tone={llmTone}>
-            <Row label="Model status" value={llmStatusValue} tone={llmTone} />
+          <Section title="LLM" tone={llmT}>
+            <Row label="Model status" value={llmStatusValue} tone={llmStatusTone} />
             <Row
               label="Circuit breaker"
               value={`${llm.queue.breaker.replace("_", "-")}${llm.queue.retry_at ? ` · retry at ${when(llm.queue.retry_at)}` : ""}`}
@@ -281,7 +425,7 @@ export function DataHealthView() {
             <Row label="Stories, last 7 days" value={storySummary(llm.stories_7d)} />
             <MoreLink href="/newsroom">Review jobs in Newsroom › Filtered Articles › Enrichment queue</MoreLink>
           </Section>
-          <Section title="Relevance model" tone={relTone}>
+          <Section title="Relevance model" tone={relT}>
             <Row
               label="Mode"
               value={
@@ -319,7 +463,7 @@ export function DataHealthView() {
               value={`${rel.classify_avoided_24h.toLocaleString()} in 24 h · ${rel.classify_avoided_7d.toLocaleString()} in 7 days`}
             />
           </Section>
-          <Section title="CVE ingest" tone={cveTone}>
+          <Section title="CVE ingest" tone={cveT}>
             {!ingest.enabled ? (
               <Row label="Mirror" value="Off (CVE_MIRROR__ENABLED is false)" />
             ) : (
@@ -346,7 +490,7 @@ export function DataHealthView() {
               </>
             )}
           </Section>
-          <Section title="Sigma rules" tone={sigmaTone}>
+          <Section title="Sigma rules" tone={sigT}>
             <Row label="Release" value={sigma.release ?? "none loaded"} />
             <Row label="Rules" value={sigma.rules.toLocaleString()} tone={sigma.rules ? "ok" : "bad"} />
             <Row label="Fetched" value={when(sigma.fetched_at)} />
@@ -389,9 +533,16 @@ export function DataHealthView() {
             </TableBody>
           </Table>
         </div>
-      </div>
+        </div>
+      </>
+    );
+  }
 
-      <HowToRead />
+  return (
+    <div className="pb-10">
+      {header}
+      {content}
+      <HowToRead open={howOpen} onOpenChange={setHowOpen} />
     </div>
   );
 }
@@ -405,7 +556,7 @@ function Section({ title, tone, children }: { title: string; tone?: Tone; childr
     <section className="surface-raised rounded-2xl p-5">
       <div className="mb-3 flex items-center justify-between gap-3">
         <h2 className="font-heading text-xl font-bold tracking-tight text-foreground">{title}</h2>
-        {tone && <TonePill tone={tone} />}
+        {tone && <ToneChip tone={tone} />}
       </div>
       <dl className="divide-y divide-border/70">{children}</dl>
     </section>
@@ -418,17 +569,9 @@ function Row({ label, value, tone, code }: { label: string; value: string; tone?
       <dt className={cn("text-sm text-muted-foreground", code && "font-code")}>{label}</dt>
       <dd className="flex min-w-0 items-baseline gap-2 text-right text-sm text-foreground tabular-nums">
         <span className="min-w-0 break-words">{value}</span>
-        {tone && <TonePill tone={tone} />}
+        {tone && <ToneChip tone={tone} />}
       </dd>
     </div>
-  );
-}
-
-function TonePill({ tone }: { tone: Tone }) {
-  return (
-    <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold", TONE_STYLE[tone])}>
-      {TONE_LABEL[tone]}
-    </span>
   );
 }
 
@@ -440,60 +583,5 @@ function MoreLink({ href, children }: { href: string; children: ReactNode }) {
     >
       {children}
     </Link>
-  );
-}
-
-function HowToRead() {
-  return (
-    <details className="mt-6 rounded-2xl surface-raised p-4 text-sm">
-      <summary className="cursor-pointer font-medium">How to read this page</summary>
-      <ul className="mt-3 list-disc space-y-1.5 pl-5 text-muted-foreground">
-        <li>
-          <strong className="text-foreground">Pipeline</strong>: Problem when the scheduler (beat) heartbeat is stale or missing;
-          Check when any scraper needs attention (the statuses are explained on the Scrapers page).
-        </li>
-        <li>
-          <strong className="text-foreground">Enrichment</strong>: Problem when 10% or more of the articles processed in 7 days
-          failed, or 5 or more failed in 24 hours; Check when failed jobs are still waiting for a retry. The failure figures count failed
-          jobs by the time they were created (a snapshot of jobs still failed), not by when they failed. A job that waits for the
-          model is not in the news feed until it is retried, accepted or rejected.
-        </li>
-        <li>
-          <strong className="text-foreground">Enrich queue</strong>: Check at half of the backpressure limit, Problem at the
-          limit (scrapers then stop handing over new articles until the queue drains).
-        </li>
-        <li>
-          <strong className="text-foreground">Freshness</strong>: articles Check after 6 hours and Problem after 24; tweets and
-          new IOCs Check after 24 hours and Problem after 72; the CVE check Check after 6 hours and Problem after 24;
-          ATT&amp;CK Problem when a domain failed to sync and Check when a domain is more than 30 days old.
-        </li>
-        <li>
-          <strong className="text-foreground">Coverage</strong>: how many articles (all time) name at least one country, threat
-          actor or technique, and how many IOCs of each type were checked by at least one reputation provider (IOCs a provider
-          cannot check, such as private IPs, do not count).
-        </li>
-        <li>
-          <strong className="text-foreground">LLM</strong>: Problem when the latest model call failed (the row shows the HTTP
-          status, error type, task and age); OK once a call succeeds again. The queue rows show the circuit breaker (closed: calls go through; open: calls
-          pause until the retry time; half-open: one test call at a time), how many classify and TTP jobs wait for the model, how
-          many failed and the age of the oldest pending job; pending jobs drain by themselves once the model works. The table compares each task over 24 hours and 7 days; a dash means no value was recorded.
-        </li>
-        <li>
-          <strong className="text-foreground">Relevance model</strong>: a small local classifier that decides whether a title
-          is threat news before the LLM is asked. In shadow it only measures agreement with the LLM; once the gate is on, titles
-          the model is confident about skip the LLM classify call, except for an audit sample that still goes to the LLM so
-          agreement stays measurable. The gate turns itself off if agreement on the latest audit samples drops.
-        </li>
-        <li>
-          <strong className="text-foreground">CVE ingest</strong>: the CVE List V5 mirror that feeds the CVE tracker. Problem
-          when the last sync is missing or older than 15 minutes; Check when the hourly reconcile has not run for 2 hours or
-          last ended in an error. Off when the mirror is disabled.
-        </li>
-        <li>
-          <strong className="text-foreground">Sigma rules</strong>: the SigmaHQ snapshot used by hunting packs. Problem when no
-          rules are loaded; Check when the snapshot is more than 60 days old or the last refresh reported an error.
-        </li>
-      </ul>
-    </details>
   );
 }
