@@ -1,12 +1,14 @@
 "use client";
 
-import { AdminFrame } from "@/components/admin/admin-frame";
-import { ApiTokensSection } from "@/components/admin/api-tokens-section";
+import { Suspense } from "react";
 
+import { TokensView } from "@/components/admin/tokens-view";
+
+// `useSearchParams` (?new=1) di client component wajib dibungkus Suspense (Next 16).
 export default function AdminTokensPage() {
   return (
-    <AdminFrame page="tokens">
-      <ApiTokensSection />
-    </AdminFrame>
+    <Suspense>
+      <TokensView />
+    </Suspense>
   );
 }
