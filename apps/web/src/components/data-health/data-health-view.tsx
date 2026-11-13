@@ -27,6 +27,7 @@ import {
   type Tone,
 } from "@/lib/data-health/tones";
 import { usePageTitle } from "@/lib/use-page-title";
+import { NeedsAttentionCard, PipelineCard } from "@/components/data-health/pipeline-card";
 import { HowToRead } from "@/components/data-health/how-to-read";
 import { ToneChip } from "@/components/data-health/tone-chip";
 import { PageHeader } from "@/components/page-header";
@@ -35,7 +36,6 @@ import { Notice } from "@/components/ui/notice";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatePanel } from "@/components/ui/state-panel";
 import { StatTile } from "@/components/ui/stat-tile";
-import { StatusBadge } from "@/components/scrapers/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
@@ -327,27 +327,12 @@ export function DataHealthView() {
           />
         </div>
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Section title="Pipeline" tone={pipeT}>
-          <Row label="Scheduler (beat)" value={sched.state === "ok" ? `alive, last tick ${when(sched.last_tick_at)}` : `${sched.state.toUpperCase()}, last tick ${when(sched.last_tick_at)}`} tone={sched.state === "ok" ? "ok" : "bad"} />
-          <Row label="Scrapers" value={`${fleetTotal} total · ${d.scrapers.counts.ok ?? 0} ok · ${d.scrapers.counts.disabled ?? 0} disabled · ${problems.length} need attention`} />
-          {problems.length > 0 && (
-            <ul className="mt-3 space-y-1.5">
-              {problems.slice(0, 8).map((p) => (
-                <li key={p.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm">
-                  <StatusBadge status={p.status} />
-                  <span className="font-code text-xs text-foreground">{p.id}</span>
-                  {p.reason && <span className="text-xs text-muted-foreground">{p.reason}</span>}
-                </li>
-              ))}
-              {problems.length > 8 && (
-                <li className="text-xs text-muted-foreground">and {problems.length - 8} more</li>
-              )}
-            </ul>
-          )}
-          <MoreLink href="/scrapers">Open Scrapers</MoreLink>
-        </Section>
+        <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <PipelineCard d={d} />
+          <NeedsAttentionCard scrapers={d.scrapers} />
+        </div>
 
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Section title="Enrichment" tone={failT}>
           <Row label="Failed jobs created, last 24 hours" value={e.failed_24h.toLocaleString()} />
           <Row
