@@ -170,13 +170,15 @@ function DeleteClientDialog({ target, onClose }: { target: Client | null; onClos
         "Could not delete the client",
       );
       await queryClient.invalidateQueries({ queryKey: CLIENTS_KEY });
+      // Link user-klien ikut terhapus (CASCADE), jadi daftar user juga basi.
+      await queryClient.invalidateQueries({ queryKey: ["admin", "users"] });
       toast.success(`Client ${id} deleted`);
       onClose();
     } catch (err) {
-      // Klien yang masih dipakai user bisa gagal di FK sebagai 500 polos; "Internal Server Error" mentah tak berguna.
+      // 500 polos membawa "Internal Server Error" mentah yang tak berguna; ganti dengan kalimat tetap.
       toast.error(
         err instanceof Error && typeof err.cause === "number" && err.cause >= 500
-          ? "Could not delete the client. It may still be assigned to users."
+          ? "Could not delete the client (server error)."
           : adminErrorMessage(err, "manage_clients"),
       );
     } finally {
@@ -190,7 +192,7 @@ function DeleteClientDialog({ target, onClose }: { target: Client | null; onClos
       onOpenChange={(o) => !o && onClose()}
       tone="danger"
       title={`Delete client ${id}?`}
-      description="Its users lose access to this tenant. This cannot be undone."
+      description="This also deletes the tenant's CVE tracker, techstack, monitored package, PIR, RFI, entity watch and runtime key rows (cascade), and its users lose access. This cannot be undone."
       confirmLabel="Delete client"
       confirmLoading={pending}
       onConfirm={() => void confirm()}

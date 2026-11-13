@@ -26,9 +26,8 @@ import { Label } from "@/components/ui/label";
  * Ganti password diri sendiri -- port `openSelfPwModal()`/
  * `doSelfPwChange()` (`usermgmt.js`, dipicu klik username di header lama).
  * Gap nyata dari Grup A: sebelum ini gak ada cara user ganti password
- * sendiri dari UI sama sekali. Dipasang di `AvatarMenu` (dulu `UserMenu`, Grup C; numpang
- * `usePasswordPolicy()`/`validatePasswordClient()` yang dibangun buat
- * Admin Reset Password/Add User).
+ * sendiri dari UI sama sekali. Dipasang di `AvatarMenu` (dulu `UserMenu`, Grup C); aturan
+ * password dari `usePasswordPolicy()`, sama dengan Admin Reset Password/Add User.
  */
 export function ChangePasswordDialog({
   open,

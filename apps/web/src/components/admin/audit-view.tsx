@@ -42,6 +42,8 @@ export function AuditView() {
   const page = pageState.key === filterKey ? pageState.n : 1;
   const log = useAuditLog({ page, pageSize: PAGE_SIZE, ...filters }, canView);
   const exporter = useAuditExport();
+  // Baris DETAIL yang dibuka penuh; tombolnya bisa difokus keyboard (title saja tak terjangkau).
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
 
   let body;
   if (!canView) {
@@ -95,8 +97,10 @@ export function AuditView() {
           <TableBody>
             {log.data.logs.map((l, i) => {
               const detail = detailText(l.detail);
+              const rowKey = `${l.timestamp}-${i}`;
+              const open = expanded.has(rowKey);
               return (
-                <TableRow key={`${l.timestamp}-${i}`}>
+                <TableRow key={rowKey}>
                   <TableCell className="text-xs text-muted-foreground">{fmtDateTime(l.timestamp)}</TableCell>
                   <TableCell className="truncate font-code text-xs text-foreground" title={l.user}>
                     {l.user}
@@ -109,9 +113,26 @@ export function AuditView() {
                   </TableCell>
                   <TableCell
                     className="whitespace-normal break-words text-xs text-muted-foreground"
-                    title={detail}
                   >
-                    <span className="line-clamp-2">{detail}</span>
+                    {detail ? (
+                      <button
+                        type="button"
+                        aria-expanded={open}
+                        title={open ? "Collapse detail" : "Show full detail"}
+                        onClick={() =>
+                          setExpanded((prev) => {
+                            const next = new Set(prev);
+                            if (!next.delete(rowKey)) next.add(rowKey);
+                            return next;
+                          })
+                        }
+                        className="rounded-sm text-left focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
+                      >
+                        <span className={open ? undefined : "line-clamp-2"}>{detail}</span>
+                      </button>
+                    ) : (
+                      <span>{detail}</span>
+                    )}
                   </TableCell>
                   <TableCell className="truncate font-code text-xs text-muted-foreground" title={l.ip || undefined}>
                     {l.ip || "–"}
@@ -167,7 +188,7 @@ export function AuditView() {
             variant="outline"
             size="sm"
             className="ml-auto"
-            disabled={exporter.pending}
+            disabled={exporter.pending || typed !== filters}
             onClick={() => exporter.run(filters)}
           >
             {exporter.pending ? (exporter.label ?? "Exporting…") : "Export CSV"}

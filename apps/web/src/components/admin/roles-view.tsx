@@ -308,10 +308,14 @@ function DeleteRoleDialog({ target, onClose }: { target: Role | null; onClose: (
   const queryClient = useQueryClient();
   const canSeeUsers = can("manage_users");
   // Query dibuat hanya bila viewer boleh membaca users; tanpa itu API yang menolak (FK users.role_name).
-  const users = useAdminUsers(canSeeUsers);
+  // Hanya selama ada target: dialog tertutup tak perlu memuat daftar user.
+  const users = useAdminUsers(canSeeUsers && target !== null);
   const [pending, setPending] = useState(false);
+  // Nama bertahan selama animasi tutup (target sudah null), supaya judul tak jadi "Delete role ?".
+  const [shown, setShown] = useState(target);
+  if (target && target !== shown) setShown(target);
 
-  const name = target?.name ?? "";
+  const name = target?.name ?? shown?.name ?? "";
   const n = users.data ? users.data.users.filter((u) => u.role === name).length : 0;
   const blocked = n > 0 || (canSeeUsers && users.isPending);
 
@@ -326,7 +330,12 @@ function DeleteRoleDialog({ target, onClose }: { target: Role | null; onClose: (
       toast.success(`Role ${name} deleted`);
       onClose();
     } catch (err) {
-      toast.error(adminErrorMessage(err, "manage_roles"));
+      // 500 polos = FK users.role_name masih menunjuk role ini; "Internal Server Error" mentah tak berguna.
+      toast.error(
+        err instanceof Error && typeof err.cause === "number" && err.cause >= 500
+          ? "Could not delete the role. It may still be assigned to users."
+          : adminErrorMessage(err, "manage_roles"),
+      );
     } finally {
       setPending(false);
     }

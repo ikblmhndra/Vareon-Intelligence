@@ -128,7 +128,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       markSigningOut();
       try {
         const ok = await fetch("/api/auth/logout", { method: "POST" }).then(
-          () => true,
+          (r) => r.ok,
           () => false,
         );
         if (!ok) {

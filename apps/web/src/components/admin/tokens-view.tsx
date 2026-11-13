@@ -29,6 +29,7 @@ import { StatePanel } from "@/components/ui/state-panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
+import { useAuth } from "@/components/providers/auth-provider";
 import { useCan } from "@/lib/auth/permissions";
 import { fmtAgo, fmtShortDate } from "@/lib/format";
 import { unwrap } from "@/lib/scrapers/queries";
@@ -105,7 +106,10 @@ function TokenBanner({ created, onDone }: { created: Created; onDone: () => void
         </span>
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-2">
-        <Button size="sm" variant="ghost" onClick={() => setRevealed((r) => !r)}>
+        <Button size="sm" variant="ghost" onClick={() => {
+            setRevealed((r) => !r);
+            setNote(null);
+          }}>
           {revealed ? "Hide" : "Show"}
         </Button>
         <Button size="sm" variant="outline" onClick={() => void copy()}>
@@ -316,6 +320,7 @@ function RevokeDialog({ target, onClose }: { target: ApiToken | null; onClose: (
 /** Halaman API tokens (`/api/api-tokens`, permission `manage_api_tokens`). */
 export function TokensView() {
   const can = useCan();
+  const { status } = useAuth();
   const allowed = can("manage_api_tokens");
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -330,9 +335,10 @@ export function TokensView() {
   // `?new=1` membuka dialog sekali (state disesuaikan saat render) lalu dihapus dari URL oleh effect;
   // tidak pernah menavigasi saat parameter tidak ada.
   if (wantsNew && allowed && !createOpen) setCreateOpen(true);
+  // Tunggu user termuat: sebelum itu `allowed` palsu-false dan dialog terlewat.
   useEffect(() => {
-    if (wantsNew) router.replace("/admin/tokens");
-  }, [wantsNew, router]);
+    if (wantsNew && status === "authenticated") router.replace("/admin/tokens");
+  }, [wantsNew, status, router]);
 
   let body;
   if (!allowed) {
