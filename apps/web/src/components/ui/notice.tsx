@@ -8,6 +8,7 @@ const TONE = {
   neutral: { surface: "bg-foreground/10", dot: "bg-foreground", title: "text-foreground" },
   warning: { surface: "bg-warning/10", dot: "bg-warning", title: "text-warning-text" },
   info: { surface: "bg-info/10", dot: "bg-info", title: "text-info-text" },
+  destructive: { surface: "bg-destructive/10", dot: "bg-destructive", title: "text-destructive-text" },
 } as const;
 
 interface NoticeProps {

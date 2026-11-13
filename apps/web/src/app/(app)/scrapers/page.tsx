@@ -1,18 +1,12 @@
-"use client";
+import { Suspense } from "react";
 
-import { PageHeader } from "@/components/page-header";
 import { ScrapersView } from "@/components/scrapers/scrapers-view";
-import { usePageTitle } from "@/lib/use-page-title";
 
 export default function ScrapersPage() {
-  usePageTitle("Scrapers");
+  // `useSearchParams` di ScrapersView (pilihan scraper dari URL) mewajibkan batas Suspense.
   return (
-    <>
-      <PageHeader
-        title="Scrapers"
-        description="Health of every scraper, with controls to run, enable or schedule them."
-      />
+    <Suspense>
       <ScrapersView />
-    </>
+    </Suspense>
   );
 }
