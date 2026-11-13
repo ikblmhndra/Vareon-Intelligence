@@ -5,6 +5,11 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 
 import { getActiveClientId, setActiveClientId } from "@/lib/auth/client-id";
+import {
+  markSigningOut,
+  resetSessionExpired,
+  useSessionState,
+} from "@/lib/auth/session-expired";
 
 export interface AuthUser {
   username: string;
@@ -16,16 +21,18 @@ export interface AuthUser {
   force_pw_change?: boolean;
   /** Permission efektif role user (0.8.4); lihat `useCan` di `lib/auth/permissions.ts`. */
   permissions?: string[];
+  /** Waktu sign-in token ini (dari `iat`); null untuk token lama tanpa `iat`. */
+  signed_in_at?: string | null;
 }
 
 interface AuthContextValue {
   user: AuthUser | null;
   status: "loading" | "authenticated" | "unauthenticated";
   login: (username: string, password: string) => Promise<{ ok: true } | { ok: false; detail: string }>;
-  logout: () => Promise<void>;
+  logout: (redirectTo?: string) => Promise<void>;
 }
 
-const ME_QUERY_KEY = ["auth", "me"] as const;
+export const ME_QUERY_KEY = ["auth", "me"] as const;
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
@@ -57,10 +64,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
   const router = useRouter();
 
+  // Setelah sesi berakhir cookie sudah dihapus: refetch (mis. window-focus) akan menjadikan user
+  // `null` dan melepas halaman dari bawah dialog, jadi query dimatikan selain saat `active`.
+  const sessionState = useSessionState();
   const { data: user, isPending } = useQuery({
     queryKey: ME_QUERY_KEY,
     queryFn: fetchMe,
     staleTime: 60_000,
+    enabled: sessionState === "active",
   });
 
   const status: AuthContextValue["status"] = isPending
@@ -83,16 +94,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const loggedInUser = (await res.json()) as AuthUser;
       syncActiveClient(loggedInUser);
       queryClient.setQueryData(ME_QUERY_KEY, loggedInUser);
+      resetSessionExpired();
       return { ok: true };
     },
     [queryClient],
   );
 
-  const logout = useCallback(async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
-    queryClient.setQueryData(ME_QUERY_KEY, null);
-    router.push("/login");
-  }, [queryClient, router]);
+  const logout = useCallback<AuthContextValue["logout"]>(
+    async (redirectTo) => {
+      // Sebelum request apa pun: 401 yang mendarat selama logout disengaja tidak membuka dialog.
+      markSigningOut();
+      await fetch("/api/auth/logout", { method: "POST" });
+      queryClient.setQueryData(ME_QUERY_KEY, null);
+      const target = redirectTo ? "/login?redirect=" + encodeURIComponent(redirectTo) : "/login";
+      // Sudah di URL itu (`/login` yang memanggil `logout(redirect)`): push akan me-reset judul layout.
+      if (target !== location.pathname + location.search) router.push(target);
+    },
+    [queryClient, router],
+  );
 
   return (
     <AuthContext.Provider value={{ user: user ?? null, status, login, logout }}>

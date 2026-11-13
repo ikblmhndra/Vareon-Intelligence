@@ -5,7 +5,9 @@ import { useEffect } from "react";
 import { AppShell, SHELL_COLUMN } from "@/components/app-shell/app-shell";
 import { ChangePasswordDialog } from "@/components/change-password-dialog";
 import { useAuth } from "@/components/providers/auth-provider";
+import { SessionExpiredHost } from "@/components/session-expired";
 import { Skeleton } from "@/components/ui/skeleton";
+import { getSessionState } from "@/lib/auth/session-expired";
 
 /** Kerangka shell selama `/api/auth/me` belum menjawab: bentuknya meniru utility bar + masthead +
  * konten (`AppShell`), jadi halaman tidak berkedip dari teks "Loading..." ke layout penuh. */
@@ -49,8 +51,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     // Cookie yang tidak valid HARUS dihapus dulu (`logout()` = POST /api/auth/logout lalu ke
     // /login). Cuma `router.replace("/login")` bikin loop: `proxy.ts` melempar /login + cookie
     // apa pun balik ke /dashboard.
-    if (status === "unauthenticated") {
-      void logout();
+    // Load penuh dengan cookie mati menyimpan tempat user (`?redirect=`); logout disengaja
+    // (`signing-out`) harus berakhir di /login polos, jadi tidak membawa path user sebelumnya.
+    if (status === "unauthenticated" && getSessionState() !== "signing-out") {
+      void logout(location.pathname + location.search);
     }
   }, [status, logout]);
 
@@ -66,5 +70,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     return <ChangePasswordDialog open forced onOpenChange={() => undefined} />;
   }
 
-  return <AppShell>{children}</AppShell>;
+  return (
+    <AppShell>
+      <SessionExpiredHost />
+      {children}
+    </AppShell>
+  );
 }
