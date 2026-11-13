@@ -5,7 +5,9 @@ import { useEffect } from "react";
 import { AppShell, SHELL_COLUMN } from "@/components/app-shell/app-shell";
 import { ChangePasswordDialog } from "@/components/change-password-dialog";
 import { useAuth } from "@/components/providers/auth-provider";
-import { SessionExpiredHost } from "@/components/session-expired";
+import { SessionExpiredHost, signInAgain } from "@/components/session-expired";
+import { Button } from "@/components/ui/button";
+import { Notice } from "@/components/ui/notice";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getSessionState } from "@/lib/auth/session-expired";
 
@@ -63,7 +65,19 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   if (status !== "authenticated") {
-    return null;
+    // Efek di atas sedang (atau sudah gagal) keluar; jangan tampilkan layar kosong. Tombol = load
+    // penuh ke /login (hapus cookie dulu), bukan efek, jadi tidak membuat loop baru.
+    return (
+      <div className="mx-auto max-w-xl p-6">
+        <Notice
+          tone="warning"
+          title="You are signed out."
+          action={<Button onClick={() => void signInAgain()}>Sign in</Button>}
+        >
+          Sign in to continue.
+        </Notice>
+      </div>
+    );
   }
 
   if (user?.force_pw_change) {

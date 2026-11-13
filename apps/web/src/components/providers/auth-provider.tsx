@@ -127,8 +127,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Sebelum request apa pun: 401 yang mendarat selama logout disengaja tidak membuka dialog.
       markSigningOut();
       try {
-        // POST gagal tidak menghentikan alur: tetap bersihkan cache dan ke /login (tujuan yang sama).
-        await fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
+        const ok = await fetch("/api/auth/logout", { method: "POST" }).then(
+          () => true,
+          () => false,
+        );
+        if (!ok) {
+          // Cookie belum terhapus: ke /login hanya dipantulkan `proxy.ts` balik ke /dashboard.
+          // Biarkan user di tempatnya dengan sesi bisa dipakai lagi.
+          resetSessionExpired();
+          return;
+        }
         queryClient.setQueryData(ME_QUERY_KEY, null);
         const target = redirectTo ? "/login?redirect=" + encodeURIComponent(redirectTo) : "/login";
         // Sudah di URL itu (`/login` yang memanggil `logout(redirect)`): push akan me-reset judul layout.

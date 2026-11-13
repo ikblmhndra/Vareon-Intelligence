@@ -16,7 +16,7 @@ import { useSessionState } from "@/lib/auth/session-expired";
 
 /** Logout ulang (idempoten: menutup kasus POST pertama di `client.ts` gagal), lalu load penuh ke
  * /login dengan `redirect` = halaman ini. Load penuh sengaja: membuang state klien dan store. */
-async function signInAgain(): Promise<void> {
+export async function signInAgain(): Promise<void> {
   await fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
   // Load penuh sengaja (bukan router.push): lihat docstring.
   // eslint-disable-next-line @next/next/no-location-assign-relative-destination
