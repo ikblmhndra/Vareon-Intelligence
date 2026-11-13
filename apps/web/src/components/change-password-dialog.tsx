@@ -1,15 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 import { api } from "@/lib/api/client";
-import { useAuth } from "@/components/providers/auth-provider";
-import { policyHint, usePasswordPolicy, validatePasswordClient } from "@/lib/auth/password-policy";
+import { ME_QUERY_KEY, useAuth } from "@/components/providers/auth-provider";
+import { allRulesMet, usePasswordPolicy } from "@/lib/auth/password-policy";
+import { unwrap } from "@/lib/scrapers/queries";
+import { PasswordRules } from "@/components/password-rules";
+import { Notice } from "@/components/ui/notice";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -41,37 +46,46 @@ export function ChangePasswordDialog({
 }) {
   const policy = usePasswordPolicy();
   const { logout } = useAuth();
+  const queryClient = useQueryClient();
   const [currentPw, setCurrentPw] = useState("");
   const [pw, setPw] = useState("");
   const [error, setError] = useState<string | null>(null);
 
+  // Dialog dipakai juga oleh fallback layout (app) saat /login tidak bisa menangani sendiri.
+  // Sign-out gagal (POST logout) tidak boleh diam: cookie masih ada, jadi beri tahu user.
+  async function signOutAfterChange() {
+    // `logout()` kembali tanpa melempar bila POST gagal; cache user tetap terisi = belum keluar.
+    try {
+      await logout();
+    } catch {
+      /* ditangani di bawah */
+    }
+    if (queryClient.getQueryData(ME_QUERY_KEY)) {
+      toast.error("Could not sign you out. Use Sign out in the menu, then sign in again.");
+    }
+  }
+
   const mutation = useMutation({
-    mutationFn: async () => {
-      const { response } = await api.POST("/api/auth/change-password", {
-        body: { current_password: currentPw, new_password: pw },
-      });
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        const msg = Array.isArray(body?.detail)
-          ? body.detail.map((e: { msg?: string }) => e.msg).join("; ")
-          : body?.detail || `HTTP ${response.status}`;
-        throw new Error(msg);
-      }
-    },
+    mutationFn: async () =>
+      unwrap(
+        await api.POST("/api/auth/change-password", {
+          body: { current_password: currentPw, new_password: pw },
+        }),
+        "Could not change the password",
+      ),
     onSuccess: () => {
       setCurrentPw("");
       setPw("");
       onOpenChange(false);
+      toast.success("Password changed. Sign in with your new password.");
       // Server mencabut semua sesi lama setelah ganti password -> login ulang dengan yang baru.
-      void logout();
+      void signOutAfterChange();
     },
     onError: (e: Error) => setError(e.message),
   });
 
   function handleSubmit() {
     setError(null);
-    const pwErr = validatePasswordClient(pw, policy);
-    if (pwErr) return setError(pwErr);
     mutation.mutate();
   }
 
@@ -79,16 +93,23 @@ export function ChangePasswordDialog({
     <Dialog open={open} onOpenChange={forced ? () => undefined : onOpenChange}>
       <DialogContent className="sm:max-w-sm" finalFocus={finalFocus}>
         <DialogHeader>
-          <DialogTitle className="font-heading">Change Password</DialogTitle>
+          <DialogTitle className="font-heading">
+            {forced ? "Choose a new password" : "Change password"}
+          </DialogTitle>
+          <DialogDescription>
+            {forced
+              ? "Your account needs a new password, after an administrator reset or a policy change. Pick one to continue."
+              : "You are signed out everywhere afterwards and sign in with the new password."}
+          </DialogDescription>
         </DialogHeader>
-        {forced && (
-          <p className="text-xs text-muted-foreground">
-            Akun ini wajib mengganti password sebelum melanjutkan.
-          </p>
+        {error && (
+          <div role="alert">
+            <Notice tone="destructive" title={error} />
+          </div>
         )}
         <div className="space-y-1.5">
           <Label htmlFor="current-password" className="text-sm font-medium text-muted-foreground">
-            Current Password
+            Current password
           </Label>
           <Input
             id="current-password"
@@ -96,29 +117,33 @@ export function ChangePasswordDialog({
             autoComplete="current-password"
             value={currentPw}
             onChange={(e) => setCurrentPw(e.target.value)}
-            className="font-mono text-xs"
+            className="font-code text-sm"
           />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="new-password" className="text-sm font-medium text-muted-foreground">
-            New Password <span className="normal-case opacity-70">({policyHint(policy)})</span>
+            New password
           </Label>
           <Input
             id="new-password"
             type="password"
             autoComplete="new-password"
+            aria-describedby="new-password-rules"
             value={pw}
             onChange={(e) => setPw(e.target.value)}
-            className="font-mono text-xs"
+            className="font-code text-sm"
           />
+          <PasswordRules id="new-password-rules" password={pw} policy={policy} />
         </div>
-        {error && <p className="text-xs text-destructive">{error}</p>}
         <DialogFooter>
-          <Button variant="outline" onClick={() => (forced ? void logout() : onOpenChange(false))}>
+          <Button variant="outline" onClick={() => (forced ? void signOutAfterChange() : onOpenChange(false))}>
             {forced ? "Sign out" : "Cancel"}
           </Button>
-          <Button onClick={handleSubmit} disabled={mutation.isPending || !currentPw || !pw}>
-            Update
+          <Button
+            onClick={handleSubmit}
+            disabled={mutation.isPending || !currentPw || !allRulesMet(pw, policy)}
+          >
+            {mutation.isPending ? "Saving…" : "Save"}
           </Button>
         </DialogFooter>
       </DialogContent>

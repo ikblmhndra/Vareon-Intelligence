@@ -12,9 +12,15 @@ export function PasswordRules({
   policy: PasswordPolicy;
   id?: string;
 }) {
+  const rules = passwordRules(password, policy);
   return (
-    <ul id={id} className="flex flex-col gap-1 text-xs">
-      {passwordRules(password, policy).map((r) => (
+    <>
+      {/* Hanya peralihan "semua terpenuhi" yang diumumkan; centang per ketikan tidak. */}
+      <span role="status" className="sr-only">
+        {rules.every((r) => r.met) ? "All password rules met" : ""}
+      </span>
+      <ul id={id} className="flex flex-col gap-1 text-xs">
+      {rules.map((r) => (
         <li
           key={r.label}
           className={cn("flex items-center gap-2", r.met ? "text-success-text" : "text-muted-foreground")}
@@ -26,6 +32,7 @@ export function PasswordRules({
           </span>
         </li>
       ))}
-    </ul>
+      </ul>
+    </>
   );
 }

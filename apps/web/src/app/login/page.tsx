@@ -9,8 +9,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Notice } from "@/components/ui/notice";
+import { PasswordRules } from "@/components/password-rules";
 import { useAuth } from "@/components/providers/auth-provider";
+import { api } from "@/lib/api/client";
+import { allRulesMet, usePasswordPolicy } from "@/lib/auth/password-policy";
 import { PLATFORM_NAME } from "@/lib/brand";
+import { apiErrorMessage } from "@/lib/recap/quality";
+import { usePageTitle } from "@/lib/use-page-title";
 
 // Peta titik memuat world-atlas; ssr:false menjaga data geografi di luar first paint /login.
 const WorldDots = dynamic(() => import("@/components/world-dots").then((m) => m.WorldDots), {
@@ -18,6 +23,60 @@ const WorldDots = dynamic(() => import("@/components/world-dots").then((m) => m.
 });
 
 type Failure = { tone: "destructive" | "warning" | "neutral"; title: string; body: string };
+
+// Revokasi sesi disimpan dalam detik utuh dan menolak token dengan `iat` <= detik itu. Jeda ini
+// waktu terlewat (bukan jam dinding), jadi server pasti sudah melewati detik berikutnya sebelum
+// sign-in ulang; tanpa jeda token baru ikut tercabut.
+const RELOGIN_DELAY_MS = 1200;
+
+const SIGN_IN_AGAIN_NOTICE: Failure = {
+  tone: "neutral",
+  title: "Password changed",
+  body: "Sign in with your new password.",
+};
+
+/** Input password dengan tombol Show sendiri (tahap ganti-password paksa). */
+function PasswordField({
+  id,
+  label,
+  value,
+  onChange,
+  describedBy,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  describedBy?: string;
+}) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>{label}</Label>
+      <div className="relative">
+        <Input
+          id={id}
+          type={show ? "text" : "password"}
+          autoComplete="new-password"
+          aria-describedby={describedBy}
+          className="pr-14"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          required
+        />
+        <button
+          type="button"
+          aria-pressed={show}
+          aria-controls={id}
+          onClick={() => setShow((v) => !v)}
+          className="absolute inset-y-0 right-0 rounded-r-lg px-3 text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
+        >
+          {show ? "Hide" : "Show"}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 /** Hanya path internal ("/x"); tolak "//host", "/\\host", dan URL absolut (open redirect). */
 function safeRedirect(target: string | null): string {
@@ -75,7 +134,7 @@ function loginFailure(result: { status: number; retryAfterS: number | null } | "
 }
 
 function LoginForm() {
-  const { login } = useAuth();
+  const { login, logout } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [username, setUsername] = useState("");
@@ -85,7 +144,16 @@ function LoginForm() {
   const [failure, setFailure] = useState<Failure | null>(null);
   const [deadline, setDeadline] = useState<number | null>(null);
   const [remaining, setRemaining] = useState(0);
+  const [stage, setStage] = useState<"sign-in" | "forced">("sign-in");
+  // Password sign-in (`password`) dan dua isian di bawah hanya hidup di memori: dipakai sebagai
+  // `current_password` lalu dikosongkan saat sukses, gagal, atau batal. Tanpa storage/URL/query cache.
+  const [newPassword, setNewPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [forcedPhase, setForcedPhase] = useState<"saving" | "signing-in" | null>(null);
+  const policy = usePasswordPolicy();
   const passwordRef = useRef<HTMLInputElement>(null);
+  usePageTitle(stage === "forced" ? "Choose a new password" : null);
+  const redirect = searchParams.get("redirect");
 
   // Hitung mundur 429: satu interval per deadline, dibersihkan saat unmount atau deadline berubah.
   useEffect(() => {
@@ -113,8 +181,13 @@ function LoginForm() {
     try {
       const result = await login(username, password);
       if (result.ok) {
-        // Tahap ganti-password paksa menyusul di Task 7; sementara dialog layout (app) yang mengambil alih.
-        router.push(safeRedirect(searchParams.get("redirect")));
+        if (result.forcePwChange) {
+          setFailure(null);
+          setStage("forced");
+          return;
+        }
+        setPassword("");
+        router.push(safeRedirect(redirect));
         return;
       }
       failed = loginFailure(result);
@@ -128,6 +201,161 @@ function LoginForm() {
     }
     setFailure(failed);
     passwordRef.current?.focus();
+  }
+
+  /** Kembali ke tahap sign-in: semua password dikosongkan, username tetap. */
+  function backToSignIn(notice: Failure | null) {
+    setPassword("");
+    setNewPassword("");
+    setConfirm("");
+    setForcedPhase(null);
+    setStage("sign-in");
+    setFailure(notice);
+  }
+
+  function cancelForced() {
+    backToSignIn(null);
+    void logout(redirect ?? undefined);
+  }
+
+  async function handleForcedSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setFailure(null);
+    setForcedPhase("saving");
+    const res = await api
+      .POST("/api/auth/change-password", {
+        body: { current_password: password, new_password: newPassword },
+      })
+      .catch(() => null);
+    if (!res) {
+      setForcedPhase(null);
+      setFailure({ tone: "destructive", title: "Could not save the password", body: "Try again." });
+      return;
+    }
+    const { response, error } = res;
+    if (!response.ok) {
+      setForcedPhase(null);
+      const s = response.status;
+      if (s === 422) {
+        setFailure({
+          tone: "destructive",
+          title: "That password does not meet the policy",
+          body: apiErrorMessage(error, s),
+        });
+      } else if (s === 400) {
+        backToSignIn({
+          tone: "warning",
+          title: "Sign in again",
+          body: "Your sign-in password changed while this page was open.",
+        });
+        void logout(redirect ?? undefined);
+      } else if (s === 401) {
+        backToSignIn({
+          tone: "warning",
+          title: "Your session has ended",
+          body: "Sign in again to choose a new password.",
+        });
+      } else if (s === 429) {
+        setFailure({
+          tone: "destructive",
+          title: "Too many attempts",
+          body: "Try again in a few minutes.",
+        });
+      } else {
+        setFailure({ tone: "destructive", title: "Could not save the password", body: "Try again." });
+      }
+      return;
+    }
+    setPassword("");
+    setForcedPhase("signing-in");
+    await new Promise((r) => setTimeout(r, RELOGIN_DELAY_MS));
+    try {
+      const result = await login(username, newPassword);
+      if (result.ok) {
+        setNewPassword("");
+        setConfirm("");
+        router.push(safeRedirect(redirect));
+        return;
+      }
+      if (result.status === 429) setDeadline(Date.now() + (result.retryAfterS ?? 60) * 1000);
+    } catch {
+      // Jaringan putus saat sign-in ulang: tampil sama, user masuk manual.
+    }
+    backToSignIn(SIGN_IN_AGAIN_NOTICE);
+  }
+
+  if (stage === "forced") {
+    const mismatch = confirm !== "" && confirm !== newPassword;
+    const busy = forcedPhase !== null;
+    return (
+      <form onSubmit={handleForcedSubmit} className="w-full max-w-sm space-y-6">
+        <div className="space-y-1">
+          <p className="text-2xs font-semibold uppercase tracking-widest text-muted-foreground">
+            Sign in
+          </p>
+          <h2 className="font-heading text-2xl font-extrabold tracking-tight text-foreground">
+            Choose a new password
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Your account needs a new password, after an administrator reset or a policy change. Pick
+            one to continue.
+          </p>
+        </div>
+
+        {failure && (
+          <div role="alert">
+            <Notice tone={failure.tone} title={failure.title}>
+              {failure.body}
+            </Notice>
+          </div>
+        )}
+
+        <PasswordField
+          id="new-password"
+          label="New password"
+          value={newPassword}
+          onChange={setNewPassword}
+          describedBy="new-password-rules"
+        />
+        <PasswordRules id="new-password-rules" password={newPassword} policy={policy} />
+
+        <div className="space-y-2">
+          <PasswordField
+            id="confirm-password"
+            label="Confirm new password"
+            value={confirm}
+            onChange={setConfirm}
+            describedBy={mismatch ? "confirm-password-error" : undefined}
+          />
+          {mismatch && (
+            <p id="confirm-password-error" role="alert" className="text-xs text-destructive-text">
+              Passwords do not match.
+            </p>
+          )}
+        </div>
+
+        <Button
+          type="submit"
+          className="w-full"
+          disabled={busy || !allRulesMet(newPassword, policy) || newPassword !== confirm}
+        >
+          {forcedPhase === "saving"
+            ? "Saving…"
+            : forcedPhase === "signing-in"
+              ? "Signing you in…"
+              : "Save and continue"}
+        </Button>
+
+        <button
+          type="button"
+          disabled={busy}
+          onClick={cancelForced}
+          className="rounded text-xs font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none disabled:opacity-50"
+        >
+          Cancel and sign out
+        </button>
+      </form>
+    );
   }
 
   const counting = remaining > 0;
