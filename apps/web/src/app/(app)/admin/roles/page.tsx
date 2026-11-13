@@ -1,12 +1,7 @@
 "use client";
 
-import { AdminFrame } from "@/components/admin/admin-frame";
-import { RolesSection } from "@/components/admin/roles-section";
+import { RolesView } from "@/components/admin/roles-view";
 
 export default function AdminRolesPage() {
-  return (
-    <AdminFrame page="roles">
-      <RolesSection />
-    </AdminFrame>
-  );
+  return <RolesView />;
 }
