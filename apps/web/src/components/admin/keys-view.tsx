@@ -70,6 +70,12 @@ function unwrapKey<T>(r: { data?: T; error?: unknown; response: Response }, fall
   return unwrap(r, fallback);
 }
 
+/** Pesan server apa adanya (mis. 403 "Password confirmation failed"); bukan terjemahan permission. */
+function serverMessage(e: unknown): string {
+  const m = e instanceof Error ? e.message : String(e);
+  return m || "Request failed";
+}
+
 function fieldLabel(name: string): string {
   const words = name.replace(/_/g, " ");
   return words.charAt(0).toUpperCase() + words.slice(1);
@@ -103,7 +109,7 @@ export function KeysView() {
     } catch (e) {
       setTests((t) => ({
         ...t,
-        [key]: { status: "NOTE", detail: `Test could not run: ${adminErrorMessage(e, "superadmin")}` },
+        [key]: { status: "NOTE", detail: `Test could not run: ${serverMessage(e)}` },
       }));
     }
   }
@@ -276,9 +282,10 @@ type DialogProps = {
 };
 
 export function KeyEditDialog({ provider, onOpenChange, onSaved }: DialogProps) {
+  const [busy, setBusy] = useState(false);
   const verb = provider?.source === "db" ? "Edit" : provider?.source === "env" ? "Override" : "Set";
   return (
-    <Dialog open={provider !== null} onOpenChange={onOpenChange}>
+    <Dialog open={provider !== null} onOpenChange={(o) => !busy && onOpenChange(o)}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="font-heading">
@@ -287,7 +294,7 @@ export function KeyEditDialog({ provider, onOpenChange, onSaved }: DialogProps) 
           <DialogDescription>The new value is tested with the provider before it is saved.</DialogDescription>
         </DialogHeader>
         {/* Dipasang hanya saat terbuka: secret dan password yang diketik hilang saat ditutup. */}
-        {provider && <KeyEditForm provider={provider} onClose={() => onOpenChange(false)} onSaved={onSaved} />}
+        {provider && <KeyEditForm provider={provider} onBusy={setBusy} onClose={() => onOpenChange(false)} onSaved={onSaved} />}
       </DialogContent>
     </Dialog>
   );
@@ -295,10 +302,12 @@ export function KeyEditDialog({ provider, onOpenChange, onSaved }: DialogProps) 
 
 function KeyEditForm({
   provider,
+  onBusy,
   onClose,
   onSaved,
 }: {
   provider: Provider;
+  onBusy: (busy: boolean) => void;
   onClose: () => void;
   onSaved: (key: string) => void;
 }) {
@@ -338,6 +347,7 @@ function KeyEditForm({
     e.preventDefault();
     setError(null);
     setPending(true);
+    onBusy(true);
     try {
       const data = unwrapKey(
         await api.PUT("/api/secrets/{provider}", {
@@ -353,10 +363,12 @@ function KeyEditForm({
       } else {
         toast.success(`${provider.label} saved`);
       }
+      onBusy(false);
       onClose();
     } catch (err) {
-      setError(adminErrorMessage(err, "superadmin"));
+      setError(serverMessage(err));
       setPending(false);
+      onBusy(false);
     }
   }
 
@@ -452,14 +464,15 @@ function KeyEditForm({
 }
 
 export function KeyRevertDialog({ provider, onOpenChange, onSaved }: DialogProps) {
+  const [busy, setBusy] = useState(false);
   return (
-    <Dialog open={provider !== null} onOpenChange={onOpenChange}>
+    <Dialog open={provider !== null} onOpenChange={(o) => !busy && onOpenChange(o)}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle className="font-heading">{provider ? `Revert ${provider.label} to .env?` : ""}</DialogTitle>
           <DialogDescription>The saved override is deleted and the .env value applies again.</DialogDescription>
         </DialogHeader>
-        {provider && <KeyRevertForm provider={provider} onClose={() => onOpenChange(false)} onSaved={onSaved} />}
+        {provider && <KeyRevertForm provider={provider} onBusy={setBusy} onClose={() => onOpenChange(false)} onSaved={onSaved} />}
       </DialogContent>
     </Dialog>
   );
@@ -467,10 +480,12 @@ export function KeyRevertDialog({ provider, onOpenChange, onSaved }: DialogProps
 
 function KeyRevertForm({
   provider,
+  onBusy,
   onClose,
   onSaved,
 }: {
   provider: Provider;
+  onBusy: (busy: boolean) => void;
   onClose: () => void;
   onSaved: (key: string) => void;
 }) {
@@ -483,6 +498,7 @@ function KeyRevertForm({
     e.preventDefault();
     setError(null);
     setPending(true);
+    onBusy(true);
     try {
       unwrapKey(
         await api.DELETE("/api/secrets/{provider}", {
@@ -494,10 +510,12 @@ function KeyRevertForm({
       onSaved(provider.key);
       await queryClient.invalidateQueries({ queryKey: KEY });
       toast.success(`${provider.label} reverted to .env`);
+      onBusy(false);
       onClose();
     } catch (err) {
-      setError(adminErrorMessage(err, "superadmin"));
+      setError(serverMessage(err));
       setPending(false);
+      onBusy(false);
     }
   }
 
