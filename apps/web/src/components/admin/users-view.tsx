@@ -281,7 +281,7 @@ export function UsersView() {
     <AdminFrame
       page="users"
       headerActions={
-        <>
+        <div className="flex flex-wrap items-center gap-2">
           {can("view_audit_log") && (
             <Button
               variant="outline"
@@ -292,7 +292,7 @@ export function UsersView() {
             </Button>
           )}
           {can("manage_users") && <Button onClick={() => setAddOpen(true)}>+ Add user</Button>}
-        </>
+        </div>
       }
     >
       <UsersTiles />

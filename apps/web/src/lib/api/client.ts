@@ -27,6 +27,28 @@ const guardedFetch = (request: Request): Promise<Response> =>
 
 export const api = createClient<paths>({ baseUrl: "/api/proxy", fetch: guardedFetch });
 
+/** Token habis di tengah sesi: tandai dulu (sinkron, sebelum await, supaya 401 paralel lain
+ * tidak ikut masuk), lalu hapus cookie (kalau tidak, `proxy.ts` melempar /login balik ke
+ * /dashboard). Tidak ada navigasi: dialog di `SessionExpiredHost` yang mengantar user. */
+async function handleExpiry(response: Response): Promise<void> {
+  if (response.status === 401 && typeof window !== "undefined" && getSessionState() === "active") {
+    markSessionExpired();
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
+  }
+}
+
+/** `fetch` untuk unduhan/stream lewat `/api/proxy` yang tidak bisa lewat `api`: pakai penjaga sesi
+ * dan penanganan 401 yang sama (fetch mentah menembus penjaga). `X-Client-ID` dipasang di sini juga,
+ * kecuali pemanggil sudah mengisinya. */
+export async function proxyFetch(input: string, init?: RequestInit): Promise<Response> {
+  const headers = new Headers(init?.headers);
+  const clientId = getActiveClientId();
+  if (clientId && !headers.has("X-Client-ID")) headers.set("X-Client-ID", clientId);
+  const response = await guardedFetch(new Request(input, { ...init, headers }));
+  await handleExpiry(response);
+  return response;
+}
+
 api.use({
   onRequest({ request }) {
     const clientId = getActiveClientId();
@@ -36,13 +58,7 @@ api.use({
     return request;
   },
   async onResponse({ response }) {
-    // Token habis di tengah sesi: tandai dulu (sinkron, sebelum await, supaya 401 paralel lain
-    // tidak ikut masuk), lalu hapus cookie (kalau tidak, `proxy.ts` melempar /login balik ke
-    // /dashboard). Tidak ada navigasi: dialog di `SessionExpiredHost` yang mengantar user.
-    if (response.status === 401 && typeof window !== "undefined" && getSessionState() === "active") {
-      markSessionExpired();
-      await fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
-    }
+    await handleExpiry(response);
     return response;
   },
 });

@@ -8,7 +8,6 @@ import { useAuth } from "@/components/providers/auth-provider";
 import { SideNav } from "@/components/ui/side-nav";
 import { StatePanel } from "@/components/ui/state-panel";
 import { useCan } from "@/lib/auth/permissions";
-import { usePageTitle } from "@/lib/use-page-title";
 
 export type AdminPage =
   | "users"
@@ -111,7 +110,6 @@ export function AdminFrame({
   const { user } = useAuth();
   const can = useCan();
   const current = PAGES[page];
-  usePageTitle(`${current.label} · Admin`);
 
   if (!user) return null;
   if (!ADMIN_PERMISSIONS.some(can)) {

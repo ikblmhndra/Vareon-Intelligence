@@ -34,7 +34,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { api } from "@/lib/api/client";
+import { api, proxyFetch } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { getActiveClientId } from "@/lib/auth/client-id";
 import { useCan } from "@/lib/auth/permissions";
@@ -213,7 +213,7 @@ export function EntitiesListView() {
   async function downloadLayer() {
     try {
       const clientId = getActiveClientId();
-      const resp = await fetch(
+      const resp = await proxyFetch(
         "/api/proxy/api/ta/watchlist/navigator-layer",
         clientId ? { headers: { "X-Client-ID": clientId } } : undefined,
       );

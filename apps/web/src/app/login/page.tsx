@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useRef, useState, type FormEvent } from "react";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { BrandMark } from "@/components/brand-mark";
 import { Button } from "@/components/ui/button";
@@ -153,7 +154,10 @@ function LoginForm() {
   const [newPassword, setNewPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [forcedPhase, setForcedPhase] = useState<"saving" | "signing-in" | null>(null);
-  const policy = usePasswordPolicy();
+  const queryClient = useQueryClient();
+  // Di /login sesi masih `signing-out`, jadi query kebijakan membeku di 401 sintetis: hanya aktif di tahap
+  // forced (setelah login) dan di-invalidate saat masuk supaya entri error lama diambil ulang.
+  const policy = usePasswordPolicy(stage === "forced");
   const passwordRef = useRef<HTMLInputElement>(null);
   usePageTitle(stage === "forced" ? "Choose a new password" : null);
   const redirect = searchParams.get("redirect");
@@ -202,6 +206,7 @@ function LoginForm() {
         if (result.forcePwChange) {
           setFailure(null);
           setStage("forced");
+          void queryClient.invalidateQueries({ queryKey: ["auth", "policy"] });
           return;
         }
         setPassword("");
@@ -464,9 +469,9 @@ function LoginForm() {
 }
 
 const SIGNALS = [
-  { title: "CVE-2026-0119", meta: "KEV · CVSS 9.8", when: "2h ago", pos: "left-[8%] top-[46%]" },
-  { title: "RANSOMWARE", meta: "New victim · PH", when: "5h ago", pos: "right-[8%] top-[34%]" },
-  { title: "UNC5221", meta: "Active campaign", when: "today", pos: "left-[22%] top-[66%]" },
+  { title: "CVE-2026-0119", meta: "KEV · CVSS 9.8", when: "2h ago", pos: "left-0 top-[4%]" },
+  { title: "RANSOMWARE", meta: "New victim · PH", when: "5h ago", pos: "right-0 top-[34%]" },
+  { title: "UNC5221", meta: "Active campaign", when: "today", pos: "left-[14%] top-[64%]" },
 ];
 
 // `useSearchParams()` (baca query `?redirect=`, dipakai `LoginForm`) butuh
@@ -479,19 +484,6 @@ export default function LoginPage() {
       <section className="relative overflow-hidden bg-hero text-hero-foreground">
         <div className="pointer-events-none absolute inset-0" aria-hidden="true">
           <WorldDots className="opacity-100" fit="cover" />
-        </div>
-        {/* Kartu sinyal: dekorasi statis, bukan data dan tanpa kontrol. */}
-        <div className="pointer-events-none absolute inset-0 hidden md:block" aria-hidden="true">
-          {SIGNALS.map((s) => (
-            <div
-              key={s.title}
-              className={`absolute ${s.pos} rounded-lg bg-hero-panel px-3 py-2 text-2xs`}
-            >
-              <p className="font-code font-semibold tracking-wide text-hero-foreground">{s.title}</p>
-              <p className="text-hero-muted">{s.meta}</p>
-              <p className="text-hero-eyebrow">{s.when}</p>
-            </div>
-          ))}
         </div>
         <div className="relative flex h-full flex-col justify-between gap-10 px-6 py-8 md:p-12">
           <div className="space-y-2">
@@ -512,6 +504,21 @@ export default function LoginPage() {
               <span className="font-code">06°12′S 106°49′E</span>
               <span>· APAC coverage</span>
             </p>
+          </div>
+
+          {/* Kartu sinyal: dekorasi statis (bukan data, tanpa kontrol), di kolom antara merek dan judul
+              supaya tidak pernah menimpa judul; yang tidak muat terpotong. */}
+          <div className="pointer-events-none relative hidden min-h-0 flex-1 overflow-hidden md:block" aria-hidden="true">
+            {SIGNALS.map((s) => (
+              <div
+                key={s.title}
+                className={`absolute ${s.pos} rounded-lg bg-hero-panel px-3 py-2 text-2xs`}
+              >
+                <p className="font-code font-semibold tracking-wide text-hero-foreground">{s.title}</p>
+                <p className="text-hero-muted">{s.meta}</p>
+                <p className="text-hero-eyebrow">{s.when}</p>
+              </div>
+            ))}
           </div>
 
           <div className="space-y-4">

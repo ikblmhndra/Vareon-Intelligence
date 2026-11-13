@@ -1,3 +1,4 @@
+import { proxyFetch } from "@/lib/api/client";
 import { getActiveClientId } from "@/lib/auth/client-id";
 
 const FORMULA_PREFIXES = ["=", "+", "-", "@", "\t", "\r"];
@@ -63,7 +64,7 @@ export async function downloadBlob(url: string, fallbackName: string): Promise<{
   const headers: Record<string, string> = {};
   const clientId = getActiveClientId();
   if (clientId) headers["X-Client-ID"] = clientId;
-  const res = await fetch(target, { headers });
+  const res = await proxyFetch(target, { headers });
   if (!res.ok) throw new Error(`Export failed (${res.status})`);
   const blob = await res.blob();
   saveBlob(blob, filenameFrom(res.headers.get("Content-Disposition")) ?? fallbackName);

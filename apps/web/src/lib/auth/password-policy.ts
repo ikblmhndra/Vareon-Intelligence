@@ -18,7 +18,7 @@ export const DEFAULT_POLICY: PasswordPolicy = {
  * butuh auth), dipakai buat live-validate password di client SEBELUM
  * submit (server tetap validasi ulang, ini cuma UX). Dipakai bareng di
  * Add User, Reset Password (admin), dan Change Password (diri sendiri). */
-export function usePasswordPolicyQuery() {
+export function usePasswordPolicyQuery(enabled = true) {
   return useQuery({
     queryKey: ["auth", "policy"],
     queryFn: async () => {
@@ -27,11 +27,12 @@ export function usePasswordPolicyQuery() {
     },
     retry: noClientRetry,
     staleTime: 60_000,
+    enabled,
   });
 }
 
-export function usePasswordPolicy() {
-  return usePasswordPolicyQuery().data ?? DEFAULT_POLICY;
+export function usePasswordPolicy(enabled = true) {
+  return usePasswordPolicyQuery(enabled).data ?? DEFAULT_POLICY;
 }
 
 /** Daftar aturan untuk checklist live (`PasswordRules`): hanya aturan yang
