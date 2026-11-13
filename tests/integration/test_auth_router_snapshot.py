@@ -106,6 +106,24 @@ async def test_login_invalid_credentials(
     assert resp.json() == snapshot
 
 
+async def test_login_rate_limited_sends_retry_after(
+    api_client: AsyncClient, api_session: AsyncSession
+) -> None:
+    await _seed_user(api_session)
+    first_ten = [
+        await api_client.post("/api/auth/login", json={"username": "analyst1", "password": "wrong"})
+        for _ in range(10)
+    ]
+    assert [r.status_code for r in first_ten] == [401] * 10
+    resp = await api_client.post(
+        "/api/auth/login", json={"username": "analyst1", "password": "wrong"}
+    )
+    assert resp.status_code == 429
+    assert resp.headers["Retry-After"].isdigit()
+    assert 1 <= int(resp.headers["Retry-After"]) <= 60
+    assert resp.json()["detail"] == "Too many login attempts. Try again in a minute."
+
+
 async def test_logout(
     api_client: AsyncClient,
     api_session: AsyncSession,

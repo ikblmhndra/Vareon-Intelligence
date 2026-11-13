@@ -33,6 +33,7 @@ from cti_api.rate_limit import (
     clear_password_failures,
     is_rate_limited,
     note_password_failure,
+    retry_after_seconds,
 )
 from cti_api.schemas.auth import (
     ChangePasswordRequest,
@@ -107,7 +108,9 @@ async def login(
     ip = request_ip(request)
     if await is_rate_limited(redis, f"login:{ip}", max_requests=10, window_seconds=60):
         raise HTTPException(
-            status_code=429, detail="Too many login attempts. Try again in a minute."
+            status_code=429,
+            detail="Too many login attempts. Try again in a minute.",
+            headers={"Retry-After": str(await retry_after_seconds(redis, f"login:{ip}"))},
         )
     user_repo = AsyncUserRepo(session)
     user = await user_repo.get_by_username(body.username)

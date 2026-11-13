@@ -9,6 +9,7 @@ dari simulasi CI Fase 10.D). Sekarang env-nya di-set lewat `monkeypatch`
 from __future__ import annotations
 
 import pytest
+from cti_api.rate_limit import retry_after_seconds
 from cti_api.security import create_token, decode_token, hash_password, verify_password
 from cti_core.config import get_settings
 from jose import JWTError, jwt
@@ -85,3 +86,20 @@ def test_decode_token_rejects_wrong_secret() -> None:
     )
     with pytest.raises(JWTError):
         decode_token(bad_token)
+
+
+@pytest.mark.asyncio
+async def test_retry_after_seconds_clamps_ttl() -> None:
+    class _Stub:
+        def __init__(self, ttl: int) -> None:
+            self._ttl = ttl
+            self.keys: list[str] = []
+
+        async def ttl(self, key: str) -> int:
+            self.keys.append(key)
+            return self._ttl
+
+    for ttl, expected in [(-2, 60), (-1, 60), (0, 60), (37, 37), (999, 60)]:
+        stub = _Stub(ttl)
+        assert await retry_after_seconds(stub, "login:1.2.3.4") == expected  # type: ignore[arg-type]
+        assert stub.keys == ["ratelimit:login:1.2.3.4"]
