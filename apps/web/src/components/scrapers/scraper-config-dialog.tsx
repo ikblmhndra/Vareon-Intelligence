@@ -38,7 +38,8 @@ export function ScraperConfigDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const detail = useScraperDetail(id);
+  // Null saat tertutup: id tak dikenal atau daftar belum siap tidak boleh memicu GET /api/scraper/{id}.
+  const detail = useScraperDetail(open ? id : null);
   return (
     <Dialog open={open && id !== null} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
