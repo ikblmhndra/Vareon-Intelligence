@@ -28,7 +28,9 @@ import {
 } from "@/lib/data-health/tones";
 import { usePageTitle } from "@/lib/use-page-title";
 import { NeedsAttentionCard, PipelineCard } from "@/components/data-health/pipeline-card";
+import { CoverageCard, FreshnessCard, StoriesCard } from "@/components/data-health/freshness-card";
 import { LlmCard } from "@/components/data-health/llm-card";
+import { RelevanceCard } from "@/components/data-health/relevance-card";
 import { HowToRead } from "@/components/data-health/how-to-read";
 import { ToneChip } from "@/components/data-health/tone-chip";
 import { PageHeader } from "@/components/page-header";
@@ -230,8 +232,6 @@ export function DataHealthView() {
     const q = d.queues;
     const monitorX = (scrapers.data?.problems ?? []).find((p) => p.id === "monitor_x");
     const rel = d.relevance;
-    const frac = (x: number | null) => (x === null ? "—" : `${Math.round(x * 100)}%`);
-    const cov = dashboard.data;
     const sigma = d.sigma;
     const ingest = d.cve_ingest;
     const cveReport = ingest.last_reconcile;
@@ -310,6 +310,13 @@ export function DataHealthView() {
         </div>
 
         <LlmCard llm={llm} nowMs={nowMs} />
+        <RelevanceCard rel={rel} />
+
+        <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <FreshnessCard rows={fresh} monitorX={monitorX} nowMs={nowMs} />
+          <CoverageCard dashboard={dashboard.data} failed={dashboard.isError} iocEnrichment={d.ioc_enrichment} />
+          <StoriesCard day={llm.stories_24h} week={llm.stories_7d} />
+        </div>
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Section title="Enrichment" tone={failT}>
@@ -328,94 +335,7 @@ export function DataHealthView() {
           <MoreLink href="/newsroom">Review jobs in Newsroom › Filtered Articles › Enrichment queue</MoreLink>
         </Section>
 
-        <Section title="Source freshness">
-          <Row label="Newest article" value={when(d.sources.articles_newest_at)} tone={fresh[0].tone} />
-          <Row
-            label="Newest tweet (X Intel)"
-            value={`${when(d.sources.tweets_newest_at)}${monitorX ? ` · monitor_x ${monitorX.status.replace("_", " ")}${monitorX.reason ? `: ${monitorX.reason}` : ""}` : ""}`}
-            tone={fresh[1].tone}
-          />
-          <Row label="Newest IOC extracted" value={when(d.sources.iocs_newest_at)} tone={fresh[2].tone} />
-          <Row
-            label="CVE check"
-            value={cve.isError ? "unknown (failed to load)" : cve.data ? `last successful check ${when(cve.data.last_checked_at)}` : "loading…"}
-            tone={fresh[3].tone}
-          />
-          <Row
-            label="ATT&CK"
-            value={attack.isError ? "unknown (failed to load)" : attack.data ? `last sync ${when(fresh[4].at)}` : "loading…"}
-            tone={fresh[4].tone}
-          />
-        </Section>
-
-        <Section title="Coverage">
-          {cov ? (
-            <>
-              <Row label="Articles with a country" value={`${cov.coverage.with_country.toLocaleString()} of ${cov.total_articles.toLocaleString()} (${pct(cov.coverage.with_country, cov.total_articles)})`} />
-              <Row label="Articles with a threat actor" value={`${cov.coverage.with_actor.toLocaleString()} (${pct(cov.coverage.with_actor, cov.total_articles)})`} />
-              <Row label="Articles with an ATT&CK technique" value={`${cov.coverage.with_ttp.toLocaleString()} (${pct(cov.coverage.with_ttp, cov.total_articles)})`} />
-            </>
-          ) : (
-            <Row label="Articles" value={dashboard.isError ? "unknown (failed to load)" : "loading…"} />
-          )}
-          <h3 className="mt-4 mb-1 text-sm font-semibold text-foreground">IOC reputation checks</h3>
-          {d.ioc_enrichment.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No IOCs yet.</p>
-          ) : (
-            d.ioc_enrichment.map((c) => (
-              <Row
-                key={c.type}
-                label={c.type}
-                code
-                value={`${c.enriched.toLocaleString()} of ${c.total.toLocaleString()} checked (${pct(c.enriched, c.total)})`}
-              />
-            ))
-          )}
-        </Section>
-
         <div className="space-y-4 lg:col-span-2">
-          <Section title="Stories">
-            <Row label="Stories, last 24 hours" value={storySummary(llm.stories_24h)} />
-            <Row label="Stories, last 7 days" value={storySummary(llm.stories_7d)} />
-          </Section>
-          <Section title="Relevance model" tone={relT}>
-            <Row
-              label="Mode"
-              value={
-                rel.gate_state === null
-                  ? `${rel.mode} · no active model yet`
-                  : `${rel.mode} · gate ${rel.gate_state === "gate" ? "on" : "off (shadow)"}${rel.gate_changed_at ? ` since ${when(rel.gate_changed_at)}` : ""}`
-              }
-            />
-            {rel.gate_state !== null && (
-              <>
-                <Row
-                  label="Active model"
-                  value={`trained ${when(rel.model_trained_at)} · ${(rel.n_examples ?? 0).toLocaleString()} examples · holdout agreement ${frac(rel.holdout_agreement)} · band share ${frac(rel.holdout_band_share)}`}
-                />
-                <Row
-                  label="Last 14 days"
-                  value={
-                    rel.band_titles_14d === 0
-                      ? `No in-band titles with an LLM verdict yet · ${rel.middle_band_14d.toLocaleString()} in the middle band`
-                      : `${rel.band_titles_14d.toLocaleString()} in-band titles with an LLM verdict · agreement ${frac(rel.band_agreement_14d)} · ${rel.middle_band_14d.toLocaleString()} in the middle band`
-                  }
-                />
-                <Row
-                  label="Audit samples"
-                  value={
-                    rel.audit_samples === 0
-                      ? "No audit samples yet"
-                      : `${rel.audit_samples.toLocaleString()} latest · agreement ${frac(rel.audit_agreement)}`
-                  }
-                />
-              </>
-            )}
-            <Row
-              label="Classify calls avoided"
-              value={`${rel.classify_avoided_24h.toLocaleString()} in 24 h · ${rel.classify_avoided_7d.toLocaleString()} in 7 days`}
-            />
-          </Section>
           <Section title="CVE ingest" tone={cveT}>
             {!ingest.enabled ? (
               <Row label="Mirror" value="Off (CVE_MIRROR__ENABLED is false)" />
@@ -462,10 +382,6 @@ export function DataHealthView() {
       <HowToRead open={howOpen} onOpenChange={setHowOpen} />
     </div>
   );
-}
-
-function storySummary(s: { new_stories: number; followups: number; inherited: number; llm_calls_avoided: number; by_embedding: number }) {
-  return `${s.new_stories.toLocaleString()} new · ${s.followups.toLocaleString()} follow-ups · ${s.inherited.toLocaleString()} inherited · ${s.by_embedding.toLocaleString()} by embedding · ${s.llm_calls_avoided.toLocaleString()} LLM calls avoided`;
 }
 
 function Section({ title, tone, children }: { title: string; tone?: Tone; children: ReactNode }) {
