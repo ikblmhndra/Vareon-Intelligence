@@ -3,81 +3,114 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api/client";
+import type { components } from "@/lib/api/schema";
 import type { AdminUser, AuditLogEntry, Client, Permission, Role } from "@/lib/api/loose-types";
+import { noClientRetry, unwrap } from "@/lib/scrapers/queries";
 
 /**
  * Endpoint `/api/auth/users`, `/api/roles`, `/api/roles/permissions`,
  * `/api/clients` semua balikin `list[dict[str,object]]` polos di backend
- * (gak ada `response_model`) -- `data as unknown as X[]` di sini nge-cast
+ * (gak ada `response_model`) -- `as unknown as X[]` di sini nge-cast
  * ke shape yang dicek langsung dari `_serialize()` masing-masing router
  * (`auth.py::get_users`, `roles.py`, `clients.py`), bukan tebakan.
+ * Semua lewat `unwrap` (body 502 kosong lolos `if (error)`) dan tanpa retry 4xx.
+ * "Sekarang" dibaca di dalam `queryFn`, tidak saat render.
  */
 
-export function useAdminUsers() {
+/** Pesan galat query/mutasi Admin; 403 diterjemahkan jadi permission yang kurang. */
+export function adminErrorMessage(e: unknown, permission: string): string {
+  if (e instanceof Error && e.cause === 403) return `You need the ${permission} permission`;
+  return e instanceof Error ? e.message : String(e);
+}
+
+export function useAdminUsers(enabled = true) {
   return useQuery({
     queryKey: ["admin", "users"],
-    queryFn: async () => {
-      const { data, response } = await api.GET("/api/auth/users");
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return data as unknown as AdminUser[];
-    },
+    enabled,
+    queryFn: async () => ({
+      users: unwrap(await api.GET("/api/auth/users"), "Failed to load users") as unknown as AdminUser[],
+      nowMs: Date.now(),
+    }),
+    retry: noClientRetry,
   });
 }
 
 export function useRoles() {
   return useQuery({
     queryKey: ["admin", "roles"],
-    queryFn: async () => {
-      const { data, response } = await api.GET("/api/roles");
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return data as unknown as Role[];
-    },
+    queryFn: async () =>
+      unwrap(await api.GET("/api/roles"), "Failed to load roles") as unknown as Role[],
+    retry: noClientRetry,
   });
 }
 
 export function usePermissions() {
   return useQuery({
     queryKey: ["admin", "permissions"],
-    queryFn: async () => {
-      const { data, response } = await api.GET("/api/roles/permissions");
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return data as unknown as Permission[];
-    },
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/api/roles/permissions"),
+        "Failed to load permissions",
+      ) as unknown as Permission[],
+    retry: noClientRetry,
   });
 }
 
-export function useClients() {
+export function useClients(enabled = true) {
   return useQuery({
     queryKey: ["admin", "clients"],
-    queryFn: async () => {
-      const { data, response } = await api.GET("/api/clients");
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return data as unknown as Client[];
-    },
+    enabled,
+    queryFn: async () =>
+      unwrap(await api.GET("/api/clients"), "Failed to load clients") as unknown as Client[],
+    retry: noClientRetry,
   });
 }
 
-export function useAuditLog(params: {
-  page: number;
-  pageSize: number;
-  user: string;
-  action: string;
-}) {
+export function useAuditLog(
+  params: { page: number; pageSize: number; user: string; action: string },
+  enabled = true,
+) {
   return useQuery({
     queryKey: ["admin", "audit-log", params],
+    enabled,
     queryFn: async () => {
-      const { data, response } = await api.GET("/api/auth/audit-log", {
-        params: {
-          query: {
-            page: params.page,
-            page_size: params.pageSize,
-            user: params.user || undefined,
-            action: params.action || undefined,
+      const data = unwrap(
+        await api.GET("/api/auth/audit-log", {
+          params: {
+            query: {
+              page: params.page,
+              page_size: params.pageSize,
+              user: params.user || undefined,
+              action: params.action || undefined,
+            },
           },
-        },
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return data as unknown as { logs: AuditLogEntry[]; total: number };
+        }),
+        "Failed to load audit log",
+      ) as unknown as { logs: AuditLogEntry[]; total: number };
+      return { ...data, dayStartMs: new Date().setHours(0, 0, 0, 0) };
     },
+    retry: noClientRetry,
+  });
+}
+
+export function useApiTokens(enabled = true) {
+  return useQuery({
+    queryKey: ["admin", "api-tokens"],
+    enabled,
+    queryFn: async () => ({
+      tokens: unwrap(await api.GET("/api/api-tokens"), "Failed to load API tokens") as components["schemas"]["ApiTokenOut"][],
+      nowMs: Date.now(),
+    }),
+    retry: noClientRetry,
+  });
+}
+
+export function useSecrets(enabled = true) {
+  return useQuery({
+    queryKey: ["admin", "secrets"],
+    enabled,
+    queryFn: async () =>
+      unwrap(await api.GET("/api/secrets"), "Failed to load third-party keys") as components["schemas"]["SecretsStatusOut"],
+    retry: noClientRetry,
   });
 }

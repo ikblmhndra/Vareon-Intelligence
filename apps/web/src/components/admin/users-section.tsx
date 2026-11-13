@@ -74,7 +74,7 @@ export function UsersSection() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {users.data.map((u) => (
+                {users.data.users.map((u) => (
                   <TableRow key={u.username}>
                     <TableCell className="font-mono text-xs text-foreground">{u.username}</TableCell>
                     <TableCell>
