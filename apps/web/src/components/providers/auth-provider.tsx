@@ -126,11 +126,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (redirectTo) => {
       // Sebelum request apa pun: 401 yang mendarat selama logout disengaja tidak membuka dialog.
       markSigningOut();
-      await fetch("/api/auth/logout", { method: "POST" });
-      queryClient.setQueryData(ME_QUERY_KEY, null);
-      const target = redirectTo ? "/login?redirect=" + encodeURIComponent(redirectTo) : "/login";
-      // Sudah di URL itu (`/login` yang memanggil `logout(redirect)`): push akan me-reset judul layout.
-      if (target !== location.pathname + location.search) router.push(target);
+      try {
+        // POST gagal tidak menghentikan alur: tetap bersihkan cache dan ke /login (tujuan yang sama).
+        await fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
+        queryClient.setQueryData(ME_QUERY_KEY, null);
+        const target = redirectTo ? "/login?redirect=" + encodeURIComponent(redirectTo) : "/login";
+        // Sudah di URL itu (`/login` yang memanggil `logout(redirect)`): push akan me-reset judul layout.
+        if (target !== location.pathname + location.search) router.push(target);
+      } catch (e) {
+        // Alur tak selesai: jangan tinggalkan store `signing-out` (API terblokir, tanpa UI).
+        resetSessionExpired();
+        throw e;
+      }
     },
     [queryClient, router],
   );
