@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api/client";
+import { isClientError } from "@/lib/exec/query";
 import { noClientRetry, unwrap } from "@/lib/scrapers/queries";
 
 /** Satu query kesehatan armada scraper (`GET /api/scraper/health`), dipakai `SchedulerStatus`,
@@ -13,7 +14,7 @@ export function useScraperHealth() {
       return unwrap(await api.GET("/api/scraper/health"), "Could not load scraper health");
     },
     retry: noClientRetry,
-    refetchInterval: 60_000,
+    refetchInterval: (q) => (isClientError(q.state.error) ? false : 60_000),
   });
 }
 

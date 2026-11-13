@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api/client";
 import type { AttackDomainStatus } from "@/lib/api/loose-types";
-import { errorStatus } from "@/lib/exec/query";
+import { errorStatus, isClientError } from "@/lib/exec/query";
 import { fmtCompactAge, fmtTime, browserZoneName } from "@/lib/format";
 import { byProblemSeverity, useScraperHealth } from "@/lib/scrapers/health";
 import { noClientRetry, unwrap } from "@/lib/scrapers/queries";
@@ -110,7 +110,7 @@ export function DataHealthView() {
       d: unwrap(await api.GET("/api/data-health"), "Could not load data health"),
       nowMs: Date.now(),
     }),
-    refetchInterval: 60_000,
+    refetchInterval: (q) => (isClientError(q.state.error) ? false : 60_000),
     retry: noClientRetry,
   });
   // Query yang sama dengan `/scrapers` (cache dibagi): status scraper `monitor_x` untuk X Intel.
@@ -166,7 +166,7 @@ export function DataHealthView() {
 
     const pipeT = pipelineTone(d.scrapers);
     const queueT = queueTone(d.queues);
-    const llmT = llmJobsTone(d.llm);
+    const llmT = llmJobsTone(d.llm, nowMs);
     const fresh = freshnessRows(
       {
         sources: d.sources,

@@ -149,7 +149,7 @@ export function ScrapersTable({
                     )}
                   </TableCell>
                   <TableCell
-                    className={`text-xs ${schedulerOk ? "text-muted-foreground" : "text-destructive-text line-through"}`}
+                    className={`text-xs ${schedulerOk || nextMs === null ? "text-muted-foreground" : "text-destructive-text line-through"}`}
                     title={
                       nextMs === null
                         ? s.enabled
@@ -169,13 +169,14 @@ export function ScrapersTable({
                   <TableCell className="text-right">
                     {canManage &&
                       (s.enabled ? (
-                        <Button variant="ghost" size="sm" onClick={() => onDisable(s)}>
+                        <Button variant="ghost" size="sm" aria-label={`Disable ${s.source}`} onClick={() => onDisable(s)}>
                           Disable
                         </Button>
                       ) : (
                         <Button
                           variant="ghost"
                           size="sm"
+                          aria-label={`Enable ${s.source}`}
                           onClick={() => onEnable(s.id)}
                           disabled={enablingId === s.id}
                         >

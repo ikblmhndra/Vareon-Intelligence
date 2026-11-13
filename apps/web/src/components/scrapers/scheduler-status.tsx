@@ -19,7 +19,7 @@ export function SchedulerChip() {
 
   if (scheduler.state === "ok") {
     return (
-      <span title={`Up since ${fmtDateTime(scheduler.started_at)}`}>
+      <span title={scheduler.started_at ? `Up since ${fmtDateTime(scheduler.started_at)}` : undefined}>
         <Chip kind="status" value="ok">
           Scheduler alive · tick {ago(scheduler.age_s)}
         </Chip>

@@ -52,10 +52,15 @@ export function queueTone(queues: S["QueueHealthOut"]): Tone {
   return depth >= max ? "bad" : depth >= max / 2 ? "warn" : "ok";
 }
 
-export function llmJobsTone(llm: S["LlmHealthOut"]): Tone {
+/** Job antre baru dianggap WATCH bila yang tertua sudah menunggu lebih dari ini. */
+const PENDING_WATCH_MS = 15 * 60_000;
+
+export function llmJobsTone(llm: S["LlmHealthOut"], nowMs: number): Tone {
   const q = llm.queue;
   if (llm.status === "failing" || q.breaker === "open") return "bad";
-  if (q.breaker === "half_open" || q.pending_classify > 0 || q.failed > 0) return "warn";
+  const oldest = q.oldest_pending_at ? Date.parse(q.oldest_pending_at) : NaN;
+  const stale = q.pending_classify + q.pending_ttp > 0 && nowMs - oldest > PENDING_WATCH_MS;
+  if (q.breaker === "half_open" || q.failed > 0 || stale) return "warn";
   return llm.status === "unknown" ? "unknown" : "ok";
 }
 

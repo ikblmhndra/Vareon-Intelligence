@@ -32,7 +32,7 @@ export function useScraperList() {
       nowMs: Date.now(),
     }),
     retry: noClientRetry,
-    refetchInterval: 60_000,
+    refetchInterval: (q) => (isClientError(q.state.error) ? false : 60_000),
   });
 }
 

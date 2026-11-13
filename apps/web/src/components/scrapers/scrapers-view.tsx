@@ -74,8 +74,8 @@ export function ScrapersView() {
   } | null>(null);
   const enable = useEnableScraper();
   const [configOpen, setConfigOpen] = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [dedupOpen, setDedupOpen] = useState(false);
+  const [historyTarget, setHistoryTarget] = useState<string | null>(null);
+  const [dedupTarget, setDedupTarget] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -88,7 +88,7 @@ export function ScrapersView() {
     onSuccess: (data) => {
       toast.success(`Dedup reset · ${data.deleted} entries cleared`);
       void queryClient.invalidateQueries({ queryKey: ["scrapers"] });
-      setDedupOpen(false);
+      setDedupTarget(null);
     },
     onError: (e: Error) => toast.error(`Reset dedup failed: ${writeErrorMessage(e)}`),
   });
@@ -208,7 +208,7 @@ export function ScrapersView() {
                   rows={rows}
                   total={list.data.scrapers.length}
                   filtered={filtering ? rows.length : null}
-                  schedulerOk={list.data.scheduler.state === "ok"}
+                  schedulerOk={(health.data?.scheduler ?? list.data.scheduler).state === "ok"}
                   nowMs={list.data.nowMs}
                   selectedId={selectedId}
                   canManage={canManage}
@@ -231,8 +231,8 @@ export function ScrapersView() {
                     onClose={() => select(null)}
                     onDisable={(row) => setDisableTarget({ id: row.id, source: row.source })}
                     onEditConfig={() => setConfigOpen(true)}
-                    onResetDedup={() => setDedupOpen(true)}
-                    onOpenHistory={() => setHistoryOpen(true)}
+                    onResetDedup={() => setDedupTarget(selectedId)}
+                    onOpenHistory={() => setHistoryTarget(selectedId)}
                   />
                 </div>
               }
@@ -244,30 +244,30 @@ export function ScrapersView() {
       <DisableScraperDialog target={disableTarget} onOpenChange={(open) => !open && setDisableTarget(null)} />
       <ScraperConfigDialog id={selectedId} open={configOpen} onOpenChange={setConfigOpen} />
       <ConfirmDialog
-        open={dedupOpen && selectedId !== null}
-        onOpenChange={setDedupOpen}
+        open={dedupTarget !== null}
+        onOpenChange={(open) => !open && setDedupTarget(null)}
         tone="danger"
         title="Reset dedup state?"
-        description={`All dedup history for ${selectedId} is deleted. The next run is a cold start: only its newest items are processed and the rest are marked seen.`}
+        description={`All dedup history for ${dedupTarget} is deleted. The next run is a cold start: only its newest items are processed and the rest are marked seen.`}
         confirmLabel="Reset dedup"
         confirmLoading={dedup.isPending}
-        onConfirm={() => selectedId && dedup.mutate(selectedId)}
+        onConfirm={() => dedupTarget && dedup.mutate(dedupTarget)}
       />
       <Sheet
-        open={historyOpen && selectedId !== null}
-        onOpenChange={setHistoryOpen}
-        title={`Run history · ${selectedRow?.source ?? selectedId}`}
+        open={historyTarget !== null}
+        onOpenChange={(open) => !open && setHistoryTarget(null)}
+        title={`Run history · ${allRows.find((r) => r.id === historyTarget)?.source ?? historyTarget}`}
         description="Every recorded run and every item the scraper logged."
       >
-        {selectedId && (
+        {historyTarget && (
           <div className="space-y-6">
             <section>
               <h3 className="mb-2 text-sm font-semibold text-foreground">Runs</h3>
-              <ScraperRunsPanel key={selectedId} scraperId={selectedId} />
+              <ScraperRunsPanel key={historyTarget} scraperId={historyTarget} />
             </section>
             <section>
               <h3 className="mb-2 text-sm font-semibold text-foreground">Items</h3>
-              <ScraperItemsPanel key={selectedId} scraperId={selectedId} />
+              <ScraperItemsPanel key={historyTarget} scraperId={historyTarget} />
             </section>
           </div>
         )}

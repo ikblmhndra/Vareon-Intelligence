@@ -57,8 +57,9 @@ export function HowToRead({ open, onOpenChange }: { open: boolean; onOpenChange:
             checked by at least one reputation provider (IOCs a provider cannot check, such as private IPs, do not count).
           </Item>
           <Item name="LLM">
-            ACTION when the latest model call failed (the row shows the HTTP status, error type, task and age); OK once a call
-            succeeds again. The queue rows show the circuit breaker (closed: calls go through; open: calls pause until the retry
+            ACTION while the latest model call failed (the row shows the HTTP status, error type, task and age) or the breaker is
+            open; WATCH while the breaker is half-open, jobs have failed, or the oldest pending job has waited more than 15
+            minutes; OK once a call succeeds again. The queue rows show the circuit breaker (closed: calls go through; open: calls pause until the retry
             time; half-open: one test call at a time), how many classify and TTP jobs wait for the model, how many failed and the
             age of the oldest pending job; pending jobs drain by themselves once the model works. The table compares each task
             over 24 hours and 7 days; a dash means no value was recorded.

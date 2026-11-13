@@ -136,7 +136,7 @@ function PanelBody({
         }),
         "Dry run failed",
       ),
-    onError: (e: Error) => toast.error(`Dry run failed: ${writeErrorMessage(e)}`),
+    onError: (e: Error) => toast.error(`Dry run failed for ${id}: ${writeErrorMessage(e)}`),
   });
 
   const sentence = row.status === "loading" ? null : statusSentence(row.status, entry, row, nowMs);
