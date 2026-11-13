@@ -68,10 +68,11 @@ export function MoreChecks({
     <Disclosure
       className="mb-4"
       printOpen
+      headingLevel={2}
       defaultOpen={tones.cve === "warn" || tones.cve === "bad" || tones.sigma === "warn" || tones.sigma === "bad"}
       title={
         <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <h2 className="font-heading text-xl font-bold tracking-tight">More checks</h2>
+          <span className="font-heading text-xl font-bold tracking-tight">More checks</span>
           {chips.map(([name, t]) => (
             <ToneChip key={name} tone={t}>
               {name} {TONE_LABEL[t]}
