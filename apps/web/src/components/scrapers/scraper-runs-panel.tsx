@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api/client";
+import { fmtDateTime } from "@/lib/format";
+import { noClientRetry, unwrap } from "@/lib/scrapers/queries";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { SimplePager } from "@/components/pager";
 import { RunStatusText } from "@/components/scrapers/status-badge";
@@ -37,13 +39,14 @@ export function ScraperRunsPanel({ scraperId }: { scraperId: string }) {
 
   const query = useQuery({
     queryKey: ["scrapers", scraperId, "runs", page],
-    queryFn: async () => {
-      const { data, error } = await api.GET("/api/scraper/{scraper_id}/runs", {
-        params: { path: { scraper_id: scraperId }, query: { page, page_size: PAGE_SIZE } },
-      });
-      if (error) throw error;
-      return data;
-    },
+    queryFn: async () =>
+      unwrap(
+        await api.GET("/api/scraper/{scraper_id}/runs", {
+          params: { path: { scraper_id: scraperId }, query: { page, page_size: PAGE_SIZE } },
+        }),
+        "Could not load runs",
+      ),
+    retry: noClientRetry,
   });
 
   const totalPages = Math.max(1, Math.ceil((query.data?.total ?? 0) / PAGE_SIZE));
@@ -56,16 +59,21 @@ export function ScraperRunsPanel({ scraperId }: { scraperId: string }) {
         <p className="py-4 text-center text-xs text-muted-foreground">No runs recorded yet.</p>
       )}
       {query.data && query.data.runs.length > 0 && (
-        <Table>
+        <Table className="table-fixed">
+          <colgroup>
+            <col className="w-[24%]" />
+            <col className="w-[14%]" />
+            <col className="w-[9%]" />
+            <col className="w-[9%]" />
+            <col className="w-[12%]" />
+            <col className="w-[32%]" />
+          </colgroup>
           <TableHeader>
             <TableRow>
               <TableHead>Started</TableHead>
-              <TableHead>Trigger</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Found</TableHead>
               <TableHead>New</TableHead>
-              <TableHead>Dropped</TableHead>
-              <TableHead>Failed</TableHead>
               <TableHead>Duration</TableHead>
               <TableHead>Error</TableHead>
             </TableRow>
@@ -73,21 +81,18 @@ export function ScraperRunsPanel({ scraperId }: { scraperId: string }) {
           <TableBody>
             {query.data.runs.map((r) => (
               <TableRow key={r.run_id}>
-                <TableCell className="font-mono text-xs text-muted-foreground">
-                  {r.started_at.replace("T", " ").split(".")[0]}
+                <TableCell className="font-code text-xs text-muted-foreground">
+                  {fmtDateTime(r.started_at)}
                 </TableCell>
-                <TableCell className="font-mono text-xs text-muted-foreground">{r.trigger}</TableCell>
                 <TableCell>
                   <RunStatusText status={r.status} />
                 </TableCell>
-                <TableCell className="font-mono text-xs text-foreground">{r.items_found}</TableCell>
-                <TableCell className="font-mono text-xs text-foreground">{r.items_new}</TableCell>
-                <TableCell className="font-mono text-xs text-muted-foreground">{r.items_dropped}</TableCell>
-                <TableCell className="font-mono text-xs text-destructive">{r.items_failed || ""}</TableCell>
-                <TableCell className="font-mono text-xs whitespace-nowrap text-muted-foreground">
+                <TableCell className="font-code text-xs text-foreground">{r.items_found}</TableCell>
+                <TableCell className="font-code text-xs text-foreground">{r.items_new}</TableCell>
+                <TableCell className="font-code text-xs whitespace-nowrap text-muted-foreground">
                   {humanDuration(r.duration_ms)}
                 </TableCell>
-                <TableCell className="min-w-48 max-w-72 text-xs break-words whitespace-normal text-muted-foreground">
+                <TableCell className="text-xs break-words whitespace-normal text-muted-foreground">
                   {errorSummary(r.errors) ?? "—"}
                 </TableCell>
               </TableRow>

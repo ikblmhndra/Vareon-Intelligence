@@ -1,26 +1,33 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { PageHeader } from "@/components/page-header";
 import { HealthTiles } from "@/components/scrapers/health-summary-bar";
 import { SchedulerChip, SchedulerNotice } from "@/components/scrapers/scheduler-status";
-import { ScraperDetailDialog } from "@/components/scrapers/scraper-detail-dialog";
+import { ScraperConfigDialog } from "@/components/scrapers/scraper-config-dialog";
+import { ScraperItemsPanel } from "@/components/scrapers/scraper-items-panel";
+import { ScraperRunsPanel } from "@/components/scrapers/scraper-runs-panel";
 import { ScraperPanel } from "@/components/scrapers/scraper-panel";
 import { DisableScraperDialog } from "@/components/scrapers/disable-scraper-dialog";
 import { StatusLegend } from "@/components/scrapers/status-legend";
 import { ScrapersTable, type ScraperRow } from "@/components/scrapers/scrapers-table";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { MasterDetail } from "@/components/ui/master-detail";
 import { FilterSelect } from "@/components/ui/filter-select";
+import { Sheet } from "@/components/ui/sheet";
 import { SearchInput } from "@/components/ui/search-input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatePanel } from "@/components/ui/state-panel";
 import { useCan } from "@/lib/auth/permissions";
 import { errorStatus } from "@/lib/exec/query";
+import { api } from "@/lib/api/client";
 import { useScraperHealth } from "@/lib/scrapers/health";
-import { useEnableScraper, useScraperList } from "@/lib/scrapers/queries";
+import { unwrap, useEnableScraper, useScraperList, writeErrorMessage } from "@/lib/scrapers/queries";
 import { usePageTitle } from "@/lib/use-page-title";
 
 const STATUS_OPTIONS = [
@@ -66,9 +73,25 @@ export function ScrapersView() {
     source: string;
   } | null>(null);
   const enable = useEnableScraper();
-  // Sementara (sampai dialog config baru): config, reset dedup, dan riwayat masih lewat dialog lama.
-  const [legacyOpen, setLegacyOpen] = useState(false);
+  const [configOpen, setConfigOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [dedupOpen, setDedupOpen] = useState(false);
+  const queryClient = useQueryClient();
   const panelRef = useRef<HTMLDivElement>(null);
+
+  const dedup = useMutation({
+    mutationFn: async (id: string) =>
+      unwrap(
+        await api.POST("/api/scraper/{scraper_id}/reset-dedup", { params: { path: { scraper_id: id } } }),
+        "Reset dedup failed",
+      ),
+    onSuccess: (data) => {
+      toast.success(`Dedup reset · ${data.deleted} entries cleared`);
+      void queryClient.invalidateQueries({ queryKey: ["scrapers"] });
+      setDedupOpen(false);
+    },
+    onError: (e: Error) => toast.error(`Reset dedup failed: ${writeErrorMessage(e)}`),
+  });
 
   /** `router.replace` ke URL yang sama membuat Next memasang ulang judul layout, jadi no-op bila tak berubah. */
   function select(id: string | null) {
@@ -94,6 +117,7 @@ export function ScrapersView() {
     ...s,
     status: statusFor(s.id, s.enabled),
   }));
+  const selectedRow = allRows.find((r) => r.id === selectedId);
   const q = search.trim().toLowerCase();
   const rows = allRows.filter(
     (s) =>
@@ -197,16 +221,16 @@ export function ScrapersView() {
                 <div ref={panelRef}>
                   <ScraperPanel
                     id={selectedId}
-                    row={allRows.find((r) => r.id === selectedId)}
+                    row={selectedRow}
                     entry={health.data?.problems.find((p) => p.id === selectedId)}
                     listReady={!!list.data}
                     nowMs={list.data.nowMs}
                     canManage={canManage}
                     onClose={() => select(null)}
                     onDisable={(row) => setDisableTarget({ id: row.id, source: row.source })}
-                    onEditConfig={() => setLegacyOpen(true)}
-                    onResetDedup={() => setLegacyOpen(true)}
-                    onOpenHistory={() => setLegacyOpen(true)}
+                    onEditConfig={() => setConfigOpen(true)}
+                    onResetDedup={() => setDedupOpen(true)}
+                    onOpenHistory={() => setHistoryOpen(true)}
                   />
                 </div>
               }
@@ -216,11 +240,36 @@ export function ScrapersView() {
         </>
       )}
       <DisableScraperDialog target={disableTarget} onOpenChange={(open) => !open && setDisableTarget(null)} />
-      <ScraperDetailDialog
-        scraperId={legacyOpen ? selectedId : null}
-        healthStatus={allRows.find((s) => s.id === selectedId)?.status}
-        onOpenChange={(open) => !open && setLegacyOpen(false)}
+      <ScraperConfigDialog id={selectedId} open={configOpen} onOpenChange={setConfigOpen} />
+      <ConfirmDialog
+        open={dedupOpen && selectedId !== null}
+        onOpenChange={setDedupOpen}
+        tone="danger"
+        title="Reset dedup state?"
+        description={`All dedup history for ${selectedId} is deleted. The next run is a cold start: only its newest items are processed and the rest are marked seen.`}
+        confirmLabel="Reset dedup"
+        confirmLoading={dedup.isPending}
+        onConfirm={() => selectedId && dedup.mutate(selectedId)}
       />
+      <Sheet
+        open={historyOpen && selectedId !== null}
+        onOpenChange={setHistoryOpen}
+        title={`Run history · ${selectedRow?.source ?? selectedId}`}
+        description="Every recorded run and every item the scraper logged."
+      >
+        {selectedId && (
+          <div className="space-y-6">
+            <section>
+              <h3 className="mb-2 text-sm font-semibold text-foreground">Runs</h3>
+              <ScraperRunsPanel key={selectedId} scraperId={selectedId} />
+            </section>
+            <section>
+              <h3 className="mb-2 text-sm font-semibold text-foreground">Items</h3>
+              <ScraperItemsPanel key={selectedId} scraperId={selectedId} />
+            </section>
+          </div>
+        )}
+      </Sheet>
     </div>
   );
 }
