@@ -501,6 +501,17 @@
             "title": "Entities",
             "type": "array"
           },
+          "first_seen_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Seen At"
+          },
           "grade_origin": {
             "anyOf": [
               {
@@ -636,6 +647,17 @@
                 "type": "null"
               }
             ]
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
           },
           "threat_actors": {
             "default": [],
@@ -2880,6 +2902,13 @@
           "brief": {
             "$ref": "#/components/schemas/Brief"
           },
+          "client_countries": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Client Countries",
+            "type": "array"
+          },
           "generated_at": {
             "title": "Generated At",
             "type": "string"
@@ -2887,6 +2916,13 @@
           "kev_in_stack": {
             "title": "Kev In Stack",
             "type": "integer"
+          },
+          "kev_tech": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Kev Tech",
+            "type": "array"
           },
           "kev_without_ticket": {
             "title": "Kev Without Ticket",
@@ -2896,13 +2932,41 @@
             "title": "Pir Hits",
             "type": "integer"
           },
+          "ransomware_client_top_industry": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NameCount"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "ransomware_in_client_scope": {
             "title": "Ransomware In Client Scope",
             "type": "integer"
           },
+          "ransomware_prev_in_client_scope": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ransomware Prev In Client Scope"
+          },
           "watchlist_hits": {
             "title": "Watchlist Hits",
             "type": "integer"
+          },
+          "watchlist_top": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Watchlist Top",
+            "type": "array"
           }
         },
         "required": [
@@ -2911,6 +2975,11 @@
           "ransomware_in_client_scope",
           "watchlist_hits",
           "pir_hits",
+          "kev_tech",
+          "ransomware_prev_in_client_scope",
+          "ransomware_client_top_industry",
+          "watchlist_top",
+          "client_countries",
           "brief",
           "generated_at"
         ],
@@ -11904,7 +11973,9 @@
           "kind": {
             "enum": [
               "actor",
-              "ttp"
+              "ttp",
+              "malware",
+              "cve"
             ],
             "title": "Kind",
             "type": "string"
@@ -11926,6 +11997,11 @@
           "prev_count": {
             "title": "Prev Count",
             "type": "integer"
+          },
+          "ransomware_group": {
+            "default": false,
+            "title": "Ransomware Group",
+            "type": "boolean"
           },
           "top_countries": {
             "items": {
@@ -12036,7 +12112,9 @@
           "kind": {
             "enum": [
               "actor",
-              "ttp"
+              "ttp",
+              "malware",
+              "cve"
             ],
             "title": "Kind",
             "type": "string"
@@ -12048,6 +12126,11 @@
           "prev_count": {
             "title": "Prev Count",
             "type": "integer"
+          },
+          "ransomware_group": {
+            "default": false,
+            "title": "Ransomware Group",
+            "type": "boolean"
           },
           "ttp_id": {
             "anyOf": [
@@ -19205,6 +19288,18 @@
             }
           },
           {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 3,
+              "maximum": 10,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
             "in": "header",
             "name": "x-client-id",
             "required": false,
@@ -19441,6 +19536,28 @@
               ],
               "description": "`days` hari terakhir; kosong = semua waktu.",
               "title": "Days"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kinds",
+            "required": false,
+            "schema": {
+              "default": [
+                "actor",
+                "ttp"
+              ],
+              "items": {
+                "enum": [
+                  "actor",
+                  "ttp",
+                  "malware",
+                  "cve"
+                ],
+                "type": "string"
+              },
+              "title": "Kinds",
+              "type": "array"
             }
           },
           {

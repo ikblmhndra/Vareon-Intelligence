@@ -4455,6 +4455,8 @@ export interface components {
              * @default []
              */
             entities: components["schemas"]["ArticleEntityRef"][];
+            /** First Seen At */
+            first_seen_at?: string | null;
             /** Grade Origin */
             grade_origin?: ("default" | "analyst") | null;
             /** Id */
@@ -4519,6 +4521,8 @@ export interface components {
              */
             source: string;
             story?: components["schemas"]["StoryRef"] | null;
+            /** Summary */
+            summary?: string | null;
             /**
              * Threat Actors
              * @default []
@@ -5475,18 +5479,27 @@ export interface components {
         /** DashboardAttention */
         DashboardAttention: {
             brief: components["schemas"]["Brief"];
+            /** Client Countries */
+            client_countries: string[];
             /** Generated At */
             generated_at: string;
             /** Kev In Stack */
             kev_in_stack: number;
+            /** Kev Tech */
+            kev_tech: string[];
             /** Kev Without Ticket */
             kev_without_ticket: number;
             /** Pir Hits */
             pir_hits: number;
+            ransomware_client_top_industry: components["schemas"]["NameCount"] | null;
             /** Ransomware In Client Scope */
             ransomware_in_client_scope: number;
+            /** Ransomware Prev In Client Scope */
+            ransomware_prev_in_client_scope: number | null;
             /** Watchlist Hits */
             watchlist_hits: number;
+            /** Watchlist Top */
+            watchlist_top: string[];
         };
         /**
          * DashboardCoverage
@@ -8890,12 +8903,17 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "actor" | "ttp";
+            kind: "actor" | "ttp" | "malware" | "cve";
             latest_article?: components["schemas"]["TopicArticle"] | null;
             /** Name */
             name: string;
             /** Prev Count */
             prev_count: number;
+            /**
+             * Ransomware Group
+             * @default false
+             */
+            ransomware_group: boolean;
             /** Top Countries */
             top_countries: string[];
             /** Ttp Id */
@@ -8933,11 +8951,16 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "actor" | "ttp";
+            kind: "actor" | "ttp" | "malware" | "cve";
             /** Name */
             name: string;
             /** Prev Count */
             prev_count: number;
+            /**
+             * Ransomware Group
+             * @default false
+             */
+            ransomware_group: boolean;
             /** Ttp Id */
             ttp_id?: string | null;
         };
@@ -12042,6 +12065,7 @@ export interface operations {
             query?: {
                 /** @description `days` hari terakhir; kosong = semua waktu. */
                 days?: number | null;
+                limit?: number;
             };
             header?: {
                 "x-client-id"?: string | null;
@@ -12146,6 +12170,7 @@ export interface operations {
             query?: {
                 /** @description `days` hari terakhir; kosong = semua waktu. */
                 days?: number | null;
+                kinds?: ("actor" | "ttp" | "malware" | "cve")[];
             };
             header?: {
                 authorization?: string | null;
