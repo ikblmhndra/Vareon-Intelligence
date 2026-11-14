@@ -109,7 +109,7 @@ export function NeedsAction({ period }: { period: PeriodKey }) {
   if (attention.isPending && map.isPending) {
     return (
       <section aria-label="Needs action">
-        <Skeleton aria-hidden className="h-[420px] w-full rounded-lg bg-hero-foreground/10" />
+        <Skeleton aria-hidden className="h-[420px] w-full rounded-lg bg-hero-panel" />
       </section>
     );
   }
@@ -145,7 +145,7 @@ export function NeedsAction({ period }: { period: PeriodKey }) {
       </div>
     );
   } else if (attention.isPending) {
-    left = <Skeleton aria-hidden className="h-48 w-full bg-hero-foreground/10" />;
+    left = <Skeleton aria-hidden className="h-48 w-full bg-hero-panel" />;
   } else {
     left = (
       <ul className={cn("flex flex-col divide-y divide-hero-foreground/15", attention.isPlaceholderData && "opacity-60")}>
@@ -156,7 +156,7 @@ export function NeedsAction({ period }: { period: PeriodKey }) {
               aria-label={`${r.title}: ${num(r.value)}. Open`}
               className={cn(heroLinkClass, "flex items-center gap-4 py-3 no-underline hover:no-underline")}
             >
-              <span className="w-16 shrink-0 font-code text-3xl leading-none font-bold text-hero-foreground tabular-nums">
+              <span className="min-w-16 shrink-0 font-code text-3xl leading-none font-bold text-hero-foreground tabular-nums">
                 {num(r.value)}
               </span>
               <span className="min-w-0 flex-1">
