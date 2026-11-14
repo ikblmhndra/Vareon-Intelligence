@@ -90,6 +90,7 @@
     'credibility': None,
     'entities': list([
     ]),
+    'first_seen_at': str,
     'grade_origin': None,
     'id': int,
     'impacted_industries': list([
@@ -119,6 +120,7 @@
     }),
     'source': 'gbhacker',
     'story': None,
+    'summary': 'Apt41 breached a government network.',
     'threat_actors': list([
     ]),
     'title': 'Apt41 breaches government network',
@@ -144,6 +146,7 @@
         'credibility': None,
         'entities': list([
         ]),
+        'first_seen_at': str,
         'grade_origin': None,
         'id': int,
         'impacted_industries': list([
@@ -173,6 +176,7 @@
         }),
         'source': 'gbhacker',
         'story': None,
+        'summary': 'Apt41 breached a government network.',
         'threat_actors': list([
         ]),
         'title': 'Apt41 breaches government network',
@@ -203,6 +207,7 @@
         'credibility': None,
         'entities': list([
         ]),
+        'first_seen_at': str,
         'grade_origin': None,
         'id': int,
         'impacted_industries': list([
@@ -232,6 +237,7 @@
         }),
         'source': 'SourceB',
         'story': None,
+        'summary': None,
         'threat_actors': list([
         ]),
         'title': 'Apt41 hits manufacturing sector hard!',

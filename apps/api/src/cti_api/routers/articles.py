@@ -153,6 +153,8 @@ def _serialize(
         title=str(machine_fields.get("title", "")),
         url=str(machine_fields.get("url", "")),
         posted_on=posted_on.isoformat() if isinstance(posted_on, datetime.date) else "",
+        summary=article.summary,
+        first_seen_at=article.first_seen_at.isoformat(),
         source=source,
         impacted_industries=article.entity_names("identity"),
         mentioned_countries=article.country_codes("mentioned"),

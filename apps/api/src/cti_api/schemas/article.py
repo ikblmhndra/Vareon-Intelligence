@@ -98,6 +98,10 @@ class ArticleOut(BaseModel):
     title: str = ""
     url: str = ""
     posted_on: str = ""
+    summary: str | None = None
+    # Kapan scraper PERTAMA kali menyimpan artikel (ISO 8601 + offset), bukan waktu terbit;
+    # tidak berubah oleh crawl ulang.
+    first_seen_at: str | None = None
     source: str = ""
     impacted_industries: list[str] = []
     mentioned_countries: list[str] = []
