@@ -40,6 +40,40 @@ export function describePriority(items: { code: string; points: number }[]): str
     .join(", ");
 }
 
+/** Warna chip PRIORITY dari skor mentah (C25): >= 90 destructive, >= 70 warning, selain itu info. */
+export function priorityTone(score: number): "destructive" | "warning" | "info" {
+  return score >= 90 ? "destructive" : score >= 70 ? "warning" : "info";
+}
+
+/** Label baris "Why it ranks first" per kode sinyal (spec 6.4, P16); kode tak dikenal dicetak apa adanya. */
+export const PRIORITY_LINE: Record<string, (a: Article) => string> = {
+  confirmed_incident: () => "Confirmed incident",
+  kev: () => "On CISA KEV",
+  poc: () => "Public proof of concept",
+  ttps: (a) => (a.ttps.length > 0 ? `${a.ttps.length} ATT&CK techniques` : "ATT&CK techniques"),
+  actor: () => "Named threat actor",
+  corroboration: (a) =>
+    a.story ? `Corroborated by ${a.story.source_count} ${a.story.source_count === 1 ? "source" : "sources"}` : "Corroborated by other sources",
+  pir_match: (a) =>
+    a.score_reasons.pir.length > 0
+      ? `Matches your PIR: ${a.score_reasons.pir.map((p) => p.title).join(", ")}`
+      : "Matches a PIR",
+  own_asset: (a) =>
+    a.score_reasons.own_asset.length > 0
+      ? `Mentions your assets: ${a.score_reasons.own_asset.join(", ")}`
+      : "Mentions your assets",
+};
+
+/** Urut points menurun; `sort` stabil menjaga urutan terima untuk poin yang sama. "−" (U+2212) untuk negatif. */
+export function priorityLines(a: Article): string[] {
+  return [...a.score_reasons.priority]
+    .sort((x, y) => y.points - x.points)
+    .map((i) => {
+      const label = PRIORITY_LINE[i.code]?.(a) ?? i.code;
+      return `${label} ${i.points < 0 ? "\u2212" : "+"}${Math.abs(i.points)}`;
+    });
+}
+
 export type GradeFields = Pick<
   Article,
   | "admiralty_code"

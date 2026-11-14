@@ -13,7 +13,7 @@ for that version:
 | 0.8.14 | 0.8.15, 0.8.16 |
 | 0.8.15 | 0.8.16 |
 
-One `make deploy` takes prod from any of these to 0.8.16: it backs up Postgres, runs `migrate` (only 0.8.16 has migrations: `b7d41e9a2c63` then `c4e8a1f2b9d6`, both additive), creates the new `worker-cve` service when it is missing, rebuilds, then waits for health. The
+One `make deploy` takes prod from any of these to 0.8.16: it backs up Postgres, runs `migrate` (only 0.8.16 has migrations: `b7d41e9a2c63`, `c4e8a1f2b9d6`, then `d9f2b6a4c1e7`, all additive), creates the new `worker-cve` service when it is missing, rebuilds, then waits for health. The
 Deploy workflow is off and the checkout is owned by root, so this is a manual run by the user with `sudo`. Older steps
 stay in `docs/PROD_UPGRADE_0.8.13_TO_0.8.14.md`, `docs/PROD_UPGRADE_0.8.14_TO_0.8.15.md`,
 `docs/PROD_UPGRADE_0.8.11_TO_0.8.13.md` and `docs/PROD_UPGRADE_0.8.2_TO_0.8.11.md` for history.
@@ -469,10 +469,22 @@ Release: not yet tagged (branch `claude/figcraft-design-data`; merge to `origin/
     replaces the silent redirect to `/login`. Admin is split into seven pages with a side nav; Users gets overview
     tiles and the audit log gets a client-side CSV export.
 
+- **Dashboard redesign (behaviour change).** The Dashboard defaults to 7 days (24 hours is optional). Articles enriched
+  after the deploy carry a summary excerpt in `articles.summary` (at most 600 characters plus an ellipsis); older
+  articles do not and nothing fills them in.
+- **Contract.** New optional inputs: `limit` (1-10, default 3) on `GET /api/dashboard/cve-exposure`, and a repeatable
+  `kinds` query parameter on `GET /api/dashboard/trending` over `actor | ttp | malware | cve` (default `actor,ttp`, so
+  default callers behave as before). New fields: five on `DashboardAttention` (`kev_tech`, `client_countries`,
+  `ransomware_client_top_industry`, `ransomware_prev_in_client_scope`, `watchlist_top`), a boolean `ransomware_group`
+  (default false) on `TrendItemOut` and `TopicOut`, and nullable `summary` and `first_seen_at` on `ArticleOut`.
+  **One existing key widens:** `kind` on `TrendItemOut` and `TopicOut` goes from `actor | ttp` to
+  `actor | ttp | malware | cve`; a client with an exhaustive `actor | ttp` switch must handle the new values.
+
 ### Migrations
 
-Two additive migrations, applied automatically by `make deploy` (the `migrate` service), in this order: `b7d41e9a2c63`
-(CVE Tracker redesign) on top of `7e3b9c1d5a42`, then `c4e8a1f2b9d6` (Exec redesign). The Intelligence part has none.
+Three additive migrations, applied automatically by `make deploy` (the `migrate` service), in this order: `b7d41e9a2c63`
+(CVE Tracker redesign) on top of `7e3b9c1d5a42`, then `c4e8a1f2b9d6` (Exec redesign), then `d9f2b6a4c1e7` (Dashboard
+redesign). The Intelligence part has none.
 
 Revision `b7d41e9a2c63`: It is additive and all new columns are nullable: `cve_false_positives` reason and note,
 `cve_tickets.updated_by` and `escalation_notified_at`, new tables `cve_owner_teams` and `catalog_family_hides`, and
@@ -480,8 +492,13 @@ Revision `b7d41e9a2c63`: It is additive and all new columns are nullable: `cve_f
 `cve_tickets.updated_by` from `acknowledged_by`.
 
 Revision `c4e8a1f2b9d6` creates the new table `exec_briefs` (one row per Jakarta `brief_date`, with the generation
-metadata and the stored brief; no backfill). It is additive and nothing in the old code reads it. After deploy
-`alembic_version` is `c4e8a1f2b9d6`.
+metadata and the stored brief; no backfill). It is additive and nothing in the old code reads it.
+
+Revision `d9f2b6a4c1e7` runs `ALTER TABLE articles ADD COLUMN summary text` (nullable, no default, no backfill, no
+index). It is a catalog-only change that does not rewrite the table and holds its lock for milliseconds. The lock still
+has to be acquired: a long-running transaction on `articles` makes the `ALTER` wait (and every query behind it queue).
+`migrate` runs first in `up -d`, while the old containers are still serving, so this is possible; if the `ALTER`
+fails, rerunning the deploy retries it. After deploy `alembic_version` is `d9f2b6a4c1e7`.
 
 ### Settings / .env
 
@@ -548,7 +565,7 @@ Nothing else to check; all other changes are read-only endpoints and web styling
 9. PIR page: the campaign matches fill in after the list renders; a PIR campaign link opens Campaign clusters with the
    30-day window. IOC and Source reliability CSV exports download for a role with `export_data`.
 
-10. Exec brief (read-only): `alembic_version` is `c4e8a1f2b9d6`. Today's brief appears after 06:00 Jakarta time (or at
+10. Exec brief (read-only): the `exec_briefs` table exists (`alembic_version` is `d9f2b6a4c1e7`, on top of `c4e8a1f2b9d6`). Today's brief appears after 06:00 Jakarta time (or at
     the first hourly tick after the deploy hour, until 18:00):
     `SELECT brief_date, generated_by, generated_at FROM exec_briefs ORDER BY brief_date DESC LIMIT 3`. The query in
     "Daily LLM cost" shows one `exec_brief` row per day (not one per hour). Failures show in `/data-health` (LLM,
@@ -570,6 +587,10 @@ Nothing else to check; all other changes are read-only endpoints and web styling
 15. Access (read-only): sign in, open `/admin/users` and confirm the "Your session" card shows a sign-in time. Reset a
     test account (not one a script uses) and confirm its STATUS reads "Reset pending".
 
+16. Dashboard (read-only): `alembic_version` reads `d9f2b6a4c1e7`. After the next enrichment run,
+    `SELECT count(*) FROM articles WHERE summary IS NOT NULL` is above 0 and `SELECT max(length(summary)) FROM articles`
+    is at most 601. `/dashboard` shows a dek under the lead story once such an article ranks first.
+
 Optional, only with the operator's go: regenerate the profiles of watched actors to fill the new AI summaries (one LLM
 call each).
 
@@ -582,8 +603,9 @@ None.
 `make deploy` restores the `:prev` images on a failed health check; it never auto-downgrades the database. Rolling back
 to 0.8.15 removes the new endpoints and the `daily` block. The `b7d41e9a2c63` migration is additive (nullable columns
 and new tables the old code ignores), so it is safe to leave in place; no manual downgrade is needed. The same holds for
-`c4e8a1f2b9d6`: after an image rollback `exec_briefs` is simply unused. Downgrading that migration (`alembic downgrade
--1`, never automatic) drops the stored briefs; they are regenerated from the next 06:00 run. The X Intel, Recap and Newsletter part (4a) has no migration or data change: an image rollback just drops the two optional parameters and the extra stats keys. The Scrapers and Data health part (4b) has no migration or data change: an image rollback only drops the three additive `data-health` fields. The Access part (4c) has no migration: an image rollback only; flags set while 0.8.16 ran stay set and the old forced dialog still handles them.
+`c4e8a1f2b9d6`: after an image rollback `exec_briefs` is simply unused. Downgrading it by hand (never automatic) is
+`alembic downgrade b7d41e9a2c63`, which drops the stored briefs (they are regenerated from the next 06:00 run) and also
+removes `articles.summary` (see the Dashboard part below). The X Intel, Recap and Newsletter part (4a) has no migration or data change: an image rollback just drops the two optional parameters and the extra stats keys. The Scrapers and Data health part (4b) has no migration or data change: an image rollback only drops the three additive `data-health` fields. The Access part (4c) has no migration: an image rollback only; flags set while 0.8.16 ran stay set and the old forced dialog still handles them. The Dashboard part (5a): image rollback only. The old code ignores `articles.summary`, so the column stays in place (the deploy never downgrades the database). A manual `alembic downgrade c4e8a1f2b9d6` drops the column and the stored excerpts with it, and keeps the stored briefs.
 
 ### Known risks
 

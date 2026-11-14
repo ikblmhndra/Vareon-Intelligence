@@ -8,7 +8,7 @@ router `changelog.py`) -- parser-nya expect header persis
 
 ## [0.8.16] - 2026-11-08
 
-**Redesain FigCraft: tiga sumber data baru untuk halaman PIR, Intelligence, dan MITRE, penyeragaman tema web, dan redesain CVE Tracker beserta tambahan backend-nya.** API mendapat cakupan PIR per minggu, seri harian per entitas yang melonjak, dan layer ATT&CK Navigator yang sama persis dengan heatmap yang terlihat. Web memakai satu skala tier risiko, border field yang terbaca, dan fokus yang jelas. Halaman Exec dirombak: brief eksekutif harian tersimpan dan papan Analyst. Dua migrasi aditif (`b7d41e9a2c63`, `c4e8a1f2b9d6`) dijalankan otomatis oleh `make deploy`, dan satu dependency baru (`email-validator`). Tanpa kunci `.env`. Halaman X Intel, Recap, dan Newsletter ikut didesain ulang (tanpa migrasi), begitu juga halaman operasi Scrapers dan Data health (tiga field aditif di `GET /api/data-health`, tanpa migrasi). Halaman Login, sesi, dan Admin juga didesain ulang (halaman Access, tanpa migrasi).
+**Redesain FigCraft: tiga sumber data baru untuk halaman PIR, Intelligence, dan MITRE, penyeragaman tema web, dan redesain CVE Tracker beserta tambahan backend-nya.** API mendapat cakupan PIR per minggu, seri harian per entitas yang melonjak, dan layer ATT&CK Navigator yang sama persis dengan heatmap yang terlihat. Web memakai satu skala tier risiko, border field yang terbaca, dan fokus yang jelas. Halaman Exec dirombak: brief eksekutif harian tersimpan dan papan Analyst. Tiga migrasi aditif (`b7d41e9a2c63`, `c4e8a1f2b9d6`, `d9f2b6a4c1e7`) dijalankan otomatis oleh `make deploy`, dan satu dependency baru (`email-validator`). Tanpa kunci `.env`. Halaman X Intel, Recap, dan Newsletter ikut didesain ulang (tanpa migrasi), begitu juga halaman operasi Scrapers dan Data health (tiga field aditif di `GET /api/data-health`, tanpa migrasi). Halaman Login, sesi, dan Admin juga didesain ulang (halaman Access, tanpa migrasi). Dashboard juga didesain ulang (satu migrasi aditif `d9f2b6a4c1e7`).
 
 ### Ditambahkan
 - `GET /api/pir/{pir_id}/coverage/weekly`: jumlah artikel per minggu untuk grafik cakupan PIR.
@@ -46,6 +46,9 @@ router `changelog.py`) -- parser-nya expect header persis
 - Web: dialog "Your session has ended" menggantikan pengalihan diam-diam ke `/login` saat sesi berakhir.
 - Login 429 mengirim `Retry-After` (1-60 detik) dan tombol login menghitung mundur.
 - `GET /api/auth/me` mengirim `signed_in_at`.
+- Dashboard baru: hero "Needs action" dengan peta sinyal APAC, lead story dengan alasan peringkat, "By the numbers", Must read, Trending aktor / malware / CVE, empat grafik 30 hari, CVE watchlist, dan bagian "More".
+- Kolom `articles.summary` (kutipan ringkasan ekstraktif, maksimal 600 karakter) dan field `summary` serta `first_seen_at` di respons artikel.
+- `limit` di `GET /api/dashboard/cve-exposure`; `kinds` dan `ransomware_group` di `GET /api/dashboard/trending`; lima field baru di `GET /api/dashboard/attention`.
 
 ### Diubah
 - Deteksi spike (Early Warning dan industry spikes di dashboard eksekutif): mean dan simpangan baku baseline kini menghitung hari tanpa artikel sebagai 0, sama dengan seri `daily`. Dulu hanya hari yang ada artikelnya yang dihitung, sehingga garis baseline lebih tinggi daripada batang hariannya dan entitas yang jarang muncul mendapat z-score terlalu kecil. Akibatnya jumlah dan urutan anomali berubah sesudah deploy, ke dua arah: entitas jarang bisa muncul, entitas yang hitungan hariannya naik-turun bisa hilang. Entitas tetap butuh minimal 5 hari baseline yang ada artikelnya.
@@ -68,6 +71,7 @@ router `changelog.py`) -- parser-nya expect header persis
 - Web: Recap mengganti bar Week/Day + tanggal + Load dan sidebar riwayat dengan state URL, Select History dan tombol Previous; Generate dan Force Regen digabung jadi satu dialog.
 - Reset password oleh admin kini mewajibkan pengguna itu memilih password baru saat login berikutnya (`force_pw_change`); sampai itu selesai, endpoint lain membalas 403 "Password change required". Pengguna yang sudah ada tidak terpengaruh.
 - Web: halaman login berbahasa Inggris dan tidak lagi menampilkan pesan mentah dari API; ganti password wajib dilakukan langsung di halaman login, lalu masuk ulang otomatis.
+- Dashboard: periode bawaan menjadi 7 hari dengan pilihan 24 jam; teks Dashboard berbahasa Inggris; kalimat brief dan "Updated HH:MM" tidak lagi ditampilkan; grup ransomware teratas menjadi lima.
 
 ### Diperbaiki
 - `PUT /api/rfi/{id}` dan `PUT /api/pir/{id}`: `null` eksplisit kini mengosongkan field yang boleh kosong (RFI `due_date` dan `linked_pir`; PIR `start_date` dan `end_date`). Dulu nilai yang dikosongkan diam-diam diabaikan. `null` pada field wajib tetap diabaikan.
@@ -79,6 +83,8 @@ router `changelog.py`) -- parser-nya expect header persis
 **Catatan 0.8.16 (Operations):** tanpa migrasi dan tanpa key `.env` baru. Tiga field aditif di `GET /api/data-health` (`pipeline`, `queues.depths`, `llm.calls_per_hour`); rollback cukup image.
 
 **Catatan 0.8.16 (Access):** tanpa migrasi, tanpa key `.env` baru; pengguna yang sudah ada tidak terpengaruh.
+
+**Catatan 0.8.16 (Dashboard):** migrasi `d9f2b6a4c1e7` menambah kolom nullable `articles.summary`, tanpa backfill, tanpa key `.env` baru; artikel lama tidak punya ringkasan.
 
 **Catatan 0.8.16 (Audit log):** halaman Audit log memakai ukuran halaman tetap 50 baris, dan cap waktu di ekspor CSV memakai UTC.
 

@@ -4,10 +4,10 @@ import { gradeLines, type GradeFields } from "@/components/newsroom/score-reason
 
 /** Chip nilai artikel (P6 bagian 6): kode Admiralty artikel + prioritas ("C1 · P131"), diwarnai
  * reliabilitas sumber. Artikel yang belum dinilai (`admiralty_code` null) tidak menampilkan chip.
- * Tooltip `title` berisi reliabilitas, kredibilitas + alasan, confidence, dan rincian prioritas. */
-export function GradeChip({ a }: { a: GradeFields }) {
+ * `codeOnly` hanya menampilkan kodenya (Dashboard). Tooltip `title` berisi reliabilitas, kredibilitas + alasan, confidence, dan rincian prioritas. */
+export function GradeChip({ a, codeOnly = false }: { a: GradeFields; codeOnly?: boolean }) {
   if (!a.admiralty_code) return null;
-  const label = a.priority_score != null ? `${a.admiralty_code} · P${a.priority_score}` : a.admiralty_code;
+  const label = !codeOnly && a.priority_score != null ? `${a.admiralty_code} · P${a.priority_score}` : a.admiralty_code;
   return (
     <span
       title={gradeLines(a).join("\n")}

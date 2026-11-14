@@ -35,6 +35,8 @@ _NORMALIZE = path_type(
     {
         r"(.*\.)?id$": (int,),
         r"(.*\.)?posted_on$": (str,),
+        # `first_seen_at` = jam simpan pertama (berubah tiap run).
+        r"(.*\.)?first_seen_at$": (str,),
         # `/api/dashboard` -> `generated_at` = jam hitung (berubah tiap run).
         r"(.*\.)?generated_at$": (str,),
         # `compute_article_confidence` balikin `article_id` (bukan `id`
@@ -73,8 +75,22 @@ async def _seed_one_article(session: AsyncSession) -> int:
         title="Apt41 breaches government network",
         source="gbhacker",
         posted_on=datetime.date(2026, 9, 1),
+        summary="Apt41 breached a government network.",
     )
     return a.id
+
+
+async def test_article_out_first_seen_at_is_iso_with_offset(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+) -> None:
+    article_id = await _seed_one_article(api_session)
+    resp = await api_client.get(f"/api/articles/{article_id}", headers=auth_header())
+    assert resp.status_code == 200
+    body = resp.json()
+    assert datetime.datetime.fromisoformat(body["first_seen_at"]).tzinfo is not None
+    assert body["summary"] == "Apt41 breached a government network."
 
 
 async def test_article_dedup_groups(

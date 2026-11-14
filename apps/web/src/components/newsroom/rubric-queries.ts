@@ -10,6 +10,8 @@ import { formatPostedOn } from "@/lib/newsroom/dates";
 import type { NewsroomFilters } from "@/lib/newsroom/filters";
 import { GLOBAL_NEWS_TYPES } from "@/lib/newsroom/news-types";
 import { useAuth } from "@/components/providers/auth-provider";
+import { useCan } from "@/lib/auth/permissions";
+import { noClientRetry, unwrap } from "@/lib/scrapers/queries";
 import { useArticlesQuery } from "@/components/newsroom/use-articles";
 
 type Article = components["schemas"]["ArticleOut"];
@@ -48,10 +50,10 @@ export function useWatchlistNames(enabled: boolean) {
   return useQuery({
     queryKey: ["ta", "watchlist-names"],
     queryFn: async () => {
-      const { data, response } = await api.GET("/api/ta/watchlist-names");
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return (data as { names?: string[] } | undefined)?.names ?? [];
+      const data = unwrap(await api.GET("/api/ta/watchlist-names"), "Failed to load watchlist names");
+      return (data as { names?: string[] }).names ?? [];
     },
+    retry: noClientRetry,
     enabled,
   });
 }
@@ -60,10 +62,13 @@ export function useTechStackNames(enabled: boolean) {
   return useQuery({
     queryKey: ["techstack", "names"],
     queryFn: async () => {
-      const { data, error } = await api.GET("/api/techstack", { params: { query: { page_size: 500 } } });
-      if (error) throw error;
+      const data = unwrap(
+        await api.GET("/api/techstack", { params: { query: { page_size: 500 } } }),
+        "Failed to load tech stack names",
+      );
       return data.items.map((t) => t.name);
     },
+    retry: noClientRetry,
     enabled,
   });
 }
@@ -73,8 +78,10 @@ export function useTechStackNames(enabled: boolean) {
  * yang sama dengan rubrik Watchlist (`threat_actor`) dan Tech stack (`title_keyword`). Query nama
  * dipakai bersama rubrik (key react-query sama). */
 export function useArticleMatchers(): (a: Article) => { watchlist: boolean; techstack: boolean } {
-  const watch = useWatchlistNames(true);
-  const tech = useTechStackNames(true);
+  // Gate permission backend (view_ta / view_cve): tanpa izin, query tidak ditembak (403 sia-sia).
+  const can = useCan();
+  const watch = useWatchlistNames(can("view_ta"));
+  const tech = useTechStackNames(can("view_cve"));
   return useMemo(() => {
     const watchSet = new Set((watch.data ?? []).map((n) => n.toLowerCase()));
     const techNames = (tech.data ?? []).map((n) => n.toLowerCase()).filter(Boolean);
@@ -115,22 +122,25 @@ function useVictims(
       victimFilter.industry,
     ],
     queryFn: async () => {
-      const { data, error } = await api.GET("/api/ransomware/victims", {
-        params: {
-          query: {
-            page,
-            page_size: pageSize,
-            country: country || undefined,
-            // Periode newsroom; API memfilter `published >= date_start`.
-            date_start: dateStart || undefined,
-            group: victimFilter.group || undefined,
-            industry: victimFilter.industry || undefined,
+      const data = unwrap(
+        await api.GET("/api/ransomware/victims", {
+          params: {
+            query: {
+              page,
+              page_size: pageSize,
+              country: country || undefined,
+              // Periode newsroom; API memfilter `published >= date_start`.
+              date_start: dateStart || undefined,
+              group: victimFilter.group || undefined,
+              industry: victimFilter.industry || undefined,
+            },
           },
-        },
-      });
-      if (error) throw error;
+        }),
+        "Failed to load ransomware victims",
+      );
       return data as unknown as { victims: RansomwareVictim[]; total: number };
     },
+    retry: noClientRetry,
     enabled,
     placeholderData: keepPrevious ? keepPreviousData : undefined,
   });

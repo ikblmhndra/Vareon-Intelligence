@@ -142,6 +142,16 @@ class AsyncRansomwareVictimRepo:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
+    async def known_group_names(self, names: Collection[str]) -> set[str]:
+        """Subset `names` yang cocok nama grup di leak site (case-insensitive), dikembalikan
+        lower-case. Satu query; input kosong tidak menyentuh DB."""
+        lowered = {n.lower() for n in names}
+        if not lowered:
+            return set()
+        col = func.lower(RansomwareVictim.group_name)
+        stmt = select(col).where(col.in_(lowered)).distinct()
+        return set((await self.session.execute(stmt)).scalars().all())
+
     async def weekly_counts(self, *, weeks: int = 8) -> list[tuple[datetime.date, int]]:
         """Korban per minggu (awal minggu = Senin), `weeks` minggu terakhir termasuk minggu
         berjalan, terlama dulu, minggu kosong diisi 0. Tanggal korban =
@@ -164,10 +174,11 @@ class AsyncRansomwareVictimRepo:
         since: datetime.date | None,
         apac_codes: Collection[str],
         client_codes: Collection[str],
+        top_n: int = 3,
     ) -> dict[str, Any]:
         """Ringkasan korban sejak `since` (tanggal = `coalesce(discovered, published)`):
         `total`, `apac`/`client_scope` (kode negara di himpunan masing-masing), `undated`
-        (kedua tanggal NULL; TIDAK pernah difilter `since`), `top_groups` (3 teratas,
+        (kedua tanggal NULL; TIDAK pernah difilter `since`), `top_groups` (`top_n` teratas,
         seri diurutkan nama) dan `by_country` ({kode: jumlah}, hanya baris berkode)."""
         when = func.coalesce(RansomwareVictim.discovered, RansomwareVictim.published)
 
@@ -207,7 +218,7 @@ class AsyncRansomwareVictimRepo:
                 _scoped(select(RansomwareVictim.group_name, func.count()))
                 .group_by(RansomwareVictim.group_name)
                 .order_by(func.count().desc(), RansomwareVictim.group_name)
-                .limit(3)
+                .limit(top_n)
             )
         ).all()
         countries = (
@@ -227,6 +238,44 @@ class AsyncRansomwareVictimRepo:
             "top_groups": [(g, int(n)) for g, n in groups],
             "by_country": {c: int(n) for c, n in countries},
         }
+
+    async def count_in_countries(
+        self, *, since: datetime.date, until: datetime.date, codes: Collection[str]
+    ) -> int:
+        """Korban di negara `codes` dengan `since <= tanggal < until` (setengah terbuka, supaya dua
+        jendela berurutan tidak menghitung hari batas dua kali). Dipakai untuk periode sebelumnya
+        di hero Dashboard. 0 tanpa query bila `codes` kosong."""
+        if not codes:
+            return 0
+        when = func.coalesce(RansomwareVictim.discovered, RansomwareVictim.published)
+        stmt = select(func.count(RansomwareVictim.id)).where(
+            when >= since, when < until, RansomwareVictim.country_code.in_(list(codes))
+        )
+        return int((await self.session.execute(stmt)).scalar_one())
+
+    async def top_industry_in_countries(
+        self, *, since: datetime.date | None, codes: Collection[str]
+    ) -> tuple[str, int] | None:
+        """Industri dengan korban terbanyak di negara `codes` (seri: nama), aturan tanggal sama
+        dengan `summary`. Industri kosong/spasi tidak dihitung: tanpa itu "(blank)" bisa menang.
+        `None` tanpa query bila `codes` kosong."""
+        if not codes:
+            return None
+        when = func.coalesce(RansomwareVictim.discovered, RansomwareVictim.published)
+        stmt = (
+            select(RansomwareVictim.industry, func.count())
+            .where(
+                when >= since if since is not None else when.is_not(None),
+                RansomwareVictim.country_code.in_(list(codes)),
+                RansomwareVictim.industry.is_not(None),
+                func.trim(RansomwareVictim.industry) != "",
+            )
+            .group_by(RansomwareVictim.industry)
+            .order_by(func.count().desc(), RansomwareVictim.industry)
+            .limit(1)
+        )
+        row = (await self.session.execute(stmt)).first()
+        return (row[0], int(row[1])) if row else None
 
     async def list_by_group_exact(
         self, group_name: str, *, limit: int = 100

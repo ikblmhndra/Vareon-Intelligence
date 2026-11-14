@@ -184,7 +184,7 @@ tweet would move `since_id` past tweets the alert filters rejected.
    articles move from "Global Article" to "TA Group Article" and the Telegram alert gains a "Related Threat Actor" line.
 5. `persist` upserts `articles` by `url_hash` and writes countries, industries (sectors), threat actors, malware/tools,
    TTPs and CVEs as `entity_mentions` (each name resolved to its entity, section 3.10), plus IOCs (CVE ids no longer go
-   into `indicators`). IOC values are stored in canonical form
+   into `indicators`), and stores the capped summary excerpt in `articles.summary`. IOC values are stored in canonical form
    (`cti_core.ioc.canonical.canonical`: refang, lowercase; URL path and query keep their case) and the web shows them defanged.
    An IOC that matches the infrastructure allowlist (a curated domain seed; a URL with a path never matches) is not
    dropped but flagged `auto_suppressed` with reason `allowlist:<type>:<entry> (infrastructure-abuse)`; suppressed

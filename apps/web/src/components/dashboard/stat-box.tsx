@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 
+import { Button } from "@/components/ui/button";
 import { Sparkline } from "@/components/ui/sparkline";
+import { StatePanel } from "@/components/ui/state-panel";
 import { cn } from "@/lib/utils";
 
 interface StatBoxProps {
@@ -143,5 +145,33 @@ function CardHeader({ title, note }: { title: string; note?: ReactNode }) {
       <h3 className="text-base font-semibold text-foreground">{title}</h3>
       {note && <div className="mt-0.5 text-xs text-muted-foreground">{note}</div>}
     </div>
+  );
+}
+
+/** Panel galat satu seksi Dashboard: pesan server apa adanya, dan tegaskan panel lain tidak ikut gagal. */
+export function PanelError({
+  title,
+  error,
+  onRetry,
+  className,
+}: {
+  title: string;
+  error: unknown;
+  onRetry: () => void;
+  className?: string;
+}) {
+  const message = error instanceof Error && error.message ? error.message : "The request failed.";
+  return (
+    <StatePanel
+      variant="error"
+      title={title}
+      description={`${message} Other panels are fine.`}
+      className={className}
+      action={
+        <Button variant="outline" size="sm" onClick={onRetry}>
+          Retry
+        </Button>
+      }
+    />
   );
 }

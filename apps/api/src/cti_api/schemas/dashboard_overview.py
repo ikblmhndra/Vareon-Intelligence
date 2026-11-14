@@ -28,21 +28,32 @@ class Brief(BaseModel):
     detail: str
 
 
+class NameCount(BaseModel):
+    name: str
+    count: int
+
+
 class DashboardAttention(BaseModel):
     kev_in_stack: int
     kev_without_ticket: int
     ransomware_in_client_scope: int
     watchlist_hits: int
     pir_hits: int
+    kev_tech: list[str]
+    ransomware_prev_in_client_scope: int | None
+    ransomware_client_top_industry: NameCount | None
+    watchlist_top: list[str]
+    client_countries: list[str]
     brief: Brief
     generated_at: str
 
 
 class TrendItemOut(BaseModel):
-    kind: Literal["actor", "ttp"]
+    kind: Literal["actor", "ttp", "malware", "cve"]
     name: str
     ttp_id: str | None = None
     entity_id: int | None = None
+    ransomware_group: bool = False
     count: int
     prev_count: int
     change_pct: int | None = None
@@ -61,11 +72,6 @@ class TrendingResponse(BaseModel):
 class WeekCount(BaseModel):
     week_start: datetime.date
     victims: int
-
-
-class NameCount(BaseModel):
-    name: str
-    count: int
 
 
 class RansomwareOverview(BaseModel):

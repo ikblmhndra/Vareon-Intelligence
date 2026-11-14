@@ -153,6 +153,8 @@ def _serialize(
         title=str(machine_fields.get("title", "")),
         url=str(machine_fields.get("url", "")),
         posted_on=posted_on.isoformat() if isinstance(posted_on, datetime.date) else "",
+        summary=article.summary,
+        first_seen_at=article.first_seen_at.isoformat(),
         source=source,
         impacted_industries=article.entity_names("identity"),
         mentioned_countries=article.country_codes("mentioned"),
@@ -351,9 +353,11 @@ async def dashboard_attention(
 
 @router.get("/dashboard/trending", response_model=TrendingResponse)
 async def dashboard_trending(
-    days: int | None = _DaysQuery, session: AsyncSession = Depends(get_db)
+    days: int | None = _DaysQuery,
+    kinds: list[trending.TrendKind] = Query(["actor", "ttp"]),
+    session: AsyncSession = Depends(get_db),
 ) -> TrendingResponse:
-    return TrendingResponse(**await trending.get_trending(session, days=days))
+    return TrendingResponse(**await trending.get_trending(session, days=days, kinds=kinds))
 
 
 @router.get("/dashboard/ransomware", response_model=RansomwareOverview)
@@ -366,13 +370,15 @@ async def dashboard_ransomware(
 @router.get("/dashboard/cve-exposure", response_model=CveExposure)
 async def dashboard_cve_exposure(
     days: int | None = _DaysQuery,
+    # Batas baris tabel CVE di Dashboard; default 3 menjaga pemanggil lama.
+    limit: int = Query(3, ge=1, le=10),
     user: AuthedUser = Depends(require_auth),
     x_client_id: str | None = Header(None),
     session: AsyncSession = Depends(get_db),
 ) -> CveExposure:
     cid = effective_client_id(user, x_client_id)
     return CveExposure(
-        **await dashboard_overview.get_cve_exposure(session, client_id=cid, days=days)
+        **await dashboard_overview.get_cve_exposure(session, client_id=cid, days=days, limit=limit)
     )
 
 
