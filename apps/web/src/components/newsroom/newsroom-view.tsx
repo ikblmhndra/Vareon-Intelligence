@@ -15,6 +15,7 @@ import { RubricGrid } from "@/components/newsroom/rubric-grid";
 import { TopicsSection } from "@/components/newsroom/topics-section";
 import { PageHeader } from "@/components/page-header";
 import { useAuth } from "@/components/providers/auth-provider";
+import { Skeleton } from "@/components/ui/skeleton";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { StatePanel } from "@/components/ui/state-panel";
 import { useCan } from "@/lib/auth/permissions";
@@ -183,12 +184,17 @@ function NewsroomBody() {
   const sources =
     !search && !country && !from && stats.data ? stats.data.total_sources : undefined;
   const n = count.data;
+  // Skeleton selagi hitungan dimuat; galat atau tanpa query (no-names) = baris dihilangkan.
   const description =
-    n === undefined
-      ? undefined
-      : `${n.toLocaleString("en-US")} cyber articles${
+    n === undefined ? (
+      count.isPending && count.fetchStatus !== "idle" ? (
+        <Skeleton aria-hidden className="h-5 w-80 max-w-full" />
+      ) : undefined
+    ) : (
+      `${n.toLocaleString("en-US")} cyber articles${
           sources !== undefined ? ` from ${sources.toLocaleString("en-US")} sources` : ""
-        } ${suffix}`;
+        } ${suffix}`
+    );
 
   return (
     <div className="pb-10">
