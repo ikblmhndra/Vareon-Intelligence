@@ -15,6 +15,7 @@ from cti_enrich import pipeline
 from cti_enrich.stages.classify import ClassifyResult
 from cti_enrich.stages.extract_ttps import Technique, TtpResult
 from cti_enrich.stages.score import ScoreResult
+from cti_enrich.stages.summarize import make_dek
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -184,3 +185,58 @@ def test_ttp_job_adds_llm_technique(session: Session, monkeypatch: pytest.Monkey
     assert article.score_reasons is not None
     assert {"code": "ttps", "points": 6} in article.score_reasons["priority"]
     assert article.llm_ttp_status == "done"
+
+
+def _stored(session: Session) -> Article:
+    article = session.scalar(select(Article).where(Article.url_hash == url_hash(URL)))
+    assert article is not None
+    return article
+
+
+def test_pipeline_stores_capped_summary(session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    long_text = "Kalimat uji nomor satu. " * 100
+    monkeypatch.setattr(pipeline, "summarize", lambda text: long_text)
+    _seed(session)
+
+    _run(session)
+
+    summary = _stored(session).summary
+    assert summary == make_dek(long_text)
+    assert summary is not None and len(summary) <= 601 and summary.endswith(".")
+
+
+def test_persist_keeps_summary_when_none(session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    _seed(session)
+    _run(session)
+    assert _stored(session).summary == "Ringkasan."
+
+    monkeypatch.setattr(pipeline, "summarize", lambda text: "")
+    _run(session)
+
+    assert _stored(session).summary == "Ringkasan."
+
+
+def test_pipeline_stores_summary_on_best_practice_branch(session: Session) -> None:
+    _seed(session)
+    verdict = ClassifyResult(
+        related_cyber=True,
+        confidence=0.9,
+        reason="hardening guide",
+        industries_impacted=["General"],
+        security_tech_best_practice=True,
+        audit={"model": "stub"},
+    )
+
+    run_with_verdict(
+        session,
+        verdict,
+        title="Hardening guide",
+        url=URL,
+        posted_on=None,
+        source="Test",
+        scraper_id="t",
+    )
+
+    article = _stored(session)
+    assert article.news_type == "Security Technology & Best Practices"
+    assert article.summary == "Ringkasan."
