@@ -55,11 +55,11 @@ function Row({
   return (
     <div className={cn("flex items-center justify-between gap-4 py-3", state.stale && "opacity-60")}>
       <div className="flex min-w-0 flex-col">
-        {/* order-*: dl menuntut dt sebelum dd di DOM, tapi angka dibaca lebih dulu secara visual. */}
-        <dd className="order-1 font-heading text-4xl leading-none font-bold tracking-tight text-foreground tabular-nums">
-          {failed ? "–" : state.pending || value == null ? <Skeleton className="h-9 w-20" /> : n(value)}
-        </dd>
+        {/* dt dulu di DOM (dl: istilah sebelum nilai); angka tetap tampil paling atas lewat order-*. */}
         <dt className="order-2 mt-1 text-sm font-medium text-muted-foreground">{label}</dt>
+        <dd className="order-1 font-code text-4xl leading-none font-bold tracking-tight text-foreground tabular-nums">
+          {failed ? "–" : state.pending || value == null ? <Skeleton aria-hidden="true" className="h-9 w-20" /> : n(value)}
+        </dd>
         <dd className="order-3 mt-0.5 text-xs text-muted-foreground">
           {failed ? (
             <>
@@ -103,7 +103,11 @@ export function ByTheNumbers({ period, threatOnly }: { period: PeriodKey; threat
   });
   const s = stats.data;
   const a = attn.data; // gagal/pending: hanya bagian bersumber attention yang hilang
-  const apacLine = ransom.data ? `${n(ransom.data.apac)} in APAC` : "";
+  const apacLine = ransom.data ? (
+    <>
+      <span className="font-code">{n(ransom.data.apac)}</span> in APAC
+    </>
+  ) : null;
 
   return (
     <section aria-labelledby="by-the-numbers" className="surface-raised rounded-2xl p-5">
@@ -133,7 +137,12 @@ export function ByTheNumbers({ period, threatOnly }: { period: PeriodKey; threat
           second={
             <>
               {apacLine}
-              {a && a.client_countries.length > 0 && ` · ${n(a.ransomware_in_client_scope)} in your countries`}
+              {a && a.client_countries.length > 0 && (
+                <>
+                  {" · "}
+                  <span className="font-code">{n(a.ransomware_in_client_scope)}</span> in your countries
+                </>
+              )}
             </>
           }
           graphic={
@@ -149,8 +158,19 @@ export function ByTheNumbers({ period, threatOnly }: { period: PeriodKey; threat
           second={
             cve.data && (
               <>
-                {n(cve.data.open_kev)} open KEV (any severity)
-                {a && ` · ${a.kev_without_ticket === 0 ? "all KEV have a ticket" : `${n(a.kev_without_ticket)} KEV without a ticket`}`}
+                <span className="font-code">{n(cve.data.open_kev)}</span> open KEV (any severity)
+                {a && (
+                  <>
+                    {" · "}
+                    {a.kev_without_ticket === 0 ? (
+                      "all KEV have a ticket"
+                    ) : (
+                      <>
+                        <span className="font-code">{n(a.kev_without_ticket)}</span> KEV without a ticket
+                      </>
+                    )}
+                  </>
+                )}
               </>
             )
           }
