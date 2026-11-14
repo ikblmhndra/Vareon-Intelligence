@@ -23,7 +23,7 @@ import type { components } from "@/lib/api/schema";
 import type { RansomwareVictim } from "@/lib/api/loose-types";
 import { countryName } from "@/lib/countries";
 import { fmtShortDate } from "@/lib/format";
-import { RESET_PATCH, type AllState } from "@/lib/newsroom/all-state";
+import { RESET_PATCH, type AllPatch, type AllState } from "@/lib/newsroom/all-state";
 import { cn } from "@/lib/utils";
 
 type Article = components["schemas"]["ArticleOut"];
@@ -123,7 +123,7 @@ export function AllList({
   onSelect,
 }: {
   state: AllState;
-  onChange: (patch: Partial<AllState>) => void;
+  onChange: (patch: AllPatch) => void;
   selected: number | null;
   onSelect: (id: number) => void;
 }) {

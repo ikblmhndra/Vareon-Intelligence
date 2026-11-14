@@ -16,7 +16,7 @@ import { useCan } from "@/lib/auth/permissions";
 import { countryName } from "@/lib/dashboard/countries";
 import { parseLocalDate } from "@/lib/format";
 import { GRADE_BADGE_CLASS } from "@/lib/intelligence/format";
-import { RESET_PATCH, type AllState, type Grade } from "@/lib/newsroom/all-state";
+import { RESET_PATCH, type AllPatch, type AllState, type Grade } from "@/lib/newsroom/all-state";
 import { useFilterOptions } from "@/lib/newsroom/filters";
 import { NEWSROOM_PERIODS, newsroomPeriodInfo, type NewsroomPeriod } from "@/lib/newsroom/period";
 import { noClientRetry, unwrap } from "@/lib/scrapers/queries";
@@ -83,7 +83,7 @@ function useVictimFilterOptions(enabled: boolean) {
 
 /** Rail filter All articles (spec 6.2, 236 px). Semua kendali hanya memanggil `onChange(patch)`;
  * penulisan URL milik pemanggil. */
-export function AllRail({ state, onChange }: { state: AllState; onChange: (patch: Partial<AllState>) => void }) {
+export function AllRail({ state, onChange }: { state: AllState; onChange: (patch: AllPatch) => void }) {
   const can = useCan();
   const counts = useRubricCounts(state);
   const options = useFilterOptions();
@@ -126,9 +126,9 @@ export function AllRail({ state, onChange }: { state: AllState; onChange: (patch
   const extra = state.sources.filter((s) => !topNames.has(s));
 
   const toggleGrade = (g: Grade) =>
-    onChange({ grades: GRADES.filter((x) => (x === g ? !state.grades.includes(g) : state.grades.includes(x))) });
+    onChange((s) => ({ grades: GRADES.filter((x) => (x === g ? !s.grades.includes(g) : s.grades.includes(x))) }));
   const toggleSource = (name: string) =>
-    onChange({ sources: state.sources.includes(name) ? state.sources.filter((s) => s !== name) : [...state.sources, name] });
+    onChange((s) => ({ sources: s.sources.includes(name) ? s.sources.filter((x) => x !== name) : [...s.sources, name] }));
 
   const hint = victims ? <span className="text-2xs text-muted-foreground">Not used for victims</span> : null;
 
@@ -208,7 +208,7 @@ export function AllRail({ state, onChange }: { state: AllState; onChange: (patch
         <Select
           items={countryItems}
           value={ADD}
-          onValueChange={(v) => v && v !== ADD && onChange({ countries: [...state.countries, v] })}
+          onValueChange={(v) => v && v !== ADD && onChange((s) => ({ countries: s.countries.includes(v) ? s.countries : [...s.countries, v] }))}
         >
           <SelectTrigger aria-label="Add a country" className="w-full text-xs">
             <SelectValue />
@@ -235,7 +235,7 @@ export function AllRail({ state, onChange }: { state: AllState; onChange: (patch
                 <button
                   type="button"
                   aria-label={`Remove ${countryName(c)}`}
-                  onClick={() => onChange({ countries: state.countries.filter((x) => x !== c) })}
+                  onClick={() => onChange((s) => ({ countries: s.countries.filter((x) => x !== c) }))}
                   className={cn("grid size-5 place-content-center rounded-full hover:bg-muted", FOCUS)}
                 >
                   <X className="size-3" aria-hidden />

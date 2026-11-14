@@ -9,7 +9,7 @@ import { AllRail } from "@/components/newsroom/all-rail";
 import { ArticleReader } from "@/components/newsroom/article-reader";
 import { Disclosure } from "@/components/ui/disclosure";
 import { fmtShortDate, parseLocalDate } from "@/lib/format";
-import type { AllState } from "@/lib/newsroom/all-state";
+import type { AllPatch, AllState } from "@/lib/newsroom/all-state";
 
 const XL = "(min-width: 1280px)";
 
@@ -46,7 +46,7 @@ export function AllArticlesView({
   onChange,
 }: {
   state: AllState;
-  onChange: (patch: Partial<AllState>) => void;
+  onChange: (patch: AllPatch) => void;
 }) {
   const isXl = useIsXl();
   const { query } = useAllListQuery(state);
@@ -81,12 +81,12 @@ export function AllArticlesView({
     ...state.actors.map((a) => ({
       key: `actor:${a}`,
       label: `Actor: ${a}`,
-      remove: () => onChange({ actors: state.actors.filter((x) => x !== a) }),
+      remove: () => onChange((s) => ({ actors: s.actors.filter((x) => x !== a) })),
     })),
     ...state.ttps.map((t) => ({
       key: `ttp:${t}`,
       label: `Technique: ${t}`,
-      remove: () => onChange({ ttps: state.ttps.filter((x) => x !== t) }),
+      remove: () => onChange((s) => ({ ttps: s.ttps.filter((x) => x !== t) })),
     })),
     ...(storyLabel !== null
       ? [{ key: "story", label: `Story: ${storyLabel}`, remove: () => onChange({ story: null }) }]

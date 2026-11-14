@@ -35,6 +35,10 @@ export type AllState = {
   vindustry: string | null;
 };
 
+/** Patch state; bentuk fungsi dihitung dari state terbaru (termasuk tulisan URL yang belum ter-commit),
+ * dipakai toggle (grade, sumber, negara, chip) supaya klik beruntun tidak saling menimpa. */
+export type AllPatch = Partial<AllState> | ((s: AllState) => Partial<AllState>);
+
 type ArticleParams = NonNullable<ArticlesQuery>;
 
 /** Param URL yang dikelola state ini; `view` dan lainnya tidak disentuh. `industry` ikut dihapus

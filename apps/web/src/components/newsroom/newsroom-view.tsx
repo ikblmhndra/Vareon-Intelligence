@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useDashboardStats } from "@/components/dashboard/use-dashboard-overview";
 import { AllArticlesView } from "@/components/newsroom/all-articles-view";
@@ -26,6 +26,7 @@ import {
   newsroomAllHref,
   parseAllState,
   validFromParam,
+  type AllPatch,
   type AllState,
 } from "@/lib/newsroom/all-state";
 import {
@@ -135,17 +136,24 @@ function NewsroomBody() {
   }
 
   // Rubrik yang tidak boleh dilihat pemakai (izin backend) dianggap null (All news), tanpa request.
-  const allState: AllState = useMemo(() => {
-    const s = parseAllState(new URLSearchParams(sp.toString()));
-    const r = s.rubric;
-    const allowed =
-      r === "ransomware" ? can("view_intel") : r === "techstack" ? can("view_cve") : r === "watchlist" ? can("view_ta") : true;
-    return allowed ? s : { ...s, rubric: null };
-  }, [sp, can]);
+  const gatedState = useCallback(
+    (qs: string): AllState => {
+      const s = parseAllState(new URLSearchParams(qs));
+      const r = s.rubric;
+      const allowed =
+        r === "ransomware" ? can("view_intel") : r === "techstack" ? can("view_cve") : r === "watchlist" ? can("view_ta") : true;
+      return allowed ? s : { ...s, rubric: null };
+    },
+    [can],
+  );
+  const allState: AllState = useMemo(() => gatedState(sp.toString()), [sp, gatedState]);
 
-  /** Tulis patch state All articles; `allStateToParams` mempertahankan `view` dan param lain. */
-  function onAllChange(patch: Partial<AllState>) {
-    const next = allStateToParams(patch, new URLSearchParams(baseQs()));
+  /** Tulis patch state All articles; `allStateToParams` mempertahankan `view` dan param lain. Patch
+   * berbentuk fungsi menerima state dari basis terbaru (`baseQs`), bukan dari props yang mungkin basi. */
+  function onAllChange(input: AllPatch) {
+    const base = baseQs();
+    const patch = typeof input === "function" ? input(gatedState(base)) : input;
+    const next = allStateToParams(patch, new URLSearchParams(base));
     // Di URL turunan (mis. `?actor=Qilin`) menghapus param tautan terakhir akan menjatuhkan tampilan ke
     // Front page; tulis `view=all` eksplisit (hanya pada aksi pemakai, bukan saat mount).
     if (!next.has("view")) next.set("view", "all");
