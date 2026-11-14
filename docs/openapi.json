@@ -403,6 +403,69 @@
         "title": "ArticleEntityRef",
         "type": "object"
       },
+      "ArticleIocOut": {
+        "properties": {
+          "context": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context"
+          },
+          "reputation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reputation"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "value",
+          "context",
+          "reputation"
+        ],
+        "title": "ArticleIocOut",
+        "type": "object"
+      },
+      "ArticleIocsOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ArticleIocOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "ArticleIocsOut",
+        "type": "object"
+      },
       "ArticleListResponse": {
         "properties": {
           "articles": {
@@ -13059,6 +13122,33 @@
           },
           {
             "in": "query",
+            "name": "reliability_grade",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "enum": [
+                      "A",
+                      "B",
+                      "C",
+                      "D",
+                      "E",
+                      "F"
+                    ],
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reliability Grade"
+            }
+          },
+          {
+            "in": "query",
             "name": "dedup",
             "required": false,
             "schema": {
@@ -13556,6 +13646,65 @@
           }
         },
         "summary": "Get Article Inferred Ttps",
+        "tags": [
+          "articles"
+        ]
+      }
+    },
+    "/api/articles/{article_id}/iocs": {
+      "get": {
+        "description": "IOC artikel untuk reader All articles; `ArticleOut.iocs` tetap `{}` (daftar ini hanya\ndimuat saat reader terbuka, bukan di setiap baris list).",
+        "operationId": "get_article_iocs_api_articles__article_id__iocs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "article_id",
+            "required": true,
+            "schema": {
+              "title": "Article Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArticleIocsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Article Iocs",
         "tags": [
           "articles"
         ]

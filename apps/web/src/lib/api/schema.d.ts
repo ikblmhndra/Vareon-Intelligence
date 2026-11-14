@@ -162,6 +162,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/articles/{article_id}/iocs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Article Iocs
+         * @description IOC artikel untuk reader All articles; `ArticleOut.iocs` tetap `{}` (daftar ini hanya
+         *     dimuat saat reader terbuka, bukan di setiap baris list).
+         */
+        get: operations["get_article_iocs_api_articles__article_id__iocs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/attack/navigator-layer": {
         parameters: {
             query?: never;
@@ -4418,6 +4439,24 @@ export interface components {
             role?: string | null;
             /** Type */
             type: string;
+        };
+        /** ArticleIocOut */
+        ArticleIocOut: {
+            /** Context */
+            context: string | null;
+            /** Reputation */
+            reputation: string | null;
+            /** Type */
+            type: string;
+            /** Value */
+            value: string;
+        };
+        /** ArticleIocsOut */
+        ArticleIocsOut: {
+            /** Items */
+            items: components["schemas"]["ArticleIocOut"][];
+            /** Total */
+            total: number;
         };
         /** ArticleListResponse */
         ArticleListResponse: {
@@ -9296,6 +9335,7 @@ export interface operations {
                 sort?: "recent" | "priority";
                 confirmed_only?: boolean;
                 story_id?: number | null;
+                reliability_grade?: ("A" | "B" | "C" | "D" | "E" | "F")[] | null;
                 dedup?: boolean;
                 dedup_threshold?: number;
             };
@@ -9525,6 +9565,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["InferredEntity"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_article_iocs_api_articles__article_id__iocs_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                article_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArticleIocsOut"];
                 };
             };
             /** @description Validation Error */
