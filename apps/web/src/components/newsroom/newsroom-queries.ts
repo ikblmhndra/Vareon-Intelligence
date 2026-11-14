@@ -19,9 +19,12 @@ import {
 type Params = NonNullable<ArticlesQuery>;
 
 /** Filter artikel halaman depan: param, atau alasan kenapa tidak ada query artikel. */
-export type Narrowing = Params | "no-names" | "victims" | "pending";
+export type Narrowing = Params | "no-names" | "victims" | "pending" | NamesError;
 
-const isParams = (n: Narrowing): n is Params => typeof n === "object";
+/** Query nama Watchlist / Tech stack gagal: bukan "tidak ada nama", jadi halaman depan menampilkan galat. */
+export type NamesError = { namesError: { error: unknown; retry: () => void } };
+
+const isParams = (n: Narrowing): n is Params => typeof n === "object" && !("namesError" in n);
 
 /** Rubrik null = filter polos; selain itu `rubricArticleQuery` yang sama dengan `useRubric`.
  * "pending" selagi nama Watchlist / Tech stack dimuat. */
@@ -33,6 +36,13 @@ export function useNarrowing(rubric: RubricKey | null, filters: NewsroomFilters)
 
   if (rubric === null) {
     return { ...baseArticleQuery(filters), country: filters.country ? [filters.country] : undefined };
+  }
+  // Gagal memuat nama bukan "tanpa nama": jangan jatuh ke pesan kosong.
+  if (rubric === "watchlist" && watch.isError) {
+    return { namesError: { error: watch.error, retry: () => void watch.refetch() } };
+  }
+  if (rubric === "techstack" && tech.isError) {
+    return { namesError: { error: tech.error, retry: () => void tech.refetch() } };
   }
   if ((rubric === "watchlist" && watch.isLoading) || (rubric === "techstack" && tech.isLoading)) return "pending";
   return rubricArticleQuery(rubric, filters, {
@@ -65,7 +75,8 @@ export function useArticleCount(narrowing: Narrowing) {
         .total,
     retry: noClientRetry,
     enabled: isParams(narrowing),
-    placeholderData: keepPreviousData,
+    // Tanpa query artikel (disabled) jangan memakai hitungan lama sebagai placeholder.
+    placeholderData: isParams(narrowing) ? keepPreviousData : undefined,
   });
 }
 

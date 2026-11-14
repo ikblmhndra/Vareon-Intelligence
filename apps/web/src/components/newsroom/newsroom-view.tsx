@@ -99,6 +99,7 @@ function NewsroomBody() {
   const pathname = usePathname();
   const sp = useSearchParams();
   const { openArticle, host } = useArticleOpener();
+  const can = useCan();
 
   const view = sp.get("view") === "filtered" ? "filtered" : "front";
   // Periode, from, negara dibaca dari URL tiap render: URL satu-satunya sumber.
@@ -119,7 +120,10 @@ function NewsroomBody() {
     const linked = linkedSheet(sp, dateStart);
     if (linked) return { open: true, ...linked };
     const r = sp.get("rubric");
-    return isRubricKey(r)
+    // Tanpa izin backend rubrik itu (ransomware view_intel, techstack view_cve, watchlist view_ta) tidak ada sheet.
+    const allowed =
+      r === "ransomware" ? can("view_intel") : r === "techstack" ? can("view_cve") : r === "watchlist" ? can("view_ta") : true;
+    return isRubricKey(r) && allowed
       ? { open: true, title: sheetTitle(r), source: { rubric: r } }
       : { open: false, title: "", source: { rubric: "apac" } };
   });
@@ -167,25 +171,26 @@ function NewsroomBody() {
     if (p.from !== undefined) patch.from = p.from;
     if (p.country !== undefined && p.country !== country) patch.country = p.country;
     if (Object.keys(patch).length) writeParams(patch);
+    if (p.search !== undefined) {
+      setSearchText(p.search);
+      setSearch(p.search);
+    }
     if (p.incidentOnly !== undefined) setIncidentOnly(p.incidentOnly);
     if (p.rubric !== undefined) setRubric(p.rubric);
   }
 
   const suffix = from ? `since ${fmtShortDate(from)}` : info.suffix;
   const sources =
-    !search && !country && !from && stats.data ? stats.data.total_sources : undefined;
+    !search && !country && !from && !rubric && stats.data ? stats.data.total_sources : undefined;
   const n = count.data;
-  // Skeleton selagi hitungan dimuat; galat atau tanpa query (no-names) = baris dihilangkan.
-  const description =
-    n === undefined ? (
-      count.isPending && count.fetchStatus !== "idle" ? (
-        <Skeleton aria-hidden className="h-5 w-80 max-w-full" />
-      ) : undefined
-    ) : (
-      `${n.toLocaleString("en-US")} cyber articles${
-          sources !== undefined ? ` from ${sources.toLocaleString("en-US")} sources` : ""
-        } ${suffix}`
-    );
+  const plural = (k: number, word: string) => `${k.toLocaleString("en-US")} ${word}${k === 1 ? "" : "s"}`;
+  // Skeleton selagi hitungan dimuat; tanpa query artikel (Ransomware, no-names, galat nama) atau galat = baris dihilangkan.
+  const hasQuery = typeof narrowing === "object" && !("namesError" in narrowing);
+  const description = !hasQuery ? undefined : n === undefined ? (
+    count.isPending && count.fetchStatus !== "idle" ? <Skeleton aria-hidden className="h-5 w-80 max-w-full" /> : undefined
+  ) : (
+    `${plural(n, "cyber article")}${sources !== undefined ? ` from ${plural(sources, "source")}` : ""} ${suffix}`
+  );
 
   return (
     <div className="pb-10">
@@ -217,6 +222,7 @@ function NewsroomBody() {
             <TopicsSection
               filters={filters}
               words={info.words}
+              since={from ? fmtShortDate(from) : undefined}
               onOpen={(source, title) => setSheet({ open: true, title, source })}
             />
             <RubricGrid

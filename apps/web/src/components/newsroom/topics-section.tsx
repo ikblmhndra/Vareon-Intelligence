@@ -18,10 +18,13 @@ const GRID = "mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6";
 export function TopicsSection({
   filters,
   words,
+  since,
   onOpen,
 }: {
   filters: NewsroomFilters;
   words: string;
+  /** Tanggal `?from=` (sudah diformat); menggantikan `words` karena `from` menang atas periode. */
+  since?: string;
   onOpen: (source: SheetSource, title: string) => void;
 }) {
   const q = useTopics(filters);
@@ -34,7 +37,7 @@ export function TopicsSection({
   return (
     <section className={cn(q.isPlaceholderData && "opacity-60")}>
       <h2 className="font-heading text-xl font-bold tracking-tight text-foreground">Active topics</h2>
-      <p className="mt-0.5 text-sm text-muted-foreground">Rising actors and techniques, {words}</p>
+      <p className="mt-0.5 text-sm text-muted-foreground">{since ? `Rising actors and techniques since ${since}` : `Rising actors and techniques, ${words}`}</p>
       {q.isPending ? (
         <div aria-hidden className={GRID}>
           {Array.from({ length: 6 }, (_, i) => (

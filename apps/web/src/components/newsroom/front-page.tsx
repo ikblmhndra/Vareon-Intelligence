@@ -272,6 +272,10 @@ export function FrontPage({
 
   // Ransomware = daftar korban, bukan artikel: blok ini tidak dirender.
   if (narrowing === "victims") return null;
+  if (typeof narrowing === "object" && "namesError" in narrowing) {
+    const { error, retry } = narrowing.namesError;
+    return <PanelError title="Could not load the front page" error={error} onRetry={retry} />;
+  }
   if (narrowing === "pending") return <Skeleton aria-hidden className="h-70 w-full rounded-xl" />;
   // Tanpa nama, filter kosong berarti "semua"; jangan tampilkan feed penuh (Review Focus 2).
   if (narrowing === "no-names") {
@@ -332,7 +336,12 @@ export function FrontPage({
         </Notice>
       )}
       {!lead ? (
-        <EmptyFront ui={ui} narrowing={narrowing} onChange={onChange} />
+        // Selagi placeholder periode lama, belum pasti kosong: jangan tembak "terbaru" (P7).
+        q.isPlaceholderData ? (
+          <Skeleton aria-hidden className="h-70 w-full rounded-xl" />
+        ) : (
+          <EmptyFront ui={ui} narrowing={narrowing} onChange={onChange} />
+        )
       ) : (
         <div
           className={cn(

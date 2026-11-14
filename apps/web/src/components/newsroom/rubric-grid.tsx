@@ -192,8 +192,15 @@ export function RubricGrid({
 }) {
   const can = useCan();
   // P6: tanpa izin kolom tidak dirender, jadi hook-nya tidak jalan dan tidak ada request 403.
+  // `/api/ransomware/*` dijaga view_intel di router, bukan view_news.
   const allowed = (k: RubricKey) =>
-    k === "watchlist" ? can("view_ta") : k === "techstack" ? can("view_cve") : true;
+    k === "watchlist"
+      ? can("view_ta")
+      : k === "techstack"
+        ? can("view_cve")
+        : k === "ransomware"
+          ? can("view_intel")
+          : true;
   const cols = COLUMNS.filter((c) => (rubric ? c.key === rubric : true) && allowed(c.key));
 
   return (

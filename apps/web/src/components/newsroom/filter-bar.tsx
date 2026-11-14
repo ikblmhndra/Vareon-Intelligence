@@ -49,7 +49,11 @@ export function FilterBar({
     ...Object.fromEntries(codes.map((c) => [c, countryName(c)])),
   };
   const rubrics = RUBRIC_OPTIONS.filter(
-    (r) => (r.value !== "watchlist" || can("view_ta")) && (r.value !== "techstack" || can("view_cve")),
+    (r) =>
+      (r.value !== "watchlist" || can("view_ta")) &&
+      (r.value !== "techstack" || can("view_cve")) &&
+      // Endpoint korban ransomware butuh view_intel (bukan view_news).
+      (r.value !== "ransomware" || can("view_intel")),
   );
   const rubricItems: Record<string, string> = {
     [ALL]: "All rubrics",

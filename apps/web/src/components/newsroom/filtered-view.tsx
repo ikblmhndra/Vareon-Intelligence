@@ -134,9 +134,7 @@ export function FilteredView() {
   const dim = active.isPlaceholderData ? "opacity-60" : undefined;
 
   return (
-    <div className="mx-auto max-w-3xl">
-      {/* Masthead (h1 "Newsroom") tidak tampil di tab ini; halaman tetap butuh satu h1. */}
-      <h1 className="sr-only">Filtered Articles</h1>
+    <div>
       <SegmentedControl aria-label="Filtered articles" className="mb-3" options={KIND_TABS} value={kind} onChange={setKind} />
       <PanelShell
         title={kind === "queue" ? "Enrichment queue" : "Not cyber-related"}

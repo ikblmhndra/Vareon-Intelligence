@@ -1,7 +1,7 @@
-const SHORT = new Intl.DateTimeFormat("en-US", { day: "numeric", month: "short" });
+import { fmtShortDate } from "@/lib/format";
 
 /** `posted_on` hanya tanggal (tanpa jam), jadi "N jam lalu" menyesatkan: tampilkan
- * "today", "yesterday", atau tanggal pendek ("Oct 22"; salinan UI English, D2). */
+ * "today", "yesterday", atau tanggal pendek lewat `fmtShortDate` ("22 Oct"), format yang sama dengan grid dan chip. */
 export function formatPostedOn(iso: string, now: Date = new Date()): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
   if (!m) return iso.slice(0, 10);
@@ -10,5 +10,5 @@ export function formatPostedOn(iso: string, now: Date = new Date()): string {
   const days = Math.round((today.getTime() - posted.getTime()) / 86_400_000);
   if (days === 0) return "today";
   if (days === 1) return "yesterday";
-  return SHORT.format(posted);
+  return fmtShortDate(posted);
 }
