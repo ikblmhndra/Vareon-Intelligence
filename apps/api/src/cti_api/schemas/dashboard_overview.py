@@ -49,10 +49,11 @@ class DashboardAttention(BaseModel):
 
 
 class TrendItemOut(BaseModel):
-    kind: Literal["actor", "ttp"]
+    kind: Literal["actor", "ttp", "malware", "cve"]
     name: str
     ttp_id: str | None = None
     entity_id: int | None = None
+    ransomware_group: bool = False
     count: int
     prev_count: int
     change_pct: int | None = None

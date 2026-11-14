@@ -33,7 +33,15 @@ from cti_core.db.models.cve import CveTicket, CveTracker
 from cti_core.db.models.entity import EntityWatch
 from cti_core.db.models.indicator import Indicator
 from cti_core.db.repositories.cve import is_false_positive_row
-from cti_core.db.repositories.entity import ACTOR, COUNTRY, SECTOR, TECHNIQUE, mention_rows
+from cti_core.db.repositories.entity import (
+    ACTOR,
+    COUNTRY,
+    CVE,
+    MALWARE_TYPES,
+    SECTOR,
+    TECHNIQUE,
+    mention_rows,
+)
 from cti_core.db.repositories.ttp_catalog import canonical_ttp_name
 
 
@@ -520,7 +528,9 @@ class AsyncDashboardRepo:
         news_types: Sequence[str] | None = None,
         search: str | None = None,
     ) -> list[tuple[datetime.date, str, int]]:
-        """`dimension`: "threat_actor" | "country" | "industry" | "ttp". Port
+        """`dimension`: "threat_actor" | "country" | "industry" | "ttp" | "malware" | "cve".
+        "malware" menggabung entitas `malware` dan `tool` (kunci: nama); "cve" memakai entitas
+        `vulnerability` (kunci: `external_id`, yaitu id CVE-nya). Port
         `by_actor`/`by_country`/`by_industry` facet `spike_service.py`.
         `exclude_news_types`/`confirmed_only` cuma kepake pas dipanggil
         dari `exec_dashboard_v2` (`industry_spikes`, ikut filter
@@ -545,9 +555,11 @@ class AsyncDashboardRepo:
             "country": COUNTRY,
             "industry": SECTOR,
             "ttp": TECHNIQUE,
+            "malware": MALWARE_TYPES,
+            "cve": CVE,
         }[dimension]
-        m = mention_rows(etype)
-        key = m.c.external_id if dimension in ("country", "ttp") else m.c.name
+        m = mention_rows(*((etype,) if isinstance(etype, str) else etype))
+        key = m.c.external_id if dimension in ("country", "ttp", "cve") else m.c.name
         col = (
             func.concat(m.c.external_id, "|", canonical_ttp_name(m.c.external_id, m.c.name))
             if dimension == "ttp"

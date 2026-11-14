@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 from cti_core.db.models.cve import CveTicket, CveTracker
+from cti_core.db.models.entity import Entity, EntityMention
 from cti_core.db.models.ransomware import RansomwareVictim
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.auth import AsyncClientRepo
@@ -374,3 +375,35 @@ async def test_ransomware_top_industry_ignores_blank(async_db_session: AsyncSess
         update(RansomwareVictim).where(RansomwareVictim.industry.is_not(None)).values(industry=" ")
     )
     assert await repo.top_industry_in_countries(since=None, codes={"SG"}) is None
+
+
+async def test_daily_entity_counts_malware_and_cve(async_db_session: AsyncSession) -> None:
+    repo = AsyncArticleRepo(async_db_session)
+    a = await repo.upsert(
+        url="https://example.com/mal-1", title="Emotet", source="S", posted_on=_TODAY
+    )
+    await repo.set_enrichment(a, malware=[("Emotet", "malware"), ("Cobalt Strike", "tool")])
+    cve = Entity(
+        type="vulnerability",
+        stix_id="vulnerability--cve-2026-1111",
+        name="CVE-2026-1111",
+        external_id="CVE-2026-1111",
+        source="analyst",
+    )
+    async_db_session.add(cve)
+    await async_db_session.flush()
+    async_db_session.add(
+        EntityMention(
+            article_id=a.id, entity_id=cve.id, method="dictionary", matched_alias=cve.name
+        )
+    )
+    await async_db_session.flush()
+    dash = AsyncDashboardRepo(async_db_session)
+    start = _TODAY - datetime.timedelta(days=1)
+    end = _TODAY + datetime.timedelta(days=1)
+    malware = await dash.daily_entity_counts(
+        dimension="malware", posted_on_start=start, posted_on_end=end
+    )
+    assert {name for _d, name, _n in malware} == {"Emotet", "Cobalt Strike"}
+    cves = await dash.daily_entity_counts(dimension="cve", posted_on_start=start, posted_on_end=end)
+    assert [(name, n) for _d, name, n in cves] == [("CVE-2026-1111", 1)]

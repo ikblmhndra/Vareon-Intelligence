@@ -24,3 +24,20 @@ def test_below_min_count_dropped_and_ranked_by_absolute_rise():
 
 def test_falling_entities_excluded():
     assert rank_trends({("actor", "D", None): [4]}, {("actor", "D", None): 9}) == []
+
+
+def test_rank_trends_keeps_malware_and_cve_kinds():
+    items = rank_trends(
+        {
+            ("malware", "Cobalt Strike", None): [3],
+            ("cve", "CVE-2026-1111", None): [4],
+            ("actor", "Qilin", None): [5],
+        },
+        {},
+    )
+    assert {i.name: i.kind for i in items} == {
+        "Cobalt Strike": "malware",
+        "CVE-2026-1111": "cve",
+        "Qilin": "actor",
+    }
+    assert all(i.ransomware_group is False for i in items)

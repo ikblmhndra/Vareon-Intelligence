@@ -142,6 +142,16 @@ class AsyncRansomwareVictimRepo:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
+    async def known_group_names(self, names: Collection[str]) -> set[str]:
+        """Subset `names` yang cocok nama grup di leak site (case-insensitive), dikembalikan
+        lower-case. Satu query; input kosong tidak menyentuh DB."""
+        lowered = {n.lower() for n in names}
+        if not lowered:
+            return set()
+        col = func.lower(RansomwareVictim.group_name)
+        stmt = select(col).where(col.in_(lowered)).distinct()
+        return set((await self.session.execute(stmt)).scalars().all())
+
     async def weekly_counts(self, *, weeks: int = 8) -> list[tuple[datetime.date, int]]:
         """Korban per minggu (awal minggu = Senin), `weeks` minggu terakhir termasuk minggu
         berjalan, terlama dulu, minggu kosong diisi 0. Tanggal korban =

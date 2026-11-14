@@ -351,9 +351,11 @@ async def dashboard_attention(
 
 @router.get("/dashboard/trending", response_model=TrendingResponse)
 async def dashboard_trending(
-    days: int | None = _DaysQuery, session: AsyncSession = Depends(get_db)
+    days: int | None = _DaysQuery,
+    kinds: list[trending.TrendKind] = Query(["actor", "ttp"]),
+    session: AsyncSession = Depends(get_db),
 ) -> TrendingResponse:
-    return TrendingResponse(**await trending.get_trending(session, days=days))
+    return TrendingResponse(**await trending.get_trending(session, days=days, kinds=kinds))
 
 
 @router.get("/dashboard/ransomware", response_model=RansomwareOverview)

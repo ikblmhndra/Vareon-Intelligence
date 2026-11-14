@@ -7,6 +7,7 @@ import datetime
 
 import pytest
 from cti_core.db.models.cve import CveTracker
+from cti_core.db.models.entity import Entity, EntityMention
 from cti_core.db.models.ransomware import RansomwareVictim
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.auth import AsyncClientRepo
@@ -274,3 +275,90 @@ async def test_attention_new_fields_are_client_scoped(
     assert acme["client_countries"] == ["SG"] and other["client_countries"] == ["US"]
     assert acme["ransomware_client_top_industry"] == {"name": "Finance", "count": 1}
     assert other["ransomware_client_top_industry"] == {"name": "Health", "count": 1}
+
+
+async def _seed_kinds(session: AsyncSession, n: int = 3) -> None:
+    """Tiga artikel yang menyebut satu aktor, satu malware dan satu CVE sekaligus."""
+    repo = AsyncArticleRepo(session)
+    cve = Entity(
+        type="vulnerability",
+        stix_id="vulnerability--cve-2026-1111",
+        name="CVE-2026-1111",
+        external_id="CVE-2026-1111",
+        source="analyst",
+    )
+    session.add(cve)
+    await session.flush()
+    for i in range(n):
+        a = await repo.upsert(
+            url=f"https://example.com/kinds-{i}", title=f"kinds {i}", source="S", posted_on=_TODAY
+        )
+        await repo.set_enrichment(a, threat_actors=["qilin"], malware=[("Emotet", "malware")])
+        session.add(
+            EntityMention(
+                article_id=a.id, entity_id=cve.id, method="dictionary", matched_alias=cve.name
+            )
+        )
+    await session.flush()
+
+
+async def test_trending_default_kinds_are_actor_and_ttp(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header
+) -> None:
+    await AsyncClientRepo(api_session).ensure_default()
+    await _seed_kinds(api_session)
+    r = await api_client.get("/api/dashboard/trending", headers=auth_header())
+    assert r.status_code == 200, r.text
+    items = r.json()["items"]
+    assert items and {i["kind"] for i in items} <= {"actor", "ttp"}
+    assert all("ransomware_group" in i for i in items)
+
+
+async def test_trending_kinds_param(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header
+) -> None:
+    await AsyncClientRepo(api_session).ensure_default()
+    await _seed_kinds(api_session)
+    r = await api_client.get(
+        "/api/dashboard/trending",
+        params=[("kinds", "malware"), ("kinds", "cve")],
+        headers=auth_header(),
+    )
+    assert r.status_code == 200, r.text
+    items = r.json()["items"]
+    assert {i["kind"] for i in items} == {"malware", "cve"}
+    assert all(i["entity_id"] is None for i in items)
+    bad = await api_client.get(
+        "/api/dashboard/trending", params={"kinds": "bogus"}, headers=auth_header()
+    )
+    assert bad.status_code == 422
+
+
+async def test_trending_flags_ransomware_group(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header
+) -> None:
+    await AsyncClientRepo(api_session).ensure_default()
+    api_session.add(
+        RansomwareVictim(offset_key="q-1", group_name="Qilin", victim="V", discovered=_TODAY)
+    )
+    await api_session.flush()
+    await _seed_actor_articles(api_session, 3, actor="qilin")
+    await _seed_actor_articles(api_session, 3, actor="Turla")
+    r = await api_client.get("/api/dashboard/trending", headers=auth_header())
+    flags = {i["name"]: i["ransomware_group"] for i in r.json()["items"]}
+    assert flags == {"qilin": True, "Turla": False}
+
+
+async def test_trending_repeated_kind_counts_once(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header
+) -> None:
+    await AsyncClientRepo(api_session).ensure_default()
+    await _seed_kinds(api_session)
+
+    async def cve_count(params: list[tuple[str, str]]) -> int:
+        r = await api_client.get("/api/dashboard/trending", params=params, headers=auth_header())
+        return next(i["count"] for i in r.json()["items"] if i["kind"] == "cve")
+
+    once = await cve_count([("kinds", "cve")])
+    assert once == 3
+    assert await cve_count([("kinds", "cve"), ("kinds", "cve")]) == once
