@@ -165,13 +165,19 @@ export function isAllViewUrl(sp: URLSearchParams): boolean {
 
 /** Query artikel untuk state ini. Hasil non-query: `"empty"` (irisan Watchlist x aktor kosong, tanpa
  * request), `"no-names"` (nama Watchlist/Tech stack kosong), `"pending"` (nama masih dimuat),
- * `"victims"` (Ransomware, bukan artikel). Memanggil `periodStart` (membaca jam): panggil di dalam
- * useMemo, bukan tiap render. */
+ * `"victims"` (Ransomware, bukan artikel). Tanpa `ctx.dateStart` memanggil `periodStart` (membaca
+ * jam): hook memberi `dateStart` dari useMemo, jangan panggil tanpa itu di badan render. */
 export function allStateToQuery(
   s: AllState,
-  ctx: { clientCountries: string[]; watchNames: string[] | undefined; techNames: string[] | undefined },
+  ctx: {
+    clientCountries: string[];
+    watchNames: string[] | undefined;
+    techNames: string[] | undefined;
+    /** Tanggal mulai yang sudah dihitung pemanggil (di useMemo); tanpa ini fungsi membaca jam sendiri. */
+    dateStart?: string;
+  },
 ): ArticleParams | "empty" | "no-names" | "pending" | "victims" {
-  const dateStart = s.from ?? periodStart(newsroomPeriodInfo(s.period).days ?? 0);
+  const dateStart = ctx.dateStart ?? s.from ?? periodStart(newsroomPeriodInfo(s.period).days ?? 0);
   const base: ArticleParams = {
     posted_on_start: dateStart || undefined,
     country: s.countries.length ? s.countries : undefined,

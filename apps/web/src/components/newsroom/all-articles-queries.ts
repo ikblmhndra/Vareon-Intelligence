@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { keepPreviousData, useInfiniteQuery, useQueries, useQuery } from "@tanstack/react-query";
 
 import { useAuth } from "@/components/providers/auth-provider";
@@ -87,9 +88,12 @@ export function useRubricCounts(state: AllState): RubricCounts {
   const canTech = can("view_cve");
   const watch = useWatchlistNames(canWatch);
   const tech = useTechStackNames(canTech);
-  const ctx = { clientCountries, watchNames: watch.data, techNames: tech.data };
-
-  const dateStart = state.from ?? periodStart(newsroomPeriodInfo(state.period).days ?? 0);
+  // Jam dibaca sekali per perubahan periode, bukan tiap render.
+  const dateStart = useMemo(
+    () => state.from ?? periodStart(newsroomPeriodInfo(state.period).days ?? 0),
+    [state.from, state.period],
+  );
+  const ctx = { clientCountries, watchNames: watch.data, techNames: tech.data, dateStart };
 
   const plans = COUNT_KEYS.map((key): CountPlan => {
     if (key === "ransomware") {
@@ -144,7 +148,6 @@ export function useRubricCounts(state: AllState): RubricCounts {
       },
       enabled: plan.kind !== "value",
       retry: noClientRetry,
-      placeholderData: keepPreviousData,
     })),
   });
 
@@ -214,7 +217,11 @@ export function useStorySources(storyId: number | null, excludeId: number | null
 /** Baris korban rubrik Ransomware (aturan 7): periode (`date_start`), negara pertama, serta select
  * Group / Industry. Grade, sektor, sumber, pencarian, insiden tidak berlaku. */
 export function useVictimRows(state: AllState, enabled: boolean) {
-  const dateStart = state.from ?? periodStart(newsroomPeriodInfo(state.period).days ?? 0);
+  // Pemanggil wajib menggerbang dengan `view_intel` lewat `enabled`.
+  const dateStart = useMemo(
+    () => state.from ?? periodStart(newsroomPeriodInfo(state.period).days ?? 0),
+    [state.from, state.period],
+  );
   const country = state.countries[0] ?? null;
   return useInfiniteQuery({
     queryKey: ["newsroom", "all-victims", dateStart, country, state.group, state.vindustry],
@@ -252,6 +259,7 @@ export function useVictimRows(state: AllState, enabled: boolean) {
 /** "Related articles" rubrik Ransomware: `/api/ransomware/related-articles` hanya menerima
  * page/page_size (tanpa param periode), sama seperti sheet lama, 8 per langkah. `state` tidak
  * dipakai di request; ada supaya pemanggil seragam dengan `useVictimRows`. */
+// Pemanggil wajib menggerbang dengan `view_intel` lewat `enabled`.
 export function useRelatedArticles(_state: AllState, enabled: boolean) {
   return useInfiniteQuery({
     queryKey: ["newsroom", "all-related"],
