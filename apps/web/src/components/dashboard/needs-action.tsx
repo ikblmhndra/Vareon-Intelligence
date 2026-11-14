@@ -129,7 +129,7 @@ export function NeedsAction({ period }: { period: PeriodKey }) {
     const details = new Map<WorldDotPoint, Detail>();
     const points: WorldDotPoint[] = [];
     for (const m of map.data?.points ?? []) {
-      // Baris tanpa kode negara (korban ransomware) tidak punya koordinat: tidak dikirim ke peta.
+      // Baris tanpa kode negara tidak digambar di tampilan mana pun (spec 6.3), jadi tidak ada label "Unknown country".
       if (!m.country_code) continue;
       const point: WorldDotPoint = {
         code: m.country_code,
@@ -267,7 +267,7 @@ export function NeedsAction({ period }: { period: PeriodKey }) {
         <div className="grid gap-6 lg:grid-cols-[minmax(0,752fr)_500px]">
           <div>{left}</div>
           <div className="relative h-[380px] w-[500px] max-w-full overflow-hidden rounded-md">
-            <div ref={mapBoxRef} className="absolute inset-0">
+            <div ref={mapBoxRef} className={cn("absolute inset-0", map.isPlaceholderData && "opacity-60")}>
               {map.data && points.length > 0 && (
                 <WorldDots
                   points={points}
@@ -320,7 +320,13 @@ export function NeedsAction({ period }: { period: PeriodKey }) {
               </div>
             </div>
             {map.isPending && <Skeleton aria-hidden className="absolute inset-0 bg-hero-panel" />}
-            <ul className="pointer-events-none absolute bottom-0 left-0 flex flex-wrap gap-x-4 gap-y-1 text-xs text-hero-muted">
+            <ul
+              className={cn(
+                "pointer-events-none absolute bottom-0 left-0 flex flex-wrap gap-x-4 gap-y-1 text-xs text-hero-muted",
+                topCountries.length > 0 && "max-w-[calc(100%-13.5rem)]",
+                map.isPlaceholderData && "opacity-60",
+              )}
+            >
               <li className="flex items-center gap-1.5">
                 <span className="size-2 rounded-full bg-hero-accent" aria-hidden />
                 Incidents
@@ -335,7 +341,7 @@ export function NeedsAction({ period }: { period: PeriodKey }) {
               </li>
             </ul>
             {topCountries.length > 0 && (
-              <div className="pointer-events-none absolute right-0 bottom-0 w-52 rounded-md bg-hero-panel p-3">
+              <div className={cn("pointer-events-none absolute right-0 bottom-0 w-52 rounded-md bg-hero-panel p-3", map.isPlaceholderData && "opacity-60")}>
                 <p className="text-2xs font-bold tracking-[0.12em] text-hero-eyebrow uppercase">Top countries</p>
                 <ul className="mt-2 flex flex-col gap-1.5 text-xs text-hero-foreground">
                   {topCountries.map((p) => (
