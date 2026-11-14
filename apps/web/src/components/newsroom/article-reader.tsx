@@ -159,7 +159,7 @@ function ReaderBody({
     onError: (e: Error) => toast.error(`Watch failed: ${e.message}`),
   });
 
-  const sources = useStorySources(a.story?.id ?? null, a.id);
+  const sources = useStorySources(a.story && a.story.source_count > 1 ? a.story.id : null, a.id);
   const others = sources.data ?? [];
   const alsoBy =
     others.length > 0

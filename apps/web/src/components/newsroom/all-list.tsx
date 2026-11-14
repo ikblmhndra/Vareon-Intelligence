@@ -24,6 +24,7 @@ import type { RansomwareVictim } from "@/lib/api/loose-types";
 import { countryName } from "@/lib/countries";
 import { fmtShortDate } from "@/lib/format";
 import { RESET_PATCH, type AllState } from "@/lib/newsroom/all-state";
+import { cn } from "@/lib/utils";
 
 type Article = components["schemas"]["ArticleOut"];
 
@@ -126,12 +127,12 @@ export function AllList({
   selected: number | null;
   onSelect: (id: number) => void;
 }) {
-  const { plan, query } = useAllListQuery(state);
+  const { plan, query, namesError } = useAllListQuery(state);
   const list = useAllArticles(query);
   const isVictims = plan === "victims";
   // Rubrik Ransomware sudah di-null-kan induk tanpa `view_intel`; query hanya jalan untuk "victims".
   const victims = useVictimRows(state, isVictims);
-  const related = useRelatedArticles(state, isVictims);
+  const related = useRelatedArticles(isVictims);
   const matchers = useArticleMatchers();
 
   const articles = useMemo(() => list.data?.pages.flatMap((p) => p.articles) ?? [], [list.data]);
@@ -150,7 +151,7 @@ export function AllList({
 
   const header = (text: string, withSort: boolean) => (
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <h2 className="font-heading text-sm font-semibold">{text}</h2>
+      <h2 className={cn("font-heading text-sm font-semibold", list.isPlaceholderData && "opacity-60")}>{text}</h2>
       {withSort && (
         <Select
           items={SORT_ITEMS}
@@ -174,6 +175,15 @@ export function AllList({
       )}
     </div>
   );
+
+  if (plan === "pending" && namesError) {
+    return (
+      <div className="space-y-3">
+        {header("Articles", true)}
+        <PanelError title="Could not load the filter names" error={namesError.error} onRetry={namesError.refetch} />
+      </div>
+    );
+  }
 
   if (plan === "pending") {
     return (

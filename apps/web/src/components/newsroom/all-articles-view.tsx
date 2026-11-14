@@ -8,6 +8,7 @@ import { useAllArticles, useAllListQuery } from "@/components/newsroom/all-artic
 import { AllRail } from "@/components/newsroom/all-rail";
 import { ArticleReader } from "@/components/newsroom/article-reader";
 import { Disclosure } from "@/components/ui/disclosure";
+import { fmtShortDate, parseLocalDate } from "@/lib/format";
 import type { AllState } from "@/lib/newsroom/all-state";
 
 const XL = "(min-width: 1280px)";
@@ -50,7 +51,12 @@ export function AllArticlesView({
   const isXl = useIsXl();
   const { query } = useAllListQuery(state);
   const list = useAllArticles(query);
-  const listArticles = useMemo(() => list.data?.pages.flatMap((p) => p.articles) ?? [], [list.data]);
+  // Query mati (plan bukan objek) = daftar tersembunyi; keepPreviousData masih menahan halaman lama,
+  // jadi pembaca tidak boleh melangkah ("{i} of {n}") di daftar basi itu.
+  const listArticles = useMemo(
+    () => (query === undefined ? [] : (list.data?.pages.flatMap((p) => p.articles) ?? [])),
+    [query, list.data],
+  );
 
   const storyLabel =
     state.story === null
@@ -60,6 +66,18 @@ export function AllArticlesView({
         : listArticles[0]?.title || `Story ${state.story}`;
 
   const chips: { key: string; label: string; remove: () => void }[] = [
+    // `q` dibawa dari klik Front page (aturan 6) dan `from` dari tautan Intelligence; keduanya harus
+    // terlihat dan bisa dilepas. Melepas `from` mengembalikan periode ke nilai `period` di URL.
+    ...(state.q !== "" ? [{ key: "q", label: `Search: ${state.q}`, remove: () => onChange({ q: "" }) }] : []),
+    ...(state.from !== null
+      ? [
+          {
+            key: "from",
+            label: `Since ${fmtShortDate(parseLocalDate(state.from))}`,
+            remove: () => onChange({ from: null }),
+          },
+        ]
+      : []),
     ...state.actors.map((a) => ({
       key: `actor:${a}`,
       label: `Actor: ${a}`,
@@ -80,9 +98,7 @@ export function AllArticlesView({
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(360px,1fr)_minmax(520px,1.4fr)] xl:grid-cols-[236px_minmax(360px,1fr)_minmax(520px,1.4fr)]">
       {isXl ? (
-        <aside aria-label="Filters" className="min-w-0">
-          {rail}
-        </aside>
+        <div className="min-w-0">{rail}</div>
       ) : (
         <Disclosure title="Filters" className="min-w-0 lg:col-span-2">
           {rail}

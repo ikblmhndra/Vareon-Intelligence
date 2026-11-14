@@ -318,6 +318,8 @@ export function AllRail({ state, onChange }: { state: AllState; onChange: (patch
               <Skeleton key={i} className="h-4 w-full" />
             ))}
           </div>
+        ) : stats.isError && extra.length === 0 ? (
+          <p className="text-xs text-muted-foreground">Could not load sources.</p>
         ) : (
           <ul className="space-y-1">
             {[...extra.map((name) => ({ name, count: null as number | null })), ...top].map((s) => (

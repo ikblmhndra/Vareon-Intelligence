@@ -60,7 +60,11 @@ export function useAllArticles(query: ArticlesQuery) {
 /** Rencana + query daftar All articles untuk state ini. AllArticlesView dan AllList wajib memanggil
  * pasangan yang sama (`useAllArticles(useAllListQuery(state).query)`) supaya berbagi satu kunci cache.
  * `plan` = hasil mentah `allStateToQuery`; `query` = objeknya atau undefined. */
-export function useAllListQuery(state: AllState): { plan: ReturnType<typeof allStateToQuery>; query: ArticleParams | undefined } {
+export function useAllListQuery(state: AllState): {
+  plan: ReturnType<typeof allStateToQuery>;
+  query: ArticleParams | undefined;
+  namesError?: { error: unknown; refetch: () => void };
+} {
   const can = useCan();
   const { user } = useAuth();
   const watch = useWatchlistNames(can("view_ta"));
@@ -77,7 +81,14 @@ export function useAllListQuery(state: AllState): { plan: ReturnType<typeof allS
     techNames: tech.data,
     dateStart,
   });
-  return { plan, query: typeof plan === "object" ? plan : undefined };
+  // Galat query nama rubrik aktif: tanpa nama `allStateToQuery` memberi "pending" selamanya, jadi
+  // pemanggil butuh galatnya untuk menampilkan panel galat + Retry (spec 6.6).
+  const active = state.rubric === "watchlist" ? watch : state.rubric === "techstack" ? tech : null;
+  const namesError =
+    active !== null && active.isError
+      ? { error: active.error as unknown, refetch: () => void active.refetch() }
+      : undefined;
+  return { plan, query: typeof plan === "object" ? plan : undefined, namesError };
 }
 
 /** Hitungan rubrik di rail: `undefined` = memuat, `null` = galat atau rubrik tidak terlihat
@@ -280,10 +291,9 @@ export function useVictimRows(state: AllState, enabled: boolean) {
 }
 
 /** "Related articles" rubrik Ransomware: `/api/ransomware/related-articles` hanya menerima
- * page/page_size (tanpa param periode), sama seperti sheet lama, 8 per langkah. `state` tidak
- * dipakai di request; ada supaya pemanggil seragam dengan `useVictimRows`. */
+ * page/page_size (tanpa param periode), sama seperti sheet lama, 8 per langkah. */
 // Pemanggil wajib menggerbang dengan `view_intel` lewat `enabled`.
-export function useRelatedArticles(_state: AllState, enabled: boolean) {
+export function useRelatedArticles(enabled: boolean) {
   return useInfiniteQuery({
     queryKey: ["newsroom", "all-related"],
     queryFn: async ({ pageParam }) => {

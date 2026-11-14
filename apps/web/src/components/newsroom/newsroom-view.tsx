@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useDashboardStats } from "@/components/dashboard/use-dashboard-overview";
 import { AllArticlesView } from "@/components/newsroom/all-articles-view";
@@ -100,17 +100,29 @@ function NewsroomBody() {
   const info = newsroomPeriodInfo(period);
   const stats = useDashboardStats(info.days, incidentOnly);
 
+  // `useSearchParams()` baru berubah sesudah router.replace ter-commit; dua perubahan beruntun
+  // (grade A lalu B, dua checkbox sumber) yang sama-sama berbasis snapshot itu akan saling menimpa.
+  // `pendingRef` menyimpan URL terakhir yang ditulis dan dipakai sebagai basis selama masih
+  // mendahului `sp`; dilepas begitu `sp` menyusul.
+  const pendingRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (pendingRef.current === sp.toString()) pendingRef.current = null;
+  }, [sp]);
+  /** Query string terkini yang menjadi basis patch: tulisan yang belum ter-commit menang atas `sp`. */
+  const baseQs = () => pendingRef.current ?? sp.toString();
+
   /** Satu-satunya penulis URL: `replace` hanya bila URL berubah (tidak pernah ke URL yang sama). */
   function replaceParams(next: URLSearchParams) {
     const qs = next.toString();
-    const href = pathname + (qs ? "?" + qs : "");
-    if (href === pathname + (sp.toString() ? "?" + sp.toString() : "")) return;
-    router.replace(href, { scroll: false });
+    if (qs === baseQs()) return;
+    // Kembali persis ke URL yang sudah ter-commit tidak perlu basis tertunda (tidak ada yang menyusul).
+    pendingRef.current = qs === sp.toString() ? null : qs;
+    router.replace(pathname + (qs ? "?" + qs : ""), { scroll: false });
   }
 
   /** Salin param, terapkan patch, lalu tulis lewat `replaceParams`. */
   function writeParams(patch: Record<string, string | null>) {
-    const next = new URLSearchParams(sp.toString());
+    const next = new URLSearchParams(baseQs());
     for (const [k, v] of Object.entries(patch)) {
       if (v === null) next.delete(k);
       else next.set(k, v);
@@ -129,7 +141,7 @@ function NewsroomBody() {
 
   /** Tulis patch state All articles; `allStateToParams` mempertahankan `view` dan param lain. */
   function onAllChange(patch: Partial<AllState>) {
-    const next = allStateToParams(patch, new URLSearchParams(sp.toString()));
+    const next = allStateToParams(patch, new URLSearchParams(baseQs()));
     // Di URL turunan (mis. `?actor=Qilin`) menghapus param tautan terakhir akan menjatuhkan tampilan ke
     // Front page; tulis `view=all` eksplisit (hanya pada aksi pemakai, bukan saat mount).
     if (!next.has("view")) next.set("view", "all");
