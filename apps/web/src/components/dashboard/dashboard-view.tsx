@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { useState, useSyncExternalStore } from "react";
 
 import { CveWatchlist } from "@/components/dashboard/cve-watchlist";
@@ -12,13 +13,16 @@ import { MustRead } from "@/components/dashboard/must-read";
 import { NeedsAction } from "@/components/dashboard/needs-action";
 import { Trending } from "@/components/dashboard/trending";
 import { useArticleOpener } from "@/components/dashboard/article-opener";
+import { useLlmQueue } from "@/components/dashboard/use-dashboard-overview";
 import { PageHeader } from "@/components/page-header";
 import { useAuth } from "@/components/providers/auth-provider";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Notice } from "@/components/ui/notice";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { StatePanel } from "@/components/ui/state-panel";
 import { useActiveClientName } from "@/lib/auth/client-id";
 import { useCan } from "@/lib/auth/permissions";
+import { fmtTime } from "@/lib/format";
 import { PERIODS, parsePeriod, periodHref, type PeriodKey } from "@/lib/dashboard/period";
 
 const noopSubscribe = () => () => {};
@@ -39,6 +43,8 @@ export function DashboardView() {
   const title = useSyncExternalStore(noopSubscribe, todaySnapshot, () => "Dashboard");
   const [threatOnly, setThreatOnly] = useState(true);
   const { openArticle, host } = useArticleOpener();
+  // Banner saran: error/closed/tanpa view_ops = tidak tampil dan tidak ada teks error. Hook sebelum early return.
+  const { data: llm } = useLlmQueue(can("view_ops"));
 
   // Periode dibaca dari URL tiap render, tanpa state tiruan: URL satu-satunya sumber.
   const period = parsePeriod(searchParams.get("period"));
@@ -81,6 +87,26 @@ export function DashboardView() {
         }
       />
       <div className="space-y-6">
+        {llm && llm.breaker !== "closed" && (
+          <Notice
+            tone="warning"
+            title="ATT&CK tagging is catching up"
+            action={
+              <Link
+                href="/data-health"
+                className="rounded-sm text-xs font-medium text-primary-text underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              >
+                Open Data health
+              </Link>
+            }
+          >
+            The LLM gateway is failing.{" "}
+            <span className="font-code">{llm.pending_ttp.toLocaleString("en-US")}</span> articles wait for
+            technique tagging and <span className="font-code">{llm.pending_classify.toLocaleString("en-US")}</span>{" "}
+            wait for classification; both run on their own when it recovers. Articles that are already classified
+            keep appearing.{llm.retry_at ? ` Next retry ${fmtTime(llm.retry_at)}.` : ""}
+          </Notice>
+        )}
         <NeedsAction period={period} />
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,820fr)_minmax(0,468fr)]">
           <LeadStory period={period} openArticle={openArticle} />
