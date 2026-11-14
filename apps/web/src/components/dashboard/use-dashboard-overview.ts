@@ -184,7 +184,7 @@ export function articleWhen(
   fetchedAt: number,
   compact = false,
 ): { text: string; title?: string } {
-  const seen = a.first_seen_at ? new Date(a.first_seen_at).getTime() : NaN;
+  const seen = a.first_seen_at ? Date.parse(a.first_seen_at) : NaN;
   const title = a.first_seen_at ? "First seen " + fmtDateTime(a.first_seen_at) : undefined;
   if (!Number.isNaN(seen) && fetchedAt - seen < 86_400_000) {
     return { text: (compact ? fmtCompactAge : fmtAgo)(a.first_seen_at, fetchedAt), title };

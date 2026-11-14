@@ -25,8 +25,8 @@ function deltaLine(cur: number, prev: number | null, reliable: boolean, allTime:
   return (
     <>
       <span aria-hidden="true">{up ? "▲" : "▼"}</span>
-      <span className="sr-only">{up ? "up" : "down"}</span> {Math.round((Math.abs(cur - prev) * 100) / prev)}% vs
-      previous period
+      <span className="sr-only">{up ? "up" : "down"}</span>{" "}
+      <span className="font-code">{Math.round((Math.abs(cur - prev) * 100) / prev)}%</span> vs previous period
     </>
   );
 }

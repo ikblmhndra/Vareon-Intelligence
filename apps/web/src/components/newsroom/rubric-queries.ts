@@ -122,22 +122,25 @@ function useVictims(
       victimFilter.industry,
     ],
     queryFn: async () => {
-      const { data, error } = await api.GET("/api/ransomware/victims", {
-        params: {
-          query: {
-            page,
-            page_size: pageSize,
-            country: country || undefined,
-            // Periode newsroom; API memfilter `published >= date_start`.
-            date_start: dateStart || undefined,
-            group: victimFilter.group || undefined,
-            industry: victimFilter.industry || undefined,
+      const data = unwrap(
+        await api.GET("/api/ransomware/victims", {
+          params: {
+            query: {
+              page,
+              page_size: pageSize,
+              country: country || undefined,
+              // Periode newsroom; API memfilter `published >= date_start`.
+              date_start: dateStart || undefined,
+              group: victimFilter.group || undefined,
+              industry: victimFilter.industry || undefined,
+            },
           },
-        },
-      });
-      if (error) throw error;
+        }),
+        "Failed to load ransomware victims",
+      );
       return data as unknown as { victims: RansomwareVictim[]; total: number };
     },
+    retry: noClientRetry,
     enabled,
     placeholderData: keepPrevious ? keepPreviousData : undefined,
   });
