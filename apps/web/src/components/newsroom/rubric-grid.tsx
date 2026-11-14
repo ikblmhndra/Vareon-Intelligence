@@ -111,7 +111,7 @@ function RubricColumn({
   onSeeAll: (key: RubricKey) => void;
 }) {
   const size = narrowed ? 9 : 3;
-  const { items, total, updatedAt, isPending, isError, refetch } = useRubric(rkey, filters, 1, size);
+  const { items, total, updatedAt, isPending, isError, error, refetch } = useRubric(rkey, filters, 1, size);
   // Query nama dipakai bersama useRubric (key sama), jadi tidak ada request tambahan; hanya untuk
   // membedakan "belum ada nama" dari "periode kosong".
   const watch = useWatchlistNames(rkey === "watchlist");
@@ -146,7 +146,7 @@ function RubricColumn({
           <Skeleton className="h-10 w-full" />
         </div>
       ) : isError && items.length === 0 ? (
-        <PanelError title={`Could not load ${title}`} error={undefined} onRetry={refetch} />
+        <PanelError title={`Could not load ${title}`} error={error} onRetry={refetch} />
       ) : items.length === 0 ? (
         <div className="text-sm text-muted-foreground">
           {noNames && rkey === "watchlist" ? (

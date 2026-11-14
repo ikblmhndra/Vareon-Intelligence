@@ -214,6 +214,8 @@ export function useRubric(
   updatedAt: number;
   isPending: boolean;
   isError: boolean;
+  /** Error query aktif (pesan server untuk panel galat); null bila tidak ada. */
+  error: unknown;
   refetch: () => void;
 } {
   const { user } = useAuth();
@@ -263,7 +265,7 @@ export function useRubric(
     keepPrevious,
   );
 
-  const empty = { items: [], total: 0, updatedAt: 0, isPending: false, isError: false };
+  const empty = { items: [], total: 0, updatedAt: 0, isPending: false, isError: false, error: null };
 
   if (key === "ransomware") {
     return {
@@ -272,6 +274,7 @@ export function useRubric(
       updatedAt: victims.dataUpdatedAt,
       isPending: victims.isPending,
       isError: victims.isError,
+      error: victims.error,
       refetch: () => void victims.refetch(),
     };
   }
@@ -285,7 +288,7 @@ export function useRubric(
     };
     // Nama kosong = rubrik kosong (query artikel tidak ditembak), bukan loading.
     if (names.isPending) return { ...empty, items: [], total: undefined, isPending: true, refetch };
-    if (names.isError) return { ...empty, isError: true, refetch };
+    if (names.isError) return { ...empty, isError: true, error: names.error, refetch };
     if (!has) return { ...empty, refetch };
     return {
       items: q.data?.articles.map(articleItem) ?? [],
@@ -293,6 +296,7 @@ export function useRubric(
       updatedAt: q.dataUpdatedAt,
       isPending: q.isPending,
       isError: q.isError,
+      error: q.error,
       refetch,
     };
   }
@@ -304,6 +308,7 @@ export function useRubric(
     updatedAt: q.dataUpdatedAt,
     isPending: q.isPending,
     isError: q.isError,
+    error: q.error,
     refetch: () => void q.refetch(),
   };
 }
