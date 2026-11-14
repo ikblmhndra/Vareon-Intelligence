@@ -10,7 +10,7 @@ import { EntityChip } from "@/components/entities/entity-chip";
 import { GradeChip } from "@/components/newsroom/grade-chip";
 import { useFrontArticles, useNewestMatch, type Narrowing } from "@/components/newsroom/newsroom-queries";
 import { PriorityChip } from "@/components/newsroom/priority-chip";
-import { useArticleMatchers } from "@/components/newsroom/rubric-queries";
+import { RUBRIC_TITLES, useArticleMatchers } from "@/components/newsroom/rubric-queries";
 import { priorityLines } from "@/components/newsroom/score-reasons";
 import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
@@ -29,16 +29,6 @@ type Article = components["schemas"]["ArticleOut"];
 
 const FOCUS_RING =
   "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
-
-// Judul rubrik untuk chip filter dan kalimat state kosong (salinan lokal: peta di newsroom-view tidak diekspor).
-const RUBRIC_TITLES = {
-  apac: "APAC",
-  global: "Global",
-  local: "Local",
-  ransomware: "Ransomware",
-  watchlist: "Watchlist",
-  techstack: "Tech stack",
-} as const;
 
 // Tombol "perlebar" state kosong: periode berikutnya; All tidak punya lanjutan.
 const WIDEN: Partial<Record<NewsroomPeriod, { next: NewsroomPeriod; label: string }>> = {

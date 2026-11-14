@@ -10,13 +10,13 @@ import { FilterBar } from "@/components/newsroom/filter-bar";
 import { FilteredView } from "@/components/newsroom/filtered-view";
 import { FrontPage } from "@/components/newsroom/front-page";
 import { useArticleCount, useNarrowing } from "@/components/newsroom/newsroom-queries";
-import type { RubricKey } from "@/components/newsroom/rubric-queries";
+import { RUBRIC_TITLES, type RubricKey } from "@/components/newsroom/rubric-queries";
 import { RubricGrid } from "@/components/newsroom/rubric-grid";
 import { TopicsSection } from "@/components/newsroom/topics-section";
 import { PageHeader } from "@/components/page-header";
 import { useAuth } from "@/components/providers/auth-provider";
-import { Skeleton } from "@/components/ui/skeleton";
 import { SegmentedControl } from "@/components/ui/segmented-control";
+import { Skeleton } from "@/components/ui/skeleton";
 import { StatePanel } from "@/components/ui/state-panel";
 import { useCan } from "@/lib/auth/permissions";
 import { normalizeCountry } from "@/lib/dashboard/countries";
@@ -28,15 +28,6 @@ import {
   uiToFilters,
   type NewsroomUi,
 } from "@/lib/newsroom/period";
-
-const RUBRIC_TITLES: Record<RubricKey, string> = {
-  apac: "APAC",
-  global: "Global",
-  local: "Local",
-  ransomware: "Ransomware",
-  watchlist: "Watchlist",
-  techstack: "Tech stack",
-};
 
 /** Judul sheet; Ransomware berisi daftar korban (bukan artikel), jadi judulnya menyebut itu. */
 function sheetTitle(r: RubricKey): string {

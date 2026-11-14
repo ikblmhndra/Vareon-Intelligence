@@ -88,7 +88,7 @@ export function useNewestMatch(narrowing: Narrowing, enabled: boolean) {
   });
 }
 
-/** Topik naik (aktor/TTP); query yang sama dengan `topics-strip.tsx`, limit 6. */
+/** Topik naik (aktor/TTP); limit 6 (dulu dibaca `topics-strip.tsx`). */
 export function useTopics(filters: NewsroomFilters) {
   const params = {
     posted_on_start: filters.dateStart || undefined,

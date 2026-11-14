@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
+import { noClientRetry, unwrap } from "@/lib/scrapers/queries";
 import { formatPostedOn } from "@/lib/newsroom/dates";
 import type { NewsroomFilters } from "@/lib/newsroom/filters";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -175,11 +176,11 @@ function VictimFilterBar({ value, onChange }: { value: VictimFilter; onChange: (
   const options = useQuery({
     queryKey: ["ransomware", "victim-filters"],
     queryFn: async () => {
-      const { data, error } = await api.GET("/api/ransomware/victims/filters");
-      if (error) throw error;
-      return data as unknown as { groups: string[]; industries: string[] };
+      const r = await api.GET("/api/ransomware/victims/filters");
+      return unwrap(r, "The request failed.") as unknown as { groups: string[]; industries: string[] };
     },
     staleTime: 5 * 60_000,
+    retry: noClientRetry,
   });
   const fields = [
     { key: "group" as const, label: "Group", all: "All groups", values: options.data?.groups ?? [] },
@@ -220,12 +221,12 @@ function RelatedArticles({ onSelect }: { onSelect: (a: Article) => void }) {
   const q = useQuery({
     queryKey: ["ransomware", "articles", page],
     queryFn: async () => {
-      const { data, error } = await api.GET("/api/ransomware/related-articles", {
+      const r = await api.GET("/api/ransomware/related-articles", {
         params: { query: { page, page_size: RELATED_PAGE_SIZE } },
       });
-      if (error) throw error;
-      return data as unknown as { articles: Article[]; total: number };
+      return unwrap(r, "The request failed.") as unknown as { articles: Article[]; total: number };
     },
+    retry: noClientRetry,
   });
   const items = (q.data?.articles ?? []).map(articleRow);
   const totalPages = q.data ? Math.ceil(q.data.total / RELATED_PAGE_SIZE) : 0;

@@ -18,6 +18,16 @@ type Article = components["schemas"]["ArticleOut"];
 
 export type RubricKey = "apac" | "global" | "local" | "ransomware" | "watchlist" | "techstack";
 
+/** Judul rubrik (chip filter, kalimat state kosong, judul sheet); satu-satunya peta supaya tidak melenceng. */
+export const RUBRIC_TITLES: Record<RubricKey, string> = {
+  apac: "APAC",
+  global: "Global",
+  local: "Local",
+  ransomware: "Ransomware",
+  watchlist: "Watchlist",
+  techstack: "Tech stack",
+};
+
 /** Satu baris rubrik. Korban ransomware tidak punya `article`; `href` = `post_url`-nya. */
 export interface RubricItem {
   id: string;
