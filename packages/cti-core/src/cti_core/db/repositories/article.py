@@ -16,7 +16,7 @@ import datetime
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any, Literal
 
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import ColumnElement, Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, object_session
 
@@ -25,6 +25,7 @@ from cti_core.db.models.article import Article, RejectedArticle
 from cti_core.db.repositories.entity import (
     ACTOR,
     COUNTRY,
+    CVE,
     MALWARE_TYPES,
     SECTOR,
     TECHNIQUE,
@@ -58,6 +59,25 @@ _MALWARE_KINDS = frozenset({"malware", "tool"})
 def _check(value: str, allowed: frozenset[str], what: str) -> None:
     if value not in allowed:
         raise ValueError(f"{what} tidak valid: {value!r} (sah: {sorted(allowed)})")
+
+
+def article_search_clause(search: str) -> ColumnElement[bool]:
+    """Klausa pencarian bebas Newsroom: judul, sumber, nama aktor, atau id CVE yang disebut artikel.
+
+    Dipakai daftar artikel DAN query tren (Active topics) supaya hitungan topik sama dengan
+    `total` daftar untuk `search` yang sama. `\\`, `%`, `_` di input di-escape agar dicocokkan
+    apa adanya (bukan wildcard LIKE): "100%" tidak boleh cocok dengan "100 percent". Mention
+    lewat `mention_rows`, jadi entitas suppressed/merged tidak ikut cocok."""
+    esc = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    pat = f"%{esc}%"
+    a = live_mentions(ACTOR)
+    c = live_mentions(CVE)
+    return or_(
+        Article.title.ilike(pat, escape="\\"),
+        Article.source.ilike(pat, escape="\\"),
+        Article.id.in_(select(a.c.article_id).where(a.c.name.ilike(pat, escape="\\"))),
+        Article.id.in_(select(c.c.article_id).where(c.c.external_id.ilike(pat, escape="\\"))),
+    )
 
 
 def _apply_list_filters(
@@ -144,11 +164,7 @@ def _apply_list_filters(
     keyword_or = (
         [Article.title.ilike(f"%{kw}%") for kw in title_keywords] if title_keywords else None
     )
-    search_or = (
-        [Article.title.ilike(f"%{search}%"), Article.source.ilike(f"%{search}%")]
-        if search
-        else None
-    )
+    search_or = [article_search_clause(search)] if search else None
     if keyword_or and search_or:
         stmt = stmt.where(or_(*keyword_or), or_(*search_or))
     elif keyword_or:
