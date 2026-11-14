@@ -149,7 +149,8 @@ function NewsroomBody() {
     [period, from, country, search, incidentOnly],
   );
   const narrowing = useNarrowing(rubric, filters);
-  const count = useArticleCount(narrowing);
+  // Tampilan All articles tidak memakai hitungan header Front page: "pending" mematikan query.
+  const count = useArticleCount(view === "all" ? "pending" : narrowing);
   const info = newsroomPeriodInfo(period);
   const stats = useDashboardStats(info.days, incidentOnly);
 
@@ -182,7 +183,11 @@ function NewsroomBody() {
 
   /** Tulis patch state All articles; `allStateToParams` mempertahankan `view` dan param lain. */
   function onAllChange(patch: Partial<AllState>) {
-    replaceParams(allStateToParams(patch, new URLSearchParams(sp.toString())));
+    const next = allStateToParams(patch, new URLSearchParams(sp.toString()));
+    // Di URL turunan (mis. `?actor=Qilin`) menghapus param tautan terakhir akan menjatuhkan tampilan ke
+    // Front page; tulis `view=all` eksplisit (hanya pada aksi pemakai, bukan saat mount).
+    if (!next.has("view")) next.set("view", "all");
+    replaceParams(next);
   }
 
   function onChange(p: Partial<NewsroomUi>) {

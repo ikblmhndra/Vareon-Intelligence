@@ -57,6 +57,29 @@ export function useAllArticles(query: ArticlesQuery) {
   });
 }
 
+/** Rencana + query daftar All articles untuk state ini. AllArticlesView dan AllList wajib memanggil
+ * pasangan yang sama (`useAllArticles(useAllListQuery(state).query)`) supaya berbagi satu kunci cache.
+ * `plan` = hasil mentah `allStateToQuery`; `query` = objeknya atau undefined. */
+export function useAllListQuery(state: AllState): { plan: ReturnType<typeof allStateToQuery>; query: ArticleParams | undefined } {
+  const can = useCan();
+  const { user } = useAuth();
+  const watch = useWatchlistNames(can("view_ta"));
+  const tech = useTechStackNames(can("view_cve"));
+  const clientCountries = user?.client_countries ?? [];
+  // Jam dibaca sekali per perubahan periode, bukan tiap render.
+  const dateStart = useMemo(
+    () => state.from ?? periodStart(newsroomPeriodInfo(state.period).days ?? 0),
+    [state.from, state.period],
+  );
+  const plan = allStateToQuery(state, {
+    clientCountries,
+    watchNames: watch.data,
+    techNames: tech.data,
+    dateStart,
+  });
+  return { plan, query: typeof plan === "object" ? plan : undefined };
+}
+
 /** Hitungan rubrik di rail: `undefined` = memuat, `null` = galat atau rubrik tidak terlihat
  * (tanpa izin; tidak ada request). */
 export type RubricCounts = Record<"all" | RubricKey, number | null | undefined>;

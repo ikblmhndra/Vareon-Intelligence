@@ -4,16 +4,11 @@ import { XIcon } from "lucide-react";
 import { useMemo, useSyncExternalStore } from "react";
 
 import { AllList } from "@/components/newsroom/all-list";
-import { useAllArticles } from "@/components/newsroom/all-articles-queries";
+import { useAllArticles, useAllListQuery } from "@/components/newsroom/all-articles-queries";
 import { AllRail } from "@/components/newsroom/all-rail";
 import { ArticleReader } from "@/components/newsroom/article-reader";
-import { useTechStackNames, useWatchlistNames } from "@/components/newsroom/rubric-queries";
-import { useAuth } from "@/components/providers/auth-provider";
 import { Disclosure } from "@/components/ui/disclosure";
-import { useCan } from "@/lib/auth/permissions";
-import { allStateToQuery, type AllState } from "@/lib/newsroom/all-state";
-import { periodStart } from "@/lib/newsroom/filters";
-import { newsroomPeriodInfo } from "@/lib/newsroom/period";
+import type { AllState } from "@/lib/newsroom/all-state";
 
 const XL = "(min-width: 1280px)";
 
@@ -52,31 +47,17 @@ export function AllArticlesView({
   state: AllState;
   onChange: (patch: Partial<AllState>) => void;
 }) {
-  const can = useCan();
-  const { user } = useAuth();
   const isXl = useIsXl();
-  const clientCountries = user?.client_countries ?? [];
-  const watch = useWatchlistNames(can("view_ta"));
-  const tech = useTechStackNames(can("view_cve"));
-  // Jam dibaca sekali per perubahan periode (bukan tiap render); kunci query sama dengan AllList.
-  const dateStart = useMemo(
-    () => state.from ?? periodStart(newsroomPeriodInfo(state.period).days ?? 0),
-    [state.from, state.period],
-  );
-  const q = allStateToQuery(state, {
-    clientCountries,
-    watchNames: watch.data,
-    techNames: tech.data,
-    dateStart,
-  });
-  const query = typeof q === "object" ? q : undefined;
+  const { query } = useAllListQuery(state);
   const list = useAllArticles(query);
   const listArticles = useMemo(() => list.data?.pages.flatMap((p) => p.articles) ?? [], [list.data]);
 
   const storyLabel =
     state.story === null
       ? null
-      : listArticles[0]?.title || `Story ${state.story}`;
+      : list.isPlaceholderData || list.isPending
+        ? `Story ${state.story}`
+        : listArticles[0]?.title || `Story ${state.story}`;
 
   const chips: { key: string; label: string; remove: () => void }[] = [
     ...state.actors.map((a) => ({
