@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useArticleOpener } from "@/components/dashboard/article-opener";
 import { useDashboardStats } from "@/components/dashboard/use-dashboard-overview";
+import { AllArticlesView } from "@/components/newsroom/all-articles-view";
 import { ArticleListSheet, type SheetQuery, type Source as SheetSource } from "@/components/newsroom/article-list-sheet";
 import { FilterBar } from "@/components/newsroom/filter-bar";
 import { FilteredView } from "@/components/newsroom/filtered-view";
@@ -21,6 +22,7 @@ import { StatePanel } from "@/components/ui/state-panel";
 import { useCan } from "@/lib/auth/permissions";
 import { normalizeCountry } from "@/lib/dashboard/countries";
 import { fmtShortDate, parseLocalDate } from "@/lib/format";
+import { allStateToParams, isAllViewUrl, parseAllState, type AllState } from "@/lib/newsroom/all-state";
 import { periodStart } from "@/lib/newsroom/filters";
 import {
   newsroomPeriodInfo,
@@ -72,6 +74,7 @@ function linkedSheet(sp: URLSearchParams, dateStart: string): { title: string; s
 
 const VIEW_OPTIONS = [
   { value: "front", label: "Front page" },
+  { value: "all", label: "All articles" },
   { value: "filtered", label: "Filtered" },
 ] as const;
 
@@ -101,7 +104,9 @@ function NewsroomBody() {
   const { openArticle, host } = useArticleOpener();
   const can = useCan();
 
-  const view = sp.get("view") === "filtered" ? "filtered" : "front";
+  // Tampilan turunan: tanpa `view`, tautan lama (article/rubric/actor/...) mendarat di All articles tanpa redirect.
+  const viewParam = sp.get("view");
+  const view = viewParam === "filtered" ? "filtered" : isAllViewUrl(sp) ? "all" : "front";
   // Periode, from, negara dibaca dari URL tiap render: URL satu-satunya sumber.
   const period = parseNewsroomPeriod(sp.get("period"));
   const from = validFrom(sp.get("from"));
@@ -148,17 +153,36 @@ function NewsroomBody() {
   const info = newsroomPeriodInfo(period);
   const stats = useDashboardStats(info.days, incidentOnly);
 
-  /** Satu-satunya penulis URL: salin param, terapkan patch, `replace` hanya bila URL berubah. */
+  /** Satu-satunya penulis URL: `replace` hanya bila URL berubah (tidak pernah ke URL yang sama). */
+  function replaceParams(next: URLSearchParams) {
+    const qs = next.toString();
+    const href = pathname + (qs ? "?" + qs : "");
+    if (href === pathname + (sp.toString() ? "?" + sp.toString() : "")) return;
+    router.replace(href, { scroll: false });
+  }
+
+  /** Salin param, terapkan patch, lalu tulis lewat `replaceParams`. */
   function writeParams(patch: Record<string, string | null>) {
     const next = new URLSearchParams(sp.toString());
     for (const [k, v] of Object.entries(patch)) {
       if (v === null) next.delete(k);
       else next.set(k, v);
     }
-    const qs = next.toString();
-    const href = pathname + (qs ? "?" + qs : "");
-    if (href === pathname + (sp.toString() ? "?" + sp.toString() : "")) return;
-    router.replace(href, { scroll: false });
+    replaceParams(next);
+  }
+
+  // Rubrik yang tidak boleh dilihat pemakai (izin backend) dianggap null (All news), tanpa request.
+  const allState: AllState = useMemo(() => {
+    const s = parseAllState(new URLSearchParams(sp.toString()));
+    const r = s.rubric;
+    const allowed =
+      r === "ransomware" ? can("view_intel") : r === "techstack" ? can("view_cve") : r === "watchlist" ? can("view_ta") : true;
+    return allowed ? s : { ...s, rubric: null };
+  }, [sp, can]);
+
+  /** Tulis patch state All articles; `allStateToParams` mempertahankan `view` dan param lain. */
+  function onAllChange(patch: Partial<AllState>) {
+    replaceParams(allStateToParams(patch, new URLSearchParams(sp.toString())));
   }
 
   function onChange(p: Partial<NewsroomUi>) {
@@ -197,13 +221,20 @@ function NewsroomBody() {
       <PageHeader
         kicker="NEWSROOM"
         title="Newsroom"
-        description={description}
+        description={view === "all" ? undefined : description}
         actions={
           <SegmentedControl
             aria-label="Newsroom view"
             options={VIEW_OPTIONS}
             value={view}
-            onChange={(v) => writeParams({ view: v === "filtered" ? "filtered" : null })}
+            onChange={(v) => {
+              if (v === "front") {
+                // Dengan param tautan lama, tanpa `view` tampilan turun ke All articles; tulis `front` eksplisit.
+                const bare = new URLSearchParams(sp.toString());
+                bare.delete("view");
+                writeParams({ view: isAllViewUrl(bare) ? "front" : null });
+              } else writeParams({ view: v });
+            }}
           />
         }
       />
@@ -241,6 +272,8 @@ function NewsroomBody() {
             onSelect={openArticle}
           />
         </>
+      ) : view === "all" ? (
+        <AllArticlesView state={allState} onChange={onAllChange} />
       ) : (
         <FilteredView />
       )}
