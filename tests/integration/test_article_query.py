@@ -531,6 +531,31 @@ async def test_search_escapes_wildcards(async_db_session: AsyncSession) -> None:
     assert (total, [r.id for r in rows]) == (1, [under])
 
 
+async def test_search_escapes_backslash(async_db_session: AsyncSession) -> None:
+    # Backslash adalah escape LIKE: tanpa di-escape, "a\\b" jadi pola "ab" dan salah cocok.
+    repo = AsyncArticleRepo(async_db_session)
+    hit = await _plain(repo, "path a\\b here", 10)
+    await _plain(repo, "path ab here", 11)
+    rows, total = await repo.list_filtered(search="a\\b")
+    assert (total, [r.id for r in rows]) == (1, [hit])
+
+
+async def test_search_ignores_merged_actor(async_db_session: AsyncSession) -> None:
+    # Aktor yang sudah di-merge (tombstone) tidak lagi dicocokkan lewat nama lamanya.
+    repo = AsyncArticleRepo(async_db_session)
+    aid = await _plain(repo, "Hospital outage", 12)
+    target = Entity(
+        type="intrusion-set", stix_id="intrusion-set--srch-target", name="Newname", source="analyst"
+    )
+    async_db_session.add(target)
+    await async_db_session.flush()
+    await _mention_entity(
+        async_db_session, aid, "intrusion-set", "Oldname", merged_into_id=target.id
+    )
+    _, total = await repo.list_filtered(search="oldname")
+    assert total == 0
+
+
 async def test_search_with_title_keyword_needs_both(async_db_session: AsyncSession) -> None:
     repo = AsyncArticleRepo(async_db_session)
     await _plain(repo, "ransomware wave", 8)
