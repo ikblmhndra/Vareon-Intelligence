@@ -44,7 +44,7 @@ export function DashboardView() {
   const [threatOnly, setThreatOnly] = useState(true);
   const { openArticle, host } = useArticleOpener();
   // Banner saran: error/closed/tanpa view_ops = tidak tampil dan tidak ada teks error. Hook sebelum early return.
-  const { data: llm } = useLlmQueue(can("view_ops"));
+  const { data: llm } = useLlmQueue(can("view_ops") && can("view_news"));
 
   // Periode dibaca dari URL tiap render, tanpa state tiruan: URL satu-satunya sumber.
   const period = parsePeriod(searchParams.get("period"));
