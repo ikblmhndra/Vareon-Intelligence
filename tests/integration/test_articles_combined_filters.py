@@ -11,6 +11,7 @@ from collections.abc import Callable
 import pytest
 from cti_api.services import risk_matrix
 from cti_core.db.models.entity import Entity
+from cti_core.db.models.story import Story
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.auth import AsyncClientRepo
 from httpx import AsyncClient
@@ -138,3 +139,100 @@ async def test_total_equals_risk_matrix_current_count(
     assert len(cells) == 1
     assert cells[0]["current_count"] == 2
     assert total == cells[0]["current_count"]
+
+
+async def _graded(session: AsyncSession, slug: str, grade: str | None, **enrichment: object) -> int:
+    """Artikel dengan `reliability_grade` diset langsung (kolom denormalisasi dari persist)."""
+    article_id = await _article(session, slug, **enrichment)
+    article = await AsyncArticleRepo(session).get_by_id(article_id)
+    assert article is not None
+    article.reliability_grade = grade
+    return article_id
+
+
+async def test_reliability_grade_single(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+) -> None:
+    await AsyncClientRepo(api_session).ensure_default()
+    a = await _graded(api_session, "grade-a", "A")
+    await _graded(api_session, "grade-b", "B")
+    await api_session.commit()
+
+    ids, total = await _ids(api_client, auth_header, "reliability_grade=A")
+    assert ids == {a}
+    assert total == 1
+
+
+async def test_reliability_grade_multiple(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+) -> None:
+    await AsyncClientRepo(api_session).ensure_default()
+    a = await _graded(api_session, "grade-a", "A")
+    b = await _graded(api_session, "grade-b", "B")
+    await _graded(api_session, "grade-c", "C")
+    await api_session.commit()
+
+    ids, total = await _ids(api_client, auth_header, "reliability_grade=A&reliability_grade=B")
+    assert ids == {a, b}
+    assert total == 2
+
+
+async def test_reliability_grade_with_country_and_priority_sort(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+) -> None:
+    """Gabungan dengan negara dan `sort=priority`: dedup story tetap satu baris per story."""
+    await AsyncClientRepo(api_session).ensure_default()
+    now = datetime.datetime.now(datetime.UTC)
+    story = Story(title="same story", lead_source="S", first_seen_at=now, last_seen_at=now)
+    api_session.add(story)
+    await api_session.flush()
+    ids_in_story = []
+    for slug, score in (("s-low", 10), ("s-high", 90)):
+        aid = await _graded(api_session, slug, "A", countries=[("ID", "mentioned")])
+        art = await AsyncArticleRepo(api_session).get_by_id(aid)
+        assert art is not None
+        art.story_id = story.id
+        art.priority_score = score
+        ids_in_story.append(aid)
+    other_country = await _graded(api_session, "s-us", "A", countries=[("US", "mentioned")])
+    other_grade = await _graded(api_session, "s-grade-c", "C", countries=[("ID", "mentioned")])
+    await api_session.commit()
+
+    ids, total = await _ids(api_client, auth_header, "reliability_grade=A&country=ID&sort=priority")
+    assert ids == {ids_in_story[1]}
+    assert total == 1
+    assert other_country not in ids
+    assert other_grade not in ids
+
+
+async def test_reliability_grade_excludes_null(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+) -> None:
+    await AsyncClientRepo(api_session).ensure_default()
+    a = await _graded(api_session, "grade-a", "A")
+    await _graded(api_session, "ungraded", None)
+    await api_session.commit()
+
+    ids, _total = await _ids(api_client, auth_header, "reliability_grade=A&reliability_grade=F")
+    assert ids == {a}
+    all_ids, all_total = await _ids(api_client, auth_header, "")
+    assert all_total == 2
+    assert len(all_ids) == 2
+
+
+async def test_reliability_grade_invalid_letter_422(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+) -> None:
+    await AsyncClientRepo(api_session).ensure_default()
+    resp = await api_client.get("/api/articles?reliability_grade=Z", headers=auth_header())
+    assert resp.status_code == 422

@@ -100,6 +100,7 @@ def _apply_list_filters(
     story_id: int | None = None,
     ttp_sources: Sequence[str] | None = None,
     malware: Sequence[str] | None = None,
+    reliability_grades: Sequence[str] | None = None,
 ) -> Select[tuple[Article]]:
     """Filter bersama buat query list DAN count -- port dari `article_service.
     get_articles()` (Mongo query dict) ke SQL. Tiga field negara Mongo lama
@@ -142,6 +143,9 @@ def _apply_list_filters(
         stmt = stmt.where(_with_country(actor_countries, role="actor"))
     if sources:
         stmt = stmt.where(Article.source.in_(sources))
+    if reliability_grades:
+        # NULL ikut tersaring: "grade A" tidak bisa mencakup artikel yang belum dinilai.
+        stmt = stmt.where(Article.reliability_grade.in_(reliability_grades))
     if news_types:
         stmt = stmt.where(Article.news_type.in_(news_types))
     if threat_actors:
@@ -650,6 +654,7 @@ class AsyncArticleRepo:
         story_id: int | None = None,
         ttp_sources: Sequence[str] | None = None,
         malware: Sequence[str] | None = None,
+        reliability_grades: Sequence[str] | None = None,
     ) -> tuple[list[Article], int]:
         """Port `article_service.get_articles()`. Filter di-`join()` ke
         tabel anak -- `.distinct()` WAJIB begitu ada join one-to-many
@@ -695,6 +700,7 @@ class AsyncArticleRepo:
             story_id=story_id,
             ttp_sources=ttp_sources,
             malware=malware,
+            reliability_grades=reliability_grades,
         )
         has_join = bool(
             industries

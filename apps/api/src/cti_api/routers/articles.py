@@ -241,6 +241,7 @@ async def list_articles(
     sort: Literal["recent", "priority"] = Query("recent"),
     confirmed_only: bool = Query(False),
     story_id: int | None = Query(None),
+    reliability_grade: list[Literal["A", "B", "C", "D", "E", "F"]] | None = Query(None),
     dedup: bool = Query(False),
     dedup_threshold: float = Query(0.75, ge=0.5, le=0.99),
     user: AuthedUser = Depends(require_auth),
@@ -268,6 +269,7 @@ async def list_articles(
         sort=sort,
         confirmed_only=confirmed_only,
         story_id=story_id,
+        reliability_grades=reliability_grade,
     )
     # Satu query rating per request (bukan per artikel) buat kode Admiralty + asal grade.
     ratings = await AsyncSourceReliabilityRepo(session).get_all_ratings()
