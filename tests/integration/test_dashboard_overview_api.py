@@ -191,3 +191,34 @@ async def test_trending_daily_capped_to_31_buckets(
 
 async def test_dashboard_requires_auth(api_client: AsyncClient) -> None:
     assert (await api_client.get("/api/dashboard/map")).status_code == 401
+
+
+async def test_cve_exposure_limit_param(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header
+) -> None:
+    await AsyncClientRepo(api_session).create(client_id="acme", name="Acme", countries=[])
+    api_session.add_all(
+        [
+            CveTracker(
+                cve_id="CVE-2026-0001", client_id="acme", tech="Nginx", cisa_kev=True, cve_score=7.5
+            ),
+            CveTracker(cve_id="CVE-2026-0002", client_id="acme", tech="Nginx", cisa_kev=True),
+            CveTracker(cve_id="CVE-2026-0003", client_id="acme", tech="Nginx", cve_score=9.8),
+            CveTracker(cve_id="CVE-2026-0004", client_id="acme", tech="Nginx", cve_score=8.8),
+            CveTracker(cve_id="CVE-2026-0005", client_id="acme", tech="Nginx"),
+        ]
+    )
+    await api_session.flush()
+    h = {**auth_header(role="analyst", client_ids=["acme"]), "X-Client-ID": "acme"}
+
+    async def ids(**params: int) -> list[str]:
+        r = await api_client.get("/api/dashboard/cve-exposure", params=params, headers=h)
+        assert r.status_code == 200
+        return [i["cve_id"] for i in r.json()["items"]]
+
+    first3 = ["CVE-2026-0001", "CVE-2026-0002", "CVE-2026-0003"]
+    assert await ids() == first3
+    assert await ids(limit=4) == [*first3, "CVE-2026-0004"]
+    for bad in (0, 11):
+        r = await api_client.get("/api/dashboard/cve-exposure", params={"limit": bad}, headers=h)
+        assert r.status_code == 422

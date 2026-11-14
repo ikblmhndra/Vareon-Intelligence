@@ -366,13 +366,15 @@ async def dashboard_ransomware(
 @router.get("/dashboard/cve-exposure", response_model=CveExposure)
 async def dashboard_cve_exposure(
     days: int | None = _DaysQuery,
+    # Batas baris tabel CVE di Dashboard; default 3 menjaga pemanggil lama.
+    limit: int = Query(3, ge=1, le=10),
     user: AuthedUser = Depends(require_auth),
     x_client_id: str | None = Header(None),
     session: AsyncSession = Depends(get_db),
 ) -> CveExposure:
     cid = effective_client_id(user, x_client_id)
     return CveExposure(
-        **await dashboard_overview.get_cve_exposure(session, client_id=cid, days=days)
+        **await dashboard_overview.get_cve_exposure(session, client_id=cid, days=days, limit=limit)
     )
 
 

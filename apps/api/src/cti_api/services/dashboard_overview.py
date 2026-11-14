@@ -289,11 +289,11 @@ async def get_ransomware(session: AsyncSession, *, days: int | None) -> dict[str
 
 
 async def get_cve_exposure(
-    session: AsyncSession, *, client_id: str, days: int | None
+    session: AsyncSession, *, client_id: str, days: int | None, limit: int = 3
 ) -> dict[str, Any]:
     repo = AsyncDashboardRepo(session)
     scope = await _cve_scope(session, client_id)
-    rows = await repo.cve_exposure(limit=3, **scope)
+    rows = await repo.cve_exposure(limit=limit, **scope)
     counts = await repo.cve_exposure_counts(**scope)
     closed, mean_days = await repo.tickets_closed(client_id=client_id, since=_period_start(days))
     today = datetime.date.today()
