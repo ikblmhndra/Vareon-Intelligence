@@ -147,7 +147,7 @@ function ListState({
   isError,
   empty,
   emptyText,
-  errorText = "Gagal memuat daftar artikel.",
+  errorText = "Could not load the article list.",
 }: {
   isPending: boolean;
   isError: boolean;
@@ -182,8 +182,8 @@ function VictimFilterBar({ value, onChange }: { value: VictimFilter; onChange: (
     staleTime: 5 * 60_000,
   });
   const fields = [
-    { key: "group" as const, label: "Group", all: "Semua group", values: options.data?.groups ?? [] },
-    { key: "industry" as const, label: "Industri", all: "Semua industri", values: options.data?.industries ?? [] },
+    { key: "group" as const, label: "Group", all: "All groups", values: options.data?.groups ?? [] },
+    { key: "industry" as const, label: "Industry", all: "All industries", values: options.data?.industries ?? [] },
   ];
   return (
     <div className="flex flex-wrap gap-2">
@@ -194,7 +194,7 @@ function VictimFilterBar({ value, onChange }: { value: VictimFilter; onChange: (
           value={value[f.key] || ALL}
           onValueChange={(v) => onChange({ ...value, [f.key]: !v || v === ALL ? "" : v })}
         >
-          <SelectTrigger aria-label={`Filter korban per ${f.label.toLowerCase()}`} className="w-44 text-xs">
+          <SelectTrigger aria-label={`Filter victims by ${f.label.toLowerCase()}`} className="w-44 text-xs">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -232,13 +232,13 @@ function RelatedArticles({ onSelect }: { onSelect: (a: Article) => void }) {
   return (
     <section aria-labelledby="rw-related" className="flex flex-col gap-3 border-t border-border pt-4">
       <h3 id="rw-related" className="text-sm font-semibold">
-        Artikel terkait
+        Related articles
       </h3>
       <ListState
         isPending={q.isPending}
         isError={q.isError}
         empty={items.length === 0}
-        emptyText="Belum ada artikel ransomware terkait."
+        emptyText="No related ransomware articles yet."
       />
       {items.length > 0 && (
         <ul className="flex flex-col">
@@ -286,8 +286,8 @@ function SheetBody({
         isPending={isPending}
         isError={isError}
         empty={items.length === 0}
-        emptyText={isRansomware ? "Belum ada korban." : "Belum ada artikel."}
-        errorText={isRansomware ? "Gagal memuat daftar korban." : undefined}
+        emptyText={isRansomware ? "No victims yet." : "No articles yet."}
+        errorText={isRansomware ? "Could not load the victim list." : undefined}
       />
       {items.length > 0 && (
         <ul className="flex flex-col">
