@@ -2,6 +2,7 @@ import { RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
+import { StatePanel } from "@/components/ui/state-panel";
 import { cn } from "@/lib/utils";
 
 interface PanelShellProps {
@@ -31,8 +32,8 @@ export function PanelShell({
       <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
         <h2 className="font-heading text-base font-semibold">{title}</h2>
         <div className="flex items-center gap-2">
-          <span className="shrink-0 rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium whitespace-nowrap text-muted-foreground tabular-nums">
-            {count === undefined ? "— items" : `${count.toLocaleString()} items`}
+          <span className="shrink-0 rounded-full bg-muted px-2.5 py-0.5 font-code text-xs font-medium whitespace-nowrap text-muted-foreground tabular-nums">
+            {count === undefined ? "— items" : `${count.toLocaleString("en-US")} items`}
           </span>
           {onRefresh && (
             <Button size="icon-sm" variant="ghost" onClick={onRefresh} title="Refresh" aria-label={`Refresh ${title}`}>
@@ -48,20 +49,35 @@ export function PanelShell({
 }
 
 export function PanelLoading() {
-  return (
-    <div className="flex items-center justify-center py-10 text-xs text-muted-foreground">Loading…</div>
-  );
+  return <StatePanel variant="loading" title="Loading…" className="border-0" />;
 }
 
 export function PanelEmpty({ message }: { message: string }) {
-  return (
-    <div className="flex flex-col items-center gap-1 py-10 text-center text-xs text-muted-foreground">
-      <span className="text-lg">◉</span>
-      {message}
-    </div>
-  );
+  return <StatePanel variant="empty" title={message} className="border-0" />;
 }
 
-export function PanelError({ message = "Failed to load" }: { message?: string }) {
-  return <div className="py-10 text-center text-xs text-destructive">{message}</div>;
+/** Galat panel Newsroom (tab Filtered); BUKAN `PanelError` dashboard 5a. Mencetak pesan server;
+ * `onRetry` opsional supaya pemakai lama (cve-list-card) tetap jalan tanpa perubahan. */
+export function PanelError({
+  message = "The request failed.",
+  onRetry,
+}: {
+  message?: string;
+  onRetry?: () => void;
+}) {
+  return (
+    <StatePanel
+      variant="error"
+      title="Could not load this list"
+      description={message}
+      className="border-0"
+      action={
+        onRetry && (
+          <Button variant="outline" size="sm" onClick={onRetry}>
+            Retry
+          </Button>
+        )
+      }
+    />
+  );
 }
