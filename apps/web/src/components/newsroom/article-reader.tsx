@@ -245,9 +245,8 @@ function ReaderBody({
           <div className="flex items-start gap-3">
             <span className="font-code text-3xl leading-none font-semibold text-foreground">{a.admiralty_code}</span>
             <div className="min-w-0 space-y-1 text-xs text-foreground">
-              <p>
-                {`Information credibility ${a.credibility ?? "unrated"}.`}
-              </p>
+              {/* Nilai kredibilitas sudah ada di baris gradeLines; kalimat ini hanya untuk kasus tanpa nilai. */}
+              {a.credibility == null && <p>Information credibility unrated.</p>}
               <p className="text-muted-foreground">Why this grade:</p>
               <ul className="list-disc space-y-0.5 pl-4">
                 {why.map((line) => (
