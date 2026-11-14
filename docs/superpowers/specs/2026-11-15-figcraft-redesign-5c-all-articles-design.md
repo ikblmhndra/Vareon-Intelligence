@@ -197,7 +197,7 @@ Top to bottom:
   is replaced by a navigation helper on the Dashboard; `ArticleModal` is no longer mounted on the Dashboard or the
   Newsroom.
 - "See all" on a rubric column → `?view=all&rubric={key}` with the current period and country; "+N sources" →
-  `&story={id}`; topic click → `&actor={name}` or `&ttp={id}`.
+  `&story={id}` (the link also carries `period=all`: story members can be older than the page period, so the count equals N); topic click → `&actor={name}` or `&ttp={id}`.
 - Dashboard hero links (5a `needs-action.tsx`): `?rubric=ransomware|watchlist…` keep working through the derived view
   (6.1); their `href`s are updated to include `view=all` for clarity.
 - `newsroomHref` (`lib/newsroom/links.ts`) gains `view: "all"` in its output; its parameters and meaning are unchanged,

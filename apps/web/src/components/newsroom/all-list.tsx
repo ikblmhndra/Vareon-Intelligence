@@ -5,8 +5,12 @@ import { useMemo } from "react";
 
 import { PanelError } from "@/components/dashboard/stat-box";
 import { articleWhen } from "@/components/dashboard/use-dashboard-overview";
-import { useAllArticles, useAllListQuery } from "@/components/newsroom/all-articles-queries";
-import { useRelatedArticles, useVictimRows } from "@/components/newsroom/all-articles-queries";
+import {
+  useAllArticles,
+  useAllListQuery,
+  useRelatedArticles,
+  useVictimRows,
+} from "@/components/newsroom/all-articles-queries";
 import { GradeChip } from "@/components/newsroom/grade-chip";
 import { PriorityChip } from "@/components/newsroom/priority-chip";
 import { useArticleMatchers } from "@/components/newsroom/rubric-queries";
@@ -19,7 +23,7 @@ import type { components } from "@/lib/api/schema";
 import type { RansomwareVictim } from "@/lib/api/loose-types";
 import { countryName } from "@/lib/countries";
 import { fmtShortDate } from "@/lib/format";
-import type { AllState } from "@/lib/newsroom/all-state";
+import { RESET_PATCH, type AllState } from "@/lib/newsroom/all-state";
 
 type Article = components["schemas"]["ArticleOut"];
 
@@ -27,26 +31,6 @@ const FOCUS =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
 const SORT_ITEMS = { priority: "Sort: Priority", recent: "Sort: Recent" } as const;
-
-/** "Reset filters": semua filter URL kembali ke default, `view` dan `article` tidak disentuh
- * (spec 6.2). Nilai default sama dengan yang dihilangkan `allStateToParams`. */
-const RESET_PATCH: Partial<AllState> = {
-  period: "7",
-  from: null,
-  countries: [],
-  sector: null,
-  sources: [],
-  grades: [],
-  rubric: null,
-  actors: [],
-  ttps: [],
-  story: null,
-  sort: "priority",
-  q: "",
-  incidents: false,
-  group: null,
-  vindustry: null,
-};
 
 function SkeletonRows() {
   return (
@@ -203,7 +187,7 @@ export function AllList({
   if (plan === "no-names") {
     return (
       <div className="space-y-3">
-        {header("0 articles match", true)}
+        {header(`0 ${sort === "priority" ? "stories" : "articles"} match`, true)}
         <p className="text-sm text-muted-foreground">
           {state.rubric === "watchlist" ? (
             "No watched actors yet."
@@ -223,7 +207,7 @@ export function AllList({
   if (plan === "empty") {
     return (
       <div className="space-y-3">
-        {header(sort === "priority" ? "0 stories match" : "0 articles match", true)}
+        {header(`0 ${sort === "priority" ? "stories" : "articles"} match`, true)}
         <div className="flex flex-col items-start gap-2">
           <p className="text-sm text-muted-foreground">No articles match these filters.</p>
           {resetButton}
@@ -282,13 +266,15 @@ export function AllList({
             <p className="text-sm text-muted-foreground">No related ransomware articles yet.</p>
           ) : (
             <>
-              <SelectableList
-                aria-label="Related articles"
-                items={relatedRows.map((a) => ({ value: String(a.id), a }))}
-                value={selectedKey}
-                onChange={(v) => onSelect(Number(v))}
-                renderItem={({ a }) => <ArticleRow a={a} fetchedAt={related.dataUpdatedAt} labels={matchers(a)} />}
-              />
+              <div className={related.isPlaceholderData ? "opacity-60" : undefined}>
+                <SelectableList
+                  aria-label="Related articles"
+                  items={relatedRows.map((a) => ({ value: String(a.id), a }))}
+                  value={selectedKey}
+                  onChange={(v) => onSelect(Number(v))}
+                  renderItem={({ a }) => <ArticleRow a={a} fetchedAt={related.dataUpdatedAt} labels={matchers(a)} />}
+                />
+              </div>
               <LoadMoreFooter
                 shown={relatedRows.length}
                 total={related.data?.pages.at(-1)?.total ?? relatedRows.length}

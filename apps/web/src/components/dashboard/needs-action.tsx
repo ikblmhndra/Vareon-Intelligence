@@ -284,7 +284,7 @@ export function NeedsAction({ period }: { period: PeriodKey }) {
                   points={points}
                   view={view}
                   onPointFocus={onPointFocus}
-                  onPointSelect={(p) => router.push(`/newsroom?country=${encodeURIComponent(p.code)}`)}
+                  onPointSelect={(p) => router.push(newsroomAllHref({ countries: [p.code], sort: "recent" }))}
                 />
               )}
               {shown && (

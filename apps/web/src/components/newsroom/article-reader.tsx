@@ -182,7 +182,8 @@ function ReaderBody({
       }));
   const ttpChips = techniqueChips(a, true);
   const rank = a.priority_score != null ? priorityLines(a) : [];
-  const why = gradeLines(a);
+  // Baris "Priority N" sudah tampil di kotak "Why it ranks"; jangan diulang di Credibility.
+  const why = gradeLines(a).filter((line) => !line.startsWith("Priority "));
 
   return (
     <article ref={rootRef} className="min-w-0 space-y-3">
@@ -245,7 +246,7 @@ function ReaderBody({
             <span className="font-code text-3xl leading-none font-semibold text-foreground">{a.admiralty_code}</span>
             <div className="min-w-0 space-y-1 text-xs text-foreground">
               <p>
-                {`Source reliability ${a.reliability_grade ?? "unrated"}, information credibility ${a.credibility ?? "unrated"}.`}
+                {`Information credibility ${a.credibility ?? "unrated"}.`}
               </p>
               <p className="text-muted-foreground">Why this grade:</p>
               <ul className="list-disc space-y-0.5 pl-4">

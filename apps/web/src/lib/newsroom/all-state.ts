@@ -60,8 +60,7 @@ const MANAGED_KEYS = [
 ] as const;
 
 /** `?from=YYYY-MM-DD`: harus tanggal lokal yang valid (2026-13-40 atau 2026-02-30 ditolak, bukan
- * digeser). Salinan `validFrom` di `newsroom-view.tsx` (file itu belum boleh diubah); Task 10 bisa
- * menyatukan keduanya. */
+ * digeser). */
 export function validFromParam(v: string | null): string | null {
   if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
   const d = parseLocalDate(v);
@@ -122,6 +121,26 @@ export function parseAllState(sp: URLSearchParams): AllState {
   // Aturan 5: satu cerita di bawah urutan prioritas runtuh jadi satu baris, jadi `story` memaksa recent.
   return s.story !== null ? { ...s, sort: "recent" } : s;
 }
+
+/** "Reset filters": semua filter URL kembali ke default, `view` dan `article` tidak disebut sehingga
+ * tetap (spec 6.2). Satu definisi dipakai rail dan daftar. */
+export const RESET_PATCH: Partial<AllState> = {
+  period: "7",
+  from: null,
+  countries: [],
+  sector: null,
+  sources: [],
+  grades: [],
+  rubric: null,
+  actors: [],
+  ttps: [],
+  story: null,
+  sort: "priority",
+  q: "",
+  incidents: false,
+  group: null,
+  vindustry: null,
+};
 
 /** Tulis state ke bentuk URL: default (7d, priority, daftar kosong, false) dihilangkan, param di luar
  * state (mis. `view`) dipertahankan. `patch` menimpa state dari `current`; memberi `period` tanpa

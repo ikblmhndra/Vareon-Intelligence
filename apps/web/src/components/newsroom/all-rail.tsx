@@ -16,7 +16,7 @@ import { useCan } from "@/lib/auth/permissions";
 import { countryName } from "@/lib/dashboard/countries";
 import { parseLocalDate } from "@/lib/format";
 import { GRADE_BADGE_CLASS } from "@/lib/intelligence/format";
-import type { AllState, Grade } from "@/lib/newsroom/all-state";
+import { RESET_PATCH, type AllState, type Grade } from "@/lib/newsroom/all-state";
 import { useFilterOptions } from "@/lib/newsroom/filters";
 import { NEWSROOM_PERIODS, newsroomPeriodInfo, type NewsroomPeriod } from "@/lib/newsroom/period";
 import { noClientRetry, unwrap } from "@/lib/scrapers/queries";
@@ -50,25 +50,6 @@ const RUBRIC_ROWS: { key: RubricKey | null; label: string }[] = [
   { key: "watchlist", label: "Watchlist" },
   { key: "techstack", label: "Tech stack" },
 ];
-
-/** Reset: semua filter kembali default; `view` dan `article` tidak disebut sehingga tetap. */
-const RESET_PATCH: Partial<AllState> = {
-  period: "7",
-  from: null,
-  countries: [],
-  sector: null,
-  sources: [],
-  grades: [],
-  rubric: null,
-  actors: [],
-  ttps: [],
-  story: null,
-  sort: "priority",
-  q: "",
-  incidents: false,
-  group: null,
-  vindustry: null,
-};
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
