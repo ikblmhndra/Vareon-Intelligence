@@ -9,7 +9,7 @@ const SCHEMES: Record<string, string> = { http: "hxxp", https: "hxxps", ftp: "fx
 export function defang(value: string): string {
   let scheme = "";
   let rest = value;
-  const m = /^([a-z]+):\/\/(.*)$/is.exec(value);
+  const m = /^([a-z]+):\/\/(.*)$/i.exec(value);
   if (m && SCHEMES[m[1].toLowerCase()]) {
     scheme = `${SCHEMES[m[1].toLowerCase()]}://`;
     rest = m[2];
