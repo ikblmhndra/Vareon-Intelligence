@@ -14,6 +14,8 @@ import { useActiveClientName } from "@/lib/auth/client-id";
 import { useCan } from "@/lib/auth/permissions";
 import { countryName, normalizeCountry } from "@/lib/dashboard/countries";
 import { periodInfo, type PeriodKey } from "@/lib/dashboard/period";
+import { newsroomAllHref } from "@/lib/newsroom/all-state";
+import { allPeriodPatch } from "@/lib/newsroom/links";
 import { cn } from "@/lib/utils";
 
 import {
@@ -54,9 +56,11 @@ interface Row {
 }
 
 /** Tiga baris aksi (spec 6.2). Bagian kosong pada baris kedua dibuang sebelum digabung " · ". */
-function buildRows(a: DashboardAttention, days: number | null, words: string): Row[] {
-  // Newsroom hanya menerima period 1/7/30; 90 dan semua waktu dibuka tanpa filter periode.
-  const period = days === 1 || days === 7 || days === 30 ? `&period=${days}` : "";
+function buildRows(
+  a: DashboardAttention,
+  words: string,
+  periodPatch: ReturnType<typeof allPeriodPatch>,
+): Row[] {
   const countries = a.client_countries;
   const join = (parts: (string | false | null | undefined)[]) => parts.filter(Boolean).join(" · ");
 
@@ -95,7 +99,12 @@ function buildRows(a: DashboardAttention, days: number | null, words: string): R
         countries.length === 0
           ? "No country is set for this client"
           : join([compare, top && `${num(top.count)} in ${top.name}`]),
-      href: `/newsroom?rubric=ransomware${countries.length === 1 ? `&country=${encodeURIComponent(countries[0])}` : ""}${period}`,
+      href: newsroomAllHref({
+        rubric: "ransomware",
+        sort: "recent",
+        ...(countries.length === 1 ? { countries: [countries[0]] } : {}),
+        ...periodPatch,
+      }),
     },
     {
       key: "watchlist",
@@ -105,7 +114,7 @@ function buildRows(a: DashboardAttention, days: number | null, words: string): R
         a.watchlist_top.length > 0 && a.watchlist_top.join(", "),
         `${num(a.pir_hits)} active ${a.pir_hits === 1 ? "PIR" : "PIRs"} with new articles`,
       ]),
-      href: `/newsroom?rubric=watchlist${period}`,
+      href: newsroomAllHref({ rubric: "watchlist", sort: "recent", ...periodPatch }),
     },
   ];
 }
@@ -119,6 +128,8 @@ export function NeedsAction({ period }: { period: PeriodKey }) {
   const tech = useTechStackNames(can("view_cve"));
   const watch = useWatchlistNames(can("view_ta"));
   const router = useRouter();
+  // All articles punya chip 1/7/30/All; 90 hari menjadi `from`. Jam dibaca di useMemo, bukan tiap render.
+  const periodPatch = useMemo(() => allPeriodPatch(periodInfo(period).days), [period]);
   const mapBoxRef = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<WorldView>("apac");
   const [focus, setFocus] = useState<Focus | null>(null);
@@ -189,7 +200,7 @@ export function NeedsAction({ period }: { period: PeriodKey }) {
     watch.data.length === 0;
 
   const att = attention.data;
-  const rows = att ? buildRows(att, days, words) : [];
+  const rows = att ? buildRows(att, words, periodPatch) : [];
   const n = rows.filter((r) => r.value > 0).length;
   const headline = `${n === 0 ? "No signals" : n === 1 ? "1 signal" : `${n} signals`} for ${client} ${suffix}`;
 

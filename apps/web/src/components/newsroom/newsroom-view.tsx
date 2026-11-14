@@ -3,15 +3,13 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
-import { useArticleOpener } from "@/components/dashboard/article-opener";
 import { useDashboardStats } from "@/components/dashboard/use-dashboard-overview";
 import { AllArticlesView } from "@/components/newsroom/all-articles-view";
-import { ArticleListSheet, type SheetQuery, type Source as SheetSource } from "@/components/newsroom/article-list-sheet";
 import { FilterBar } from "@/components/newsroom/filter-bar";
 import { FilteredView } from "@/components/newsroom/filtered-view";
 import { FrontPage } from "@/components/newsroom/front-page";
 import { useArticleCount, useNarrowing } from "@/components/newsroom/newsroom-queries";
-import { RUBRIC_TITLES, type RubricKey } from "@/components/newsroom/rubric-queries";
+import type { RubricKey } from "@/components/newsroom/rubric-queries";
 import { RubricGrid } from "@/components/newsroom/rubric-grid";
 import { TopicsSection } from "@/components/newsroom/topics-section";
 import { PageHeader } from "@/components/page-header";
@@ -21,56 +19,21 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StatePanel } from "@/components/ui/state-panel";
 import { useCan } from "@/lib/auth/permissions";
 import { normalizeCountry } from "@/lib/dashboard/countries";
-import { fmtShortDate, parseLocalDate } from "@/lib/format";
-import { allStateToParams, isAllViewUrl, parseAllState, type AllState } from "@/lib/newsroom/all-state";
-import { periodStart } from "@/lib/newsroom/filters";
+import { fmtShortDate } from "@/lib/format";
+import {
+  allStateToParams,
+  isAllViewUrl,
+  newsroomAllHref,
+  parseAllState,
+  validFromParam,
+  type AllState,
+} from "@/lib/newsroom/all-state";
 import {
   newsroomPeriodInfo,
   parseNewsroomPeriod,
   uiToFilters,
   type NewsroomUi,
 } from "@/lib/newsroom/period";
-
-/** Judul sheet; Ransomware berisi daftar korban (bukan artikel), jadi judulnya menyebut itu. */
-function sheetTitle(r: RubricKey): string {
-  return r === "ransomware" ? "Ransomware victims" : RUBRIC_TITLES[r];
-}
-
-function isRubricKey(v: string | null): v is RubricKey {
-  return v !== null && v in RUBRIC_TITLES;
-}
-
-/** `?from=YYYY-MM-DD`: harus tanggal lokal yang valid (2026-13-40 atau 2026-02-30 ditolak, bukan digeser). */
-function validFrom(v: string | null): string | null {
-  if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
-  const d = parseLocalDate(v);
-  const [y, m, day] = v.split("-").map(Number);
-  // Date menggeser tanggal tak ada (30 Feb -> 2 Mar), jadi cocokkan balik komponennya.
-  const ok = d.getFullYear() === y && d.getMonth() + 1 === m && d.getDate() === day;
-  return ok ? v : null;
-}
-
-/** Nilai param tak kosong (setelah trim); `actor=` dan spasi saja diabaikan. */
-function paramValues(sp: URLSearchParams, key: string): string[] {
-  return sp.getAll(key).map((v) => v.trim()).filter(Boolean);
-}
-
-/** Tautan Intelligence: aktor/industri/TTP membuka sheet gabungan; `country` sendirian tetap filter halaman. */
-function linkedSheet(sp: URLSearchParams, dateStart: string): { title: string; source: SheetSource } | null {
-  const actors = paramValues(sp, "actor");
-  const industries = paramValues(sp, "industry");
-  const ttps = paramValues(sp, "ttp");
-  if (!actors.length && !industries.length && !ttps.length) return null;
-  const country = (sp.get("country")?.trim().toUpperCase() ?? "") || null;
-  const query: SheetQuery = {
-    threat_actor: actors.length ? actors : undefined,
-    industry: industries.length ? industries : undefined,
-    ttp: ttps.length ? ttps : undefined,
-    country: country ? [country] : undefined,
-    posted_on_start: dateStart || undefined,
-  };
-  return { title: [...actors, ...industries, ...ttps].join(" × "), source: { query } };
-}
 
 const VIEW_OPTIONS = [
   { value: "front", label: "Front page" },
@@ -101,7 +64,6 @@ function NewsroomBody() {
   const router = useRouter();
   const pathname = usePathname();
   const sp = useSearchParams();
-  const { openArticle, host } = useArticleOpener();
   const can = useCan();
 
   // Tampilan turunan: tanpa `view`, tautan lama (article/rubric/actor/...) mendarat di All articles tanpa redirect.
@@ -109,7 +71,7 @@ function NewsroomBody() {
   const view = viewParam === "filtered" ? "filtered" : isAllViewUrl(sp) ? "all" : "front";
   // Periode, from, negara dibaca dari URL tiap render: URL satu-satunya sumber.
   const period = parseNewsroomPeriod(sp.get("period"));
-  const from = validFrom(sp.get("from"));
+  const from = validFromParam(sp.get("from"));
   const rawCountry = sp.get("country")?.trim();
   const country = rawCountry ? normalizeCountry(rawCountry) : null;
 
@@ -117,22 +79,6 @@ function NewsroomBody() {
   const [search, setSearch] = useState("");
   const [incidentOnly, setIncidentOnly] = useState(false);
   const [rubric, setRubric] = useState<RubricKey | null>(null);
-  // Deep link dibaca sekali saat dimuat (initializer); menutup sheet tidak menyentuh URL.
-  const [sheet, setSheet] = useState<{ open: boolean; title: string; source: SheetSource }>(() => {
-    const dateStart =
-      validFrom(sp.get("from")) ??
-      (sp.get("period") ? periodStart(newsroomPeriodInfo(parseNewsroomPeriod(sp.get("period"))).days ?? 0) : "");
-    const linked = linkedSheet(sp, dateStart);
-    if (linked) return { open: true, ...linked };
-    const r = sp.get("rubric");
-    // Tanpa izin backend rubrik itu (ransomware view_intel, techstack view_cve, watchlist view_ta) tidak ada sheet.
-    const allowed =
-      r === "ransomware" ? can("view_intel") : r === "techstack" ? can("view_cve") : r === "watchlist" ? can("view_ta") : true;
-    return isRubricKey(r) && allowed
-      ? { open: true, title: sheetTitle(r), source: { rubric: r } }
-      : { open: false, title: "", source: { rubric: "apac" } };
-  });
-
   // Debounce 300 ms; setState hanya di callback timer.
   useEffect(() => {
     const t = setTimeout(() => setSearch(searchText.trim()), 300);
@@ -189,6 +135,20 @@ function NewsroomBody() {
     if (!next.has("view")) next.set("view", "all");
     replaceParams(next);
   }
+
+  /** Periode, negara, pencarian, dan insiden Front page dibawa ke All articles (`from` menang atas `period`). */
+  const carry = (): Partial<AllState> => ({
+    ...(from ? { from } : { period }),
+    countries: country ? [country] : [],
+    q: search,
+    incidents: incidentOnly,
+  });
+  /** Hanya periode dan negara (tautan "See all" rubrik): rubrik punya hitungan sendiri. */
+  const carryScope = (): Partial<AllState> => ({
+    ...(from ? { from } : { period }),
+    countries: country ? [country] : [],
+  });
+  const go = (href: string) => router.push(href);
 
   function onChange(p: Partial<NewsroomUi>) {
     const patch: Record<string, string | null> = {};
@@ -252,37 +212,37 @@ function NewsroomBody() {
               filters={filters}
               narrowing={narrowing}
               onChange={onChange}
-              openArticle={openArticle}
-              onOpenStory={(story, title) => setSheet({ open: true, title, source: { story } })}
+              openArticle={(a) => go(newsroomAllHref({ ...carry(), article: a.id }))}
+              // Anggota cerita bisa di luar periode (perilaku sheet lama): semua waktu, tanpa filter lain.
+              onOpenStory={(story) => go(newsroomAllHref({ story, period: "all" }))}
             />
             <TopicsSection
               filters={filters}
               words={info.words}
               since={from ? fmtShortDate(from) : undefined}
-              onOpen={(source, title) => setSheet({ open: true, title, source })}
+              onOpen={(t) =>
+                go(
+                  newsroomAllHref({
+                    ...carry(),
+                    sort: "recent",
+                    ...("actor" in t ? { actors: [t.actor] } : { ttps: [t.ttp] }),
+                  }),
+                )
+              }
             />
             <RubricGrid
               filters={filters}
               rubric={rubric}
-              openArticle={openArticle}
-              onSeeAll={(key) => setSheet({ open: true, title: sheetTitle(key), source: { rubric: key } })}
+              openArticle={(a) => go(newsroomAllHref({ ...carry(), article: a.id }))}
+              onSeeAll={(key) => go(newsroomAllHref({ ...carryScope(), rubric: key, sort: "recent" }))}
             />
           </div>
-          <ArticleListSheet
-            open={sheet.open}
-            onOpenChange={(open) => setSheet((s) => ({ ...s, open }))}
-            title={sheet.title}
-            source={sheet.source}
-            filters={filters}
-            onSelect={openArticle}
-          />
         </>
       ) : view === "all" ? (
         <AllArticlesView state={allState} onChange={onAllChange} />
       ) : (
         <FilteredView />
       )}
-      {host}
     </div>
   );
 }
