@@ -164,10 +164,11 @@ class AsyncRansomwareVictimRepo:
         since: datetime.date | None,
         apac_codes: Collection[str],
         client_codes: Collection[str],
+        top_n: int = 3,
     ) -> dict[str, Any]:
         """Ringkasan korban sejak `since` (tanggal = `coalesce(discovered, published)`):
         `total`, `apac`/`client_scope` (kode negara di himpunan masing-masing), `undated`
-        (kedua tanggal NULL; TIDAK pernah difilter `since`), `top_groups` (3 teratas,
+        (kedua tanggal NULL; TIDAK pernah difilter `since`), `top_groups` (`top_n` teratas,
         seri diurutkan nama) dan `by_country` ({kode: jumlah}, hanya baris berkode)."""
         when = func.coalesce(RansomwareVictim.discovered, RansomwareVictim.published)
 
@@ -207,7 +208,7 @@ class AsyncRansomwareVictimRepo:
                 _scoped(select(RansomwareVictim.group_name, func.count()))
                 .group_by(RansomwareVictim.group_name)
                 .order_by(func.count().desc(), RansomwareVictim.group_name)
-                .limit(3)
+                .limit(top_n)
             )
         ).all()
         countries = (

@@ -215,6 +215,28 @@ async def test_ransomware_summary_and_weekly(async_db_session: AsyncSession) -> 
     assert weekly[-1][1] == 2
 
 
+async def test_ransomware_summary_top_n(async_db_session: AsyncSession) -> None:
+    """`top_n` melebarkan daftar grup (dashboard 5, peta/attention tetap 3 default)."""
+    counts = {"Akira": 3, "Bashe": 2, "Cactus": 2, "Dragon": 1, "Eldorado": 1, "Fog": 1}
+    for group, n in counts.items():
+        for i in range(n):
+            async_db_session.add(
+                RansomwareVictim(
+                    offset_key=f"{group}-{i}",
+                    group_name=group,
+                    victim=f"{group}-{i}",
+                    discovered=_TODAY,
+                )
+            )
+    await async_db_session.flush()
+    repo = AsyncRansomwareVictimRepo(async_db_session)
+    since = _TODAY - datetime.timedelta(days=30)
+    three = await repo.summary(since=since, apac_codes=(), client_codes=())
+    assert three["top_groups"] == [("Akira", 3), ("Bashe", 2), ("Cactus", 2)]
+    five = await repo.summary(since=since, apac_codes=(), client_codes=(), top_n=5)
+    assert five["top_groups"] == [*three["top_groups"], ("Dragon", 1), ("Eldorado", 1)]
+
+
 async def test_incident_country_profile_counts_any_role_once(
     async_db_session: AsyncSession,
 ) -> None:

@@ -276,7 +276,7 @@ async def get_ransomware(session: AsyncSession, *, days: int | None) -> dict[str
     repo = AsyncRansomwareVictimRepo(session)
     weekly = await repo.weekly_counts(weeks=8)
     summary = await repo.summary(
-        since=_period_start(days), apac_codes=APAC_COUNTRY_CODES, client_codes=()
+        since=_period_start(days), apac_codes=APAC_COUNTRY_CODES, client_codes=(), top_n=5
     )
     return {
         "weekly": [{"week_start": d, "victims": n} for d, n in weekly],
