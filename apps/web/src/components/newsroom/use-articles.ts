@@ -4,8 +4,9 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api/client";
 import type { paths } from "@/lib/api/schema";
+import { noClientRetry, unwrap } from "@/lib/scrapers/queries";
 
-type ArticlesQuery = paths["/api/articles"]["get"]["parameters"]["query"];
+export type ArticlesQuery = paths["/api/articles"]["get"]["parameters"]["query"];
 
 /** Fetch hook bareng buat `GET /api/articles` -- dipakai semua panel
  * (APAC/Global/Local/Watchlist/Techstack), tiap panel susun `params`-nya
@@ -18,10 +19,12 @@ export function useArticlesQuery(key: readonly unknown[], params: ArticlesQuery,
   return useQuery({
     queryKey: ["newsroom", "articles", ...key, params],
     queryFn: async () => {
-      const { data, error } = await api.GET("/api/articles", { params: { query: params ?? {} } });
-      if (error) throw error;
-      return data;
+      return unwrap(
+        await api.GET("/api/articles", { params: { query: params ?? {} } }),
+        "Failed to load articles",
+      );
     },
+    retry: noClientRetry,
     enabled,
     placeholderData: keepPrevious ? keepPreviousData : undefined,
   });

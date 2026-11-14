@@ -12,7 +12,7 @@ import { GLOBAL_NEWS_TYPES } from "@/lib/newsroom/news-types";
 import { useAuth } from "@/components/providers/auth-provider";
 import { useCan } from "@/lib/auth/permissions";
 import { noClientRetry, unwrap } from "@/lib/scrapers/queries";
-import { useArticlesQuery } from "@/components/newsroom/use-articles";
+import { useArticlesQuery, type ArticlesQuery } from "@/components/newsroom/use-articles";
 
 type Article = components["schemas"]["ArticleOut"];
 
@@ -24,6 +24,7 @@ export interface RubricItem {
   title: string;
   meta: string;
   article?: Article;
+  victim?: RansomwareVictim;
   href?: string;
 }
 
@@ -42,6 +43,7 @@ function victimItem(v: RansomwareVictim): RubricItem {
     id: `victim-${v.id}`,
     title: v.victim,
     meta,
+    victim: v,
     href: v.post_url && v.post_url !== "Unknown" ? v.post_url : undefined,
   };
 }
@@ -146,6 +148,44 @@ function useVictims(
   });
 }
 
+type ArticleParams = NonNullable<ArticlesQuery>;
+
+/** Param filter murni (tanpa page/page_size/sort) yang dipakai semua jalur artikel. */
+export function baseArticleQuery(filters: NewsroomFilters): ArticleParams {
+  return {
+    posted_on_start: filters.dateStart || undefined,
+    posted_on_end: filters.dateEnd || undefined,
+    search: filters.search || undefined,
+    confirmed_only: filters.incidentOnly || undefined,
+  };
+}
+
+/** Filter artikel per rubrik, satu-satunya sumber untuk `useRubric` dan query halaman depan supaya
+ * keduanya identik (spec 6.4). Local memakai `client_countries` (bukan filter country); Watchlist/Tech
+ * stack tanpa nama = "no-names"; Ransomware bukan artikel = "victims". */
+export function rubricArticleQuery(
+  key: RubricKey,
+  filters: NewsroomFilters,
+  ctx: { clientCountries: string[]; watchNames: string[] | undefined; techNames: string[] | undefined },
+): ArticleParams | "no-names" | "victims" {
+  const base = baseArticleQuery(filters);
+  const country = filters.country ? [filters.country] : undefined;
+  switch (key) {
+    case "apac":
+      return { ...base, news_type: ["apac"], country };
+    case "global":
+      return { ...base, news_type: GLOBAL_NEWS_TYPES, country };
+    case "local":
+      return { ...base, country: ctx.clientCountries.length ? ctx.clientCountries : undefined };
+    case "watchlist":
+      return ctx.watchNames?.length ? { ...base, threat_actor: ctx.watchNames, country } : "no-names";
+    case "techstack":
+      return ctx.techNames?.length ? { ...base, title_keyword: ctx.techNames, country } : "no-names";
+    case "ransomware":
+      return "victims";
+  }
+}
+
 /**
  * Query tiap rubrik newsroom, dipindah apa adanya dari `panels/*.tsx` (param,
  * daftar `news_type`, lookup nama watchlist/techstack, request ransomware).
@@ -170,6 +210,8 @@ export function useRubric(
 ): {
   items: RubricItem[];
   total: number | undefined;
+  /** `dataUpdatedAt` query aktif (0 selagi belum ada data); dibaca tampilan, bukan jam render. */
+  updatedAt: number;
   isPending: boolean;
   isError: boolean;
   refetch: () => void;
@@ -182,38 +224,32 @@ export function useRubric(
   const hasWatch = (watchNames.data?.length ?? 0) > 0;
   const hasTech = (techNames.data?.length ?? 0) > 0;
 
-  const common = {
-    page,
-    page_size: pageSize,
-    posted_on_start: filters.dateStart || undefined,
-    posted_on_end: filters.dateEnd || undefined,
-    search: filters.search || undefined,
-    confirmed_only: filters.incidentOnly || undefined,
-  };
-  const countryParam = filters.country ? [filters.country] : undefined;
+  const ctx = { clientCountries: countries, watchNames: watchNames.data, techNames: techNames.data };
+  const paged = (q: ReturnType<typeof rubricArticleQuery>) =>
+    q === "no-names" || q === "victims" ? undefined : { page, page_size: pageSize, ...q };
 
   const newsType = key === "apac" ? ["apac"] : GLOBAL_NEWS_TYPES;
   const byType = useArticlesQuery(
     ["news-type", newsType],
-    { ...common, news_type: newsType, country: countryParam },
+    paged(rubricArticleQuery(key === "apac" ? "apac" : "global", filters, ctx)),
     (key === "apac" || key === "global"),
     keepPrevious,
   );
   const local = useArticlesQuery(
     ["local", countries],
-    { ...common, country: countries.length ? countries : undefined },
+    paged(rubricArticleQuery("local", filters, ctx)),
     key === "local",
     keepPrevious,
   );
   const watch = useArticlesQuery(
     ["watchlist", watchNames.data],
-    { ...common, threat_actor: watchNames.data, country: countryParam },
+    paged(rubricArticleQuery("watchlist", filters, ctx)),
     key === "watchlist" && hasWatch,
     keepPrevious,
   );
   const tech = useArticlesQuery(
     ["techstack", techNames.data],
-    { ...common, title_keyword: techNames.data, country: countryParam },
+    paged(rubricArticleQuery("techstack", filters, ctx)),
     key === "techstack" && hasTech,
     keepPrevious,
   );
@@ -227,12 +263,13 @@ export function useRubric(
     keepPrevious,
   );
 
-  const empty = { items: [], total: 0, isPending: false, isError: false };
+  const empty = { items: [], total: 0, updatedAt: 0, isPending: false, isError: false };
 
   if (key === "ransomware") {
     return {
       items: victims.data?.victims.map(victimItem) ?? [],
       total: victims.data?.total,
+      updatedAt: victims.dataUpdatedAt,
       isPending: victims.isPending,
       isError: victims.isError,
       refetch: () => void victims.refetch(),
@@ -253,6 +290,7 @@ export function useRubric(
     return {
       items: q.data?.articles.map(articleItem) ?? [],
       total: q.data?.total,
+      updatedAt: q.dataUpdatedAt,
       isPending: q.isPending,
       isError: q.isError,
       refetch,
@@ -263,6 +301,7 @@ export function useRubric(
   return {
     items: q.data?.articles.map(articleItem) ?? [],
     total: q.data?.total,
+    updatedAt: q.dataUpdatedAt,
     isPending: q.isPending,
     isError: q.isError,
     refetch: () => void q.refetch(),
