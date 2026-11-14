@@ -4,6 +4,7 @@ Postgres REAL (testcontainers)."""
 from __future__ import annotations
 
 import datetime
+from typing import Any
 
 import pytest
 from cti_core.db.models.cve import CveTicket, CveTracker
@@ -13,6 +14,7 @@ from cti_core.db.repositories.auth import AsyncClientRepo
 from cti_core.db.repositories.dashboard import AsyncDashboardRepo
 from cti_core.db.repositories.ransomware import AsyncRansomwareVictimRepo
 from cti_core.db.repositories.ta import AsyncTARepo
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 pytestmark = pytest.mark.asyncio
@@ -251,3 +253,124 @@ async def test_incident_country_profile_counts_any_role_once(
     await repo.set_enrichment(a, countries=[("ID", "victim"), ("ID", "mentioned"), ("SG", "actor")])
     rows = await AsyncDashboardRepo(async_db_session).incident_country_profile(posted_on_start=None)
     assert {(c, n) for c, n, _, _ in rows} == {("ID", 1), ("SG", 1)}
+
+
+async def test_kev_tech_names_orders_by_count_and_skips_closed(
+    async_db_session: AsyncSession,
+) -> None:
+    await _ensure_clients(async_db_session)
+    rows = [("Nginx", 2), ("Apache", 1), ("Citrix", 1), ("Zimbra", 1)]
+    n = 0
+    for tech, count in rows:
+        for _ in range(count):
+            n += 1
+            async_db_session.add(
+                CveTracker(
+                    cve_id=f"CVE-2026-7{n:03d}", client_id="default", tech=tech, cisa_kev=True
+                )
+            )
+    async_db_session.add_all(
+        [
+            CveTracker(cve_id="CVE-2026-7100", client_id="default", tech="Exchange", cisa_kev=True),
+            CveTracker(cve_id="CVE-2026-7101", client_id="default", tech=None, cisa_kev=True),
+            CveTracker(cve_id="CVE-2026-7102", client_id="default", tech="Redis", cisa_kev=False),
+            CveTracker(cve_id="CVE-2026-7103", client_id="other", tech="Nginx", cisa_kev=True),
+        ]
+    )
+    await async_db_session.flush()
+    async_db_session.add(
+        CveTicket(
+            cve_id="CVE-2026-7100",
+            client_id="default",
+            ticket_id="CTI-2026-11-001",
+            closure_date=_TODAY,
+        )
+    )
+    await async_db_session.flush()
+    repo = AsyncDashboardRepo(async_db_session)
+    scope: dict[str, Any] = {"tech": None, "exclude_cve_ids": None}
+    assert await repo.kev_tech_names(client_id="default", **scope) == ["Nginx", "Apache", "Citrix"]
+    assert await repo.kev_tech_names(client_id="other", **scope) == ["Nginx"]
+
+
+async def test_watchlist_top_names_scoped_to_client(async_db_session: AsyncSession) -> None:
+    await _ensure_clients(async_db_session)
+    ta = AsyncTARepo(async_db_session)
+    await ta.add_to_watchlist("Qilin", "default")
+    await ta.add_to_watchlist("Akira", "default")
+    await ta.add_to_watchlist("LockBit", "other")
+    repo = AsyncArticleRepo(async_db_session)
+    for actor, n in (("Qilin", 2), ("Akira", 1), ("LockBit", 3)):
+        for i in range(n):
+            a = await repo.upsert(
+                url=f"https://example.com/top-{actor}-{i}",
+                title=f"{actor} {i}",
+                source="S",
+                posted_on=_TODAY,
+            )
+            await repo.set_enrichment(a, threat_actors=[actor])
+    dash = AsyncDashboardRepo(async_db_session)
+    assert await dash.watchlist_top_names(client_id="default", posted_on_start=None) == [
+        "Qilin",
+        "Akira",
+    ]
+    assert await dash.watchlist_top_names(client_id="other", posted_on_start=None) == ["LockBit"]
+    tomorrow = _TODAY + datetime.timedelta(days=1)
+    assert await dash.watchlist_top_names(client_id="default", posted_on_start=tomorrow) == []
+
+
+async def test_ransomware_count_in_countries_window_is_half_open(
+    async_db_session: AsyncSession,
+) -> None:
+    since = _TODAY - datetime.timedelta(days=14)
+    until = _TODAY - datetime.timedelta(days=7)
+    one = datetime.timedelta(days=1)
+    for key, cc, d in (
+        ("a", "SG", since - one),
+        ("b", "SG", since),
+        ("c", "SG", until - one),
+        ("d", "SG", until),
+        ("e", "US", since),
+    ):
+        async_db_session.add(
+            RansomwareVictim(
+                offset_key=key, group_name="Qilin", victim=key, country_code=cc, discovered=d
+            )
+        )
+    await async_db_session.flush()
+    repo = AsyncRansomwareVictimRepo(async_db_session)
+    assert await repo.count_in_countries(since=since, until=until, codes={"SG"}) == 2
+    assert await repo.count_in_countries(since=since, until=until, codes=()) == 0
+
+
+async def test_ransomware_top_industry_ignores_blank(async_db_session: AsyncSession) -> None:
+    repo = AsyncRansomwareVictimRepo(async_db_session)
+    assert await repo.top_industry_in_countries(since=None, codes=()) is None
+    for i, industry in enumerate(("Finance", "Finance", "Health", "", "   ", None)):
+        async_db_session.add(
+            RansomwareVictim(
+                offset_key=f"i{i}",
+                group_name="Qilin",
+                victim=f"i{i}",
+                country_code="SG",
+                industry=industry,
+                discovered=_TODAY,
+            )
+        )
+    await async_db_session.flush()
+    assert await repo.top_industry_in_countries(since=None, codes={"SG"}) == ("Finance", 2)
+    assert await repo.top_industry_in_countries(since=None, codes=()) is None
+    # Seri: nama menang secara alfabet.
+    await async_db_session.execute(
+        update(RansomwareVictim).where(RansomwareVictim.industry == "Finance").values(industry=None)
+    )
+    await async_db_session.execute(
+        update(RansomwareVictim)
+        .where(RansomwareVictim.offset_key == "i0")
+        .values(industry="Energy")
+    )
+    assert await repo.top_industry_in_countries(since=None, codes={"SG"}) == ("Energy", 1)
+    await async_db_session.execute(
+        update(RansomwareVictim).where(RansomwareVictim.industry.is_not(None)).values(industry=" ")
+    )
+    assert await repo.top_industry_in_countries(since=None, codes={"SG"}) is None

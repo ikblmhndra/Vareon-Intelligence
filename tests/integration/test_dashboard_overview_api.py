@@ -102,7 +102,11 @@ async def test_attention_client_without_countries(
     await AsyncClientRepo(api_session).create(client_id="nocountry", name="N", countries=[])
     h = {**auth_header(client_ids=["nocountry"]), "X-Client-ID": "nocountry"}
     r = await api_client.get("/api/dashboard/attention", params={"days": 7}, headers=h)
-    assert r.status_code == 200 and r.json()["ransomware_in_client_scope"] == 0
+    body = r.json()
+    assert r.status_code == 200 and body["ransomware_in_client_scope"] == 0
+    assert body["client_countries"] == []
+    assert body["ransomware_prev_in_client_scope"] == 0
+    assert body["ransomware_client_top_industry"] is None
     m = await api_client.get("/api/dashboard/map", params={"days": 7}, headers=h)
     assert m.json()["client_countries"] == []
 
@@ -222,3 +226,51 @@ async def test_cve_exposure_limit_param(
     for bad in (0, 11):
         r = await api_client.get("/api/dashboard/cve-exposure", params={"limit": bad}, headers=h)
         assert r.status_code == 422
+
+
+async def test_attention_new_fields_are_client_scoped(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header
+) -> None:
+    clients = AsyncClientRepo(api_session)
+    await clients.create(client_id="acme", name="Acme", countries=["SG"])
+    await clients.create(client_id="other", name="Other", countries=["US"])
+    api_session.add_all(
+        [
+            CveTracker(cve_id="CVE-2026-2111", client_id="acme", tech="Nginx", cisa_kev=True),
+            CveTracker(cve_id="CVE-2026-2112", client_id="other", tech="Citrix", cisa_kev=True),
+        ]
+    )
+    for key, cc, industry in (("acme-v", "SG", "Finance"), ("other-v", "US", "Health")):
+        api_session.add(
+            RansomwareVictim(
+                offset_key=key,
+                group_name="Qilin",
+                victim=key,
+                country_code=cc,
+                industry=industry,
+                discovered=_TODAY,
+            )
+        )
+    await api_session.flush()
+    ta = AsyncTARepo(api_session)
+    await ta.add_to_watchlist("Qilin", "acme")
+    await ta.add_to_watchlist("Akira", "other")
+    await _seed_actor_articles(api_session, 1, "Qilin")
+    await _seed_actor_articles(api_session, 1, "Akira")
+
+    h = auth_header(role="analyst", client_ids=["acme", "other"])
+
+    async def attention(client_id: str) -> dict:
+        r = await api_client.get(
+            "/api/dashboard/attention",
+            params={"days": 7},
+            headers={**h, "X-Client-ID": client_id},
+        )
+        return r.json()
+
+    acme, other = await attention("acme"), await attention("other")
+    assert acme["kev_tech"] == ["Nginx"] and other["kev_tech"] == ["Citrix"]
+    assert acme["watchlist_top"] == ["Qilin"] and other["watchlist_top"] == ["Akira"]
+    assert acme["client_countries"] == ["SG"] and other["client_countries"] == ["US"]
+    assert acme["ransomware_client_top_industry"] == {"name": "Finance", "count": 1}
+    assert other["ransomware_client_top_industry"] == {"name": "Health", "count": 1}

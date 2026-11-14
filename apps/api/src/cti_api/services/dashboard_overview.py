@@ -219,13 +219,26 @@ async def get_attention(
     since = _period_start(days)
     repo = AsyncDashboardRepo(session)
     # Sekuensial: satu AsyncSession tidak aman dipakai concurrent.
-    cve = await repo.cve_exposure_counts(**await _cve_scope(session, client_id))
+    scope = await _cve_scope(session, client_id)
+    cve = await repo.cve_exposure_counts(**scope)
+    # Nama tech memakai scope yang sama dengan hitungannya (false positive ikut dibuang).
+    kev_tech = await repo.kev_tech_names(**scope)
     client = await AsyncClientRepo(session).get(client_id)
     client_codes = [c.country_code for c in client.countries] if client else []
-    ransom = await AsyncRansomwareVictimRepo(session).summary(
+    ransom_repo = AsyncRansomwareVictimRepo(session)
+    ransom = await ransom_repo.summary(
         since=since, apac_codes=APAC_COUNTRY_CODES, client_codes=client_codes
     )
+    # Tanpa aturan cakupan hari: korban ransomware bukan artikel, jadi jendela sebelumnya
+    # dibandingkan apa adanya (None hanya untuk "semua waktu").
+    ransom_prev: int | None = None
+    if days is not None and since is not None:
+        ransom_prev = await ransom_repo.count_in_countries(
+            since=since - datetime.timedelta(days=days), until=since, codes=client_codes
+        )
+    top_industry = await ransom_repo.top_industry_in_countries(since=since, codes=client_codes)
     watchlist = await repo.watchlist_hit_count(client_id=client_id, posted_on_start=since)
+    watchlist_top = await repo.watchlist_top_names(client_id=client_id, posted_on_start=since)
     pir_hits = await _pir_hits(session, client_id, since)
 
     exclude = sorted(NON_INCIDENT_TYPES) if incident_only else None
@@ -258,6 +271,13 @@ async def get_attention(
         "ransomware_in_client_scope": ransom["client_scope"],
         "watchlist_hits": watchlist,
         "pir_hits": pir_hits,
+        "kev_tech": kev_tech,
+        "ransomware_prev_in_client_scope": ransom_prev,
+        "ransomware_client_top_industry": (
+            {"name": top_industry[0], "count": top_industry[1]} if top_industry else None
+        ),
+        "watchlist_top": watchlist_top,
+        "client_countries": sorted(client_codes),
         "brief": build_brief(
             top_trend=TrendItem(**top) if top else None,
             trend_reliable=trending["baseline_reliable"],

@@ -229,6 +229,44 @@ class AsyncRansomwareVictimRepo:
             "by_country": {c: int(n) for c, n in countries},
         }
 
+    async def count_in_countries(
+        self, *, since: datetime.date, until: datetime.date, codes: Collection[str]
+    ) -> int:
+        """Korban di negara `codes` dengan `since <= tanggal < until` (setengah terbuka, supaya dua
+        jendela berurutan tidak menghitung hari batas dua kali). Dipakai untuk periode sebelumnya
+        di hero Dashboard. 0 tanpa query bila `codes` kosong."""
+        if not codes:
+            return 0
+        when = func.coalesce(RansomwareVictim.discovered, RansomwareVictim.published)
+        stmt = select(func.count(RansomwareVictim.id)).where(
+            when >= since, when < until, RansomwareVictim.country_code.in_(list(codes))
+        )
+        return int((await self.session.execute(stmt)).scalar_one())
+
+    async def top_industry_in_countries(
+        self, *, since: datetime.date | None, codes: Collection[str]
+    ) -> tuple[str, int] | None:
+        """Industri dengan korban terbanyak di negara `codes` (seri: nama), aturan tanggal sama
+        dengan `summary`. Industri kosong/spasi tidak dihitung: tanpa itu "(blank)" bisa menang.
+        `None` tanpa query bila `codes` kosong."""
+        if not codes:
+            return None
+        when = func.coalesce(RansomwareVictim.discovered, RansomwareVictim.published)
+        stmt = (
+            select(RansomwareVictim.industry, func.count())
+            .where(
+                when >= since if since is not None else when.is_not(None),
+                RansomwareVictim.country_code.in_(list(codes)),
+                RansomwareVictim.industry.is_not(None),
+                func.trim(RansomwareVictim.industry) != "",
+            )
+            .group_by(RansomwareVictim.industry)
+            .order_by(func.count().desc(), RansomwareVictim.industry)
+            .limit(1)
+        )
+        row = (await self.session.execute(stmt)).first()
+        return (row[0], int(row[1])) if row else None
+
     async def list_by_group_exact(
         self, group_name: str, *, limit: int = 100
     ) -> list[RansomwareVictim]:

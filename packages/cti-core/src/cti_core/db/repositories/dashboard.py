@@ -776,6 +776,32 @@ class AsyncDashboardRepo:
         )
         return int((await self.session.execute(stmt)).scalar_one())
 
+    async def watchlist_top_names(
+        self, *, client_id: str, posted_on_start: datetime.date | None, limit: int = 3
+    ) -> list[str]:
+        """Nama aktor yang di-watch `client_id` dengan artikel DISTINCT terbanyak (seri: nama).
+        Join-nya sama dengan `watchlist_hit_count`, jadi nama-nama ini tidak pernah menyebut aktor
+        yang angkanya diabaikan. Dikelompokkan per entitas supaya dua entitas sepadan nama tetap
+        dua baris."""
+        m = mention_rows(ACTOR)
+        count = func.count(func.distinct(Article.id))
+        stmt = (
+            _apply_article_filters(
+                _joined(select(m.c.name, count), m).join(
+                    EntityWatch,
+                    and_(
+                        EntityWatch.entity_id == m.c.entity_id, EntityWatch.client_id == client_id
+                    ),
+                ),
+                posted_on_start=posted_on_start,
+                posted_on_end=None,
+            )
+            .group_by(m.c.entity_id, m.c.name)
+            .order_by(count.desc(), m.c.name)
+            .limit(limit)
+        )
+        return [name for name, _ in (await self.session.execute(stmt)).all()]
+
     @staticmethod
     def _open_cve_stmt(
         stmt: Select[tuple[Any, ...]],
@@ -862,6 +888,34 @@ class AsyncDashboardRepo:
             "open_kev": int(k or 0),
             "kev_without_ticket": int(n or 0),
         }
+
+    async def kev_tech_names(
+        self,
+        *,
+        client_id: str,
+        tech: Sequence[str] | None,
+        exclude_cve_ids: Sequence[str] | None,
+        limit: int = 3,
+    ) -> list[str]:
+        """Tech dengan baris KEV terbuka terbanyak (seri: nama). Menerima dict scope yang sama
+        dengan `cve_exposure_counts` (`_cve_scope`): false positive dan tech non-aktif dibuang
+        persis sama, jadi nama di hero tidak pernah menyebut tech yang angka `kev_in_stack`-nya
+        mengabaikan."""
+        stmt = (
+            self._open_cve_stmt(
+                select(CveTracker.tech, func.count())
+                .select_from(CveTracker)
+                .outerjoin(CveTicket, self._tracker_ticket_join()),
+                client_id=client_id,
+                tech=tech,
+                exclude_cve_ids=exclude_cve_ids,
+            )
+            .where(CveTracker.cisa_kev.is_(True), CveTracker.tech.is_not(None))
+            .group_by(CveTracker.tech)
+            .order_by(func.count().desc(), CveTracker.tech)
+            .limit(limit)
+        )
+        return [t for t, _ in (await self.session.execute(stmt)).all()]
 
     async def tickets_closed(
         self, *, client_id: str, since: datetime.date | None
