@@ -109,7 +109,7 @@ export function NeedsAction({ period }: { period: PeriodKey }) {
   if (attention.isPending && map.isPending) {
     return (
       <section aria-label="Needs action">
-        <Skeleton aria-hidden className="h-[420px] w-full rounded-lg bg-hero-panel" />
+        <Skeleton aria-hidden className="h-[420px] w-full rounded-lg bg-hero" />
       </section>
     );
   }
