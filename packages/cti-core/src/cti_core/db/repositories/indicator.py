@@ -575,6 +575,48 @@ class AsyncIndicatorRepo:
         )
         return list(result.scalars().unique().all())
 
+    async def list_for_article(
+        self, article_id: int, *, limit: int = 200
+    ) -> tuple[list[tuple[Indicator, str | None]], int]:
+        """IOC usable milik SATU artikel untuk reader (5c B-N5): satu baris per indikator dengan
+        konteks non-kosong pertama dari baris `IndicatorSource` artikel ini saja (bukan sumber
+        artikel lain), urut type lalu value, dipotong `limit`, plus total tanpa potongan.
+        `list_by_article_ids` tidak diubah (dipakai klaster kampanye)."""
+        src = IndicatorSource
+        in_article = (
+            select(src.indicator_id)
+            .where(src.article_id == article_id)
+            .group_by(src.indicator_id)
+            .subquery()
+        )
+        total = (
+            await self.session.execute(
+                select(func.count())
+                .select_from(Indicator)
+                .where(Indicator.id.in_(select(in_article.c.indicator_id)), Indicator.usable)
+            )
+        ).scalar_one()
+        # Konteks pertama = baris sumber non-kosong tertua artikel ini (id sebagai tie-break).
+        first_context = (
+            select(src.context)
+            .where(
+                src.indicator_id == Indicator.id,
+                src.article_id == article_id,
+                src.context.is_not(None),
+                src.context != "",
+            )
+            .order_by(src.first_seen_at, src.id)
+            .limit(1)
+            .scalar_subquery()
+        )
+        rows = await self.session.execute(
+            select(Indicator, first_context)
+            .where(Indicator.id.in_(select(in_article.c.indicator_id)), Indicator.usable)
+            .order_by(Indicator.type, Indicator.value)
+            .limit(limit)
+        )
+        return [(ind, ctx) for ind, ctx in rows.all()], int(total)
+
     async def get_stats(self) -> dict[str, object]:
         total = (
             await self.session.execute(

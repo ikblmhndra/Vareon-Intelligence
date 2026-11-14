@@ -29,6 +29,7 @@ from cti_core.db.models.source_reliability import SourceReliabilityEntry
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.assessment import apply_assessments_async
 from cti_core.db.repositories.auth import AsyncAuditLogRepo
+from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from cti_core.db.repositories.source_reliability import AsyncSourceReliabilityRepo
 from cti_core.db.repositories.story import AsyncStoryRepo
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
@@ -45,6 +46,8 @@ from cti_api.deps import (
 from cti_api.schemas.article import (
     TTP,
     ArticleEntityRef,
+    ArticleIocOut,
+    ArticleIocsOut,
     ArticleListResponse,
     ArticleOut,
     CredibilityOverrideIn,
@@ -71,6 +74,7 @@ from cti_api.services import (
     trending,
 )
 from cti_api.services import dedup as dedup_service
+from cti_api.services.ioc_reputation import reputation_label
 
 router = APIRouter(
     prefix="/api",
@@ -537,3 +541,30 @@ async def get_article_inferred_ttps(
     if article is None:
         raise HTTPException(status_code=404, detail="Article not found")
     return await inferred_ttps.for_article(session, article)
+
+
+@router.get(
+    "/articles/{article_id}/iocs",
+    response_model=ArticleIocsOut,
+    dependencies=[Depends(require_auth)],
+)
+async def get_article_iocs(
+    article_id: int, session: AsyncSession = Depends(get_db)
+) -> ArticleIocsOut:
+    """IOC artikel untuk reader All articles; `ArticleOut.iocs` tetap `{}` (daftar ini hanya
+    dimuat saat reader terbuka, bukan di setiap baris list)."""
+    if await AsyncArticleRepo(session).get_by_id(article_id) is None:
+        raise HTTPException(status_code=404, detail="Article not found")
+    rows, total = await AsyncIndicatorRepo(session).list_for_article(article_id)
+    return ArticleIocsOut(
+        items=[
+            ArticleIocOut(
+                type=ind.type,
+                value=ind.value,
+                context=ctx,
+                reputation=reputation_label(ind.enrichment or {}),
+            )
+            for ind, ctx in rows
+        ],
+        total=total,
+    )
