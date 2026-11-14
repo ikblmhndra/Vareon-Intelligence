@@ -197,3 +197,19 @@ class DashboardStats(BaseModel):
     top_ttps: list[TopItem]
     by_news_type: list[TopItem]
     timeline: list[TimelinePoint]
+
+
+class ArticleIocOut(BaseModel):
+    type: str
+    # Nilai tersimpan, TIDAK di-defang: UI yang mendefang saat menampilkan.
+    value: str
+    # Konteks non-kosong pertama dari baris sumber artikel ini.
+    context: str | None
+    # "{verdict} ({provider})" dari kartu enrichment; `None` bila belum ada penilaian.
+    reputation: str | None
+
+
+class ArticleIocsOut(BaseModel):
+    items: list[ArticleIocOut]
+    # Total sebelum dipotong 200; UI menulis "Showing the first 200." bila > len(items).
+    total: int

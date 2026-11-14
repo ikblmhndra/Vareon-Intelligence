@@ -1,7 +1,6 @@
 "use client";
 
 import { PanelError } from "@/components/dashboard/stat-box";
-import type { Source as SheetSource } from "@/components/newsroom/article-list-sheet";
 import { useTopics } from "@/components/newsroom/newsroom-queries";
 import { BarSeries } from "@/components/ui/bar-series";
 import { Chip } from "@/components/ui/chip";
@@ -14,7 +13,7 @@ type Topic = components["schemas"]["TopicOut"];
 
 const GRID = "mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6";
 
-/** Topik aktif: tren aktor/teknik (D14), bukan klaster cerita. Sheet dibuka lewat tombol nama. */
+/** Topik aktif: tren aktor/teknik (D14), bukan klaster cerita. All articles dibuka lewat tombol nama. */
 export function TopicsSection({
   filters,
   words,
@@ -25,13 +24,13 @@ export function TopicsSection({
   words: string;
   /** Tanggal `?from=` (sudah diformat); menggantikan `words` karena `from` menang atas periode. */
   since?: string;
-  onOpen: (source: SheetSource, title: string) => void;
+  onOpen: (target: { actor: string } | { ttp: string }) => void;
 }) {
   const q = useTopics(filters);
 
   function open(t: Topic) {
-    if (t.kind === "ttp") onOpen({ ttp: t.ttp_id ?? t.name }, [t.ttp_id, t.name].filter(Boolean).join(" "));
-    else onOpen({ actor: t.name }, t.name);
+    if (t.kind === "ttp") onOpen({ ttp: t.ttp_id ?? t.name });
+    else onOpen({ actor: t.name });
   }
 
   return (

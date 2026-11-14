@@ -12,7 +12,6 @@ import { MoreSection } from "@/components/dashboard/more-section";
 import { MustRead } from "@/components/dashboard/must-read";
 import { NeedsAction } from "@/components/dashboard/needs-action";
 import { Trending } from "@/components/dashboard/trending";
-import { useArticleOpener } from "@/components/dashboard/article-opener";
 import { useLlmQueue } from "@/components/dashboard/use-dashboard-overview";
 import { PageHeader } from "@/components/page-header";
 import { useAuth } from "@/components/providers/auth-provider";
@@ -23,7 +22,9 @@ import { StatePanel } from "@/components/ui/state-panel";
 import { useActiveClientName } from "@/lib/auth/client-id";
 import { useCan } from "@/lib/auth/permissions";
 import { fmtTime } from "@/lib/format";
-import { PERIODS, parsePeriod, periodHref, type PeriodKey } from "@/lib/dashboard/period";
+import { PERIODS, parsePeriod, periodHref, periodInfo, type PeriodKey } from "@/lib/dashboard/period";
+import { newsroomAllHref } from "@/lib/newsroom/all-state";
+import { allPeriodPatch } from "@/lib/newsroom/links";
 
 const noopSubscribe = () => () => {};
 // String primitif: snapshot stabil antar panggilan. Tanggal hanya dibaca di snapshot klien, bukan saat render.
@@ -42,13 +43,17 @@ export function DashboardView() {
   const clientName = useActiveClientName();
   const title = useSyncExternalStore(noopSubscribe, todaySnapshot, () => "Dashboard");
   const [threatOnly, setThreatOnly] = useState(true);
-  const { openArticle, host } = useArticleOpener();
   // Banner saran: error/closed/tanpa view_ops = tidak tampil dan tidak ada teks error. Hook sebelum early return.
   const { data: llm } = useLlmQueue(can("view_ops") && can("view_news"));
 
   // Periode dibaca dari URL tiap render, tanpa state tiruan: URL satu-satunya sumber.
   const period = parsePeriod(searchParams.get("period"));
   const kicker = clientName ? `THREAT BRIEFING · ${clientName.toUpperCase()}` : "THREAT BRIEFING";
+
+  /** Lead / Must read membuka pembaca di All articles dengan periode Dashboard (90 hari menjadi `from`). */
+  function openArticle(a: { id: number }) {
+    router.push(newsroomAllHref({ article: a.id, ...allPeriodPatch(periodInfo(period).days) }));
+  }
 
   function onPeriod(key: PeriodKey) {
     // ?period=7 / ?period=abc terbaca sebagai default; memilih ulang default itu bukan perubahan, jangan kirim replace.
@@ -122,7 +127,6 @@ export function DashboardView() {
         <CveWatchlist period={period} />
         <MoreSection period={period} threatOnly={threatOnly} />
       </div>
-      {host}
     </div>
   );
 }
