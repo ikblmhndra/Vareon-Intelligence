@@ -603,8 +603,9 @@ None.
 `make deploy` restores the `:prev` images on a failed health check; it never auto-downgrades the database. Rolling back
 to 0.8.15 removes the new endpoints and the `daily` block. The `b7d41e9a2c63` migration is additive (nullable columns
 and new tables the old code ignores), so it is safe to leave in place; no manual downgrade is needed. The same holds for
-`c4e8a1f2b9d6`: after an image rollback `exec_briefs` is simply unused. Downgrading that migration (`alembic downgrade
--1`, never automatic) drops the stored briefs; they are regenerated from the next 06:00 run. The X Intel, Recap and Newsletter part (4a) has no migration or data change: an image rollback just drops the two optional parameters and the extra stats keys. The Scrapers and Data health part (4b) has no migration or data change: an image rollback only drops the three additive `data-health` fields. The Access part (4c) has no migration: an image rollback only; flags set while 0.8.16 ran stay set and the old forced dialog still handles them. The Dashboard part (5a): image rollback only. The old code ignores `articles.summary`, so the column stays in place (the deploy never downgrades the database). A manual `alembic downgrade -1` drops the column and the stored excerpts with it.
+`c4e8a1f2b9d6`: after an image rollback `exec_briefs` is simply unused. Downgrading it by hand (never automatic) is
+`alembic downgrade b7d41e9a2c63`, which drops the stored briefs (they are regenerated from the next 06:00 run) and also
+removes `articles.summary` (see the Dashboard part below). The X Intel, Recap and Newsletter part (4a) has no migration or data change: an image rollback just drops the two optional parameters and the extra stats keys. The Scrapers and Data health part (4b) has no migration or data change: an image rollback only drops the three additive `data-health` fields. The Access part (4c) has no migration: an image rollback only; flags set while 0.8.16 ran stay set and the old forced dialog still handles them. The Dashboard part (5a): image rollback only. The old code ignores `articles.summary`, so the column stays in place (the deploy never downgrades the database). A manual `alembic downgrade c4e8a1f2b9d6` drops the column and the stored excerpts with it, and keeps the stored briefs.
 
 ### Known risks
 
