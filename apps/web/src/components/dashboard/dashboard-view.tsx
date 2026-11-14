@@ -51,6 +51,8 @@ export function DashboardView() {
   const kicker = clientName ? `THREAT BRIEFING · ${clientName.toUpperCase()}` : "THREAT BRIEFING";
 
   function onPeriod(key: PeriodKey) {
+    // ?period=7 / ?period=abc terbaca sebagai default; memilih ulang default itu bukan perubahan, jangan kirim replace.
+    if (key === period) return;
     const qs = searchParams.toString();
     const next = periodHref(pathname, new URLSearchParams(qs), key);
     // Jangan menavigasi ke URL yang sama: menumpuk riwayat dan memicu render sia-sia.

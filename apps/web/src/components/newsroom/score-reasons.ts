@@ -53,7 +53,7 @@ export const PRIORITY_LINE: Record<string, (a: Article) => string> = {
   ttps: (a) => (a.ttps.length > 0 ? `${a.ttps.length} ATT&CK techniques` : "ATT&CK techniques"),
   actor: () => "Named threat actor",
   corroboration: (a) =>
-    a.story ? `Corroborated by ${a.story.source_count} sources` : "Corroborated by other sources",
+    a.story ? `Corroborated by ${a.story.source_count} ${a.story.source_count === 1 ? "source" : "sources"}` : "Corroborated by other sources",
   pir_match: (a) =>
     a.score_reasons.pir.length > 0
       ? `Matches your PIR: ${a.score_reasons.pir.map((p) => p.title).join(", ")}`

@@ -40,7 +40,7 @@ export function Trending({ period }: { period: PeriodKey }) {
       <div className="mt-4">
         {q.isPending ? (
           <Skeleton aria-hidden className="h-56 w-full rounded-xl" />
-        ) : q.isError ? (
+        ) : q.isError && !q.data ? (
           <PanelError title="Could not load trending" error={q.error} onRetry={() => void q.refetch()} />
         ) : items.length === 0 ? (
           <p className="text-sm text-muted-foreground">Nothing is rising in this period.</p>

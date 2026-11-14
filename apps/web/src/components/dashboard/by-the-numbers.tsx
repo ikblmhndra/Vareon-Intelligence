@@ -53,33 +53,37 @@ function Row({
 }) {
   const failed = state.error;
   return (
-    <div className={cn("flex items-center justify-between gap-4 py-3", state.stale && "opacity-60")}>
-      <div className="flex min-w-0 flex-col">
-        {/* dt dulu di DOM (dl: istilah sebelum nilai); angka tetap tampil paling atas lewat order-*. */}
-        <dt className="order-2 mt-1 text-sm font-medium text-muted-foreground">{label}</dt>
-        <dd className="order-1 font-code text-4xl leading-none font-bold tracking-tight text-foreground tabular-nums">
-          {failed ? "–" : state.pending || value == null ? <Skeleton aria-hidden="true" className="h-9 w-20" /> : n(value)}
-        </dd>
-        <dd className="order-3 mt-0.5 text-xs text-muted-foreground">
-          {failed ? (
-            <>
-              Could not load{" "}
-              <button
-                type="button"
-                onClick={state.retry}
-                className="rounded-sm text-primary underline underline-offset-2 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
-              >
-                Retry
-              </button>
-            </>
-          ) : state.pending ? (
-            <Skeleton aria-hidden="true" className="h-3 w-40" />
-          ) : (
-            second
-          )}
-        </dd>
-      </div>
-      <div className="flex w-24 shrink-0 justify-end">{!failed && !state.pending && graphic}</div>
+    // dl > div > (dt, dd, dd, dd): satu pembungkus per grup (HTML/axe). Grid menggantikan kolom flex: angka di baris 1,
+    // dt di baris 2, baris kedua di baris 3, grafik di kolom kanan; urutan DOM tetap istilah sebelum nilai.
+    <div
+      className={cn(
+        "grid grid-cols-[minmax(0,1fr)_6rem] items-center gap-x-4 py-3",
+        state.stale && "opacity-60",
+      )}
+    >
+      <dt className="col-start-1 row-start-2 mt-1 text-sm font-medium text-muted-foreground">{label}</dt>
+      <dd className="col-start-1 row-start-1 font-code text-4xl leading-none font-bold tracking-tight text-foreground tabular-nums">
+        {failed ? "–" : state.pending || value == null ? <Skeleton aria-hidden="true" className="h-9 w-20" /> : n(value)}
+      </dd>
+      <dd className="col-start-1 row-start-3 mt-0.5 text-xs text-muted-foreground">
+        {failed ? (
+          <>
+            Could not load{" "}
+            <button
+              type="button"
+              onClick={state.retry}
+              className="rounded-sm text-primary underline underline-offset-2 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
+            >
+              Retry
+            </button>
+          </>
+        ) : state.pending ? (
+          <Skeleton aria-hidden="true" className="h-3 w-40" />
+        ) : (
+          second
+        )}
+      </dd>
+      <dd className="col-start-2 row-span-3 row-start-1 flex justify-end">{!failed && !state.pending && graphic}</dd>
     </div>
   );
 }
@@ -97,7 +101,7 @@ export function ByTheNumbers({ period, threatOnly }: { period: PeriodKey; threat
 
   const st = (q: { data: unknown; isError: boolean; isPlaceholderData: boolean; refetch: () => unknown }): RowState => ({
     pending: q.data == null && !q.isError,
-    error: q.isError,
+    error: q.isError && q.data == null,
     stale: q.isPlaceholderData,
     retry: () => void q.refetch(),
   });

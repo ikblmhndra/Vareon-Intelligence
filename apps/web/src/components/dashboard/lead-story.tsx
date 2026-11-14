@@ -25,7 +25,8 @@ export function LeadStory({
   const info = periodInfo(period);
   const q = useMustRead(info.days);
 
-  if (q.isError) {
+  // Refetch gagal tidak boleh menimpa data yang sudah ada: error hanya bila belum ada data.
+  if (q.isError && !q.data) {
     return <PanelError title="Could not load the lead story" error={q.error} onRetry={() => void q.refetch()} />;
   }
   if (!q.data) return <Skeleton aria-hidden className="h-72 w-full rounded-xl" />;

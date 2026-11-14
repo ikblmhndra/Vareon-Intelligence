@@ -39,12 +39,20 @@ function lastDates(generatedAt: string): string[] {
   );
 }
 
-/** Persen dari total yang ditampilkan, dibulatkan; baris terakhir mengambil sisa supaya kolom = 100. */
+/** Persen dari total yang ditampilkan. Largest-remainder: lantai tiap baris, sisa poin ke pecahan terbesar, supaya
+ * tidak ada baris negatif/0% semu dan kolom pas 100 (menaruh sisa di baris terakhir bisa menghasilkan "-1%"). */
 function percents(values: number[]): number[] {
   const total = values.reduce((a, b) => a + b, 0);
   if (total <= 0) return values.map(() => 0);
-  const out = values.map((v) => Math.round((v / total) * 100));
-  out[out.length - 1] = 100 - out.slice(0, -1).reduce((a, b) => a + b, 0);
+  const exact = values.map((v) => (v / total) * 100);
+  const out = exact.map(Math.floor);
+  let left = 100 - out.reduce((a, b) => a + b, 0);
+  exact
+    .map((x, i) => ({ i, frac: x - Math.floor(x) }))
+    .sort((a, b) => b.frac - a.frac || a.i - b.i)
+    .forEach(({ i }) => {
+      if (left-- > 0) out[i] += 1;
+    });
   return out;
 }
 
@@ -90,9 +98,10 @@ export function MonthCharts({ threatOnly }: { threatOnly: boolean }) {
             labels={labels}
             values={values}
             highlight={(i) => top.has(i)}
+            tone="neutral"
             highlightTone="destructive"
             height={BODY_HEIGHT}
-            tickEvery={7}
+            tickEvery={10}
             aria-label="Confirmed incidents per day, last 30 days"
           />
           <p className="sr-only">
@@ -208,8 +217,8 @@ export function MonthCharts({ threatOnly }: { threatOnly: boolean }) {
                 <Link href={entityHref({ type: "attack-pattern", name: id })} className={cn("w-16 shrink-0 font-code text-foreground", linkClass)}>
                   {id}
                 </Link>
-                <span className="w-24 shrink-0 truncate text-muted-foreground" title={name}>{name}</span>
-                <MeterBar value={t.count} max={max} tone="primary" aria-label={`${t.name}: ${t.count}`} className="min-w-0 flex-1" />
+                <span className="min-w-0 flex-1 truncate text-muted-foreground" title={name}>{name}</span>
+                <MeterBar value={t.count} max={max} tone="primary" aria-label={`${t.name}: ${t.count}`} className="w-12 shrink-0" />
                 <span className="w-8 shrink-0 text-right font-code text-foreground">{num(t.count)}</span>
               </li>
             );

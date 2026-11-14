@@ -25,7 +25,7 @@ export function MustRead({ period, openArticle }: { period: PeriodKey; openArtic
       <p className="mt-0.5 text-sm text-muted-foreground">Ranked by priority score</p>
       {q.isPending ? (
         <Skeleton aria-hidden className="mt-3 h-72 w-full rounded-xl" />
-      ) : q.isError ? (
+      ) : q.isError && !q.data ? (
         <PanelError
           title="Could not load the reading list"
           error={q.error}

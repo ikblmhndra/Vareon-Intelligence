@@ -35,7 +35,7 @@ export function MoreSection({ period, threatOnly }: { period: PeriodKey; threatO
     <Disclosure
       title="More"
       headingLevel={2}
-      printOpen
+      printOpen={opened}
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
@@ -77,8 +77,8 @@ function MoreBody({
   let context: ReactNode;
   if (attention.isPending || stats.isPending) {
     context = <PanelSkeleton height={160} />;
-  } else if (attention.isError || stats.isError) {
-    const failed = attention.isError ? attention : stats;
+  } else if ((attention.isError && !attention.data) || (stats.isError && !stats.data)) {
+    const failed = attention.isError && !attention.data ? attention : stats;
     context = (
       <PanelError title="Could not load your context" error={failed.error} onRetry={() => void failed.refetch()} />
     );
@@ -98,7 +98,7 @@ function MoreBody({
             value={
               cluster.isPending ? (
                 <Skeleton aria-hidden className="mt-1 h-5 w-3/4" />
-              ) : cluster.isError ? (
+              ) : cluster.isError && !cluster.data ? (
                 <span className="text-sm text-destructive-text">{cluster.error instanceof Error ? cluster.error.message : "Could not load the newest campaign cluster."}</span>
               ) : cluster.data ? (
                 <Link
@@ -129,7 +129,7 @@ function MoreBody({
             >
               {stats.isPending ? (
                 <PanelSkeleton height={280} />
-              ) : stats.isError ? (
+              ) : stats.isError && !stats.data ? (
                 <PanelError
                   title="Could not load articles over time"
                   error={stats.error}
@@ -153,7 +153,7 @@ function MoreBody({
               <div className="h-56">
                 {ransomware.isPending ? (
                   <PanelSkeleton height={224} />
-                ) : ransomware.isError ? (
+                ) : ransomware.isError && !ransomware.data ? (
                   <PanelError
                     title="Could not load ransomware victims per week"
                     error={ransomware.error}
@@ -191,7 +191,7 @@ function MoreBody({
               <Skeleton className="h-72 rounded-2xl lg:col-span-4" />
               <Skeleton className="h-72 rounded-2xl lg:col-span-8" />
             </div>
-          ) : ta.isError ? (
+          ) : ta.isError && !ta.data ? (
             <PanelError
               title="Could not load threat actor room"
               error={ta.error}
@@ -200,7 +200,13 @@ function MoreBody({
           ) : (
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
               <MapCard flat className="lg:col-span-4" title="APT Groups by Source">
-                <BreakdownList items={ta.data.by_source.map((x) => ({ label: toTitleCase(x.name), count: x.count }))} />
+                {ta.data.by_source.length ? (
+                  <BreakdownList items={ta.data.by_source.map((x) => ({ label: toTitleCase(x.name), count: x.count }))} />
+                ) : (
+                  <p className="flex h-full items-center justify-center text-xs text-muted-foreground">
+                    No APT group sources yet.
+                  </p>
+                )}
               </MapCard>
               <ChartCard className="lg:col-span-8" title="Tracked APT Groups in the News" height={260}>
                 {ta.data.top_in_news.length ? (
