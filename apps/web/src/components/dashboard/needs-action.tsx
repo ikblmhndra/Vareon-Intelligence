@@ -1,13 +1,18 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useMemo, useRef, useState } from "react";
 
 import { useTechStackNames, useWatchlistNames } from "@/components/newsroom/rubric-queries";
 import { heroLinkClass, HeroPanel } from "@/components/ui/hero-panel";
+import { MeterBar } from "@/components/ui/meter-bar";
 import { Skeleton } from "@/components/ui/skeleton";
+import { inView, type WorldDotPoint, type WorldView } from "@/components/world-dots";
 import { useActiveClientName } from "@/lib/auth/client-id";
 import { useCan } from "@/lib/auth/permissions";
-import { countryName } from "@/lib/dashboard/countries";
+import { countryName, normalizeCountry } from "@/lib/dashboard/countries";
 import { periodInfo, type PeriodKey } from "@/lib/dashboard/period";
 import { cn } from "@/lib/utils";
 
@@ -16,6 +21,27 @@ import {
   useDashboardMap,
   type DashboardAttention,
 } from "./use-dashboard-overview";
+
+// Canvas peta hanya jalan di browser; render server dilewati seperti hero lama.
+const WorldDots = dynamic(() => import("@/components/world-dots").then((m) => m.WorldDots), {
+  ssr: false,
+});
+
+interface Detail {
+  point: WorldDotPoint;
+  incidents: number;
+  victims: number;
+  topActor?: string | null;
+  topIndustry?: string | null;
+}
+
+interface Focus {
+  detail: Detail;
+  x: number;
+  y: number;
+  data: unknown; // data peta saat fokus; tooltip dibuang bila data berganti (ganti periode)
+  below: boolean; // titik dekat tepi atas: tooltip di bawah titik supaya tidak terpotong
+}
 
 const num = (n: number) => n.toLocaleString("en-US");
 
@@ -92,6 +118,67 @@ export function NeedsAction({ period }: { period: PeriodKey }) {
   const client = useActiveClientName() ?? "your organisation";
   const tech = useTechStackNames(can("view_cve"));
   const watch = useWatchlistNames(can("view_ta"));
+  const router = useRouter();
+  const mapBoxRef = useRef<HTMLDivElement>(null);
+  const [view, setView] = useState<WorldView>("apac");
+  const [focus, setFocus] = useState<Focus | null>(null);
+
+  // Memoise: array baru tiap render membangun ulang raster daratan di WorldDots.
+  const { points, details } = useMemo(() => {
+    const clientCountries = new Set((map.data?.client_countries ?? []).map(normalizeCountry));
+    const details = new Map<WorldDotPoint, Detail>();
+    const points: WorldDotPoint[] = [];
+    for (const m of map.data?.points ?? []) {
+      // Baris tanpa kode negara (korban ransomware) tidak punya koordinat: tidak dikirim ke peta.
+      if (!m.country_code) continue;
+      const point: WorldDotPoint = {
+        code: m.country_code,
+        weight: m.incidents + m.ransomware_victims,
+        tone: m.incidents >= m.ransomware_victims ? "incident" : "ransomware",
+        ring: clientCountries.has(normalizeCountry(m.country_code)),
+        label: `${countryName(m.country_code)}: ${m.incidents} incidents, ${m.ransomware_victims} ransomware victims`,
+      };
+      points.push(point);
+      details.set(point, {
+        point,
+        incidents: m.incidents,
+        victims: m.ransomware_victims,
+        topActor: m.top_actor,
+        topIndustry: m.top_industry,
+      });
+    }
+    return { points, details };
+  }, [map.data]);
+
+  // Hanya titik yang terlihat di tampilan aktif; daftar sr-only dan overlay mengikutinya.
+  const inViewTop = useMemo(
+    () => points.filter((p) => inView(p.code, view)).sort((a, b) => b.weight - a.weight),
+    [points, view],
+  );
+  const topPoints = inViewTop.slice(0, 10);
+  const topCountries = inViewTop.slice(0, 4);
+
+  // WorldDots hanya melaporkan titiknya; posisi tooltip dibaca dari tombol titik itu di DOM.
+  function onPointFocus(p: WorldDotPoint | null) {
+    const detail = p ? details.get(p) : undefined;
+    const box = mapBoxRef.current;
+    if (!p || !detail || !box) return setFocus(null);
+    const btn = Array.from(box.querySelectorAll("button")).find(
+      (b) => b.getAttribute("aria-label") === p.label,
+    );
+    if (!btn) return setFocus(null);
+    const b = btn.getBoundingClientRect();
+    const r = box.getBoundingClientRect();
+    const half = 100; // setengah lebar tooltip, perkiraan
+    setFocus({
+      detail,
+      data: map.data,
+      x: Math.min(Math.max(b.left - r.left + b.width / 2, half), Math.max(half, r.width - half)),
+      y: b.top - r.top + (b.top - r.top < 90 ? b.height : 0),
+      below: b.top - r.top < 90,
+    });
+  }
+  const shown = focus && focus.data === map.data ? focus : null;
 
   const noData =
     can("view_cve") &&
@@ -179,8 +266,114 @@ export function NeedsAction({ period }: { period: PeriodKey }) {
       >
         <div className="grid gap-6 lg:grid-cols-[minmax(0,752fr)_500px]">
           <div>{left}</div>
-          {/* Task 15: peta sinyal mengisi kolom ini. */}
-          <div className="h-[380px] w-[500px] max-w-full" />
+          <div className="relative h-[380px] w-[500px] max-w-full overflow-hidden rounded-md">
+            <div ref={mapBoxRef} className="absolute inset-0">
+              {map.data && points.length > 0 && (
+                <WorldDots
+                  points={points}
+                  view={view}
+                  onPointFocus={onPointFocus}
+                  onPointSelect={(p) => router.push(`/newsroom?country=${encodeURIComponent(p.code)}`)}
+                />
+              )}
+              {shown && (
+                <div
+                  role="status"
+                  className={cn(
+                    "pointer-events-none absolute z-10 -translate-x-1/2 rounded-md bg-hero-panel px-3 py-2 text-sm text-hero-foreground shadow-lg",
+                    !shown.below && "-translate-y-full",
+                  )}
+                  style={{ left: shown.x, top: shown.below ? shown.y + 8 : shown.y - 8 }}
+                >
+                  <div className="font-semibold">{countryName(shown.detail.point.code)}</div>
+                  <div className="text-xs whitespace-nowrap tabular-nums">
+                    {shown.detail.incidents} incidents · {shown.detail.victims} ransomware victims
+                  </div>
+                  {(shown.detail.topActor || shown.detail.topIndustry) && (
+                    <div className="text-xs whitespace-nowrap text-hero-muted">
+                      Top: {[shown.detail.topActor, shown.detail.topIndustry].filter(Boolean).join(", ")}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="pointer-events-none absolute top-0 right-0 left-0 flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-hero-foreground">Signal map</h3>
+                <p className="text-xs text-hero-muted">Incidents &amp; ransomware victims, {words}</p>
+              </div>
+              <div className="pointer-events-auto flex gap-3 text-xs">
+                {(["apac", "world"] as const).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    aria-pressed={view === v}
+                    onClick={() => {
+                      setView(v);
+                      setFocus(null);
+                    }}
+                    className={cn(heroLinkClass, view === v ? "font-semibold underline" : "text-hero-muted")}
+                  >
+                    {v === "apac" ? "APAC" : "World"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {map.isPending && <Skeleton aria-hidden className="absolute inset-0 bg-hero-panel" />}
+            <ul className="pointer-events-none absolute bottom-0 left-0 flex flex-wrap gap-x-4 gap-y-1 text-xs text-hero-muted">
+              <li className="flex items-center gap-1.5">
+                <span className="size-2 rounded-full bg-hero-accent" aria-hidden />
+                Incidents
+              </li>
+              <li className="flex items-center gap-1.5">
+                <span className="size-2 rounded-full bg-hero-eyebrow" aria-hidden />
+                Ransomware
+              </li>
+              <li className="flex items-center gap-1.5">
+                <span className="size-2.5 rounded-full border border-hero-foreground" aria-hidden />
+                Your countries (ring)
+              </li>
+            </ul>
+            {topCountries.length > 0 && (
+              <div className="pointer-events-none absolute right-0 bottom-0 w-52 rounded-md bg-hero-panel p-3">
+                <p className="text-2xs font-bold tracking-[0.12em] text-hero-eyebrow uppercase">Top countries</p>
+                <ul className="mt-2 flex flex-col gap-1.5 text-xs text-hero-foreground">
+                  {topCountries.map((p) => (
+                    <li key={`${p.code}-${p.tone}`} className="flex items-center gap-2">
+                      <span className="w-20 shrink-0 truncate">{countryName(p.code)}</span>
+                      <MeterBar
+                        onHero
+                        value={p.weight}
+                        max={topCountries[0].weight}
+                        aria-label={countryName(p.code)}
+                        className="min-w-0 flex-1"
+                      />
+                      <span className="font-code tabular-nums">{num(p.weight)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {map.isError && !map.data && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center text-sm">
+                <p className="font-semibold text-hero-foreground">Could not load the map</p>
+                <p>{map.error instanceof Error && map.error.message ? map.error.message : "The request failed."}</p>
+                <button type="button" onClick={() => map.refetch()} className={cn(heroLinkClass, "font-semibold")}>
+                  Retry
+                </button>
+              </div>
+            )}
+            {map.data && points.length === 0 && (
+              <p className="pointer-events-none absolute inset-0 flex items-center justify-center px-6 text-center text-sm">
+                No incidents with a country in this period.
+              </p>
+            )}
+            <ol className="sr-only">
+              {topPoints.map((p) => (
+                <li key={`${p.code}-${p.tone}`}>{p.label}</li>
+              ))}
+            </ol>
+          </div>
         </div>
       </HeroPanel>
     </section>
