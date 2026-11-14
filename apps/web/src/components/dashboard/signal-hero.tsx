@@ -1,20 +1,14 @@
 "use client";
 
-import countries from "i18n-iso-countries";
-import en from "i18n-iso-countries/langs/en.json";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 
 import { Skeleton } from "@/components/ui/skeleton";
+import { countryName, normalizeCountry } from "@/lib/dashboard/countries";
 import { WorldDots, type WorldDotPoint } from "@/components/world-dots";
 import { useDashboardAttention, useDashboardMap } from "./use-dashboard-overview";
 
-countries.registerLocale(en);
-
-const ALIAS: Record<string, string> = { UK: "GB", EL: "GR" };
-const normalize = (code: string) => ALIAS[code.toUpperCase()] ?? code.toUpperCase();
-const countryName = (code: string) => countries.getName(normalize(code), "en") ?? code;
 
 interface Detail {
   point: WorldDotPoint;
@@ -40,14 +34,14 @@ interface Focus {
 export function SignalHero({ days, incidentOnly }: { days: number | null; incidentOnly: boolean }) {
   const router = useRouter();
   const map = useDashboardMap(days);
-  const attention = useDashboardAttention(days, incidentOnly);
+  const attention = useDashboardAttention(days);
   const mapBoxRef = useRef<HTMLDivElement>(null);
   const [focus, setFocus] = useState<Focus | null>(null);
   const periodLabel = days ? `${days} hari terakhir` : "Semua waktu";
 
   // Memoise: array baru tiap render membangun ulang raster daratan di WorldDots.
   const { points, details } = useMemo(() => {
-    const clientCountries = new Set((map.data?.client_countries ?? []).map(normalize));
+    const clientCountries = new Set((map.data?.client_countries ?? []).map(normalizeCountry));
     const details = new Map<WorldDotPoint, Detail>();
     const points: WorldDotPoint[] = [];
     for (const m of map.data?.points ?? []) {
@@ -57,7 +51,7 @@ export function SignalHero({ days, incidentOnly }: { days: number | null; incide
         code: m.country_code,
         weight: m.incidents + m.ransomware_victims,
         tone: m.incidents >= m.ransomware_victims ? "incident" : "ransomware",
-        ring: clientCountries.has(normalize(m.country_code)),
+        ring: clientCountries.has(normalizeCountry(m.country_code)),
         label: `${name}: ${m.incidents} insiden, ${m.ransomware_victims} korban ransomware`,
       };
       points.push(point);

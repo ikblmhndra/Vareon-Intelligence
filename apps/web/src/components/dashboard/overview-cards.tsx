@@ -9,7 +9,6 @@ import { EntityChip } from "@/components/entities/entity-chip";
 import { actorChips } from "@/lib/entities/article-refs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api/client";
-import type { CampaignsResponse } from "@/lib/api/loose-types";
 import { cn } from "@/lib/utils";
 import { GradeChip } from "@/components/newsroom/grade-chip";
 import { useArticleMatchers } from "@/components/newsroom/rubric-queries";
@@ -20,6 +19,8 @@ import {
   useDashboardAttention,
   useDashboardRansomware,
   useDashboardTrending,
+  useNewestCluster,
+  TREND_KINDS,
 } from "./use-dashboard-overview";
 
 /**
@@ -140,7 +141,7 @@ export function MustReadCard({ days, className }: { days: number | null; classNa
 }
 
 export function TrendingCard({ days, className }: { days: number | null; className?: string }) {
-  const q = useDashboardTrending(days);
+  const q = useDashboardTrending(days, TREND_KINDS);
   const items = (q.data?.items ?? []).slice(0, 4);
   return (
     <CardBody
@@ -236,7 +237,7 @@ export function RansomwareCard({ days, className }: { days: number | null; class
 }
 
 export function CveExposureCard({ days, className }: { days: number | null; className?: string }) {
-  const q = useCveExposure(days);
+  const q = useCveExposure(days, 3);
   const items = (q.data?.items ?? []).slice(0, 3);
   return (
     <CardBody
@@ -297,15 +298,8 @@ export function ClientContextCard({
   className?: string;
 }) {
   // Kirim toggle yang sama dengan SignalHero supaya keduanya berbagi satu cache query.
-  const attention = useDashboardAttention(days, incidentOnly);
-  const cluster = useQuery({
-    queryKey: ["dashboard", "newest-cluster"],
-    queryFn: async () => {
-      const { data, error } = await api.GET("/api/clusters/recent", { params: { query: { days: 30 } } });
-      if (error) throw error;
-      return (data as unknown as CampaignsResponse).campaigns[0] ?? null;
-    },
-  });
+  const attention = useDashboardAttention(days);
+  const cluster = useNewestCluster(true);
   const c = cluster.data;
   return (
     <CardBody

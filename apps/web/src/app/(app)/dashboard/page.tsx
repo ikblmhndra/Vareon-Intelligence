@@ -1,10 +1,7 @@
 "use client";
 
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState, useSyncExternalStore } from "react";
 
-import { api } from "@/lib/api/client";
-import type { TaStats } from "@/lib/api/loose-types";
 import { ChartCard, DashboardSectionLabel, Delta, MapCard, StatBox } from "@/components/dashboard/stat-box";
 import {
   ClientContextCard,
@@ -16,7 +13,10 @@ import {
 import {
   useCveExposure,
   useDashboardRansomware,
+  useDashboardStats,
   useDashboardTrending,
+  useTaStats,
+  TREND_KINDS,
 } from "@/components/dashboard/use-dashboard-overview";
 import { useAuth } from "@/components/providers/auth-provider";
 import { getActiveClientId } from "@/lib/auth/client-id";
@@ -40,33 +40,6 @@ function toTitleCase(s: string): string {
   return s.replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1));
 }
 
-function useDashboardStats(filters: DashboardFilters) {
-  return useQuery({
-    queryKey: ["dashboard", "stats", filters.days, filters.incidentOnly],
-    queryFn: async () => {
-      const { data, error } = await api.GET("/api/dashboard", {
-        params: { query: { days: filters.days ?? undefined, incident_only: filters.incidentOnly } },
-      });
-      if (error) throw error;
-      return data;
-    },
-    // Ganti periode/toggle: tetap tampilkan angka lama (diredupkan) sampai yang baru datang,
-    // bukan mengosongkan semua kartu lalu menggambar ulang.
-    placeholderData: keepPreviousData,
-  });
-}
-
-function useTaStats() {
-  return useQuery({
-    queryKey: ["dashboard", "ta-stats"],
-    queryFn: async () => {
-      const { data, error } = await api.GET("/api/ta/stats");
-      if (error) throw error;
-      return data as unknown as TaStats;
-    },
-  });
-}
-
 /**
  * Port `legacy/static/js/newsroom/dashboard.js` + `tab_dashboard.html`.
  * 2 fetch paralel (`/api/dashboard`, `/api/ta/stats`) jadi 2 `useQuery`
@@ -84,11 +57,11 @@ function useTaStats() {
  */
 export default function DashboardPage() {
   const [filters, setFilters] = useState<DashboardFilters>(DEFAULT_DASHBOARD_FILTERS);
-  const dashboard = useDashboardStats(filters);
-  const ta = useTaStats();
+  const dashboard = useDashboardStats(filters.days, filters.incidentOnly);
+  const ta = useTaStats(true);
   const ransomware = useDashboardRansomware(filters.days);
-  const cve = useCveExposure(filters.days);
-  const trending = useDashboardTrending(filters.days);
+  const cve = useCveExposure(filters.days, 3);
+  const trending = useDashboardTrending(filters.days, TREND_KINDS);
   const { user } = useAuth();
   // Cookie client dan tanggal hanya ada di browser: snapshot server = placeholder, supaya markup
   // server dan hidrasi sama (tanpa ini React 19 melaporkan hydration mismatch).
