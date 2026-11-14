@@ -53,6 +53,7 @@ export function TopicsSection({
       ) : (
         <ul className={GRID}>
           {q.data?.items.map((t) => {
+            const days = q.data.window_days;
             const today = t.daily[t.daily.length - 1] ?? 0;
             return (
               <li key={`${t.kind}-${t.ttp_id ?? t.name}`} className="min-w-0 rounded-xl border border-border bg-card p-3">
@@ -63,12 +64,18 @@ export function TopicsSection({
                     onClick={() => open(t)}
                     className="line-clamp-2 rounded text-left hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
                   >
-                    {t.kind === "ttp" && t.ttp_id ? `${t.ttp_id} ${t.name}` : t.name}
+                    {t.kind === "ttp" && t.ttp_id ? (
+                      <>
+                        <span className="font-code">{t.ttp_id}</span> {t.name}
+                      </>
+                    ) : (
+                      t.name
+                    )}
                   </button>
                 </h3>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  <span className="font-code text-sm font-semibold text-foreground">{t.count}</span>
-                  {today > 0 && <span> · +{today} today</span>}
+                  <span className="font-code text-sm font-semibold text-foreground">{t.count.toLocaleString("en-US")}</span>
+                  {today > 0 && <span> · +{today.toLocaleString("en-US")} today</span>}
                 </p>
                 <div className="mt-2">
                   <div aria-hidden>
@@ -81,7 +88,7 @@ export function TopicsSection({
                     />
                   </div>
                   <span className="sr-only">
-                    {t.count} mentions in {q.data?.window_days} days
+                    {t.count.toLocaleString("en-US")} mentions in {days.toLocaleString("en-US")} {days === 1 ? "day" : "days"}
                   </span>
                 </div>
               </li>
