@@ -14,20 +14,25 @@ export function MustRead({ period, openArticle }: { period: PeriodKey; openArtic
   const q = useMustRead(periodInfo(period).days);
   const matches = useArticleMatchers();
 
-  if (q.isPending) return <Skeleton aria-hidden className="h-72 w-full rounded-2xl" />;
-  if (q.isError)
-    return <PanelError title="Could not load the reading list" error={q.error} onRetry={() => void q.refetch()} />;
-
-  const { articles, fetchedAt } = q.data;
+  const { articles, fetchedAt } = q.data ?? { articles: [], fetchedAt: 0 };
   // Kosong: panel lead yang bicara (artikel 1 = lead), jadi di sini tidak ada apa-apa.
-  if (articles.length === 0) return null;
+  if (q.isSuccess && articles.length === 0) return null;
   const rows = articles.slice(1, 5);
 
   return (
     <section className={cn(q.isPlaceholderData && "opacity-60")}>
       <h2 className="font-heading text-xl font-bold tracking-tight text-foreground">Must read</h2>
       <p className="mt-0.5 text-sm text-muted-foreground">Ranked by priority score</p>
-      {rows.length === 0 ? (
+      {q.isPending ? (
+        <Skeleton aria-hidden className="mt-3 h-72 w-full rounded-xl" />
+      ) : q.isError ? (
+        <PanelError
+          title="Could not load the reading list"
+          error={q.error}
+          onRetry={() => void q.refetch()}
+          className="mt-3"
+        />
+      ) : rows.length === 0 ? (
         <p className="mt-4 text-sm text-muted-foreground">No other story in this period.</p>
       ) : (
         <ol className="mt-3 divide-y divide-border">
