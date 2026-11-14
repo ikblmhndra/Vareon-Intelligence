@@ -102,21 +102,25 @@ function NewsroomBody() {
 
   // `useSearchParams()` baru berubah sesudah router.replace ter-commit; dua perubahan beruntun
   // (grade A lalu B, dua checkbox sumber) yang sama-sama berbasis snapshot itu akan saling menimpa.
-  // `pendingRef` menyimpan URL terakhir yang ditulis dan dipakai sebagai basis selama masih
-  // mendahului `sp`; dilepas begitu `sp` menyusul.
-  const pendingRef = useRef<string | null>(null);
+  // `inflightRef` menyimpan URL yang sudah ditulis tetapi belum ter-commit (urut tulis); basis patch
+  // = yang terakhir. Saat `sp` berubah: bila cocok dengan salah satu entri, tulisan itu (dan yang
+  // lebih lama) sudah ter-commit, sisanya masih tertunda; bila tidak cocok, itu navigasi eksternal
+  // (Back/Forward, link masthead) dan `sp` adalah kebenaran, jadi seluruh daftar dibuang.
+  const inflightRef = useRef<string[]>([]);
   useEffect(() => {
-    if (pendingRef.current === sp.toString()) pendingRef.current = null;
+    const list = inflightRef.current;
+    if (list.length === 0) return;
+    const i = list.indexOf(sp.toString());
+    inflightRef.current = i >= 0 ? list.slice(i + 1) : [];
   }, [sp]);
   /** Query string terkini yang menjadi basis patch: tulisan yang belum ter-commit menang atas `sp`. */
-  const baseQs = () => pendingRef.current ?? sp.toString();
+  const baseQs = () => inflightRef.current.at(-1) ?? sp.toString();
 
   /** Satu-satunya penulis URL: `replace` hanya bila URL berubah (tidak pernah ke URL yang sama). */
   function replaceParams(next: URLSearchParams) {
     const qs = next.toString();
     if (qs === baseQs()) return;
-    // Kembali persis ke URL yang sudah ter-commit tidak perlu basis tertunda (tidak ada yang menyusul).
-    pendingRef.current = qs === sp.toString() ? null : qs;
+    inflightRef.current = [...inflightRef.current, qs];
     router.replace(pathname + (qs ? "?" + qs : ""), { scroll: false });
   }
 
