@@ -475,6 +475,10 @@ Release: not yet tagged (branch `claude/figcraft-design-data`; merge to `origin/
 - **Newsroom redesign (behaviour change).** The Newsroom front page is redesigned; the Filtered tab is visible to every
   `view_news` user (its buttons are gated per permission); and search now also matches actor names and CVE ids
   (`%` and `_` match literally). No migration, no setting, no contract change.
+- **All articles redesign (behaviour change).** Newsroom > All articles is a master-detail list with a reader panel; the
+  Newsroom and Intelligence links that used to open the list sheet now open it, and the sheet is removed. A new grade
+  filter keeps only articles with a source reliability grade in the chosen letters (ungraded articles are excluded while
+  it is set). No migration, no setting.
 - **Contract.** New optional inputs: `limit` (1-10, default 3) on `GET /api/dashboard/cve-exposure`, and a repeatable
   `kinds` query parameter on `GET /api/dashboard/trending` over `actor | ttp | malware | cve` (default `actor,ttp`, so
   default callers behave as before). New fields: five on `DashboardAttention` (`kev_tech`, `client_countries`,
@@ -482,6 +486,10 @@ Release: not yet tagged (branch `claude/figcraft-design-data`; merge to `origin/
   (default false) on `TrendItemOut` and `TopicOut`, and nullable `summary` and `first_seen_at` on `ArticleOut`.
   **One existing key widens:** `kind` on `TrendItemOut` and `TopicOut` goes from `actor | ttp` to
   `actor | ttp | malware | cve`; a client with an exhaustive `actor | ttp` switch must handle the new values.
+  **Contract (additive, All articles).** `GET /api/articles` accepts a repeatable `reliability_grade` query parameter
+  (`A` to `F`; any other letter is a 422). New route `GET /api/articles/{article_id}/iocs` (needs `view_news`, 404 for an
+  unknown article) returns `ArticleIocsOut` `{items: ArticleIocOut[], total}`, where `ArticleIocOut` is
+  `{type, value, context, reputation}`; items are capped at 200 and `total` is the uncapped count.
 
 ### Migrations
 
