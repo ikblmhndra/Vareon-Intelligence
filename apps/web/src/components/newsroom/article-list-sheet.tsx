@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
+import { noClientRetry, unwrap } from "@/lib/scrapers/queries";
 import { formatPostedOn } from "@/lib/newsroom/dates";
 import type { NewsroomFilters } from "@/lib/newsroom/filters";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -147,7 +148,7 @@ function ListState({
   isError,
   empty,
   emptyText,
-  errorText = "Gagal memuat daftar artikel.",
+  errorText = "Could not load the article list.",
 }: {
   isPending: boolean;
   isError: boolean;
@@ -175,15 +176,15 @@ function VictimFilterBar({ value, onChange }: { value: VictimFilter; onChange: (
   const options = useQuery({
     queryKey: ["ransomware", "victim-filters"],
     queryFn: async () => {
-      const { data, error } = await api.GET("/api/ransomware/victims/filters");
-      if (error) throw error;
-      return data as unknown as { groups: string[]; industries: string[] };
+      const r = await api.GET("/api/ransomware/victims/filters");
+      return unwrap(r, "The request failed.") as unknown as { groups: string[]; industries: string[] };
     },
     staleTime: 5 * 60_000,
+    retry: noClientRetry,
   });
   const fields = [
-    { key: "group" as const, label: "Group", all: "Semua group", values: options.data?.groups ?? [] },
-    { key: "industry" as const, label: "Industri", all: "Semua industri", values: options.data?.industries ?? [] },
+    { key: "group" as const, label: "Group", all: "All groups", values: options.data?.groups ?? [] },
+    { key: "industry" as const, label: "Industry", all: "All industries", values: options.data?.industries ?? [] },
   ];
   return (
     <div className="flex flex-wrap gap-2">
@@ -194,7 +195,7 @@ function VictimFilterBar({ value, onChange }: { value: VictimFilter; onChange: (
           value={value[f.key] || ALL}
           onValueChange={(v) => onChange({ ...value, [f.key]: !v || v === ALL ? "" : v })}
         >
-          <SelectTrigger aria-label={`Filter korban per ${f.label.toLowerCase()}`} className="w-44 text-xs">
+          <SelectTrigger aria-label={`Filter victims by ${f.label.toLowerCase()}`} className="w-44 text-xs">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -220,25 +221,25 @@ function RelatedArticles({ onSelect }: { onSelect: (a: Article) => void }) {
   const q = useQuery({
     queryKey: ["ransomware", "articles", page],
     queryFn: async () => {
-      const { data, error } = await api.GET("/api/ransomware/related-articles", {
+      const r = await api.GET("/api/ransomware/related-articles", {
         params: { query: { page, page_size: RELATED_PAGE_SIZE } },
       });
-      if (error) throw error;
-      return data as unknown as { articles: Article[]; total: number };
+      return unwrap(r, "The request failed.") as unknown as { articles: Article[]; total: number };
     },
+    retry: noClientRetry,
   });
   const items = (q.data?.articles ?? []).map(articleRow);
   const totalPages = q.data ? Math.ceil(q.data.total / RELATED_PAGE_SIZE) : 0;
   return (
     <section aria-labelledby="rw-related" className="flex flex-col gap-3 border-t border-border pt-4">
       <h3 id="rw-related" className="text-sm font-semibold">
-        Artikel terkait
+        Related articles
       </h3>
       <ListState
         isPending={q.isPending}
         isError={q.isError}
         empty={items.length === 0}
-        emptyText="Belum ada artikel ransomware terkait."
+        emptyText="No related ransomware articles yet."
       />
       {items.length > 0 && (
         <ul className="flex flex-col">
@@ -286,8 +287,8 @@ function SheetBody({
         isPending={isPending}
         isError={isError}
         empty={items.length === 0}
-        emptyText={isRansomware ? "Belum ada korban." : "Belum ada artikel."}
-        errorText={isRansomware ? "Gagal memuat daftar korban." : undefined}
+        emptyText={isRansomware ? "No victims yet." : "No articles yet."}
+        errorText={isRansomware ? "Could not load the victim list." : undefined}
       />
       {items.length > 0 && (
         <ul className="flex flex-col">

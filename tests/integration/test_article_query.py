@@ -6,6 +6,7 @@ from __future__ import annotations
 import datetime
 
 import pytest
+from cti_core.db.models.entity import Entity, EntityMention
 from cti_core.db.models.story import Story
 from cti_core.db.repositories.article import AsyncArticleRepo
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -466,3 +467,99 @@ async def test_list_top_between_orders_by_priority_without_collapse(
         ids["m60"],
         ids["s50"],
     ]
+
+
+async def _plain(repo: AsyncArticleRepo, title: str, n: int) -> int:
+    a = await repo.upsert(
+        url=f"https://example.com/search-{n}",
+        title=title,
+        source="S",
+        posted_on=datetime.date(2026, 9, 1),
+    )
+    return a.id
+
+
+async def _mention_entity(
+    s: AsyncSession, article_id: int, type_: str, name: str, **kw: object
+) -> None:
+    e = Entity(type=type_, stix_id=f"{type_}--srch-{name}", name=name, source="analyst", **kw)
+    s.add(e)
+    await s.flush()
+    s.add(
+        EntityMention(article_id=article_id, entity_id=e.id, method="analyst", matched_alias=name)
+    )
+    await s.flush()
+
+
+async def test_search_matches_actor_mention(async_db_session: AsyncSession) -> None:
+    repo = AsyncArticleRepo(async_db_session)
+    aid = await _plain(repo, "Hospital outage", 1)
+    await _mention_entity(async_db_session, aid, "intrusion-set", "Qilin")
+    rows, total = await repo.list_filtered(search="qilin")
+    assert total == 1
+    assert rows[0].id == aid
+
+
+async def test_search_matches_cve_mention(async_db_session: AsyncSession) -> None:
+    repo = AsyncArticleRepo(async_db_session)
+    aid = await _plain(repo, "Patch now", 2)
+    await _mention_entity(
+        async_db_session, aid, "vulnerability", "CVE-2026-1111", external_id="CVE-2026-1111"
+    )
+    rows, total = await repo.list_filtered(search="cve-2026-1111")
+    assert total == 1
+    assert rows[0].id == aid
+
+
+async def test_search_ignores_dead_actor(async_db_session: AsyncSession) -> None:
+    repo = AsyncArticleRepo(async_db_session)
+    aid = await _plain(repo, "Hospital outage", 3)
+    await _mention_entity(async_db_session, aid, "intrusion-set", "Ghostgroup", suppressed=True)
+    _, total = await repo.list_filtered(search="ghostgroup")
+    assert total == 0
+
+
+async def test_search_escapes_wildcards(async_db_session: AsyncSession) -> None:
+    repo = AsyncArticleRepo(async_db_session)
+    pct = await _plain(repo, "100% uptime", 4)
+    await _plain(repo, "100 percent", 5)
+    under = await _plain(repo, "a_b", 6)
+    await _plain(repo, "axb", 7)
+    rows, total = await repo.list_filtered(search="100%")
+    assert (total, [r.id for r in rows]) == (1, [pct])
+    rows, total = await repo.list_filtered(search="a_b")
+    assert (total, [r.id for r in rows]) == (1, [under])
+
+
+async def test_search_escapes_backslash(async_db_session: AsyncSession) -> None:
+    # Backslash adalah escape LIKE: tanpa di-escape, "a\\b" jadi pola "ab" dan salah cocok.
+    repo = AsyncArticleRepo(async_db_session)
+    hit = await _plain(repo, "path a\\b here", 10)
+    await _plain(repo, "path ab here", 11)
+    rows, total = await repo.list_filtered(search="a\\b")
+    assert (total, [r.id for r in rows]) == (1, [hit])
+
+
+async def test_search_ignores_merged_actor(async_db_session: AsyncSession) -> None:
+    # Aktor yang sudah di-merge (tombstone) tidak lagi dicocokkan lewat nama lamanya.
+    repo = AsyncArticleRepo(async_db_session)
+    aid = await _plain(repo, "Hospital outage", 12)
+    target = Entity(
+        type="intrusion-set", stix_id="intrusion-set--srch-target", name="Newname", source="analyst"
+    )
+    async_db_session.add(target)
+    await async_db_session.flush()
+    await _mention_entity(
+        async_db_session, aid, "intrusion-set", "Oldname", merged_into_id=target.id
+    )
+    _, total = await repo.list_filtered(search="oldname")
+    assert total == 0
+
+
+async def test_search_with_title_keyword_needs_both(async_db_session: AsyncSession) -> None:
+    repo = AsyncArticleRepo(async_db_session)
+    await _plain(repo, "ransomware wave", 8)
+    aid = await _plain(repo, "Hospital outage", 9)
+    await _mention_entity(async_db_session, aid, "intrusion-set", "Qilin")
+    _, total = await repo.list_filtered(title_keywords=["ransomware"], search="qilin")
+    assert total == 0

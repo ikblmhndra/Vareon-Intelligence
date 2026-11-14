@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 
 interface PageHeaderProps {
   title: string;
-  description?: string;
+  description?: ReactNode;
   /** Slot kanan: filter/aksi tingkat halaman (mis. periode di Dashboard). */
   actions?: ReactNode;
   className?: string;
@@ -25,7 +25,7 @@ export function PageHeader({ title, description, actions, className, kicker }: P
         <h1 className="font-heading text-3xl leading-tight font-bold tracking-[-0.02em] text-foreground sm:text-[44px]">
           {title}
         </h1>
-        {description && <p className="mt-2 max-w-[65ch] text-sm text-muted-foreground">{description}</p>}
+        {description && <div className="mt-2 max-w-[65ch] text-sm text-muted-foreground">{description}</div>}
       </div>
       {actions}
     </header>

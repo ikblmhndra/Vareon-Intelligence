@@ -32,6 +32,7 @@ from cti_core.db.models.article import Article
 from cti_core.db.models.cve import CveTicket, CveTracker
 from cti_core.db.models.entity import EntityWatch
 from cti_core.db.models.indicator import Indicator
+from cti_core.db.repositories.article import article_search_clause
 from cti_core.db.repositories.cve import is_false_positive_row
 from cti_core.db.repositories.entity import (
     ACTOR,
@@ -584,7 +585,7 @@ class AsyncDashboardRepo:
         if news_types:
             stmt = stmt.where(Article.news_type.in_(news_types))
         if search:
-            stmt = stmt.where(Article.title.ilike(f"%{search}%"))
+            stmt = stmt.where(article_search_clause(search))
         stmt = stmt.group_by(Article.posted_on, key)
         rows = (await self.session.execute(stmt)).all()
         return [(d, entity, cnt) for d, entity, cnt in rows]

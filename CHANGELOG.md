@@ -72,6 +72,7 @@ router `changelog.py`) -- parser-nya expect header persis
 - Reset password oleh admin kini mewajibkan pengguna itu memilih password baru saat login berikutnya (`force_pw_change`); sampai itu selesai, endpoint lain membalas 403 "Password change required". Pengguna yang sudah ada tidak terpengaruh.
 - Web: halaman login berbahasa Inggris dan tidak lagi menampilkan pesan mentah dari API; ganti password wajib dilakukan langsung di halaman login, lalu masuk ulang otomatis.
 - Dashboard: periode bawaan menjadi 7 hari dengan pilihan 24 jam; teks Dashboard berbahasa Inggris; kalimat brief dan "Updated HH:MM" tidak lagi ditampilkan; grup ransomware teratas menjadi lima.
+- Newsroom: halaman depan didesain ulang (teks Inggris, periode ada di URL, rubrik mempersempit daftar, enam kartu topik, empat state). Tab Filtered kini tampil untuk setiap pengguna dengan izin `view_news`, tombolnya diatur per izin. Pencarian artikel kini juga mencocokkan nama aktor dan CVE id (`%` dan `_` dicocokkan apa adanya). Tanpa migrasi, tanpa key `.env` baru, tanpa perubahan kontrak.
 
 ### Diperbaiki
 - `PUT /api/rfi/{id}` dan `PUT /api/pir/{id}`: `null` eksplisit kini mengosongkan field yang boleh kosong (RFI `due_date` dan `linked_pir`; PIR `start_date` dan `end_date`). Dulu nilai yang dikosongkan diam-diam diabaikan. `null` pada field wajib tetap diabaikan.
