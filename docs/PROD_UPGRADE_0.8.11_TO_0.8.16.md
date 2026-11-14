@@ -13,7 +13,7 @@ for that version:
 | 0.8.14 | 0.8.15, 0.8.16 |
 | 0.8.15 | 0.8.16 |
 
-One `make deploy` takes prod from any of these to 0.8.16: it backs up Postgres, runs `migrate` (only 0.8.16 has migrations: `b7d41e9a2c63` then `c4e8a1f2b9d6`, both additive), creates the new `worker-cve` service when it is missing, rebuilds, then waits for health. The
+One `make deploy` takes prod from any of these to 0.8.16: it backs up Postgres, runs `migrate` (only 0.8.16 has migrations: `b7d41e9a2c63`, `c4e8a1f2b9d6`, then `d9f2b6a4c1e7`, all additive), creates the new `worker-cve` service when it is missing, rebuilds, then waits for health. The
 Deploy workflow is off and the checkout is owned by root, so this is a manual run by the user with `sudo`. Older steps
 stay in `docs/PROD_UPGRADE_0.8.13_TO_0.8.14.md`, `docs/PROD_UPGRADE_0.8.14_TO_0.8.15.md`,
 `docs/PROD_UPGRADE_0.8.11_TO_0.8.13.md` and `docs/PROD_UPGRADE_0.8.2_TO_0.8.11.md` for history.
