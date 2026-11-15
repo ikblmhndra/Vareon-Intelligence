@@ -3,9 +3,11 @@
 import { Masthead } from "@/components/app-shell/masthead";
 import { UtilityBar } from "@/components/app-shell/utility-bar";
 
-/** Kolom shell mockup: konten 1328 px di tengah (halaman 1440 = 56 px tiap sisi), padding sempit di
- * bawah 1440. Dipakai header dan `<main>` supaya garis tinta dan isi halaman sejajar persis. */
-export const SHELL_COLUMN = "mx-auto w-full max-w-[1328px] px-4 lg:px-8 min-[1440px]:px-0";
+/** Kolom shell selebar layar, dibatasi 1920 px termasuk gutter. Sebelumnya kolom dipaku 1328 px
+ * (mockup 1440), sehingga layar lebar (~2000 px) banyak terbuang dan tabel lebar tidak muat.
+ * Gutter 16 px di layar kecil, 40 px dari `lg:`. Dipakai header dan `<main>` supaya garis tinta dan
+ * isi halaman sejajar persis. */
+export const SHELL_COLUMN = "mx-auto w-full max-w-[1920px] px-4 lg:px-10";
 
 /** Shell semua route ber-auth (pengganti sidebar sejak redesign FigCraft): utility bar, masthead,
  * lalu konten. Garis tinta di kedua bar sengaja selebar kolom, bukan selebar layar (node Utility
