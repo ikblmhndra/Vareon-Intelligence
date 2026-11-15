@@ -1,0 +1,22 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { enumLabel } from "../../src/lib/enum-label.ts";
+
+test("humanizes snake and screaming case", () => {
+  assert.equal(enumLabel("url_with_path"), "URL with path");
+  assert.equal(enumLabel("URL_WITH_PATH"), "URL with path");
+  assert.equal(enumLabel("vendor_research"), "Vendor research");
+  assert.equal(enumLabel("VENDOR_RESEARCH"), "Vendor research");
+});
+test("keeps acronyms", () => {
+  assert.equal(enumLabel("ipv4"), "IPv4");
+  assert.equal(enumLabel("ipv6_cidr"), "IPv6 CIDR");
+  assert.equal(enumLabel("sha256"), "SHA256");
+  assert.equal(enumLabel("md5"), "MD5");
+  assert.equal(enumLabel("email_domain"), "Email domain");
+});
+test("unknown, already human, empty", () => {
+  assert.equal(enumLabel("weird_new_kind"), "Weird new kind");
+  assert.equal(enumLabel("Vendor research"), "Vendor research");
+  assert.equal(enumLabel(""), "");
+});

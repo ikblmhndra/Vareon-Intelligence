@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "check:palette": "node scripts/check-palette.mjs",
+    "test:unit": "node --test \"tests/unit/*.test.mjs\"",
     "gen:api": "openapi-typescript ../../docs/openapi.json -o src/lib/api/schema.d.ts"
   },
   "dependencies": {
