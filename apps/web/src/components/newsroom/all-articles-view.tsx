@@ -1,7 +1,7 @@
 "use client";
 
 import { XIcon } from "lucide-react";
-import { useMemo, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 
 import { AllList } from "@/components/newsroom/all-list";
 import { useAllArticles, useAllListQuery } from "@/components/newsroom/all-articles-queries";
@@ -12,17 +12,18 @@ import { fmtShortDate, parseLocalDate } from "@/lib/format";
 import type { AllPatch, AllState } from "@/lib/newsroom/all-state";
 
 const XL = "(min-width: 1280px)";
+const LG = "(min-width: 1024px)";
 
 /** `matchMedia` lewat useSyncExternalStore: server dan hidrasi pertama = false, jadi rail dipasang
  * satu kali saja (di Disclosure atau di kolom), bukan dua salinan yang disembunyikan CSS. */
-function useIsXl(): boolean {
+function useMedia(query: string): boolean {
   return useSyncExternalStore(
     (cb) => {
-      const m = window.matchMedia(XL);
+      const m = window.matchMedia(query);
       m.addEventListener("change", cb);
       return () => m.removeEventListener("change", cb);
     },
-    () => window.matchMedia(XL).matches,
+    () => window.matchMedia(query).matches,
     () => false,
   );
 }
@@ -48,7 +49,8 @@ export function AllArticlesView({
   state: AllState;
   onChange: (patch: AllPatch) => void;
 }) {
-  const isXl = useIsXl();
+  const isXl = useMedia(XL);
+  const isLg = useMedia(LG);
   const { query } = useAllListQuery(state);
   const list = useAllArticles(query);
   // Query mati (plan bukan objek) = daftar tersembunyi; keepPreviousData masih menahan halaman lama,
@@ -57,6 +59,19 @@ export function AllArticlesView({
     () => (query === undefined ? [] : (list.data?.pages.flatMap((p) => p.articles) ?? [])),
     [query, list.data],
   );
+
+  // Layar lebar: pembaca di sebelah daftar tidak boleh kosong, jadi artikel pertama dibuka otomatis.
+  // Tunggu daftar benar-benar dimuat (bukan placeholder dari filter sebelumnya) dan tidak kosong.
+  // Bentuk fungsi: bila user sempat memilih artikel, tulisan ini tidak menimpanya.
+  const firstId = listArticles[0]?.id;
+  const autoSent = useRef<number | null>(null);
+  const loaded = !list.isPending && !list.isPlaceholderData;
+  useEffect(() => {
+    if (state.article !== null || !isLg || !loaded || firstId === undefined) return;
+    if (autoSent.current === firstId) return;
+    autoSent.current = firstId;
+    onChange((s) => (s.article === null ? { article: firstId } : {}));
+  }, [state.article, isLg, loaded, firstId, onChange]);
 
   const storyLabel =
     state.story === null

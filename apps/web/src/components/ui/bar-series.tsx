@@ -42,6 +42,8 @@ interface BarSeriesProps {
   valueLabel?: string;
   /** Tampilkan label x hanya tiap kelipatan n (dan batang terakhir), tanpa autoSkip. */
   tickEvery?: number;
+  /** false = tanpa label dan grid sumbu x/y (sparkline); tooltip dan tabel tersembunyi tetap. */
+  axes?: boolean;
 }
 
 /** Batang kecil Chart.js: warna dari variabel CSS (tema terang/gelap), tabel tersembunyi berisi data yang sama
@@ -61,6 +63,7 @@ export function BarSeries({
   stackLabel = "",
   valueLabel = "",
   tickEvery,
+  axes = true,
 }: BarSeriesProps) {
   const t = useChartTheme();
   const base = tone === "primary" ? t.primary : t.textDim;
@@ -146,6 +149,7 @@ export function BarSeries({
             scales: {
               x: {
                 stacked,
+                display: axes,
                 grid: { display: false },
                 border: { display: false },
                 ticks:
@@ -166,6 +170,7 @@ export function BarSeries({
               },
               y: {
                 stacked,
+                display: axes,
                 beginAtZero: true,
                 border: { display: false },
                 grid: { color: withAlpha(t.border, 0.6), drawTicks: false },

@@ -86,6 +86,7 @@ export function TopicsSection({
                       values={t.daily}
                       highlightLast={1}
                       height={48}
+                      axes={false}
                       aria-label={t.name}
                     />
                   </div>
