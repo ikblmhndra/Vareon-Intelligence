@@ -3,8 +3,8 @@ import { toTitleCase } from "@/lib/exec/format";
 import { parseLocalDate } from "@/lib/format";
 
 /** Langkah warna heatmap sektor untuk sel tak kosong: 2..5. Langkah 1 (`bg-primary/10`) nyaris tak terlihat di atas
- * kartu mode gelap (hampir hitam), jadi sel terkecil mulai dari langkah 2 dan "kosong" digambar sebagai kotak
- * berbingkai (`HeatCell value={null}`), bukan langkah 0. */
+ * kartu mode gelap (hampir hitam), jadi sel terkecil mulai dari langkah 2 dan "kosong" digambar sebagai sel polos
+ * tanpa isi dan tanpa bingkai (`HeatCell value={null}`), bukan langkah 0. */
 export function heatStep(count: number, max: number): 0 | 2 | 3 | 4 | 5 {
   if (count <= 0 || max <= 0) return 0;
   return (Math.min(4, Math.max(1, Math.ceil((count / max) * 4))) + 1) as 2 | 3 | 4 | 5;

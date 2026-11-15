@@ -11,12 +11,14 @@ const ACRONYMS: Record<string, string> = {
 export function enumLabel(raw: string): string {
   if (!raw) return "";
   const isScreaming = raw === raw.toUpperCase();
-  if (!raw.includes("_") && !isScreaming) return ACRONYMS[raw.toLowerCase()] ?? raw;
+  if (!raw.includes("_") && !isScreaming) {
+    const k = raw.toLowerCase();
+    return Object.hasOwn(ACRONYMS, k) ? ACRONYMS[k] : raw;
+  }
   const words = raw.split("_").filter(Boolean).map((w) => w.toLowerCase());
   return words
     .map((w, i) => {
-      const acr = ACRONYMS[w];
-      if (acr) return acr;
+      if (Object.hasOwn(ACRONYMS, w)) return ACRONYMS[w];
       return i === 0 ? w.charAt(0).toUpperCase() + w.slice(1) : w;
     })
     .join(" ");

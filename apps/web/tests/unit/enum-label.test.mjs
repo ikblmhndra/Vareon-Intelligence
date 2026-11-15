@@ -26,3 +26,8 @@ test("sentenceLabel capitalises the first letter", () => {
   assert.equal(sentenceLabel("ipv4"), "IPv4");
   assert.equal(sentenceLabel(""), "");
 });
+test("prototype keys are not treated as acronyms", () => {
+  assert.equal(enumLabel("constructor"), "constructor");
+  assert.equal(sentenceLabel("constructor"), "Constructor");
+  assert.equal(enumLabel("constructor_x"), "Constructor x");
+});

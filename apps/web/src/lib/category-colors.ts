@@ -5,13 +5,18 @@ const SLOT_COUNT = 10;
 
 /** Kunci sudah dinormalkan (huruf kecil, spasi dirapatkan). */
 export const KNOWN_CATEGORY_SLOTS: Readonly<Record<string, number>> = {
-  // Disalin dari GLOBAL_NEWS_TYPES (src/lib/newsroom/news-types.ts): 6 nama, slot unik.
+  // Tipe berita: 6 nama dari GLOBAL_NEWS_TYPES (src/lib/newsroom/news-types.ts) + sisa nilai
+  // `news_type` di routing.py (Zero Day, Unrelated Tech Stack, apac) + "Unknown" dari tren exec: 10 slot unik.
   "global": 0,
   "security technology & best practices": 1,
   "vendor report article": 2,
   "data breach article": 3,
   "tech stack article": 4,
   "ot article": 5,
+  "zero day article": 6,
+  "unrelated tech stack article": 7,
+  "apac": 8,
+  "unknown": 9,
 
   // Label industri lama yang dipakai LLM/analis (kunci _LABEL_TO_SECTOR di
   // packages/cti-core/src/cti_core/entity/sectors.py): 10 teratas, slot unik.
@@ -58,7 +63,28 @@ function fnv1a(s: string): number {
 /** Slot warna 0..9 (pakai `var(--chart-${i + 1})`). Nama dikenal lewat peta tetap, sisanya lewat hash. */
 export function categoryColorIndex(name: string): number {
   const key = normalize(name);
-  const known = KNOWN_CATEGORY_SLOTS[key];
-  if (known !== undefined) return known;
+  if (Object.hasOwn(KNOWN_CATEGORY_SLOTS, key)) return KNOWN_CATEGORY_SLOTS[key];
   return fnv1a(key) % SLOT_COUNT;
+}
+
+/** Slot untuk satu set nama dalam SATU grafik. Nama dikenal tetap di slotnya; nama ber-hash yang
+ * bentrok (dengan nama dikenal atau hash lebih awal) pindah ke slot bebas berikutnya (wrap 0..9).
+ * Lebih dari 10 nama: sisanya boleh berbagi slot. Deterministik untuk urutan input yang sama. */
+export function assignCategorySlots(names: string[]): number[] {
+  const used = new Set<number>();
+  const out: number[] = new Array(names.length);
+  names.forEach((n, i) => {
+    if (Object.hasOwn(KNOWN_CATEGORY_SLOTS, normalize(n))) {
+      out[i] = categoryColorIndex(n);
+      used.add(out[i]);
+    }
+  });
+  names.forEach((n, i) => {
+    if (out[i] !== undefined) return;
+    let slot = categoryColorIndex(n);
+    for (let step = 0; step < SLOT_COUNT && used.has(slot); step++) slot = (slot + 1) % SLOT_COUNT;
+    out[i] = slot;
+    used.add(slot);
+  });
+  return out;
 }
