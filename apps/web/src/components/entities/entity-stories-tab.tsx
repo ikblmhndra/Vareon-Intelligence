@@ -85,10 +85,10 @@ export function EntityStoriesTab({ entity }: { entity: EntityDetail }) {
                   </button>
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground">{s.lead_source}</TableCell>
-                <TableCell className="text-right font-code text-xs">
+                <TableCell className="text-right text-xs tabular-nums">
                   {s.mentioned_articles}/{s.article_count}
                 </TableCell>
-                <TableCell className="text-right font-code text-xs">{s.source_count}</TableCell>
+                <TableCell className="text-right text-xs tabular-nums">{s.source_count}</TableCell>
                 <TableCell className="text-xs text-muted-foreground">{relativeTime(s.last_seen_at)}</TableCell>
               </TableRow>
             ))}

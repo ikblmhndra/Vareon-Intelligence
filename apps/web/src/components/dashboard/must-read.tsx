@@ -64,7 +64,7 @@ export function MustRead({ period, openArticle }: { period: PeriodKey; openArtic
                   {ttp && (
                     <>
                       <span aria-hidden>·</span>
-                      <span className="font-code">{ttp}</span>
+                      <span>{ttp}</span>
                     </>
                   )}
                   {a.confirmed_incident && <Chip kind="flag" value="Incident" />}

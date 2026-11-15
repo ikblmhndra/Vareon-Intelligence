@@ -235,7 +235,7 @@ export function RelationshipCreateDialog({ open, onClose, source, target: initia
               max={100}
               value={confidence}
               onChange={(e) => setConfidence(e.target.value)}
-              className="w-28 font-code text-xs max-sm:h-11"
+              className="w-28 text-xs max-sm:h-11"
             />
           </div>
           <div className="flex flex-col gap-1">

@@ -24,7 +24,7 @@ export function isPirStatusTab(v: string | null): v is PirStatusTab {
 }
 
 /** Baris kriteria di kartu dan detail, urutan sesuai mockup; hanya baris yang terisi yang ditampilkan.
- * `code` = nilai berupa id (TTP) yang harus memakai `font-code`. */
+ * `code` = nilai berupa id (TTP) (tidak lagi memakai `font-code`). */
 export const PIR_CRITERIA_ROWS: readonly { key: keyof PIRCriteria; label: string; code?: boolean }[] = [
   { key: "threat_actors", label: "THREAT ACTORS" },
   { key: "malware", label: "MALWARE" },

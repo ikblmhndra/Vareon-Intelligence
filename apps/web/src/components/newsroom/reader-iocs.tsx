@@ -88,7 +88,7 @@ export function ReaderIocs({ article }: { article: Article }) {
     <section className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="mr-auto text-sm font-semibold text-foreground">
-          Indicators of compromise · <span className="font-code">{total}</span>
+          Indicators of compromise · <span>{total}</span>
         </h3>
         <Button size="xs" variant="outline" onClick={() => void copyText(items.map((i) => i.value).join("\n"))}>
           Copy all

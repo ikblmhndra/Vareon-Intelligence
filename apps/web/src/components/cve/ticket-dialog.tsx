@@ -27,7 +27,7 @@ export function TicketDialog({ cve, ticket, open, onOpenChange }: TicketDialogPr
         <DialogHeader>
           <DialogTitle>
             {isNew ? "Create ticket for " : "Edit ticket for "}
-            <span className="font-code">{cve.cve_id}</span>
+            <span>{cve.cve_id}</span>
           </DialogTitle>
           <DialogDescription>{subtitle}</DialogDescription>
         </DialogHeader>

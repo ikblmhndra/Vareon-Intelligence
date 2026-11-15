@@ -352,7 +352,7 @@ export function TicketForm({ cveId, cve, ticket, variant, onSaved, readOnly, onC
               {nextIdQuery.data && (
                 <>
                   {" "}
-                  Next: <span className="font-code">{nextIdQuery.data}</span>
+                  Next: <span>{nextIdQuery.data}</span>
                 </>
               )}
             </>

@@ -259,7 +259,7 @@ export function IocIndicatorsView() {
                   <TableCell>
                     <Chip kind="flag" value={ioc.type} />
                   </TableCell>
-                  <TableCell className="text-right font-code text-xs">
+                  <TableCell className="text-right text-xs tabular-nums">
                     {ioc.confidence_score != null ? Math.round(ioc.confidence_score) : "—"}
                   </TableCell>
                   <TableCell>
@@ -269,7 +269,7 @@ export function IocIndicatorsView() {
                           value={ioc.actionability_score}
                           max={100}
                           aria-label={`Actionability of ${shown}`}
-                          label={<span className="font-code text-foreground">{ioc.actionability_score}</span>}
+                          label={<span className="text-foreground">{ioc.actionability_score}</span>}
                         />
                       </div>
                     ) : (
@@ -279,7 +279,7 @@ export function IocIndicatorsView() {
                   <TableCell>
                     <IocActionChip label={ioc.actionability_label} />
                   </TableCell>
-                  <TableCell className="text-right font-code text-xs text-muted-foreground" title={`last seen ${fmtAgo(ioc.last_seen)}`}>
+                  <TableCell className="text-right text-xs text-muted-foreground tabular-nums" title={`last seen ${fmtAgo(ioc.last_seen)}`}>
                     {ioc.seen_count || 1}
                   </TableCell>
                   <TableCell className="pr-5 text-xs whitespace-nowrap text-muted-foreground">

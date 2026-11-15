@@ -38,7 +38,7 @@ function chipRow(t: Tweet): CardChip[] {
     const country = (t.victim_countries ?? [])[0];
     flag("breach", country ? `${country} / data breach` : "data breach");
   }
-  (t.cve_list ?? []).slice(0, 2).forEach((c) => flag(`cve-${c}`, c.toUpperCase(), "font-code"));
+  (t.cve_list ?? []).slice(0, 2).forEach((c) => flag(`cve-${c}`, c.toUpperCase(), ""));
   (t.industries_impacted ?? []).slice(0, 2).forEach((i) => flag(`ind-${i}`, i));
   if (t.apac_indicator) flag("apac", "APAC", "");
   if (t.ot_status) flag("ot", "OT", "");
@@ -68,7 +68,7 @@ export function TweetCard({ tweet: t, onOpen }: { tweet: Tweet; onOpen: () => vo
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-foreground">{name}</p>
           <p className="text-xs text-muted-foreground">
-            <span className="font-code">@{t.author_username}</span>
+            <span>@{t.author_username}</span>
             {t.author_followers > 0 && ` · ${followersFmt.format(t.author_followers)} followers`}
             {" · "}
             <span title={fmtDateTime(t.posted_on)}>{fmtAgo(t.posted_on)}</span>
@@ -82,7 +82,7 @@ export function TweetCard({ tweet: t, onOpen }: { tweet: Tweet; onOpen: () => vo
           )}
           {confidence !== null && (
             <Chip kind="flag" value="confidence" className="normal-case">
-              confidence <span className="ml-1 font-code">{confidence}</span>
+              confidence <span className="ml-1 tabular-nums">{confidence}</span>
             </Chip>
           )}
         </div>
@@ -100,7 +100,7 @@ export function TweetCard({ tweet: t, onOpen }: { tweet: Tweet; onOpen: () => vo
               <span key={c.key}>{c.node}</span>
             ))}
             {chips.length > CHIP_CAP && (
-              <span className="font-code text-2xs text-muted-foreground">+{chips.length - CHIP_CAP}</span>
+              <span className="text-2xs text-muted-foreground">+{chips.length - CHIP_CAP}</span>
             )}
           </span>
         )}

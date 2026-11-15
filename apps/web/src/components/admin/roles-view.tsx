@@ -89,7 +89,7 @@ function Matrix({ roles, onDelete }: { roles: Role[]; onDelete: (r: Role) => voi
               <TableHead key={r.name} className="align-top">
                 <div className="flex items-start justify-between gap-1">
                   <div className="min-w-0">
-                    <div className="truncate font-code text-sm text-foreground" title={r.name}>
+                    <div className="truncate text-sm text-foreground" title={r.name}>
                       {r.name}
                     </div>
                     <div className="truncate text-xs font-normal text-muted-foreground" title={r.display_name}>
@@ -124,7 +124,7 @@ function Matrix({ roles, onDelete }: { roles: Role[]; onDelete: (r: Role) => voi
             <GroupRows key={g.heading} heading={g.heading} span={2 + cols.length}>
               {g.items.map((p) => (
                 <TableRow key={p.key}>
-                  <TableHead scope="row" className="font-code text-xs font-normal text-foreground">
+                  <TableHead scope="row" className="text-xs font-normal text-foreground">
                     {p.key}
                   </TableHead>
                   <TableCell className="whitespace-normal text-xs text-muted-foreground">
@@ -242,7 +242,7 @@ function NewRoleForm({ onClose }: { onClose: () => void }) {
           aria-invalid={name !== "" && !idOk}
           aria-describedby="new-role-id-help"
           onChange={(e) => setName(e.target.value)}
-          className="font-code text-sm"
+          className="text-sm"
         />
         <p
           id="new-role-id-help"
@@ -281,7 +281,7 @@ function NewRoleForm({ onClose }: { onClose: () => void }) {
                     onCheckedChange={() => toggle(p.key)}
                   />
                   <span>
-                    <span className="font-code text-xs text-foreground">{p.key}</span>
+                    <span className="text-xs text-foreground">{p.key}</span>
                     <br />
                     <span className="text-xs text-muted-foreground">{p.description}</span>
                   </span>

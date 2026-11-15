@@ -238,7 +238,7 @@ export function CriticalCveFeed({ d, className }: { d: ExecDashboardV2; classNam
             <ul className="divide-y divide-border">
               {rows.map((c) => (
                 <li key={c.cve_id} className="flex items-center gap-3 py-2">
-                  <span className={cn("w-8 shrink-0 font-code text-xs", cvssColorClass(c.cve_score))}>
+                  <span className={cn("w-8 shrink-0 text-xs tabular-nums", cvssColorClass(c.cve_score))}>
                     {c.cve_score != null ? c.cve_score.toFixed(1) : "—"}
                   </span>
                   <div className="shrink-0">

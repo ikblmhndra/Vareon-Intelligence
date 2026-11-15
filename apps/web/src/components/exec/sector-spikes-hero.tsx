@@ -64,7 +64,7 @@ export function SectorSpikesHero({ d }: { d: ExecDashboardV2 }) {
                     <Chip kind="severity" value={r.severity} className={HERO_CHIP}>
                       {r.severity === "high" ? "HIGH" : "MEDIUM"}
                     </Chip>
-                    <span className="ml-auto shrink-0 font-code text-xs text-hero-foreground">z {r.z_score}</span>
+                    <span className="ml-auto shrink-0 text-xs text-hero-foreground tabular-nums">z {r.z_score}</span>
                   </div>
                   <MeterBar
                     onHero

@@ -91,7 +91,7 @@ export function IocFpAnalyticsPanel() {
               <ul className="flex flex-col gap-2.5">
                 {byType.map(([t, b]) => (
                   <li key={t} className="grid grid-cols-[5rem_1fr] items-center gap-3">
-                    <span className="font-code text-xs text-foreground">{t}</span>
+                    <span className="text-xs text-foreground">{t}</span>
                     <MeterBar
                       value={Math.round(b.fp_rate * 100)}
                       max={100}
@@ -148,7 +148,7 @@ export function IocFpAnalyticsPanel() {
                       <TableCell className="text-xs whitespace-nowrap text-muted-foreground">
                         {s.tp_count} TP · {s.fp_count} FP
                       </TableCell>
-                      <TableCell className="font-code text-xs text-muted-foreground">{s.allowlist_type}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{s.allowlist_type}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -182,7 +182,7 @@ export function IocFpAnalyticsPanel() {
                         {name}
                         {isHighFp(b) && <Chip kind="flag" value="high FP" className="ml-1.5 bg-destructive/15 text-destructive-text" />}
                       </TableCell>
-                      <TableCell className="text-right font-code text-xs text-muted-foreground">
+                      <TableCell className="text-right text-xs text-muted-foreground tabular-nums">
                         {b.fp_count} / {b.total_iocs}
                       </TableCell>
                       <TableCell className="min-w-36">

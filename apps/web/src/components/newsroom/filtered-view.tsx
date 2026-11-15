@@ -149,7 +149,7 @@ export function FilteredView() {
             placeholder="Search title or source…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-52 font-code text-xs"
+            className="w-52 text-xs"
           />
         </div>
         <p className="mb-2 border-b border-border pb-2 text-xs text-muted-foreground">{HINT[kind]}</p>
@@ -172,7 +172,7 @@ export function FilteredView() {
                   <a href={a.url} target="_blank" rel="noopener noreferrer" className={LINK}>
                     {a.title}
                   </a>
-                  <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 font-code text-xs text-muted-foreground">
+                  <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
                     {[(a.rejected_at ?? "").slice(0, 10), a.source, a.posted_on && `posted ${a.posted_on}`]
                       .filter(Boolean)
                       .map((t, i) => (
@@ -208,7 +208,7 @@ export function FilteredView() {
                   <a href={j.url} target="_blank" rel="noopener noreferrer" className={LINK}>
                     {j.title}
                   </a>
-                  <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 font-code text-xs text-muted-foreground">
+                  <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
                     <span
                       className={cn(
                         CHIP,

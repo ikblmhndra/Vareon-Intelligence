@@ -316,7 +316,7 @@ export function EntitiesListView() {
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="font-code text-xs text-primary-text">{it.external_id ?? "—"}</TableCell>
+                    <TableCell className="text-xs text-primary-text">{it.external_id ?? "—"}</TableCell>
                     <TableCell>
                       <Aliases item={it} />
                     </TableCell>
@@ -345,7 +345,7 @@ export function EntitiesListView() {
                 {starFor(it)}
                 <EntityChip type={it.type} name={it.name} id={it.id} />
                 {it.external_id && (
-                  <span className="font-code text-xs text-muted-foreground">{it.external_id}</span>
+                  <span className="text-xs text-muted-foreground">{it.external_id}</span>
                 )}
                 {it.suppressed && (
                   <span className="rounded-md bg-muted px-1.5 py-0.5 text-2xs">Suppressed</span>

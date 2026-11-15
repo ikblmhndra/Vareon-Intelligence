@@ -103,7 +103,7 @@ export function ScrapersTable({
                       <span className="block truncate text-xs font-medium text-foreground" title={s.source}>
                         {s.source}
                       </span>
-                      <span className="block truncate font-code text-2xs text-muted-foreground">{s.id}</span>
+                      <span className="block truncate text-2xs text-muted-foreground">{s.id}</span>
                     </button>
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">

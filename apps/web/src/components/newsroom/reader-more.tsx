@@ -36,7 +36,7 @@ export function ReaderMore({ article }: { article: Article }) {
               <ul className="space-y-1.5">
                 {article.ttps.map((t) => (
                   <li key={t.id} className="flex items-center gap-2 text-xs">
-                    <span className="font-code text-foreground">{t.id}</span>
+                    <span className="text-foreground">{t.id}</span>
                     <span className="min-w-0 flex-1 text-muted-foreground">{t.name}</span>
                     <D3fendToggle ttpId={t.id} />
                   </li>

@@ -69,7 +69,7 @@ export function EntityHeader({ entity, listTabKey }: { entity: EntityDetail; lis
           {entity.external_id && (
             <>
               <span aria-hidden>·</span>
-              <span className="font-code tracking-normal normal-case">{entity.external_id}</span>
+              <span className="tracking-normal normal-case">{entity.external_id}</span>
             </>
           )}
         </p>

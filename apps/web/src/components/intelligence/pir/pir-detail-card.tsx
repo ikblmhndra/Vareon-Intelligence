@@ -71,7 +71,7 @@ export function PirDetailCard({
       <div className="flex flex-col gap-4 px-5">
         <div>
           <h2 className="font-heading text-lg font-semibold">
-            <span className="font-code">{id}</span> coverage
+            <span>{id}</span> coverage
           </h2>
           <p className="text-xs text-muted-foreground">
             {weekly.data?.since
@@ -206,7 +206,7 @@ function LinkedRfis({ pir }: { pir: PIROut }) {
       <TooltipContent side="left" className="flex-col items-start">
         {pir.linked_rfis.map((r) => (
           <span key={r.id} className="block max-w-xs truncate">
-            <span className="font-code">{displayId("RFI", r.id)}</span> {r.status.replace("_", " ")} · {r.question}
+            <span>{displayId("RFI", r.id)}</span> {r.status.replace("_", " ")} · {r.question}
           </span>
         ))}
         {pir.linked_rfis.length >= 20 && <span className="block">Showing the first 20</span>}

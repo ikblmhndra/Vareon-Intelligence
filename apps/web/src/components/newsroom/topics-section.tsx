@@ -68,7 +68,7 @@ export function TopicsSection({
                   >
                     {t.kind === "ttp" && t.ttp_id ? (
                       <>
-                        <span className="font-code">{t.ttp_id}</span> {t.name}
+                        <span>{t.ttp_id}</span> {t.name}
                       </>
                     ) : (
                       t.name
@@ -76,7 +76,7 @@ export function TopicsSection({
                   </button>
                 </h3>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  <span className="font-code text-sm font-semibold text-foreground">{t.count.toLocaleString("en-US")}</span>
+                  <span className="text-sm font-semibold text-foreground tabular-nums">{t.count.toLocaleString("en-US")}</span>
                   {today > 0 && <span> · +{today.toLocaleString("en-US")} today</span>}
                 </p>
                 <div className="mt-2">

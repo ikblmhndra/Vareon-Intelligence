@@ -107,7 +107,7 @@ function Lead({
             onClick={() => onOpenStory(story.id, a.title)}
             className={cn("rounded-sm font-medium text-primary-text outline-none hover:underline", FOCUS_RING)}
           >
-            +<span className="font-code">{story.source_count - 1}</span> sources
+            +<span>{story.source_count - 1}</span> sources
           </button>
         )}
         <span aria-hidden>·</span>

@@ -73,7 +73,7 @@ export function EntityIndicatorsTab({ entity }: { entity: EntityDetail }) {
                   )}
                 </TableCell>
                 <TableCell className="text-xs">{i.type}</TableCell>
-                <TableCell className="text-right font-code text-xs">{i.confidence_score}</TableCell>
+                <TableCell className="text-right text-xs tabular-nums">{i.confidence_score}</TableCell>
                 <TableCell className="text-xs text-muted-foreground">{relativeTime(i.first_seen_at)}</TableCell>
                 <TableCell className="text-xs text-muted-foreground">{relativeTime(i.last_seen_at)}</TableCell>
               </TableRow>

@@ -179,7 +179,7 @@ export function LlmCard({ llm, nowMs }: { llm: Llm; nowMs: number }) {
               const u = usage.get(task);
               return (
                 <TableRow key={task}>
-                  <TableCell className={cn(CELL, "truncate font-code")} title={task}>
+                  <TableCell className={cn(CELL, "truncate")} title={task}>
                     {task}
                   </TableCell>
                   <TableCell className={NUM}>{num(u?.calls)}</TableCell>
@@ -187,7 +187,7 @@ export function LlmCard({ llm, nowMs }: { llm: Llm; nowMs: number }) {
                   <TableCell className={NUM}>{num(u?.prompt_tokens)}</TableCell>
                   <TableCell className={NUM}>{num(u?.completion_tokens)}</TableCell>
                   <TableCell className={NUM}>{num(u?.median_latency_ms, " ms")}</TableCell>
-                  <TableCell className={cn(NUM, "font-code")}>{u?.prompt_version ?? "–"}</TableCell>
+                  <TableCell className={NUM}>{u?.prompt_version ?? "–"}</TableCell>
                 </TableRow>
               );
             })

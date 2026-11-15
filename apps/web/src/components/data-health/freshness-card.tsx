@@ -39,7 +39,7 @@ export function FreshnessCard({
                 ) : r.state === "failed" ? (
                   <p className="text-sm text-foreground">unknown (failed to load)</p>
                 ) : r.at ? (
-                  <p title={fmtDateTime(r.at)} className="font-code text-sm text-foreground tabular-nums">
+                  <p title={fmtDateTime(r.at)} className="text-sm text-foreground tabular-nums">
                     {fmtCompactAge(r.at, nowMs)}
                   </p>
                 ) : (
@@ -48,7 +48,7 @@ export function FreshnessCard({
                 <p className="text-2xs text-muted-foreground">{r.caption}</p>
                 {r.key === "tweet" && monitorX && (
                   <p className={cn("text-2xs", statusTone(monitorX.status) === "bad" ? "text-destructive-text" : "text-warning-text")}>
-                    <span className="font-code">monitor_x</span> {monitorX.status.replace("_", " ")}
+                    <span>monitor_x</span> {monitorX.status.replace("_", " ")}
                     {monitorX.reason ? `: ${monitorX.reason}` : ""}
                   </p>
                 )}
@@ -107,7 +107,7 @@ export function CoverageCard({
           {iocEnrichment.map((c) => (
             <li key={c.type}>
               <div className="flex items-baseline justify-between gap-3 text-sm">
-                <span className="font-code text-xs text-muted-foreground">{c.type}</span>
+                <span className="text-xs text-muted-foreground">{c.type}</span>
                 <span className="text-foreground tabular-nums">
                   {c.enriched.toLocaleString()} / {c.total.toLocaleString()}
                 </span>

@@ -110,13 +110,13 @@ export function EntityAttackTab({ entity }: { entity: EntityDetail }) {
               {mitigations.map((m) => (
                 <TableRow key={m.mitigation_id}>
                   <TableCell className="max-w-md whitespace-normal">
-                    <span className="font-code text-xs">{m.mitigation_id}</span>{" "}
+                    <span className="text-xs">{m.mitigation_id}</span>{" "}
                     <span className="text-sm font-medium">{m.name}</span>
                     {m.description && (
                       <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{m.description}</p>
                     )}
                   </TableCell>
-                  <TableCell className="font-code text-xs break-words whitespace-normal">
+                  <TableCell className="text-xs break-words whitespace-normal">
                     {m.techniques.join(", ") || "-"}
                   </TableCell>
                 </TableRow>

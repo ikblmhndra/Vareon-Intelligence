@@ -62,7 +62,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 function Count({ value }: { value: number | null | undefined }) {
   if (value === undefined) return <Skeleton aria-hidden className="h-3.5 w-8" />;
-  return <span className="font-code text-2xs text-muted-foreground">{value === null ? "–" : value.toLocaleString("en-US")}</span>;
+  return <span className="text-2xs text-muted-foreground">{value === null ? "–" : value.toLocaleString("en-US")}</span>;
 }
 
 /** Pilihan group/industri korban; kunci cache sama dengan sheet lama. Hanya dimuat saat rubrik
@@ -190,7 +190,7 @@ export function AllRail({ state, onChange }: { state: AllState; onChange: (patch
                 title={GRADE_TEXT[g]}
                 onClick={() => toggleGrade(g)}
                 className={cn(
-                  "grid size-7 place-content-center rounded-md border font-code text-xs disabled:cursor-not-allowed disabled:text-muted-foreground disabled:opacity-60",
+                  "grid size-7 place-content-center rounded-md border text-xs disabled:cursor-not-allowed disabled:text-muted-foreground disabled:opacity-60",
                   GRADE_BADGE_CLASS[g],
                   on && "bg-surface font-semibold ring-1 ring-current",
                   FOCUS,
@@ -336,7 +336,7 @@ export function AllRail({ state, onChange }: { state: AllState; onChange: (patch
                     onCheckedChange={() => toggleSource(s.name)}
                   />
                   <span className="min-w-0 flex-1 truncate">{s.name}</span>
-                  {s.count !== null && <span className="font-code text-2xs text-muted-foreground">{s.count.toLocaleString("en-US")}</span>}
+                  {s.count !== null && <span className="text-2xs text-muted-foreground tabular-nums">{s.count.toLocaleString("en-US")}</span>}
                 </label>
               </li>
             ))}

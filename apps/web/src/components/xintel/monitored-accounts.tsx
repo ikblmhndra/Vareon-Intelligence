@@ -105,7 +105,7 @@ export function MonitoredAccounts() {
         >
           <div className="flex flex-col gap-1">
             <Label htmlFor="xi-handle">Handle</Label>
-            <Input id="xi-handle" placeholder="@FalconFeedsio" value={username} onChange={(e) => setUsername(e.target.value)} className="w-48 font-code" />
+            <Input id="xi-handle" placeholder="@FalconFeedsio" value={username} onChange={(e) => setUsername(e.target.value)} className="w-48" />
           </div>
           <div className="flex flex-col gap-1">
             <Label htmlFor="xi-display-name">Display name</Label>
@@ -163,10 +163,10 @@ export function MonitoredAccounts() {
             <TableBody>
               {list.map((a) => (
                 <TableRow key={a.id} className={cn(!a.active && "text-muted-foreground")}>
-                  <TableCell className="truncate font-code text-xs">@{a.username}</TableCell>
+                  <TableCell className="truncate text-xs">@{a.username}</TableCell>
                   <TableCell className="truncate text-xs">{a.display_name || "—"}</TableCell>
                   <TableCell className="truncate text-xs text-muted-foreground">{a.notes || "—"}</TableCell>
-                  <TableCell className="font-code text-xs text-muted-foreground">{fmtShortDate(a.added_at)}</TableCell>
+                  <TableCell className="text-xs text-muted-foreground tabular-nums">{fmtShortDate(a.added_at)}</TableCell>
                   <TableCell>
                     <Switch
                       aria-label={`Active: @${a.username}`}
@@ -193,7 +193,7 @@ export function MonitoredAccounts() {
             </TableBody>
           </Table>
           <p className="mt-2.5 text-xs text-muted-foreground">
-            <span className="font-code">{list.length}</span> accounts monitored · <span className="font-code">{activeCount}</span> active
+            <span>{list.length}</span> accounts monitored · <span>{activeCount}</span> active
           </p>
         </>
       )}

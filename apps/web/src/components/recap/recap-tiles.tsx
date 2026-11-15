@@ -40,7 +40,7 @@ export function RecapTiles({ doc }: { doc: RecapDoc }) {
             key={key}
             label={label}
             kind={kind}
-            value={<span className="font-code">{value.toLocaleString()}</span>}
+            value={<span>{value.toLocaleString()}</span>}
             sub={sub}
           />
         );

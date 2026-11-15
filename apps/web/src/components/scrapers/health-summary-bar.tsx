@@ -44,7 +44,7 @@ export function HealthTiles({
               key={t.status}
               label={t.label}
               tone={statusTileTone(t.status)}
-              value={<span className="font-code">{state === "error" ? "–" : (counts[t.status] ?? 0)}</span>}
+              value={<span>{state === "error" ? "–" : (counts[t.status] ?? 0)}</span>}
               selected={selected === t.status}
               onSelect={() => onSelect(t.status)}
               className="w-full"

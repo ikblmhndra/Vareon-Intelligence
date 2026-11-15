@@ -108,8 +108,8 @@ export function DashboardView() {
             }
           >
             The LLM gateway is failing.{" "}
-            <span className="font-code">{llm.pending_ttp.toLocaleString("en-US")}</span> articles wait for
-            technique tagging and <span className="font-code">{llm.pending_classify.toLocaleString("en-US")}</span>{" "}
+            <span>{llm.pending_ttp.toLocaleString("en-US")}</span> articles wait for
+            technique tagging and <span>{llm.pending_classify.toLocaleString("en-US")}</span>{" "}
             wait for classification; both run on their own when it recovers. Articles that are already classified
             keep appearing.{llm.retry_at ? ` Next retry ${fmtTime(llm.retry_at)}.` : ""}
           </Notice>

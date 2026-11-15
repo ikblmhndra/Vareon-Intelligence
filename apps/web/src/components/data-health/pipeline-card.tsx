@@ -75,7 +75,7 @@ export function PipelineCard({ d }: { d: Health }) {
             <li className="min-w-0 flex-1 rounded-lg bg-surface px-3 py-2">
               <p className="text-2xs font-semibold tracking-wide text-muted-foreground uppercase">{s.name}</p>
               <p className="text-sm font-semibold text-foreground">{s.value}</p>
-              {s.sub && <p className="font-code text-2xs text-muted-foreground">{s.sub}</p>}
+              {s.sub && <p className="text-2xs text-muted-foreground">{s.sub}</p>}
             </li>
           </Fragment>
         ))}
@@ -121,8 +121,8 @@ export function PipelineCard({ d }: { d: Health }) {
       <ul className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
         {QUEUES.map((name) => (
           <li key={name} className="flex items-baseline justify-between gap-3 py-1 text-sm">
-            <span className="font-code text-xs text-muted-foreground">{name}</span>
-            <span className="font-code tabular-nums text-foreground">{depths?.[name] ?? "–"}</span>
+            <span className="text-xs text-muted-foreground">{name}</span>
+            <span className="tabular-nums text-foreground">{depths?.[name] ?? "–"}</span>
           </li>
         ))}
       </ul>
@@ -162,7 +162,7 @@ export function NeedsAttentionCard({ scrapers }: { scrapers: Health["scrapers"] 
                 className="flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-md px-2 py-1.5 hover:bg-surface focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none"
               >
                 <StatusBadge status={p.status} />
-                <span className="font-code text-xs text-foreground">{p.id}</span>
+                <span className="text-xs text-foreground">{p.id}</span>
                 {p.consecutive_failing > 0 && (
                   <span className="text-2xs text-destructive-text">failing {p.consecutive_failing}/3</span>
                 )}

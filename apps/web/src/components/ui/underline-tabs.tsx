@@ -55,7 +55,7 @@ export function UnderlineTabs<T extends string>({
           >
             {item.label}
             {item.count != null && (
-              <span className="ml-1.5 rounded-full bg-panel px-1.5 py-0.5 font-code text-2xs font-medium text-muted-foreground">
+              <span className="ml-1.5 rounded-full bg-panel px-1.5 py-0.5 text-2xs font-medium text-muted-foreground">
                 {item.count}
               </span>
             )}

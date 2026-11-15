@@ -58,7 +58,7 @@ function ClientCell({ user }: { user: AdminUser }) {
   return (
     <div className="flex items-center gap-1" title={all || undefined}>
       {ids.slice(0, 2).map((c) => (
-        <Chip key={c} kind="flag" value={c} className="font-code normal-case">
+        <Chip key={c} kind="flag" value={c} className="normal-case">
           {c}
         </Chip>
       ))}
@@ -178,14 +178,14 @@ function UsersCard({
                       <Avatar size="sm" aria-hidden>
                         <AvatarFallback>{u.username.slice(0, 2).toUpperCase()}</AvatarFallback>
                       </Avatar>
-                      <span className="truncate font-code text-sm text-foreground">{u.username}</span>
+                      <span className="truncate text-sm text-foreground">{u.username}</span>
                     </div>
                   </TableCell>
                   <TableCell>
                     {u.role === "superadmin" ? (
-                      <Chip kind="status" value="watch" className="font-code normal-case">{u.role}</Chip>
+                      <Chip kind="status" value="watch" className="normal-case">{u.role}</Chip>
                     ) : (
-                      <Chip kind="flag" value={u.role} className="font-code normal-case" />
+                      <Chip kind="flag" value={u.role} className="normal-case" />
                     )}
                   </TableCell>
                   <TableCell>

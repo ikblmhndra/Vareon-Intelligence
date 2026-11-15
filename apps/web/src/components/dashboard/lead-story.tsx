@@ -66,7 +66,7 @@ export function LeadStory({
           <>
             <span aria-hidden>·</span>
             <span>
-              <span className="font-code">{article.story.source_count}</span>{" "}
+              <span>{article.story.source_count}</span>{" "}
               {article.story.source_count === 1 ? "source" : "sources"}
             </span>
           </>

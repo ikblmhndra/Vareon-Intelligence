@@ -84,7 +84,7 @@ export function SrAside({ grade, onGradeChange }: SrAsideProps) {
                         max={max}
                         tone={GRADE_TONE[g]}
                         aria-label={`Grade ${g}: ${count} sources`}
-                        label={<span className="inline-block w-8 text-right font-code">{count}</span>}
+                        label={<span className="inline-block w-8 text-right tabular-nums">{count}</span>}
                       />
                     </button>
                   </li>
@@ -124,7 +124,7 @@ function Legend({ title, map }: { title: string; map: Record<string, string> }) 
           .sort(([a], [b]) => a.localeCompare(b))
           .map(([k, v]) => (
             <div key={k} className="flex gap-2">
-              <dt className="w-3 shrink-0 font-code font-semibold">{k}</dt>
+              <dt className="w-3 shrink-0 font-semibold">{k}</dt>
               <dd className="text-muted-foreground">{v}</dd>
             </div>
           ))}

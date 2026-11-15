@@ -24,7 +24,7 @@ export function TicketEditorCard({ ticket, className }: TicketEditorCardProps) {
     <Card className={className}>
       <CardHeader>
         <CardTitle className="flex flex-wrap items-center gap-2">
-          <h2 className="font-code">{ticket.ticket_id}</h2>
+          <h2 >{ticket.ticket_id}</h2>
           {ticket.escalation_required && <Chip kind="cve" value="escalation" />}
         </CardTitle>
         <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>

@@ -140,14 +140,14 @@ export function MonthCharts({ threatOnly }: { threatOnly: boolean }) {
             <li key={r.name} className="flex items-center gap-3">
               <EntityChip type="intrusion-set" name={r.name} className="w-40 shrink-0" />
               <MeterBar value={r.count} max={max} tone="destructive" aria-label={`${r.name}: ${r.count} victims`} className="min-w-0 flex-1" />
-              <span className="w-10 shrink-0 text-right font-code text-xs text-foreground">{num(r.count)}</span>
+              <span className="w-10 shrink-0 text-right text-xs text-foreground tabular-nums">{num(r.count)}</span>
             </li>
           ))}
           {other > 0 && (
             <li className="flex items-center gap-3 text-xs text-muted-foreground">
               <span className="w-40 shrink-0 px-2">Other</span>
               <span className="min-w-0 flex-1" />
-              <span className="w-10 shrink-0 text-right font-code">{num(other)}</span>
+              <span className="w-10 shrink-0 text-right tabular-nums">{num(other)}</span>
             </li>
           )}
         </ul>
@@ -184,7 +184,7 @@ export function MonthCharts({ threatOnly }: { threatOnly: boolean }) {
                 ) : (
                   <span className="min-w-0 flex-1 truncate text-foreground">{r.label}</span>
                 )}
-                <span className="font-code text-muted-foreground">{pct[i]}%</span>
+                <span className="text-muted-foreground tabular-nums">{pct[i]}%</span>
               </li>
             ))}
           </ul>
@@ -214,12 +214,12 @@ export function MonthCharts({ threatOnly }: { threatOnly: boolean }) {
             const name = at < 0 ? "" : t.name.slice(at + 3);
             return (
               <li key={t.name} className="flex items-center gap-2 text-xs">
-                <Link href={entityHref({ type: "attack-pattern", name: id })} className={cn("w-16 shrink-0 font-code text-foreground", linkClass)}>
+                <Link href={entityHref({ type: "attack-pattern", name: id })} className={cn("w-16 shrink-0 text-foreground", linkClass)}>
                   {id}
                 </Link>
                 <span className="min-w-0 flex-1 truncate text-muted-foreground" title={name}>{name}</span>
                 <MeterBar value={t.count} max={max} tone="destructive" aria-label={`${t.name}: ${t.count}`} className="w-12 shrink-0" />
-                <span className="w-8 shrink-0 text-right font-code text-foreground">{num(t.count)}</span>
+                <span className="w-8 shrink-0 text-right text-foreground tabular-nums">{num(t.count)}</span>
               </li>
             );
           })}

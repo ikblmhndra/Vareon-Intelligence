@@ -63,7 +63,7 @@ function OtherEnd({ rel, entityId }: { rel: RelationshipOut; entityId: number })
       return <EntityChip type={rel.source.type} name={rel.source.name} id={rel.source.id} label={refLabel(rel.source)} />;
     }
     return (
-      <span className="font-code text-xs break-all" title="Indicator">
+      <span className="text-xs break-all" title="Indicator">
         {rel.source_indicator_id != null ? `indicator #${rel.source_indicator_id}` : "indicator"}
       </span>
     );
@@ -177,7 +177,7 @@ function OtherEndText({ rel, entityId }: { rel: RelationshipOut; entityId: numbe
   const end = incoming ? rel.source : rel.target;
   if (!end) {
     return (
-      <span className="font-code text-xs">
+      <span className="text-xs">
         {rel.source_indicator_id != null ? `indicator #${rel.source_indicator_id}` : "indicator"}
       </span>
     );
@@ -318,7 +318,7 @@ export function EntityRelationshipsTab({ entity }: { entity: EntityDetail }) {
                   <TableCell>
                     <ProvenanceBadge provenance={r.provenance} />
                   </TableCell>
-                  <TableCell className="text-right font-code text-xs">{r.confidence ?? "-"}</TableCell>
+                  <TableCell className="text-right text-xs tabular-nums">{r.confidence ?? "-"}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{r.created_by ?? "-"}</TableCell>
                   <TableCell className="text-right">
                     {r.provenance === "analyst" && canManage && (

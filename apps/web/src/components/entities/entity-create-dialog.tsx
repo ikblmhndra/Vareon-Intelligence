@@ -155,7 +155,7 @@ export function EntityCreateDialog({ open, onClose, initialType, initialName }: 
               value={externalId}
               onChange={(e) => setExternalId(e.target.value)}
               placeholder={needsExternalId ? "T1566.001" : undefined}
-              className="font-code text-xs max-sm:h-11"
+              className="text-xs max-sm:h-11"
             />
           </div>
           <div className="flex flex-col gap-1">

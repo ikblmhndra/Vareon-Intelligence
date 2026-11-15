@@ -271,12 +271,12 @@ export function MitreHeatmapView() {
                   {t.entity_id != null ? (
                     <Link
                       href={`/intelligence/entities/${t.entity_id}`}
-                      className="rounded-sm font-code text-primary-text underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                      className="rounded-sm text-primary-text underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                     >
                       {t.id}
                     </Link>
                   ) : (
-                    <span className="font-code text-primary-text">{t.id}</span>
+                    <span className="text-primary-text">{t.id}</span>
                   )}
                   <span className="block font-normal break-words" title={t.name}>
                     {t.name}

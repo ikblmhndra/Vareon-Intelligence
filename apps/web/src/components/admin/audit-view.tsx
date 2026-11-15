@@ -117,10 +117,10 @@ export function AuditView() {
               return (
                 <TableRow key={`${filterKey}-${page}-${rowKey}`}>
                   <TableCell className="text-xs text-muted-foreground">{fmtDateTime(l.timestamp)}</TableCell>
-                  <TableCell className="truncate font-code text-xs text-foreground" title={l.user}>
+                  <TableCell className="truncate text-xs text-foreground" title={l.user}>
                     {l.user}
                   </TableCell>
-                  <TableCell className="truncate font-code text-xs" title={l.action}>
+                  <TableCell className="truncate text-xs" title={l.action}>
                     {l.action}
                   </TableCell>
                   <TableCell className="truncate text-xs text-muted-foreground" title={l.target_id ?? undefined}>
@@ -165,7 +165,7 @@ export function AuditView() {
               placeholder="all"
               value={userInput}
               onChange={(e) => setUserInput(e.target.value)}
-              className="w-40 font-code text-xs"
+              className="w-40 text-xs"
             />
           </div>
           <div className="space-y-1">
@@ -178,7 +178,7 @@ export function AuditView() {
               placeholder="all"
               value={actionInput}
               onChange={(e) => setActionInput(e.target.value)}
-              className="w-48 font-code text-xs"
+              className="w-48 text-xs"
             />
           </div>
           <Button

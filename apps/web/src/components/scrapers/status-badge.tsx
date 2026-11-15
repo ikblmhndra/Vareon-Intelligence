@@ -61,5 +61,5 @@ export function runStatusClass(status: string): string {
 
 /** Warna teks status run (`ScraperRun.status`), inline di tabel runs. */
 export function RunStatusText({ status }: { status: string }) {
-  return <span className={`font-code text-xs ${RUN_STATUS_STYLE[status] ?? ""}`}>{status}</span>;
+  return <span className={`text-xs ${RUN_STATUS_STYLE[status] ?? ""}`}>{status}</span>;
 }

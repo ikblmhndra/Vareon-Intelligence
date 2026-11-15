@@ -21,7 +21,7 @@ export function SessionCard() {
           <AvatarFallback>{user.username.slice(0, 2).toUpperCase()}</AvatarFallback>
         </Avatar>
         <div className="min-w-0">
-          <p className="truncate font-code text-sm font-semibold text-foreground">{user.username}</p>
+          <p className="truncate text-sm font-semibold text-foreground">{user.username}</p>
           <p className="truncate text-xs text-muted-foreground">
             {user.role} · {clients}
           </p>

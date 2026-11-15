@@ -42,7 +42,7 @@ export function PirCriteriaRows({ criteria, className }: { criteria: PIROut["cri
       {rows.map((r) => (
         <span key={r.key} className="min-w-0">
           <span className="mr-1.5 text-2xs font-semibold tracking-wide text-muted-foreground">{r.label}</span>
-          <span className={cn(r.code && "font-code")}>{criteria[r.key].join(", ")}</span>
+          <span>{criteria[r.key].join(", ")}</span>
         </span>
       ))}
     </div>
@@ -87,7 +87,7 @@ export function PirList({
         <div className="flex flex-col gap-2">
           {/* pr-8: ruang untuk tombol "⋯" yang menumpang di pojok kanan atas. */}
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pr-8">
-            <span className="font-code text-xs font-semibold text-foreground">{displayId("PIR", p.id)}</span>
+            <span className="text-xs font-semibold text-foreground">{displayId("PIR", p.id)}</span>
             <PirPriorityChip priority={p.priority} />
             {p.is_gap && (
               <Chip kind="status" value="action">

@@ -77,7 +77,7 @@ export function NewsletterComposerSections({ block, view, onViewChange, state, p
       <div className="mb-4 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <div>
           <h2 className="font-heading text-lg leading-snug font-semibold text-foreground">{block.title}</h2>
-          <p className="font-code text-xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             {compactDef ? `${cards.length} full cards · ${rows.length} compact` : `${cards.length} of ${fullDef.cap}`}
           </p>
         </div>
@@ -242,7 +242,7 @@ function SwapMenu({ outId, pool, onSwap }: { outId: number; pool: PoolEntry[]; o
                 <DropdownMenuItem key={p.article.id} onClick={() => onSwap(outId, p)} className="items-start">
                   <span className="min-w-0 flex-1">
                     <span className="line-clamp-2 text-xs font-medium">{p.article.title}</span>
-                    <span className="block font-code text-xs text-muted-foreground">
+                    <span className="block text-xs text-muted-foreground">
                       {p.article.source} · {p.article.posted_on}
                     </span>
                   </span>
@@ -281,7 +281,7 @@ function ArticleCard({ article, note, bodySource, paywall, regenerate, onNoteCha
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="text-sm font-semibold text-foreground">{article.title}</div>
-          <div className="mt-0.5 font-code text-xs text-muted-foreground">
+          <div className="mt-0.5 text-xs text-muted-foreground">
             {article.source} · {article.posted_on}
           </div>
         </div>
@@ -323,7 +323,7 @@ function ArticleRow({ article, state, ...rest }: ItemProps) {
           <div className="truncate text-xs font-medium text-foreground" title={article.title}>
             {article.title}
           </div>
-          <div className="font-code text-xs text-muted-foreground">
+          <div className="text-xs text-muted-foreground">
             {article.source} · {article.posted_on}
             {article.news_type ? ` · ${article.news_type}` : ""}
           </div>

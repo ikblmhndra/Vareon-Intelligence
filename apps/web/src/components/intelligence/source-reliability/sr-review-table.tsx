@@ -149,7 +149,7 @@ export function SrReviewTable() {
                     </TableCell>
                     <TableCell className="px-4">{e.content_kind ? <Chip kind="flag" value={e.content_kind} /> : "—"}</TableCell>
                     <TableCell className="px-4 whitespace-nowrap">
-                      <span className="inline-flex items-center gap-1.5 font-code text-xs">
+                      <span className="inline-flex items-center gap-1.5 text-xs">
                         <Chip kind="grade" value={e.reliability_grade} className={gradeChipClass(e.reliability_grade)} />
                         {suggested && suggested !== e.reliability_grade && (
                           <>
@@ -160,19 +160,19 @@ export function SrReviewTable() {
                         )}
                       </span>
                     </TableCell>
-                    <TableCell className="px-4 font-code text-xs">
+                    <TableCell className="px-4 text-xs tabular-nums">
                       {it.lead_count} / {it.multi_source_stories}
                     </TableCell>
-                    <TableCell className="px-4 font-code text-xs">{it.articles}</TableCell>
-                    <TableCell className="px-4 font-code text-xs" title={`${it.rejected} rejected`}>
+                    <TableCell className="px-4 text-xs tabular-nums">{it.articles}</TableCell>
+                    <TableCell className="px-4 text-xs tabular-nums" title={`${it.rejected} rejected`}>
                       {pct(it.rejected_pct)}
                     </TableCell>
-                    <TableCell className="px-4 font-code text-xs" title={`${it.artefact_articles} with artefacts`}>
+                    <TableCell className="px-4 text-xs tabular-nums" title={`${it.artefact_articles} with artefacts`}>
                       {pct(it.artefact_pct)}
                     </TableCell>
                     <TableCell
                       className={cn(
-                        "px-4 font-code text-xs",
+                        "px-4 text-xs",
                         it.ioc_verdicts > 0 && it.ioc_fp_pct > IOC_FP_ALERT_PCT && "text-destructive-text",
                       )}
                       title={`${it.ioc_fp} of ${it.ioc_verdicts} IOC verdicts`}

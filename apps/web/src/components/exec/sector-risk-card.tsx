@@ -77,15 +77,15 @@ export function SectorRiskCard({ d, className }: { d: ExecDashboardV2; className
                           aria-label={`${toTitleCase(sr.sector)} risk score`}
                           className="min-w-0 flex-1"
                         />
-                        <span className="font-code text-xs">{sr.risk_score}</span>
+                        <span className="text-xs tabular-nums">{sr.risk_score}</span>
                         <Chip kind="risk" value={sr.risk_score} />
                       </div>
                     </TableCell>
-                    <TableCell className="font-code text-xs">{articles.toLocaleString()}</TableCell>
+                    <TableCell className="text-xs tabular-nums">{articles.toLocaleString()}</TableCell>
                     <TableCell>
                       {series.length > 1 ? <Sparkline data={series} className="h-6 w-20" /> : <span className="text-xs">—</span>}
                     </TableCell>
-                    <TableCell className={cn("font-code text-xs", onTint(bench.colorClass))}>{bench.text.replace(" vs avg", "")}</TableCell>
+                    <TableCell className={cn("text-xs tabular-nums", onTint(bench.colorClass))}>{bench.text.replace(" vs avg", "")}</TableCell>
                     <TableCell className="text-xs">
                       {sr.top_actor ? (
                         <EntityChip type="intrusion-set" name={sr.top_actor} label={toTitleCase(sr.top_actor)} />

@@ -160,7 +160,7 @@ function DomainRow({
       <div className="flex items-center justify-between gap-3">
         <span className="text-xs font-medium">{d.label || d.domain_key}</span>
         <span className="flex items-center gap-3">
-          <span className="font-code text-xs text-muted-foreground">{d.version ? `v${d.version}` : "—"}</span>
+          <span className="text-xs text-muted-foreground">{d.version ? `v${d.version}` : "—"}</span>
           <span className="inline-flex items-center gap-1.5">
             <span aria-hidden="true" className={cn("size-2 rounded-full", dot)} />
             {failed && d.error ? (

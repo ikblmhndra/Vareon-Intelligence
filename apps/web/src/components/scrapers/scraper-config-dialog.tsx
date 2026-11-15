@@ -134,7 +134,7 @@ function ConfigForm({ id, detail, onClose }: { id: string; detail: ScraperDetail
         <DialogTitle className="font-heading">Edit config · {detail.source}</DialogTitle>
         <DialogDescription>
           Blank fields use the code default. Only the values you set are stored as overrides for{" "}
-          <span className="font-code">{id}</span>.
+          <span>{id}</span>.
         </DialogDescription>
       </DialogHeader>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -156,7 +156,7 @@ function ConfigForm({ id, detail, onClose }: { id: string; detail: ScraperDetail
             value={rateLimit}
             onChange={(e) => setRateLimit(e.target.value)}
             placeholder={detail.default_rate_limit}
-            className="font-code text-xs"
+            className="text-xs"
           />
         </div>
         <div className="space-y-1.5">
@@ -167,7 +167,7 @@ function ConfigForm({ id, detail, onClose }: { id: string; detail: ScraperDetail
             value={maxItems}
             onChange={(e) => setMaxItems(e.target.value)}
             placeholder={String(detail.default_max_items)}
-            className="font-code text-xs"
+            className="text-xs"
           />
         </div>
         {detail.options.map((option) => (

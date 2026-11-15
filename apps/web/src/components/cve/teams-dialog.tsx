@@ -226,7 +226,7 @@ export function TeamsDialog({ open, onOpenChange }: { open: boolean; onOpenChang
                 editId === t.id ? (
                   <TableRow key={t.id}>
                     <RowFields draft={edit} onChange={setEdit} errors={editErrors} label={`Edit ${t.name}`} />
-                    <TableCell className="text-right align-top font-code text-xs">{t.ticket_count}</TableCell>
+                    <TableCell className="text-right align-top text-xs">{t.ticket_count}</TableCell>
                     <TableCell className="align-top">
                       <div className="flex flex-wrap justify-end gap-2">
                         <Button size="sm" loading={busy === `save-${t.id}`} onClick={() => void save(t)}>
@@ -251,7 +251,7 @@ export function TeamsDialog({ open, onOpenChange }: { open: boolean; onOpenChang
                     <TableCell className="text-xs font-semibold">{t.name}</TableCell>
                     <TableCell className="text-xs">{t.lead_name || "—"}</TableCell>
                     <TableCell className="text-xs">{t.lead_email || "—"}</TableCell>
-                    <TableCell className="text-right font-code text-xs">{t.ticket_count}</TableCell>
+                    <TableCell className="text-right text-xs">{t.ticket_count}</TableCell>
                     <TableCell className="text-right">
                       <Button size="sm" variant="ghost" aria-label={`Edit ${t.name}`} onClick={() => startEdit(t)}>
                         Edit
