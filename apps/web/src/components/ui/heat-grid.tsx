@@ -120,6 +120,7 @@ export function HeatGrid({
               <th
                 key={c}
                 scope="col"
+                style={{ width: `${100 / colLabels.length}%` }}
                 className="sticky top-0 z-10 bg-background px-1 pb-1 text-left text-2xs font-semibold text-muted-foreground"
               >
                 {label}
