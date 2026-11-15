@@ -183,10 +183,11 @@ export function TicketForm({ cveId, cve, ticket, variant, onSaved, readOnly, onC
   const id = (n: string) => `${uid}-${n}`;
   const ro = !!readOnly;
   // Panel (kolom kanan sempit, ~1/3 lebar) baru dua kolom di xl; dialog lebar cukup di lg. `*:min-w-0` agar input tidak melebar.
-  const pair = cn("grid gap-4 *:min-w-0", variant === "panel" ? "xl:grid-cols-2" : "lg:grid-cols-2");
+  // Form memakai track `minmax(0,1fr)` + `*:min-w-0`: track `auto` mengikuti min-content anak terlebar (segmen status ~400px).
+  const pair = cn("grid grid-cols-[minmax(0,1fr)] gap-4 *:min-w-0", variant === "panel" ? "xl:grid-cols-2" : "lg:grid-cols-2");
 
   return (
-    <form onSubmit={(e) => void submit(e)} className="grid gap-4" noValidate>
+    <form onSubmit={(e) => void submit(e)} className="grid grid-cols-[minmax(0,1fr)] gap-4 *:min-w-0" noValidate>
       <div className={pair}>
         <Field label="Affected asset" htmlFor={id("asset")}>
           <Input id={id("asset")} value={v.affected_asset} readOnly={ro} onChange={(e) => set("affected_asset", e.target.value)} />

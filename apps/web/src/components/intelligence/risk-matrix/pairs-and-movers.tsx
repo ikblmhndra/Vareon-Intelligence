@@ -58,13 +58,13 @@ export function PairsCard({ cells, selectedKey, onSelect, onExport }: PairsCardP
                 <th scope="col" className="w-8 py-1.5 font-semibold">
                   #
                 </th>
-                <th scope="col" className="py-1.5 font-semibold">
+                <th scope="col" className="py-1.5 pr-4 font-semibold">
                   Industry × country
                 </th>
-                <th scope="col" className="py-1.5 font-semibold">
+                <th scope="col" className="py-1.5 pr-4 font-semibold">
                   Score
                 </th>
-                <th scope="col" className="py-1.5 font-semibold">
+                <th scope="col" className="py-1.5 pr-4 font-semibold">
                   Articles
                 </th>
                 <th scope="col" className="py-1.5 font-semibold">
@@ -85,7 +85,7 @@ export function PairsCard({ cells, selectedKey, onSelect, onExport }: PairsCardP
                     className={cn("cursor-pointer border-t border-border", selected && "bg-surface")}
                   >
                     <td className="py-2 tabular-nums text-muted-foreground">{i + 1}</td>
-                    <td className="py-2 pr-2">
+                    <td className="py-2 pr-4">
                       <button
                         type="button"
                         onClick={(e) => {
@@ -97,7 +97,7 @@ export function PairsCard({ cells, selectedKey, onSelect, onExport }: PairsCardP
                         {pairLabel(c)}
                       </button>
                     </td>
-                    <td className="py-2 pr-2">
+                    <td className="py-2 pr-4">
                       <span className="inline-flex items-center gap-1">
                         <Chip kind="risk" value={c.risk_score}>
                           {c.risk_score}
@@ -105,7 +105,7 @@ export function PairsCard({ cells, selectedKey, onSelect, onExport }: PairsCardP
                         <Arrow role="img" aria-label={trendOf(c)} className="size-3 text-muted-foreground" />
                       </span>
                     </td>
-                    <td className="py-2 pr-2 tabular-nums">
+                    <td className="py-2 pr-4 tabular-nums">
                       {c.current_count} / {c.previous_count}
                     </td>
                     <td className="py-2" onClick={(e) => e.stopPropagation()}>
