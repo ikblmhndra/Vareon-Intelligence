@@ -29,7 +29,7 @@ export function LeadStory({
   if (q.isError && !q.data) {
     return <PanelError title="Could not load the lead story" error={q.error} onRetry={() => void q.refetch()} />;
   }
-  if (!q.data) return <Skeleton aria-hidden className="h-72 w-full rounded-xl" />;
+  if (!q.data) return <Skeleton aria-hidden className="h-72 w-full rounded-lg" />;
 
   const article = q.data.articles[0];
   if (!article) {
@@ -47,10 +47,12 @@ export function LeadStory({
   const ttps = article.ttps.slice(0, 2);
   const lines = priorityLines(article);
 
+  // self-start + clamp lebih longgar: kartu tidak melar kosong mengikuti kolom sebelah; ringkasan tampil lebih panjang.
+  // self-start + clamp lebih longgar: kartu tidak melar kosong mengikuti kolom sebelah; ringkasan tampil lebih panjang.
   return (
     <article
       aria-label="Lead story"
-      className={cn("surface-raised space-y-3 p-5", q.isPlaceholderData && "opacity-60")}
+      className={cn("surface-raised space-y-3 self-start rounded-lg p-5", q.isPlaceholderData && "opacity-60")}
     >
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-2xs font-semibold tracking-wide text-muted-foreground uppercase">
         <span>Lead story</span>
@@ -80,7 +82,7 @@ export function LeadStory({
           {article.title}
         </button>
       </h2>
-      {article.summary && <p className="line-clamp-3 text-sm text-muted-foreground">{article.summary}</p>}
+      {article.summary && <p className="line-clamp-6 text-sm text-muted-foreground">{article.summary}</p>}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-muted-foreground">
         <span title={when.title}>
           {article.source} · {when.text}

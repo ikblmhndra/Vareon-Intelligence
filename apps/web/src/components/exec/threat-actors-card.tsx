@@ -25,7 +25,7 @@ export function ThreatActorsCard({ d, from, className }: { d: ExecDashboardV2; f
   const total = Math.min(d.ta_leaderboard.length, 10);
   const prevSet = new Set(d.prev_ta_names.map((n) => n.toLowerCase()));
   return (
-    <Card className={className}>
+    <Card className={cn("self-start", className)}>
       <CardHeader>
         <CardTitle>Threat actors</CardTitle>
         <CardDescription>By article count; velocity = last month vs prior average</CardDescription>
