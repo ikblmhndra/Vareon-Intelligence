@@ -119,7 +119,8 @@ export function useCveExposure(days: number | null, limit: number) {
   });
 }
 
-/** Lima berita prioritas. "Sekarang" dan awal periode dibaca di dalam queryFn (bukan saat render);
+/** Delapan berita prioritas: [0] lead story, [1..4] Must read, [5..7] runner-up di kartu lead saat ringkasannya
+ * kosong/pendek (satu request untuk ketiganya). "Sekarang" dan awal periode dibaca di dalam queryFn (bukan saat render);
  * `fetchedAt` ikut dikembalikan supaya `articleWhen` memakai jam yang sama dengan datanya. */
 export function useMustRead(days: number | null) {
   return useQuery({
@@ -130,7 +131,7 @@ export function useMustRead(days: number | null) {
         days == null ? undefined : new Date(fetchedAt - days * 86_400_000).toISOString().slice(0, 10);
       const data = unwrap(
         await api.GET("/api/articles", {
-          params: { query: { page: 1, page_size: 5, posted_on_start: postedOnStart, sort: "priority" } },
+          params: { query: { page: 1, page_size: 8, posted_on_start: postedOnStart, sort: "priority" } },
         }),
         "Failed to load the must-read list",
       );
