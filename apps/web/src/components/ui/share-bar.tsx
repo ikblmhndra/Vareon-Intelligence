@@ -16,7 +16,7 @@ export const SHARE_BAR_SEGMENT = [
 ] as const;
 
 /** Segmen sisa ("Other") yang bukan kategori: token netral, bukan slot seri. */
-export const SHARE_BAR_NEUTRAL = "bg-muted-foreground/60";
+export const SHARE_BAR_NEUTRAL = "bg-muted-foreground/70";
 
 /** Kelas warna per item, dicari lewat nama (slot yang sama dengan grafik lain, tanpa bentrok di satu set).
  * Item `neutral` memakai token netral. Dipakai ShareBar dan legenda pemanggil agar swatch = segmen. */
