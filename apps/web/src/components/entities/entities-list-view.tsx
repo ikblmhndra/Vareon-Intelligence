@@ -314,9 +314,9 @@ export function EntitiesListView() {
                         )}
                       </div>
                     </TableCell>
-                    {/* Hanya technique yang punya ATT&CK ID; untuk tipe lain external_id berisi slug. */}
+                    {/* Sektor (identity) menyimpan slug di external_id, bukan ID; tipe lain: ATT&CK/CVE/ISO asli. */}
                     <TableCell className="text-xs text-primary-text">
-                      {it.type === "attack-pattern" ? (it.external_id ?? "—") : "—"}
+                      {it.type === "identity" ? "—" : (it.external_id ?? "—")}
                     </TableCell>
                     <TableCell>
                       <Aliases item={it} />
@@ -347,7 +347,7 @@ export function EntitiesListView() {
               <div className="flex flex-wrap items-center gap-2">
                 {starFor(it)}
                 <EntityChip type={it.type} name={it.name} id={it.id} />
-                {it.type === "attack-pattern" && it.external_id && (
+                {it.type !== "identity" && it.external_id && (
                   <span className="text-xs text-muted-foreground">{it.external_id}</span>
                 )}
                 {it.suppressed && (
