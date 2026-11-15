@@ -74,6 +74,17 @@ router `changelog.py`) -- parser-nya expect header persis
 - Dashboard: periode bawaan menjadi 7 hari dengan pilihan 24 jam; teks Dashboard berbahasa Inggris; kalimat brief dan "Updated HH:MM" tidak lagi ditampilkan; grup ransomware teratas menjadi lima.
 - Newsroom: halaman depan didesain ulang (teks Inggris, periode ada di URL, rubrik mempersempit daftar, enam kartu topik, empat state). Tab Filtered kini tampil untuk setiap pengguna dengan izin `view_news`, tombolnya diatur per izin. Pencarian artikel kini juga mencocokkan nama aktor dan CVE id (`%` dan `_` dicocokkan apa adanya). Tanpa migrasi, tanpa key `.env` baru, tanpa perubahan kontrak.
 - Newsroom, All articles didesain ulang: daftar master-detail dengan panel baca, filter grade reliabilitas sumber (`reliability_grade` di `GET /api/articles`, artikel tanpa grade tidak ikut saat filter aktif), dan blok IOC di pembaca lewat `GET /api/articles/{article_id}/iocs` (`ArticleIocsOut`: `items` berisi `type`, `value`, `context`, `reputation`, plus `total`; maksimal 200 item). Link dari Newsroom dan Intelligence kini membuka All articles; sheet daftar lama dihapus. Tanpa migrasi, tanpa key `.env` baru.
+- Web, perbaikan hasil audit UI (hanya web, tanpa migrasi, tanpa key `.env`, tanpa perubahan kontrak):
+  - Layout memakai lebar layar penuh sampai 1920 px (gutter 40 px mulai 1024 px), tidak lagi kolom 1328 px.
+  - Satu gaya grafik di semua halaman: garis lurus, titik hanya saat hover, legenda berbentuk garis/titik, tanggal sumbu pendek ("8 Nov") tanpa diputar.
+  - Warna punya arti: tile KPI diberi aksen menurut jenisnya (ancaman merah, kerentanan amber, intel teal lewat token baru `--intel`, operasi biru); kategori (sektor, jenis berita, negara) berwarna tetap menurut nama di semua halaman, termasuk share bar. Palet `--chart-*` diseimbangkan ulang dan dicek skrip `pnpm check:palette` (jarak warna dan kontras, terang dan gelap).
+  - Font: IBM Plex Mono hanya untuk string mesin (hash, nilai IOC, IP, URL, query, cron); ID CVE/ATT&CK dan angka memakai Google Sans Flex dengan angka tabular.
+  - Kartu Lead story, Top story, dan Threat actors tidak lagi melar setengah kosong; radius disamakan.
+  - Newsroom All articles membuka artikel pertama otomatis di layar ≥1024 px; sparkline topik tanpa sumbu.
+  - CVE: toolbar dirapikan, filter tanggal memakai pemilih tanggal bawaan app (dengan batas From ≤ To dan nilai terbaca pembaca layar), panel ticket muat di 1024 px.
+  - Exec: tombol aksi rata kanan di baris filter, "updated just now" tidak terpotong. Entities: kolom ATT&CK ID menampilkan "—" untuk sektor, kolom 30D/90D dipisah, alias tidak dipotong.
+  - IOC dan Source reliability: label enum dibuat terbaca ("URL with path", "Vendor research"); tile IOC mengisi baris penuh. Sel kosong heatmap Risk matrix dan Sector heatmap tampil polos.
+  - Helper murni baru (warna kategori, label enum, label tanggal) punya unit test `pnpm test:unit` (`node --test`).
 
 ### Diperbaiki
 - `PUT /api/rfi/{id}` dan `PUT /api/pir/{id}`: `null` eksplisit kini mengosongkan field yang boleh kosong (RFI `due_date` dan `linked_pir`; PIR `start_date` dan `end_date`). Dulu nilai yang dikosongkan diam-diam diabaikan. `null` pada field wajib tetap diabaikan.
