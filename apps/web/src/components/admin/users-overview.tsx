@@ -70,7 +70,7 @@ export function UsersTiles() {
             const week = rows.filter(
               (u) => u.last_sign_in && nowMs - new Date(u.last_sign_in).getTime() <= 7 * DAY_MS,
             ).length;
-            return <StatTile label="USERS" value={rows.length} sub={`${week} signed in this week`} />;
+            return <StatTile label="USERS" kind="ops" value={rows.length} sub={`${week} signed in this week`} />;
           }}
         />
       )}

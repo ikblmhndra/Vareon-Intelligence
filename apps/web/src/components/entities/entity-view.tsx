@@ -181,11 +181,11 @@ export function EntityView({ id }: { id: number }) {
     <div className="space-y-4">
       <EntityHeader entity={entity} listTabKey={listTab.key} />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <StatTile label="Mentions 30 days" value={entity.mentions_30d} />
-        <StatTile label="Stories" value={totals.data?.stories ?? "-"} />
-        <StatTile label="Indicators" value={totals.data?.indicators ?? "-"} />
-        <StatTile label="CVEs" value={totals.data?.cves ?? "-"} />
-        <StatTile label="Last seen" value={entity.last_seen ? fmtAgo(entity.last_seen) : "n/a"} />
+        <StatTile kind="intel" label="Mentions 30 days" value={entity.mentions_30d} />
+        <StatTile kind="threat" label="Stories" value={totals.data?.stories ?? "-"} />
+        <StatTile kind="intel" label="Indicators" value={totals.data?.indicators ?? "-"} />
+        <StatTile kind="vuln" label="CVEs" value={totals.data?.cves ?? "-"} />
+        <StatTile kind="ops" label="Last seen" value={entity.last_seen ? fmtAgo(entity.last_seen) : "n/a"} />
       </div>
       <TabPills items={tabs} value={tab} onChange={setTab} aria-label="Entity sections" />
       <div role="tabpanel">

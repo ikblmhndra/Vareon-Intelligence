@@ -11,14 +11,28 @@ const TONE = {
   destructive: { bar: "bg-destructive", value: "text-destructive-text" },
   warning: { bar: "bg-warning", value: "text-warning-text" },
   info: { bar: "bg-info", value: "text-info-text" },
+  intel: { bar: "bg-intel", value: "text-intel-text" },
   success: { bar: "bg-success", value: "text-success-text" },
 } as const;
+
+/** Jenis hal yang dihitung tile: threat = berita/insiden/korban/aktor/teknik, vuln = CVE/KEV/tiket/eksposur,
+ * intel = IOC/entitas/PIR/sumber/kampanye, ops = scraper/antrean/data health/kesegaran. */
+export type KpiKind = "threat" | "vuln" | "intel" | "ops";
+
+const KIND_TONE: Record<KpiKind, keyof typeof TONE> = {
+  threat: "destructive",
+  vuln: "warning",
+  intel: "intel",
+  ops: "info",
+};
 
 interface StatTileProps {
   label: string;
   value: ReactNode;
   sub?: ReactNode;
   tone?: keyof typeof TONE;
+  /** Warna menurut jenis angka. `tone` eksplisit menang (tile severity/status tetap pakai nadanya). */
+  kind?: KpiKind;
   tooltip?: ReactNode;
   /** Deret kecil di pojok kanan bawah (min. 2 titik); dekoratif, angka tetap ada di `value`/`sub`. */
   spark?: number[];
@@ -31,8 +45,8 @@ interface StatTileProps {
 
 /** Kotak angka ringkas: batang warna 2 px di atas, label 11 px kapital, angka besar, keterangan kecil.
  * `tooltip` (opsional) menjelaskan label saat di-hover/fokus. */
-export function StatTile({ label, value, sub, tone = "neutral", tooltip, spark, selected, onSelect, className }: StatTileProps) {
-  const t = TONE[tone];
+export function StatTile({ label, value, sub, tone, kind, tooltip, spark, selected, onSelect, className }: StatTileProps) {
+  const t = TONE[tone ?? (kind ? KIND_TONE[kind] : "neutral")];
   const labelEl = (
     <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
   );

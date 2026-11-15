@@ -176,7 +176,7 @@ export function VulnsPanel({ filters, onFilters, stats, segment, actions }: Vuln
       </Card>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-        <StatTile label="Packages" value={stats?.packages ?? "—"} />
+        <StatTile label="Packages" value={stats?.packages ?? "—"} kind="vuln" />
         <StatTile label="Vulnerable" value={stats?.vulnerable_packages ?? "—"} tone="warning" />
         <StatTile label="Critical" value={stats?.critical ?? "—"} tone="destructive" />
         <StatTile label="High" value={stats?.high ?? "—"} tone="warning" />
