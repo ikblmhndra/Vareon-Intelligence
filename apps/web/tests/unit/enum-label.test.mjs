@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { enumLabel } from "../../src/lib/enum-label.ts";
+import { enumLabel, sentenceLabel } from "../../src/lib/enum-label.ts";
 
 test("humanizes snake and screaming case", () => {
   assert.equal(enumLabel("url_with_path"), "URL with path");
