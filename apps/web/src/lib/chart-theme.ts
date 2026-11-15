@@ -31,6 +31,7 @@ export interface ChartTheme {
   surface: string;
   primary: string;
   info: string;
+  intel: string;
   critical: string;
   warning: string;
   success: string;
@@ -58,6 +59,7 @@ export function useChartTheme(): ChartTheme {
       surface: v("--surface"),
       primary: v("--primary"),
       info: v("--info"),
+      intel: v("--intel"),
       critical: v("--severity-critical"),
       warning: v("--warning"),
       success: v("--success"),
