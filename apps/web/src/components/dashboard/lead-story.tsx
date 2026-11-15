@@ -11,6 +11,9 @@ import { StatePanel } from "@/components/ui/state-panel";
 import { periodInfo, type PeriodKey } from "@/lib/dashboard/period";
 import { cn } from "@/lib/utils";
 
+/** Di bawah panjang ini (karakter) ringkasan dianggap pendek dan kartu diisi runner-up. */
+const SHORT_SUMMARY = 200;
+
 const FOCUS_RING =
   "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
@@ -46,6 +49,9 @@ export function LeadStory({
   const cves = article.entities.filter((e) => e.type === "vulnerability").slice(0, 2);
   const ttps = article.ttps.slice(0, 2);
   const lines = priorityLines(article);
+  // Ringkasan kosong/pendek membuat kartu yang melar setinggi baris kosong di tengah: isi dengan runner-up
+  // (artikel ke-6..8; ke-2..5 sudah tampil di Must read tepat di bawah, jadi tidak ada duplikat).
+  const runnerUps = (article.summary?.length ?? 0) < SHORT_SUMMARY ? q.data.articles.slice(5, 8) : [];
 
   // Kartu melar setinggi baris (h-full); blok terakhir menempel di bawah (mt-auto) dan ringkasan tampil lebih panjang
   // saat kartu lebih tinggi. Tinggi tidak pernah dibatasi: konten yang lebih tinggi dari tetangga tetap penuh.
@@ -94,6 +100,35 @@ export function LeadStory({
           <EntityChip key={`c${c.id}`} type="vulnerability" name={c.external_id ?? c.name} />
         ))}
       </div>
+      {runnerUps.length > 0 && (
+        <section aria-labelledby="lead-next" className="border-t border-border pt-3">
+          <h3 id="lead-next" className="text-2xs font-semibold tracking-wide text-muted-foreground uppercase">
+            Next in line
+          </h3>
+          <ul className="mt-1 divide-y divide-border">
+            {runnerUps.map((a) => {
+              const w = articleWhen(a, q.data.fetchedAt);
+              return (
+                <li key={a.id} className="flex items-baseline gap-2 py-2">
+                  {a.priority_score != null && <PriorityChip score={a.priority_score} />}
+                  <div className="min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => openArticle(a)}
+                      className={cn("rounded-sm text-left text-sm font-medium text-foreground outline-none hover:underline", FOCUS_RING)}
+                    >
+                      {a.title}
+                    </button>
+                    <p className="text-xs text-muted-foreground" title={w.title}>
+                      {a.source} · {w.text}
+                    </p>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
       {article.priority_score != null && (
         <div className="mt-auto rounded-lg bg-primary/10 p-3">
           <h3 className="text-2xs font-semibold tracking-wide text-primary-text uppercase">Why it ranks first</h3>
