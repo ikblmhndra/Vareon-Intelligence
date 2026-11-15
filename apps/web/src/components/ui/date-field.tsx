@@ -14,13 +14,16 @@ interface DateFieldProps {
   "aria-label"?: string;
   /** Tampilkan tombol hapus; tanpa ini tanggal selalu terisi setelah dipilih. */
   optional?: boolean;
+  /** Batas `YYYY-MM-DD` untuk pemilih native (rentang From <= To). */
+  min?: string;
+  max?: string;
 }
 
 /** Tombol bertanggal ("1 Nov 2026") yang membuka pemilih tanggal native lewat `showPicker()` pada
  * `<input type="date">` tersembunyi (fallback: fokus ke input bila `showPicker` tak ada/ditolak). Nilai tetap
  * string `YYYY-MM-DD`; tampilan lewat `fmtShortDate` (memakai `parseLocalDate`, jadi tidak bergeser sehari
  * di zona sebelah barat UTC). */
-export function DateField({ id, value, onChange, "aria-label": ariaLabel, optional }: DateFieldProps) {
+export function DateField({ id, value, onChange, "aria-label": ariaLabel, optional, min, max }: DateFieldProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   function open() {
@@ -65,6 +68,8 @@ export function DateField({ id, value, onChange, "aria-label": ariaLabel, option
         tabIndex={-1}
         aria-hidden="true"
         value={value ?? ""}
+        min={min}
+        max={max}
         onChange={(e) => onChange(e.target.value || null)}
         className="sr-only"
       />
