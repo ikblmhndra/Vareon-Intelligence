@@ -43,7 +43,7 @@ function tileGridClass(n: number): string {
   return "sm:grid-cols-4";
 }
 
-const TYPE_OPTIONS = [{ value: "all", label: "all" }, ...IOC_TYPES.map((t) => ({ value: t, label: t }))];
+const TYPE_OPTIONS = [{ value: "all", label: "all" }, ...IOC_TYPES.map((t) => ({ value: t, label: sentenceLabel(t) }))];
 const STATE_OPTIONS: readonly { value: StateFilter; label: string }[] = [
   { value: "active", label: "active" },
   { value: "expired", label: "expired" },

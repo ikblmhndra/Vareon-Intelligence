@@ -10,8 +10,7 @@ import { UtilityBar } from "@/components/app-shell/utility-bar";
 export const SHELL_COLUMN = "mx-auto w-full max-w-[1920px] px-4 lg:px-10";
 
 /** Shell semua route ber-auth (pengganti sidebar sejak redesign FigCraft): utility bar, masthead,
- * lalu konten. Garis tinta di kedua bar sengaja selebar kolom, bukan selebar layar (node Utility
- * dan Masthead di mockup = 1328 px). */
+ * lalu konten. Garis tinta di kedua bar sengaja selebar kolom (`SHELL_COLUMN`, maks 1920 px), bukan selebar layar. */
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-dvh flex-col">

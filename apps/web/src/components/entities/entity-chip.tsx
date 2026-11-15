@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 
 export type EntityChipItem = { type: string; name: string; id?: number | null; label?: string };
 
-/** Teks yang diawali id (T1566.001, CVE-2024-3400) ditampilkan dengan font kode. */
+/** Teks yang diawali id (T1566.001, CVE-2024-3400) dipisah dari sisa teks (nama teknik). */
 const ID_PREFIX = /^(T\d{4}(\.\d{3})?|CVE-\d{4}-\d+)\b/i;
 
 /** Label chip untuk EntityRef: teknik dengan external_id tampil "T1566 Phishing" (id dan nama sama-sama font badan). */

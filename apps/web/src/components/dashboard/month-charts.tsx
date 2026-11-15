@@ -11,7 +11,7 @@ import {
 import { EntityChip } from "@/components/entities/entity-chip";
 import { BarSeries } from "@/components/ui/bar-series";
 import { MeterBar } from "@/components/ui/meter-bar";
-import { SHARE_BAR_SEGMENT, ShareBar } from "@/components/ui/share-bar";
+import { ShareBar, shareBarClasses } from "@/components/ui/share-bar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { entityHref } from "@/lib/entities/types";
 import { fmtShortDate, parseLocalDate } from "@/lib/format";
@@ -167,16 +167,18 @@ export function MonthCharts({ threatOnly }: { threatOnly: boolean }) {
       ...(rest > 0 ? [{ name: "Other", label: "Other", value: rest, link: false }] : []),
     ];
     const pct = percents(rows.map((r) => r.value));
+    const shareItems = rows.map((r) => ({ label: r.label, value: r.value, neutral: !r.link }));
+    const shareClasses = shareBarClasses(shareItems);
     industries =
       rows.length === 0 ? (
         <Empty>No sector was mentioned in the last 30 days.</Empty>
       ) : (
         <div className={cn("flex flex-col gap-3", dim(stats))}>
-          <ShareBar items={rows.map((r) => ({ label: r.label, value: r.value }))} aria-label="Targeted industries" />
+          <ShareBar items={shareItems} aria-label="Targeted industries" />
           <ul className="flex flex-col gap-1.5 text-xs">
             {rows.map((r, i) => (
               <li key={r.name} className="flex items-center gap-2">
-                <span aria-hidden className={cn("size-2.5 shrink-0 rounded-sm", SHARE_BAR_SEGMENT[i])} />
+                <span aria-hidden className={cn("size-2.5 shrink-0 rounded-sm", shareClasses[i])} />
                 {r.link ? (
                   <Link href={entityHref({ type: "identity", name: r.name })} className={cn("min-w-0 flex-1 truncate text-foreground", linkClass)}>
                     {r.label}

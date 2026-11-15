@@ -1,3 +1,4 @@
+import { assignCategorySlots } from "@/lib/category-colors";
 import { cn } from "@/lib/utils";
 
 // Kelas ditulis utuh supaya Tailwind menemukannya; urutan = seri `--chart-1..10` yang sama dengan grafik.
@@ -14,16 +15,27 @@ export const SHARE_BAR_SEGMENT = [
   "bg-chart-10",
 ] as const;
 
+/** Segmen sisa ("Other") yang bukan kategori: token netral, bukan slot seri. */
+export const SHARE_BAR_NEUTRAL = "bg-muted-foreground";
+
+/** Kelas warna per item, dicari lewat nama (slot yang sama dengan grafik lain, tanpa bentrok di satu set).
+ * Item `neutral` memakai token netral. Dipakai ShareBar dan legenda pemanggil agar swatch = segmen. */
+export function shareBarClasses(items: { label: string; neutral?: boolean }[]): string[] {
+  const slots = assignCategorySlots(items.map((i) => i.label));
+  return items.map((it, i) => (it.neutral ? SHARE_BAR_NEUTRAL : SHARE_BAR_SEGMENT[slots[i]]));
+}
+
 interface ShareBarProps {
-  items: { label: string; value: number }[];
+  items: { label: string; value: number; neutral?: boolean }[];
   "aria-label"?: string;
 }
 
-/** Satu batang 100 % bertumpuk (pengganti doughnut). Warna dari token seri grafik, jadi ikut tema gelap.
+/** Satu batang 100 % bertumpuk (pengganti doughnut). Warna per nama dari token seri grafik, jadi ikut tema gelap.
  * `role="img"` + `aria-label` memuat "{label} {pct}%" tiap segmen; legenda dirender pemanggil. */
 export function ShareBar({ items, "aria-label": ariaLabel }: ShareBarProps) {
   const total = items.reduce((a, b) => a + Math.max(0, b.value), 0);
   const pct = (v: number) => (total > 0 ? Math.round((Math.max(0, v) / total) * 100) : 0);
+  const classes = shareBarClasses(items);
   const summary = items.map((i) => `${i.label} ${pct(i.value)}%`).join(", ");
   return (
     <div
@@ -36,7 +48,7 @@ export function ShareBar({ items, "aria-label": ariaLabel }: ShareBarProps) {
           it.value > 0 ? (
             <span
               key={it.label}
-              className={cn("h-full", SHARE_BAR_SEGMENT[i % SHARE_BAR_SEGMENT.length])}
+              className={cn("h-full", classes[i])}
               style={{ width: `${(it.value / total) * 100}%` }}
             />
           ) : null,

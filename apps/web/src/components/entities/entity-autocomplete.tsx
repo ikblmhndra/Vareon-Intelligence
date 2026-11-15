@@ -25,7 +25,7 @@ interface EntityAutocompleteProps {
   resolveTyped?: (typed: string) => string | null;
   /** Pesan galat inline saat teks ketikan ditolak (store="external_id"). */
   invalidMessage?: string;
-  /** Tampilkan id (font-code) di depan label, untuk TTP. */
+  /** Tampilkan id di depan label, untuk TTP. */
   showId?: boolean;
   help?: string;
 }

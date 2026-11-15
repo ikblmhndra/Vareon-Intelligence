@@ -48,7 +48,6 @@ export function LeadStory({
   const lines = priorityLines(article);
 
   // self-start + clamp lebih longgar: kartu tidak melar kosong mengikuti kolom sebelah; ringkasan tampil lebih panjang.
-  // self-start + clamp lebih longgar: kartu tidak melar kosong mengikuti kolom sebelah; ringkasan tampil lebih panjang.
   return (
     <article
       aria-label="Lead story"

@@ -67,7 +67,7 @@ export function StatTile({ label, value, sub, tone, kind, tooltip, spark, select
       ) : (
         labelEl
       )}
-      <p className={cn("text-[32px] font-bold leading-tight", t.value)}>{value}</p>
+      <p className={cn("text-[32px] font-bold leading-tight tabular-nums", t.value)}>{value}</p>
       {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
       {spark && spark.length >= 2 && <Sparkline data={spark} className="absolute right-4 bottom-3 h-6 w-20" />}
     </Card>

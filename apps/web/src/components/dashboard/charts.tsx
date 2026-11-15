@@ -15,7 +15,8 @@ import {
 } from "chart.js";
 import { Bar, Doughnut, Line } from "react-chartjs-2";
 
-import { categoryColor, cssVar, useChartTheme, withAlpha, type ChartTheme } from "@/lib/chart-theme";
+import { assignCategorySlots } from "@/lib/category-colors";
+import { cssVar, useChartTheme, withAlpha, type ChartTheme } from "@/lib/chart-theme";
 import { shortTickLabel } from "@/lib/chart-ticks";
 
 ChartJS.register(
@@ -129,12 +130,13 @@ interface MultiLineChartProps {
 /** Beberapa line sekaligus 1 chart (sector/country/victim-country trend). */
 export function MultiLineChart({ labels, series }: MultiLineChartProps) {
   const t = useChartTheme();
+  const slots = assignCategorySlots(series.map((s) => s.label));
   return (
     <Line
       data={{
         labels,
-        datasets: series.map((s) => {
-          const color = categoryColor(t, s.label);
+        datasets: series.map((s, i) => {
+          const color = t.series[slots[i]];
           return {
             label: s.label,
             data: s.data,
@@ -171,14 +173,15 @@ interface StackedBarChartProps {
 /** Bar stacked (news-type trend per bulan). */
 export function StackedBarChart({ labels, series }: StackedBarChartProps) {
   const t = useChartTheme();
+  const slots = assignCategorySlots(series.map((s) => s.label));
   return (
     <Bar
       data={{
         labels,
-        datasets: series.map((s) => ({
+        datasets: series.map((s, i) => ({
           label: s.label,
           data: s.data,
-          backgroundColor: categoryColor(t, s.label),
+          backgroundColor: t.series[slots[i]],
           borderWidth: 0,
         })),
       }}

@@ -1,6 +1,6 @@
 import { MultiLineChart, StackedBarChart } from "@/components/dashboard/charts";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ShareBar, SHARE_BAR_SEGMENT } from "@/components/ui/share-bar";
+import { ShareBar, shareBarClasses } from "@/components/ui/share-bar";
 import { execCountNoun, type ExecFilters } from "@/lib/exec/filters";
 import { monthsCopy } from "@/lib/exec/heat";
 import { toTitleCase } from "@/lib/exec/format";
@@ -26,6 +26,9 @@ export function NewsTypesCard({
   className?: string;
 }) {
   const grouped = groupTypes(d.news_type_breakdown);
+  // Warna per nama (sama dengan grafik tren di bawah); sisa "Other" netral.
+  const shareItems = grouped.map((g) => ({ label: toTitleCase(g.name), value: g.count, neutral: g.name === "Other" }));
+  const shareClasses = shareBarClasses(shareItems);
   const total = grouped.reduce((a, b) => a + b.count, 0);
   const pct = (n: number) => (total > 0 ? Math.round((n / total) * 100) : 0);
   return (
@@ -43,14 +46,14 @@ export function NewsTypesCard({
           <div className="space-y-3">
             <ShareBar
               aria-label="News types"
-              items={grouped.map((g) => ({ label: toTitleCase(g.name), value: g.count }))}
+              items={shareItems}
             />
             <ul className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2">
               {grouped.map((g, i) => (
                 <li key={g.name} className="flex items-center gap-2 text-xs">
                   <span
                     aria-hidden="true"
-                    className={cn("size-2.5 shrink-0 rounded-[3px]", SHARE_BAR_SEGMENT[i % SHARE_BAR_SEGMENT.length])}
+                    className={cn("size-2.5 shrink-0 rounded-[3px]", shareClasses[i])}
                   />
                   <span className="min-w-0 truncate">
                     {toTitleCase(g.name)} {g.count.toLocaleString()} · {pct(g.count)}%
