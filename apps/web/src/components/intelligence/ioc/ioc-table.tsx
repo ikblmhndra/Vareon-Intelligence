@@ -36,7 +36,7 @@ type StateFilter = IocSummary["state"] | "all" | "all_suppressed";
 // Kolom grid tile tipe dari jumlah tile nyata (API hanya mengirim tipe yang punya baris; maksimal 7-8):
 // kelipatan jumlah tile supaya tidak ada tile yatim di 1024/1440/>=1920. Kelas ditulis utuh (Tailwind).
 function tileGridClass(n: number): string {
-  if (n >= 8) return "sm:grid-cols-4 min-[1440px]:grid-cols-8";
+  if (n >= 8) return "sm:grid-cols-4 min-[90rem]:grid-cols-8";
   if (n === 7) return "sm:grid-cols-4 lg:grid-cols-7";
   if (n === 6) return "sm:grid-cols-3 lg:grid-cols-6";
   if (n === 5) return "sm:grid-cols-5";
