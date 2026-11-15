@@ -335,6 +335,7 @@ export function IocIndicatorsView() {
             <StatTile
               key={t.type}
               label={t.type}
+              kind="intel"
               value={t.count.toLocaleString()}
               selected={type === t.type}
               onSelect={() => reset(setType)(type === t.type ? "all" : t.type)}
