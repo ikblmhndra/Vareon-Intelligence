@@ -9,7 +9,6 @@ import { invalidateIocViews } from "@/components/intelligence/ioc/ioc-detail-bod
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Chip } from "@/components/ui/chip";
-import { sentenceLabel } from "@/lib/enum-label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatePanel } from "@/components/ui/state-panel";
@@ -17,6 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { api } from "@/lib/api/client";
 import type { IocAllowlistEntry, IocAllowlistResponse } from "@/lib/api/loose-types";
 import { useCan } from "@/lib/auth/permissions";
+import { sentenceLabel } from "@/lib/enum-label";
 import { fmtShortDate } from "@/lib/format";
 
 const TYPE_LABEL: Record<string, string> = { ip: "IP address", url_domain: "URL domain", email_domain: "Email domain" };

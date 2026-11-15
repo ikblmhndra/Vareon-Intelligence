@@ -2,8 +2,8 @@
 
 import { gradeChipClass, type SREntry } from "@/components/intelligence/source-reliability/sr-model";
 import { Chip } from "@/components/ui/chip";
-import { sentenceLabel } from "@/lib/enum-label";
 import { RowMenu } from "@/components/ui/row-menu";
+import { sentenceLabel } from "@/lib/enum-label";
 import { fmtCompactAge } from "@/lib/format";
 import { originLabel } from "@/lib/intelligence/format";
 

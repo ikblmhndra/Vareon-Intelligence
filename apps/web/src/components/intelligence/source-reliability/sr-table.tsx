@@ -13,13 +13,13 @@ import {
 } from "@/components/intelligence/source-reliability/sr-model";
 import { Card } from "@/components/ui/card";
 import { Chip } from "@/components/ui/chip";
-import { sentenceLabel } from "@/lib/enum-label";
 import { NumberedPager } from "@/components/ui/numbered-pager";
 import { RowMenu } from "@/components/ui/row-menu";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { StatePanel } from "@/components/ui/state-panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { sentenceLabel } from "@/lib/enum-label";
 import { fmtCompactAge, fmtShortDate } from "@/lib/format";
 import { originLabel } from "@/lib/intelligence/format";
 

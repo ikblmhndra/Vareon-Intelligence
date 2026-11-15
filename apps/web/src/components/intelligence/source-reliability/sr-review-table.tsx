@@ -8,10 +8,10 @@ import { api } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Chip } from "@/components/ui/chip";
-import { sentenceLabel } from "@/lib/enum-label";
 import { RowMenu } from "@/components/ui/row-menu";
 import { StatePanel } from "@/components/ui/state-panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { sentenceLabel } from "@/lib/enum-label";
 import { cn } from "@/lib/utils";
 import {
   gradeChipClass,

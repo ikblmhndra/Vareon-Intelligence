@@ -20,3 +20,9 @@ test("unknown, already human, empty", () => {
   assert.equal(enumLabel("Vendor research"), "Vendor research");
   assert.equal(enumLabel(""), "");
 });
+test("sentenceLabel capitalises the first letter", () => {
+  assert.equal(sentenceLabel("domain"), "Domain");
+  assert.equal(sentenceLabel("url_with_path"), "URL with path");
+  assert.equal(sentenceLabel("ipv4"), "IPv4");
+  assert.equal(sentenceLabel(""), "");
+});
