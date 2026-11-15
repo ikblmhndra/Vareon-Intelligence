@@ -1,5 +1,5 @@
 // Cek palet warna di globals.css (terang + gelap) tanpa dependensi:
-// - ΔE2000 antar --chart-* >= 15 (kategori harus bisa dibedakan),
+// - ΔE2000 antar --chart-* >= 20 (kategori harus bisa dibedakan),
 // - kontras --chart-* >= 3:1 terhadap --background & --surface (WCAG 1.4.11),
 // - --intel-text >= 4.5:1 (teks), --intel beda >= 15 ΔE dari info/success/destructive.
 import { readFileSync } from "node:fs";
@@ -117,7 +117,8 @@ function deltaE(h1, h2) {
   );
 }
 
-const MIN_DE = 15;
+const MIN_DE = 20;
+const MIN_DE_INTEL = 15;
 let failures = 0;
 
 for (const theme of ["light", "dark"]) {
@@ -169,7 +170,8 @@ for (const theme of ["light", "dark"]) {
       const h = get(o);
       if (!h) continue;
       const de = deltaE(intel, h);
-      if (de < MIN_DE) fail(`--intel ${intel} vs ${o} ${h}: ΔE ${de.toFixed(1)} < ${MIN_DE}`);
+      if (de < MIN_DE_INTEL)
+        fail(`--intel ${intel} vs ${o} ${h}: ΔE ${de.toFixed(1)} < ${MIN_DE_INTEL}`);
     }
   }
 

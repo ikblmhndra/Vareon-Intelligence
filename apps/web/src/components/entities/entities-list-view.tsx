@@ -315,8 +315,12 @@ export function EntitiesListView() {
                       </div>
                     </TableCell>
                     {/* Sektor (identity) menyimpan slug di external_id, bukan ID; tipe lain: ATT&CK/CVE/ISO asli. */}
-                    <TableCell className="text-xs text-primary-text">
-                      {it.type === "identity" ? "—" : (it.external_id ?? "—")}
+                    <TableCell className="text-xs">
+                      {it.type === "identity" || !it.external_id ? (
+                        <span className="text-muted-foreground">—</span>
+                      ) : (
+                        <span className="text-primary-text">{it.external_id}</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Aliases item={it} />

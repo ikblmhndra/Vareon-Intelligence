@@ -182,7 +182,8 @@ export function TicketForm({ cveId, cve, ticket, variant, onSaved, readOnly, onC
 
   const id = (n: string) => `${uid}-${n}`;
   const ro = !!readOnly;
-  const pair = "grid gap-4 lg:grid-cols-2";
+  // Panel (kolom kanan sempit, ~1/3 lebar) baru dua kolom di xl; dialog lebar cukup di lg. `*:min-w-0` agar input tidak melebar.
+  const pair = cn("grid gap-4 *:min-w-0", variant === "panel" ? "xl:grid-cols-2" : "lg:grid-cols-2");
 
   return (
     <form onSubmit={(e) => void submit(e)} className="grid gap-4" noValidate>

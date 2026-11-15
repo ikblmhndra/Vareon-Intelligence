@@ -16,13 +16,16 @@ export const SHARE_BAR_SEGMENT = [
 ] as const;
 
 /** Segmen sisa ("Other") yang bukan kategori: token netral, bukan slot seri. */
-export const SHARE_BAR_NEUTRAL = "bg-muted-foreground";
+export const SHARE_BAR_NEUTRAL = "bg-muted-foreground/60";
 
 /** Kelas warna per item, dicari lewat nama (slot yang sama dengan grafik lain, tanpa bentrok di satu set).
  * Item `neutral` memakai token netral. Dipakai ShareBar dan legenda pemanggil agar swatch = segmen. */
 export function shareBarClasses(items: { label: string; neutral?: boolean }[]): string[] {
-  const slots = assignCategorySlots(items.map((i) => i.label));
-  return items.map((it, i) => (it.neutral ? SHARE_BAR_NEUTRAL : SHARE_BAR_SEGMENT[slots[i]]));
+  // Item netral tidak ikut menghabiskan slot warna.
+  const colored = items.filter((i) => !i.neutral);
+  const slots = assignCategorySlots(colored.map((i) => i.label));
+  let k = 0;
+  return items.map((it) => (it.neutral ? SHARE_BAR_NEUTRAL : SHARE_BAR_SEGMENT[slots[k++]]));
 }
 
 interface ShareBarProps {
