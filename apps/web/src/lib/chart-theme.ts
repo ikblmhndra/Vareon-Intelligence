@@ -2,6 +2,8 @@
 
 import { useMemo, useSyncExternalStore } from "react";
 
+import { categoryColorIndex } from "@/lib/category-colors";
+
 /** Chart.js/canvas tidak bisa resolve `var(--x)`; baca nilai token dari
  * `<html>` dan re-render saat kelas tema (`dark`) berubah. */
 function subscribe(cb: () => void) {
@@ -40,6 +42,11 @@ export interface ChartTheme {
   grades: Record<string, string>;
   /** Warna per severity CVE (token `--severity-*`, sudah dipilih per tema). */
   severity: Record<"CRITICAL" | "HIGH" | "MEDIUM" | "LOW", string>;
+}
+
+/** Warna kategori yang stabil: nama yang sama selalu jatuh ke slot `--chart-N` yang sama. */
+export function categoryColor(t: ChartTheme, name: string): string {
+  return t.series[categoryColorIndex(name)];
 }
 
 /** Berubah tiap kelas tema `<html>` berubah; pakai sebagai dependency re-render. */

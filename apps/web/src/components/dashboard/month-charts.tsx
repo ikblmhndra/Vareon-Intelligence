@@ -218,7 +218,7 @@ export function MonthCharts({ threatOnly }: { threatOnly: boolean }) {
                   {id}
                 </Link>
                 <span className="min-w-0 flex-1 truncate text-muted-foreground" title={name}>{name}</span>
-                <MeterBar value={t.count} max={max} tone="primary" aria-label={`${t.name}: ${t.count}`} className="w-12 shrink-0" />
+                <MeterBar value={t.count} max={max} tone="destructive" aria-label={`${t.name}: ${t.count}`} className="w-12 shrink-0" />
                 <span className="w-8 shrink-0 text-right font-code text-foreground">{num(t.count)}</span>
               </li>
             );

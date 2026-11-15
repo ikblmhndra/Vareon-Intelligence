@@ -13,6 +13,7 @@ import {
 import { Chart } from "react-chartjs-2";
 
 import { useChartTheme, withAlpha } from "@/lib/chart-theme";
+import { shortTickLabel } from "@/lib/chart-ticks";
 
 // Registrasi sama dengan `components/dashboard/charts.tsx`; Line+Point untuk garis acuan.
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Tooltip);
@@ -153,9 +154,15 @@ export function BarSeries({
                         color: t.textDim,
                         maxRotation: 0,
                         autoSkip: false,
-                        callback: (_v, i) => (i % tickEvery === 0 || i === labels.length - 1 ? labels[i] : ""),
+                        callback: (_v, i) => (i % tickEvery === 0 || i === labels.length - 1 ? shortTickLabel(labels[i]) : ""),
                       }
-                    : { color: t.textDim, maxRotation: 0, autoSkip: true, maxTicksLimit: 6 },
+                    : {
+                        color: t.textDim,
+                        maxRotation: 0,
+                        autoSkip: true,
+                        maxTicksLimit: 6,
+                        callback: (_v, i) => shortTickLabel(labels[i]),
+                      },
               },
               y: {
                 stacked,

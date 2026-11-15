@@ -39,7 +39,7 @@ export function TopTechniquesCard({ d, days, className }: { d: ExecDashboardV2; 
                     </span>
                     <span className="shrink-0 font-code text-xs">{t.count}</span>
                   </div>
-                  <MeterBar value={t.count} max={max} aria-label={`${t.id} ${t.name}: ${t.count} articles`} className="mt-1" />
+                  <MeterBar value={t.count} max={max} tone="destructive" aria-label={`${t.id} ${t.name}: ${t.count} articles`} className="mt-1" />
                 </li>
               ))}
             </ul>
