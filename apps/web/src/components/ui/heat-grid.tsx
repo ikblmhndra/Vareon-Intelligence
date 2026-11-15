@@ -64,7 +64,7 @@ export function HeatCell({
       aria-label={ariaLabel}
       title={title}
       className={cn(
-        "flex h-10 min-w-10 items-center justify-center gap-1 rounded-md px-1.5 text-xs font-semibold",
+        "flex h-10 w-full min-w-10 items-center justify-center gap-1 rounded-md px-1.5 text-xs font-semibold",
         value === null
           ? ""
           : variant === "tier"
@@ -112,10 +112,10 @@ export function HeatGrid({
   );
   return (
     <div className="max-h-[32rem] overflow-auto">
-      <table role="grid" aria-label={ariaLabel} onKeyDown={onKeyDown} className="border-separate border-spacing-1">
+      <table role="grid" aria-label={ariaLabel} onKeyDown={onKeyDown} className="w-full border-separate border-spacing-1">
         <thead>
           <tr>
-            <td className="sticky left-0 top-0 z-20 bg-background" />
+            <td className="sticky left-0 top-0 z-20 w-px bg-background whitespace-nowrap" />
             {colLabels.map((label, c) => (
               <th
                 key={c}
@@ -132,7 +132,7 @@ export function HeatGrid({
             <tr key={r}>
               <th
                 scope="row"
-                className="sticky left-0 z-10 bg-background pr-2 text-left text-xs font-medium whitespace-nowrap"
+                className="sticky left-0 z-10 w-px bg-background pr-2 text-left text-xs font-medium whitespace-nowrap"
               >
                 {label}
               </th>

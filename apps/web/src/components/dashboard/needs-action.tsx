@@ -275,9 +275,9 @@ export function NeedsAction({ period }: { period: PeriodKey }) {
         kicker={noData ? "GET STARTED" : "NEEDS ACTION"}
         title={noData ? `Nothing is matched to ${client} yet` : att ? headline : "Needs action"}
       >
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,752fr)_500px]">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
           <div>{left}</div>
-          <div className="relative h-[380px] w-[500px] max-w-full overflow-hidden rounded-md">
+          <div className="relative aspect-[25/19] max-h-[480px] w-full overflow-hidden rounded-md">
             <div ref={mapBoxRef} className={cn("absolute inset-0", map.isPlaceholderData && "opacity-60")}>
               {map.data && points.length > 0 && (
                 <WorldDots
