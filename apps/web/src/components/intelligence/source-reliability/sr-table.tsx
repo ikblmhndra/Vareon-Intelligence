@@ -13,6 +13,7 @@ import {
 } from "@/components/intelligence/source-reliability/sr-model";
 import { Card } from "@/components/ui/card";
 import { Chip } from "@/components/ui/chip";
+import { sentenceLabel } from "@/lib/enum-label";
 import { NumberedPager } from "@/components/ui/numbered-pager";
 import { RowMenu } from "@/components/ui/row-menu";
 import { SegmentedControl } from "@/components/ui/segmented-control";
@@ -106,7 +107,7 @@ export function SrTable({ entries, reliability, sortBy, sortDir, onSort, ...acti
               <Chip kind="grade" value={e.admiralty_code} className={gradeChipClass(e.reliability_grade)} />
             </TableCell>
             <TableCell className="px-4 text-xs text-muted-foreground">{reliability[e.reliability_grade] ?? "—"}</TableCell>
-            <TableCell className="px-4">{e.content_kind ? <Chip kind="flag" value={e.content_kind} /> : "—"}</TableCell>
+            <TableCell className="px-4">{e.content_kind ? <Chip kind="flag" value={e.content_kind} className="normal-case">{sentenceLabel(e.content_kind)}</Chip> : "—"}</TableCell>
             <TableCell
               className="px-4 text-xs text-muted-foreground"
               title={e.origin === "default" ? "Default grade for this source kind; not set by an analyst" : undefined}

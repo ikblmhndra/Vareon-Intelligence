@@ -2,6 +2,7 @@
 
 import { gradeChipClass, type SREntry } from "@/components/intelligence/source-reliability/sr-model";
 import { Chip } from "@/components/ui/chip";
+import { sentenceLabel } from "@/lib/enum-label";
 import { RowMenu } from "@/components/ui/row-menu";
 import { fmtCompactAge } from "@/lib/format";
 import { originLabel } from "@/lib/intelligence/format";
@@ -36,7 +37,7 @@ export function SrGrid({ entries, reliability, onOpen, onEdit, onRemove, canMana
               </span>
               <span className="text-xs text-muted-foreground">{reliability[e.reliability_grade] ?? "—"}</span>
               <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-2xs text-muted-foreground">
-                {e.content_kind && <Chip kind="flag" value={e.content_kind} />}
+                {e.content_kind && <Chip kind="flag" value={e.content_kind} className="normal-case">{sentenceLabel(e.content_kind)}</Chip>}
                 <span>{originLabel(e.origin)}</span>
                 <span>· {e.analyst_name}</span>
                 <span>· {fmtCompactAge(e.last_updated || e.added_date)}</span>

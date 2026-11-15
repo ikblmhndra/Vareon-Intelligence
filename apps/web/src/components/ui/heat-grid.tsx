@@ -32,7 +32,7 @@ const TREND = {
 
 interface HeatCellProps {
   variant: "tier" | "scale";
-  /** `null` = sel kosong (kotak berbingkai; bentuk grid tetap utuh). */
+  /** `null` = sel kosong (polos tanpa bingkai; ukuran sel tetap supaya grid utuh). */
   value: number | null;
   tier?: "low" | "med" | "high";
   step?: 0 | 1 | 2 | 3 | 4 | 5;
@@ -66,7 +66,7 @@ export function HeatCell({
       className={cn(
         "flex h-10 min-w-10 items-center justify-center gap-1 rounded-md px-1.5 text-xs font-semibold",
         value === null
-          ? "border border-border bg-background"
+          ? ""
           : variant === "tier"
             ? TIER[tier]
             : SCALE[step],

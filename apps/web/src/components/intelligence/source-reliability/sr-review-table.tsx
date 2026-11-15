@@ -8,6 +8,7 @@ import { api } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Chip } from "@/components/ui/chip";
+import { sentenceLabel } from "@/lib/enum-label";
 import { RowMenu } from "@/components/ui/row-menu";
 import { StatePanel } from "@/components/ui/state-panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -147,7 +148,7 @@ export function SrReviewTable() {
                         {e.source_name}
                       </button>
                     </TableCell>
-                    <TableCell className="px-4">{e.content_kind ? <Chip kind="flag" value={e.content_kind} /> : "—"}</TableCell>
+                    <TableCell className="px-4">{e.content_kind ? <Chip kind="flag" value={e.content_kind} className="normal-case">{sentenceLabel(e.content_kind)}</Chip> : "—"}</TableCell>
                     <TableCell className="px-4 whitespace-nowrap">
                       <span className="inline-flex items-center gap-1.5 text-xs">
                         <Chip kind="grade" value={e.reliability_grade} className={gradeChipClass(e.reliability_grade)} />

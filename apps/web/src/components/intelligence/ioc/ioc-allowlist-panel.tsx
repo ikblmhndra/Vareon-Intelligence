@@ -9,6 +9,7 @@ import { invalidateIocViews } from "@/components/intelligence/ioc/ioc-detail-bod
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Chip } from "@/components/ui/chip";
+import { sentenceLabel } from "@/lib/enum-label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatePanel } from "@/components/ui/state-panel";
@@ -182,7 +183,9 @@ export function IocAllowlistPanel() {
               {entries.map((e) => (
                 <TableRow key={e.id}>
                   <TableCell className="pl-3">
-                    <Chip kind="flag" value={TYPE_LABEL[e.type] ?? e.type} />
+                    <Chip kind="flag" value={e.type} className="normal-case">
+                      {TYPE_LABEL[e.type] ?? sentenceLabel(e.type)}
+                    </Chip>
                   </TableCell>
                   <TableCell className="max-w-64 truncate font-code text-xs text-foreground" title={e.value}>
                     {e.value}

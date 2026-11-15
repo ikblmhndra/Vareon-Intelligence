@@ -21,3 +21,9 @@ export function enumLabel(raw: string): string {
     })
     .join(" ");
 }
+
+/** `enumLabel` dengan huruf pertama dibesarkan (`domain` -> "Domain"), untuk chip bergaya kalimat. */
+export function sentenceLabel(raw: string): string {
+  const l = enumLabel(raw);
+  return l.charAt(0).toUpperCase() + l.slice(1);
+}
