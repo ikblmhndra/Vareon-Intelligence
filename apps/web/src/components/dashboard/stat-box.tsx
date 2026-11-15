@@ -108,9 +108,14 @@ export function ChartCard({
   className?: string;
 }) {
   return (
-    <div className={cn("surface-raised rounded-2xl p-5", className)}>
+    <div className={cn("surface-raised flex h-full flex-col rounded-2xl p-5", className)}>
       <CardHeader title={title} note={note} />
-      <div style={{ height }}>{children}</div>
+      {/* Badan chart: tumbuh mengikuti tinggi baris, tidak pernah lebih pendek dari `height`. Isi diletakkan absolut
+          (inset-0) supaya canvas Chart.js tidak ikut menentukan tinggi baris: tanpa itu `flex-1` (basis 0%) di dalam
+          kartu ber-tinggi tak pasti menghitung tinggi canvas, dan baris hanya bisa membesar (loop resize). */}
+      <div className="relative min-h-0 flex-1" style={{ minHeight: height }}>
+        <div className="absolute inset-0">{children}</div>
+      </div>
     </div>
   );
 }

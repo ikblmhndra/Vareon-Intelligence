@@ -25,7 +25,7 @@ export function ThreatActorsCard({ d, from, className }: { d: ExecDashboardV2; f
   const total = Math.min(d.ta_leaderboard.length, 10);
   const prevSet = new Set(d.prev_ta_names.map((n) => n.toLowerCase()));
   return (
-    <Card className={cn("self-start", className)}>
+    <Card className={cn("h-full", className)}>
       <CardHeader>
         <CardTitle>Threat actors</CardTitle>
         <CardDescription>By article count; velocity = last month vs prior average</CardDescription>
@@ -38,7 +38,7 @@ export function ThreatActorsCard({ d, from, className }: { d: ExecDashboardV2; f
           </Link>
         </CardAction>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex flex-1 flex-col">
         {d.ta_leaderboard.length === 0 ? (
           <p className="py-4 text-xs text-muted-foreground">No threat actors named in this period</p>
         ) : (
@@ -82,7 +82,7 @@ export function ThreatActorsCard({ d, from, className }: { d: ExecDashboardV2; f
                 );
               })}
             </ol>
-            <div className="mt-2">
+            <div className="mt-auto pt-2">
               <ShowAll total={total} shown={COLLAPSED} expanded={expanded} onToggle={() => setExpanded((v) => !v)} />
             </div>
           </>

@@ -47,11 +47,12 @@ export function LeadStory({
   const ttps = article.ttps.slice(0, 2);
   const lines = priorityLines(article);
 
-  // self-start + clamp lebih longgar: kartu tidak melar kosong mengikuti kolom sebelah; ringkasan tampil lebih panjang.
+  // Kartu melar setinggi baris (h-full); blok terakhir menempel di bawah (mt-auto) dan ringkasan tampil lebih panjang
+  // saat kartu lebih tinggi. Tinggi tidak pernah dibatasi: konten yang lebih tinggi dari tetangga tetap penuh.
   return (
     <article
       aria-label="Lead story"
-      className={cn("surface-raised space-y-3 self-start rounded-lg p-5", q.isPlaceholderData && "opacity-60")}
+      className={cn("surface-raised flex h-full flex-col gap-3 rounded-lg p-5", q.isPlaceholderData && "opacity-60")}
     >
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-2xs font-semibold tracking-wide text-muted-foreground uppercase">
         <span>Lead story</span>
@@ -81,7 +82,7 @@ export function LeadStory({
           {article.title}
         </button>
       </h2>
-      {article.summary && <p className="line-clamp-6 text-sm text-muted-foreground">{article.summary}</p>}
+      {article.summary && <p className="line-clamp-6 text-sm lg:line-clamp-10 text-muted-foreground">{article.summary}</p>}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-muted-foreground">
         <span title={when.title}>
           {article.source} · {when.text}
@@ -94,7 +95,7 @@ export function LeadStory({
         ))}
       </div>
       {article.priority_score != null && (
-        <div className="rounded-lg bg-primary/10 p-3">
+        <div className="mt-auto rounded-lg bg-primary/10 p-3">
           <h3 className="text-2xs font-semibold tracking-wide text-primary-text uppercase">Why it ranks first</h3>
           <ul className="mt-1 space-y-0.5 text-xs text-foreground">
             {lines.length > 0 ? (

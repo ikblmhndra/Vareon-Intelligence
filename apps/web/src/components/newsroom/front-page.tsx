@@ -72,7 +72,7 @@ function Lead({
   const actor = actorChips(a)[0];
   const story = a.story && a.story.source_count > 1 ? a.story : null;
   return (
-    <article aria-label="Top story" className="surface-raised space-y-3 self-start rounded-lg p-5">
+    <article aria-label="Top story" className="surface-raised flex h-full flex-col gap-3 rounded-lg p-5">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-2xs font-semibold tracking-wide text-muted-foreground uppercase">
         <span>Top story</span>
         {a.news_type && (
@@ -98,7 +98,7 @@ function Lead({
           {a.title}
         </button>
       </h2>
-      {a.summary && <p className="line-clamp-6 text-sm text-muted-foreground">{a.summary}</p>}
+      {a.summary && <p className="line-clamp-6 text-sm lg:line-clamp-10 text-muted-foreground">{a.summary}</p>}
       <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2 text-xs text-muted-foreground">
         <span>{a.source}</span>
         {story && (
@@ -122,7 +122,7 @@ function Lead({
         <Flags a={a} match={match} />
       </div>
       {a.priority_score != null && lines.length > 0 && (
-        <p className="text-xs text-foreground">
+        <p className="mt-auto text-xs text-foreground">
           <span className="mr-2 text-2xs font-semibold tracking-wide text-primary-text uppercase">
             Why it ranks first
           </span>
