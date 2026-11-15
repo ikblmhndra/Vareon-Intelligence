@@ -17,7 +17,7 @@ function Row({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="flex items-baseline justify-between gap-3 border-t border-border py-2 text-sm first:border-t-0">
       <span className="min-w-0 truncate text-foreground">{label}</span>
-      <span className="font-code text-sm font-semibold text-foreground">{value}</span>
+      <span className="text-sm font-semibold text-foreground">{value}</span>
     </div>
   );
 }
@@ -73,8 +73,8 @@ export function XIntelRail({
               onClick={() => onPickAccount(a.author)}
               className="flex w-full items-baseline justify-between gap-3 rounded-md border-t border-border py-2 text-left text-sm outline-none first:border-t-0 hover:bg-surface focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
-              <span className="min-w-0 truncate font-code text-xs text-foreground">@{a.author}</span>
-              <span className="font-code text-sm font-semibold text-foreground">{a.count}</span>
+              <span className="min-w-0 truncate text-xs text-foreground">@{a.author}</span>
+              <span className="text-sm font-semibold text-foreground tabular-nums">{a.count}</span>
             </button>
           ))
         )}

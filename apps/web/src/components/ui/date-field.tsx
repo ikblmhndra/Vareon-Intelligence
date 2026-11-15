@@ -14,13 +14,18 @@ interface DateFieldProps {
   "aria-label"?: string;
   /** Tampilkan tombol hapus; tanpa ini tanggal selalu terisi setelah dipilih. */
   optional?: boolean;
+  /** Batas `YYYY-MM-DD` untuk pemilih native (rentang From <= To). */
+  min?: string;
+  max?: string;
+  /** Teks tombol saat kosong (default "Select date"). */
+  placeholder?: string;
 }
 
 /** Tombol bertanggal ("1 Nov 2026") yang membuka pemilih tanggal native lewat `showPicker()` pada
  * `<input type="date">` tersembunyi (fallback: fokus ke input bila `showPicker` tak ada/ditolak). Nilai tetap
  * string `YYYY-MM-DD`; tampilan lewat `fmtShortDate` (memakai `parseLocalDate`, jadi tidak bergeser sehari
  * di zona sebelah barat UTC). */
-export function DateField({ id, value, onChange, "aria-label": ariaLabel, optional }: DateFieldProps) {
+export function DateField({ id, value, onChange, "aria-label": ariaLabel, optional, min, max, placeholder }: DateFieldProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   function open() {
@@ -33,12 +38,17 @@ export function DateField({ id, value, onChange, "aria-label": ariaLabel, option
     }
   }
 
+  // Nama aksesibel memuat nilainya: `aria-label` menggantikan teks tombol, jadi tanpa ini pembaca layar tak tahu tanggalnya.
+  const accessibleName = ariaLabel
+    ? `${ariaLabel}: ${value ? fmtShortDate(value, { withYear: true }) : "not set"}`
+    : undefined;
+
   return (
     <div className="relative inline-flex items-center gap-1">
       <button
         type="button"
         id={id}
-        aria-label={ariaLabel}
+        aria-label={accessibleName}
         onClick={open}
         className={cn(
           "inline-flex h-10 max-sm:h-11 min-w-36 items-center gap-2 rounded-[10px] border border-input bg-background px-3 text-[15px] outline-none transition-colors hover:bg-surface",
@@ -47,7 +57,7 @@ export function DateField({ id, value, onChange, "aria-label": ariaLabel, option
         )}
       >
         <CalendarIcon aria-hidden className="size-4 shrink-0" />
-        {value ? fmtShortDate(value, { withYear: true }) : "Select date"}
+        {value ? fmtShortDate(value, { withYear: true }) : (placeholder ?? "Select date")}
       </button>
       {optional && value && (
         <button
@@ -65,6 +75,8 @@ export function DateField({ id, value, onChange, "aria-label": ariaLabel, option
         tabIndex={-1}
         aria-hidden="true"
         value={value ?? ""}
+        min={min}
+        max={max}
         onChange={(e) => onChange(e.target.value || null)}
         className="sr-only"
       />

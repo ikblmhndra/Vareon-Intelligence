@@ -47,10 +47,10 @@ export function ActorVelocityCard({ d, className }: { d: ExecDashboardV2; classN
                     <div className="min-w-0 flex-1">
                       <EntityChip type="intrusion-set" name={ta.actor} label={toTitleCase(ta.actor)} />
                     </div>
-                    <span className="shrink-0 font-code text-2xs text-muted-foreground">
+                    <span className="shrink-0 text-2xs text-muted-foreground">
                       {ta.last_month} vs {ta.avg_prev} avg
                     </span>
-                    <span className={cn("w-14 shrink-0 text-right font-code text-xs", !isNew && v.colorClass)}>
+                    <span className={cn("w-14 shrink-0 text-right text-xs tabular-nums", !isNew && v.colorClass)}>
                       {isNew ? <Chip kind="status" value="ok">NEW</Chip> : v.text}
                     </span>
                   </li>
@@ -75,7 +75,7 @@ export function ActorVelocityCard({ d, className }: { d: ExecDashboardV2; classN
                   <span className="min-w-0 truncate">
                     {toTitleCase(c.sector_a)} · {toTitleCase(c.sector_b)}
                   </span>
-                  <span className="shrink-0 font-code text-2xs text-muted-foreground">{c.count} articles</span>
+                  <span className="shrink-0 text-2xs text-muted-foreground tabular-nums">{c.count} articles</span>
                 </li>
               ))}
             </ul>

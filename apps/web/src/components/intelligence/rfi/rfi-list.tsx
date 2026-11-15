@@ -94,7 +94,7 @@ export function RfiList({ rfis, selectedId, onSelect, shown, total, hasMore, loa
                         href={`/intelligence/pir?id=${r.linked_pir}`}
                         aria-label={`Open ${displayId("PIR", r.linked_pir)}`}
                         onClick={(e) => e.stopPropagation()}
-                        className="rounded-sm font-code font-semibold text-primary-text underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                        className="rounded-sm font-semibold text-primary-text underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                       >
                         {displayId("PIR", r.linked_pir)}
                       </Link>

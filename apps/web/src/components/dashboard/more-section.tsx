@@ -141,7 +141,7 @@ function MoreBody({
                   data={s.timeline.map((x) => x.count)}
                   label="All news"
                   tone="info"
-                  secondary={{ label: "Incidents", data: s.timeline.map((x) => x.incidents), tone: "primary" }}
+                  secondary={{ label: "Incidents", data: s.timeline.map((x) => x.incidents), tone: "critical" }}
                 />
               ) : null}
             </ChartCard>
@@ -213,7 +213,7 @@ function MoreBody({
                   <HorizontalBarChart
                     labels={ta.data.top_in_news.map((x) => toTitleCase(x.name))}
                     data={ta.data.top_in_news.map((x) => x.count)}
-                    tone="info"
+                    tone="critical"
                   />
                 ) : (
                   <p className="flex h-full items-center justify-center text-xs text-muted-foreground">

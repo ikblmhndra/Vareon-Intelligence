@@ -52,12 +52,12 @@ export function ScraperItemsPanel({ scraperId }: { scraperId: string }) {
             setPage(1);
           }}
         >
-          <SelectTrigger size="sm" aria-label="Filter items by result" className="w-32 font-code text-xs">
+          <SelectTrigger size="sm" aria-label="Filter items by result" className="w-32 text-xs">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             {Object.entries(ACCEPTED_ITEMS).map(([v, l]) => (
-              <SelectItem key={v} value={v} className="font-code text-xs">
+              <SelectItem key={v} value={v} className="text-xs">
                 {l}
               </SelectItem>
             ))}
@@ -102,8 +102,8 @@ export function ScraperItemsPanel({ scraperId }: { scraperId: string }) {
                   )}
                   <span className="sr-only">{it.accepted ? "Accepted" : "Rejected"}</span>
                 </TableCell>
-                <TableCell className="font-code text-xs text-muted-foreground">{it.reason ?? "—"}</TableCell>
-                <TableCell className="font-code text-xs text-muted-foreground">
+                <TableCell className="text-xs text-muted-foreground">{it.reason ?? "—"}</TableCell>
+                <TableCell className="text-xs text-muted-foreground tabular-nums">
                   {fmtDateTime(it.run_at)}
                 </TableCell>
               </TableRow>

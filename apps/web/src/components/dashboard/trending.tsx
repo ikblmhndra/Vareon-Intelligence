@@ -59,7 +59,7 @@ export function Trending({ period }: { period: PeriodKey }) {
                   </Chip>
                 )}
                 <span className="ml-auto flex shrink-0 items-baseline gap-1.5">
-                  <span className="font-code text-sm text-foreground">{it.count.toLocaleString("en-US")}</span>
+                  <span className="text-sm text-foreground tabular-nums">{it.count.toLocaleString("en-US")}</span>
                   {it.change_pct != null && !it.is_new && (
                     <span className="text-xs text-muted-foreground">+{it.change_pct}%</span>
                   )}

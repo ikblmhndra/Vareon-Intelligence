@@ -84,15 +84,13 @@ function Aliases({ item }: { item: { name: string; external_id?: string | null; 
   const aliases = otherAliases(item.aliases, item.name, item.external_id);
   if (aliases.length === 0) return <span className="text-xs text-muted-foreground">—</span>;
   return (
-    <div className="flex min-w-0 items-center gap-1">
-      {aliases.slice(0, 2).map((a) => (
-        <span key={a} title={a} className="min-w-0 truncate rounded-md bg-muted px-1.5 py-0.5 text-xs text-foreground">
+    // Alias dibungkus (bukan dipotong "Cloud …"): semua alias tampil, tinggi baris mengikuti.
+    <div className="flex min-w-0 flex-wrap items-center gap-1">
+      {aliases.map((a) => (
+        <span key={a} className="rounded-md bg-muted px-1.5 py-0.5 text-xs break-words text-foreground">
           {a}
         </span>
       ))}
-      {aliases.length > 2 && (
-        <span className="shrink-0 text-xs text-muted-foreground">+{aliases.length - 2}</span>
-      )}
     </div>
   );
 }
@@ -281,8 +279,8 @@ export function EntitiesListView() {
                 <TableHead className="w-[30%] pl-5">Name</TableHead>
                 <TableHead className="w-28">ATT&amp;CK ID</TableHead>
                 <TableHead>Aliases</TableHead>
-                <TableHead className="w-[4.5rem] text-right">30 d</TableHead>
-                <TableHead className="w-[4.5rem] text-right">90 d</TableHead>
+                <TableHead className="w-24 text-right">30 d</TableHead>
+                <TableHead className="w-20 border-l border-border text-right">90 d</TableHead>
                 <TableHead className={cn("w-28", !allTab && "pr-5")}>Last seen</TableHead>
                 {allTab && <TableHead className="w-28 pr-5">Type</TableHead>}
               </TableRow>
@@ -316,14 +314,23 @@ export function EntitiesListView() {
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="font-code text-xs text-primary-text">{it.external_id ?? "—"}</TableCell>
+                    {/* Sektor (identity) menyimpan slug di external_id, bukan ID; tipe lain: ATT&CK/CVE/ISO asli. */}
+                    <TableCell className="text-xs">
+                      {it.type === "identity" || !it.external_id ? (
+                        <span className="text-muted-foreground">—</span>
+                      ) : (
+                        <span className="text-primary-text">{it.external_id}</span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <Aliases item={it} />
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right tabular-nums">
                       <Mentions30 item={it} />
                     </TableCell>
-                    <TableCell className="text-right">{it.mentions_90d}</TableCell>
+                    <TableCell className="border-l border-border text-right tabular-nums">
+                      {it.mentions_90d}
+                    </TableCell>
                     <TableCell className={cn("text-xs whitespace-nowrap", !allTab && "pr-5")}>
                       {it.last_seen ? fmtAgo(it.last_seen) : "—"}
                     </TableCell>
@@ -344,8 +351,8 @@ export function EntitiesListView() {
               <div className="flex flex-wrap items-center gap-2">
                 {starFor(it)}
                 <EntityChip type={it.type} name={it.name} id={it.id} />
-                {it.external_id && (
-                  <span className="font-code text-xs text-muted-foreground">{it.external_id}</span>
+                {it.type !== "identity" && it.external_id && (
+                  <span className="text-xs text-muted-foreground">{it.external_id}</span>
                 )}
                 {it.suppressed && (
                   <span className="rounded-md bg-muted px-1.5 py-0.5 text-2xs">Suppressed</span>

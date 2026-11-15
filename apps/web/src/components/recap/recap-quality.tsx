@@ -298,7 +298,7 @@ function RateCell({ bucket }: { bucket: RecapHitBucket }) {
           style={{ width: `${Math.min(100, Math.max(0, bucket.rate_pct))}%` }}
         />
       </span>
-      <span className="font-code text-primary-text">{bucket.rate_pct}%</span>
+      <span className="text-primary-text tabular-nums">{bucket.rate_pct}%</span>
     </span>
   );
 }
@@ -342,13 +342,13 @@ export function HitRateBlock({ hitRate }: { hitRate: RecapHitRate }) {
                 <TableCell className={CELL}>
                   <ConfidenceBadge confidence={label} />
                 </TableCell>
-                <TableCell className={cn(CELL, "text-right font-code")}>
+                <TableCell className={cn(CELL, "text-right tabular-nums")}>
                   {hits(b.hits)} / {b.judged}
                 </TableCell>
                 <TableCell className={cn(CELL, "text-right")}>
                   <RateCell bucket={b} />
                 </TableCell>
-                <TableCell className={cn(CELL, "text-right font-code text-muted-foreground")}>
+                <TableCell className={cn(CELL, "text-right text-muted-foreground tabular-nums")}>
                   {b.unclear}
                 </TableCell>
               </TableRow>
@@ -360,13 +360,13 @@ export function HitRateBlock({ hitRate }: { hitRate: RecapHitRate }) {
                 all
               </Badge>
             </TableCell>
-            <TableCell className={cn(CELL, "text-right font-code")}>
+            <TableCell className={cn(CELL, "text-right tabular-nums")}>
               {hits(hitRate.overall.hits)} / {hitRate.overall.judged}
             </TableCell>
             <TableCell className={cn(CELL, "text-right")}>
               <RateCell bucket={hitRate.overall} />
             </TableCell>
-            <TableCell className={cn(CELL, "text-right font-code text-muted-foreground")}>
+            <TableCell className={cn(CELL, "text-right text-muted-foreground tabular-nums")}>
               {hitRate.overall.unclear}
             </TableCell>
           </TableRow>

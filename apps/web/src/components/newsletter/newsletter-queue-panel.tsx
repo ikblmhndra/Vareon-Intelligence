@@ -113,7 +113,7 @@ function PoolGroup({ title, count, action, children }: { title: string; count: n
     <section>
       <div className="mb-1.5 flex items-center justify-between">
         <h3 className="text-2xs font-bold tracking-[0.1em] text-muted-foreground uppercase">
-          {title} <span className="font-code text-foreground">{count}</span>
+          {title} <span className="text-foreground tabular-nums">{count}</span>
         </h3>
         {action}
       </div>
@@ -150,7 +150,7 @@ function PoolRow({
           <div className="text-xs font-semibold text-foreground">{a.title}</div>
           <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
             {section && <Chip kind="flag" value={section} />}
-            <span className="font-code text-2xs text-muted-foreground">
+            <span className="text-2xs text-muted-foreground">
               {a.source} · {a.posted_on}
             </span>
           </div>

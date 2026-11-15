@@ -96,7 +96,7 @@ function FpBody({ cveIds, onClose, onDone }: { cveIds: string[]; onClose: () => 
         <DialogTitle>
           {single ? (
             <>
-              Mark <span className="font-code">{cveIds[0]}</span> as a false positive?
+              Mark <span>{cveIds[0]}</span> as a false positive?
             </>
           ) : (
             `Mark ${cveIds.length} CVEs as false positives?`

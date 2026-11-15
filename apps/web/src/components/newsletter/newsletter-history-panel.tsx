@@ -75,11 +75,11 @@ export function NewsletterHistoryPanel({ open, refreshKey, onPreview, onResend, 
               const highlightTitle = sections?.highlight?.title;
               return (
                 <div key={n.id} className="rounded-xl border border-border bg-background p-3">
-                  <div className="font-code text-xs text-primary">{n.label}</div>
+                  <div className="text-xs text-primary">{n.label}</div>
                   {n.period_start && n.period_end && (
-                    <div className="font-code text-xs text-muted-foreground">{formatPeriodRange(n.period_start, n.period_end)}</div>
+                    <div className="text-xs text-muted-foreground">{formatPeriodRange(n.period_start, n.period_end)}</div>
                   )}
-                  <div className="mt-0.5 font-code text-xs text-muted-foreground">
+                  <div className="mt-0.5 text-xs text-muted-foreground">
                     {fmtDateTime(n.generated_at)} · by {n.created_by}
                   </div>
                   {highlightTitle && (
@@ -87,7 +87,7 @@ export function NewsletterHistoryPanel({ open, refreshKey, onPreview, onResend, 
                       <SectionIcon section="highlights" className="mr-1 inline" /> {highlightTitle}
                     </div>
                   )}
-                  <div className="mt-1.5 font-code text-xs text-muted-foreground">
+                  <div className="mt-1.5 text-xs text-muted-foreground">
                     <span className="mr-3 inline-flex items-center gap-1"><SectionIcon section="apac" /> {apacLen}</span>
                     <span className="mr-3 inline-flex items-center gap-1"><SectionIcon section="global_news" /> {globalLen}</span>
                     <span className="inline-flex items-center gap-1"><SectionIcon section="indonesia" /> {indonesiaLen}</span>

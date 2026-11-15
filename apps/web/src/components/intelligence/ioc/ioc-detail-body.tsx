@@ -381,7 +381,7 @@ export function IocDetailBody({ target, onChanged, onDeleted, layout, returnFocu
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-semibold text-foreground">{p.name || p.key}</span>
                     <Chip kind="flag" value={verdict} className={VERDICT_CHIP[verdict]} />
-                    {metric.text && <span className="ml-auto font-code text-xs text-foreground">{metric.text}</span>}
+                    {metric.text && <span className="ml-auto text-xs text-foreground">{metric.text}</span>}
                   </div>
                   {rest.length > 0 && (
                     <dl className="flex flex-wrap gap-x-3 gap-y-0.5 text-2xs text-muted-foreground">
@@ -430,7 +430,7 @@ export function IocDetailBody({ target, onChanged, onDeleted, layout, returnFocu
                   <div className="flex flex-wrap items-center gap-1.5">
                     <EntityChip type="intrusion-set" name={ta.name} />
                     {ta.is_watched && <Chip kind="flag" value="watched" className="bg-warning/15 text-warning-text" />}
-                    {ta.attack_group_id && <Chip kind="flag" value={ta.attack_group_id} className="font-code" />}
+                    {ta.attack_group_id && <Chip kind="flag" value={ta.attack_group_id} />}
                     {ta.source === "manual" && <Chip kind="flag" value="manual" />}
                     {ta.source === "both" && <Chip kind="flag" value="manual + articles" />}
                     {isManual && manage && (

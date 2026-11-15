@@ -176,8 +176,8 @@ export function KeysView() {
                 )}
               </div>
               <div className="min-w-0 text-xs">
-                <span className="font-code text-foreground">{keySummary(p)}</span>
-                <p className="truncate font-code text-muted-foreground">
+                <span className="text-foreground">{keySummary(p)}</span>
+                <p className="truncate text-muted-foreground">
                   {p.fields.map((f) => f.name).join(" · ")}
                 </p>
               </div>
@@ -400,12 +400,12 @@ function KeyEditForm({
             value={values[f.name] ?? ""}
             onValueChange={(v) => v !== null && set(v)}
           >
-            <SelectTrigger id={id} className="w-full font-code text-sm">
+            <SelectTrigger id={id} className="w-full text-sm">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               {f.choices.map((c) => (
-                <SelectItem key={c} value={c} className="font-code text-sm">
+                <SelectItem key={c} value={c} className="text-sm">
                   {c}
                 </SelectItem>
               ))}

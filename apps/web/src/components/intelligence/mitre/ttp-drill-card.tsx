@@ -143,7 +143,7 @@ export function TtpDrillCard({ target }: { target: TtpDrillTarget }) {
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0">
             <h2 className="font-heading text-base font-semibold">
-              {target.row} × <span className="font-code">{target.ttpId}</span> {target.ttpName}
+              {target.row} × <span>{target.ttpId}</span> {target.ttpName}
             </h2>
             <p className="text-xs text-muted-foreground">
               {query.data ? `${total.toLocaleString()} articles · newest first` : "Newest first"}

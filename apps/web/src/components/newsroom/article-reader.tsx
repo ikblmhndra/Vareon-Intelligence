@@ -210,7 +210,7 @@ function ReaderBody({
         </Button>
         {position && (
           <div className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
-            <span className="font-code">
+            <span>
               {position.i} of {position.n}
             </span>
             <Button variant="ghost" size="icon-sm" aria-label="Previous article" disabled={!onPrev} onClick={() => onPrev?.()}>
@@ -243,7 +243,7 @@ function ReaderBody({
         <section className={SECTION}>
           <h3 className={H3}>Credibility</h3>
           <div className="flex items-start gap-3">
-            <span className="font-code text-3xl leading-none font-semibold text-foreground">{a.admiralty_code}</span>
+            <span className="text-3xl leading-none font-semibold text-foreground">{a.admiralty_code}</span>
             <div className="min-w-0 space-y-1 text-xs text-foreground">
               {/* Nilai kredibilitas sudah ada di baris gradeLines; kalimat ini hanya untuk kasus tanpa nilai. */}
               {a.credibility == null && <p>Information credibility unrated.</p>}

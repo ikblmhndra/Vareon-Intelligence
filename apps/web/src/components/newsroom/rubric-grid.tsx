@@ -126,7 +126,7 @@ function RubricColumn({
         <h3 id={`rubric-${rkey}`} className="text-base font-semibold text-foreground">
           {title}
           {total !== undefined && (
-            <span className="ml-2 font-code text-xs font-normal text-muted-foreground">
+            <span className="ml-2 text-xs font-normal text-muted-foreground">
               {total.toLocaleString("en-US")}
             </span>
           )}

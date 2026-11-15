@@ -265,7 +265,7 @@ function ImportForm({ onClose }: { onClose: () => void }) {
         error={errorText}
       />
       <Field label="Project (optional)" htmlFor={`${uid}-project`} hint="Prefix for the source path, e.g. services/billing.">
-        <Input id={`${uid}-project`} value={project} onChange={(e) => setProject(e.target.value)} maxLength={200} className="font-code" />
+        <Input id={`${uid}-project`} value={project} onChange={(e) => setProject(e.target.value)} maxLength={200} />
       </Field>
       {file && !preview.isError && (preview.isFetching || stale) && (
         <Notice busy title="Reading the lockfile">

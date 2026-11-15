@@ -63,11 +63,11 @@ export function ScrapersTable({
           }
         />
       ) : (
-        <Table framed className="table-fixed">
+        <Table framed className="min-w-[56rem] table-fixed">
           <colgroup>
-            <col className="w-[28%]" />
-            <col className="w-[9%]" />
-            <col className="w-[13%]" />
+            <col className="w-[25%]" />
+            <col className="w-[11%]" />
+            <col className="w-[14%]" />
             <col className="w-[18%]" />
             <col className="w-[14%]" />
             <col className="w-[8%]" />
@@ -103,7 +103,7 @@ export function ScrapersTable({
                       <span className="block truncate text-xs font-medium text-foreground" title={s.source}>
                         {s.source}
                       </span>
-                      <span className="block truncate font-code text-2xs text-muted-foreground">{s.id}</span>
+                      <span className="block truncate text-2xs text-muted-foreground">{s.id}</span>
                     </button>
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">

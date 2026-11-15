@@ -151,7 +151,7 @@ export function BriefCard({ selectedDate, onSelectDate, onOpenDialog, onGenerate
               <ol className="space-y-2">
                 {findings.slice(0, SHOW_FINDINGS).map((f, i) => (
                   <li key={i} className="flex gap-2 text-xs">
-                    <span className="font-code text-muted-foreground">{i + 1}.</span>
+                    <span className="text-muted-foreground">{i + 1}.</span>
                     <span className="min-w-0">
                       <span className="font-semibold text-foreground">{f.title}</span>
                       {f.detail && <span className="block text-muted-foreground">{f.detail}</span>}

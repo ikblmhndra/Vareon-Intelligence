@@ -25,7 +25,7 @@ interface EntityAutocompleteProps {
   resolveTyped?: (typed: string) => string | null;
   /** Pesan galat inline saat teks ketikan ditolak (store="external_id"). */
   invalidMessage?: string;
-  /** Tampilkan id (font-code) di depan label, untuk TTP. */
+  /** Tampilkan id di depan label, untuk TTP. */
   showId?: boolean;
   help?: string;
 }
@@ -180,7 +180,7 @@ export function EntityAutocomplete({
             className="inline-flex items-center gap-1 rounded-lg border border-border bg-background px-1.5 py-0.5 text-xs text-foreground"
           >
             <Icon aria-hidden className={cn("size-3.5 shrink-0", colorClass)} />
-            {showId && <span className="font-code">{v}</span>}
+            {showId && <span>{v}</span>}
             <span>{showId ? (labelFor?.(v) ?? seen[v] ?? "") : (labelFor?.(v) ?? seen[v] ?? v)}</span>
             <button
               type="button"
@@ -250,7 +250,7 @@ export function EntityAutocomplete({
               <span className="flex items-baseline gap-2">
                 <span className="truncate">{it.name}</span>
                 {it.externalId && it.externalId !== it.name && (
-                  <span className="shrink-0 font-code text-2xs text-muted-foreground">{it.externalId}</span>
+                  <span className="shrink-0 text-2xs text-muted-foreground">{it.externalId}</span>
                 )}
               </span>
               {it.alias && <span className="block truncate text-2xs text-muted-foreground">{`matches “${it.alias}”`}</span>}

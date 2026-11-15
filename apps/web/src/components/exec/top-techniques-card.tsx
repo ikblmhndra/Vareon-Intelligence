@@ -12,7 +12,7 @@ const COLLAPSED = 6;
 
 /** Kartu "Top techniques" (6.1). `top_ttps` di-group `(id, name)` oleh repo, jadi id yang sama bisa muncul dua
  * kali dengan nama beda (varian enrichment): key menggabung id + nama + indeks. Nama teknik tampil sebagai teks
- * di samping chip id, bukan di dalamnya, supaya id (font-code) tetap rapi dan nama bisa terpotong. */
+ * di samping chip id, bukan di dalamnya, supaya id tetap rapi dan nama bisa terpotong. */
 export function TopTechniquesCard({ d, days, className }: { d: ExecDashboardV2; days: number; className?: string }) {
   const [expanded, setExpanded] = useState(false);
   const all = d.top_ttps.slice(0, 15);
@@ -37,9 +37,9 @@ export function TopTechniquesCard({ d, days, className }: { d: ExecDashboardV2; 
                     <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground" title={t.name}>
                       {t.name}
                     </span>
-                    <span className="shrink-0 font-code text-xs">{t.count}</span>
+                    <span className="shrink-0 text-xs tabular-nums">{t.count}</span>
                   </div>
-                  <MeterBar value={t.count} max={max} aria-label={`${t.id} ${t.name}: ${t.count} articles`} className="mt-1" />
+                  <MeterBar value={t.count} max={max} tone="destructive" aria-label={`${t.id} ${t.name}: ${t.count} articles`} className="mt-1" />
                 </li>
               ))}
             </ul>

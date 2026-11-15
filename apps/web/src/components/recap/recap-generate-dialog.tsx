@@ -93,7 +93,7 @@ export function RecapGenerateDialog(props: RecapGenerateDialogProps) {
               onChange={(v) => setDate(v ?? "")}
             />
             {weekly && target && (
-              <span className="font-code text-xs text-muted-foreground">
+              <span className="text-xs text-muted-foreground">
                 {formatRange(target, sundayOf(target))} (Mon-Sun, UTC)
               </span>
             )}

@@ -94,7 +94,7 @@ function PolicyForm({ initial }: { initial: PasswordPolicy }) {
             onChange={(e) => setMinText(e.target.value)}
             aria-invalid={!minOk}
             aria-describedby="pw-min-help"
-            className="w-24 font-code"
+            className="w-24"
           />
           <p
             id="pw-min-help"

@@ -30,12 +30,22 @@ export function ExecPageHeader({ days, today, data, updatedAt, filters, view, on
     parts.push(`${data.total_incidents.toLocaleString()} ${execCountNoun(filters)}`);
     parts.push(`${data.unique_ta_count.toLocaleString()} threat actors`);
   }
-  if (updatedAt > 0) parts.push(`updated ${fmtAgo(new Date(updatedAt))}`);
+  const updated = updatedAt > 0 ? `updated ${fmtAgo(new Date(updatedAt))}` : null;
   return (
     <PageHeader
       kicker="EXECUTIVE"
       title={`Threat posture, last ${days} days`}
-      description={parts.join(" · ")}
+      description={
+        <>
+          {parts.join(" · ")}
+          {updated && (
+            <>
+              {" · "}
+              <span className="whitespace-nowrap">{updated}</span>
+            </>
+          )}
+        </>
+      }
       actions={
         <SegmentedControl options={VIEW_OPTIONS} value={view} onChange={onViewChange} aria-label="Exec view" />
       }

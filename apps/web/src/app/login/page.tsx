@@ -501,7 +501,7 @@ export default function LoginPage() {
                 aria-hidden="true"
                 className="size-1.5 animate-pulse rounded-full bg-hero-accent motion-reduce:animate-none"
               />
-              <span className="font-code">06°12′S 106°49′E</span>
+              <span>06°12′S 106°49′E</span>
               <span>· APAC coverage</span>
             </p>
           </div>
@@ -514,7 +514,7 @@ export default function LoginPage() {
                 key={s.title}
                 className={`absolute ${s.pos} rounded-lg bg-hero-panel px-3 py-2 text-2xs`}
               >
-                <p className="font-code font-semibold tracking-wide text-hero-foreground">{s.title}</p>
+                <p className="font-semibold tracking-wide text-hero-foreground">{s.title}</p>
                 <p className="text-hero-muted">{s.meta}</p>
                 <p className="text-hero-eyebrow">{s.when}</p>
               </div>

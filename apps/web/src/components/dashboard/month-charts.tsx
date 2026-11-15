@@ -11,7 +11,7 @@ import {
 import { EntityChip } from "@/components/entities/entity-chip";
 import { BarSeries } from "@/components/ui/bar-series";
 import { MeterBar } from "@/components/ui/meter-bar";
-import { SHARE_BAR_SEGMENT, ShareBar } from "@/components/ui/share-bar";
+import { ShareBar, shareBarClasses } from "@/components/ui/share-bar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { entityHref } from "@/lib/entities/types";
 import { fmtShortDate, parseLocalDate } from "@/lib/format";
@@ -140,14 +140,14 @@ export function MonthCharts({ threatOnly }: { threatOnly: boolean }) {
             <li key={r.name} className="flex items-center gap-3">
               <EntityChip type="intrusion-set" name={r.name} className="w-40 shrink-0" />
               <MeterBar value={r.count} max={max} tone="destructive" aria-label={`${r.name}: ${r.count} victims`} className="min-w-0 flex-1" />
-              <span className="w-10 shrink-0 text-right font-code text-xs text-foreground">{num(r.count)}</span>
+              <span className="w-10 shrink-0 text-right text-xs text-foreground tabular-nums">{num(r.count)}</span>
             </li>
           ))}
           {other > 0 && (
             <li className="flex items-center gap-3 text-xs text-muted-foreground">
               <span className="w-40 shrink-0 px-2">Other</span>
               <span className="min-w-0 flex-1" />
-              <span className="w-10 shrink-0 text-right font-code">{num(other)}</span>
+              <span className="w-10 shrink-0 text-right tabular-nums">{num(other)}</span>
             </li>
           )}
         </ul>
@@ -167,16 +167,18 @@ export function MonthCharts({ threatOnly }: { threatOnly: boolean }) {
       ...(rest > 0 ? [{ name: "Other", label: "Other", value: rest, link: false }] : []),
     ];
     const pct = percents(rows.map((r) => r.value));
+    const shareItems = rows.map((r) => ({ label: r.label, value: r.value, neutral: !r.link }));
+    const shareClasses = shareBarClasses(shareItems);
     industries =
       rows.length === 0 ? (
         <Empty>No sector was mentioned in the last 30 days.</Empty>
       ) : (
         <div className={cn("flex flex-col gap-3", dim(stats))}>
-          <ShareBar items={rows.map((r) => ({ label: r.label, value: r.value }))} aria-label="Targeted industries" />
+          <ShareBar items={shareItems} aria-label="Targeted industries" />
           <ul className="flex flex-col gap-1.5 text-xs">
             {rows.map((r, i) => (
               <li key={r.name} className="flex items-center gap-2">
-                <span aria-hidden className={cn("size-2.5 shrink-0 rounded-sm", SHARE_BAR_SEGMENT[i])} />
+                <span aria-hidden className={cn("size-2.5 shrink-0 rounded-sm", shareClasses[i])} />
                 {r.link ? (
                   <Link href={entityHref({ type: "identity", name: r.name })} className={cn("min-w-0 flex-1 truncate text-foreground", linkClass)}>
                     {r.label}
@@ -184,7 +186,7 @@ export function MonthCharts({ threatOnly }: { threatOnly: boolean }) {
                 ) : (
                   <span className="min-w-0 flex-1 truncate text-foreground">{r.label}</span>
                 )}
-                <span className="font-code text-muted-foreground">{pct[i]}%</span>
+                <span className="text-muted-foreground tabular-nums">{pct[i]}%</span>
               </li>
             ))}
           </ul>
@@ -214,12 +216,12 @@ export function MonthCharts({ threatOnly }: { threatOnly: boolean }) {
             const name = at < 0 ? "" : t.name.slice(at + 3);
             return (
               <li key={t.name} className="flex items-center gap-2 text-xs">
-                <Link href={entityHref({ type: "attack-pattern", name: id })} className={cn("w-16 shrink-0 font-code text-foreground", linkClass)}>
+                <Link href={entityHref({ type: "attack-pattern", name: id })} className={cn("w-16 shrink-0 text-foreground", linkClass)}>
                   {id}
                 </Link>
                 <span className="min-w-0 flex-1 truncate text-muted-foreground" title={name}>{name}</span>
-                <MeterBar value={t.count} max={max} tone="primary" aria-label={`${t.name}: ${t.count}`} className="w-12 shrink-0" />
-                <span className="w-8 shrink-0 text-right font-code text-foreground">{num(t.count)}</span>
+                <MeterBar value={t.count} max={max} tone="destructive" aria-label={`${t.name}: ${t.count}`} className="w-12 shrink-0" />
+                <span className="w-8 shrink-0 text-right text-foreground tabular-nums">{num(t.count)}</span>
               </li>
             );
           })}

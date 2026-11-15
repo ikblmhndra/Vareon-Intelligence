@@ -118,7 +118,7 @@ function ClientForm({ client, onClose }: { client: Client | null; onClose: () =>
             aria-invalid={clientId !== "" && !idOk}
             aria-describedby="client-id-help"
             onChange={(e) => setClientId(e.target.value)}
-            className="font-code text-sm"
+            className="text-sm"
           />
           <p
             id="client-id-help"
@@ -263,7 +263,7 @@ export function ClientsView() {
         <TableBody>
           {clients.data.map((c) => (
             <TableRow key={c.client_id}>
-              <TableCell className="truncate font-code text-xs text-foreground" title={c.client_id}>
+              <TableCell className="truncate text-xs text-foreground" title={c.client_id}>
                 {c.client_id}
               </TableCell>
               <TableCell className="truncate text-sm" title={c.name}>

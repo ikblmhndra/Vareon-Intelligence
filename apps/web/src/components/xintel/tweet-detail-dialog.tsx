@@ -26,7 +26,7 @@ function MetaRow({ label, items, mono }: { label: string; items?: string[]; mono
       <h3 className="mb-1.5 text-sm font-semibold text-muted-foreground">{label}</h3>
       <div className="flex flex-wrap gap-1.5">
         {items.map((v) => (
-          <Chip key={v} kind="flag" value={v} className={mono ? "font-code" : "normal-case"} />
+          <Chip key={v} kind="flag" value={v} className={mono ? undefined : "normal-case"} />
         ))}
       </div>
     </div>
@@ -98,7 +98,7 @@ export function TweetDetailDialog({
     <Dialog open={tweet !== null} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle className="font-code text-sm">@{t.author_username}</DialogTitle>
+          <DialogTitle className="text-sm">@{t.author_username}</DialogTitle>
           <DialogDescription>
             {fmtDateTime(t.posted_on)} · lang {t.lang || "—"}
           </DialogDescription>
@@ -114,7 +114,7 @@ export function TweetDetailDialog({
           <div className="flex-1">
             {/* nama/followers kosong untuk tweet dari jalur alert (X resmi): sembunyikan */}
             {t.author_name && <div className="text-base font-bold text-foreground">{t.author_name}</div>}
-            <div className="font-code text-xs text-muted-foreground">@{t.author_username}</div>
+            <div className="text-xs text-muted-foreground">@{t.author_username}</div>
             {t.author_followers > 0 && (
               <div className="mt-0.5 text-xs text-muted-foreground">{t.author_followers.toLocaleString()} followers</div>
             )}
@@ -186,7 +186,7 @@ export function TweetDetailDialog({
                 {t.incident_confidence != null && (
                   <div>
                     <span className="text-muted-foreground">Confidence:</span>{" "}
-                    <span className="font-code">{Math.round(t.incident_confidence)}</span>
+                    <span>{Math.round(t.incident_confidence)}</span>
                   </div>
                 )}
               </div>
@@ -197,12 +197,12 @@ export function TweetDetailDialog({
             <div>
               <h3 className="mb-1.5 text-sm font-semibold text-muted-foreground">LLM Cyber Relevance</h3>
               <div className="text-xs text-muted-foreground">
-                Confidence: <span className="font-code text-foreground">{Math.round(t.confidence)}</span>
+                Confidence: <span className="text-foreground tabular-nums">{Math.round(t.confidence)}</span>
               </div>
             </div>
           )}
 
-          <div className="border-t border-border pt-2 font-code text-xs text-muted-foreground">
+          <div className="border-t border-border pt-2 text-xs text-muted-foreground">
             fetched_at: {t.fetched_at ? fmtDateTime(t.fetched_at) : "—"} · tweet_id: {t.tweet_id || "—"}
           </div>
         </div>

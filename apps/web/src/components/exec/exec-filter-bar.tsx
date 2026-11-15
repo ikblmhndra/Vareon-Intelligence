@@ -107,7 +107,7 @@ export function ExecFilterBar({
         </Chip>
       )}
 
-      <div className="ml-auto flex flex-wrap items-center gap-2">
+      <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
         <Button size="sm" variant="outline" aria-pressed={watchlistSaved} onClick={onToggleWatchlist}>
           <StarIcon aria-hidden className={cn(watchlistSaved && "fill-primary text-primary")} />
           {watchlistSaved ? "Watchlist saved" : "Save watchlist"}

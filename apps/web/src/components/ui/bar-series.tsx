@@ -13,6 +13,7 @@ import {
 import { Chart } from "react-chartjs-2";
 
 import { useChartTheme, withAlpha } from "@/lib/chart-theme";
+import { shortTickLabel } from "@/lib/chart-ticks";
 
 // Registrasi sama dengan `components/dashboard/charts.tsx`; Line+Point untuk garis acuan.
 ChartJS.register(CategoryScale, LinearScale, BarElement, LineElement, PointElement, Tooltip);
@@ -41,6 +42,8 @@ interface BarSeriesProps {
   valueLabel?: string;
   /** Tampilkan label x hanya tiap kelipatan n (dan batang terakhir), tanpa autoSkip. */
   tickEvery?: number;
+  /** false = tanpa label dan grid sumbu x/y (sparkline); tooltip dan tabel tersembunyi tetap. */
+  axes?: boolean;
 }
 
 /** Batang kecil Chart.js: warna dari variabel CSS (tema terang/gelap), tabel tersembunyi berisi data yang sama
@@ -60,6 +63,7 @@ export function BarSeries({
   stackLabel = "",
   valueLabel = "",
   tickEvery,
+  axes = true,
 }: BarSeriesProps) {
   const t = useChartTheme();
   const base = tone === "primary" ? t.primary : t.textDim;
@@ -145,6 +149,7 @@ export function BarSeries({
             scales: {
               x: {
                 stacked,
+                display: axes,
                 grid: { display: false },
                 border: { display: false },
                 ticks:
@@ -153,12 +158,19 @@ export function BarSeries({
                         color: t.textDim,
                         maxRotation: 0,
                         autoSkip: false,
-                        callback: (_v, i) => (i % tickEvery === 0 || i === labels.length - 1 ? labels[i] : ""),
+                        callback: (_v, i) => (i % tickEvery === 0 || i === labels.length - 1 ? shortTickLabel(labels[i]) : ""),
                       }
-                    : { color: t.textDim, maxRotation: 0, autoSkip: true, maxTicksLimit: 6 },
+                    : {
+                        color: t.textDim,
+                        maxRotation: 0,
+                        autoSkip: true,
+                        maxTicksLimit: 6,
+                        callback: (_v, i) => shortTickLabel(labels[i]),
+                      },
               },
               y: {
                 stacked,
+                display: axes,
                 beginAtZero: true,
                 border: { display: false },
                 grid: { color: withAlpha(t.border, 0.6), drawTicks: false },

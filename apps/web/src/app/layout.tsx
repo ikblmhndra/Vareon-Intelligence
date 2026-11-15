@@ -10,9 +10,10 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { PLATFORM_NAME } from "@/lib/brand";
 
 // Brand font (roadmap #1): Google Sans Flex variabel untuk UI + heading;
-// IBM Plex Mono tetap untuk data/IOC/hash supaya karakter ambigu terbaca. Dipakai lewat kelas
+// IBM Plex Mono hanya untuk string mesin yang dibaca per karakter. Dipakai lewat kelas
 // `font-code` (BUKAN `font-mono`: token itu di tema = Google Sans Flex, proporsional). Pakai
-// `font-code` untuk nilai data (IOC, hash, IP, CVE/TTP ID, jadwal cron); bobot 400/500/600.
+// `font-code` untuk hash, nilai IOC, IP, URL, query, cron; bobot 400/500/600. ID (CVE, ATT&CK)
+// dan angka memakai font badan, dengan `tabular-nums` untuk angka di kolom.
 const googleSansFlex = Google_Sans_Flex({
   variable: "--font-google-sans-flex",
   subsets: ["latin"],

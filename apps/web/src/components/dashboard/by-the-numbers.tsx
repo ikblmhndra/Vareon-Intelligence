@@ -26,7 +26,7 @@ function deltaLine(cur: number, prev: number | null, reliable: boolean, allTime:
     <>
       <span aria-hidden="true">{up ? "▲" : "▼"}</span>
       <span className="sr-only">{up ? "up" : "down"}</span>{" "}
-      <span className="font-code">{Math.round((Math.abs(cur - prev) * 100) / prev)}%</span> vs previous period
+      <span>{Math.round((Math.abs(cur - prev) * 100) / prev)}%</span> vs previous period
     </>
   );
 }
@@ -44,12 +44,15 @@ function Row({
   label,
   second,
   graphic,
+  valueClass = "text-foreground",
 }: {
   state: RowState;
   value: number | undefined;
   label: string;
   second: ReactNode;
   graphic?: ReactNode;
+  /** Warna angka menurut jenisnya (token `*-text`). */
+  valueClass?: string;
 }) {
   const failed = state.error;
   return (
@@ -62,7 +65,7 @@ function Row({
       )}
     >
       <dt className="col-start-1 row-start-2 mt-1 text-sm font-medium text-muted-foreground">{label}</dt>
-      <dd className="col-start-1 row-start-1 font-code text-4xl leading-none font-bold tracking-tight text-foreground tabular-nums">
+      <dd className={cn("col-start-1 row-start-1 text-4xl leading-none font-bold tracking-tight tabular-nums", valueClass)}>
         {failed ? "–" : state.pending || value == null ? <Skeleton aria-hidden="true" className="h-9 w-20" /> : n(value)}
       </dd>
       <dd className="col-start-1 row-start-3 mt-0.5 text-xs text-muted-foreground">
@@ -109,7 +112,7 @@ export function ByTheNumbers({ period, threatOnly }: { period: PeriodKey; threat
   const a = attn.data; // gagal/pending: hanya bagian bersumber attention yang hilang
   const apacLine = ransom.data ? (
     <>
-      <span className="font-code">{n(ransom.data.apac)}</span> in APAC
+      <span>{n(ransom.data.apac)}</span> in APAC
     </>
   ) : null;
 
@@ -124,6 +127,7 @@ export function ByTheNumbers({ period, threatOnly }: { period: PeriodKey; threat
           state={st(stats)}
           value={s?.total_articles}
           label="articles collected"
+          valueClass="text-destructive-text"
           second={s && deltaLine(s.total_articles, s.prev_total_articles, s.prev_period_reliable, allTime)}
           graphic={s && spark(s.timeline.map((p) => p.count))}
         />
@@ -131,6 +135,7 @@ export function ByTheNumbers({ period, threatOnly }: { period: PeriodKey; threat
           state={st(stats)}
           value={s?.confirmed_incidents}
           label="confirmed incidents"
+          valueClass="text-destructive-text"
           second={s && deltaLine(s.confirmed_incidents, s.prev_confirmed_incidents, s.prev_period_reliable, allTime)}
           graphic={s && spark(s.timeline.map((p) => p.incidents))}
         />
@@ -138,13 +143,14 @@ export function ByTheNumbers({ period, threatOnly }: { period: PeriodKey; threat
           state={st(ransom)}
           value={ransom.data?.total}
           label="ransomware victims"
+          valueClass="text-destructive-text"
           second={
             <>
               {apacLine}
               {a && a.client_countries.length > 0 && (
                 <>
                   {" · "}
-                  <span className="font-code">{n(a.ransomware_in_client_scope)}</span> in your countries
+                  <span>{n(a.ransomware_in_client_scope)}</span> in your countries
                 </>
               )}
             </>
@@ -159,10 +165,11 @@ export function ByTheNumbers({ period, threatOnly }: { period: PeriodKey; threat
           state={st(cve)}
           value={cve.data?.open_critical}
           label="open critical CVEs"
+          valueClass="text-warning-text"
           second={
             cve.data && (
               <>
-                <span className="font-code">{n(cve.data.open_kev)}</span> open KEV (any severity)
+                <span>{n(cve.data.open_kev)}</span> open KEV (any severity)
                 {a && (
                   <>
                     {" · "}
@@ -170,7 +177,7 @@ export function ByTheNumbers({ period, threatOnly }: { period: PeriodKey; threat
                       "all KEV have a ticket"
                     ) : (
                       <>
-                        <span className="font-code">{n(a.kev_without_ticket)}</span> KEV without a ticket
+                        <span>{n(a.kev_without_ticket)}</span> KEV without a ticket
                       </>
                     )}
                   </>

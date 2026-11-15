@@ -51,7 +51,7 @@ function GroundingNotice({ doc }: { doc: RecapDoc }) {
               key={i}
               className="grid grid-cols-1 gap-x-3 gap-y-0.5 border-t border-border/60 pt-1.5 text-sm first:border-t-0 first:pt-0 sm:grid-cols-[10rem_1fr]"
             >
-              <span className="font-code text-xs text-muted-foreground">{d.field}</span>
+              <span className="text-xs text-muted-foreground">{d.field}</span>
               <span className="min-w-0">
                 <span className="break-words text-foreground">{d.value || "(empty)"}</span>
                 <span className="ml-2 text-xs text-muted-foreground">· {dropReason(d.reason)}</span>
@@ -145,7 +145,7 @@ export function RecapView({ doc, hitRate }: { doc: RecapDoc; hitRate?: RecapHitR
                     const href = safeHttpUrl(s.url);
                     return (
                       <li key={i} className="flex gap-3 py-3 first:pt-0 last:pb-0">
-                        <span className="font-code text-xs text-muted-foreground">
+                        <span className="text-xs text-muted-foreground">
                           {String(i + 1).padStart(2, "0")}
                         </span>
                         <div className="min-w-0 space-y-1">
@@ -213,7 +213,7 @@ export function RecapView({ doc, hitRate }: { doc: RecapDoc; hitRate?: RecapHitR
                 {events.map((e, i) => (
                   <li key={i} className="space-y-1 py-2.5 first:pt-0 last:pb-0">
                     <div className="flex items-start gap-2">
-                      {e.id && <span className="font-code text-xs text-muted-foreground">{e.id}</span>}
+                      {e.id && <span className="text-xs text-muted-foreground">{e.id}</span>}
                       <span className="min-w-0 flex-1 text-sm font-medium">{e.event}</span>
                       <ConfidenceBadge confidence={e.confidence} />
                     </div>
@@ -284,7 +284,7 @@ export function RecapView({ doc, hitRate }: { doc: RecapDoc; hitRate?: RecapHitR
                 <ul className="space-y-2">
                   {recap.top_tweets.map((t, i) => (
                     <li key={i} className="text-sm leading-snug">
-                      <span className="font-code font-medium">@{t.author || "?"}</span>{" "}
+                      <span className="font-medium">@{t.author || "?"}</span>{" "}
                       <Badge
                         variant="outline"
                         className="border-primary/40 bg-primary/10 font-mono text-xs text-primary-text"
@@ -308,7 +308,7 @@ export function RecapView({ doc, hitRate }: { doc: RecapDoc; hitRate?: RecapHitR
                   {recap.active_campaigns.map((c, i) => (
                     <li key={i} className="text-sm leading-snug">
                       <span className="font-medium">{c.theme || "(unlabeled)"}</span>{" "}
-                      <span className="font-code text-xs text-muted-foreground">
+                      <span className="text-xs text-muted-foreground">
                         · {c.article_count ?? 0} articles
                       </span>
                       {c.why_it_matters && (

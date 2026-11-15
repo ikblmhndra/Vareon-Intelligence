@@ -16,6 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { api } from "@/lib/api/client";
 import type { IocAllowlistEntry, IocAllowlistResponse } from "@/lib/api/loose-types";
 import { useCan } from "@/lib/auth/permissions";
+import { sentenceLabel } from "@/lib/enum-label";
 import { fmtShortDate } from "@/lib/format";
 
 const TYPE_LABEL: Record<string, string> = { ip: "IP address", url_domain: "URL domain", email_domain: "Email domain" };
@@ -182,7 +183,9 @@ export function IocAllowlistPanel() {
               {entries.map((e) => (
                 <TableRow key={e.id}>
                   <TableCell className="pl-3">
-                    <Chip kind="flag" value={TYPE_LABEL[e.type] ?? e.type} />
+                    <Chip kind="flag" value={e.type} className="normal-case">
+                      {TYPE_LABEL[e.type] ?? sentenceLabel(e.type)}
+                    </Chip>
                   </TableCell>
                   <TableCell className="max-w-64 truncate font-code text-xs text-foreground" title={e.value}>
                     {e.value}

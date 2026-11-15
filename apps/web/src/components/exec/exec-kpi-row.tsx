@@ -59,6 +59,7 @@ export function ExecKpiRow({
 
   const countTile = (
     <StatTile
+      kind="threat"
       label={label.toUpperCase()}
       value={d.total_incidents.toLocaleString()}
       sub={
@@ -69,6 +70,7 @@ export function ExecKpiRow({
   );
   const taTile = (
     <StatTile
+      kind="threat"
       label={board ? "UNIQUE THREAT ACTORS" : "UNIQUE TAs"}
       value={uniqueTas}
       sub={
@@ -85,6 +87,7 @@ export function ExecKpiRow({
   );
   const rateTile = (
     <StatTile
+      kind="ops"
       label="CONFIRMED RATE"
       value={rate != null ? `${rate}%` : "—"}
       sub={
@@ -107,6 +110,7 @@ export function ExecKpiRow({
         {countTile}
         {taTile}
         <StatTile
+          kind="vuln"
           label={`CRITICAL CVEs · ${d.cve_kpis.kev} KEV`}
           value={d.cve_kpis.critical}
           sub={
@@ -130,19 +134,21 @@ export function ExecKpiRow({
     <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
       {countTile}
       <StatTile
+        kind="threat"
         label="ACTIVE SECTORS"
         value={activeSectors}
         sub={<DeltaSub current={activeSectors} prev={d.prev_active_sectors} mode="absolute" days={filters.days} reliable={reliable} longSuffix={false} />}
       />
       {taTile}
-      <StatTile label="CRITICAL CVEs" value={d.cve_kpis.critical} sub="all tracked" />
-      <StatTile label="KEV CVEs" value={d.cve_kpis.kev} sub="CISA KEV · all tracked" />
+      <StatTile kind="vuln" label="CRITICAL CVEs" value={d.cve_kpis.critical} sub="all tracked" />
+      <StatTile kind="vuln" label="KEV CVEs" value={d.cve_kpis.kev} sub="CISA KEV · all tracked" />
       <StatTile
+        kind="threat"
         label="TOP RISK SECTOR"
         value={topRisk ? <TextValue>{toTitleCase(topRisk.sector)}</TextValue> : "—"}
         sub={topRisk ? `risk ${topRisk.risk_score} / 100` : ""}
       />
-      <StatTile label="ACTIVE SPIKES" value={spikeCount} sub="sectors, z ≥ 1.5" />
+      <StatTile kind="threat" label="ACTIVE SPIKES" value={spikeCount} sub="sectors, z ≥ 1.5" />
       {rateTile}
     </div>
   );

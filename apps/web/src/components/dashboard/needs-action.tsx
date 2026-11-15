@@ -254,7 +254,7 @@ export function NeedsAction({ period }: { period: PeriodKey }) {
               aria-label={`${r.title}: ${num(r.value)}. Open`}
               className={cn(heroLinkClass, "flex items-center gap-4 py-3 no-underline hover:no-underline")}
             >
-              <span className="min-w-16 shrink-0 font-code text-3xl leading-none font-bold text-hero-foreground tabular-nums">
+              <span className="min-w-16 shrink-0 text-3xl leading-none font-bold text-hero-foreground tabular-nums">
                 {num(r.value)}
               </span>
               <span className="min-w-0 flex-1">
@@ -365,7 +365,7 @@ export function NeedsAction({ period }: { period: PeriodKey }) {
                         aria-label={countryName(p.code)}
                         className="min-w-0 flex-1"
                       />
-                      <span className="font-code tabular-nums">{num(p.weight)}</span>
+                      <span className="tabular-nums">{num(p.weight)}</span>
                     </li>
                   ))}
                 </ul>

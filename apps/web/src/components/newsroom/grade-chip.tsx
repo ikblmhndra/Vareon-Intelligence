@@ -12,7 +12,7 @@ export function GradeChip({ a, codeOnly = false }: { a: GradeFields; codeOnly?: 
     <span
       title={gradeLines(a).join("\n")}
       className={cn(
-        "inline-flex shrink-0 items-center rounded-full border px-1.5 font-code text-2xs leading-4",
+        "inline-flex shrink-0 items-center rounded-full border px-1.5 text-2xs leading-4",
         a.reliability_grade ? GRADE_BADGE_CLASS[a.reliability_grade] : "border-border text-muted-foreground",
       )}
     >

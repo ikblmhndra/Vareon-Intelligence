@@ -83,21 +83,21 @@ export function ScraperRunsPanel({ scraperId }: { scraperId: string }) {
             {query.data.runs.map((r) => (
               <TableRow key={r.run_id}>
                 <TableCell className="text-xs text-muted-foreground">
-                  <span className="font-code">{fmtDateTime(r.started_at)}</span>
+                  <span>{fmtDateTime(r.started_at)}</span>
                   <span className="block text-2xs">{r.trigger}</span>
                 </TableCell>
                 <TableCell>
                   <RunStatusText status={r.status} />
                 </TableCell>
-                <TableCell className="font-code text-xs text-foreground">{r.items_found}</TableCell>
-                <TableCell className="font-code text-xs text-foreground">
+                <TableCell className="text-xs text-foreground tabular-nums">{r.items_found}</TableCell>
+                <TableCell className="text-xs text-foreground tabular-nums">
                   {r.items_new} new
                   {r.items_dropped > 0 && ` · ${r.items_dropped} dropped`}
                   {r.items_failed > 0 && (
                     <span className="text-destructive-text">{` · ${r.items_failed} failed`}</span>
                   )}
                 </TableCell>
-                <TableCell className="font-code text-xs whitespace-nowrap text-muted-foreground">
+                <TableCell className="text-xs whitespace-nowrap text-muted-foreground tabular-nums">
                   {humanDuration(r.duration_ms)}
                 </TableCell>
                 <TableCell className="text-xs break-words whitespace-normal text-muted-foreground">

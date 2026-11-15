@@ -129,7 +129,10 @@ export function PackagesPanel({ filters, onFilters, segment, actions }: Packages
   return (
     <Card>
       <CardContent className="flex flex-col gap-3">
-        <div>{segment}</div>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {segment}
+          <div className="flex flex-wrap items-center gap-2">{actions}</div>
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           <SearchInput
             value={search}
@@ -150,7 +153,6 @@ export function PackagesPanel({ filters, onFilters, segment, actions }: Packages
             }}
             options={ECOSYSTEM_OPTIONS}
           />
-          <div className="flex flex-wrap items-center gap-2 lg:ml-auto">{actions}</div>
         </div>
 
         {list.isPending && <Skeleton className="h-64 w-full rounded-lg" />}

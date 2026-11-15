@@ -91,7 +91,7 @@ function TrendBody({ clusterId }: { clusterId: string }) {
         <span className="font-semibold" style={{ color }}>
           {trend.trend_direction}
         </span>
-        <span className="font-code" style={{ color }}>
+        <span style={{ color }}>
           {gr} 7d
         </span>
         {trend.predicted_peak && <span className="text-muted-foreground">est. peak {fmtShortDate(trend.predicted_peak)}</span>}
@@ -160,12 +160,12 @@ function PrioritizedCves({ campaign: c }: { campaign: CampaignEntry }) {
           const score = cve.cvss_score ?? (cve.priority_score > 0 ? cve.priority_score : null);
           return (
             <li key={cve.cve_id} className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              {score != null && <span className="w-8 font-code text-xs font-semibold text-destructive-text">{score}</span>}
+              {score != null && <span className="w-8 text-xs font-semibold text-destructive-text tabular-nums">{score}</span>}
               <a
                 href={`https://nvd.nist.gov/vuln/detail/${cve.cve_id}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="font-code text-xs font-semibold text-foreground outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                className="text-xs font-semibold text-foreground outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               >
                 {cve.cve_id}
               </a>
@@ -294,7 +294,7 @@ export function CampaignDetailCard({
                     {name} ({weight})
                   </span>
                   <MeterBar aria-label={`${name} raw score`} value={Math.round(raw)} max={100} tone="primary" className="flex-1" />
-                  <span className="w-12 shrink-0 text-right font-code text-foreground">+{contrib}</span>
+                  <span className="w-12 shrink-0 text-right text-foreground tabular-nums">+{contrib}</span>
                 </div>
               ))}
             </div>
@@ -355,7 +355,7 @@ export function CampaignDetailCard({
                       >
                         <LinkTypeBadge type={rc.link_type} />
                         <span className="min-w-0 flex-1 truncate text-xs text-foreground">{rc.cluster_name}</span>
-                        <span className="shrink-0 font-code text-2xs text-muted-foreground">{rc.link_score}</span>
+                        <span className="shrink-0 text-2xs text-muted-foreground tabular-nums">{rc.link_score}</span>
                         {hints && (
                           <span title={hints} className="max-w-40 shrink-0 truncate text-2xs text-muted-foreground">
                             ↳ {hints}

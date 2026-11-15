@@ -44,7 +44,7 @@ export function RfiDetailCard({ rfi, pirLabel, canManage, saving, onSave, onEdit
       <div className="flex flex-col gap-4 px-5">
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center gap-2">
-            <span className="font-code text-xs font-semibold text-foreground">{id}</span>
+            <span className="text-xs font-semibold text-foreground">{id}</span>
             <RfiStatusChip status={rfi.status} />
             <div className="ml-auto">
               <RowMenu

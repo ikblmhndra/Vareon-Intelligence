@@ -32,7 +32,7 @@ export function PanelShell({
       <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
         <h2 className="font-heading text-base font-semibold">{title}</h2>
         <div className="flex items-center gap-2">
-          <span className="shrink-0 rounded-full bg-muted px-2.5 py-0.5 font-code text-xs font-medium whitespace-nowrap text-muted-foreground tabular-nums">
+          <span className="shrink-0 rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium whitespace-nowrap text-muted-foreground tabular-nums">
             {count === undefined ? "— items" : `${count.toLocaleString("en-US")} items`}
           </span>
           {onRefresh && (

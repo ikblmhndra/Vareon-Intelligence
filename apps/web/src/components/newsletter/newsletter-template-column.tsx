@@ -102,7 +102,7 @@ export function NewsletterTemplateColumn({
               ))}
             </SelectContent>
           </Select>
-          {selected && <p className="font-code text-xs text-muted-foreground">{daysIn(selected.start, selected.end)} days</p>}
+          {selected && <p className="text-xs text-muted-foreground">{daysIn(selected.start, selected.end)} days</p>}
         </Field>
 
         <Field label="Language" htmlFor="newsletter-language">
@@ -133,7 +133,7 @@ export function NewsletterTemplateColumn({
               <SectionIcon section={item.icon} className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
               <span className="min-w-0">
                 <span className="block text-sm font-medium text-foreground">{item.title}</span>
-                <span className="block font-code text-xs text-muted-foreground">{item.sub}</span>
+                <span className="block text-xs text-muted-foreground">{item.sub}</span>
               </span>
             </span>
           )}
@@ -151,7 +151,7 @@ export function NewsletterTemplateColumn({
             renderItem={(item) => (
               <span className="block">
                 <span className="block text-sm font-medium text-foreground">{item.title}</span>
-                <span className="block font-code text-xs text-muted-foreground">{item.sub}</span>
+                <span className="block text-xs text-muted-foreground">{item.sub}</span>
               </span>
             )}
           />

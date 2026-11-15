@@ -109,7 +109,7 @@ export function XIntelToolbar({ value, onChange, total, confirmed, onRefresh }: 
       ))}
       <div className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
         <span>
-          <span className="font-code">{total ?? "–"}</span> posts · <span className="font-code">{confirmed ?? "–"}</span>{" "}
+          <span>{total ?? "–"}</span> posts · <span>{confirmed ?? "–"}</span>{" "}
           confirmed incidents
         </span>
         <Button variant="ghost" size="sm" onClick={onRefresh}>

@@ -99,7 +99,7 @@ async def test_retry_after_seconds_clamps_ttl() -> None:
             self.keys.append(key)
             return self._ttl
 
-    for ttl, expected in [(-2, 60), (-1, 60), (0, 60), (37, 37), (999, 60)]:
+    for ttl, expected in [(-2, 60), (-1, 60), (0, 1), (37, 37), (999, 60)]:
         stub = _Stub(ttl)
         assert await retry_after_seconds(stub, "login:1.2.3.4") == expected  # type: ignore[arg-type]
         assert stub.keys == ["ratelimit:login:1.2.3.4"]

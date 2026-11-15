@@ -85,7 +85,7 @@ export function VulnDetailCard({ vuln, canManage, ackBusy, onToggleAck, onOpenDe
 
         <div className="flex flex-col gap-1">
           <p className="text-xs font-semibold">
-            <span className="font-code">{vuln.advisory_id}</span>
+            <span>{vuln.advisory_id}</span>
             {vuln.aliases.length > 0 && <span className="font-normal text-muted-foreground"> - {vuln.aliases.join(", ")}</span>}
           </p>
           <p className="text-xs leading-relaxed text-muted-foreground">{vuln.details || vuln.summary || "No description."}</p>

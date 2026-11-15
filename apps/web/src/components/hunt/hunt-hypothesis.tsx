@@ -72,7 +72,7 @@ export function HuntHypothesis({ anchorType, anchorId }: { anchorType: AnchorTyp
         <div className="space-y-1.5">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
             <Badge variant="secondary">LLM draft</Badge>
-            <span className="font-code">{draft.model}</span>
+            <span>{draft.model}</span>
             <span>
               {formatWib(draft.generated_at)} by {draft.generated_by}
             </span>

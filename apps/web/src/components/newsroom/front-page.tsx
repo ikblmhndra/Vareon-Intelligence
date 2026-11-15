@@ -72,7 +72,7 @@ function Lead({
   const actor = actorChips(a)[0];
   const story = a.story && a.story.source_count > 1 ? a.story : null;
   return (
-    <article aria-label="Top story" className="surface-raised space-y-3 p-5">
+    <article aria-label="Top story" className="surface-raised space-y-3 self-start rounded-lg p-5">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-2xs font-semibold tracking-wide text-muted-foreground uppercase">
         <span>Top story</span>
         {a.news_type && (
@@ -98,7 +98,7 @@ function Lead({
           {a.title}
         </button>
       </h2>
-      {a.summary && <p className="line-clamp-3 text-sm text-muted-foreground">{a.summary}</p>}
+      {a.summary && <p className="line-clamp-6 text-sm text-muted-foreground">{a.summary}</p>}
       <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2 text-xs text-muted-foreground">
         <span>{a.source}</span>
         {story && (
@@ -107,7 +107,7 @@ function Lead({
             onClick={() => onOpenStory(story.id, a.title)}
             className={cn("rounded-sm font-medium text-primary-text outline-none hover:underline", FOCUS_RING)}
           >
-            +<span className="font-code">{story.source_count - 1}</span> sources
+            +<span>{story.source_count - 1}</span> sources
           </button>
         )}
         <span aria-hidden>·</span>
@@ -276,7 +276,7 @@ export function FrontPage({
     const { error, retry } = narrowing.namesError;
     return <PanelError title="Could not load the front page" error={error} onRetry={retry} />;
   }
-  if (narrowing === "pending") return <Skeleton aria-hidden className="h-70 w-full rounded-xl" />;
+  if (narrowing === "pending") return <Skeleton aria-hidden className="h-70 w-full rounded-lg" />;
   // Tanpa nama, filter kosong berarti "semua"; jangan tampilkan feed penuh (Review Focus 2).
   if (narrowing === "no-names") {
     return (
@@ -301,7 +301,7 @@ export function FrontPage({
   if (!q.data) {
     return (
       <div aria-hidden className="grid gap-6 lg:grid-cols-[minmax(0,820fr)_minmax(0,468fr)]">
-        <Skeleton className="h-70 w-full rounded-xl" />
+        <Skeleton className="h-70 w-full rounded-lg" />
         <div className="flex flex-col gap-4">
           {[0, 1, 2].map((i) => (
             <Skeleton key={i} className="h-16 w-full" />
@@ -338,7 +338,7 @@ export function FrontPage({
       {!lead ? (
         // Selagi placeholder periode lama, belum pasti kosong: jangan tembak "terbaru" (P7).
         q.isPlaceholderData ? (
-          <Skeleton aria-hidden className="h-70 w-full rounded-xl" />
+          <Skeleton aria-hidden className="h-70 w-full rounded-lg" />
         ) : (
           <EmptyFront ui={ui} narrowing={narrowing} onChange={onChange} />
         )

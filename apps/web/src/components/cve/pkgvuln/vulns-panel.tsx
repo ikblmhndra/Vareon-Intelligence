@@ -156,7 +156,10 @@ export function VulnsPanel({ filters, onFilters, stats, segment, actions }: Vuln
     <div className="flex flex-col gap-4">
       <Card>
         <CardContent className="flex flex-col gap-3">
-          <div>{segment}</div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            {segment}
+            <div className="flex flex-wrap items-center gap-2">{actions}</div>
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <SearchInput
               value={search}
@@ -170,7 +173,6 @@ export function VulnsPanel({ filters, onFilters, stats, segment, actions }: Vuln
             <FilterSelect prefix="Severity" value={severity} onChange={(v) => onFilters({ severity: v })} options={SEVERITY_OPTIONS} />
             <FilterSelect prefix="Show" value={show} onChange={(v) => onFilters({ show: v })} options={SHOW_OPTIONS} />
             <Switch checked={kevOnly} onCheckedChange={(c) => onFilters({ kevOnly: c })} aria-label="KEV only" label={<span className="text-xs">KEV only</span>} />
-            <div className="flex flex-wrap items-center gap-2 lg:ml-auto">{actions}</div>
           </div>
         </CardContent>
       </Card>

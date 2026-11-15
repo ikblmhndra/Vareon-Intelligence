@@ -91,7 +91,7 @@ function LookupBody({ r }: { r: CveLookupOut }) {
     <>
       <DialogHeader>
         <DialogTitle className="flex flex-wrap items-center gap-2">
-          <span className="font-code">{r.cve_id}</span>
+          <span>{r.cve_id}</span>
           <Chip kind="severity" value={sev}>
             {r.cvss_severity ? `${r.cvss_severity} ${r.cvss_score ?? ""}`.trim() : "Unrated"}
           </Chip>

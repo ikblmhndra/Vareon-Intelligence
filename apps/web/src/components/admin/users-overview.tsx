@@ -70,7 +70,7 @@ export function UsersTiles() {
             const week = rows.filter(
               (u) => u.last_sign_in && nowMs - new Date(u.last_sign_in).getTime() <= 7 * DAY_MS,
             ).length;
-            return <StatTile label="USERS" value={rows.length} sub={`${week} signed in this week`} />;
+            return <StatTile label="USERS" kind="ops" value={rows.length} sub={`${week} signed in this week`} />;
           }}
         />
       )}
@@ -239,9 +239,9 @@ function AuditCard() {
                       ? fmtTime(l.timestamp)
                       : fmtShortDate(l.timestamp)}
                   </TableCell>
-                  <TableCell className="truncate font-code text-xs">{l.user}</TableCell>
-                  <TableCell className="truncate font-code text-xs">{l.action}</TableCell>
-                  <TableCell className="truncate font-code text-xs text-muted-foreground">{l.target_id ?? "–"}</TableCell>
+                  <TableCell className="truncate text-xs">{l.user}</TableCell>
+                  <TableCell className="truncate text-xs">{l.action}</TableCell>
+                  <TableCell className="truncate text-xs text-muted-foreground">{l.target_id ?? "–"}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -317,7 +317,7 @@ function TokensCard() {
                 <TableRow key={t.id}>
                   <TableCell className="truncate text-xs">{t.name}</TableCell>
                   <TableCell className="truncate font-code text-xs text-muted-foreground">{t.token_prefix}…</TableCell>
-                  <TableCell className="truncate font-code text-xs">{t.max_tlp}</TableCell>
+                  <TableCell className="truncate text-xs">{t.max_tlp}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{t.expires_at ? fmtShortDate(t.expires_at) : "–"}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">
                     {t.last_used_at ? fmtAgo(t.last_used_at, data!.nowMs) : "–"}

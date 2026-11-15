@@ -83,7 +83,7 @@ export function EntityCvesTab({ entity }: { entity: EntityDetail }) {
                     type="button"
                     disabled={opening === c.id}
                     onClick={() => void openCve(c)}
-                    className="rounded font-code text-xs text-primary-text underline-offset-2 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-focus"
+                    className="rounded text-xs text-primary-text underline-offset-2 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-focus"
                   >
                     {c.cve_id}
                   </button>
@@ -96,7 +96,7 @@ export function EntityCvesTab({ entity }: { entity: EntityDetail }) {
                 <TableCell className={cn("text-xs font-medium", severityColorClass(c.cve_severity ?? ""))}>
                   {c.cve_severity ?? "-"}
                 </TableCell>
-                <TableCell className="text-right font-code text-xs">{c.cve_score?.toFixed(1) ?? "-"}</TableCell>
+                <TableCell className="text-right text-xs tabular-nums">{c.cve_score?.toFixed(1) ?? "-"}</TableCell>
                 <TableCell className="text-xs text-muted-foreground">{c.tech ?? "-"}</TableCell>
                 <TableCell className="text-xs text-muted-foreground">{relativeTime(c.detected_on)}</TableCell>
               </TableRow>

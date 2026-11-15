@@ -22,8 +22,10 @@ import type { IocListResponse, IocStats, IocSummary } from "@/lib/api/loose-type
 import { useCan } from "@/lib/auth/permissions";
 import { downloadBlob } from "@/lib/csv";
 import { useDebounced } from "@/lib/cve/catalog";
+import { sentenceLabel } from "@/lib/enum-label";
 import { fmtAgo } from "@/lib/format";
 import { defang } from "@/lib/intelligence/defang";
+import { cn } from "@/lib/utils";
 
 const IOC_TYPES = ["ip", "domain", "url", "email", "sha256", "sha1", "md5"] as const;
 
@@ -31,7 +33,17 @@ const IOC_TYPES = ["ip", "domain", "url", "email", "sha256", "sha1", "md5"] as c
  * `state` + `include_suppressed` (pengganti checkbox "Include suppressed" lama). */
 type StateFilter = IocSummary["state"] | "all" | "all_suppressed";
 
-const TYPE_OPTIONS = [{ value: "all", label: "all" }, ...IOC_TYPES.map((t) => ({ value: t, label: t }))];
+// Kolom grid tile tipe dari jumlah tile nyata (API hanya mengirim tipe yang punya baris; maksimal 7-8):
+// kelipatan jumlah tile supaya tidak ada tile yatim di 1024/1440/>=1920. Kelas ditulis utuh (Tailwind).
+function tileGridClass(n: number): string {
+  if (n >= 8) return "sm:grid-cols-4 min-[1440px]:grid-cols-8";
+  if (n === 7) return "sm:grid-cols-4 lg:grid-cols-7";
+  if (n === 6) return "sm:grid-cols-3 lg:grid-cols-6";
+  if (n === 5) return "sm:grid-cols-5";
+  return "sm:grid-cols-4";
+}
+
+const TYPE_OPTIONS = [{ value: "all", label: "all" }, ...IOC_TYPES.map((t) => ({ value: t, label: sentenceLabel(t) }))];
 const STATE_OPTIONS: readonly { value: StateFilter; label: string }[] = [
   { value: "active", label: "active" },
   { value: "expired", label: "expired" },
@@ -257,9 +269,11 @@ export function IocIndicatorsView() {
                     )}
                   </TableCell>
                   <TableCell>
-                    <Chip kind="flag" value={ioc.type} />
+                    <Chip kind="flag" value={ioc.type} className="normal-case">
+                      {sentenceLabel(ioc.type)}
+                    </Chip>
                   </TableCell>
-                  <TableCell className="text-right font-code text-xs">
+                  <TableCell className="text-right text-xs tabular-nums">
                     {ioc.confidence_score != null ? Math.round(ioc.confidence_score) : "—"}
                   </TableCell>
                   <TableCell>
@@ -269,7 +283,7 @@ export function IocIndicatorsView() {
                           value={ioc.actionability_score}
                           max={100}
                           aria-label={`Actionability of ${shown}`}
-                          label={<span className="font-code text-foreground">{ioc.actionability_score}</span>}
+                          label={<span className="text-foreground">{ioc.actionability_score}</span>}
                         />
                       </div>
                     ) : (
@@ -279,7 +293,7 @@ export function IocIndicatorsView() {
                   <TableCell>
                     <IocActionChip label={ioc.actionability_label} />
                   </TableCell>
-                  <TableCell className="text-right font-code text-xs text-muted-foreground" title={`last seen ${fmtAgo(ioc.last_seen)}`}>
+                  <TableCell className="text-right text-xs text-muted-foreground tabular-nums" title={`last seen ${fmtAgo(ioc.last_seen)}`}>
                     {ioc.seen_count || 1}
                   </TableCell>
                   <TableCell className="pr-5 text-xs whitespace-nowrap text-muted-foreground">
@@ -330,11 +344,12 @@ export function IocIndicatorsView() {
       </div>
 
       {stats.data && stats.data.by_type.length > 0 && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+        <div className={cn("grid grid-cols-2 gap-3", tileGridClass(stats.data.by_type.length))}>
           {stats.data.by_type.map((t) => (
             <StatTile
               key={t.type}
-              label={t.type}
+              label={sentenceLabel(t.type)}
+              kind="intel"
               value={t.count.toLocaleString()}
               selected={type === t.type}
               onSelect={() => reset(setType)(type === t.type ? "all" : t.type)}

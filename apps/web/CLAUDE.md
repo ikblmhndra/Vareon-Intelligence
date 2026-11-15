@@ -60,8 +60,9 @@ extraction via `FormData` must check whether the key EXISTS
 - **Text on tints**: a tinted badge (`bg-X/10..25`) must use `text-X-text` (`text-primary-text`, `text-success-text`, ...),
   not `text-X`; the base token only reaches 3.6-4.1:1 on its own tint (AA needs 4.5:1). Heatmap cells cap the tint
   alpha instead of flipping the text color. Never dim text with `opacity-*` (use a lighter token).
-- **Fonts**: `font-mono` is NOT monospace here (`--font-mono` = Google Sans Flex). Use `font-code` (IBM Plex Mono) for
-  data values: IOC, hash, IP, CVE/TTP ID, cron schedules.
+- **Fonts**: `font-mono` is NOT monospace here (`--font-mono` = Google Sans Flex). `font-code` (IBM Plex Mono) is only for
+  machine strings read character by character (hash, IOC value, IP, URL, query, cron, file name, package name and version).
+  IDs (CVE, ATT&CK, display IDs) and numbers use the body font, with `tabular-nums` for numbers in columns.
 - **Tokens, not literals**: keyboard focus is `focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
   focus-visible:ring-offset-background`; the burgundy band uses `bg-hero`/`text-hero-*`; dialog scrim is `bg-overlay`; micro labels use `text-2xs`
   (11px floor), data text `text-xs` (= 13 px; use it instead of `text-[13px]`). No hex, `rgb()` or raw palette classes (`amber-500`) in components.

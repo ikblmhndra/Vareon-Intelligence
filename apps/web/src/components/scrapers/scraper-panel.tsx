@@ -151,9 +151,9 @@ function PanelBody({
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          <span className="font-code">{id}</span>
+          <span>{id}</span>
           {" · queue "}
-          <span className="font-code">{row.queue}</span>
+          <span>{row.queue}</span>
           {" · "}
           {humanizeCron(row.schedule)}
         </p>

@@ -258,7 +258,7 @@ function NewTokenForm({
               className="mt-0.5"
             />
             <Label htmlFor={`api-token-scope-${sc.value}`} className="flex flex-col items-start gap-0.5">
-              <span className="font-code text-xs">{sc.value}</span>
+              <span className="text-xs">{sc.value}</span>
               <span className="text-2xs font-normal text-muted-foreground">{sc.help}</span>
             </Label>
           </div>
@@ -411,14 +411,14 @@ export function TokensView() {
                 <TableCell className="truncate font-code text-xs text-muted-foreground">
                   {t.token_prefix}…
                 </TableCell>
-                <TableCell className="whitespace-normal font-code text-xs">{t.scopes.join(" · ")}</TableCell>
+                <TableCell className="whitespace-normal text-xs">{t.scopes.join(" · ")}</TableCell>
                 <TableCell>
                   <Chip kind="flag" value={t.max_tlp}>
                     {TLP_ITEMS[t.max_tlp] ?? `TLP:${t.max_tlp.toUpperCase()}`}
                   </Chip>
                 </TableCell>
                 <TableCell className="whitespace-normal">
-                  <div className="truncate font-code text-xs" title={t.created_by}>
+                  <div className="truncate text-xs" title={t.created_by}>
                     {t.created_by}
                   </div>
                   <div className="text-2xs text-muted-foreground">{fmtShortDate(t.created_at)}</div>

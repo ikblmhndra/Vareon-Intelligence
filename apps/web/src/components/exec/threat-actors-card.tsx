@@ -25,7 +25,7 @@ export function ThreatActorsCard({ d, from, className }: { d: ExecDashboardV2; f
   const total = Math.min(d.ta_leaderboard.length, 10);
   const prevSet = new Set(d.prev_ta_names.map((n) => n.toLowerCase()));
   return (
-    <Card className={className}>
+    <Card className={cn("self-start", className)}>
       <CardHeader>
         <CardTitle>Threat actors</CardTitle>
         <CardDescription>By article count; velocity = last month vs prior average</CardDescription>
@@ -56,7 +56,7 @@ export function ThreatActorsCard({ d, from, className }: { d: ExecDashboardV2; f
                     className="flex items-center gap-3 py-2"
                     title={conf !== null ? `Signal quality ${conf}%` : undefined}
                   >
-                    <span className="w-6 shrink-0 font-code text-xs text-muted-foreground">
+                    <span className="w-6 shrink-0 text-xs text-muted-foreground">
                       {String(i + 1).padStart(2, "0")}
                     </span>
                     <div className="min-w-0 flex-1">
@@ -77,7 +77,7 @@ export function ThreatActorsCard({ d, from, className }: { d: ExecDashboardV2; f
                     >
                       {ta.count}
                     </Link>
-                    <span className={cn("w-12 shrink-0 text-right font-code text-xs", vel.colorClass)}>{vel.text}</span>
+                    <span className={cn("w-12 shrink-0 text-right text-xs tabular-nums", vel.colorClass)}>{vel.text}</span>
                   </li>
                 );
               })}

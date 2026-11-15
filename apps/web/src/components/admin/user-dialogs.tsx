@@ -142,12 +142,12 @@ function RoleSelect({ id, value, onChange }: { id: string; value: string; onChan
   const { list, items } = useRoleOptions();
   return (
     <Select items={items} value={value} onValueChange={(v) => v && onChange(v)}>
-      <SelectTrigger id={id} className="w-full font-code text-sm">
+      <SelectTrigger id={id} className="w-full text-sm">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
         {list.map((r) => (
-          <SelectItem key={r.name} value={r.name} className="font-code text-sm">
+          <SelectItem key={r.name} value={r.name} className="text-sm">
             {items[r.name]}
           </SelectItem>
         ))}
@@ -185,7 +185,7 @@ function ClientChecklist({
         <label key={c.client_id} className="flex items-center gap-2 py-0.5 text-sm opacity-70">
           <Checkbox checked disabled />
           <span className="text-foreground">{c.name}</span>
-          <span className="font-code text-xs text-muted-foreground">{c.client_id}</span>
+          <span className="text-xs text-muted-foreground">{c.client_id}</span>
         </label>
       ))}
       {hidden.length > 0 && (
@@ -195,7 +195,7 @@ function ClientChecklist({
         <label key={c.client_id} className="flex cursor-pointer items-center gap-2 py-0.5 text-sm">
           <Checkbox checked={selected.has(c.client_id)} onCheckedChange={() => onToggle(c.client_id)} />
           <span className="text-foreground">{c.name}</span>
-          <span className="font-code text-xs text-muted-foreground">{c.client_id}</span>
+          <span className="text-xs text-muted-foreground">{c.client_id}</span>
         </label>
       ))}
     </div>
@@ -267,7 +267,7 @@ function AddUserForm({ onClose }: { onClose: () => void }) {
           autoComplete="off"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
-          className="font-code text-sm"
+          className="text-sm"
         />
       </div>
       <div className="space-y-1.5">
