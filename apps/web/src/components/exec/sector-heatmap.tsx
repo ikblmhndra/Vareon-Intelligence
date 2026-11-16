@@ -19,9 +19,9 @@ import { newsroomHref } from "@/lib/newsroom/links";
 import { cn } from "@/lib/utils";
 import type { ExecDashboardV2 } from "@/lib/api/loose-types";
 
-// Kelas ditulis utuh (Tailwind). Langkah 2..5 `SCALE` di heat-grid; swatch pertama = sel kosong berbingkai.
+// Kelas ditulis utuh (Tailwind). Langkah 2..5 `SCALE` di heat-grid; swatch pertama = sel kosong (petak permukaan).
 const LEGEND_SWATCH = [
-  "border border-border bg-background",
+  "bg-surface",
   "bg-primary/30",
   "bg-primary/40",
   "bg-primary/45",
