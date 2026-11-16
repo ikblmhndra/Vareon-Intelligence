@@ -276,8 +276,42 @@ export function NeedsAction({ period }: { period: PeriodKey }) {
         title={noData ? `Nothing is matched to ${client} yet` : att ? headline : "Needs action"}
       >
         <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-          <div>{left}</div>
-          <div className="relative aspect-[25/19] max-h-[480px] w-full overflow-hidden rounded-md">
+          {/* Top countries pindah dari atas peta ke kolom kiri: kolom kiri tidak kosong di bawah tiga sinyal dan
+              peta bersih tanpa panel bertumpuk (permintaan user). */}
+          <div className="flex flex-col gap-5">
+            {left}
+            {!noData && topCountries.length > 0 && (
+              <section
+                aria-labelledby="needs-top-countries"
+                className={cn("rounded-md bg-hero-panel p-4", map.isPlaceholderData && "opacity-60")}
+              >
+                <h3 id="needs-top-countries" className="text-2xs font-bold tracking-[0.12em] text-hero-eyebrow uppercase">
+                  Top countries · {view === "apac" ? "APAC" : "World"}
+                </h3>
+                <ul className="mt-3 grid gap-x-8 gap-y-2 text-sm text-hero-foreground sm:grid-cols-2">
+                  {topCountries.map((p) => (
+                    <li key={`${p.code}-${p.tone}`}>
+                      <Link
+                        href={`/newsroom?country=${encodeURIComponent(p.code)}`}
+                        className={cn(heroLinkClass, "flex items-center gap-3 text-hero-foreground no-underline hover:no-underline")}
+                      >
+                        <span className="w-28 shrink-0 truncate">{countryName(p.code)}</span>
+                        <MeterBar
+                          onHero
+                          value={p.weight}
+                          max={topCountries[0].weight}
+                          aria-label={countryName(p.code)}
+                          className="min-w-0 flex-1"
+                        />
+                        <span className="w-6 text-right tabular-nums">{num(p.weight)}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+          </div>
+          <div className="relative h-[340px] w-full overflow-hidden rounded-md">
             <div ref={mapBoxRef} className={cn("absolute inset-0", map.isPlaceholderData && "opacity-60")}>
               {map.data && points.length > 0 && (
                 <WorldDots
@@ -334,7 +368,6 @@ export function NeedsAction({ period }: { period: PeriodKey }) {
             <ul
               className={cn(
                 "pointer-events-none absolute bottom-0 left-0 flex flex-wrap gap-x-4 gap-y-1 text-xs text-hero-muted",
-                topCountries.length > 0 && "max-w-[calc(100%-13.5rem)]",
                 map.isPlaceholderData && "opacity-60",
               )}
             >
@@ -351,26 +384,6 @@ export function NeedsAction({ period }: { period: PeriodKey }) {
                 Your countries (ring)
               </li>
             </ul>
-            {topCountries.length > 0 && (
-              <div className={cn("pointer-events-none absolute right-0 bottom-0 w-52 rounded-md bg-hero-panel p-3", map.isPlaceholderData && "opacity-60")}>
-                <p className="text-2xs font-bold tracking-[0.12em] text-hero-eyebrow uppercase">Top countries</p>
-                <ul className="mt-2 flex flex-col gap-1.5 text-xs text-hero-foreground">
-                  {topCountries.map((p) => (
-                    <li key={`${p.code}-${p.tone}`} className="flex items-center gap-2">
-                      <span className="w-20 shrink-0 truncate">{countryName(p.code)}</span>
-                      <MeterBar
-                        onHero
-                        value={p.weight}
-                        max={topCountries[0].weight}
-                        aria-label={countryName(p.code)}
-                        className="min-w-0 flex-1"
-                      />
-                      <span className="tabular-nums">{num(p.weight)}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
             {map.isError && !map.data && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-center text-sm">
                 <p className="font-semibold text-hero-foreground">Could not load the map</p>
