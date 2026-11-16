@@ -85,6 +85,9 @@ router `changelog.py`) -- parser-nya expect header persis
   - Exec: tombol aksi rata kanan di baris filter, "updated just now" tidak terpotong. Entities: kolom ATT&CK ID menampilkan "—" untuk sektor, kolom 30D/90D dipisah, alias tidak dipotong.
   - IOC dan Source reliability: label enum dibuat terbaca ("URL with path", "Vendor research"); tile IOC mengisi baris penuh. Sel kosong heatmap Risk matrix dan Sector heatmap tampil polos.
   - Helper murni baru (warna kategori, label enum, label tanggal) punya unit test `pnpm test:unit` (`node --test`).
+  - Dashboard: Lead story yang ringkasannya kosong/pendek menampilkan "Next in line" (artikel prioritas ke-6..8, tidak dobel dengan Must read; query must-read kini 8 artikel, tetap satu request). Needs action: Top countries pindah ke bawah tiga sinyal (bisa diklik ke Newsroom) dan peta setinggi 340 px tanpa panel bertumpuk.
+  - Risk matrix: header kolom memakai kode negara ISO (nama lengkap di tooltip dan pembaca layar), semua kolom sama lebar, kartu matriks 2/3 baris; sel kosong heatmap tampil sebagai petak permukaan supaya grid terbaca.
+  - CVE Tracker dan Scrapers: "Load more" diganti halaman bernomor dengan pilihan "Rows per page" (CVE 10/25/50/100, Scrapers 25/50/100, default 25), pilihan diingat per daftar di browser.
 
 ### Diperbaiki
 - `PUT /api/rfi/{id}` dan `PUT /api/pir/{id}`: `null` eksplisit kini mengosongkan field yang boleh kosong (RFI `due_date` dan `linked_pir`; PIR `start_date` dan `end_date`). Dulu nilai yang dikosongkan diam-diam diabaikan. `null` pada field wajib tetap diabaikan.
