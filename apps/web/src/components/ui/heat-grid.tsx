@@ -93,7 +93,7 @@ interface HeatGridProps {
   onSelect: (r: number, c: number) => void;
   "aria-label": string;
   /** Semua kolom nilai sama lebar persis (`table-fixed`) dan header di tengah: untuk grid banyak kolom berlabel
-   * pendek (kode negara Risk matrix). Kolom label 8.5rem; tabel minimal 3rem per kolom, lebih sempit = scroll. */
+   * pendek (kode negara Risk matrix). Kolom label 8.5rem; tabel minimal 2.875rem per kolom, lebih sempit = scroll. */
   fixedColumns?: boolean;
 }
 
@@ -122,7 +122,7 @@ export function HeatGrid({
         aria-label={ariaLabel}
         onKeyDown={onKeyDown}
         className={cn("w-full border-separate border-spacing-1", fixedColumns && "table-fixed")}
-        style={fixedColumns ? { minWidth: `calc(8.5rem + ${colLabels.length} * 3rem)` } : undefined}
+        style={fixedColumns ? { minWidth: `calc(8.5rem + ${colLabels.length} * 2.875rem)` } : undefined}
       >
         {fixedColumns && (
           <colgroup>
