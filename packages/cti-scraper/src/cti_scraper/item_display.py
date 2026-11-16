@@ -21,6 +21,7 @@ from cti_scraper.items import (
     NoticeItem,
     RansomwareVictimItem,
     TweetItem,
+    TweetJobItem,
 )
 
 
@@ -36,7 +37,7 @@ def _first_line(html_text: str) -> str:
 def display_title_url(item: Item) -> tuple[str, str]:
     if isinstance(item, ArticleItem):
         return item.title, item.url
-    if isinstance(item, TweetItem):
+    if isinstance(item, TweetItem | TweetJobItem):
         return item.text[:200], item.url
     if isinstance(item, RansomwareVictimItem):
         return f"{item.group_name}: {item.victim}", item.post_url

@@ -31,6 +31,7 @@ from cti_scraper.items import (
     NoticeItem,
     RansomwareVictimItem,
     TweetItem,
+    TweetJobItem,
 )
 
 if TYPE_CHECKING:
@@ -213,8 +214,17 @@ definisi dengan promosi mirror (`cti_core.cve_promotion`), yang juga mengisinya.
 
 
 def finish_run(session: Session) -> None:
-    """Dipanggil `Runner.execute()` SETELAH run dicatat selesai. Mengirim ringkasan CVE baru yang
-    dikumpulkan `_cve_sink`. Tidak pernah raise: alert bukan alasan run gagal."""
+    """Dipanggil `Runner.execute()` SETELAH run dicatat selesai. Mengirim job `tweet` yang disewa
+    `_tweet_job_sink` dan ringkasan CVE baru yang dikumpulkan `_cve_sink`. Tidak pernah raise:
+    alert bukan alasan run gagal."""
+    job_ids = session.info.pop(_TWEET_JOB_IDS_KEY, None)
+    if job_ids:
+        from cti_core.celery_client import send_enrich_llm
+
+        for job_id in job_ids:
+            # Best-effort: sewa yang habis membuat dispatcher mengambil job ini.
+            with contextlib.suppress(Exception):
+                send_enrich_llm(job_id)
     pairs = session.info.pop(_NEW_CVE_KEY, None)
     if pairs:
         from cti_scraper.cve_alert import notify_new_cves
@@ -365,6 +375,47 @@ def _tweet_sink(item: TweetItem, meta: ScraperMeta, session: Session) -> None:
         incident_confidence=item.incident_confidence,
         incident_indicators=item.incident_indicators,
     )
+
+
+_TWEET_JOB_IDS_KEY = "tweet_job_ids"
+"""Kunci `Session.info`: id job `tweet` yang disewa (breaker tertutup) selama run ini, dikirim
+SEKALI di `finish_run` (sesudah commit, saat worker bisa melihat barisnya)."""
+
+_TWEET_TITLE_MAX = 300
+
+
+@sink_for(TweetJobItem)
+def _tweet_job_sink(item: TweetJobItem, meta: ScraperMeta, session: Session) -> None:
+    """Persist-first (spec tweet-llm-cost, Part A): tweet ditulis sebagai job `tweet` di
+    `enrich_jobs`, TANPA panggilan LLM di jalur scraper; worker yang mengklasifikasi lalu menulis
+    `tweets`. Sengaja TIDAK memanggil `ensure_enrich_capacity()`: job ini tidak menambah antrian
+    Celery `enrich` (hanya baris DB), jadi tidak ikut backpressure. Tweet yang sudah ada di
+    `tweets` dilewati (scraper lain sudah menyimpannya). Konflik `(tweet, url)` meng-OR flag
+    `notify` (lihat `EnrichJobRepo.create_tweet`)."""
+    from cti_core.db.repositories.enrich_job import EnrichJobRepo, lease_if_closed
+    from cti_core.db.repositories.tweet import TweetRepo
+
+    if TweetRepo(session).exists(item.tweet_id):
+        return
+    tweet = item.model_dump(
+        mode="json", exclude={"scan_results", "routing", "notify"}, exclude_none=False
+    )
+    job = EnrichJobRepo(session).create_tweet(
+        url=item.url,
+        title=item.text[:_TWEET_TITLE_MAX],
+        source=meta.source,
+        scraper_id=meta.id,
+        posted_on=item.posted_on.date() if item.posted_on else None,
+        input_text=item.text,
+        context={
+            "tweet": tweet,
+            "scan_results": item.scan_results,
+            "routing": item.routing,
+            "notify": item.notify,
+        },
+    )
+    if job is not None and lease_if_closed(session, job):
+        session.info.setdefault(_TWEET_JOB_IDS_KEY, []).append(job.id)
 
 
 @sink_for(CveMentionItem)

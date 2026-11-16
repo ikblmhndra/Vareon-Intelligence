@@ -86,10 +86,8 @@ from cti_core.db.models.article import Article
 from cti_core.db.models.enrich_job import EnrichJob
 from cti_core.db.models.report_state import SCOPE_NEWS
 from cti_core.db.repositories.article import ArticleRepo
-from cti_core.db.repositories.enrich_job import EnrichJobRepo
-from cti_core.db.repositories.llm_call import LlmCallRepo
+from cti_core.db.repositories.enrich_job import EnrichJobRepo, lease_if_closed
 from cti_core.db.repositories.report_state import CveMentionRepo
-from cti_core.llm.breaker import BREAKER_TASKS, LEASE, RECENT_CALLS, breaker_state
 from cti_core.urlkit import url_hash
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -152,25 +150,8 @@ Ruang kunci dua-int TIDAK bertabrakan dengan kunci satu-bigint di tempat lain (b
 dua task saling menunggu sebentar, tidak salah hasil."""
 
 
-def _lease_if_closed(session: Session, job: EnrichJob) -> bool:
-    """Breaker TERTUTUP -> job baru dikirim langsung sesudah commit (spec 4.5), supaya latensi
-    normal tetap detik, bukan menunggu putaran dispatcher. Dipanggil SEBELUM commit yang membuat
-    job-nya: `next_attempt_at` digeser `LEASE` di transaksi yang sama, jadi dispatcher tidak
-    mengirimnya lagi selagi worker mungkin masih memprosesnya (`run_job` membaca job tanpa kunci
-    sebelum panggilan LLM, dua salinan bisa sama-sama memanggil LLM). Kirim yang gagal cukup
-    menunggu sewanya habis. Terbuka/setengah terbuka: job dibiarkan jatuh tempo untuk dispatcher.
-    Satu query `llm_calls` yang murah; error DB di sini diteruskan (commit-nya toh gagal juga)."""
-    recent = LlmCallRepo(session).recent_for_tasks(BREAKER_TASKS, limit=RECENT_CALLS)
-    now = datetime.datetime.now(datetime.UTC)
-    if breaker_state(recent, now).state != "closed":
-        return False
-    job.next_attempt_at = now + LEASE
-    session.flush()
-    return True
-
-
 def _send(job_id: int) -> None:
-    """Kirim job yang sudah disewa (`_lease_if_closed`) SESUDAH commit (worker harus bisa melihat
+    """Kirim job yang sudah disewa (`lease_if_closed`) SESUDAH commit (worker harus bisa melihat
     barisnya). BEST-EFFORT: gagal kirim cukup di-log, dispatcher mengambilnya sesudah sewa habis."""
     try:
         send_enrich_llm(job_id)
@@ -567,7 +548,7 @@ def complete(
             # Unik per URL dan job ikut terhapus bersama artikelnya, jadi seharusnya tidak
             # terjadi; kalau terjadi, artikel `pending` tanpa job harus kelihatan di log.
             log.warning("enrich_ttp_job_conflict", url=url, article_id=article.id)
-    send_ttp = ttp_job is not None and _lease_if_closed(session, ttp_job)
+    send_ttp = ttp_job is not None and lease_if_closed(session, ttp_job)
     # COMMIT dulu sebelum alert: `persist` + `route_alerts` satu sesi/transaksi,
     # dan `sync_session()` ROLLBACK kalau ada exception. Tanpa commit ini, alert
     # Telegram yang gagal (bot mati, chat salah, jaringan) ikut MEMBATALKAN artikel
@@ -636,7 +617,7 @@ def run_pipeline(
         input_text=prepared.text,
         context=prepared.to_context(),
     )
-    send_now = job is not None and _lease_if_closed(session, job)
+    send_now = job is not None and lease_if_closed(session, job)
     # Commit melepas kunci URL; kedatangan berikutnya untuk URL ini melihat job-nya.
     session.commit()
     if job is None:

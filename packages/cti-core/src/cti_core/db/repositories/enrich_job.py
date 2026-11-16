@@ -6,12 +6,14 @@ import datetime
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import Boolean, case, func, literal_column, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from cti_core.db.models.enrich_job import EnrichJob
+from cti_core.db.repositories.llm_call import LlmCallRepo
+from cti_core.llm.breaker import BREAKER_TASKS, LEASE, RECENT_CALLS, breaker_state
 from cti_core.urlkit import url_hash as compute_url_hash
 
 JSON_FAILURE_CAP = 3
@@ -91,6 +93,51 @@ class EnrichJobRepo:
         if job_id is None:
             return None
         job = self.session.get(EnrichJob, job_id)
+        if job is not None:
+            self.session.refresh(job)
+        return job
+
+    def create_tweet(
+        self,
+        *,
+        url: str,
+        title: str,
+        source: str,
+        scraper_id: str | None,
+        posted_on: datetime.date | None,
+        input_text: str | None,
+        context: dict[str, Any],
+    ) -> EnrichJob | None:
+        """Job `tweet` (persist-first). Beda dari `create`: bila job `(tweet, url)` sudah ada,
+        flag `context.notify` di-OR-kan (scraper `notify=True` yang tiba belakangan tidak boleh
+        kalah oleh baris `notify=False` yang lebih dulu masuk, atau alert-nya hilang). Return job
+        yang BARU dibuat, `None` bila itu konflik (`xmax = 0` hanya untuk baris yang di-INSERT)."""
+        insert_stmt = pg_insert(EnrichJob).values(
+            kind="tweet",
+            url=url,
+            url_hash=compute_url_hash(url),
+            title=title,
+            source=source,
+            scraper_id=scraper_id,
+            posted_on=posted_on,
+            input_text=input_text,
+            context=context,
+        )
+        notify_or = func.jsonb_set(
+            EnrichJob.context,
+            "{notify}",
+            func.to_jsonb(
+                (EnrichJob.context.op("->>")("notify")).cast(Boolean)
+                | (insert_stmt.excluded.context.op("->>")("notify")).cast(Boolean)
+            ),
+        )
+        stmt: Any = insert_stmt.on_conflict_do_update(
+            index_elements=["kind", "url_hash"], set_={"context": notify_or}
+        ).returning(EnrichJob.id, literal_column("(xmax = 0)").label("inserted"))
+        row = self.session.execute(stmt).one()
+        if not row.inserted:
+            return None
+        job = self.session.get(EnrichJob, row.id)
         if job is not None:
             self.session.refresh(job)
         return job
@@ -226,3 +273,20 @@ class AsyncEnrichJobRepo:
     async def counts(self) -> JobCounts:
         pc, pt, pw, f, oldest = (await self.session.execute(_counts_query())).one()
         return JobCounts(pc, pt, pw, f, oldest)
+
+
+def lease_if_closed(session: Session, job: EnrichJob) -> bool:
+    """Breaker TERTUTUP -> job baru boleh dikirim langsung sesudah commit (spec 4.5), supaya
+    latensi normal tetap detik, bukan menunggu putaran dispatcher. Dipanggil SEBELUM commit yang
+    membuat job-nya: `next_attempt_at` digeser `LEASE` di transaksi yang sama, jadi dispatcher
+    tidak mengirimnya lagi selagi worker mungkin masih memprosesnya. Terbuka/setengah terbuka:
+    job dibiarkan jatuh tempo untuk dispatcher. Satu query `llm_calls` yang murah; error DB di
+    sini diteruskan (commit-nya toh gagal juga). Dipakai pipeline artikel dan sink tweet, jadi
+    tinggal di `cti_core` (cti-scraper tidak boleh depends ke cti-enrich)."""
+    recent = LlmCallRepo(session).recent_for_tasks(BREAKER_TASKS, limit=RECENT_CALLS)
+    now = datetime.datetime.now(datetime.UTC)
+    if breaker_state(recent, now).state != "closed":
+        return False
+    job.next_attempt_at = now + LEASE
+    session.flush()
+    return True

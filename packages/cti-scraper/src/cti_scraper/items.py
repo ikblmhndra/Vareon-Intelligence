@@ -45,6 +45,30 @@ class ArticleItem(Item):
         return canonicalize_url(self.url)
 
 
+class TweetJobItem(Item):
+    """Tweet yang BELUM diklasifikasi LLM: sink menulisnya sebagai job `tweet` di `enrich_jobs`
+    (persist-first), worker `enrich.llm` yang memanggil LLM lalu menulis ke `tweets`. Isinya
+    dikonsumsi lewat `context` job. `routing` = field `TweetRoutingInput` selain `msg_data`
+    (dibangun worker dari tweet itu sendiri). `dedup_key()` = tweet_id seperti `TweetItem`."""
+
+    tweet_id: str
+    url: str
+    text: str
+    author_username: str
+    author_name: str | None = None
+    author_avatar: str | None = None
+    author_followers: int | None = None
+    posted_on: datetime.datetime | None = None
+    lang: str | None = None
+    media_urls: list[str] = Field(default_factory=list)
+    scan_results: dict[str, Any] = Field(default_factory=dict)
+    routing: dict[str, Any] = Field(default_factory=dict)
+    notify: bool = False
+
+    def dedup_key(self) -> str:
+        return self.tweet_id
+
+
 class NoticeItem(Item):
     """Pesan Telegram MURNI -- gak lewat enrichment (LLM/klasifikasi) dan gak
     nulis tabel apa pun. Jalur keluar buat job lama yang cuma "pantau sesuatu ->

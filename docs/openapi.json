@@ -3441,7 +3441,8 @@
           "kind": {
             "enum": [
               "classify",
-              "ttp"
+              "ttp",
+              "tweet"
             ],
             "title": "Kind",
             "type": "string"
@@ -19821,7 +19822,8 @@
                 {
                   "enum": [
                     "classify",
-                    "ttp"
+                    "ttp",
+                    "tweet"
                   ],
                   "type": "string"
                 },

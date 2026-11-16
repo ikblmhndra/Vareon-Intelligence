@@ -5703,7 +5703,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "classify" | "ttp";
+            kind: "classify" | "ttp" | "tweet";
             /** Last Error */
             last_error?: string | null;
             /** Next Attempt At */
@@ -12309,7 +12309,7 @@ export interface operations {
     list_jobs_api_enrich_jobs_get: {
         parameters: {
             query?: {
-                kind?: ("classify" | "ttp") | null;
+                kind?: ("classify" | "ttp" | "tweet") | null;
                 state?: ("pending" | "failed") | null;
                 search?: string | null;
                 page?: number;
