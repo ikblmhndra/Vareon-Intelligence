@@ -4,6 +4,7 @@ import type { components } from "@/lib/api/schema";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatePanel } from "@/components/ui/state-panel";
+import { NumberedPager } from "@/components/ui/numbered-pager";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatusBadge, runStatusClass } from "@/components/scrapers/status-badge";
 import { fmtAgo, fmtDateTime, fmtShortDate, fmtTime } from "@/lib/format";
@@ -19,6 +20,12 @@ const DAY_MS = 86_400_000;
  * dan aksi ada di sel saudaranya, supaya tidak ada elemen interaktif bersarang. */
 export function ScrapersTable({
   rows,
+  filteredCount,
+  page,
+  pageSize,
+  pageSizeOptions,
+  onPageChange,
+  onPageSizeChange,
   total,
   filtered,
   schedulerOk,
@@ -31,7 +38,14 @@ export function ScrapersTable({
   onEnable,
   onClearFilters,
 }: {
+  /** Baris halaman ini saja (paging di `ScrapersView`); `filteredCount` = jumlah baris setelah filter. */
   rows: ScraperRow[];
+  filteredCount: number;
+  page: number;
+  pageSize: number;
+  pageSizeOptions: readonly number[];
+  onPageChange: (page: number) => void;
+  onPageSizeChange: (size: number) => void;
   total: number;
   filtered: number | null;
   schedulerOk: boolean;
@@ -44,6 +58,9 @@ export function ScrapersTable({
   onEnable: (id: string) => void;
   onClearFilters: () => void;
 }) {
+  const totalPages = Math.max(1, Math.ceil(filteredCount / pageSize));
+  const from = filteredCount === 0 ? 0 : (page - 1) * pageSize + 1;
+  const to = (page - 1) * pageSize + rows.length;
   return (
     <div>
       <div className="mb-2 flex items-baseline justify-between gap-2">
@@ -189,6 +206,18 @@ export function ScrapersTable({
             })}
           </TableBody>
         </Table>
+      )}
+      {filteredCount > 0 && (
+        <NumberedPager
+          page={page}
+          totalPages={totalPages}
+          onPageChange={onPageChange}
+          label="Scrapers pages"
+          summary={`Showing ${from}-${to} of ${filteredCount}`}
+          pageSize={pageSize}
+          pageSizeOptions={pageSizeOptions}
+          onPageSizeChange={onPageSizeChange}
+        />
       )}
     </div>
   );
