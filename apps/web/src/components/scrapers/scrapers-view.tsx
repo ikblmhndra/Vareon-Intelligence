@@ -28,7 +28,10 @@ import { errorStatus } from "@/lib/exec/query";
 import { api } from "@/lib/api/client";
 import { useScraperHealth } from "@/lib/scrapers/health";
 import { unwrap, useEnableScraper, useScraperList, writeErrorMessage } from "@/lib/scrapers/queries";
+import { usePageSize } from "@/lib/use-page-size";
 import { usePageTitle } from "@/lib/use-page-title";
+
+const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 
 const STATUS_OPTIONS = [
   { value: "all", label: "all" },
@@ -67,6 +70,8 @@ export function ScrapersView() {
   const [statusFilter, setStatus] = useState("all");
   const [runtime, setRuntime] = useState("all");
   const [queue, setQueue] = useState("all");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = usePageSize("vareon.pageSize.scrapers", PAGE_SIZE_OPTIONS, 25);
   const [legendOpen, setLegendOpen] = useState(false);
   const [disableTarget, setDisableTarget] = useState<{
     id: string;
@@ -128,12 +133,17 @@ export function ScrapersView() {
       (queue === "all" || s.queue === queue) &&
       (!q || s.id.toLowerCase().includes(q) || s.source.toLowerCase().includes(q)),
   );
+  // Halaman kembali ke 1 saat pencarian/filter/ukuran halaman berubah (setter dibungkus, tanpa effect).
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const pageRows = rows.slice((safePage - 1) * pageSize, safePage * pageSize);
   const filtering = q !== "" || status !== "all" || runtime !== "all" || queue !== "all";
   function clearFilters() {
     setSearch("");
     setStatus("all");
     setRuntime("all");
     setQueue("all");
+    setPage(1);
   }
 
   const statusOptions = healthFailed
@@ -177,20 +187,26 @@ export function ScrapersView() {
                   : "ready"
             }
             selected={status}
-            onSelect={(s) => setStatus((cur) => (cur === s ? "all" : s))}
+            onSelect={(s) => {
+              setStatus((cur) => (cur === s ? "all" : s));
+              setPage(1);
+            }}
             onRetry={() => void health.refetch()}
           />
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <SearchInput
               value={search}
-              onChange={setSearch}
+              onChange={(v) => {
+                setSearch(v);
+                setPage(1);
+              }}
               placeholder="Search source or id"
               aria-label="Search source or id"
               className="w-64"
             />
-            <FilterSelect prefix="Status" value={status} onChange={setStatus} options={statusOptions} />
-            <FilterSelect prefix="Runtime" value={runtime} onChange={setRuntime} options={RUNTIME_OPTIONS} />
-            <FilterSelect prefix="Queue" value={queue} onChange={setQueue} options={QUEUE_OPTIONS} />
+            <FilterSelect prefix="Status" value={status} onChange={(v) => { setStatus(v); setPage(1); }} options={statusOptions} />
+            <FilterSelect prefix="Runtime" value={runtime} onChange={(v) => { setRuntime(v); setPage(1); }} options={RUNTIME_OPTIONS} />
+            <FilterSelect prefix="Queue" value={queue} onChange={(v) => { setQueue(v); setPage(1); }} options={QUEUE_OPTIONS} />
             <a
               href="#status-legend"
               onClick={() => setLegendOpen(true)}
@@ -205,7 +221,16 @@ export function ScrapersView() {
             <MasterDetail
               list={
                 <ScrapersTable
-                  rows={rows}
+                  rows={pageRows}
+                  filteredCount={rows.length}
+                  page={safePage}
+                  pageSize={pageSize}
+                  pageSizeOptions={PAGE_SIZE_OPTIONS}
+                  onPageChange={setPage}
+                  onPageSizeChange={(n) => {
+                    setPageSize(n);
+                    setPage(1);
+                  }}
                   total={list.data.scrapers.length}
                   filtered={filtering ? rows.length : null}
                   schedulerOk={(health.data?.scheduler ?? list.data.scheduler).state === "ok"}
