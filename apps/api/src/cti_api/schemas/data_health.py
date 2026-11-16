@@ -73,6 +73,7 @@ class LlmQueueOut(BaseModel):
     """Akhir cooldown breaker; `None` saat tertutup."""
     pending_classify: int
     pending_ttp: int
+    pending_tweet: int
     failed: int
     oldest_pending_at: str | None
 

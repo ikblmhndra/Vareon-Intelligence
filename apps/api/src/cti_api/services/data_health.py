@@ -157,6 +157,7 @@ async def _llm_health(
             retry_at=_iso(breaker.retry_at),
             pending_classify=jobs.pending_classify,
             pending_ttp=jobs.pending_ttp,
+            pending_tweet=jobs.pending_tweet,
             failed=jobs.failed,
             oldest_pending_at=_iso(jobs.oldest_pending_at),
         ),

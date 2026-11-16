@@ -6482,6 +6482,8 @@ export interface components {
             pending_classify: number;
             /** Pending Ttp */
             pending_ttp: number;
+            /** Pending Tweet */
+            pending_tweet: number;
             /** Retry At */
             retry_at: string | null;
         };

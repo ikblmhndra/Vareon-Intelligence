@@ -145,7 +145,7 @@ def dispatch(now: datetime.datetime) -> dict[str, int]:
         repo = EnrichJobRepo(session)
         if breaker.state == "open":
             counts = repo.counts()
-            waiting = counts.pending_classify + counts.pending_ttp
+            waiting = counts.pending_classify + counts.pending_ttp + counts.pending_tweet
         job_ids = [j.id for j in repo.claim_due(now, limit=limit, lease=LEASE)] if limit else []
         session.commit()
     if breaker.state == "half_open" and job_ids:

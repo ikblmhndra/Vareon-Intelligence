@@ -5677,6 +5677,10 @@
             "title": "Pending Ttp",
             "type": "integer"
           },
+          "pending_tweet": {
+            "title": "Pending Tweet",
+            "type": "integer"
+          },
           "retry_at": {
             "anyOf": [
               {
@@ -5694,6 +5698,7 @@
           "retry_at",
           "pending_classify",
           "pending_ttp",
+          "pending_tweet",
           "failed",
           "oldest_pending_at"
         ],

@@ -25,6 +25,7 @@ ERROR_MAX_CHARS = 300
 class JobCounts:
     pending_classify: int
     pending_ttp: int
+    pending_tweet: int
     failed: int
     oldest_pending_at: datetime.datetime | None
 
@@ -39,6 +40,7 @@ def _counts_query() -> Any:
     return select(
         func.count().filter(pending, EnrichJob.kind == "classify"),
         func.count().filter(pending, EnrichJob.kind == "ttp"),
+        func.count().filter(pending, EnrichJob.kind == "tweet"),
         func.count().filter(EnrichJob.state == "failed"),
         func.min(EnrichJob.created_at).filter(pending),
     )
@@ -114,15 +116,17 @@ class EnrichJobRepo:
     def claim_due(
         self, now: datetime.datetime, *, limit: int, lease: datetime.timedelta
     ) -> list[EnrichJob]:
-        """Job `pending` yang jatuh tempo, `classify` dulu lalu yang paling lama; `next_attempt_at`
-        digeser `lease` supaya crash antara commit dan kirim tidak menimbulkan kirim ulang tanpa
-        henti."""
+        """Job `pending` yang jatuh tempo: `classify`, lalu `tweet`, lalu `ttp`, masing-masing yang
+        paling lama; `next_attempt_at` digeser `lease` supaya crash antara commit dan kirim tidak
+        menimbulkan kirim ulang tanpa henti."""
         rows = list(
             self.session.execute(
                 select(EnrichJob)
                 .where(EnrichJob.state == "pending", EnrichJob.next_attempt_at <= now)
                 .order_by(
-                    case((EnrichJob.kind == "classify", 0), else_=1),
+                    case(
+                        (EnrichJob.kind == "classify", 0), (EnrichJob.kind == "tweet", 1), else_=2
+                    ),
                     EnrichJob.created_at,
                     EnrichJob.id,
                 )
@@ -165,8 +169,8 @@ class EnrichJobRepo:
         self.session.flush()
 
     def counts(self) -> JobCounts:
-        pc, pt, f, oldest = self.session.execute(_counts_query()).one()
-        return JobCounts(pc, pt, f, oldest)
+        pc, pt, pw, f, oldest = self.session.execute(_counts_query()).one()
+        return JobCounts(pc, pt, pw, f, oldest)
 
 
 class AsyncEnrichJobRepo:
@@ -220,5 +224,5 @@ class AsyncEnrichJobRepo:
         await self.session.flush()
 
     async def counts(self) -> JobCounts:
-        pc, pt, f, oldest = (await self.session.execute(_counts_query())).one()
-        return JobCounts(pc, pt, f, oldest)
+        pc, pt, pw, f, oldest = (await self.session.execute(_counts_query())).one()
+        return JobCounts(pc, pt, pw, f, oldest)
