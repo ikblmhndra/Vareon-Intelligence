@@ -422,6 +422,26 @@ async def test_a_client_error_about_the_ioc_becomes_an_unknown_card_and_never_bl
     assert again.values == []
 
 
+async def test_a_value_httpx_cannot_send_becomes_an_unknown_card_and_never_blocks_the_queue(
+    api_session: AsyncSession,
+) -> None:
+    """Produksi 2026-11-16: `httpx.InvalidURL` (bukan `TransportError`) lolos dari `except`,
+    `ioc.enrich_pending` crash tiap 15 menit, dan IOC yang sama tetap di kepala antrean."""
+    bad = await _ioc(api_session, "ip", _ip(0))
+    good = await _ioc(api_session, "ip", _ip(10), last_seen_at=NOW - datetime.timedelta(hours=5))
+    lookup = FakeLookup({_ip(0): httpx.InvalidURL("Invalid non-printable ASCII character in URL")})
+
+    summary = await enrich_pending(api_session, specs=[_spec(lookup)], allow=_allow_all, now=NOW)
+
+    assert summary["abuseipdb"]["rejected"] == 1 and summary["abuseipdb"]["checked"] == 1
+    await api_session.refresh(bad)
+    (card,) = bad.enrichment["providers"]
+    assert card["verdict"] == "unknown"
+    assert card["raw"] == {"skipped": "rejected: value cannot be sent (InvalidURL)"}
+    await api_session.refresh(good)
+    assert good.enrichment["providers"][0]["verdict"] == "clean"
+
+
 async def test_five_rejections_in_a_row_stop_the_provider_so_a_bad_request_cannot_poison_every_ioc(
     api_session: AsyncSession,
 ) -> None:

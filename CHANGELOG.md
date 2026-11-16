@@ -6,6 +6,16 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
+## [0.8.17] - 2026-11-16
+
+**Perbaikan: enrichment reputasi IOC (VirusTotal, OTX) tidak lagi macet karena nilai IOC yang rusak.** Cek prod 16 Nov: `ioc.enrich_pending` crash tiap 15 menit dengan `InvalidURL` karena 16 IOC berisi baris baru (mis. `2.34.2.\n16`, `and @peteo.\ninitial`). IOC itu tidak pernah dapat kartu, jadi tetap di kepala antrean, dan 742 domain, 554 URL serta sekitar 670 hash tidak pernah di-enrich. Tanpa migrasi dan tanpa kunci `.env`.
+
+### Diperbaiki
+- `ioc.enrich_pending`: nilai yang mengandung spasi atau karakter tak tercetak dilewati sebelum lookup (kartu `unknown`, alasan `malformed value (contains whitespace)`), dan `httpx.InvalidURL` dari lookup menjadi kartu `unknown` alih-alih exception yang menghentikan seluruh run.
+- Extractor IOC tidak lagi mencocokkan lintas baris: spasi di sekitar pemisah defang hanya spasi/tab, sehingga IP, email, URL, dan domain defang tidak lagi tersambung dengan kata di baris berikutnya.
+
+**Saat upgrade dari 0.8.16:** `make deploy`, tidak ada langkah lain. 16 IOC rusak yang sudah tersimpan dibiarkan (kini dilewati enrichment); menghapusnya opsional dan butuh izin. Runbook: `docs/prod-upgrade/0.8.17.md` dan `docs/PROD_UPGRADE_0.8.16_TO_0.8.17.md`.
+
 ## [0.8.16] - 2026-11-08
 
 **Redesain FigCraft: tiga sumber data baru untuk halaman PIR, Intelligence, dan MITRE, penyeragaman tema web, dan redesain CVE Tracker beserta tambahan backend-nya.** API mendapat cakupan PIR per minggu, seri harian per entitas yang melonjak, dan layer ATT&CK Navigator yang sama persis dengan heatmap yang terlihat. Web memakai satu skala tier risiko, border field yang terbaca, dan fokus yang jelas. Halaman Exec dirombak: brief eksekutif harian tersimpan dan papan Analyst. Tiga migrasi aditif (`b7d41e9a2c63`, `c4e8a1f2b9d6`, `d9f2b6a4c1e7`) dijalankan otomatis oleh `make deploy`, dan satu dependency baru (`email-validator`). Tanpa kunci `.env`. Halaman X Intel, Recap, dan Newsletter ikut didesain ulang (tanpa migrasi), begitu juga halaman operasi Scrapers dan Data health (tiga field aditif di `GET /api/data-health`, tanpa migrasi). Halaman Login, sesi, dan Admin juga didesain ulang (halaman Access, tanpa migrasi). Dashboard juga didesain ulang (satu migrasi aditif `d9f2b6a4c1e7`).

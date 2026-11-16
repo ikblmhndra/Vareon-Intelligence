@@ -63,6 +63,21 @@ def test_allowlisted_domain_is_no_longer_dropped_at_extraction() -> None:
     assert result["urls"] == ["https://wiz.io/blog"]
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "contact and @peteo.\ninitial access",
+        "IP 2.34.2.\n16 more",
+        "visit https://radar.cloudflare.com.\nforward to",
+        "host evil[.]\nexample.com",
+    ],
+)
+def test_an_ioc_never_spans_a_line_break(text: str) -> None:
+    """Produksi 2026-11-16: 16 IOC seperti `2.34.2.\\n16` tersimpan dan memacetkan enrichment."""
+    for values in extract_iocs(text).values():
+        assert not any("\n" in v for v in values), values
+
+
 def test_private_ip_excluded() -> None:
     result = extract_iocs("Internal host 192.168.1.1 talked to 8.8.8.8.")
     assert result["ips"] == ["8.8.8.8"]
