@@ -16,7 +16,7 @@ import datetime
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any, Literal
 
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import ColumnElement, Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, object_session
 
@@ -25,6 +25,7 @@ from cti_core.db.models.article import Article, RejectedArticle
 from cti_core.db.repositories.entity import (
     ACTOR,
     COUNTRY,
+    CVE,
     MALWARE_TYPES,
     SECTOR,
     TECHNIQUE,
@@ -60,6 +61,25 @@ def _check(value: str, allowed: frozenset[str], what: str) -> None:
         raise ValueError(f"{what} tidak valid: {value!r} (sah: {sorted(allowed)})")
 
 
+def article_search_clause(search: str) -> ColumnElement[bool]:
+    """Klausa pencarian bebas Newsroom: judul, sumber, nama aktor, atau id CVE yang disebut artikel.
+
+    Dipakai daftar artikel DAN query tren (Active topics) supaya hitungan topik sama dengan
+    `total` daftar untuk `search` yang sama. `\\`, `%`, `_` di input di-escape agar dicocokkan
+    apa adanya (bukan wildcard LIKE): "100%" tidak boleh cocok dengan "100 percent". Mention
+    lewat `mention_rows`, jadi entitas suppressed/merged tidak ikut cocok."""
+    esc = search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    pat = f"%{esc}%"
+    a = live_mentions(ACTOR)
+    c = live_mentions(CVE)
+    return or_(
+        Article.title.ilike(pat, escape="\\"),
+        Article.source.ilike(pat, escape="\\"),
+        Article.id.in_(select(a.c.article_id).where(a.c.name.ilike(pat, escape="\\"))),
+        Article.id.in_(select(c.c.article_id).where(c.c.external_id.ilike(pat, escape="\\"))),
+    )
+
+
 def _apply_list_filters(
     stmt: Select[tuple[Article]],
     *,
@@ -80,6 +100,7 @@ def _apply_list_filters(
     story_id: int | None = None,
     ttp_sources: Sequence[str] | None = None,
     malware: Sequence[str] | None = None,
+    reliability_grades: Sequence[str] | None = None,
 ) -> Select[tuple[Article]]:
     """Filter bersama buat query list DAN count -- port dari `article_service.
     get_articles()` (Mongo query dict) ke SQL. Tiga field negara Mongo lama
@@ -122,6 +143,9 @@ def _apply_list_filters(
         stmt = stmt.where(_with_country(actor_countries, role="actor"))
     if sources:
         stmt = stmt.where(Article.source.in_(sources))
+    if reliability_grades:
+        # NULL ikut tersaring: "grade A" tidak bisa mencakup artikel yang belum dinilai.
+        stmt = stmt.where(Article.reliability_grade.in_(reliability_grades))
     if news_types:
         stmt = stmt.where(Article.news_type.in_(news_types))
     if threat_actors:
@@ -144,11 +168,7 @@ def _apply_list_filters(
     keyword_or = (
         [Article.title.ilike(f"%{kw}%") for kw in title_keywords] if title_keywords else None
     )
-    search_or = (
-        [Article.title.ilike(f"%{search}%"), Article.source.ilike(f"%{search}%")]
-        if search
-        else None
-    )
+    search_or = [article_search_clause(search)] if search else None
     if keyword_or and search_or:
         stmt = stmt.where(or_(*keyword_or), or_(*search_or))
     elif keyword_or:
@@ -634,6 +654,7 @@ class AsyncArticleRepo:
         story_id: int | None = None,
         ttp_sources: Sequence[str] | None = None,
         malware: Sequence[str] | None = None,
+        reliability_grades: Sequence[str] | None = None,
     ) -> tuple[list[Article], int]:
         """Port `article_service.get_articles()`. Filter di-`join()` ke
         tabel anak -- `.distinct()` WAJIB begitu ada join one-to-many
@@ -679,6 +700,7 @@ class AsyncArticleRepo:
             story_id=story_id,
             ttp_sources=ttp_sources,
             malware=malware,
+            reliability_grades=reliability_grades,
         )
         has_join = bool(
             industries

@@ -7,16 +7,24 @@ keluarga)."""
 
 from __future__ import annotations
 
+from cti_core.db.repositories.auth import AsyncAuditLogRepo
 from cti_core.db.repositories.catalog_read import (
     AsyncCatalogRepo,
     FamilyRow,
     Page,
     VendorRow,
 )
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from cti_api.deps import AuthedUser, effective_client_id, get_db, require_auth, require_permission
+from cti_api.deps import (
+    AuthedUser,
+    effective_client_id,
+    get_db,
+    request_ip,
+    require_auth,
+    require_permission,
+)
 from cti_api.schemas.catalog import (
     CatalogFamilyListResponse,
     CatalogFamilyOut,
@@ -62,6 +70,7 @@ def _family_out(row: FamilyRow) -> CatalogFamilyOut:
         monitored=ref is not None,
         monitor_entry_id=ref.entry_id if ref else None,
         covered_by_vendor=row.vendor_monitor is not None,
+        hidden=row.hidden,
     )
 
 
@@ -93,6 +102,7 @@ async def list_vendor_families(
     vendor_id: int,
     q: str | None = Query(None, max_length=100),
     show_all: bool = False,
+    show_hidden: bool = False,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
     session: AsyncSession = Depends(get_db),
@@ -108,6 +118,7 @@ async def list_vendor_families(
         vendor_id=vendor_id,
         q=q,
         show_all=show_all,
+        show_hidden=show_hidden,
         page=page,
         page_size=page_size,
     )
@@ -116,17 +127,26 @@ async def list_vendor_families(
 
 @router.get("/families", response_model=CatalogFamilyListResponse)
 async def search_families(
-    q: str = Query(..., min_length=2, max_length=100),
+    q: str | None = Query(None, min_length=2, max_length=100),
+    show_all: bool = False,
+    show_hidden: bool = False,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
     session: AsyncSession = Depends(get_db),
     user: AuthedUser = Depends(require_auth),
     x_client_id: str | None = Header(None),
 ) -> CatalogFamilyListResponse:
-    """Pencarian lintas vendor; tidak menyembunyikan keluarga ber-1 CVE."""
+    """Pencarian lintas vendor (`q`): tidak menyembunyikan apa pun. Tanpa `q` = jelajah semua
+    produk (All Tech mode Products), urut CVE terbanyak; aturan jelajah berlaku (`show_all`,
+    `show_hidden`)."""
     cid = effective_client_id(user, x_client_id)
     result = await AsyncCatalogRepo(session).list_families(
-        client_id=cid, q=q, page=page, page_size=page_size
+        client_id=cid,
+        q=q,
+        show_all=show_all,
+        show_hidden=show_hidden,
+        page=page,
+        page_size=page_size,
     )
     return _family_response(result)
 
@@ -138,4 +158,64 @@ def _family_response(result: Page[FamilyRow]) -> CatalogFamilyListResponse:
         page=result.page,
         page_size=result.page_size,
         hidden=result.hidden,
+        hidden_by_client=result.hidden_by_client,
     )
+
+
+@router.put("/families/{family_id}/hide", dependencies=[Depends(require_permission("manage_cve"))])
+async def hide_family(
+    family_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+    user: AuthedUser = Depends(require_auth),
+    x_client_id: str | None = Header(None),
+) -> dict[str, bool]:
+    """Sembunyikan keluarga dari All Tech client ini (tampilan saja; Monitor, promosi, dan CVE DB
+    tidak berubah). Idempoten. 409 bila client ini me-Monitor keluarga itu langsung; cakupan
+    vendor tidak menghalangi."""
+    cid = effective_client_id(user, x_client_id)
+    repo = AsyncCatalogRepo(session)
+    family = await repo.get_family(family_id)
+    if family is None:
+        raise HTTPException(status_code=404, detail="Family not found")
+    if (await repo.monitor_map(cid)).family(family_id) is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"{family.display_name} is monitored directly, so it cannot be hidden",
+        )
+    await repo.hide_family(cid, family_id, user["username"])
+    await AsyncAuditLogRepo(session).write(
+        username=user["username"],
+        action="catalog_family_hide",
+        target_id=str(family_id),
+        detail={"family": family.display_name},
+        ip_address=request_ip(request),
+    )
+    await session.commit()
+    return {"success": True}
+
+
+@router.delete(
+    "/families/{family_id}/hide", dependencies=[Depends(require_permission("manage_cve"))]
+)
+async def unhide_family(
+    family_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+    user: AuthedUser = Depends(require_auth),
+    x_client_id: str | None = Header(None),
+) -> dict[str, bool]:
+    cid = effective_client_id(user, x_client_id)
+    repo = AsyncCatalogRepo(session)
+    if await repo.get_family(family_id) is None:
+        raise HTTPException(status_code=404, detail="Family not found")
+    await repo.unhide_family(cid, family_id)
+    await AsyncAuditLogRepo(session).write(
+        username=user["username"],
+        action="catalog_family_unhide",
+        target_id=str(family_id),
+        detail=None,
+        ip_address=request_ip(request),
+    )
+    await session.commit()
+    return {"success": True}

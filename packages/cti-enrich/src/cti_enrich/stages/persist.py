@@ -179,9 +179,14 @@ def persist(
     tlp: str = "clear",
     pap: str = "clear",
     llm_ttp_status: str | None = None,
+    summary: str | None = None,
 ) -> Article:
     """`llm_ttp_status` (P7g): `pending` = job `ttp` dibuat pemanggil di transaksi yang sama,
     `skipped` = jalur tanpa LLM TTP. `None` tidak menulis kolomnya (pemanggil lama).
+
+    `summary` (5a) = dek terpotong (`make_dek`) untuk kartu dashboard. Kosong/`None` tidak menulis
+    kolomnya: re-run tanpa teks tidak boleh menghapus excerpt yang sudah tersimpan (aturan yang
+    sama dengan `llm_ttp_status`).
 
     `story` (P3) menempelkan artikel ke story-nya di transaksi yang sama: `story_id`/
     `story_match` ikut di-upsert (di-flush), BARU `StoryRepo.attach` -- `source_count` dihitung
@@ -197,6 +202,7 @@ def persist(
     article_repo = ArticleRepo(session)
     story_fields = {"story_id": story.story_id, "story_match": story.rule} if story else {}
     ttp_status = {"llm_ttp_status": llm_ttp_status} if llm_ttp_status is not None else {}
+    summary_field = {"summary": summary} if summary else {}
     article = article_repo.upsert(
         url=url,
         title=title,
@@ -219,6 +225,7 @@ def persist(
         ),
         **story_fields,
         **ttp_status,
+        **summary_field,
     )
     if story is not None:
         StoryRepo(session).attach(

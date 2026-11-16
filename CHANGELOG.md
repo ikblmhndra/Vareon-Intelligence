@@ -6,6 +6,106 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
+## [0.8.16] - 2026-11-08
+
+**Redesain FigCraft: tiga sumber data baru untuk halaman PIR, Intelligence, dan MITRE, penyeragaman tema web, dan redesain CVE Tracker beserta tambahan backend-nya.** API mendapat cakupan PIR per minggu, seri harian per entitas yang melonjak, dan layer ATT&CK Navigator yang sama persis dengan heatmap yang terlihat. Web memakai satu skala tier risiko, border field yang terbaca, dan fokus yang jelas. Halaman Exec dirombak: brief eksekutif harian tersimpan dan papan Analyst. Tiga migrasi aditif (`b7d41e9a2c63`, `c4e8a1f2b9d6`, `d9f2b6a4c1e7`) dijalankan otomatis oleh `make deploy`, dan satu dependency baru (`email-validator`). Tanpa kunci `.env`. Halaman X Intel, Recap, dan Newsletter ikut didesain ulang (tanpa migrasi), begitu juga halaman operasi Scrapers dan Data health (tiga field aditif di `GET /api/data-health`, tanpa migrasi). Halaman Login, sesi, dan Admin juga didesain ulang (halaman Access, tanpa migrasi). Dashboard juga didesain ulang (satu migrasi aditif `d9f2b6a4c1e7`).
+
+### Ditambahkan
+- `GET /api/pir/{pir_id}/coverage/weekly`: jumlah artikel per minggu untuk grafik cakupan PIR.
+- `GET /api/spikes`: respons kini bertipe (`SpikesResponse`) dan punya blok `daily`, yaitu seri harian per entitas yang melonjak. Key lama tidak berubah.
+- `GET /api/mitre/navigator-layer` dan `/navigator-export`: parameter opsional `top_rows`, `top_ttps`, `ttp_source` supaya layer yang diekspor sama dengan heatmap yang sedang tampil.
+- CVE Tracker, risk score 0-100 per CVE dan urutan berdasarkan risk (`sort_by=risk`).
+- CVE Tracker, putusan KEV (`kev_date_added`, `kev_due_date`, `kev_required_action`) di respons CVE, tampil di panel detail.
+- Ticketing: sakelar "Include false positives" (`include_fp`), default mati.
+- CVE Tracker, filter tab False positive dengan alasan FP (`fp_reason`) dan catatan (`fp_note`), disimpan di `cve_false_positives`.
+- Ticket: timestamp `updated_at`/`updated_by` dan `escalation_notified_at`, plus export XLSX ticket.
+- Tim pemilik (`cve_owner_teams`): CRUD tim dengan email lead. Eskalasi ticket membuat DRAFT email ke lead tim lewat Microsoft Graph (tanpa Telegram, tidak terkirim otomatis, tidak diulang saat ticket disimpan ulang).
+- Techstack: jumlah match per entri dan coverage; sembunyikan produk katalog per klien (`catalog_family_hides`).
+- CVE DB: info sinkron mirror dan penanda `covered_by_vendor`.
+- Status cek CVE: `running_since` dan coba ulang per sumber.
+- Lookup CVE langsung (NVD, CIRCL, Exploit-DB, EPSS), di-cache dan dibatasi rate-nya.
+- Dry run lockfile, kolom ecosystem dan path sumber (`monitored_packages.source_path`), parser `Gemfile.lock`, `yarn.lock`, dan `go.sum`.
+- Web: CVEs master/detail dengan urutan risk, tab Open/Acknowledged/False positive, menu More actions dan mode Select; Ticketing master/detail dan Teams.
+- Web: halaman Intelligence (PIR, RFI, Source reliability, IOC, Entities, MITRE, Risk matrix, Early warning, Campaign clusters) mengikuti mockup FigCraft: header per tab, preset rentang waktu + Custom, dan panel detail.
+- PIR: preview jumlah artikel di form, daftar RFI terkait dan kampanye yang cocok. `GET /api/pir?include_campaigns=true` menjalankan pipeline kampanye tanpa cache; halaman PIR mengambilnya di latar belakang. Link PIR ke kampanye membawa `&days=30` dan halaman Campaign clusters membaca `?days=`.
+- RFI: hitungan per status dan pencarian.
+- Source reliability: filter origin dan export CSV (`GET /api/sr/entries/export`).
+- IOC: export CSV (`GET /api/iocs/export`) dan catatan pada allowlist. Kedua export butuh izin `export_data`, menulis audit log, dan melindungi sel dari formula CSV. Export IOC dibatasi 50.000 baris dan memberi header `X-Export-Truncated` bila terpotong; export Source reliability dibatasi 5.000 baris tanpa header itu (satu baris per sumber).
+- Entities: ringkasan AI di profil entitas dan jumlah artikel; daftar diurutkan menurut sebutan 30 hari terakhir (`sort=mentions`), seri dipecah nama lalu id; `total` hanya dikirim di halaman pertama.
+- Newsroom: parameter URL `actor`, `industry`, `ttp`, `from`.
+- Exec, brief eksekutif harian tersimpan: satu untuk seluruh platform dan sama untuk semua klien (tabel `exec_briefs`, per tanggal Jakarta). Dibuat otomatis oleh task `exec.brief_daily` mulai 06:00 WIB dengan filter default 90 hari, dicoba lagi tiap jam sampai 18:00 WIB kalau belum ada (paling banyak satu panggilan LLM sukses per hari), dan disimpan 30 hari (`exec.purge_briefs`, 03:45 UTC). `beat` harus di-restart supaya jadwalnya terbaca.
+- `GET /api/exec/brief` dan `GET /api/exec/brief/dates`: baca brief tersimpan dan tanggal yang tersedia.
+- `GET /api/exec/dashboard-v2`: `monthly_totals`, velocity dan dua sektor teratas per aktor di leaderboard, serta aktor teratas per sektor.
+- Web: halaman Exec dipecah jadi Briefing dan Analyst board (`?view=`), dengan baris More signals (campaign clusters, source reliability, tren negara); dialog IOC "Remove from feeds" menampilkan error di dalam dialog.
+- X Intel: pencarian kini juga mencocokkan handle, nama korban, dan CVE (`%` dan `_` dicocokkan apa adanya). `GET /api/tweets` dan `/api/tweets/stats` punya filter opsional `has_cve` dan `signal` (`ot`, `zero_day`, `databreach`, `report`).
+- X Intel: `GET /api/tweets/stats` menambah statistik periode (insiden terkonfirmasi, APAC, CVE, data breach, zero-day, OT) dan `top_victims` (korban paling sering disebut).
+- Web: halaman X Intel, Recap, dan Newsletter didesain ulang mengikuti mockup FigCraft (komposer tiga kolom; Export PDF recap lewat cetak browser).
+- Data health: alur pipeline 24 jam / 7 hari (item diambil, item baru, artikel terbit, field `pipeline`), kedalaman tujuh antrean Celery (`queues.depths`, null kalau Redis tidak terbaca), dan grafik panggilan LLM per jam untuk 24 jam terakhir (`llm.calls_per_hour`, 24 bucket UTC `{hour, ok, failed}`).
+- Web: halaman Scrapers dan Data health didesain ulang mengikuti mockup FigCraft; panel samping (riwayat run, ringkasan config, aksi, hasil dry run) menggantikan dialog detail scraper, ditambah tile status dan bagian "More checks" di Data health.
+- Web: halaman Admin dipecah menjadi tujuh rute dengan navigasi samping (Users, Roles, Password policy, Clients, API tokens, Audit log, Third-party keys), ringkasan di halaman Users, dan ekspor CSV audit log.
+- Web: dialog "Your session has ended" menggantikan pengalihan diam-diam ke `/login` saat sesi berakhir.
+- Login 429 mengirim `Retry-After` (1-60 detik) dan tombol login menghitung mundur.
+- `GET /api/auth/me` mengirim `signed_in_at`.
+- Dashboard baru: hero "Needs action" dengan peta sinyal APAC, lead story dengan alasan peringkat, "By the numbers", Must read, Trending aktor / malware / CVE, empat grafik 30 hari, CVE watchlist, dan bagian "More".
+- Kolom `articles.summary` (kutipan ringkasan ekstraktif, maksimal 600 karakter) dan field `summary` serta `first_seen_at` di respons artikel.
+- `limit` di `GET /api/dashboard/cve-exposure`; `kinds` dan `ransomware_group` di `GET /api/dashboard/trending`; lima field baru di `GET /api/dashboard/attention`.
+
+### Diubah
+- Deteksi spike (Early Warning dan industry spikes di dashboard eksekutif): mean dan simpangan baku baseline kini menghitung hari tanpa artikel sebagai 0, sama dengan seri `daily`. Dulu hanya hari yang ada artikelnya yang dihitung, sehingga garis baseline lebih tinggi daripada batang hariannya dan entitas yang jarang muncul mendapat z-score terlalu kecil. Akibatnya jumlah dan urutan anomali berubah sesudah deploy, ke dua arah: entitas jarang bisa muncul, entitas yang hitungan hariannya naik-turun bisa hilang. Entitas tetap butuh minimal 5 hari baseline yang ada artikelnya.
+- MITRE: tombol "Open in Navigator" kini membuka ATT&CK Navigator dan mengunduh layer, dengan petunjuk "Open Existing Layer → Upload from local". Link `#layerURL=` lama tidak pernah bisa dipakai di balik login.
+- Web: satu skala tier risiko di risk matrix (LOW 0-39, MED 40-69, HIGH 70-100).
+- Web: ring fokus berwarna ink, warna warning `#A04A07`, aturan breakpoint di `lg` (1024px), dan token border `--input` yang lebih gelap (kontras minimal 3:1) untuk Input, Textarea, Select, dan Checkbox.
+- Web: shell baru mengikuti mockup FigCraft. Navigasi atas (masthead) dengan menu "More" menggantikan sidebar; di bawah 1024px menjadi tombol Menu. Utility bar memuat pemilih klien dan menu akun.
+- Web: tombol (semua state), field, tab bergaris bawah dan pil, kontrol segmented, chip, kartu, tabel, dialog, dan panel state kosong/error mengikuti mockup. Kartu kini datar berbingkai (tanpa bayangan), judul dialog semibold, dan badge memakai ring fokus ink.
+- Web: CVE Tracker (CVEs, Ticketing, Monitored Tech, All Tech, CVE DB, Dashboard, Packages) tampil master/detail mengikuti mockup FigCraft; panel samping menggantikan modal detail; chip status Open jadi merah; semua waktu memakai zona waktu browser.
+- Web: tab Ticketing disembunyikan untuk role tanpa `manage_cve`.
+- Lockfile: dengan ecosystem "Detect from file", nama file yang tidak dikenali kini membalas 422 (dulu diam-diam diparse sebagai `requirements.txt`); ecosystem eksplisit tetap memaksa parsernya. `source_path` dipotong 500 karakter.
+- Ticket: `owner_email` baru atau yang diubah harus email sah dan paling panjang 200 karakter (spasi pinggir dibuang); nilai lama yang tidak diubah tetap bisa disimpan ulang. Status ticket dengan alias lama (Pending, Completed, Not Affected, Not Applicable) dinormalkan di Ticketing.
+- Lookup CVE langsung: hasil "tidak ditemukan di mana-mana" di-cache 10 menit, bukan 6 jam.
+- Web: dialog detail IOC dan drill TTP jadi panel samping; tab RFI default Open; grid MITRE default 10 x 12.
+- Web: kartu sinkron ATT&CK pindah dari Entities > Techniques ke halaman MITRE heatmap.
+- `POST /api/exec/brief`: `days` dibatasi 7-365, tidak lagi menghitung bagian khusus analis atau per klien, menyimpan hasilnya sebagai brief bersama hari ini (menggantikan brief scheduler untuk semua klien) dan mengembalikan `ExecBriefOut` (dulu `{brief, generated_at}`). Gagal LLM membalas 502. Tetap butuh `manage_intel`.
+- Web: tombol Export CSV di Exec hanya tampil untuk role dengan `export_data`.
+- Web: tombol Apply/Reset di X Intel diganti filter langsung; riwayat newsletter dibuka sebagai panel samping.
+- Web: waktu di halaman Scrapers dan Data health memakai zona waktu browser; label nada Data health menjadi OK / WATCH / ACTION; tombol tulis scraper disembunyikan tanpa izin `manage_scraper`.
+- Web: Recap mengganti bar Week/Day + tanggal + Load dan sidebar riwayat dengan state URL, Select History dan tombol Previous; Generate dan Force Regen digabung jadi satu dialog.
+- Reset password oleh admin kini mewajibkan pengguna itu memilih password baru saat login berikutnya (`force_pw_change`); sampai itu selesai, endpoint lain membalas 403 "Password change required". Pengguna yang sudah ada tidak terpengaruh.
+- Web: halaman login berbahasa Inggris dan tidak lagi menampilkan pesan mentah dari API; ganti password wajib dilakukan langsung di halaman login, lalu masuk ulang otomatis.
+- Dashboard: periode bawaan menjadi 7 hari dengan pilihan 24 jam; teks Dashboard berbahasa Inggris; kalimat brief dan "Updated HH:MM" tidak lagi ditampilkan; grup ransomware teratas menjadi lima.
+- Newsroom: halaman depan didesain ulang (teks Inggris, periode ada di URL, rubrik mempersempit daftar, enam kartu topik, empat state). Tab Filtered kini tampil untuk setiap pengguna dengan izin `view_news`, tombolnya diatur per izin. Pencarian artikel kini juga mencocokkan nama aktor dan CVE id (`%` dan `_` dicocokkan apa adanya). Tanpa migrasi, tanpa key `.env` baru, tanpa perubahan kontrak.
+- Newsroom, All articles didesain ulang: daftar master-detail dengan panel baca, filter grade reliabilitas sumber (`reliability_grade` di `GET /api/articles`, artikel tanpa grade tidak ikut saat filter aktif), dan blok IOC di pembaca lewat `GET /api/articles/{article_id}/iocs` (`ArticleIocsOut`: `items` berisi `type`, `value`, `context`, `reputation`, plus `total`; maksimal 200 item). Link dari Newsroom dan Intelligence kini membuka All articles; sheet daftar lama dihapus. Tanpa migrasi, tanpa key `.env` baru.
+- Web, perbaikan hasil audit UI (hanya web, tanpa migrasi, tanpa key `.env`, tanpa perubahan kontrak):
+  - Layout memakai lebar layar penuh sampai 1920 px (gutter 40 px mulai 1024 px), tidak lagi kolom 1328 px. Komponen ikut ukuran kartunya: heatmap (Risk matrix, MITRE, Sector heatmap) melebar dengan kolom sama rata, peta Needs action proporsional, kartu Lead story/Top story/Threat actors dan grafik dalam satu baris ikut tinggi barisnya.
+  - Satu gaya grafik di semua halaman: garis lurus, titik hanya saat hover, legenda berbentuk garis/titik, tanggal sumbu pendek ("8 Nov") tanpa diputar.
+  - Warna punya arti: tile KPI diberi aksen menurut jenisnya (ancaman merah, kerentanan amber, intel teal lewat token baru `--intel`, operasi biru); kategori (sektor, jenis berita, negara) berwarna tetap menurut nama di semua halaman, termasuk share bar. Palet `--chart-*` diseimbangkan ulang dan dicek skrip `pnpm check:palette` (jarak warna dan kontras, terang dan gelap).
+  - Font: IBM Plex Mono hanya untuk string mesin (hash, nilai IOC, IP, URL, query, cron); ID CVE/ATT&CK dan angka memakai Google Sans Flex dengan angka tabular.
+  - Kartu Lead story, Top story, dan Threat actors tidak lagi melar setengah kosong; radius disamakan.
+  - Newsroom All articles membuka artikel pertama otomatis di layar ≥1024 px; sparkline topik tanpa sumbu.
+  - CVE: toolbar dirapikan, filter tanggal memakai pemilih tanggal bawaan app (dengan batas From ≤ To dan nilai terbaca pembaca layar), panel ticket muat di 1024 px.
+  - Exec: tombol aksi rata kanan di baris filter, "updated just now" tidak terpotong. Entities: kolom ATT&CK ID menampilkan "—" untuk sektor, kolom 30D/90D dipisah, alias tidak dipotong.
+  - IOC dan Source reliability: label enum dibuat terbaca ("URL with path", "Vendor research"); tile IOC mengisi baris penuh. Sel kosong heatmap Risk matrix dan Sector heatmap tampil polos.
+  - Helper murni baru (warna kategori, label enum, label tanggal) punya unit test `pnpm test:unit` (`node --test`).
+  - Dashboard: Lead story yang ringkasannya kosong/pendek menampilkan "Next in line" (artikel prioritas ke-6..8, tidak dobel dengan Must read; query must-read kini 8 artikel, tetap satu request). Needs action: Top countries pindah ke bawah tiga sinyal (bisa diklik ke Newsroom) dan peta setinggi 340 px tanpa panel bertumpuk.
+  - Risk matrix: header kolom memakai kode negara ISO (nama lengkap di tooltip dan pembaca layar), semua kolom sama lebar, kartu matriks 2/3 baris; sel kosong heatmap tampil sebagai petak permukaan supaya grid terbaca.
+  - CVE Tracker dan Scrapers: "Load more" diganti halaman bernomor dengan pilihan "Rows per page" (CVE 10/25/50/100, Scrapers 25/50/100, default 25), pilihan diingat per daftar di browser.
+
+### Diperbaiki
+- `PUT /api/rfi/{id}` dan `PUT /api/pir/{id}`: `null` eksplisit kini mengosongkan field yang boleh kosong (RFI `due_date` dan `linked_pir`; PIR `start_date` dan `end_date`). Dulu nilai yang dikosongkan diam-diam diabaikan. `null` pada field wajib tetap diabaikan.
+
+**Catatan 0.8.16 (Intelligence):** tanpa migrasi untuk bagian ini (head sebelum Exec `b7d41e9a2c63`) dan tanpa key `.env` baru. Ringkasan profil entitas baru terisi sesudah profil dibuat ulang. Export IOC dan Source reliability butuh `export_data`.
+
+**Catatan 0.8.16 (Exec):** migrasi `c4e8a1f2b9d6` membuat tabel `exec_briefs`; tanpa key `.env` baru (jadwal memakai `WORKER__REPORT_UTC_OFFSET_HOURS`). Biaya LLM sekitar satu panggilan per hari; cek lewat `llm_calls` dengan `task = 'exec_brief'`. Brief hari ini muncul sesudah 06:00 WIB.
+
+**Catatan 0.8.16 (Operations):** tanpa migrasi dan tanpa key `.env` baru. Tiga field aditif di `GET /api/data-health` (`pipeline`, `queues.depths`, `llm.calls_per_hour`); rollback cukup image.
+
+**Catatan 0.8.16 (Access):** tanpa migrasi, tanpa key `.env` baru; pengguna yang sudah ada tidak terpengaruh.
+
+**Catatan 0.8.16 (Dashboard):** migrasi `d9f2b6a4c1e7` menambah kolom nullable `articles.summary`, tanpa backfill, tanpa key `.env` baru; artikel lama tidak punya ringkasan.
+
+**Catatan 0.8.16 (Audit log):** halaman Audit log memakai ukuran halaman tetap 50 baris, dan cap waktu di ekspor CSV memakai UTC.
+
+**Saat upgrade dari 0.8.15:** catat jumlah anomali Early Warning per kelompok sebelum deploy untuk dibandingkan (opsional, baca-saja: hitung ticket dengan `owner_email` bukan email dan ticket dengan alias status lama, query di runbook), lalu `make deploy` (migrasi jalan otomatis). Dari prod 0.8.11 (versi yang sedang jalan): ikuti runbook gabungan `docs/PROD_UPGRADE_0.8.11_TO_0.8.16.md`; cek per rilis ada di `docs/prod-upgrade/0.8.16.md`.
+
 ## [0.8.15] - 2026-11-08
 
 **Penyesuaian: run `github_poc_monitor` dipercepat dari rata-rata ~18 menit ke target di bawah 15 menit.** Sesudah 0.8.13/0.8.14 di prod, 14 run berturut-turut sukses dan tidak menumpuk, tapi rata-ratanya 1.076 detik, karena di luar 300 pencarian targeted ada pencarian broad dan lookup MITRE. Tanpa migrasi dan tanpa kunci `.env`.

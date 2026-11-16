@@ -42,6 +42,8 @@ class CatalogFamilyOut(BaseModel):
     monitor_entry_id: int | None = None
     covered_by_vendor: bool = False
     """Vendor keluarga ini sudah di-Monitor di tingkat vendor."""
+    hidden: bool = False
+    """Disembunyikan client ini dari All Tech (`PUT /families/{id}/hide`); hanya tampilan."""
 
 
 class CatalogVendorListResponse(BaseModel):
@@ -60,6 +62,8 @@ class CatalogFamilyListResponse(BaseModel):
     page_size: int
     hidden: int = 0
     """Berapa keluarga disembunyikan (hanya 1 CVE); `show_all=true` menampilkannya."""
+    hidden_by_client: int = 0
+    """Berapa keluarga disembunyikan client ini (`show_hidden=true` menampilkannya)."""
 
 
 class CveDbProductOut(BaseModel):
@@ -70,6 +74,16 @@ class CveDbProductOut(BaseModel):
     monitored: bool
     """Keluarga ini sudah di-Monitor, langsung atau lewat target vendor."""
     monitor_entry_id: int | None = None
+    covered_by_vendor: bool = False
+    """Vendor produk ini di-Monitor di tingkat vendor (sama artinya dengan `CatalogFamilyOut`)."""
+
+
+class CveDbMeta(BaseModel):
+    total: int
+    """Jumlah baris `cve_records` (di-cache Redis 300 detik)."""
+    last_sync_at: datetime.datetime | None = None
+    enabled: bool
+    """`CVE_MIRROR__ENABLED`; mati berarti UI menyembunyikan barisnya."""
 
 
 class CveDbOut(BaseModel):

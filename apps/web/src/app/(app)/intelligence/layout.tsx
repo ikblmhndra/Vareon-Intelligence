@@ -1,18 +1,17 @@
 import type { Metadata } from "next";
 
-import { IntelligenceNav } from "@/components/intelligence/intelligence-nav";
-import { PageHeader } from "@/components/page-header";
+import { PLATFORM_NAME } from "@/lib/brand";
+import { IntelligencePageHeader } from "@/components/intelligence/intelligence-page-header";
 
-export const metadata: Metadata = { title: "Intelligence" };
+// Template dipasang ulang: `title` string di layout segmen ini akan membuang template root untuk anak-anaknya.
+export const metadata: Metadata = {
+  title: { default: "Intelligence", template: `%s · ${PLATFORM_NAME}` },
+};
 
 export default function IntelligenceLayout({ children }: { children: React.ReactNode }) {
   return (
     <div>
-      <PageHeader
-        title="Intelligence"
-        description="Threat actors, campaigns, IOCs and ATT&CK, plus PIR, RFI and early warning."
-      />
-      <IntelligenceNav />
+      <IntelligencePageHeader />
       {children}
     </div>
   );

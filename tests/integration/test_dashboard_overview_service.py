@@ -12,6 +12,7 @@ from cti_api.services.dashboard_overview import (
     get_ransomware,
 )
 from cti_core.db.models.cve import CveTracker
+from cti_core.db.models.ransomware import RansomwareVictim
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.auth import AsyncClientRepo
 from cti_core.db.repositories.cve import AsyncCveFalsePositiveRepo
@@ -186,3 +187,41 @@ async def test_attention_brief_does_not_compare_with_a_near_empty_period(
 
     out = await get_attention(async_db_session, client_id="default", days=7)
     assert out["brief"]["detail"].startswith("3 insiden terkonfirmasi")
+
+
+async def test_attention_previous_window_none_for_all_time(
+    async_db_session: AsyncSession,
+) -> None:
+    clients = AsyncClientRepo(async_db_session)
+    await clients.create(client_id="sg", name="SG", countries=["SG"])
+    for key, d in (("a", _TODAY - datetime.timedelta(days=10)), ("b", _TODAY)):
+        async_db_session.add(
+            RansomwareVictim(
+                offset_key=key, group_name="Qilin", victim=key, country_code="SG", discovered=d
+            )
+        )
+    await async_db_session.flush()
+
+    all_time = await get_attention(async_db_session, client_id="sg", days=None)
+    assert all_time["ransomware_prev_in_client_scope"] is None
+    week = await get_attention(async_db_session, client_id="sg", days=7)
+    assert week["ransomware_prev_in_client_scope"] == 1
+    assert week["ransomware_in_client_scope"] == 1
+    assert week["client_countries"] == ["SG"]
+
+
+async def test_attention_kev_tech_excludes_false_positive(
+    async_db_session: AsyncSession,
+) -> None:
+    await AsyncClientRepo(async_db_session).ensure_default()
+    async_db_session.add_all(
+        [
+            CveTracker(cve_id="CVE-2026-0101", client_id="default", tech="Nginx", cisa_kev=True),
+            CveTracker(cve_id="CVE-2026-0102", client_id="default", tech="Citrix", cisa_kev=True),
+        ]
+    )
+    await async_db_session.flush()
+    await AsyncCveFalsePositiveRepo(async_db_session).mark("CVE-2026-0102", "default")
+
+    out = await get_attention(async_db_session, client_id="default", days=7)
+    assert out["kev_tech"] == ["Nginx"]

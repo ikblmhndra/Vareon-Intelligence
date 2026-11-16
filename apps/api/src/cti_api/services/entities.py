@@ -19,7 +19,7 @@ import datetime
 import json
 import uuid
 from collections.abc import Sequence
-from typing import Any
+from typing import Any, Literal
 
 from cti_core.attack_ttp import clean_attack_text
 from cti_core.config import platform_name
@@ -49,7 +49,18 @@ from cti_core.entity.merge import (
     split_aliases_async,
 )
 from cti_core.entity.resolve import TECHNIQUE
-from sqlalchemy import ColumnElement, Date, and_, cast, distinct, func, or_, select, tuple_
+from sqlalchemy import (
+    ColumnElement,
+    Date,
+    and_,
+    cast,
+    distinct,
+    func,
+    null,
+    or_,
+    select,
+    tuple_,
+)
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -109,20 +120,39 @@ def _sort_key() -> ColumnElement[str]:
     return func.lower(Entity.name).collate("C")
 
 
-def encode_cursor(sort_key: str, entity_id: int) -> str:
-    """`sort_key` = nilai `_sort_key()` dari baris SQL itu sendiri (bukan dihitung ulang)."""
-    return base64.urlsafe_b64encode(json.dumps([sort_key, entity_id]).encode()).decode()
+def encode_cursor(sort_key: str, entity_id: int, count: int | None = None) -> str:
+    """`sort_key` = nilai `_sort_key()` dari baris SQL itu sendiri (bukan dihitung ulang).
+
+    Tanpa `count` bentuknya `[name_key, id]` (urut nama, sama dengan kursor lama supaya kursor
+    yang sudah beredar tetap jalan); dengan `count` = `[n30, name_key, id]` (urut mention, C6)."""
+    value: list[Any] = [sort_key, entity_id] if count is None else [count, sort_key, entity_id]
+    return base64.urlsafe_b64encode(json.dumps(value).encode()).decode()
 
 
-def decode_cursor(cursor: str) -> tuple[str, int]:
-    """`ValueError` untuk kursor cacat (router -> 422)."""
+def _is_int(v: object) -> bool:
+    # bool turunan int di Python; `true` di JSON bukan id/hitungan yang sah
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+def decode_cursor(
+    cursor: str, *, sort: Literal["name", "mentions"] = "name"
+) -> tuple[int | None, str, int]:
+    """-> `(n30, name_key, id)`; `n30` None untuk urut nama. `ValueError` (router -> 422) untuk
+    kursor cacat ATAU bentuk yang tidak cocok dengan `sort`: kursor nama yang dipakai dengan
+    `sort=mentions` (atau sebaliknya) akan melompati/mengulang baris, jadi ditolak."""
     try:
-        name, entity_id = json.loads(base64.urlsafe_b64decode(cursor.encode()).decode())
+        value = json.loads(base64.urlsafe_b64decode(cursor.encode()).decode())
     except (ValueError, TypeError, binascii.Error, UnicodeError) as exc:
         raise ValueError("kursor tidak valid") from exc
-    if not isinstance(name, str) or not isinstance(entity_id, int) or entity_id < 1:
+    if not isinstance(value, list) or len(value) != (3 if sort == "mentions" else 2):
         raise ValueError("kursor tidak valid")
-    return name, entity_id
+    count = value[0] if sort == "mentions" else None
+    name, entity_id = value[-2:]
+    if count is not None and (not _is_int(count) or count < 0):
+        raise ValueError("kursor tidak valid")
+    if not isinstance(name, str) or not _is_int(entity_id) or entity_id < 1:
+        raise ValueError("kursor tidak valid")
+    return count, name, entity_id
 
 
 def _ref(e: Entity) -> EntityRef:
@@ -210,9 +240,14 @@ async def list_entities(
     cursor: str | None,
     limit: int,
     identity_class: str | None = None,
+    sort: Literal["name", "mentions"] = "name",
 ) -> EntityListResponse:
+    """`sort="name"` (default: picker/dialog) atau `"mentions"` (halaman Entities, C6): mention
+    30 hari menurun, seri dipecah nama lalu id. `total` hanya di halaman pertama (spec 4.7)."""
+    # kursor divalidasi dulu: bentuk salah -> 422 tanpa query sama sekali
+    c_count, c_name, c_id = (None, "", 0) if not cursor else decode_cursor(cursor, sort=sort)
     sort_key = _sort_key()
-    stmt = select(Entity, sort_key).where(Entity.merged_into_id.is_(None))
+    stmt = select(Entity).where(Entity.merged_into_id.is_(None))
     if not include_suppressed:
         stmt = stmt.where(Entity.suppressed.is_(False))
     if type:
@@ -232,22 +267,50 @@ async def list_entities(
         stmt = stmt.where(
             Entity.id.in_(select(EntityWatch.entity_id).where(EntityWatch.client_id == client_id))
         )
-    if cursor:
-        name, last_id = decode_cursor(cursor)
-        stmt = stmt.where(tuple_(sort_key, Entity.id) > tuple_(name, last_id))
+    # total dihitung dari statement yang sama sebelum kursor/limit/urutan; halaman berikutnya
+    # None (UI menyimpan nilai halaman pertama), jadi count hanya sekali per daftar
+    total = (
+        None
+        if cursor
+        else await session.scalar(stmt.with_only_columns(func.count(Entity.id)).order_by(None))
+    )
+    if sort == "mentions":
+        # jendela dan ekspresi tanggal SAMA dengan `_mention_counts`, jadi kunci urut = nilai
+        # `mentions_30d` baris itu (kecuali artikel baru masuk di antara dua query, diterima)
+        n30_sub = (
+            select(
+                EntityMention.entity_id.label("entity_id"),
+                func.count(distinct(EntityMention.article_id)).label("n30"),
+            )
+            .join(Article, Article.id == EntityMention.article_id)
+            .where(_article_day() >= _today() - datetime.timedelta(days=30))
+            .group_by(EntityMention.entity_id)
+            .subquery()
+        )
+        n30 = func.coalesce(n30_sub.c.n30, 0)
+        stmt = stmt.outerjoin(n30_sub, n30_sub.c.entity_id == Entity.id).add_columns(sort_key, n30)
+        order: tuple[Any, ...] = (n30.desc(), sort_key, Entity.id)
+        if cursor:
+            after = tuple_(sort_key, Entity.id) > tuple_(c_name, c_id)
+            stmt = stmt.where(or_(n30 < c_count, and_(n30 == c_count, after)))
+    else:
+        stmt = stmt.add_columns(sort_key, null())
+        order = (sort_key, Entity.id)
+        if cursor:
+            stmt = stmt.where(tuple_(sort_key, Entity.id) > tuple_(c_name, c_id))
     rows = list(
         (
             await session.execute(
-                stmt.order_by(sort_key, Entity.id)
+                stmt.order_by(*order)
                 .limit(limit + 1)
                 .execution_options(populate_existing=True)  # alias segar sesudah merge/split
             )
         ).tuples()
     )
-    page, more = [e for e, _ in rows[:limit]], len(rows) > limit
-    # kursor menyimpan kunci urut hasil SQL (lower() Postgres), bukan str.lower() Python:
-    # keduanya bisa beda untuk huruf non-ASCII, dan kursor harus sama dengan ORDER BY
-    last_key = rows[limit - 1][1] if more else None
+    page, more = [e for e, _, _ in rows[:limit]], len(rows) > limit
+    # kursor menyimpan kunci urut hasil SQL (lower() Postgres, hitungan n30), bukan str.lower()
+    # Python: keduanya bisa beda untuk huruf non-ASCII, dan kursor harus sama dengan ORDER BY
+    last = rows[limit - 1] if more else None
     ids = [e.id for e in page]
     counts = await _mention_counts(session, ids)
     watched_ids = await _watched(session, client_id, ids)
@@ -264,11 +327,13 @@ async def list_entities(
                 mentions_30d=counts.get(e.id, (0, 0))[0],
                 mentions_90d=counts.get(e.id, (0, 0))[1],
                 last_seen=e.last_seen,
+                first_seen=e.first_seen,
                 watched=e.id in watched_ids,
             )
             for e in page
         ],
-        next_cursor=encode_cursor(last_key, page[-1].id) if last_key is not None else None,
+        next_cursor=None if last is None else encode_cursor(last[1], last[0].id, last[2]),
+        total=total,
     )
 
 
@@ -332,6 +397,16 @@ async def resolve_entity(
     return None if ent is None else _ref(ent)
 
 
+def _profile_summary(profile: dict[str, Any]) -> str | None:
+    value = profile.get("summary")
+    return value if isinstance(value, str) else None
+
+
+def _profile_article_count(profile: dict[str, Any]) -> int | None:
+    value = profile.get("_article_count")
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
 async def entity_detail(session: AsyncSession, entity_id: int, client_id: str) -> EntityDetail:
     """Tombstone dikembalikan apa adanya dengan `merged_into_id` terisi (web mengalihkan)."""
     ent = await _get(session, entity_id)
@@ -369,6 +444,8 @@ async def entity_detail(session: AsyncSession, entity_id: int, client_id: str) -
         ],
         profile=None if profile is None else profile.profile,
         profile_generated_at=None if profile is None else profile.generated_at,
+        profile_summary=None if profile is None else _profile_summary(profile.profile),
+        profile_article_count=None if profile is None else _profile_article_count(profile.profile),
         merged_from=[_ref(x) for x in tombs],
     )
 

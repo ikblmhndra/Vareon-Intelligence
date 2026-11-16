@@ -1,34 +1,71 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useCallback, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
-import { TabPills } from "@/components/ui/tab-pills";
-import { FeedStatusBanner } from "@/components/xintel/feed-status-banner";
-import { TweetList } from "@/components/xintel/tweet-list";
 import { MonitoredAccounts } from "@/components/xintel/monitored-accounts";
-
-const SUB_TABS = [
-  { value: "tweets", label: "Tweets" },
-  { value: "accounts", label: "Monitored Accounts" },
-] as const;
-
-type SubTab = (typeof SUB_TABS)[number]["value"];
+import { TweetList } from "@/components/xintel/tweet-list";
+import { XIntelPageHeader, type XIntelTab } from "@/components/xintel/xintel-page-header";
+import { XIntelToolbar } from "@/components/xintel/xintel-toolbar";
+import { usePageTitle } from "@/lib/use-page-title";
+import { DEFAULT_FILTERS, type XIntelFilters } from "@/lib/xintel/filters";
+import { useTweetStats } from "@/lib/xintel/queries";
 
 /**
- * Port `tab_xintel.html` + `xintel.js`. 𝕏 API balance chip (`GET
- * /api/tweets/balance`) SENGAJA gak diport -- backend-nya juga gak ada,
- * `routers/tweets.py` bilang eksplisit "passthrough eksternal doang, gak
- * genting buat inti" (keputusan Fase 7.3, bukan keputusan baru di sini).
+ * Port `tab_xintel.html` + `xintel.js`. 𝕏 API balance chip (`GET /api/tweets/balance`) SENGAJA gak
+ * diport -- backend-nya juga gak ada (keputusan Fase 7.3). Tab ada di URL (`?tab=`), filter dan
+ * `anchor` (batas bawah periode preset) di state: anchor diset saat mount, ganti periode dan "Refresh",
+ * tidak pernah dihitung di render, supaya query key stabil.
  */
-export default function XIntelPage() {
-  const [tab, setTab] = useState<SubTab>("tweets");
+function XIntelContent() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const tab: XIntelTab = params.get("tab") === "accounts" ? "accounts" : "tweets";
+  usePageTitle(tab === "tweets" ? "X Intel" : "Monitored accounts");
+
+  const [filters, setFilters] = useState<XIntelFilters>(DEFAULT_FILTERS);
+  const [anchor, setAnchor] = useState(() => Date.now());
+
+  const onFilters = useCallback(
+    (next: XIntelFilters) => {
+      if (next.period !== filters.period) setAnchor(Date.now());
+      setFilters(next);
+    },
+    [filters.period],
+  );
+  const stats = useTweetStats(filters, anchor);
 
   return (
     <div>
-      <FeedStatusBanner />
-      <TabPills aria-label="X Intel views" className="mb-4 border-b border-border pb-3" items={SUB_TABS} value={tab} onChange={setTab} />
-
-      {tab === "tweets" ? <TweetList /> : <MonitoredAccounts />}
+      <XIntelPageHeader tab={tab} onTabChange={(t) => router.replace(`${pathname}?tab=${t}`)} />
+      {tab === "tweets" ? (
+        <>
+          <XIntelToolbar
+            value={filters}
+            onChange={onFilters}
+            total={stats.data?.total}
+            confirmed={stats.data?.confirmed}
+            onRefresh={() => setAnchor(Date.now())}
+          />
+          <TweetList
+            filters={filters}
+            anchor={anchor}
+            onSearchHandle={(h) => onFilters({ ...filters, search: `@${h}` })}
+            onClear={() => onFilters(DEFAULT_FILTERS)}
+          />
+        </>
+      ) : (
+        <MonitoredAccounts />
+      )}
     </div>
+  );
+}
+
+export default function XIntelPage() {
+  return (
+    <Suspense>
+      <XIntelContent />
+    </Suspense>
   );
 }

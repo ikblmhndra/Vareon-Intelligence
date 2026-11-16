@@ -30,6 +30,7 @@
     'added_at': str,
     'added_by': 'tester',
     'id': int,
+    'note': None,
     'type': 'ip',
     'value': '10.0.0.1',
   })

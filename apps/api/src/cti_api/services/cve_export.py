@@ -54,6 +54,7 @@ _TZ = zoneinfo.ZoneInfo("Asia/Jakarta")
 # Kolom (1-based) -> (sumber, nama field). Sumber "cve" = `CveTracker`, "ticket" = `CveTicket`.
 _COL_REPORTED_DATE = 4
 _COL_REPORTED_BY_SYSTEM = 5
+_COL_CVE_ID = 3
 _LAST_COL = 22
 _COL_MAP: dict[int, tuple[str, str]] = {
     2: ("ticket", "ticket_id"),
@@ -104,7 +105,16 @@ def _fmt_stamp(val: datetime.datetime | datetime.date | None) -> str:
     return val.strftime("%d-%m-%Y")
 
 
-def _cell_value(col_idx: int, cve: CveTracker, ticket: CveTicket | None) -> Any:
+def _cell_value(col_idx: int, cve: CveTracker | None, ticket: CveTicket | None) -> Any:
+    """`cve=None` = ticket yatim (CVE-nya sudah dipurge): kolom CVE kosong, kecuali CVE id yang
+    diambil dari ticket."""
+    if cve is None:
+        if col_idx == _COL_CVE_ID:
+            return ticket.cve_id if ticket is not None else ""
+        source, field = _COL_MAP.get(col_idx, ("", ""))
+        if source != "ticket" or ticket is None:
+            return ""
+        return _fmt(getattr(ticket, field, None))
     if col_idx == _COL_REPORTED_DATE:
         return _fmt_stamp(cve.published_at or cve.published)
     if col_idx == _COL_REPORTED_BY_SYSTEM:
@@ -167,7 +177,36 @@ async def export_cves_to_excel(
     )
     cve_ids = [c.cve_id for c in cves]
     tickets = await AsyncCveTicketRepo(session).get_by_cve_ids(cve_ids, client_id)
+    return _write_rows([(cve, tickets.get(cve.cve_id)) for cve in cves])
 
+
+async def export_tickets_to_excel(
+    session: AsyncSession,
+    *,
+    client_id: str,
+    search: str | None,
+    status: str | None,
+    include_fp: bool,
+) -> bytes:
+    """Export view Ticketing: satu baris per ticket (termasuk ticket yatim), filter sama dengan
+    `GET /api/cve/tickets`."""
+    exclude_ids: list[str] = []
+    if not include_fp:
+        exclude_ids = await AsyncCveFalsePositiveRepo(session).list_cve_ids(client_id)
+    # Tab Open di UI menghitung ticket tanpa status sebagai Open, jadi `Open` disaring di sini
+    # (bukan di repo, yang membedakan "Open" dari kosong).
+    rows = await AsyncCveTicketRepo(session).list_with_cve(
+        client_id,
+        search=search,
+        status=None if status == "Open" else status,
+        exclude_cve_ids=exclude_ids or None,
+    )
+    if status == "Open":
+        rows = [(t, c) for t, c in rows if (t.remediation_status or "Open") == "Open"]
+    return _write_rows([(cve, ticket) for ticket, cve in rows])
+
+
+def _write_rows(pairs: list[tuple[CveTracker | None, CveTicket | None]]) -> bytes:
     wb = openpyxl.load_workbook(_TEMPLATE_PATH)
     ws = wb[_TRACKER_SHEET]
 
@@ -176,9 +215,8 @@ async def export_cves_to_excel(
         style_ref = list(ws[_DATA_START_ROW])
         ws.delete_rows(_DATA_START_ROW, ws.max_row - _DATA_START_ROW + 1)
 
-    for row_offset, cve in enumerate(cves):
+    for row_offset, (cve, ticket) in enumerate(pairs):
         row_num = _DATA_START_ROW + row_offset
-        ticket = tickets.get(cve.cve_id)
 
         ws.cell(row=row_num, column=1).value = row_offset + 1
         if style_ref:

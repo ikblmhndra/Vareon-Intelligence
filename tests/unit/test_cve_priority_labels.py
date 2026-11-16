@@ -4,6 +4,7 @@ DB). Fase 7.4 Grup A."""
 from __future__ import annotations
 
 from cti_api.services import cve_priority as svc
+from cti_core.cve_risk import risk_label
 
 
 def test_priority_label_thresholds() -> None:
@@ -11,6 +12,7 @@ def test_priority_label_thresholds() -> None:
     assert svc._priority_label(65) == "high_priority"
     assert svc._priority_label(45) == "medium"
     assert svc._priority_label(10) == "low"
+    assert svc._priority_label is risk_label
 
 
 def test_patch_urgency_critical_in_tech_stack_is_immediate() -> None:

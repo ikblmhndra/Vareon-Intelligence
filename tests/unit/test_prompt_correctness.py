@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import re
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
@@ -177,6 +178,51 @@ def test_ta_prompt_requires_context_only() -> None:
     ):
         assert field in rule
     assert "empty" in rule
+
+
+def test_ta_profile_schema_has_summary_first() -> None:
+    schema = ta_profile._SYSTEM_PROMPT.split("Use this exact schema:")[1]
+    keys = re.findall(r'^  "(\w+)":', schema, flags=re.MULTILINE)
+    assert keys[0] == "summary"
+    assert "600 characters" in schema
+
+
+def test_normalise_summary_non_string() -> None:
+    for bad in (None, 123, []):
+        assert ta_profile.normalise_summary({"summary": bad}, "ctx") is None
+    assert ta_profile.normalise_summary({}, "ctx") is None
+    assert ta_profile.normalise_summary({"summary": "   \n "}, "ctx") is None
+
+
+def test_normalise_summary_collapses_whitespace() -> None:
+    out = ta_profile.normalise_summary({"summary": "  A   actor\n\nhits  B. "}, "ctx")
+    assert out == "A actor hits B."
+
+
+def test_normalise_summary_overlong() -> None:
+    text = " ".join(["word"] * 130)  # 129 + ... > 600
+    assert len(text) > 600
+    out = ta_profile.normalise_summary({"summary": text}, "ctx")
+    assert out is not None
+    assert len(out) <= ta_profile.SUMMARY_MAX
+    assert out.endswith("word")
+    assert text.startswith(out)
+    assert text[len(out)] == " "
+
+
+def test_normalise_summary_unknown_cve_replaced() -> None:
+    out = ta_profile.normalise_summary(
+        {"summary": "Exploits CVE-2099-0001 in the wild."}, "- [2026-11-01] Some title"
+    )
+    assert out is not None
+    assert "CVE-2099-0001" not in out
+
+
+def test_normalise_summary_known_cve_kept() -> None:
+    out = ta_profile.normalise_summary(
+        {"summary": "Exploits CVE-2024-3400 in the wild."}, "- [2026-11-01] CVE-2024-3400 patched"
+    )
+    assert out == "Exploits CVE-2024-3400 in the wild."
 
 
 def test_ta_overrides() -> None:

@@ -219,3 +219,47 @@ async def test_remove_pir(
     resp = await api_client.delete(f"/api/pir/{pir_id}", headers=auth_header())
     assert resp.status_code == 200
     assert resp.json() == snapshot
+
+
+async def test_pir_weekly_coverage(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+) -> None:
+    await _seed_article(api_session)
+    pir_id = await _seed_pir(api_session)
+    resp = await api_client.get(
+        f"/api/pir/{pir_id}/coverage/weekly", params={"weeks": 4}, headers=auth_header()
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["pir_id"] == pir_id
+    assert 1 <= len(body["weeks"]) <= 4
+    assert sum(w["count"] for w in body["weeks"]) == 1
+
+    missing = await api_client.get("/api/pir/999999/coverage/weekly", headers=auth_header())
+    assert missing.status_code == 404
+    bad = await api_client.get(
+        f"/api/pir/{pir_id}/coverage/weekly", params={"weeks": 0}, headers=auth_header()
+    )
+    assert bad.status_code == 422
+
+
+async def test_pir_weekly_coverage_other_client_matches_articles_route(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+) -> None:
+    """PIR milik client lain: weekly coverage membalas status yang sama dengan route
+    `/articles` (404, tidak membocorkan keberadaan), bukan 200/403."""
+    clients = AsyncClientRepo(api_session)
+    await clients.ensure_default()
+    await clients.create(client_id="acme", name="Acme", countries=[])
+    other = await AsyncPIRRepo(api_session).create(
+        {"title": "Acme PIR", "criteria": {"threat_actors": ["Apt41"]}}, client_id="acme"
+    )
+    headers = auth_header(role="analyst", client_ids=["default"])
+    articles = await api_client.get(f"/api/pir/{other.id}/articles", headers=headers)
+    weekly = await api_client.get(f"/api/pir/{other.id}/coverage/weekly", headers=headers)
+    assert articles.status_code == 404
+    assert weekly.status_code == articles.status_code

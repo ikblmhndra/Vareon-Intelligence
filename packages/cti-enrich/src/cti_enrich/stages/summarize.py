@@ -75,3 +75,31 @@ def summarize(text: str) -> str:
         return " ".join(str(s) for s in summarizer(parser.document, sentences_count))
     except Exception:
         return text
+
+
+DEK_MAX_CHARS = 600
+
+
+def make_dek(summary: str, *, max_chars: int = DEK_MAX_CHARS) -> str | None:
+    """Potong ringkasan jadi kutipan pendek buat `articles.summary` (5a, 4.5).
+
+    Nilainya kutipan VERBATIM dari teks penerbit, bukan keluaran LLM. Jalur
+    gagal `summarize()` mengembalikan SELURUH artikel, jadi tanpa batas ini
+    kolom bisa menyimpan puluhan ribu karakter; batas 600 yang menjaganya
+    tetap sepanjang snippet. Murni, tanpa import nltk/sumy, jadi jalan di
+    semua image dan CI.
+
+    Urutan: rapikan whitespace (kosong -> None); pendek -> apa adanya; potong
+    di akhir kalimat terakhir (". ", "! ", "? " di indeks >= 200, tanda baca
+    ikut); kalau tidak ada, potong di batas kata + elipsis. Hasil paling
+    panjang `max_chars + 1`. Teks tanpa spasi dipotong keras di `max_chars`."""
+    s = " ".join(summary.split())
+    if not s:
+        return None
+    if len(s) <= max_chars:
+        return s
+    cut = s[:max_chars]
+    end = max(cut.rfind(m) for m in (". ", "! ", "? "))
+    if end >= 200:
+        return cut[: end + 1]
+    return cut.rsplit(" ", 1)[0] + chr(0x2026)

@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { api } from "@/lib/api/client";
+import { noClientRetry, unwrap } from "@/lib/scrapers/queries";
 
 export interface NewsroomFilters {
   search: string;
@@ -55,10 +56,9 @@ export function useFilterOptions() {
   return useQuery({
     queryKey: ["newsroom", "filter-options"],
     queryFn: async () => {
-      const { data, error } = await api.GET("/api/filters");
-      if (error) throw error;
-      return data;
+      return unwrap(await api.GET("/api/filters"), "The request failed.");
     },
     staleTime: 5 * 60_000,
+    retry: noClientRetry,
   });
 }

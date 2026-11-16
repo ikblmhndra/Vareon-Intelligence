@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { EntityChip, type EntityChipItem } from "@/components/entities/entity-chip";
+import { EntityChip } from "@/components/entities/entity-chip";
 import type { DiamondModel } from "@/lib/api/loose-types";
 import { nameChips } from "@/lib/entities/name-chips";
 import { tint } from "@/lib/tint";
@@ -23,38 +23,30 @@ const TACTIC_ORDER = [
   "other",
 ];
 
-/** Item teks biasa, atau `EntityChipItem` untuk nama entity (tautan ke halaman entity). */
-type DiamondItem = string | EntityChipItem;
+/** Ringkasan satu baris tiap kuadran (spec 2b 6.10): jumlah, bukan daftar chip penuh; detail lengkap ada di
+ * "expand". Bagian kosong dibuang, semua kosong = "—". */
+const summarize = (parts: (string | null)[]) => parts.filter(Boolean).join(" · ") || "—";
+const count = (n: number, word: string) => (n > 0 ? `${n} ${word}` : null);
+function names(items: string[], limit: number): string | null {
+  if (items.length === 0) return null;
+  const rest = items.length - limit;
+  return items.slice(0, limit).join(", ") + (rest > 0 ? ` +${rest}` : "");
+}
 
-function Chips({ items, color, limit }: { items: DiamondItem[] | undefined; color: string; limit?: number }) {
-  if (!items || items.length === 0) return <span className="text-xs text-muted-foreground opacity-60">—</span>;
-  const shown = items.slice(0, limit ?? 5);
-  const more = items.length > (limit ?? 5) ? items.length - (limit ?? 5) : 0;
+function Quadrant({ label, color, children }: { label: string; color: string; children: string }) {
   return (
-    <div className="flex flex-wrap gap-1">
-      {shown.map((v, i) =>
-        typeof v === "string" ? (
-          <span
-            key={i}
-            title={v}
-            className="max-w-[120px] truncate rounded-full border px-1 py-0.5 font-mono text-xs"
-            style={{ background: tint(color, 9), borderColor: tint(color, 27), color }}
-          >
-            {v}
-          </span>
-        ) : (
-          <EntityChip key={i} {...v} className="max-w-32" />
-        ),
-      )}
-      {more > 0 && <span className="text-xs text-muted-foreground">+{more}</span>}
+    <div className="rounded-md bg-surface px-3 py-2">
+      <p className={`text-2xs font-semibold tracking-wide uppercase ${color}`}>{label}</p>
+      <p className="mt-0.5 text-xs break-words text-foreground">{children}</p>
     </div>
   );
 }
 
-/** Port `_renderDiamondModel()`/`_dmFullDetails()` (`clusters.js:429-577`)
- * -- 4 kuadran (Adversary/Infrastructure/Capability/Victim) + expand
- * detail penuh per-tactic MITRE. */
-export function DiamondModelView({ clusterName, model }: { clusterName: string; model: DiamondModel }) {
+/** Diamond model (spec 2b 6.10): empat kuadran ringkas (Adversary, Infrastructure, Capability, Victim,
+ * berisi hitungan seperti "4 IPs · 2 domains") + "expand" untuk detail penuh per-tactic MITRE
+ * (port `_renderDiamondModel()`/`_dmFullDetails()`, `clusters.js:429-577`). Bentuk belah ketupat mockup
+ * diganti grid 2x2 supaya muat di panel detail yang sempit. */
+export function DiamondModelView({ model }: { model: DiamondModel }) {
   const [expanded, setExpanded] = useState(false);
   const adv = model.adversary;
   const inf = model.infrastructure;
@@ -62,64 +54,44 @@ export function DiamondModelView({ clusterName, model }: { clusterName: string; 
   const vic = model.victim;
   const meta = model.meta;
 
-  const advItems: DiamondItem[] = [
-    ...nameChips("intrusion-set", adv.threat_actors.slice(0, 3)),
-    ...nameChips("location", adv.sponsoring_nations),
-    ...(adv.sophistication ? [`Soph: ${adv.sophistication}`] : []),
-  ];
-  const allInfra = [...inf.domains, ...inf.ips, ...inf.urls];
   const allTechs = Object.values(cap.attack_techniques).flat();
-  const capItems: DiamondItem[] = [
-    ...nameChips("attack-pattern", allTechs.slice(0, 3)),
-    ...nameChips("malware,tool", cap.malware.slice(0, 2)),
-    ...nameChips("malware,tool", cap.tools.slice(0, 1)),
-    ...nameChips("vulnerability", cap.cve_exploited.slice(0, 2)),
-  ];
-  const vicItems: DiamondItem[] = [
-    ...nameChips("identity", vic.industries),
-    ...nameChips("location", vic.countries),
-    ...vic.organization_types.slice(0, 2),
-  ];
-
   const confColor = meta.confidence === "high" ? "var(--success)" : meta.confidence === "medium" ? "var(--severity-medium)" : "var(--muted-foreground)";
 
   return (
-    <div className="mb-2.5">
-      <div className="mb-2 flex flex-wrap items-center gap-2 text-sm font-semibold text-muted-foreground">
-        Diamond Model
-        <span className="rounded-full border px-1.5 py-0.5 text-xs normal-case" style={{ background: tint(confColor, 9), borderColor: tint(confColor, 27), color: confColor }}>
+    <section aria-label="Diamond model">
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 className="text-2xs font-semibold tracking-wide text-muted-foreground uppercase">Diamond model</h3>
+        <span className="rounded-full border px-1.5 py-0.5 text-2xs" style={{ background: tint(confColor, 9), borderColor: tint(confColor, 27), color: confColor }}>
           conf: {meta.confidence}
         </span>
-        <span className="rounded-full border border-border bg-surface px-1.5 py-0.5 text-xs text-muted-foreground normal-case">{meta.direction}</span>
-        <button type="button" onClick={() => setExpanded((e) => !e)} className="ml-auto rounded-full border border-border px-1.5 py-0.5 text-xs text-muted-foreground normal-case">
+        <span className="rounded-full border border-border bg-surface px-1.5 py-0.5 text-2xs text-muted-foreground">{meta.direction}</span>
+        <button
+          type="button"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((e) => !e)}
+          className="ml-auto rounded-full border border-border px-2 py-0.5 text-2xs text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        >
           {expanded ? "collapse" : "expand"}
         </button>
       </div>
 
-      <div className="grid grid-cols-3 gap-0 px-2">
-        <div />
-        <div className="min-h-[64px] rounded-t-md border border-warning/25 bg-warning/6 p-2">
-          <div className="mb-1 font-mono text-xs font-bold tracking-wide text-warning uppercase">▲ Adversary</div>
-          <Chips items={advItems} color="var(--severity-high)" limit={4} />
-        </div>
-        <div />
-        <div className="min-h-[72px] rounded-l-md border border-tag-violet/30 border-r-0 bg-tag-violet/8 p-2">
-          <div className="mb-1 font-mono text-xs font-bold tracking-wide text-tag-violet uppercase">◀ Capability</div>
-          <Chips items={capItems} color="var(--tag-violet)" limit={4} />
-        </div>
-        <div className="flex min-h-[72px] items-center justify-center border border-border bg-surface p-1.5 text-center">
-          <span className="font-mono text-xs break-words text-muted-foreground">{clusterName.slice(0, 40)}</span>
-        </div>
-        <div className="min-h-[72px] rounded-r-md border border-primary/25 border-l-0 bg-primary/6 p-2">
-          <div className="mb-1 text-sm font-semibold font-bold text-primary">▶ Infrastructure</div>
-          <Chips items={allInfra} color="var(--info)" limit={4} />
-        </div>
-        <div />
-        <div className="min-h-[64px] rounded-b-md border border-success/25 border-t-0 bg-success/6 p-2">
-          <div className="mb-1 font-mono text-xs font-bold tracking-wide text-success uppercase">▼ Victim</div>
-          <Chips items={vicItems} color="var(--success)" limit={4} />
-        </div>
-        <div />
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <Quadrant label="Adversary" color="text-warning-text">
+          {summarize([names(adv.threat_actors, 2), adv.sophistication ? `Soph: ${adv.sophistication}` : null])}
+        </Quadrant>
+        <Quadrant label="Infrastructure" color="text-primary-text">
+          {summarize([count(inf.ips.length, "IPs"), count(inf.domains.length, "domains"), count(inf.urls.length, "URLs")])}
+        </Quadrant>
+        <Quadrant label="Capability" color="text-tag-violet-text">
+          {summarize([
+            count(allTechs.length, "TTPs"),
+            count(cap.malware.length + cap.tools.length, "malware/tools"),
+            count(cap.cve_exploited.length, "CVEs"),
+          ])}
+        </Quadrant>
+        <Quadrant label="Victim" color="text-success-text">
+          {summarize([names(vic.industries, 2), names(vic.countries, 3)])}
+        </Quadrant>
       </div>
 
       {expanded && (
@@ -160,7 +132,7 @@ export function DiamondModelView({ clusterName, model }: { clusterName: string; 
           </div>
         </div>
       )}
-    </div>
+    </section>
   );
 }
 

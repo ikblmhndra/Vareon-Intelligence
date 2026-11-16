@@ -217,9 +217,17 @@ export interface AuthorCount {
   count: number;
 }
 
+// Diserialisasi `AsyncTweetRepo.get_stats` (endpoint tetap `dict[str, object]`, jadi tipe ini ditulis tangan).
 export interface TweetStats {
   total: number;
   top_authors: AuthorCount[];
+  confirmed: number;
+  apac: number;
+  ot: number;
+  with_cve: number;
+  databreach: number;
+  zero_day: number;
+  top_victims: { victim: string; count: number }[];
 }
 
 export interface AdminUser {
@@ -320,6 +328,11 @@ export interface CveTicket {
   closure_date: string;
   acknowledged_by: string;
   acknowledge_time: string;
+  // Empat key ini datang dari `_serialize_ticket` (timestamp ISO + siapa yang terakhir mengubah).
+  created_at: string;
+  updated_at: string;
+  updated_by: string;
+  opened_at: string;
 }
 
 /** `GET /{cve_id}/ticket` balikin `{}` kalau belum ada ticket (port
@@ -519,7 +532,18 @@ export interface ExecViewConfig {
  * itu buat bedain "gak berhak lihat" vs "emang belom ada data". */
 export interface ExecDashboardV2 extends ExecDashboardV1 {
   prev_ta_names: string[];
-  sector_risk_scores: { sector: string; risk_score: number }[];
+  /** `top_actor` = pelaku teratas per sektor (`get_exec_dashboard_v2`); null bila tak ada. */
+  sector_risk_scores: { sector: string; risk_score: number; top_actor: string | null }[];
+  /** Total insiden per bulan (urut bulan), dari `get_exec_dashboard_v2`. */
+  monthly_totals: number[];
+  /** Menimpa `ta_leaderboard` v1 dengan kolom tren dan sektor teratas (`get_exec_dashboard_v2`);
+   * velocity/last_month/avg_prev null bila riwayat belum cukup. */
+  ta_leaderboard: (ExecNamedCount & {
+    velocity_pct: number | null;
+    last_month: number | null;
+    avg_prev: number | null;
+    top_sectors: string[];
+  })[];
   cve_exposure_v2: ExecCveExposureRow[];
   /** Total UTUH buat dua kartu KPI (BUKAN jumlah 10 tech di `cve_exposure_v2`): CVE berseverity
    * critical, dan CVE ber-flag KEV (semua severity). Cakupannya sama dengan tabel exposure
@@ -565,11 +589,6 @@ export interface ExecDashboardV2 extends ExecDashboardV1 {
   /** Total antrean FP; `pending_fp_queue` cuma memuat 20 teratas. */
   pending_fp_total: number;
   source_reliability_spread: Record<string, number>;
-}
-
-export interface ExecBriefResponse {
-  brief: string;
-  generated_at: string;
 }
 
 /**
@@ -621,6 +640,18 @@ export interface SpikeEntry {
   severity: "high" | "medium";
 }
 
+/**
+ * Deret harian per entity untuk sparkline Early Warning -- dari `services/spike.py::get_spikes()`
+ * (kunci `daily`). Semua array sejajar dengan `dates` (menaik, inklusif lookback..hari ini).
+ */
+export interface SpikeDaily {
+  dates: string[];
+  threat_actors: Record<string, number[]>;
+  industries: Record<string, number[]>;
+  countries: Record<string, number[]>;
+  overall: number[];
+}
+
 export interface SpikesResponse {
   threat_actors: SpikeEntry[];
   countries: SpikeEntry[];
@@ -628,6 +659,7 @@ export interface SpikesResponse {
   overall: SpikeEntry[];
   generated_at: string;
   parameters: { lookback_days: number; z_threshold: number; recent_window: number };
+  daily: SpikeDaily;
 }
 
 export interface RiskMatrixCell {
@@ -854,6 +886,8 @@ export interface IocFpSuggestion {
   value: string;
   allowlist_type: string;
   fp_count: number;
+  /** Dari `services/fp_analytics.py` (kunci `tp_count`): penanda saran allowlist yang berisiko. */
+  tp_count: number;
 }
 
 export interface IocFpAnalytics {

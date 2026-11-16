@@ -32,8 +32,17 @@ from cti_core.db.models.article import Article
 from cti_core.db.models.cve import CveTicket, CveTracker
 from cti_core.db.models.entity import EntityWatch
 from cti_core.db.models.indicator import Indicator
+from cti_core.db.repositories.article import article_search_clause
 from cti_core.db.repositories.cve import is_false_positive_row
-from cti_core.db.repositories.entity import ACTOR, COUNTRY, SECTOR, TECHNIQUE, mention_rows
+from cti_core.db.repositories.entity import (
+    ACTOR,
+    COUNTRY,
+    CVE,
+    MALWARE_TYPES,
+    SECTOR,
+    TECHNIQUE,
+    mention_rows,
+)
 from cti_core.db.repositories.ttp_catalog import canonical_ttp_name
 
 
@@ -375,6 +384,70 @@ class AsyncDashboardRepo:
         rows = (await self.session.execute(stmt)).all()
         return [(sector, actor, cnt) for sector, actor, cnt in rows]
 
+    async def top_sectors_by_actor(
+        self,
+        *,
+        actors: Sequence[str],
+        limit: int = 2,
+        exclude: Sequence[str] = ("General",),
+        **filters: Any,
+    ) -> dict[str, list[str]]:
+        """`limit` sektor teratas per aktor (jumlah artikel, seri diputus nama), satu query
+        berkelompok. `exclude` default "General" = label "tanpa sektor spesifik" (lihat
+        `exec_dashboard.UNSPECIFIED_INDUSTRY`), bukan sektor sungguhan."""
+        if not actors:
+            return {}
+        sec = mention_rows(SECTOR)
+        act = mention_rows(ACTOR)
+        cnt = func.count().label("cnt")
+        inner = _apply_article_filters(
+            _joined(select(act.c.name.label("actor"), sec.c.name.label("sector"), cnt), sec)
+            .join(act, act.c.article_id == Article.id)
+            .where(act.c.name.in_(actors), sec.c.name.not_in(exclude)),
+            **filters,
+        ).group_by(act.c.name, sec.c.name)
+        sub = inner.subquery()
+        rn = func.row_number().over(
+            partition_by=sub.c.actor, order_by=(sub.c.cnt.desc(), sub.c.sector)
+        )
+        ranked = select(sub.c.actor, sub.c.sector, rn.label("rn")).subquery()
+        stmt = (
+            select(ranked.c.actor, ranked.c.sector)
+            .where(ranked.c.rn <= limit)
+            .order_by(ranked.c.actor, ranked.c.rn)
+        )
+        out: dict[str, list[str]] = {}
+        for actor, sector in (await self.session.execute(stmt)).all():
+            out.setdefault(actor, []).append(sector)
+        return out
+
+    async def top_actor_by_sector(
+        self, *, sectors: Sequence[str], **filters: Any
+    ) -> dict[str, str]:
+        """Aktor dengan artikel terbanyak per sektor (seri diputus nama); sektor tanpa mention
+        aktor tidak muncul di hasil."""
+        if not sectors:
+            return {}
+        sec = mention_rows(SECTOR)
+        act = mention_rows(ACTOR)
+        cnt = func.count().label("cnt")
+        sub = (
+            _apply_article_filters(
+                _joined(select(sec.c.name.label("sector"), act.c.name.label("actor"), cnt), sec)
+                .join(act, act.c.article_id == Article.id)
+                .where(sec.c.name.in_(sectors)),
+                **filters,
+            )
+            .group_by(sec.c.name, act.c.name)
+            .subquery()
+        )
+        rn = func.row_number().over(
+            partition_by=sub.c.sector, order_by=(sub.c.cnt.desc(), sub.c.actor)
+        )
+        ranked = select(sub.c.sector, sub.c.actor, rn.label("rn")).subquery()
+        stmt = select(ranked.c.sector, ranked.c.actor).where(ranked.c.rn == 1)
+        return {sector: actor for sector, actor in (await self.session.execute(stmt)).all()}
+
     async def ta_confidence_raw(
         self, *, posted_on_start: datetime.date, actors: Sequence[str]
     ) -> list[tuple[str, int, int, int]]:
@@ -456,7 +529,9 @@ class AsyncDashboardRepo:
         news_types: Sequence[str] | None = None,
         search: str | None = None,
     ) -> list[tuple[datetime.date, str, int]]:
-        """`dimension`: "threat_actor" | "country" | "industry" | "ttp". Port
+        """`dimension`: "threat_actor" | "country" | "industry" | "ttp" | "malware" | "cve".
+        "malware" menggabung entitas `malware` dan `tool` (kunci: nama); "cve" memakai entitas
+        `vulnerability` (kunci: `external_id`, yaitu id CVE-nya). Port
         `by_actor`/`by_country`/`by_industry` facet `spike_service.py`.
         `exclude_news_types`/`confirmed_only` cuma kepake pas dipanggil
         dari `exec_dashboard_v2` (`industry_spikes`, ikut filter
@@ -481,9 +556,11 @@ class AsyncDashboardRepo:
             "country": COUNTRY,
             "industry": SECTOR,
             "ttp": TECHNIQUE,
+            "malware": MALWARE_TYPES,
+            "cve": CVE,
         }[dimension]
-        m = mention_rows(etype)
-        key = m.c.external_id if dimension in ("country", "ttp") else m.c.name
+        m = mention_rows(*((etype,) if isinstance(etype, str) else etype))
+        key = m.c.external_id if dimension in ("country", "ttp", "cve") else m.c.name
         col = (
             func.concat(m.c.external_id, "|", canonical_ttp_name(m.c.external_id, m.c.name))
             if dimension == "ttp"
@@ -508,7 +585,7 @@ class AsyncDashboardRepo:
         if news_types:
             stmt = stmt.where(Article.news_type.in_(news_types))
         if search:
-            stmt = stmt.where(Article.title.ilike(f"%{search}%"))
+            stmt = stmt.where(article_search_clause(search))
         stmt = stmt.group_by(Article.posted_on, key)
         rows = (await self.session.execute(stmt)).all()
         return [(d, entity, cnt) for d, entity, cnt in rows]
@@ -712,6 +789,32 @@ class AsyncDashboardRepo:
         )
         return int((await self.session.execute(stmt)).scalar_one())
 
+    async def watchlist_top_names(
+        self, *, client_id: str, posted_on_start: datetime.date | None, limit: int = 3
+    ) -> list[str]:
+        """Nama aktor yang di-watch `client_id` dengan artikel DISTINCT terbanyak (seri: nama).
+        Join-nya sama dengan `watchlist_hit_count`, jadi nama-nama ini tidak pernah menyebut aktor
+        yang angkanya diabaikan. Dikelompokkan per entitas supaya dua entitas sepadan nama tetap
+        dua baris."""
+        m = mention_rows(ACTOR)
+        count = func.count(func.distinct(Article.id))
+        stmt = (
+            _apply_article_filters(
+                _joined(select(m.c.name, count), m).join(
+                    EntityWatch,
+                    and_(
+                        EntityWatch.entity_id == m.c.entity_id, EntityWatch.client_id == client_id
+                    ),
+                ),
+                posted_on_start=posted_on_start,
+                posted_on_end=None,
+            )
+            .group_by(m.c.entity_id, m.c.name)
+            .order_by(count.desc(), m.c.name)
+            .limit(limit)
+        )
+        return [name for name, _ in (await self.session.execute(stmt)).all()]
+
     @staticmethod
     def _open_cve_stmt(
         stmt: Select[tuple[Any, ...]],
@@ -798,6 +901,34 @@ class AsyncDashboardRepo:
             "open_kev": int(k or 0),
             "kev_without_ticket": int(n or 0),
         }
+
+    async def kev_tech_names(
+        self,
+        *,
+        client_id: str,
+        tech: Sequence[str] | None,
+        exclude_cve_ids: Sequence[str] | None,
+        limit: int = 3,
+    ) -> list[str]:
+        """Tech dengan baris KEV terbuka terbanyak (seri: nama). Menerima dict scope yang sama
+        dengan `cve_exposure_counts` (`_cve_scope`): false positive dan tech non-aktif dibuang
+        persis sama, jadi nama di hero tidak pernah menyebut tech yang angka `kev_in_stack`-nya
+        mengabaikan."""
+        stmt = (
+            self._open_cve_stmt(
+                select(CveTracker.tech, func.count())
+                .select_from(CveTracker)
+                .outerjoin(CveTicket, self._tracker_ticket_join()),
+                client_id=client_id,
+                tech=tech,
+                exclude_cve_ids=exclude_cve_ids,
+            )
+            .where(CveTracker.cisa_kev.is_(True), CveTracker.tech.is_not(None))
+            .group_by(CveTracker.tech)
+            .order_by(func.count().desc(), CveTracker.tech)
+            .limit(limit)
+        )
+        return [t for t, _ in (await self.session.execute(stmt)).all()]
 
     async def tickets_closed(
         self, *, client_id: str, since: datetime.date | None

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import datetime
 import zoneinfo
+from typing import Literal
 
 from cti_core.db.models.tweet import Tweet
 from cti_core.db.repositories.tweet import AsyncTweetRepo
@@ -131,6 +132,8 @@ async def tweet_stats(
     apac_only: bool = Query(False),
     ot_only: bool = Query(False),
     confirmed_only: bool = Query(False),
+    has_cve: bool = Query(False),
+    signal: Literal["ot", "zero_day", "databreach", "report"] | None = Query(None),
     session: AsyncSession = Depends(get_db),
 ) -> dict[str, object]:
     start, end, before = _date_bounds(posted_on_start, posted_on_end, tz)
@@ -144,6 +147,8 @@ async def tweet_stats(
         apac_only=apac_only,
         ot_only=ot_only,
         confirmed_only=confirmed_only,
+        has_cve=has_cve,
+        signal=signal,
     )
 
 
@@ -160,6 +165,8 @@ async def list_tweets(
     apac_only: bool = Query(False),
     ot_only: bool = Query(False),
     confirmed_only: bool = Query(False),
+    has_cve: bool = Query(False),
+    signal: Literal["ot", "zero_day", "databreach", "report"] | None = Query(None),
     session: AsyncSession = Depends(get_db),
 ) -> TweetListResponse:
     start, end, before = _date_bounds(posted_on_start, posted_on_end, tz)
@@ -175,6 +182,8 @@ async def list_tweets(
         apac_only=apac_only,
         ot_only=ot_only,
         confirmed_only=confirmed_only,
+        has_cve=has_cve,
+        signal=signal,
     )
     return TweetListResponse(
         tweets=[_serialize(t) for t in tweets], total=total, page=page, page_size=page_size

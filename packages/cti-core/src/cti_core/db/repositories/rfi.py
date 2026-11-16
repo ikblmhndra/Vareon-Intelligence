@@ -16,12 +16,40 @@ instruksi "port apa adanya, flag asimetri, jangan diam-diam diperbaiki"
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Sequence
+from typing import Any, Literal
 
-from sqlalchemy import func, select
+from sqlalchemy import Select, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_core.db.models.rfi import RFIRequest
+
+# Batas RFI tertaut per PIR yang dikirim ke UI: PIR dengan ratusan RFI tidak boleh membengkakkan
+# respons daftar PIR; yang masih terbuka sudah diurutkan paling depan.
+_LINKED_RFI_CAP = 20
+
+_RFI_STATUSES = ("open", "in_progress", "closed")
+
+
+def _like(text: str) -> str:
+    """Pola ILIKE aman: `%`, `_`, dan `\\` dalam input pengguna diperlakukan literal."""
+    escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
+def _apply_search[S: Select[Any]](stmt: S, *, q: str | None, linked_pir: int | None) -> S:
+    """Filter pencarian + PIR yang dipakai bersama oleh daftar dan hitungan chip status."""
+    if q:
+        pattern = _like(q)
+        stmt = stmt.where(
+            or_(
+                RFIRequest.question.ilike(pattern, escape="\\"),
+                RFIRequest.requester.ilike(pattern, escape="\\"),
+            )
+        )
+    if linked_pir is not None:
+        stmt = stmt.where(RFIRequest.linked_pir_id == linked_pir)
+    return stmt
 
 
 class AsyncRFIRepo:
@@ -35,21 +63,69 @@ class AsyncRFIRepo:
         status: str | None = None,
         page: int = 1,
         page_size: int = 20,
+        q: str | None = None,
+        linked_pir: int | None = None,
+        sort: Literal["created", "due"] = "created",
     ) -> tuple[list[RFIRequest], int]:
         stmt = select(RFIRequest).where(RFIRequest.client_id == client_id)
         if status:
             stmt = stmt.where(RFIRequest.status == status)
+        stmt = _apply_search(stmt, q=q, linked_pir=linked_pir)
+
+        # `id` jadi tie-breaker supaya halaman stabil saat due_date/created_at sama.
+        order = (
+            (RFIRequest.due_date.asc().nulls_last(), RFIRequest.id)
+            if sort == "due"
+            else (RFIRequest.created_at.desc(), RFIRequest.id.desc())
+        )
 
         count_stmt = select(func.count()).select_from(stmt.subquery())
         total = (await self.session.execute(count_stmt)).scalar_one()
 
-        list_stmt = (
-            stmt.order_by(RFIRequest.created_at.desc())
-            .offset((page - 1) * page_size)
-            .limit(page_size)
-        )
+        list_stmt = stmt.order_by(*order).offset((page - 1) * page_size).limit(page_size)
         result = await self.session.execute(list_stmt)
         return list(result.scalars().all()), total
+
+    async def status_counts(
+        self, client_id: str, *, q: str | None = None, linked_pir: int | None = None
+    ) -> dict[str, int]:
+        """Jumlah RFI per status untuk chip filter: satu `GROUP BY`, tidak ikut filter `status`
+        daftar (chip harus tetap menunjukkan total tiap status). `q` dan `linked_pir` ikut,
+        supaya angka chip sama dengan daftar yang sedang dicari/disaring PIR. Status tak dikenal
+        diabaikan."""
+        stmt = select(RFIRequest.status, func.count()).where(RFIRequest.client_id == client_id)
+        stmt = _apply_search(stmt, q=q, linked_pir=linked_pir)
+        result = await self.session.execute(stmt.group_by(RFIRequest.status))
+        found: dict[str, int] = {status: n for status, n in result.all()}
+        return {s: int(found.get(s, 0)) for s in _RFI_STATUSES}
+
+    async def list_by_pirs(
+        self, client_id: str, pir_ids: Sequence[int]
+    ) -> dict[int, list[RFIRequest]]:
+        """RFI tertaut per PIR dalam SATU query. `linked_pir_id` hanyalah FK tanpa cek client,
+        jadi RFI client lain yang menunjuk PIR ini harus disaring lewat `client_id`. Urutan:
+        open, in_progress, closed, status tak dikenal; lalu due_date terdekat (NULL terakhir),
+        lalu id. Dipotong `_LINKED_RFI_CAP` di Python supaya SQL tetap satu pernyataan sederhana."""
+        if not pir_ids:
+            return {}
+        rank = case(
+            (RFIRequest.status == "open", 0),
+            (RFIRequest.status == "in_progress", 1),
+            (RFIRequest.status == "closed", 2),
+            else_=3,
+        )
+        result = await self.session.execute(
+            select(RFIRequest)
+            .where(RFIRequest.client_id == client_id, RFIRequest.linked_pir_id.in_(pir_ids))
+            .order_by(rank, RFIRequest.due_date.asc().nulls_last(), RFIRequest.id)
+        )
+        out: dict[int, list[RFIRequest]] = {}
+        for rfi in result.scalars():
+            assert rfi.linked_pir_id is not None
+            bucket = out.setdefault(rfi.linked_pir_id, [])
+            if len(bucket) < _LINKED_RFI_CAP:
+                bucket.append(rfi)
+        return out
 
     async def get_by_id(self, rfi_id: int, client_id: str) -> RFIRequest | None:
         result = await self.session.execute(

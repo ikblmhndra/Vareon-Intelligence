@@ -92,6 +92,7 @@ def create_graph_draft(
     *,
     settings: GraphSettings | None = None,
     inline_images: Sequence[InlineImage] = (),
+    to: Sequence[str] = (),
 ) -> str:
     """Bikin DRAFT message di mailbox `settings.sender` lewat Graph API
     (`POST /users/{sender}/messages`) -- port apa adanya, kode lama juga
@@ -101,7 +102,10 @@ def create_graph_draft(
     `inline_images`: gambar yang dirujuk `html_content` lewat `cid:`, dikirim di request yang SAMA
     (Graph menerima `attachments` saat membuat pesan, selama tiap lampiran di bawah ~3 MB; logo
     newsletter beberapa KB). Kosong (default) = payload persis seperti sebelumnya, jadi pemanggil
-    lama (email CVE) tidak berubah."""
+    lama (email CVE) tidak berubah.
+
+    `to`: penerima langsung (mis. lead tim untuk eskalasi). Kosong (default) = payload TANPA kunci
+    `toRecipients`, sama seperti sebelumnya (analis mengisi penerima sendiri di Outlook)."""
     settings = settings or effective_settings().graph
 
     authority = f"https://login.microsoftonline.com/{settings.tenant_id}"
@@ -121,6 +125,8 @@ def create_graph_draft(
         "body": {"contentType": "html", "content": html_content},
         "ccRecipients": cc_list,
     }
+    if to:
+        payload["toRecipients"] = [{"emailAddress": {"address": addr}} for addr in to]
     if inline_images:
         payload["attachments"] = [_inline_attachment(image) for image in inline_images]
     resp2 = httpx.post(

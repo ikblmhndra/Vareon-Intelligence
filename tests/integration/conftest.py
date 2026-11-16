@@ -227,10 +227,14 @@ class _FakeRedis:
     async def expire(self, key: str, seconds: int) -> bool:
         return True
 
-    async def set(self, key: str, value: int, *, ex: int | None = None, nx: bool = False) -> bool:
+    async def set(self, key: str, value: Any, *, ex: int | None = None, nx: bool = False) -> bool:
         if nx and key in self._counts:
             return False
-        self._counts[key] = int(value)
+        try:
+            self._counts[key] = int(value)
+        except ValueError:  # nilai teks (mis. waktu ISO): `get` membacanya dari `values`
+            self._counts[key] = 1
+            self.values[key] = str(value)
         if ex is not None:
             self._ttl[key] = ex
         return True

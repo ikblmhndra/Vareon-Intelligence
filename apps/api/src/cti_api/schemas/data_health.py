@@ -22,7 +22,23 @@ class EnrichmentHealthOut(BaseModel):
     last_failure_at: str | None
 
 
+class PipelineWindowOut(BaseModel):
+    items_found: int
+    """Jumlah `items_found` semua run scraper yang dimulai dalam jendela (semua status)."""
+    items_new: int
+    articles_published: int
+    """Artikel dengan `first_seen_at` dalam jendela."""
+
+
+class PipelineHealthOut(BaseModel):
+    last_24h: PipelineWindowOut
+    last_7d: PipelineWindowOut
+
+
 class QueueHealthOut(BaseModel):
+    depths: dict[str, int] | None
+    """`LLEN` tiap queue Celery (hanya pesan yang menunggu; task yang sudah di-reserve belum di-ack
+    tidak ada di list). `None` kalau Redis tidak bisa dibaca."""
     enrich_depth: int | None
     """`LLEN enrich` di broker; `None` kalau Redis tidak bisa dibaca."""
     enrich_max_depth: int
@@ -86,6 +102,14 @@ class StoryHealthOut(BaseModel):
     """Artikel yang menempel ke story lewat aturan judul-embedding (`title_embedding`)."""
 
 
+class LlmHourOut(BaseModel):
+    hour: str
+    """Awal jam UTC, ISO 8601 (`...T14:00:00+00:00`)."""
+    ok: int
+    failed: int
+    """Baris `error` + `empty`, semua task."""
+
+
 class LlmHealthOut(BaseModel):
     status: Literal["ok", "failing", "unknown"]
     """Panggilan terbaru task classify/ttp: ok -> ok, error/empty -> failing, kosong -> unknown."""
@@ -97,6 +121,8 @@ class LlmHealthOut(BaseModel):
     usage_7d: list[LlmTaskUsageOut]
     stories_24h: StoryHealthOut
     stories_7d: StoryHealthOut
+    calls_per_hour: list[LlmHourOut]
+    """24 bucket per jam UTC, terlama dulu; jam tanpa panggilan = nol, bukan hilang."""
 
 
 class RelevanceHealthOut(BaseModel):
@@ -150,6 +176,7 @@ class DataHealthOut(BaseModel):
     """ISO UTC saat angka dihitung (cache 60 detik per proses)."""
     scrapers: ScraperHealthSummary
     enrichment: EnrichmentHealthOut
+    pipeline: PipelineHealthOut
     queues: QueueHealthOut
     sources: SourceFreshnessOut
     ioc_enrichment: list[IocEnrichmentTypeOut]

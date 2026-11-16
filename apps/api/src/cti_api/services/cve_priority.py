@@ -20,21 +20,13 @@ from __future__ import annotations
 
 from typing import Any
 
+from cti_core.cve_risk import risk_label as _priority_label
+from cti_core.cve_risk import risk_score
 from cti_core.db.models.cve import CveTracker
 from cti_core.db.repositories.cve import AsyncCveTrackerRepo
 from cti_core.db.repositories.techstack import AsyncTechStackRepo
 from cti_core.tech_match import mentions
 from sqlalchemy.ext.asyncio import AsyncSession
-
-
-def _priority_label(score: float) -> str:
-    if score >= 80:
-        return "critical_patch"
-    if score >= 60:
-        return "high_priority"
-    if score >= 40:
-        return "medium"
-    return "low"
 
 
 def _patch_urgency(label: str, in_tech_stack: bool) -> str:
@@ -105,14 +97,14 @@ async def prioritize_campaign_cves(
         poc_available = bool(row.poc_available)
         in_tech_stack = _in_tech_stack(row.tech or "", tech_stack)
 
-        score = (
-            cvss * 10 * 0.30
-            + (100 if cisa_kev else 0) * 0.20
-            + (100 if actively_exploited else 0) * 0.20
-            + (100 if poc_available else 0) * 0.10
-            + (100 if in_tech_stack else 0) * 0.20
+        # Satu rumus dengan sort/tampilan daftar CVE (`cti_core.cve_risk`).
+        score = risk_score(
+            cvss,
+            kev=cisa_kev,
+            exploited=actively_exploited,
+            poc=poc_available,
+            in_stack=in_tech_stack,
         )
-        score = round(min(score, 100), 1)
 
         label = _priority_label(score)
         results.append(

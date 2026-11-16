@@ -265,16 +265,19 @@ def _compute_sector_risk_scores(
     return results
 
 
-def _compute_ta_velocity(
+def _velocity_rows(
     ta_monthly_raw: list[tuple[str, str, int]],
     months: list[str],
     usable: list[bool] | None = None,
-) -> list[dict[str, Any]]:
+) -> dict[str, dict[str, Any]]:
+    """Velocity SEMUA aktor yang punya riwayat usable. Dipisah dari `_compute_ta_velocity` supaya
+    baris leaderboard (top 10 menurut jumlah) bisa membawa velocity-nya sendiri: aktor yang
+    menurun jatuh dari top 10 velocity (urut naik), tapi tetap tampil di leaderboard."""
     series: dict[str, dict[str, int]] = defaultdict(dict)
     for actor, month, count in ta_monthly_raw:
         series[actor][month] = count
 
-    results: list[dict[str, Any]] = []
+    results: dict[str, dict[str, Any]] = {}
     for actor, monthly in series.items():
         counts = [monthly.get(m, 0) for m in months]
         if len(counts) < 2 or sum(counts) == 0:
@@ -292,16 +295,22 @@ def _compute_ta_velocity(
             velocity_pct = 100
         else:
             velocity_pct = 0
-        results.append(
-            {
-                "actor": actor,
-                "velocity_pct": velocity_pct,
-                "last_month": last,
-                "avg_prev": round(avg_prev, 1),
-                "total": sum(counts),
-            }
-        )
+        results[actor] = {
+            "actor": actor,
+            "velocity_pct": velocity_pct,
+            "last_month": last,
+            "avg_prev": round(avg_prev, 1),
+            "total": sum(counts),
+        }
+    return results
 
+
+def _compute_ta_velocity(
+    ta_monthly_raw: list[tuple[str, str, int]],
+    months: list[str],
+    usable: list[bool] | None = None,
+) -> list[dict[str, Any]]:
+    results = list(_velocity_rows(ta_monthly_raw, months, usable).values())
     results.sort(key=lambda x: -x["velocity_pct"])
     return results[:10]
 
@@ -511,6 +520,23 @@ async def get_exec_dashboard_v2(
 
     top_ttps = [{"id": tid, "name": name or tid, "count": cnt} for tid, name, cnt in ttp_raw]
     ta_velocity = _compute_ta_velocity(ta_monthly_raw, months, usable_months)
+    # Leaderboard dan kartu sektor membawa velocity / sektor teratas / aktor teratas sendiri
+    # (briefing Exec): dihitung per nama dari data yang sudah ada + dua query berkelompok kecil.
+    velocity_by_actor = _velocity_rows(ta_monthly_raw, months, usable_months)
+    top_sectors_by_actor = await repo.top_sectors_by_actor(
+        actors=top_actor_names_for_conf, exclude=(UNSPECIFIED_INDUSTRY,), **base
+    )
+    for row in base_dash["ta_leaderboard"]:
+        vel = velocity_by_actor.get(row["name"])
+        row["velocity_pct"] = vel["velocity_pct"] if vel else None
+        row["last_month"] = vel["last_month"] if vel else None
+        row["avg_prev"] = vel["avg_prev"] if vel else None
+        row["top_sectors"] = top_sectors_by_actor.get(row["name"], [])
+    top_actor_by_sector = await repo.top_actor_by_sector(
+        sectors=[s["sector"] for s in sector_risk_scores], **base
+    )
+    for srow in sector_risk_scores:
+        srow["top_actor"] = top_actor_by_sector.get(srow["sector"])
     sector_cooccurrence = _compute_sector_cooccurrence(cooccur_map)
     newstype_trend = _build_newstype_trend(newstype_monthly_raw, months)
     sector_actor_matrix = _build_sector_actor_matrix(
@@ -554,6 +580,7 @@ async def get_exec_dashboard_v2(
     return {
         **base_dash,
         "prev_ta_names": prev_ta_names,
+        "monthly_totals": [month_totals.get(m, 0) for m in months],
         "sector_risk_scores": sector_risk_scores,
         "cve_exposure_v2": cve_exposure_v2,
         "cve_kpis": cve_kpis,

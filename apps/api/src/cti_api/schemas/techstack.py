@@ -40,6 +40,21 @@ class TechStackOut(BaseModel):
     """`catalog` = punya target katalog; `custom` = entri lama/bebas (dicocokkan lewat teks nama,
     belum terverifikasi terhadap katalog)."""
     targets: list[TechStackTargetOut] = []
+    match_count: int = 0
+    """CVE client ini yang cocok dengan entri (bukan FP, tanpa filter tanggal; entri nonaktif
+    tetap dihitung = riwayat)."""
+
+
+class TechStackCoverage(BaseModel):
+    """Ringkasan pemetaan katalog satu client; tidak terpengaruh filter/paging daftar."""
+
+    total: int
+    active: int
+    mapped_family: int
+    mapped_vendor: int
+    unmapped: int
+    hidden: int
+    """Entri nonaktif (dipetakan atau tidak)."""
 
 
 class TechStackAdd(BaseModel):

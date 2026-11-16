@@ -1,0 +1,96 @@
+import type { ReactNode } from "react";
+
+import { Card } from "@/components/ui/card";
+import { Sparkline } from "@/components/ui/sparkline";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
+
+// Kelas ditulis utuh supaya Tailwind menemukannya.
+const TONE = {
+  neutral: { bar: "bg-foreground", value: "text-foreground" },
+  destructive: { bar: "bg-destructive", value: "text-destructive-text" },
+  warning: { bar: "bg-warning", value: "text-warning-text" },
+  info: { bar: "bg-info", value: "text-info-text" },
+  intel: { bar: "bg-intel", value: "text-intel-text" },
+  success: { bar: "bg-success", value: "text-success-text" },
+} as const;
+
+/** Jenis hal yang dihitung tile: threat = berita/insiden/korban/aktor/teknik, vuln = CVE/KEV/tiket/eksposur,
+ * intel = IOC/entitas/PIR/sumber/kampanye, ops = scraper/antrean/data health/kesegaran. */
+export type KpiKind = "threat" | "vuln" | "intel" | "ops";
+
+const KIND_TONE: Record<KpiKind, keyof typeof TONE> = {
+  threat: "destructive",
+  vuln: "warning",
+  intel: "intel",
+  ops: "info",
+};
+
+interface StatTileProps {
+  label: string;
+  value: ReactNode;
+  sub?: ReactNode;
+  tone?: keyof typeof TONE;
+  /** Warna menurut jenis angka. `tone` eksplisit menang (tile severity/status tetap pakai nadanya). */
+  kind?: KpiKind;
+  tooltip?: ReactNode;
+  /** Deret kecil di pojok kanan bawah (min. 2 titik); dekoratif, angka tetap ada di `value`/`sub`. */
+  spark?: number[];
+  /** Tile terpilih (hanya bermakna bersama `onSelect`). */
+  selected?: boolean;
+  /** Bila ada, tile dirender sebagai `<button aria-pressed>` (filter tipe IOC). */
+  onSelect?: () => void;
+  className?: string;
+}
+
+/** Kotak angka ringkas: batang warna 2 px di atas, label 11 px kapital, angka besar, keterangan kecil.
+ * `tooltip` (opsional) menjelaskan label saat di-hover/fokus. */
+export function StatTile({ label, value, sub, tone, kind, tooltip, spark, selected, onSelect, className }: StatTileProps) {
+  const t = TONE[tone ?? (kind ? KIND_TONE[kind] : "neutral")];
+  const labelEl = (
+    <p className="text-2xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+  );
+  const card = (
+    <Card
+      variant="tile"
+      size="sm"
+      className={cn("relative gap-1 px-4", onSelect && selected && "ring-2 ring-foreground", !onSelect && className)}
+    >
+      <span aria-hidden="true" className={cn("absolute inset-x-0 top-0 h-0.5", t.bar)} />
+      {tooltip && !onSelect ? (
+        <Tooltip>
+          <TooltipTrigger render={<span tabIndex={0} className="w-fit outline-none focus-visible:ring-2 focus-visible:ring-ring" />}>
+            {labelEl}
+          </TooltipTrigger>
+          <TooltipContent>{tooltip}</TooltipContent>
+        </Tooltip>
+      ) : (
+        labelEl
+      )}
+      <p className={cn("text-[32px] font-bold leading-tight tabular-nums", t.value)}>{value}</p>
+      {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
+      {spark && spark.length >= 2 && <Sparkline data={spark} className="absolute right-4 bottom-3 h-6 w-20" />}
+    </Card>
+  );
+  if (!onSelect) return card;
+  // Tile terpilih = tombol. Tooltip dipasang di tombolnya sendiri (bukan span ber-tabIndex di dalam tombol),
+  // supaya hanya ada satu tab stop dan isi tombol tetap terbaca pembaca layar.
+  const buttonClass = cn(
+    "block rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+    className,
+  );
+  if (!tooltip)
+    return (
+      <button type="button" aria-pressed={!!selected} onClick={onSelect} className={buttonClass}>
+        {card}
+      </button>
+    );
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<button type="button" aria-pressed={!!selected} onClick={onSelect} className={buttonClass} />}>
+        {card}
+      </TooltipTrigger>
+      <TooltipContent>{tooltip}</TooltipContent>
+    </Tooltip>
+  );
+}

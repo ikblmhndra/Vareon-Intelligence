@@ -3,9 +3,14 @@ Fase 7.3 (router `techstack`)."""
 
 from __future__ import annotations
 
+import datetime
+from collections.abc import Callable
+from typing import Any
+
 import pytest
 from cti_core.db.repositories.auth import AsyncClientRepo
 from cti_core.db.repositories.techstack import AsyncTechStackRepo
+from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 pytestmark = pytest.mark.asyncio
@@ -172,3 +177,106 @@ async def test_active_names_all_clients_is_the_distinct_union_of_active_entries(
     await repo.set_active(hidden.id, "acme", False)  # nonaktif = disembunyikan, bukan dipantau
 
     assert await repo.active_names_all_clients() == ["Fortinet", "Nginx"]
+
+
+# ── match_count dan coverage (2a, item 6/7) ──────────────────────────────────────────────────
+
+
+async def _tracker(session: AsyncSession, cve_id: str, tech: str, client_id: str) -> None:
+    from cti_core.db.models.cve import CveTracker
+
+    session.add(CveTracker(cve_id=cve_id, client_id=client_id, tech=tech))
+    await session.flush()
+
+
+async def test_count_by_tech_excludes_fps_and_other_clients(
+    async_db_session: AsyncSession,
+) -> None:
+    from cti_core.db.models.cve import CveFalsePositive
+    from cti_core.db.repositories.cve import AsyncCveTrackerRepo
+
+    await _ensure_clients(async_db_session)
+    await _tracker(async_db_session, "CVE-2026-0001", "nginx", "default")
+    await _tracker(async_db_session, "CVE-2026-0002", "nginx", "default")
+    await _tracker(async_db_session, "CVE-2026-0003", "nginx", "default")  # akan ditandai FP
+    await _tracker(async_db_session, "CVE-2026-0004", "nginx", "acme")
+    async_db_session.add(CveFalsePositive(cve_id="CVE-2026-0003", client_id="default"))
+    await async_db_session.flush()
+
+    counts = await AsyncCveTrackerRepo(async_db_session).count_by_tech("default")
+    assert counts == {"nginx": 2}
+
+
+async def test_count_by_tech_case_insensitive_and_hidden_entry_counted(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+) -> None:
+    await _ensure_clients(api_session)
+    repo = AsyncTechStackRepo(api_session)
+    entry, _ = await repo.create(name="NGINX", client_id="default")
+    assert entry is not None
+    await repo.set_active(entry.id, "default", False)
+    await _tracker(api_session, "CVE-2026-0001", "nginx", "default")
+    await _tracker(api_session, "CVE-2026-0002", "Nginx", "default")
+
+    items = (await api_client.get("/api/techstack", headers=auth_header())).json()["items"]
+    assert [(i["name"], i["match_count"], i["active"]) for i in items] == [("NGINX", 2, False)]
+
+
+async def test_coverage_buckets(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+) -> None:
+    from cti_core.catalog_resolve import AffectedEntry, resolve_all
+    from cti_core.db.models.catalog import CatalogFamily, CatalogVendor
+    from cti_core.db.repositories.catalog import CveMirrorRepo, MirrorRecord
+    from sqlalchemy import select
+
+    await _ensure_clients(api_session)
+    d = datetime.date(2026, 3, 1)
+
+    def _seed(sync: Any) -> None:
+        CveMirrorRepo(sync).upsert(
+            MirrorRecord(
+                cve_id="CVE-2026-0001",
+                published_date=d,
+                published_at=datetime.datetime.combine(d, datetime.time(9), tzinfo=datetime.UTC),
+                modified_at=datetime.datetime.combine(d, datetime.time(9), tzinfo=datetime.UTC),
+                summary="x",
+                link="https://example.org",
+            ),
+            resolve_all([AffectedEntry(vendor="Fortinet", product="FortiOS")]),
+        )
+
+    await api_session.run_sync(_seed)
+    await api_session.flush()
+    vendor_id = (
+        await api_session.execute(select(CatalogVendor.id).where(CatalogVendor.key == "fortinet"))
+    ).scalar_one()
+    family_id = (
+        await api_session.execute(select(CatalogFamily.id).where(CatalogFamily.key == "fortios"))
+    ).scalar_one()
+
+    repo = AsyncTechStackRepo(api_session)
+    v, _ = await repo.create_from_target(client_id="default", vendor_id=vendor_id)
+    f, _ = await repo.create_from_target(client_id="default", family_id=family_id)
+    u, _ = await repo.create(name="custom", client_id="default")
+    h, _ = await repo.create_from_target(
+        client_id="default", family_id=family_id, name="FortiOS hidden"
+    )
+    assert v and f and u and h
+    await repo.set_active(h.id, "default", False)
+    other, _ = await repo.create(name="acme-only", client_id="acme")  # client lain: tidak dihitung
+    assert other is not None
+
+    body = (await api_client.get("/api/techstack/coverage", headers=auth_header())).json()
+    assert body == {
+        "total": 4,
+        "active": 3,
+        "mapped_vendor": 1,
+        "mapped_family": 1,
+        "unmapped": 1,
+        "hidden": 1,
+    }

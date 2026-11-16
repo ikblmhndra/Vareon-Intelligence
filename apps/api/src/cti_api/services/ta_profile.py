@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import datetime
 import re
-from typing import Any
+from typing import Any, NamedTuple
 
 from cti_core.db.models.article import Article
 from cti_core.db.repositories.attack import AsyncAttackQueryRepo
@@ -22,6 +22,8 @@ from cti_core.llm.client import get_llm_client, parse_json_response
 from cti_core.llm.usage import prompt_version
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from cti_api.services import grounding
 
 _SYSTEM_PROMPT = """You are a Senior Cyber Threat Intelligence Analyst. Your task is to produce a structured,
 analyst-grade threat actor profile based on the input provided (report text, article,
@@ -45,6 +47,7 @@ Return ONLY a valid JSON object — no preamble, no markdown fencing, no comment
 Use this exact schema:
 
 {
+  "summary": "<2-3 plain sentences, at most 600 characters: who the actor is, what it targets and what the recent reporting in the context adds. Use only the provided context; write null when the context says nothing>",
   "profile_metadata": {
     "generated_at": "<ISO 8601 timestamp>",
     "source_document": "<title or URL of source>",
@@ -216,14 +219,24 @@ def _build_user_message(
     return "\n".join(lines)
 
 
-async def build_profile_input(session: AsyncSession, actor_name: str) -> tuple[str, str | None]:
-    """Return (user message, MITRE group ID yang cocok atau None)."""
+class ProfileInput(NamedTuple):
+    message: str
+    mitre_group_id: str | None
+    article_count: int
+    """Jumlah judul berita di konteks (maks 10, batas `fetch_recent_news`): UI menampilkan
+    "berdasarkan N artikel" tanpa menghitung ulang."""
+
+
+async def build_profile_input(session: AsyncSession, actor_name: str) -> ProfileInput:
+    """User message, MITRE group ID yang cocok (atau None), dan jumlah artikel di konteks."""
     news = await AsyncTAProfileRepo(session).fetch_recent_news(actor_name)
     attack_repo = AsyncAttackQueryRepo(session)
     grp = await attack_repo.get_group_by_name_or_alias_ci(actor_name)
     attack_group = await attack_repo.get_group(grp.group_id) if grp is not None else None
     mitre_group_id = attack_group["group_id"] if attack_group else None
-    return _build_user_message(actor_name, news, attack_group), mitre_group_id
+    return ProfileInput(
+        _build_user_message(actor_name, news, attack_group), mitre_group_id, len(news)
+    )
 
 
 def apply_overrides(
@@ -245,6 +258,29 @@ def apply_overrides(
         tracking = identity["tracking_ids"] = {}
     tracking["mitre_group_id"] = mitre_group_id
     return profile
+
+
+SUMMARY_MAX = 600
+
+
+def normalise_summary(profile: dict[str, Any], context: str) -> str | None:
+    """Ringkasan 2-3 kalimat untuk kepala profil. Model bisa mengembalikan non-string, teks
+    panjang, atau CVE yang tidak ada di konteks; CVE asing dibuang lewat `grounding` (pola yang
+    sama dengan ringkasan newsletter) karena ringkasan ini dibaca analis sebagai fakta. Dipotong
+    di batas kata supaya tidak berakhir di tengah kata."""
+    raw = profile.get("summary")
+    if not isinstance(raw, str):
+        return None
+    text = " ".join(raw.split())
+    if not text:
+        return None
+    grounder = grounding.Grounder(grounding.Known.build(text=context))
+    text = grounder.free_text("summary", text)
+    if len(text) > SUMMARY_MAX:
+        text = text[:SUMMARY_MAX]
+        if " " in text:  # satu kata tanpa spasi lebih dari batas: potong keras
+            text = text.rsplit(" ", 1)[0]
+    return text.rstrip() or None
 
 
 _TECHNIQUE_ID_RE = re.compile(r"\bT\d{4}(?:\.\d{3})?\b")
@@ -377,11 +413,13 @@ async def _enrich_profile_cves(session: AsyncSession, profile: dict[str, Any]) -
 
 async def generate_ta_profile(session: AsyncSession, actor_name: str) -> dict[str, Any]:
     profile_repo = AsyncTAProfileRepo(session)
-    user_msg, mitre_group_id = await build_profile_input(session, actor_name)
+    user_msg, mitre_group_id, article_count = await build_profile_input(session, actor_name)
     profile = await asyncio.to_thread(_call_llm, user_msg)
     now = datetime.datetime.now(datetime.UTC)
     apply_overrides(profile, mitre_group_id, now)
     filter_techniques_to_context(profile, user_msg)
+    profile["summary"] = normalise_summary(profile, user_msg)
+    profile["_article_count"] = article_count
     profile["_actor_name"] = actor_name
     profile["_generated_at"] = now.isoformat()
 

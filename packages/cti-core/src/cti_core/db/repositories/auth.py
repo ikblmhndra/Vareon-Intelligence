@@ -107,12 +107,18 @@ class AsyncUserRepo:
         self.session.expire(user, attribute_names=["clients"])
         return True
 
-    async def reset_password(self, username: str, password_hash: str) -> bool:
+    async def reset_password(
+        self, username: str, password_hash: str, *, force_change: bool
+    ) -> bool:
+        """Ganti hash password. `force_change` sengaja tanpa default: tiap pemanggil harus
+        menyatakan niatnya. Reset oleh admin -> True (admin tahu password yang diketiknya, jadi
+        pemilik akun wajib menggantinya saat login berikutnya); ganti password sendiri -> False
+        (itu yang mengakhiri status wajib-ganti)."""
         user = await self.get_by_username(username)
         if user is None:
             return False
         user.password_hash = password_hash
-        user.force_pw_change = False
+        user.force_pw_change = force_change
         await self.session.flush()
         return True
 

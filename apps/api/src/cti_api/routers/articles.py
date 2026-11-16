@@ -29,6 +29,7 @@ from cti_core.db.models.source_reliability import SourceReliabilityEntry
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.assessment import apply_assessments_async
 from cti_core.db.repositories.auth import AsyncAuditLogRepo
+from cti_core.db.repositories.indicator import AsyncIndicatorRepo
 from cti_core.db.repositories.source_reliability import AsyncSourceReliabilityRepo
 from cti_core.db.repositories.story import AsyncStoryRepo
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
@@ -45,6 +46,8 @@ from cti_api.deps import (
 from cti_api.schemas.article import (
     TTP,
     ArticleEntityRef,
+    ArticleIocOut,
+    ArticleIocsOut,
     ArticleListResponse,
     ArticleOut,
     CredibilityOverrideIn,
@@ -71,6 +74,7 @@ from cti_api.services import (
     trending,
 )
 from cti_api.services import dedup as dedup_service
+from cti_api.services.ioc_reputation import reputation_label
 
 router = APIRouter(
     prefix="/api",
@@ -153,6 +157,8 @@ def _serialize(
         title=str(machine_fields.get("title", "")),
         url=str(machine_fields.get("url", "")),
         posted_on=posted_on.isoformat() if isinstance(posted_on, datetime.date) else "",
+        summary=article.summary,
+        first_seen_at=article.first_seen_at.isoformat(),
         source=source,
         impacted_industries=article.entity_names("identity"),
         mentioned_countries=article.country_codes("mentioned"),
@@ -239,6 +245,7 @@ async def list_articles(
     sort: Literal["recent", "priority"] = Query("recent"),
     confirmed_only: bool = Query(False),
     story_id: int | None = Query(None),
+    reliability_grade: list[Literal["A", "B", "C", "D", "E", "F"]] | None = Query(None),
     dedup: bool = Query(False),
     dedup_threshold: float = Query(0.75, ge=0.5, le=0.99),
     user: AuthedUser = Depends(require_auth),
@@ -266,6 +273,7 @@ async def list_articles(
         sort=sort,
         confirmed_only=confirmed_only,
         story_id=story_id,
+        reliability_grades=reliability_grade,
     )
     # Satu query rating per request (bukan per artikel) buat kode Admiralty + asal grade.
     ratings = await AsyncSourceReliabilityRepo(session).get_all_ratings()
@@ -351,9 +359,11 @@ async def dashboard_attention(
 
 @router.get("/dashboard/trending", response_model=TrendingResponse)
 async def dashboard_trending(
-    days: int | None = _DaysQuery, session: AsyncSession = Depends(get_db)
+    days: int | None = _DaysQuery,
+    kinds: list[trending.TrendKind] = Query(["actor", "ttp"]),
+    session: AsyncSession = Depends(get_db),
 ) -> TrendingResponse:
-    return TrendingResponse(**await trending.get_trending(session, days=days))
+    return TrendingResponse(**await trending.get_trending(session, days=days, kinds=kinds))
 
 
 @router.get("/dashboard/ransomware", response_model=RansomwareOverview)
@@ -366,13 +376,15 @@ async def dashboard_ransomware(
 @router.get("/dashboard/cve-exposure", response_model=CveExposure)
 async def dashboard_cve_exposure(
     days: int | None = _DaysQuery,
+    # Batas baris tabel CVE di Dashboard; default 3 menjaga pemanggil lama.
+    limit: int = Query(3, ge=1, le=10),
     user: AuthedUser = Depends(require_auth),
     x_client_id: str | None = Header(None),
     session: AsyncSession = Depends(get_db),
 ) -> CveExposure:
     cid = effective_client_id(user, x_client_id)
     return CveExposure(
-        **await dashboard_overview.get_cve_exposure(session, client_id=cid, days=days)
+        **await dashboard_overview.get_cve_exposure(session, client_id=cid, days=days, limit=limit)
     )
 
 
@@ -529,3 +541,30 @@ async def get_article_inferred_ttps(
     if article is None:
         raise HTTPException(status_code=404, detail="Article not found")
     return await inferred_ttps.for_article(session, article)
+
+
+@router.get(
+    "/articles/{article_id}/iocs",
+    response_model=ArticleIocsOut,
+    dependencies=[Depends(require_auth)],
+)
+async def get_article_iocs(
+    article_id: int, session: AsyncSession = Depends(get_db)
+) -> ArticleIocsOut:
+    """IOC artikel untuk reader All articles; `ArticleOut.iocs` tetap `{}` (daftar ini hanya
+    dimuat saat reader terbuka, bukan di setiap baris list)."""
+    if await AsyncArticleRepo(session).get_by_id(article_id) is None:
+        raise HTTPException(status_code=404, detail="Article not found")
+    rows, total = await AsyncIndicatorRepo(session).list_for_article(article_id)
+    return ArticleIocsOut(
+        items=[
+            ArticleIocOut(
+                type=ind.type,
+                value=ind.value,
+                context=ctx,
+                reputation=reputation_label(ind.enrichment or {}),
+            )
+            for ind, ctx in rows
+        ],
+        total=total,
+    )

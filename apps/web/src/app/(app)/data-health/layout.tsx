@@ -1,17 +1,12 @@
 import type { Metadata } from "next";
 
-import { PageHeader } from "@/components/page-header";
+import { PLATFORM_NAME } from "@/lib/brand";
 
-export const metadata: Metadata = { title: "Data health" };
+// Template dipasang ulang: `title` string di layout segmen ini akan membuang template root untuk anak-anaknya.
+export const metadata: Metadata = {
+  title: { default: "Data health", template: `%s · ${PLATFORM_NAME}` },
+};
 
 export default function DataHealthLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <>
-      <PageHeader
-        title="Data health"
-        description="Whether the pipeline is collecting, enriching and keeping its sources fresh, in one place."
-      />
-      {children}
-    </>
-  );
+  return children;
 }

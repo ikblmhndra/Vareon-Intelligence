@@ -132,3 +132,117 @@ async def test_create_with_due_date(async_db_session: AsyncSession) -> None:
         client_id="default",
     )
     assert rfi.due_date == datetime.date(2026, 10, 1)
+
+
+async def test_status_counts_per_client(async_db_session: AsyncSession) -> None:
+    await _ensure_clients(async_db_session)
+    repo = AsyncRFIRepo(async_db_session)
+    await repo.create({"requester": "a", "question": "q1", "status": "open"}, client_id="default")
+    await repo.create({"requester": "a", "question": "q2", "status": "open"}, client_id="default")
+    await repo.create({"requester": "a", "question": "q3", "status": "closed"}, client_id="default")
+    await repo.create({"requester": "a", "question": "q4", "status": "open"}, client_id="acme")
+
+    counts = await repo.status_counts("default")
+    assert counts == {"open": 2, "in_progress": 0, "closed": 1}
+
+
+async def test_status_counts_filter_independent(async_db_session: AsyncSession) -> None:
+    """Hitungan status untuk chip UI tidak ikut menyempit saat daftar difilter `status`."""
+    await _ensure_clients(async_db_session)
+    repo = AsyncRFIRepo(async_db_session)
+    for st in ("open", "in_progress", "closed"):
+        await repo.create({"requester": "a", "question": st, "status": st}, client_id="default")
+
+    rfis, total = await repo.list_filtered(client_id="default", status="closed")
+    assert total == 1 and rfis[0].status == "closed"
+    assert await repo.status_counts("default") == {"open": 1, "in_progress": 1, "closed": 1}
+
+
+async def test_status_counts_unknown_status_ignored(async_db_session: AsyncSession) -> None:
+    await _ensure_clients(async_db_session)
+    repo = AsyncRFIRepo(async_db_session)
+    await repo.create({"requester": "a", "question": "q", "status": "weird"}, client_id="default")
+
+    assert await repo.status_counts("default") == {"open": 0, "in_progress": 0, "closed": 0}
+
+
+async def test_search_and_linked_pir_filter(async_db_session: AsyncSession) -> None:
+    from cti_core.db.repositories.pir import AsyncPIRRepo
+
+    await _ensure_clients(async_db_session)
+    pir = await AsyncPIRRepo(async_db_session).create({"title": "P"}, client_id="default")
+    repo = AsyncRFIRepo(async_db_session)
+    r1 = await repo.create(
+        {"requester": "Alice", "question": "Any LockBit infra?", "linked_pir": pir.id},
+        client_id="default",
+    )
+    r2 = await repo.create({"requester": "bob", "question": "100% done?"}, client_id="default")
+
+    by_question, _ = await repo.list_filtered(client_id="default", q="lockbit")
+    assert [r.id for r in by_question] == [r1.id]
+    by_requester, _ = await repo.list_filtered(client_id="default", q="BOB")
+    assert [r.id for r in by_requester] == [r2.id]
+    literal, total = await repo.list_filtered(client_id="default", q="%")
+    assert total == 1 and literal[0].id == r2.id
+    linked, total = await repo.list_filtered(client_id="default", linked_pir=pir.id)
+    assert total == 1 and linked[0].id == r1.id
+
+
+async def test_status_counts_respect_q_and_linked_pir(async_db_session: AsyncSession) -> None:
+    """Chip status harus cocok dengan daftar yang sedang dicari/disaring PIR (tab "open" di link
+    PIR menunjukkan angka PIR itu saja), tapi tetap tidak ikut filter `status`."""
+    from cti_core.db.repositories.pir import AsyncPIRRepo
+
+    await _ensure_clients(async_db_session)
+    pir = await AsyncPIRRepo(async_db_session).create({"title": "P"}, client_id="default")
+    repo = AsyncRFIRepo(async_db_session)
+    await repo.create(
+        {"requester": "a", "question": "LockBit infra", "status": "open", "linked_pir": pir.id},
+        client_id="default",
+    )
+    await repo.create(
+        {"requester": "a", "question": "LockBit TTPs", "status": "in_progress"},
+        client_id="default",
+    )
+    await repo.create(
+        {"requester": "a", "question": "Akira", "status": "closed", "linked_pir": pir.id},
+        client_id="default",
+    )
+
+    assert await repo.status_counts("default", q="lockbit") == {
+        "open": 1,
+        "in_progress": 1,
+        "closed": 0,
+    }
+    assert await repo.status_counts("default", linked_pir=pir.id) == {
+        "open": 1,
+        "in_progress": 0,
+        "closed": 1,
+    }
+    assert await repo.status_counts("default", q="lockbit", linked_pir=pir.id) == {
+        "open": 1,
+        "in_progress": 0,
+        "closed": 0,
+    }
+
+
+async def test_sort_due(async_db_session: AsyncSession) -> None:
+    await _ensure_clients(async_db_session)
+    repo = AsyncRFIRepo(async_db_session)
+    none1 = await repo.create({"requester": "a", "question": "n1"}, client_id="default")
+    late = await repo.create(
+        {"requester": "a", "question": "late", "due_date": datetime.date(2026, 12, 1)},
+        client_id="default",
+    )
+    soon_a = await repo.create(
+        {"requester": "a", "question": "sa", "due_date": datetime.date(2026, 11, 1)},
+        client_id="default",
+    )
+    soon_b = await repo.create(
+        {"requester": "a", "question": "sb", "due_date": datetime.date(2026, 11, 1)},
+        client_id="default",
+    )
+    none2 = await repo.create({"requester": "a", "question": "n2"}, client_id="default")
+
+    rfis, _ = await repo.list_filtered(client_id="default", sort="due")
+    assert [r.id for r in rfis] == [soon_a.id, soon_b.id, late.id, none1.id, none2.id]

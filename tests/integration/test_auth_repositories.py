@@ -157,7 +157,7 @@ class TestAsyncUserRepo:
         assert fetched is not None
         assert [c.client_id for c in fetched.clients] == ["acme"]
 
-    async def test_reset_password_clears_force_pw_change(
+    async def test_reset_password_self_change_clears_force_pw_change(
         self, async_db_session: AsyncSession
     ) -> None:
         await self._make_role(async_db_session)
@@ -169,11 +169,27 @@ class TestAsyncUserRepo:
         user.force_pw_change = True
         await async_db_session.flush()
 
-        assert await repo.reset_password("alice", "new-hash") is True
+        assert await repo.reset_password("alice", "new-hash", force_change=False) is True
         fetched = await repo.get_by_username("alice")
         assert fetched is not None
         assert fetched.password_hash == "new-hash"
         assert fetched.force_pw_change is False
+
+    async def test_reset_password_admin_reset_sets_force_pw_change(
+        self, async_db_session: AsyncSession
+    ) -> None:
+        await self._make_role(async_db_session)
+        await AsyncClientRepo(async_db_session).ensure_default()
+        repo = AsyncUserRepo(async_db_session)
+        await repo.create(
+            username="alice", password_hash="old", role_name="analyst", client_ids=["default"]
+        )
+
+        assert await repo.reset_password("alice", "new-hash", force_change=True) is True
+        fetched = await repo.get_by_username("alice")
+        assert fetched is not None
+        assert fetched.password_hash == "new-hash"
+        assert fetched.force_pw_change is True
 
     async def test_update_last_sign_in_sets_timestamp(self, async_db_session: AsyncSession) -> None:
         await self._make_role(async_db_session)

@@ -33,6 +33,7 @@
         'scorecard_date': None,
         'scorecard_score': None,
         'source': 'manual',
+        'source_path': '',
         'version': '4.17.20',
         'vuln_count': 1,
       }),
@@ -52,6 +53,7 @@
     'packages': 1,
     'total_vulns': 1,
     'unacknowledged': 1,
+    'vulnerable_packages': 1,
   })
 # ---
 # name: test_get_vulns
@@ -97,8 +99,13 @@
 # name: test_import_lockfile
   dict({
     'added': 1,
+    'already_monitored': 0,
+    'detected_format': 'package-json',
+    'dry_run': False,
+    'ecosystem': 'npm',
     'errors': list([
     ]),
+    'new': 1,
     'packages': list([
       dict({
         'ecosystem': 'npm',
@@ -108,6 +115,8 @@
     ]),
     'parsed': 1,
     'skipped': 0,
+    'unsupported': 0,
+    'version_changes': 0,
   })
 # ---
 # name: test_patch_package

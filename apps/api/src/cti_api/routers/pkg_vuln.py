@@ -35,6 +35,7 @@ from fastapi import (
     BackgroundTasks,
     Depends,
     File,
+    Form,
     Header,
     HTTPException,
     Query,
@@ -60,6 +61,7 @@ from cti_api.schemas.pkg_vuln import (
     PackageDepGraphOut,
     PackageVulnListResponse,
     PackageVulnOut,
+    PkgVulnStats,
 )
 from cti_api.services import pkg_vuln as pkg_vuln_service
 
@@ -130,6 +132,7 @@ def _pkg_out(pkg: MonitoredPackage) -> MonitoredPackageOut:
         dep_resolved_at=pkg.dep_resolved_at.isoformat() if pkg.dep_resolved_at else None,
         scorecard_score=pkg.scorecard_score,
         scorecard_date=pkg.scorecard_date,
+        source_path=pkg.source_path or "",
     )
 
 
@@ -170,6 +173,7 @@ def _vuln_out(v: PackageVuln) -> PackageVulnOut:
 @router.get("/packages", response_model=MonitoredPackageListResponse)
 async def get_packages(
     search: str | None = None,
+    ecosystem: str | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=500),
     sort_by: str = Query("name"),
@@ -180,7 +184,13 @@ async def get_packages(
 ) -> MonitoredPackageListResponse:
     cid = effective_client_id(user, x_client_id)
     items, total = await AsyncMonitoredPackageRepo(session).list_filtered(
-        cid, search=search, page=page, page_size=page_size, sort_by=sort_by, sort_dir=sort_dir
+        cid,
+        search=search,
+        ecosystem=ecosystem,
+        page=page,
+        page_size=page_size,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
     )
     return MonitoredPackageListResponse(
         items=[_pkg_out(i) for i in items], total=total, page=page, page_size=page_size
@@ -382,13 +392,24 @@ async def import_lockfile_endpoint(
     request: Request,
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
+    dry_run: bool = Form(False),
+    ecosystem: str = Form("auto"),
+    project: str = Form("", max_length=200),
     user: AuthedUser = Depends(require_auth),
     x_client_id: str | None = Header(None),
     session: AsyncSession = Depends(get_db),
 ) -> LockfileImportResult:
-    """Upload lockfile (requirements.txt, package-lock.json, go.mod,
-    pom.xml, poetry.lock). Parse package dengan versi pinned, tambahin
-    ke monitoring."""
+    """Upload lockfile (requirements.txt, package-lock.json, package.json,
+    yarn.lock, go.mod, go.sum, pom.xml, poetry.lock, Gemfile.lock). Parse
+    package dengan versi pinned, tambahin ke monitoring.
+
+    `dry_run=true` cuma ngitung (baru / sudah dimonitor / versi berubah):
+    gak nulis apa pun, gak jadwalin scan, gak audit. Nama file yang tidak
+    dikenali dengan `ecosystem="auto"` -> 422; kalau `ecosystem` dipilih
+    eksplisit, parser fallback ecosystem itu dipakai. `project` (tanpa
+    `..`) jadi prefix `source_path`."""
+    if ".." in project:
+        raise HTTPException(status_code=422, detail="Invalid project name")
     cid = effective_client_id(user, x_client_id)
     content_bytes = await file.read(_MAX_LOCKFILE_BYTES + 1)  # jangan baca upload tak terbatas
     if len(content_bytes) > _MAX_LOCKFILE_BYTES:
@@ -397,21 +418,33 @@ async def import_lockfile_endpoint(
         content = content_bytes.decode("utf-8", errors="replace")
     except Exception as e:
         raise HTTPException(status_code=400, detail="Could not decode file as UTF-8") from e
-    result = await pkg_vuln_service.import_lockfile(
-        session, file.filename or "unknown", content, client_id=cid
-    )
-    for pkg in result["packages"]:
-        background_tasks.add_task(
-            _run_scan_package, pkg["name"], pkg["ecosystem"], pkg.get("version"), cid
+    try:
+        result = await pkg_vuln_service.import_lockfile(
+            session,
+            file.filename or "unknown",
+            content,
+            client_id=cid,
+            ecosystem=ecosystem,
+            project=project,
+            dry_run=dry_run,
         )
-    await AsyncAuditLogRepo(session).write(
-        username=user["username"],
-        action="import_lockfile",
-        target_id=file.filename or "unknown",
-        detail={"parsed": result["parsed"], "added": result["added"]},
-        ip_address=request_ip(request),
-    )
-    await session.commit()
+    except pkg_vuln_service.UnknownLockfileError as e:
+        raise HTTPException(
+            status_code=422, detail="Unrecognised lockfile, choose the ecosystem"
+        ) from e
+    if not dry_run:
+        for pkg in result["packages"]:
+            background_tasks.add_task(
+                _run_scan_package, pkg["name"], pkg["ecosystem"], pkg.get("version"), cid
+            )
+        await AsyncAuditLogRepo(session).write(
+            username=user["username"],
+            action="import_lockfile",
+            target_id=file.filename or "unknown",
+            detail={"parsed": result["parsed"], "added": result["added"]},
+            ip_address=request_ip(request),
+        )
+        await session.commit()
     return LockfileImportResult(**result)
 
 
@@ -473,22 +506,25 @@ async def ack_vuln(
 # ── Stats ──────────────────────────────────────────────────────────────────────
 
 
-@router.get("/stats")
+@router.get("/stats", response_model=PkgVulnStats)
 async def get_pkg_stats(
     user: AuthedUser = Depends(require_auth),
     x_client_id: str | None = Header(None),
     session: AsyncSession = Depends(get_db),
-) -> dict[str, object]:
+) -> PkgVulnStats:
     cid = effective_client_id(user, x_client_id)
-    pkg_count = await AsyncMonitoredPackageRepo(session).count(cid)
+    pkg_repo = AsyncMonitoredPackageRepo(session)
+    pkg_count = await pkg_repo.count(cid)
+    vulnerable = await pkg_repo.count_vulnerable(cid)
     vuln_stats = await AsyncPackageVulnRepo(session).get_severity_stats(cid)
-    return {
-        "packages": pkg_count,
-        "total_vulns": vuln_stats["total_vulns"],
-        "critical": vuln_stats["critical"],
-        "high": vuln_stats["high"],
-        "medium": vuln_stats["medium"],
-        "low": vuln_stats["low"],
-        "unacknowledged": vuln_stats["unacknowledged"],
-        "kev_count": vuln_stats["kev_count"],
-    }
+    return PkgVulnStats(
+        packages=pkg_count,
+        total_vulns=vuln_stats["total_vulns"],
+        critical=vuln_stats["critical"],
+        high=vuln_stats["high"],
+        medium=vuln_stats["medium"],
+        low=vuln_stats["low"],
+        unacknowledged=vuln_stats["unacknowledged"],
+        kev_count=vuln_stats["kev_count"],
+        vulnerable_packages=vulnerable,
+    )

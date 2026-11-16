@@ -42,6 +42,7 @@
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
   --color-popover-foreground: var(--popover-foreground);
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
@@ -77,6 +78,8 @@
   --color-success-text: var(--success-text);
   --color-warning-text: var(--warning-text);
   --color-info-text: var(--info-text);
+  --color-intel: var(--intel);
+  --color-intel-text: var(--intel-text);
   --color-severity-critical-text: var(--severity-critical-text);
   --color-severity-high-text: var(--severity-high-text);
   --color-severity-medium-text: var(--severity-medium-text);
@@ -121,11 +124,13 @@
   --text-2xs--line-height: calc(1 / 0.6875);
 }
 
-/* Permukaan "raised" untuk kartu konten utama: warna surface + bayangan bertinta, tepinya cuma
-   hairline 7% (bukan garis beige penuh), jadi kartu terbaca sebagai lapisan, bukan kotak.
+/* Permukaan "raised" untuk kartu konten utama: latar putih (bg-background, sama dengan Card) +
+   garis border token, tanpa bayangan (mockup FigCraft: kartu datar berbingkai; beige surface hanya
+   untuk tile tanpa border). Nama utility dipertahankan agar
+   pemakai lama tidak perlu diubah.
    Hierarki: hero (band burgundy) > raised (ini) > flat (tanpa latar, hanya spasi/pembatas). */
 @utility surface-raised {
-  @apply bg-surface shadow-sm ring-1 ring-foreground/[0.07];
+  @apply border border-border bg-background;
 }
 
 :root {
@@ -139,6 +144,7 @@
   --popover-foreground: var(--foreground);
   --primary: #d0002f; /* Privy Red, digelapkan sedikit dari #e60034 supaya teks merah di atas beige lulus AA */
   --primary-foreground: #ffffff;
+  --primary-hover: #b00025;
   --secondary: #f0e7db;
   --secondary-foreground: var(--foreground);
   --muted: var(--panel);
@@ -147,10 +153,10 @@
   --accent-foreground: var(--foreground);
   --destructive: #b42318; /* oranye-merah, beda hue dari --primary */
   --border: #e3d6c6;
-  --input: #e3d6c6;
-  --ring: #d0002f;
+  --input: #8f7565;
+  --ring: var(--foreground);
   --success: #17703f;
-  --warning: #9a4a00;
+  --warning: #a04a07;
   --info: #256a8a;
   --tag-violet: #6b4a9e;
   --severity-critical: #b42318;
@@ -163,20 +169,22 @@
   --success-text: #0f5c32;
   --warning-text: #7d3b00;
   --info-text: #1b5873;
+  --intel: #0891a0;
+  --intel-text: #066670;
   --severity-critical-text: #9a1c12;
   --severity-high-text: #8a3f00;
   --severity-medium-text: #6b4f00;
   --severity-low-text: #0f5c32;
   --tag-violet-text: #5a3d87;
-  --chart-1: #256a8a;
+  --chart-1: #0b6690;
   --chart-2: #17703f;
-  --chart-3: #b04a00;
-  --chart-4: #7a3a5a;
+  --chart-3: #b94000;
+  --chart-4: #6c2f46;
   --chart-5: #6b4a9e;
-  --chart-6: #5b6b1f;
-  --chart-7: #a0306f;
-  --chart-8: #4a5568;
-  --chart-9: #0f766e;
+  --chart-6: #6f8a00;
+  --chart-7: #d8246f;
+  --chart-8: #808996;
+  --chart-9: #028b8c;
   --chart-10: #9a6b00;
   --sidebar: var(--surface);
   --sidebar-foreground: var(--foreground);
@@ -209,6 +217,7 @@
   --popover-foreground: var(--foreground);
   --primary: #ff4d6d;
   --primary-foreground: #0f070b;
+  --primary-hover: #ff6b85;
   --secondary: #33202f;
   --secondary-foreground: var(--foreground);
   --muted: var(--panel);
@@ -217,8 +226,8 @@
   --accent-foreground: var(--foreground);
   --destructive: #ff7a6e;
   --border: #55344a;
-  --input: #55344a;
-  --ring: #ff4d6d;
+  --input: #8a6a7c;
+  --ring: var(--foreground);
   --success: #76ce93;
   --warning: #ffa164;
   --info: #92bbd1;
@@ -233,21 +242,23 @@
   --success-text: var(--success);
   --warning-text: var(--warning);
   --info-text: var(--info);
+  --intel: #26cfd6;
+  --intel-text: var(--intel);
   --severity-critical-text: var(--severity-critical);
   --severity-high-text: var(--severity-high);
   --severity-medium-text: var(--severity-medium);
   --severity-low-text: var(--severity-low);
   --tag-violet-text: var(--tag-violet);
-  --chart-1: #92bbd1;
-  --chart-2: #76ce93;
+  --chart-1: #81c0dc;
+  --chart-2: #75cd93;
   --chart-3: #ffa164;
-  --chart-4: #fbbfa1;
-  --chart-5: #c9b0f0;
-  --chart-6: #f5cf5a;
-  --chart-7: #e08fb5;
-  --chart-8: #b7a3c9;
-  --chart-9: #5eead4;
-  --chart-10: #fde68a;
+  --chart-4: #ff6969;
+  --chart-5: #cec7ff;
+  --chart-6: #f7ce59;
+  --chart-7: #dd8abb;
+  --chart-8: #a8a39b;
+  --chart-9: #6b7cff;
+  --chart-10: #c2f545;
   --sidebar: var(--surface);
   --sidebar-foreground: var(--foreground);
   --sidebar-primary: var(--primary);
@@ -356,5 +367,26 @@
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* Ekspor PDF Recap (`window.print()`): halaman putih tanpa bayangan, kartu tidak terbelah antar
+   halaman, tautan mencetak teksnya saja. Masthead, utility bar, nav HP, dan aksi halaman memakai
+   `print:hidden`. */
+@media print {
+  html,
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+  * {
+    box-shadow: none !important;
+  }
+  [data-slot="card"] {
+    break-inside: avoid;
+  }
+  a {
+    color: inherit !important;
+    text-decoration: none !important;
   }
 }

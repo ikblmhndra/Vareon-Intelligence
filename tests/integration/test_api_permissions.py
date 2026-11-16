@@ -58,7 +58,14 @@ async def test_analyst_keeps_reading_and_cve_triage(
     await AsyncClientRepo(api_session).ensure_default()
     await api_session.commit()
     analyst = auth_header(username="alice", role="analyst")
-    for path in ("/api/articles", "/api/cve/stats", "/api/data-health", "/api/pir"):
+    for path in (
+        "/api/articles",
+        "/api/cve/stats",
+        "/api/data-health",
+        "/api/pir",
+        "/api/exec/brief",
+        "/api/exec/brief/dates",
+    ):
         r = await api_client.get(path, headers=analyst)
         assert r.status_code != 403, (path, r.text)
     # manage_cve: ack CVE yang tidak di-track -> 404 dari handler, bukan 403 dari permission.

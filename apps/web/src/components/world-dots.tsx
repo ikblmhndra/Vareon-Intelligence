@@ -16,6 +16,10 @@ const DOT_RADIUS = 0.8; // titik 1.6 px
 const GLOW_FACTOR = 2.2;
 const ANTARCTICA_ID = "010"; // id numerik world-atlas; tidak digambar (memenuhi baris bawah peta)
 const COVER_CENTER_LON = 105; // mode "cover": bujur ini di tengah horizontal (APAC)
+// Tampilan "apac": bujur 60 BT sampai 180, lintang 50 LS sampai 55 LU (spec 6.3, P8).
+const APAC = { lonMin: 60, lonMax: 180, latMin: -50, latMax: 55 };
+
+export type WorldView = "world" | "apac";
 
 export interface WorldDotPoint {
   code: string; // ISO alpha-2 dari API, dinormalkan di sini (UK→GB, EL→GR)
@@ -44,6 +48,52 @@ interface Size {
 
 const normalize = (code: string) => ALIAS[code.toUpperCase()] ?? code.toUpperCase();
 
+/** Daratan dan centroid dibangun malas sekali per modul: dipakai komponen dan `inView`. */
+let landCache: ReturnType<typeof buildLand> | null = null;
+let centroidCache: Map<string, [number, number]> | null = null;
+
+function buildLand() {
+  const topo = world as unknown as Topology;
+  const all = feature(topo, topo.objects.countries as GeometryCollection);
+  return {
+    ...all,
+    features: all.features.filter((f) => String(f.id) !== ANTARCTICA_ID),
+  };
+}
+
+function getLand() {
+  return (landCache ??= buildLand());
+}
+
+function getCentroids() {
+  if (!centroidCache) {
+    const m = new Map<string, [number, number]>();
+    for (const f of getLand().features) {
+      if (f.id === undefined) continue;
+      const a2 = countries.numericToAlpha2(String(f.id));
+      if (a2) m.set(a2, geoCentroid(f) as [number, number]);
+    }
+    centroidCache = m;
+  }
+  return centroidCache;
+}
+
+/** Koordinat yang dipakai untuk menaruh titik; sama persis untuk komponen dan `inView`. */
+function coordOf(code: string): [number, number] | undefined {
+  const c = normalize(code);
+  return getCentroids().get(c) ?? SMALL_STATES[c];
+}
+
+/** "world": kode punya koordinat. "apac": koordinat itu di dalam rentang APAC. */
+export function inView(code: string, view: WorldView): boolean {
+  const c = coordOf(code);
+  if (!c) return false;
+  if (view === "world") return true;
+  return (
+    c[0] >= APAC.lonMin && c[0] <= APAC.lonMax && c[1] >= APAC.latMin && c[1] <= APAC.latMax
+  );
+}
+
 /** Warna dari token tema; dibaca ulang tiap gambar supaya ikut ganti terang/gelap. */
 function readColors() {
   const s = getComputedStyle(document.documentElement);
@@ -64,6 +114,7 @@ export function WorldDots({
   points,
   className,
   fit = "contain",
+  view = "world",
   onPointFocus,
   onPointSelect,
 }: {
@@ -71,6 +122,8 @@ export function WorldDots({
   className?: string;
   /** "contain": seluruh bola dunia muat. "cover": daratan mengisi dua dimensi, sisanya terpotong. */
   fit?: "contain" | "cover";
+  /** "apac": rentang APAC mengisi kotak (mengabaikan `fit`), tanpa daratan/titik di luarnya. */
+  view?: WorldView;
   onPointFocus?: (p: WorldDotPoint | null) => void;
   onPointSelect?: (p: WorldDotPoint) => void;
 }) {
@@ -79,28 +132,27 @@ export function WorldDots({
   const [size, setSize] = useState<Size>({ w: 0, h: 0 });
   const [themeTick, setThemeTick] = useState(0);
 
-  // Geometri dunia dibangun sekali per mount.
-  const land = useMemo(() => {
-    const topo = world as unknown as Topology;
-    const all = feature(topo, topo.objects.countries as GeometryCollection);
-    return {
-      ...all,
-      features: all.features.filter((f) => String(f.id) !== ANTARCTICA_ID),
-    };
-  }, []);
-
-  const centroids = useMemo(() => {
-    const m = new Map<string, [number, number]>();
-    for (const f of land.features) {
-      if (f.id === undefined) continue;
-      const a2 = countries.numericToAlpha2(String(f.id));
-      if (a2) m.set(a2, geoCentroid(f) as [number, number]);
-    }
-    return m;
-  }, [land]);
+  const land = getLand();
 
   const projection = useMemo(() => {
     if (size.w <= 0 || size.h <= 0) return null;
+    if (view === "apac") {
+      // Dua sudut rentang: ekuirektangular linear, jadi kotak pembatasnya tepat rentang APAC.
+      // clipExtent memotong daratan di luar rentang (kotak lebih besar dari rentang bila rasio beda).
+      const p = geoEquirectangular().fitSize([size.w, size.h], {
+        type: "MultiPoint",
+        coordinates: [
+          [APAC.lonMin, APAC.latMin],
+          [APAC.lonMax, APAC.latMax],
+        ],
+      });
+      const [x0, y1] = p([APAC.lonMin, APAC.latMin]) as [number, number];
+      const [x1, y0] = p([APAC.lonMax, APAC.latMax]) as [number, number];
+      return p.clipExtent([
+        [x0, y0],
+        [x1, y1],
+      ]);
+    }
     if (fit === "contain") {
       return geoEquirectangular().fitSize([size.w, size.h], { type: "Sphere" });
     }
@@ -113,20 +165,19 @@ export function WorldDots({
       .rotate([-COVER_CENTER_LON, 0])
       .center([0, (latMin + latMax) / 2])
       .translate([size.w / 2, size.h / 2]);
-  }, [size, fit, land]);
+  }, [size, fit, view, land]);
 
   // Titik yang kodenya tidak punya centroid dilewati.
   const placed = useMemo(() => {
     if (!projection || !points) return [];
     const out: { p: WorldDotPoint; x: number; y: number }[] = [];
     for (const p of points) {
-      const code = normalize(p.code);
-      const c = centroids.get(code) ?? SMALL_STATES[code];
-      const xy = c ? projection(c) : null;
+      const c = coordOf(p.code);
+      const xy = c && inView(p.code, view) ? projection(c) : null;
       if (xy) out.push({ p, x: xy[0], y: xy[1] });
     }
     return out;
-  }, [projection, points, centroids]);
+  }, [projection, points, view]);
 
   // Ukuran mengikuti parent; tema berganti lewat class di <html>.
   useEffect(() => {

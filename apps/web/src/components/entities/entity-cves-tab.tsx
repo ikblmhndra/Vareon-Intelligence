@@ -5,7 +5,8 @@ import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { SubListSection, SUBLIST_PAGE_SIZE } from "@/components/entities/entity-subtab";
-import { CveDetailModal } from "@/components/cve/cve-detail-modal";
+import { CveDetailCard } from "@/components/cve/cve-detail-card";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api/client";
@@ -17,7 +18,7 @@ import { cn } from "@/lib/utils";
 type EntityDetail = components["schemas"]["EntityDetail"];
 type CveOut = components["schemas"]["CveOut"];
 
-/** CVE yang dilacak untuk entity; baris membuka modal CVE (dicari lewat `/api/cve?search=`, cocokkan `id`). */
+/** CVE yang dilacak untuk entity; baris membuka panel detail CVE di dialog (dicari lewat `/api/cve?search=`, cocokkan `id`). */
 export function EntityCvesTab({ entity }: { entity: EntityDetail }) {
   const [page, setPage] = useState(1);
   const [cve, setCve] = useState<CveOut | null>(null);
@@ -82,7 +83,7 @@ export function EntityCvesTab({ entity }: { entity: EntityDetail }) {
                     type="button"
                     disabled={opening === c.id}
                     onClick={() => void openCve(c)}
-                    className="rounded font-code text-xs text-primary-text underline-offset-2 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-focus"
+                    className="rounded text-xs text-primary-text underline-offset-2 outline-none hover:underline focus-visible:ring-3 focus-visible:ring-focus"
                   >
                     {c.cve_id}
                   </button>
@@ -95,7 +96,7 @@ export function EntityCvesTab({ entity }: { entity: EntityDetail }) {
                 <TableCell className={cn("text-xs font-medium", severityColorClass(c.cve_severity ?? ""))}>
                   {c.cve_severity ?? "-"}
                 </TableCell>
-                <TableCell className="text-right font-code text-xs">{c.cve_score?.toFixed(1) ?? "-"}</TableCell>
+                <TableCell className="text-right text-xs tabular-nums">{c.cve_score?.toFixed(1) ?? "-"}</TableCell>
                 <TableCell className="text-xs text-muted-foreground">{c.tech ?? "-"}</TableCell>
                 <TableCell className="text-xs text-muted-foreground">{relativeTime(c.detected_on)}</TableCell>
               </TableRow>
@@ -103,7 +104,14 @@ export function EntityCvesTab({ entity }: { entity: EntityDetail }) {
           </TableBody>
         </Table>
       </SubListSection>
-      <CveDetailModal cve={cve} onOpenChange={(o) => !o && setCve(null)} />
+      {/* Panel detail CVE yang sama dengan tab CVEs di CVE Tracker, di dalam dialog. */}
+      <Dialog open={cve !== null} onOpenChange={(o) => !o && setCve(null)}>
+        <DialogContent showCloseButton className="max-h-[90vh] w-full overflow-y-auto p-0 sm:max-w-2xl">
+          <DialogTitle className="sr-only">{cve?.cve_id} details</DialogTitle>
+          <DialogDescription className="sr-only">Severity, scores, affected products and references for this CVE.</DialogDescription>
+          {cve && <CveDetailCard cve={cve} className="border-0" onLeaveList={() => setCve(null)} />}
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

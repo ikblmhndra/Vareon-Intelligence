@@ -11,7 +11,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -23,16 +22,32 @@ import { Skeleton } from "@/components/ui/skeleton";
  * table). Endpoint ini gak butuh auth (`changelog.py` gak pasang
  * `Depends(require_auth)`), jadi jalan duluan tanpa nunggu login beneran
  * -- test pertama yang paling murah buat mastiin pipa proxy-nya hidup.
+ *
+ * Dikontrol dari luar (`open`/`onOpenChange`): sejak masthead FigCraft tombolnya pindah ke item
+ * menu avatar (`AvatarMenu`), dan dialog harus hidup di luar `DropdownMenuContent` yang di-unmount
+ * begitu menu menutup.
  */
-export function ChangelogDialog() {
+export function ChangelogDialog({
+  open,
+  onOpenChange,
+  finalFocus,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** Ke mana fokus kembali saat menutup (item menu pemicunya sudah di-unmount). */
+  finalFocus?: React.RefObject<HTMLElement | null>;
+}) {
   const [selected, setSelected] = useState<string | null>(null);
 
   return (
-    <Dialog onOpenChange={(open) => !open && setSelected(null)}>
-      <DialogTrigger render={<Button variant="ghost" size="sm" className="font-mono text-xs" />}>
-        Changelog
-      </DialogTrigger>
-      <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-lg">
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) setSelected(null);
+        onOpenChange(next);
+      }}
+    >
+      <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-lg" finalFocus={finalFocus}>
         {selected ? (
           <VersionDetail version={selected} onBack={() => setSelected(null)} />
         ) : (

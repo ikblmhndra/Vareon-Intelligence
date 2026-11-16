@@ -1,17 +1,15 @@
 import type { Metadata } from "next";
 
-import { PageHeader } from "@/components/page-header";
+import { CvePageHeader } from "@/components/cve/cve-page-header";
+import { CveViewProvider } from "@/lib/cve/view-state";
 
 export const metadata: Metadata = { title: "CVE Tracker" };
 
 export default function CveLayout({ children }: { children: React.ReactNode }) {
   return (
-    <>
-      <PageHeader
-        title="CVE Tracker"
-        description="CVEs matched to your monitored tech, with ticketing, package vulnerabilities and the full CVE database."
-      />
+    <CveViewProvider>
+      <CvePageHeader />
       {children}
-    </>
+    </CveViewProvider>
   );
 }

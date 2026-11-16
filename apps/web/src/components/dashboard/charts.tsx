@@ -15,7 +15,9 @@ import {
 } from "chart.js";
 import { Bar, Doughnut, Line } from "react-chartjs-2";
 
+import { assignCategorySlots } from "@/lib/category-colors";
 import { cssVar, useChartTheme, withAlpha, type ChartTheme } from "@/lib/chart-theme";
+import { shortTickLabel } from "@/lib/chart-ticks";
 
 ChartJS.register(
   CategoryScale,
@@ -54,10 +56,25 @@ function tooltipBase(t: ChartTheme) {
 
 const gridLine = (t: ChartTheme) => ({ color: withAlpha(t.border, 0.6), drawTicks: false });
 
+/** Legenda satu gaya: titik/garis kecil (bukan kotak), teks redup. */
+const legendBase = (t: ChartTheme, pointStyle: "line" | "circle") => ({
+  position: "bottom" as const,
+  labels: { color: t.textDim, usePointStyle: true, pointStyle, boxWidth: 8, font: { size: 12 } },
+});
+
+/** Tick sumbu x tanggal: label diringkas (`8 Nov`), tidak diputar, dilewati bila padat. */
+const dateTicks = (t: ChartTheme, labels: string[]) => ({
+  color: t.textDim,
+  maxRotation: 0,
+  autoSkip: true,
+  maxTicksLimit: 8,
+  callback: (_v: string | number, i: number) => shortTickLabel(labels[i] ?? ""),
+});
+
 interface HorizontalBarChartProps {
   labels: string[];
   data: number[];
-  tone?: "primary" | "info" | "critical" | "warning" | "success";
+  tone?: "primary" | "info" | "intel" | "critical" | "warning" | "success";
 }
 
 export function HorizontalBarChart({ labels, data, tone = "primary" }: HorizontalBarChartProps) {
@@ -92,49 +109,9 @@ export function HorizontalBarChart({ labels, data, tone = "primary" }: Horizonta
           },
         },
         scales: {
-          x: { grid: gridLine(t), border: { display: false }, ticks: { color: t.textDim } },
+          x: { grid: gridLine(t), border: { display: false }, ticks: { color: t.textDim, maxTicksLimit: 8 } },
           y: { grid: { display: false }, border: { display: false }, ticks: { color: t.textBright, font: { size: 12 } } },
         },
-      }}
-    />
-  );
-}
-
-interface DoughnutChartProps {
-  labels: string[];
-  data: number[];
-}
-
-export function DoughnutChart({ labels, data }: DoughnutChartProps) {
-  const t = useChartTheme();
-  return (
-    <Doughnut
-      data={{
-        labels,
-        datasets: [
-          {
-            data,
-            backgroundColor: t.series,
-            borderColor: t.surface,
-            borderWidth: 3,
-            borderRadius: 6,
-            hoverOffset: 8,
-          },
-        ],
-      }}
-      options={{
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { position: "right", labels: { color: t.textBright, padding: 12, usePointStyle: true, pointStyle: "circle", font: { size: 12 } } },
-          tooltip: {
-            ...tooltipBase(t),
-            callbacks: {
-              label: (ctx: TooltipItem<"doughnut">) => ` ${ctx.label}: ${ctx.parsed} articles`,
-            },
-          },
-        },
-        cutout: "72%",
       }}
     />
   );
@@ -153,20 +130,22 @@ interface MultiLineChartProps {
 /** Beberapa line sekaligus 1 chart (sector/country/victim-country trend). */
 export function MultiLineChart({ labels, series }: MultiLineChartProps) {
   const t = useChartTheme();
+  const slots = assignCategorySlots(series.map((s) => s.label));
   return (
     <Line
       data={{
         labels,
         datasets: series.map((s, i) => {
-          const color = t.series[i % t.series.length];
+          const color = t.series[slots[i]];
           return {
             label: s.label,
             data: s.data,
             borderColor: color,
             backgroundColor: color,
-            borderWidth: 1.5,
-            pointRadius: 1.5,
-            tension: 0.4,
+            borderWidth: 2,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            tension: 0,
           };
         }),
       }}
@@ -174,12 +153,12 @@ export function MultiLineChart({ labels, series }: MultiLineChartProps) {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: { position: "bottom", labels: { color: t.textDim, boxWidth: 10, font: { size: 12 } } },
-          tooltip: { mode: "index", intersect: false },
+          legend: legendBase(t, "line"),
+          tooltip: { ...tooltipBase(t), mode: "index", intersect: false },
         },
         scales: {
-          x: { grid: gridLine(t), ticks: { color: t.textDim, maxTicksLimit: 12 } },
-          y: { grid: gridLine(t), ticks: { color: t.textDim }, beginAtZero: true },
+          x: { grid: gridLine(t), border: { display: false }, ticks: dateTicks(t, labels) },
+          y: { grid: gridLine(t), border: { display: false }, ticks: { color: t.textDim }, beginAtZero: true },
         },
       }}
     />
@@ -194,29 +173,28 @@ interface StackedBarChartProps {
 /** Bar stacked (news-type trend per bulan). */
 export function StackedBarChart({ labels, series }: StackedBarChartProps) {
   const t = useChartTheme();
+  const slots = assignCategorySlots(series.map((s) => s.label));
   return (
     <Bar
       data={{
         labels,
-        datasets: series.map((s, i) => {
-          const color = t.series[i % t.series.length];
-          return {
-            label: s.label,
-            data: s.data,
-            backgroundColor: color,
-            borderWidth: 0,
-          };
-        }),
+        datasets: series.map((s, i) => ({
+          label: s.label,
+          data: s.data,
+          backgroundColor: t.series[slots[i]],
+          borderWidth: 0,
+        })),
       }}
       options={{
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: { position: "bottom", labels: { color: t.textDim, boxWidth: 10, font: { size: 12 } } },
+          legend: legendBase(t, "circle"),
+          tooltip: tooltipBase(t),
         },
         scales: {
-          x: { stacked: true, grid: { display: false }, ticks: { color: t.textDim, maxTicksLimit: 12 } },
-          y: { stacked: true, grid: gridLine(t), ticks: { color: t.textDim } },
+          x: { stacked: true, grid: { display: false }, border: { display: false }, ticks: dateTicks(t, labels) },
+          y: { stacked: true, grid: gridLine(t), border: { display: false }, ticks: { color: t.textDim } },
         },
       }}
     />
@@ -240,20 +218,21 @@ export function TAActivityTimelineChart({ labels, articleCounts, tweetCounts, ra
       data={{
         labels,
         datasets: [
-          { label: "Articles", data: articleCounts, borderColor: withAlpha(t.primary, 0.8), backgroundColor: withAlpha(t.primary, 0.15), fill: true, tension: 0.4, pointRadius: 2 },
-          { label: "Tweets", data: tweetCounts, borderColor: withAlpha(t.info, 0.8), backgroundColor: withAlpha(t.info, 0.1), fill: true, tension: 0.4, pointRadius: 2 },
-          { label: "Ransom", data: ransomCounts, borderColor: withAlpha(t.critical, 0.8), backgroundColor: withAlpha(t.critical, 0.1), fill: true, tension: 0.4, pointRadius: 2 },
+          { label: "Articles", data: articleCounts, borderColor: withAlpha(t.primary, 0.8), backgroundColor: withAlpha(t.primary, 0.15), fill: true, tension: 0, pointRadius: 0, pointHoverRadius: 4 },
+          { label: "Tweets", data: tweetCounts, borderColor: withAlpha(t.info, 0.8), backgroundColor: withAlpha(t.info, 0.1), fill: true, tension: 0, pointRadius: 0, pointHoverRadius: 4 },
+          { label: "Ransom", data: ransomCounts, borderColor: withAlpha(t.critical, 0.8), backgroundColor: withAlpha(t.critical, 0.1), fill: true, tension: 0, pointRadius: 0, pointHoverRadius: 4 },
         ],
       }}
       options={{
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: { position: "bottom", labels: { color: t.textDim, boxWidth: 10, font: { size: 12 } } },
+          legend: legendBase(t, "line"),
+          tooltip: tooltipBase(t),
         },
         scales: {
-          x: { grid: gridLine(t), ticks: { color: t.textDim, maxTicksLimit: 12, font: { size: 12 } } },
-          y: { grid: gridLine(t), ticks: { color: t.textDim, font: { size: 12 } }, beginAtZero: true, stacked: true },
+          x: { grid: gridLine(t), border: { display: false }, ticks: dateTicks(t, labels) },
+          y: { grid: gridLine(t), border: { display: false }, ticks: { color: t.textDim }, beginAtZero: true, stacked: true },
         },
       }}
     />
@@ -288,7 +267,11 @@ export function GradedDoughnutChart({ counts }: GradedDoughnutChartProps) {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: { position: "right", labels: { color: t.textBright, padding: 12, usePointStyle: true, pointStyle: "circle", font: { size: 12 } } },
+          legend: {
+            position: "right",
+            labels: { color: t.textDim, padding: 12, usePointStyle: true, pointStyle: "circle", boxWidth: 8, font: { size: 12 } },
+          },
+          tooltip: tooltipBase(t),
         },
         cutout: "68%",
       }}
@@ -301,9 +284,9 @@ interface TimelineChartProps {
   data: number[];
   /** Nama deret utama (tooltip/legenda); tanpa ini tooltip tetap "N articles" seperti sebelumnya. */
   label?: string;
-  tone?: "primary" | "info" | "critical";
+  tone?: "primary" | "info" | "intel" | "critical";
   /** Deret kedua (mis. insiden terkonfirmasi di atas semua berita); legenda tampil bila ada. */
-  secondary?: { label: string; data: number[]; tone?: "primary" | "info" | "critical" };
+  secondary?: { label: string; data: number[]; tone?: "primary" | "info" | "intel" | "critical" };
   /** Titik terakhir digambar lebih besar (mis. minggu berjalan di kartu ransomware). */
   emphasizeLast?: boolean;
 }
@@ -329,12 +312,12 @@ export function TimelineChart({
             data,
             borderColor: color,
             backgroundColor: withAlpha(color, 0.06),
-            borderWidth: 1.5,
+            borderWidth: 2,
             pointRadius: radius(0),
-            pointHoverRadius: 5,
+            pointHoverRadius: 4,
             pointBackgroundColor: color,
             fill: true,
-            tension: 0.4,
+            tension: 0,
           },
           ...(secondary
             ? [
@@ -343,12 +326,12 @@ export function TimelineChart({
                   data: secondary.data,
                   borderColor: t[secondary.tone ?? "primary"],
                   backgroundColor: withAlpha(t[secondary.tone ?? "primary"], 0.06),
-                  borderWidth: 1.5,
+                  borderWidth: 2,
                   pointRadius: radius(0),
-                  pointHoverRadius: 5,
+                  pointHoverRadius: 4,
                   pointBackgroundColor: t[secondary.tone ?? "primary"],
                   fill: true,
-                  tension: 0.4,
+                  tension: 0,
                 },
               ]
             : []),
@@ -358,10 +341,9 @@ export function TimelineChart({
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: secondary
-            ? { position: "bottom", labels: { color: t.textDim, boxWidth: 10, font: { size: 12 } } }
-            : { display: false },
+          legend: secondary ? legendBase(t, "line") : { display: false },
           tooltip: {
+            ...tooltipBase(t),
             callbacks: {
               label: (ctx: TooltipItem<"line">) =>
                 secondary || label ? ` ${ctx.dataset.label}: ${ctx.parsed.y}` : ` ${ctx.parsed.y} articles`,
@@ -369,8 +351,8 @@ export function TimelineChart({
           },
         },
         scales: {
-          x: { grid: gridLine(t), ticks: { color: t.textDim, maxTicksLimit: 12 } },
-          y: { grid: gridLine(t), ticks: { color: t.textDim }, beginAtZero: true },
+          x: { grid: gridLine(t), border: { display: false }, ticks: dateTicks(t, labels) },
+          y: { grid: gridLine(t), border: { display: false }, ticks: { color: t.textDim }, beginAtZero: true },
         },
       }}
     />
@@ -410,7 +392,7 @@ export function SeverityStackedChart({ labels, counts }: SeverityStackedChartPro
         plugins: {
           legend: {
             position: "bottom",
-            labels: { color: t.textBright, boxWidth: 10, usePointStyle: true, pointStyle: "rectRounded", font: { size: 12 } },
+            labels: { color: t.textDim, boxWidth: 8, usePointStyle: true, pointStyle: "circle", font: { size: 12 } },
           },
           tooltip: {
             ...tooltipBase(t),

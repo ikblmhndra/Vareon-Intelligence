@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/api/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +16,7 @@ import { useAuth } from "@/components/providers/auth-provider";
 import { SimplePager } from "@/components/pager";
 import type { components } from "@/lib/api/schema";
 import { useCan } from "@/lib/auth/permissions";
+import { StatePanel } from "@/components/ui/state-panel";
 
 type PIROut = components["schemas"]["PIROut"];
 type PIRArticleOut = components["schemas"]["PIRArticleOut"];
@@ -63,12 +64,13 @@ export function PirArticlesDialog({ pir, onClose }: PirArticlesDialogProps) {
         <DialogContent className="max-h-[85vh] w-full max-w-2xl overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{pir?.title}</DialogTitle>
+            <DialogDescription className="sr-only">Articles matching this PIR, with analyst notes.</DialogDescription>
             <p className="font-mono text-xs text-muted-foreground">
               {total.toLocaleString()} matching articles — page {page} of {totalPages}
             </p>
           </DialogHeader>
 
-          {query.isPending && <p className="py-6 text-center text-xs text-muted-foreground">Loading…</p>}
+          {query.isPending && <StatePanel variant="loading" title="Loading articles" className="py-8" />}
           {query.isError && <p className="py-6 text-center text-xs text-destructive">Error loading articles.</p>}
           {query.data && query.data.articles.length === 0 && (
             <p className="py-6 text-center text-xs text-muted-foreground">No articles found.</p>
@@ -167,9 +169,10 @@ function PirNoteDialog({ pirId, article, onClose, onSaved }: PirNoteDialogProps)
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="text-sm">{article?.title}</DialogTitle>
+          <DialogDescription className="sr-only">Analyst note for this article under the selected PIR.</DialogDescription>
         </DialogHeader>
         {noteQuery.isPending ? (
-          <p className="py-4 text-center text-xs text-muted-foreground">Loading…</p>
+          <StatePanel variant="loading" title="Loading note" className="py-6" />
         ) : (
           <NoteForm
             initialNote={noteQuery.data?.note ?? ""}
@@ -217,10 +220,10 @@ function NoteForm({
         <Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={4} className="text-xs" />
       </div>
       <div className="flex justify-end gap-2">
-        <Button variant="outline" onClick={onCancel}>
+        <Button variant="ghost" disabled={saving} onClick={onCancel}>
           Cancel
         </Button>
-        <Button disabled={saving} onClick={() => onSave(note, analyst)}>
+        <Button loading={saving} onClick={() => onSave(note, analyst)}>
           {saving ? "Saving…" : "Save Note"}
         </Button>
       </div>

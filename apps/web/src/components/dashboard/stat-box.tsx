@@ -1,5 +1,8 @@
 import type { ReactNode } from "react";
 
+import { Button } from "@/components/ui/button";
+import { Sparkline } from "@/components/ui/sparkline";
+import { StatePanel } from "@/components/ui/state-panel";
 import { cn } from "@/lib/utils";
 
 interface StatBoxProps {
@@ -105,9 +108,14 @@ export function ChartCard({
   className?: string;
 }) {
   return (
-    <div className={cn("surface-raised rounded-2xl p-5", className)}>
+    <div className={cn("surface-raised flex h-full flex-col rounded-2xl p-5", className)}>
       <CardHeader title={title} note={note} />
-      <div style={{ height }}>{children}</div>
+      {/* Badan chart: tumbuh mengikuti tinggi baris, tidak pernah lebih pendek dari `height`. Isi diletakkan absolut
+          (inset-0) supaya canvas Chart.js tidak ikut menentukan tinggi baris: tanpa itu `flex-1` (basis 0%) di dalam
+          kartu ber-tinggi tak pasti menghitung tinggi canvas, dan baris hanya bisa membesar (loop resize). */}
+      <div className="relative min-h-0 flex-1" style={{ minHeight: height }}>
+        <div className="absolute inset-0">{children}</div>
+      </div>
     </div>
   );
 }
@@ -145,18 +153,30 @@ function CardHeader({ title, note }: { title: string; note?: ReactNode }) {
   );
 }
 
-function Sparkline({ data }: { data: number[] }) {
-  const W = 120;
-  const H = 36;
-  const max = Math.max(...data);
-  const min = Math.min(...data);
-  const span = Math.max(1, max - min);
-  const pts = data
-    .map((v, i) => `${((i / (data.length - 1)) * W).toFixed(1)},${(H - 4 - ((v - min) / span) * (H - 8)).toFixed(1)}`)
-    .join(" ");
+/** Panel galat satu seksi Dashboard: pesan server apa adanya, dan tegaskan panel lain tidak ikut gagal. */
+export function PanelError({
+  title,
+  error,
+  onRetry,
+  className,
+}: {
+  title: string;
+  error: unknown;
+  onRetry: () => void;
+  className?: string;
+}) {
+  const message = error instanceof Error && error.message ? error.message : "The request failed.";
   return (
-    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} aria-hidden className="shrink-0 text-info">
-      <polyline points={pts} fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
+    <StatePanel
+      variant="error"
+      title={title}
+      description={`${message} Other panels are fine.`}
+      className={className}
+      action={
+        <Button variant="outline" size="sm" onClick={onRetry}>
+          Retry
+        </Button>
+      }
+    />
   );
 }

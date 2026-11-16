@@ -67,6 +67,9 @@ class Article(TimestampMixin, Base):
     title: Mapped[str] = mapped_column(Text, nullable=False)
     source: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
     posted_on: Mapped[datetime.date | None] = mapped_column(Date)
+    summary: Mapped[str | None] = mapped_column(Text)
+    """Kutipan ekstraktif terbatas (bukan teks LLM, P4) untuk kartu dashboard. NULL = artikel
+    yang tersimpan sebelum 0.8.16, atau teksnya tidak bisa diambil."""
 
     scraper_id: Mapped[str | None] = mapped_column(String(100), index=True)
     """Slug ScraperMeta.id (Fase 3). Nullable -- artikel hasil migrasi data

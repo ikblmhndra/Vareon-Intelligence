@@ -157,3 +157,45 @@ async def test_get_ungraded_sources(async_db_session: AsyncSession) -> None:
 
     ungraded = await sr_repo.get_ungraded_sources()
     assert ungraded == ["gbhacker"]
+
+
+async def test_origin_filter(async_db_session: AsyncSession) -> None:
+    repo = AsyncSourceReliabilityRepo(async_db_session)
+    await repo.add_entry(
+        source_name="Manual Src",
+        analyst_name="a1",
+        reliability_grade="B",
+        credibility_code="2",
+        notes="",
+    )
+    await repo.ensure_defaults({"Auto Src": "news"})
+
+    analyst, total_a = await repo.list_entries(origin="analyst")
+    assert total_a == 1
+    assert [e.source_name for e in analyst] == ["Manual Src"]
+    default, total_d = await repo.list_entries(origin="default")
+    assert [e.source_name for e in default] == ["Auto Src"]
+    assert total_d == 1
+
+
+async def test_id_tiebreaker_stable_pages(async_db_session: AsyncSession) -> None:
+    """Lima baris dengan `last_updated` sama: tanpa tie-breaker `id`, halaman offset bisa
+    menduplikasi atau melewatkan baris."""
+    repo = AsyncSourceReliabilityRepo(async_db_session)
+    for i in range(5):
+        await repo.add_entry(
+            source_name=f"Src {i}",
+            analyst_name="a1",
+            reliability_grade="B",
+            credibility_code="2",
+            notes="",
+        )
+    seen: list[int] = []
+    for page in (1, 2, 3):
+        rows, total = await repo.list_entries(
+            page=page, page_size=2, sort_by="last_updated", sort_dir="desc"
+        )
+        assert total == 5
+        seen.extend(e.id for e in rows)
+    assert len(seen) == 5
+    assert len(set(seen)) == 5

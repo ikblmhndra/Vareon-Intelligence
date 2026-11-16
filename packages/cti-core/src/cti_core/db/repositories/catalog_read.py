@@ -21,11 +21,12 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from sqlalchemy import Select, func, or_, select
+from sqlalchemy import ColumnElement, Select, delete, func, or_, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from cti_core.catalog_resolve import compact
-from cti_core.db.models.catalog import CatalogFamily, CatalogVendor
+from cti_core.db.models.catalog import CatalogFamily, CatalogFamilyHide, CatalogVendor
 from cti_core.db.models.cve_mirror import CveRecord, CveRecordProduct
 from cti_core.db.models.techstack import TechStackEntry, TechStackTarget
 
@@ -71,6 +72,8 @@ class Page[T]:
     page_size: int
     hidden: int = 0
     """Berapa yang disembunyikan aturan jelajah (0 bila `q` / `show_all`)."""
+    hidden_by_client: int = 0
+    """Berapa keluarga disembunyikan client ini lewat `hide_family` (0 bila `q` / `show_hidden`)."""
 
 
 @dataclass(frozen=True)
@@ -88,6 +91,8 @@ class FamilyRow:
     monitor: MonitorRef | None
     vendor_monitor: MonitorRef | None
     """Monitor tingkat vendor yang menutupi keluarga ini (target vendor)."""
+    hidden: bool = False
+    """Disembunyikan client ini (`catalog_family_hides`); hanya tampilan, bukan Monitor."""
 
 
 @dataclass(frozen=True)
@@ -240,10 +245,14 @@ class AsyncCatalogRepo:
         vendor_id: int | None = None,
         q: str | None = None,
         show_all: bool = False,
+        show_hidden: bool = False,
         page: int = 1,
         page_size: int = 50,
     ) -> Page[FamilyRow]:
-        """Keluarga satu vendor (`vendor_id`), atau pencarian lintas vendor (`q` saja)."""
+        """Keluarga satu vendor (`vendor_id`), pencarian lintas vendor (`q`), atau jelajah semua
+        produk (tanpa keduanya). Jelajah (tanpa `q`) membuang keluarga yang disembunyikan client
+        ini kecuali `show_hidden`; pencarian menyertakannya dengan `hidden=True`. Keluarga yang
+        di-Monitor langsung tetap tampil walau punya baris hide lama."""
         page, page_size = _clamp(page, page_size)
         monitors = await self.monitor_map(client_id)
         q = (q or "").strip()
@@ -265,6 +274,18 @@ class AsyncCatalogRepo:
             stmt = base.where(or_(*keep))
             hidden = max(await self._count(base) - await self._count(stmt), 0)
 
+        hidden_by_client = 0
+        if not q and not show_hidden:
+            client_hidden = select(CatalogFamilyHide.family_id).where(
+                CatalogFamilyHide.client_id == client_id
+            )
+            visible: ColumnElement[bool] = CatalogFamily.id.not_in(client_hidden)
+            if monitors.families:
+                visible = or_(visible, CatalogFamily.id.in_(set(monitors.families)))
+            before = await self._count(stmt)
+            stmt = stmt.where(visible)
+            hidden_by_client = max(before - await self._count(stmt), 0)
+
         total = await self._count(stmt)
         order = [CatalogFamily.cve_seen_total.desc(), CatalogFamily.display_name]
         if q:
@@ -282,12 +303,26 @@ class AsyncCatalogRepo:
             .scalars()
             .all()
         )
-        items = await self._family_rows(ids, monitors)
-        return Page(items, total, page, page_size, hidden)
+        items = await self._family_rows(ids, monitors, client_id)
+        return Page(items, total, page, page_size, hidden, hidden_by_client)
 
-    async def _family_rows(self, ids: Sequence[int], monitors: MonitorMap) -> list[FamilyRow]:
+    async def _family_rows(
+        self, ids: Sequence[int], monitors: MonitorMap, client_id: str
+    ) -> list[FamilyRow]:
         if not ids:
             return []
+        hidden_ids = set(
+            (
+                await self.session.execute(
+                    select(CatalogFamilyHide.family_id).where(
+                        CatalogFamilyHide.client_id == client_id,
+                        CatalogFamilyHide.family_id.in_(ids),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
         rows = (
             await self.session.execute(
                 select(CatalogFamily, CatalogVendor)
@@ -297,9 +332,25 @@ class AsyncCatalogRepo:
         ).all()
         by_id = {f.id: (f, v) for f, v in rows}
         return [
-            FamilyRow(f, v, monitors.family(f.id), monitors.vendor(v.id))
+            FamilyRow(f, v, monitors.family(f.id), monitors.vendor(v.id), f.id in hidden_ids)
             for f, v in (by_id[i] for i in ids if i in by_id)
         ]
+
+    async def hide_family(self, client_id: str, family_id: int, hidden_by: str) -> None:
+        """Sembunyikan keluarga dari All Tech client ini. Idempoten (baris yang ada dibiarkan)."""
+        await self.session.execute(
+            pg_insert(CatalogFamilyHide)
+            .values(client_id=client_id, family_id=family_id, hidden_by=hidden_by)
+            .on_conflict_do_nothing(index_elements=["client_id", "family_id"])
+        )
+
+    async def unhide_family(self, client_id: str, family_id: int) -> None:
+        await self.session.execute(
+            delete(CatalogFamilyHide).where(
+                CatalogFamilyHide.client_id == client_id,
+                CatalogFamilyHide.family_id == family_id,
+            )
+        )
 
     # ── CVE DB (mirror) ───────────────────────────────────────────────────────────────────────
 

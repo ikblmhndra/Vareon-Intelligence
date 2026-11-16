@@ -65,6 +65,7 @@ _NORMALIZE = path_type(
         r"(.*\.)?newsletter_id$": (int,),
         r"(.*\.)?created_at$": (str,),
         r"(.*\.)?generated_at$": (str,),
+        r"(.*\.)?first_seen_at$": (str,),  # jam simpan artikel, berubah tiap run
         r"(.*\.)?html_bytes$": (int,),  # ukuran HTML berubah tiap template diubah
     },
     regex=True,
@@ -549,6 +550,7 @@ _SUGGESTION_NORMALIZE = path_type(
         r"(.*\.)?id$": (int,),
         r"(.*\.)?article_id$": (int,),
         r"(.*\.)?created_at$": (str,),
+        r"(.*\.)?first_seen_at$": (str,),  # jam simpan artikel, berubah tiap run
     },
     regex=True,
     strict=False,

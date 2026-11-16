@@ -25,12 +25,18 @@ from cti_core.db.models.auth import (
     User,
     UserClient,
 )
-from cti_core.db.models.catalog import CatalogFamily, CatalogFamilyAlias, CatalogVendor
+from cti_core.db.models.catalog import (
+    CatalogFamily,
+    CatalogFamilyAlias,
+    CatalogFamilyHide,
+    CatalogVendor,
+)
 from cti_core.db.models.cluster import Cluster
 from cti_core.db.models.cve import (
     CveAffected,
     CveFalsePositive,
     CveNewsletterMention,
+    CveOwnerTeam,
     CvePoc,
     CveReference,
     CveTicket,
@@ -47,6 +53,7 @@ from cti_core.db.models.entity import (
     ReferenceSnapshot,
     Relationship,
 )
+from cti_core.db.models.exec_brief import ExecBrief
 from cti_core.db.models.hunt import HuntHypothesis, SigmaRule
 from cti_core.db.models.indicator import (
     Indicator,
@@ -93,6 +100,7 @@ __all__ = [
     "AuditLogEntry",
     "CatalogFamily",
     "CatalogFamilyAlias",
+    "CatalogFamilyHide",
     "CatalogVendor",
     "Client",
     "ClientCountry",
@@ -101,6 +109,7 @@ __all__ = [
     "CveFalsePositive",
     "CveMention",
     "CveNewsletterMention",
+    "CveOwnerTeam",
     "CvePoc",
     "CvePromotionShadow",
     "CveRecord",
@@ -115,6 +124,7 @@ __all__ = [
     "EntityMention",
     "EntityProfile",
     "EntityWatch",
+    "ExecBrief",
     "HuntHypothesis",
     "Indicator",
     "IndicatorFeedback",

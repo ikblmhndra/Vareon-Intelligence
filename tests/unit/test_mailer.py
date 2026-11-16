@@ -202,3 +202,23 @@ def test_without_inline_images_the_payload_has_no_attachments_key() -> None:
     bukan daftar kosong."""
     assert "attachments" not in _post_draft().call_args.kwargs["json"]
     assert "attachments" not in _post_draft(inline_images=()).call_args.kwargs["json"]
+
+
+def _post_payload(**kwargs: object) -> dict[str, object]:
+    mock_resp = MagicMock(status_code=201)
+    mock_resp.json.return_value = {"id": "msg-1"}
+    with (
+        patch(
+            "cti_alerts.mailer.msal.ConfidentialClientApplication", return_value=_mock_msal_app()
+        ),
+        patch("cti_alerts.mailer.httpx.post", return_value=mock_resp) as mock_post,
+    ):
+        create_graph_draft("<html/>", "subject", settings=_SETTINGS, **kwargs)  # type: ignore[arg-type]
+    payload: dict[str, object] = mock_post.call_args.kwargs["json"]
+    return payload
+
+
+def test_create_graph_draft_adds_to_recipients() -> None:
+    payload = _post_payload(to=["lead@example.com"])
+    assert payload["toRecipients"] == [{"emailAddress": {"address": "lead@example.com"}}]
+    assert "toRecipients" not in _post_payload()

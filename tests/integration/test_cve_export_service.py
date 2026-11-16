@@ -253,3 +253,85 @@ async def test_export_keeps_template_logo(async_db_session: AsyncSession) -> Non
     with zipfile.ZipFile(io.BytesIO(data)) as zf:
         assert [n for n in zf.namelist() if n.startswith("xl/media/")]
     assert len(ws._images) == 1
+
+
+# ── Export ticket (Task 4) ────────────────────────────────────────────────────
+
+
+def _ticket_ids(ws: object) -> list[str]:
+    ids: list[str] = []
+    row = 16
+    while ws.cell(row=row, column=3).value:  # type: ignore[attr-defined]
+        ids.append(ws.cell(row=row, column=3).value)  # type: ignore[attr-defined]
+        row += 1
+    return ids
+
+
+async def _seed_ticket(
+    session: AsyncSession,
+    cve_id: str,
+    status: str | None,
+    *,
+    client_id: str = "default",
+    tracker: bool = True,
+) -> None:
+    if tracker:
+        session.add(CveTracker(cve_id=cve_id, client_id=client_id, tech="A", cve_severity="HIGH"))
+        await session.flush()
+    await AsyncCveTicketRepo(session).upsert(
+        cve_id=cve_id, client_id=client_id, remediation_status=status
+    )
+
+
+async def test_ticket_export_honours_status_filter(async_db_session: AsyncSession) -> None:
+    await _ensure_clients(async_db_session)
+    await _seed_ticket(async_db_session, "CVE-2026-8001", "Open")
+    await _seed_ticket(async_db_session, "CVE-2026-8002", "Closed")
+    await _seed_ticket(async_db_session, "CVE-2026-8003", None)  # kosong dihitung Open (tab UI)
+    data = await svc.export_tickets_to_excel(
+        async_db_session, client_id="default", search=None, status="Open", include_fp=False
+    )
+    _, ws = _load(data)
+    assert sorted(_ticket_ids(ws)) == ["CVE-2026-8001", "CVE-2026-8003"]
+
+
+async def test_ticket_export_excludes_fp_by_default(async_db_session: AsyncSession) -> None:
+    await _ensure_clients(async_db_session)
+    await _seed_ticket(async_db_session, "CVE-2026-8011", "Open")
+    await _seed_ticket(async_db_session, "CVE-2026-8012", "Open")
+    await AsyncCveFalsePositiveRepo(async_db_session).mark("CVE-2026-8012", "default", "analyst")
+    kw = {"client_id": "default", "search": None, "status": None}
+    _, ws = _load(await svc.export_tickets_to_excel(async_db_session, include_fp=False, **kw))
+    assert _ticket_ids(ws) == ["CVE-2026-8011"]
+    _, ws = _load(await svc.export_tickets_to_excel(async_db_session, include_fp=True, **kw))
+    assert sorted(_ticket_ids(ws)) == ["CVE-2026-8011", "CVE-2026-8012"]
+
+
+async def test_ticket_export_renders_orphan_ticket(async_db_session: AsyncSession) -> None:
+    await _ensure_clients(async_db_session)
+    await _seed_ticket(async_db_session, "CVE-2026-8021", "Open", tracker=False)
+    data = await svc.export_tickets_to_excel(
+        async_db_session, client_id="default", search=None, status=None, include_fp=False
+    )
+    _, ws = _load(data)
+    assert ws.cell(row=16, column=3).value == "CVE-2026-8021"
+    assert ws.cell(row=16, column=6).value in ("", None)
+
+
+async def test_ticket_export_scoped_to_client(async_db_session: AsyncSession) -> None:
+    await _ensure_clients(async_db_session)
+    await _seed_ticket(async_db_session, "CVE-2026-8031", "Open")
+    await _seed_ticket(async_db_session, "CVE-2026-8032", "Open", client_id="acme")
+    data = await svc.export_tickets_to_excel(
+        async_db_session, client_id="default", search=None, status=None, include_fp=False
+    )
+    _, ws = _load(data)
+    assert _ticket_ids(ws) == ["CVE-2026-8031"]
+
+
+async def test_ticket_export_endpoint_filename(api_client, api_session, auth_header) -> None:  # type: ignore[no-untyped-def]
+    await _ensure_clients(api_session)
+    await _seed_ticket(api_session, "CVE-2026-8041", "Open")
+    resp = await api_client.get("/api/cve/tickets/export", headers=auth_header())
+    assert resp.status_code == 200
+    assert "CVE_Tickets_" in resp.headers["content-disposition"]

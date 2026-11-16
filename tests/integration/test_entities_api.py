@@ -489,6 +489,33 @@ async def test_profile_uses_ta_profile_llm_function(
     assert len(calls) == 1
 
 
+async def test_profile_summary_exposed(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Header,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    s = api_session
+    actor = await _make(s, "intrusion-set", "Summary Actor")
+    old = await _make(s, "intrusion-set", "Old Profile Actor")
+    s.add(EntityProfile(entity_id=old.id, profile={"identity": {"primary_name": "Old"}}))
+    await s.commit()
+
+    def fake_llm(user_msg: str) -> dict[str, Any]:
+        return {"summary": "  Summary Actor   targets telcos. ", "identity": {}}
+
+    monkeypatch.setattr("cti_api.services.ta_profile._call_llm", fake_llm)
+    h = auth_header(username="prof2")
+    r = await api_client.post(f"/api/entities/{actor.id}/profile", headers=h)
+    assert r.status_code == 200, r.text
+    detail = (await api_client.get(f"/api/entities/{actor.id}", headers=h)).json()
+    assert detail["profile_summary"] == "Summary Actor targets telcos."
+    assert detail["profile_article_count"] == 0
+    legacy = (await api_client.get(f"/api/entities/{old.id}", headers=h)).json()
+    assert legacy["profile_summary"] is None
+    assert legacy["profile_article_count"] is None
+
+
 async def test_attack_endpoint_techniques_mitigations_layer(
     api_client: AsyncClient, api_session: AsyncSession, auth_header: Header
 ) -> None:
@@ -754,6 +781,207 @@ async def test_list_identity_class(
     )
     assert r.status_code == 200, r.text
     assert [i["id"] for i in r.json()["items"]] == [victim.id]
+
+
+async def _pages(
+    api_client: AsyncClient, h: dict[str, str], params: dict[str, Any]
+) -> list[list[int]]:
+    """Ikuti `next_cursor` sampai habis; kembalikan id per halaman."""
+    pages: list[list[int]] = []
+    cursor = None
+    for _ in range(20):
+        r = await api_client.get(
+            "/api/entities", params={**params, **({"cursor": cursor} if cursor else {})}, headers=h
+        )
+        assert r.status_code == 200, r.text
+        pages.append([i["id"] for i in r.json()["items"]])
+        cursor = r.json()["next_cursor"]
+        if cursor is None:
+            return pages
+    raise AssertionError("kursor tidak berhenti")
+
+
+async def test_list_total_first_page_only(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Header
+) -> None:
+    """Spec 4.7: `total` = jumlah baris filter yang sama tanpa kursor/limit, hanya di halaman
+    pertama; tombstone merge tidak ikut dihitung."""
+    s = api_session
+    alpha = await _make(s, "intrusion-set", "Totq Alpha")
+    await _make(s, "malware", "Totq Beta")
+    await _make(s, "intrusion-set", "Totq Hidden", suppressed=True)
+    gone = await _make(s, "intrusion-set", "Totq Gone")
+    gone.merged_into_id = alpha.id
+    s.add(EntityWatch(client_id="default", entity_id=alpha.id))
+    await s.commit()
+    h = auth_header()
+
+    async def total(**params: Any) -> Any:
+        r = await api_client.get("/api/entities", params={"q": "totq", **params}, headers=h)
+        assert r.status_code == 200, r.text
+        return r.json()
+
+    assert (await total())["total"] == 2
+    assert (await total(include_suppressed=True))["total"] == 3
+    assert (await total(type="intrusion-set"))["total"] == 1
+    assert (await total(type="intrusion-set", include_suppressed=True))["total"] == 2
+    assert (await total(watched=True))["total"] == 1
+    assert (await total(sort="mentions"))["total"] == 2
+
+    first = await total(limit=1)
+    assert first["total"] == 2
+    assert len(first["items"]) == 1
+    nxt = await total(limit=1, cursor=first["next_cursor"])
+    assert nxt["total"] is None
+    assert len(nxt["items"]) == 1
+
+
+async def test_list_item_first_seen(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Header
+) -> None:
+    s = api_session
+    seen = datetime.datetime(2024, 3, 5, 12, 0, tzinfo=datetime.UTC)
+    old = await _make(s, "intrusion-set", "Fseen Old", first_seen=seen)
+    new = await _make(s, "intrusion-set", "Fseen New")
+    await s.commit()
+    r = await api_client.get("/api/entities", params={"q": "fseen"}, headers=auth_header())
+    assert r.status_code == 200, r.text
+    by_id = {i["id"]: i for i in r.json()["items"]}
+    assert datetime.datetime.fromisoformat(by_id[old.id]["first_seen"]) == seen
+    assert by_id[new.id]["first_seen"] is None
+
+
+async def test_list_sort_mentions(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Header
+) -> None:
+    """C6: urut mention 30 hari (jendela dan ekspresi tanggal sama dengan `mentions_30d`),
+    seri dipecah nama lalu id, nol mention di akhir; halaman kursor tidak tumpang tindih dan
+    lengkap melewati batas seri; filter `type` tetap berlaku."""
+    s = api_session
+    bravo = await _make(s, "intrusion-set", "Srtm Bravo")
+    alpha = await _make(s, "intrusion-set", "Srtm Alpha")
+    charlie = await _make(s, "intrusion-set", "Srtm Charlie")
+    delta = await _make(s, "intrusion-set", "Srtm Delta")
+    echo = await _make(s, "intrusion-set", "Srtm Echo")
+    same_a = await _make(s, "intrusion-set", "Srtm Same")
+    same_b = await _make(s, "campaign", "Srtm Same")  # nama sama, tipe lain: seri dipecah id
+    loud = await _make(s, "malware", "Srtm Loud")
+    for days in (1, 5, 30, 60):  # 30 = batas jendela (masuk), 60 di luar
+        await _mention(s, bravo, await _article(s, days_ago=days))
+    for e in (alpha, charlie):
+        for days in (2, 3):
+            await _mention(s, e, await _article(s, days_ago=days))
+    for e in (same_a, same_b):
+        await _mention(s, e, await _article(s, days_ago=4))
+    await _mention(s, delta, await _article(s, days_ago=45))  # hanya di luar 30 hari
+    for days in range(1, 6):
+        await _mention(s, loud, await _article(s, days_ago=days))
+    await s.commit()
+    h = auth_header()
+    expected = [bravo.id, alpha.id, charlie.id, same_a.id, same_b.id, delta.id, echo.id]
+    params: dict[str, Any] = {"q": "srtm", "type": "intrusion-set,campaign", "sort": "mentions"}
+
+    r = await api_client.get("/api/entities", params=params, headers=h)
+    assert r.status_code == 200, r.text
+    items = r.json()["items"]
+    assert [i["id"] for i in items] == expected
+    assert [i["mentions_30d"] for i in items] == [3, 2, 2, 1, 1, 0, 0]
+    assert r.json()["total"] == 7
+
+    pages = await _pages(api_client, h, {**params, "limit": 2})
+    assert [len(p) for p in pages] == [2, 2, 2, 1]  # seri alpha/charlie dan same_a/same_b terbelah
+    assert [i for p in pages for i in p] == expected
+
+    # tanpa filter tipe, malware dengan 5 mention memimpin
+    r = await api_client.get("/api/entities", params={"q": "srtm", "sort": "mentions"}, headers=h)
+    assert [i["id"] for i in r.json()["items"]] == [loud.id, *expected]
+
+
+async def test_list_sort_mentions_bad_cursor(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Header
+) -> None:
+    s = api_session
+    await _make(s, "intrusion-set", "Badc One")
+    await _make(s, "intrusion-set", "Badc Two")
+    await s.commit()
+    h = auth_header()
+    page = (
+        await api_client.get("/api/entities", params={"q": "badc", "limit": 1}, headers=h)
+    ).json()
+    assert page["next_cursor"]
+    r = await api_client.get(
+        "/api/entities",
+        params={"q": "badc", "limit": 1, "sort": "mentions", "cursor": page["next_cursor"]},
+        headers=h,
+    )
+    assert r.status_code == 422, r.text
+    r = await api_client.get(
+        "/api/entities", params={"sort": "mentions", "cursor": "!!nope"}, headers=h
+    )
+    assert r.status_code == 422
+    r = await api_client.get("/api/entities", params={"sort": "views"}, headers=h)
+    assert r.status_code == 422
+
+
+async def test_list_sort_name_rejects_mentions_cursor(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Header
+) -> None:
+    s = api_session
+    await _make(s, "intrusion-set", "Rejm One")
+    await _make(s, "intrusion-set", "Rejm Two")
+    await s.commit()
+    h = auth_header()
+    page = (
+        await api_client.get(
+            "/api/entities", params={"q": "rejm", "limit": 1, "sort": "mentions"}, headers=h
+        )
+    ).json()
+    assert page["next_cursor"]
+    for extra in ({}, {"sort": "name"}):
+        r = await api_client.get(
+            "/api/entities",
+            params={"q": "rejm", "limit": 1, "cursor": page["next_cursor"], **extra},
+            headers=h,
+        )
+        assert r.status_code == 422, r.text
+
+
+async def test_list_sort_mentions_non_ascii_tie(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Header
+) -> None:
+    """Seri hitungan dipecah `lower(name)` collation C (byte-wise): "zulu" < "ärger" di C,
+    padahal locale linguistik menaruh "ärger" lebih dulu. Halaman kursor harus sama persis
+    dengan ORDER BY itu."""
+    s = api_session
+    umlaut = await _make(s, "intrusion-set", "Ärger Nasc")
+    apt = await _make(s, "intrusion-set", "apt Nasc")
+    zulu = await _make(s, "intrusion-set", "Zulu Nasc")
+    for e in (umlaut, apt, zulu):
+        await _mention(s, e, await _article(s, days_ago=2))
+    await s.commit()
+    h = auth_header()
+    params: dict[str, Any] = {"q": "nasc", "sort": "mentions"}
+    full = (await api_client.get("/api/entities", params=params, headers=h)).json()["items"]
+    assert [i["id"] for i in full] == [apt.id, zulu.id, umlaut.id]
+    pages = await _pages(api_client, h, {**params, "limit": 1})
+    assert pages == [[apt.id], [zulu.id], [umlaut.id]]
+
+
+async def test_default_sort_unchanged(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header: Header
+) -> None:
+    """Tanpa `sort` urutan tetap nama (picker dan dialog), mention tidak berpengaruh."""
+    s = api_session
+    busy = await _make(s, "intrusion-set", "Dflt Zed")
+    quiet = await _make(s, "intrusion-set", "Dflt Able")
+    for days in (1, 2):
+        await _mention(s, busy, await _article(s, days_ago=days))
+    await s.commit()
+    h = auth_header()
+    for extra in ({}, {"sort": "name"}):
+        r = await api_client.get("/api/entities", params={"q": "dflt", **extra}, headers=h)
+        assert [i["id"] for i in r.json()["items"]] == [quiet.id, busy.id]
+    assert await _pages(api_client, h, {"q": "dflt", "limit": 1}) == [[quiet.id], [busy.id]]
 
 
 async def _resolve(api_client: AsyncClient, h: dict[str, str], type_: str, name: str) -> Any:

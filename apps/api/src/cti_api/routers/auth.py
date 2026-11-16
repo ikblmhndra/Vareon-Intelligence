@@ -4,6 +4,8 @@ storage-nya yang pindah dari koleksi Mongo ke repo Postgres (Fase 2/7)."""
 
 from __future__ import annotations
 
+import datetime
+
 from cti_core.config import get_settings
 from cti_core.db.models.auth import User
 from cti_core.db.repositories.auth import (
@@ -31,6 +33,7 @@ from cti_api.rate_limit import (
     clear_password_failures,
     is_rate_limited,
     note_password_failure,
+    retry_after_seconds,
 )
 from cti_api.schemas.auth import (
     ChangePasswordRequest,
@@ -105,7 +108,9 @@ async def login(
     ip = request_ip(request)
     if await is_rate_limited(redis, f"login:{ip}", max_requests=10, window_seconds=60):
         raise HTTPException(
-            status_code=429, detail="Too many login attempts. Try again in a minute."
+            status_code=429,
+            detail="Too many login attempts. Try again in a minute.",
+            headers={"Retry-After": str(await retry_after_seconds(redis, f"login:{ip}"))},
         )
     user_repo = AsyncUserRepo(session)
     user = await user_repo.get_by_username(body.username)
@@ -192,7 +197,7 @@ async def change_password(
     if errors:
         raise _pw_error(errors)
     ok = await AsyncUserRepo(session).reset_password(
-        user["username"], hash_password(body.new_password)
+        user["username"], hash_password(body.new_password), force_change=False
     )
     if not ok:
         raise HTTPException(status_code=404, detail="User not found")
@@ -231,7 +236,9 @@ async def init_admin(
 
 @router.get("/me")
 async def me(
-    session: AsyncSession = Depends(get_db), user: AuthedUser = Depends(require_auth)
+    session: AsyncSession = Depends(get_db),
+    user: AuthedUser = Depends(require_auth),
+    authorization: str | None = Header(None),
 ) -> dict[str, object]:
     client_ids = user["client_ids"]
     client_repo = AsyncClientRepo(session)
@@ -243,8 +250,18 @@ async def me(
         for cid, doc in zip(client_ids, client_docs, strict=True)
     }
     first_countries = clients_map.get(client_ids[0], []) if client_ids else []
+    # `require_auth` sudah menerima header ini, jadi decode tidak bisa gagal. Tidak ada refresh
+    # token, jadi `iat` = waktu sign-in sesi ini. Sengaja tidak ditaruh di `AuthedUser`: akan
+    # bocor ke setiap `{**user}`.
+    iat = decode_token(authorization.split(" ", 1)[1]).get("iat") if authorization else None
+    signed_in_at = (
+        datetime.datetime.fromtimestamp(iat, datetime.UTC).isoformat()
+        if isinstance(iat, int)
+        else None
+    )
     return {
         **user,
+        "signed_in_at": signed_in_at,
         "client_countries": first_countries,
         "clients_map": clients_map,
         "permissions": await permissions_for(session, user["role"]),
@@ -348,7 +365,9 @@ async def reset_user_password(
     errors = policy_service.validate_password(body.new_password, policy)
     if errors:
         raise _pw_error(errors)
-    ok = await user_repo.reset_password(username, hash_password(body.new_password))
+    ok = await user_repo.reset_password(
+        username, hash_password(body.new_password), force_change=True
+    )
     if not ok:
         raise HTTPException(status_code=404, detail="User not found")
     await AsyncAuditLogRepo(session).write(

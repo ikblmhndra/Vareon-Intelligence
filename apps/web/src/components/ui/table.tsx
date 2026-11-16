@@ -51,12 +51,17 @@ function TableFooter({ className, ...props }: React.ComponentProps<"tfoot">) {
   )
 }
 
-function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
+function TableRow({
+  className,
+  selected,
+  ...props
+}: React.ComponentProps<"tr"> & { selected?: boolean }) {
   return (
     <tr
       data-slot="table-row"
+      data-selected={selected ? "true" : undefined}
       className={cn(
-        "border-b border-border/60 transition-colors duration-150 hover:bg-muted/60 has-aria-expanded:bg-muted/50 data-[state=selected]:bg-muted",
+        "border-b border-border transition-colors duration-150 hover:bg-surface has-aria-expanded:bg-surface data-[state=selected]:bg-surface data-[selected=true]:bg-surface data-[selected=true]:shadow-[inset_3px_0_0_var(--foreground)]",
         className
       )}
       {...props}
@@ -69,7 +74,7 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
     <th
       data-slot="table-head"
       className={cn(
-        "h-11 bg-muted/50 px-4 text-left align-middle text-xs font-semibold tracking-wide whitespace-nowrap text-muted-foreground uppercase first:rounded-l-xl last:rounded-r-xl [&:has([role=checkbox])]:pr-0",
+        "h-11 px-4 text-left align-middle text-2xs font-semibold tracking-wide whitespace-nowrap text-muted-foreground uppercase first:rounded-l-xl last:rounded-r-xl [&:has([role=checkbox])]:pr-0",
         className
       )}
       {...props}

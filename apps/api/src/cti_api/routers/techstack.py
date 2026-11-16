@@ -8,6 +8,7 @@ from __future__ import annotations
 from cti_core.celery_client import send_recompute_all
 from cti_core.db.models.techstack import TechStackEntry, TechStackTarget
 from cti_core.db.repositories.auth import AsyncAuditLogRepo
+from cti_core.db.repositories.cve import AsyncCveTrackerRepo
 from cti_core.db.repositories.techstack import AsyncTechStackRepo
 from cti_core.logging import get_logger
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
@@ -23,6 +24,7 @@ from cti_api.deps import (
 )
 from cti_api.schemas.techstack import (
     TechStackAdd,
+    TechStackCoverage,
     TechStackExposureUpdate,
     TechStackHostingUpdate,
     TechStackListResponse,
@@ -69,7 +71,7 @@ def _target_out(t: TechStackTarget) -> TechStackTargetOut:
     )
 
 
-def _serialize(entry: TechStackEntry) -> TechStackOut:
+def _serialize(entry: TechStackEntry, match_count: int = 0) -> TechStackOut:
     return TechStackOut(
         id=entry.id,
         name=entry.name,
@@ -80,6 +82,7 @@ def _serialize(entry: TechStackEntry) -> TechStackOut:
         active=entry.active,
         kind="catalog" if entry.targets else "custom",
         targets=[_target_out(t) for t in entry.targets],
+        match_count=match_count,
     )
 
 
@@ -107,9 +110,24 @@ async def get_techstack(
         sort_dir=sort_dir,
         active=active,
     )
+    counts = await AsyncCveTrackerRepo(session).count_by_tech(cid)
     return TechStackListResponse(
-        items=[_serialize(i) for i in items], total=total, page=page, page_size=page_size
+        items=[_serialize(i, counts.get(i.name.lower(), 0)) for i in items],
+        total=total,
+        page=page,
+        page_size=page_size,
     )
+
+
+@router.get("/coverage", response_model=TechStackCoverage)
+async def get_techstack_coverage(
+    session: AsyncSession = Depends(get_db),
+    user: AuthedUser = Depends(require_auth),
+    x_client_id: str | None = Header(None),
+) -> TechStackCoverage:
+    """Deklarasi SEBELUM rute `/{tech_id}` supaya `coverage` tidak dibaca sebagai id."""
+    cid = effective_client_id(user, x_client_id)
+    return TechStackCoverage(**await AsyncTechStackRepo(session).coverage(cid))
 
 
 @router.post("", dependencies=[Depends(require_permission("manage_cve"))])

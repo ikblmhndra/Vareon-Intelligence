@@ -415,7 +415,8 @@ never deletes rows that have a ticket or acknowledge).
 reported separately so it does not look refreshed. A `running` row older than 30 minutes counts as stuck.
 **Check for new CVEs** (`POST /api/cve/check-new`, admin) sends the routine check for the active path
 (`scrape.run new_cve` with trigger `manual`, or `cve.mirror_sync`). It answers **409** while a check is running
-or the scraper is disabled, **429** during the 120 s cooldown, **503** when the broker is down.
+or the scraper is disabled, **429** during the 120 s cooldown, **503** when the broker is down. The freshness response also
+carries `running_since` and `last_triggered_at`, and `?source=` triggers a single path with its own independent cooldown key.
 
 ### 4.7 Telegram: the new-CVE summary
 
@@ -456,6 +457,10 @@ stateDiagram-v2
 - Tickets, acknowledges and FP marks are only accepted for CVEs the calling client tracks (404 otherwise), and
   `cve_id` is normalised and validated (`CVE-YYYY-NNNN`, upper case) before anything is written.
 - **Draft email** is manual: three LLM calls plus a template, saved as a Microsoft Graph draft.
+- **Catalog hide** (per client) is display only: it hides a family from that client's browse list, changes no tracker
+  or mirror data, and a family the client monitors directly stays visible.
+- **Escalation** (ticket `escalation_required`) creates a Graph email draft to the owner team's lead via
+  `cve.notify_escalation`; see `docs/CVE_TRACKER_FLOW.md` section 7.
 
 ## 5. Data model
 

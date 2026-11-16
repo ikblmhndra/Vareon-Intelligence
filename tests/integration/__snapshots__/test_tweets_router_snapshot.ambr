@@ -53,12 +53,20 @@
 # ---
 # name: test_tweet_stats
   dict({
+    'apac': 1,
+    'confirmed': 0,
+    'databreach': 0,
+    'ot': 0,
     'top_authors': list([
       dict({
         'author': 'threatintel',
         'count': 1,
       }),
     ]),
+    'top_victims': list([
+    ]),
     'total': 1,
+    'with_cve': 0,
+    'zero_day': 0,
   })
 # ---

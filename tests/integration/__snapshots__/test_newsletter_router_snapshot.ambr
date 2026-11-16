@@ -85,6 +85,7 @@
           'credibility': None,
           'entities': list([
           ]),
+          'first_seen_at': str,
           'grade_origin': None,
           'id': int,
           'impacted_industries': list([
@@ -114,6 +115,7 @@
           }),
           'source': 'CISA',
           'story': None,
+          'summary': None,
           'threat_actors': list([
           ]),
           'title': 'Fortinet zero-day CVE-2026-1111 exploited in the wild',
@@ -173,6 +175,7 @@
               'type': 'location',
             }),
           ]),
+          'first_seen_at': str,
           'grade_origin': None,
           'id': int,
           'impacted_industries': list([
@@ -203,6 +206,7 @@
           }),
           'source': 'BleepingComputer',
           'story': None,
+          'summary': None,
           'threat_actors': list([
           ]),
           'title': 'Indonesian bank breached by ransomware crew',
@@ -256,6 +260,7 @@
               'type': 'location',
             }),
           ]),
+          'first_seen_at': str,
           'grade_origin': None,
           'id': int,
           'impacted_industries': list([
@@ -285,6 +290,7 @@
           }),
           'source': 'Wired',
           'story': None,
+          'summary': None,
           'threat_actors': list([
           ]),
           'title': 'Japanese manufacturer hit by supply chain attack',
@@ -327,6 +333,7 @@
           'credibility': None,
           'entities': list([
           ]),
+          'first_seen_at': str,
           'grade_origin': None,
           'id': int,
           'impacted_industries': list([
@@ -356,6 +363,7 @@
           }),
           'source': 'Random Blog',
           'story': None,
+          'summary': None,
           'threat_actors': list([
           ]),
           'title': 'Quiet security roundup for the week',

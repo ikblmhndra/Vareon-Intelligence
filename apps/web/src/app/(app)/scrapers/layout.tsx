@@ -1,17 +1,12 @@
 import type { Metadata } from "next";
 
-import { PageHeader } from "@/components/page-header";
+import { PLATFORM_NAME } from "@/lib/brand";
 
-export const metadata: Metadata = { title: "Scrapers" };
+// Template dipasang ulang: `title` string di layout segmen ini akan membuang template root untuk anak-anaknya.
+export const metadata: Metadata = {
+  title: { default: "Scrapers", template: `%s · ${PLATFORM_NAME}` },
+};
 
 export default function ScrapersLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <>
-      <PageHeader
-        title="Scrapers"
-        description="Health of every scraper, with controls to run, enable or schedule them."
-      />
-      {children}
-    </>
-  );
+  return children;
 }

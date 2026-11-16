@@ -12,7 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { api } from "@/lib/api/client";
+import { api, proxyFetch } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import { getActiveClientId } from "@/lib/auth/client-id";
 
@@ -77,7 +77,7 @@ export function HuntPanel({ anchorType, anchorId }: { anchorType: AnchorType; an
     try {
       const qs = new URLSearchParams([["format", "zip"], ["sigma_per_technique", String(sigmaPerTechnique)], ...include.map((i) => ["include", i])]);
       const clientId = getActiveClientId();
-      const resp = await fetch(
+      const resp = await proxyFetch(
         `/api/proxy/api/hunt-packs/${anchorType}/${anchorId}?${qs}`,
         clientId ? { headers: { "X-Client-ID": clientId } } : undefined,
       );
@@ -198,7 +198,7 @@ export function HuntPanel({ anchorType, anchorId }: { anchorType: AnchorType; an
                 <div className="flex flex-wrap gap-1.5">
                   {items.map((t) => (
                     <Badge key={t.attack_id} variant="outline" className="h-auto whitespace-normal">
-                      <span className="font-code">{t.attack_id}</span> {t.name}
+                      <span>{t.attack_id}</span> {t.name}
                       {t.sigma_count > 0 && <span className="text-muted-foreground">· {t.sigma_count} Sigma</span>}
                     </Badge>
                   ))}
@@ -218,7 +218,7 @@ export function HuntPanel({ anchorType, anchorId }: { anchorType: AnchorType; an
             <div key={`${s.dataset}-${s.chunk}`} className="min-w-0 rounded-md border border-border bg-muted/30">
               <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-1.5">
                 <span className="min-w-0 text-xs break-words">
-                  <span className="font-code">{s.dataset}</span> · {s.value_count.toLocaleString()} values
+                  <span>{s.dataset}</span> · {s.value_count.toLocaleString()} values
                 </span>
                 <Button
                   variant="ghost"
@@ -248,7 +248,7 @@ export function HuntPanel({ anchorType, anchorId }: { anchorType: AnchorType; an
                 }
               >
                 <Download aria-hidden />
-                <span className="font-code">{dataset}</span>
+                <span>{dataset}</span>
               </Button>
             ))}
           </div>
@@ -293,13 +293,13 @@ export function HuntPanel({ anchorType, anchorId }: { anchorType: AnchorType; an
                       {r.title}
                     </a>
                     <div className="text-2xs text-muted-foreground">
-                      via <span className="font-code">{r.via_technique}</span> ({r.match})
+                      via <span>{r.via_technique}</span> ({r.match})
                     </div>
                   </TableCell>
                   <TableCell className="text-xs">{r.level}</TableCell>
                   <TableCell className="text-xs">{r.status}</TableCell>
                   <TableCell className="min-w-32 text-xs whitespace-normal">{r.author || "-"}</TableCell>
-                  <TableCell className="font-code text-xs">
+                  <TableCell className="text-xs">
                     {Object.values(r.logsource).join(" / ") || "-"}
                   </TableCell>
                 </TableRow>

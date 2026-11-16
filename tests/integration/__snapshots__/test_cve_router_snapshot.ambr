@@ -151,8 +151,15 @@
         'epss_percentile': None,
         'epss_score': None,
         'false_positive': False,
+        'fp_marked_at': '',
+        'fp_marked_by': '',
+        'fp_note': '',
+        'fp_reason': '',
         'hosting_type': 'on_prem',
         'id': int,
+        'kev_date_added': '',
+        'kev_due_date': '',
+        'kev_required_action': '',
         'last_updated': str,
         'link': '',
         'news_mentions': list([
@@ -164,6 +171,8 @@
         'published': '2026-09-05',
         'reference': list([
         ]),
+        'risk_label': 'low',
+        'risk_score': 9.3,
         'solutions': '',
         'summary': 'Config parsing bug',
         'tech': 'nginx',
@@ -183,8 +192,15 @@
         'epss_percentile': None,
         'epss_score': None,
         'false_positive': False,
+        'fp_marked_at': '',
+        'fp_marked_by': '',
+        'fp_note': '',
+        'fp_reason': '',
         'hosting_type': 'on_prem',
         'id': int,
+        'kev_date_added': '',
+        'kev_due_date': '',
+        'kev_required_action': '',
         'last_updated': str,
         'link': '',
         'news_mentions': list([
@@ -196,6 +212,8 @@
         'published': '2026-09-01',
         'reference': list([
         ]),
+        'risk_label': 'medium',
+        'risk_score': 49.4,
         'solutions': '',
         'summary': 'Stored XSS in a WordPress plugin',
         'tech': 'WordPress',
@@ -294,19 +312,24 @@
     'asset_owner': 'IT Team',
     'closure_date': '',
     'comments': '',
+    'created_at': str,
     'cve_id': 'CVE-2026-7001',
     'escalation_required': False,
     'fixed_version': '',
+    'opened_at': str,
     'owner_email': '',
     'owner_team': '',
     'remediation_date_plan': '2026-09-15',
     'remediation_status': 'in_progress',
     'risk_acceptance': '',
     'ticket_id': str,
+    'updated_at': str,
+    'updated_by': 'tester',
   })
 # ---
 # name: test_update_cve_ticket_then_get[put_response]
   dict({
+    'escalation': 'not_needed',
     'ok': True,
   })
 # ---

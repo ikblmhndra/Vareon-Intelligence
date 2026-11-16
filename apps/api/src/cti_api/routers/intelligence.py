@@ -12,6 +12,8 @@ terpisah."""
 
 from __future__ import annotations
 
+from typing import Any
+
 from cti_core.db.repositories.article import AsyncArticleRepo
 from cti_core.db.repositories.auth import AsyncAuditLogRepo
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
@@ -25,6 +27,7 @@ from cti_api.deps import (
     require_auth,
     require_permission,
 )
+from cti_api.schemas.spike import SpikesResponse
 from cti_api.services import campaign as campaign_service
 from cti_api.services import campaign_trend as campaign_trend_service
 from cti_api.services import cluster as cluster_service
@@ -40,12 +43,12 @@ router = APIRouter(
 )
 
 
-@router.get("/spikes")
+@router.get("/spikes", response_model=SpikesResponse)
 async def early_warning(
     lookback_days: int = Query(30, ge=14, le=90),
     z_threshold: float = Query(2.0, ge=1.5, le=4.0),
     session: AsyncSession = Depends(get_db),
-) -> dict[str, object]:
+) -> dict[str, Any]:
     return await spike_service.get_spikes(
         session, lookback_days=lookback_days, z_threshold=z_threshold
     )

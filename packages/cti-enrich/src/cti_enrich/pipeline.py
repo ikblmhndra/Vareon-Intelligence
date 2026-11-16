@@ -104,7 +104,7 @@ from cti_enrich.stages.fetch_text import fetch_text
 from cti_enrich.stages.persist import RULE_INCIDENT, persist, persist_rejected
 from cti_enrich.stages.relevance import RelevanceResult, gated_classify, run_relevance
 from cti_enrich.stages.score import ScoreResult
-from cti_enrich.stages.summarize import summarize
+from cti_enrich.stages.summarize import make_dek, summarize
 from cti_enrich.stages.tier1 import run_tier1
 from cti_enrich.stages.title import normalize_title
 from cti_enrich.story.attach import StoryLink, classify_from_story, resolve_story
@@ -461,6 +461,7 @@ def complete(
             tlp=prepared.tlp,
             pap=prepared.pap,
             llm_ttp_status="skipped",
+            summary=make_dek(summary),
         )
         session.commit()  # lihat catatan di situs kedua: alert gagal != artikel batal
         if alert:
@@ -546,6 +547,7 @@ def complete(
         tlp=prepared.tlp,
         pap=prepared.pap,
         llm_ttp_status="pending" if llm_ttp else "skipped",
+        summary=make_dek(summary),
     )
     ttp_job: EnrichJob | None = None
     if llm_ttp:

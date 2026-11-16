@@ -54,6 +54,22 @@ async def test_tweet_stats(
     assert resp.json() == snapshot
 
 
+async def test_list_tweets_signal_and_has_cve_params(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+) -> None:
+    await _seed_tweet(api_session)
+    for path in ("/api/tweets", "/api/tweets/stats"):
+        for signal in ("ot", "zero_day", "databreach", "report"):
+            resp = await api_client.get(path, params={"signal": signal}, headers=auth_header())
+            assert resp.status_code == 200, (path, signal)
+        resp = await api_client.get(path, params={"has_cve": "true"}, headers=auth_header())
+        assert resp.status_code == 200
+        resp = await api_client.get(path, params={"signal": "bogus"}, headers=auth_header())
+        assert resp.status_code == 422
+
+
 async def test_list_tweets(
     api_client: AsyncClient,
     api_session: AsyncSession,

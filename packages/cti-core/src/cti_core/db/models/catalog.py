@@ -16,7 +16,17 @@ from __future__ import annotations
 
 import datetime
 
-from sqlalchemy import BigInteger, Boolean, Date, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from cti_core.db.base import Base, TimestampMixin
@@ -79,3 +89,21 @@ class CatalogFamilyAlias(TimestampMixin, Base):
         ForeignKey("catalog_families.id", ondelete="CASCADE"), nullable=False, index=True
     )
     created_by: Mapped[str | None] = mapped_column(String(200))
+
+
+class CatalogFamilyHide(Base):
+    """Keluarga katalog yang disembunyikan dari All Tech satu client. Per client (bukan global)
+    karena katalog dipakai bersama; baris `catalog_families` sendiri tidak disentuh."""
+
+    __tablename__ = "catalog_family_hides"
+
+    client_id: Mapped[str] = mapped_column(
+        ForeignKey("clients.client_id", ondelete="CASCADE"), primary_key=True
+    )
+    family_id: Mapped[int] = mapped_column(
+        ForeignKey("catalog_families.id", ondelete="CASCADE"), primary_key=True, index=True
+    )
+    hidden_by: Mapped[str | None] = mapped_column(String(200))
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

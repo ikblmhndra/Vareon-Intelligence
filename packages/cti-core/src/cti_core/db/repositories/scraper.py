@@ -333,6 +333,24 @@ class AsyncScraperRunRepo:
         )
         return (await self.session.execute(stmt)).first() is not None
 
+    async def latest_running(
+        self, scraper_id: str, *, started_after: datetime.datetime
+    ) -> ScraperRun | None:
+        """Run `running` terbaru yang mulai sesudah `started_after` (batas umur yang sama dengan
+        `has_running`: baris nyangkut karena worker mati tidak dihitung). Dipakai tab CVEs untuk
+        "Checking since ..."."""
+        stmt = (
+            select(ScraperRun)
+            .where(
+                ScraperRun.scraper_id == scraper_id,
+                ScraperRun.status == "running",
+                ScraperRun.started_at > started_after,
+            )
+            .order_by(ScraperRun.started_at.desc())
+            .limit(1)
+        )
+        return (await self.session.execute(stmt)).scalars().first()
+
     async def latest_per_scraper(self) -> dict[str, ScraperRun]:
         """SATU run terbaru per `scraper_id` -- `DISTINCT ON` Postgres
         (bukan portable, tapi seluruh platform ini emang Postgres-only,

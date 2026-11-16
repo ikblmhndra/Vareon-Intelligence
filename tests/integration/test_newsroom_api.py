@@ -83,6 +83,22 @@ async def test_topics_respects_search(
     assert r.json()["items"][0]["count"] == 3
 
 
+async def test_topics_search_matches_actor_mentions_like_articles(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header
+) -> None:
+    await AsyncClientRepo(api_session).ensure_default()
+    for i in range(3):
+        await _seed(api_session, f"hospital leak {i}", _TODAY, threat_actors=["Qilin"])
+    h = auth_header()
+    start = (_TODAY - datetime.timedelta(days=6)).isoformat()
+    params = {"search": "qilin", "posted_on_start": start}
+    r = await api_client.get("/api/newsroom/topics", params=params, headers=h)
+    assert r.status_code == 200, r.text
+    item = next(i for i in r.json()["items"] if i["name"] == "Qilin")
+    a = await api_client.get("/api/articles", params=params, headers=h)
+    assert item["count"] == a.json()["total"] == 3
+
+
 async def test_articles_ttp_filter(
     api_client: AsyncClient, api_session: AsyncSession, auth_header
 ) -> None:

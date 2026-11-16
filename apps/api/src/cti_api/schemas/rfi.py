@@ -38,8 +38,15 @@ class RFIOut(BaseModel):
     updated_at: str
 
 
+class RFIStatusCounts(BaseModel):
+    open: int = 0
+    in_progress: int = 0
+    closed: int = 0
+
+
 class RFIListResponse(BaseModel):
     rfis: list[RFIOut]
+    status_counts: RFIStatusCounts
     total: int
     page: int
     page_size: int

@@ -479,3 +479,107 @@ async def test_ticket_list_with_cve_filters_and_scopes_client(
     no_status = await repo.list_with_cve("default", status="__none__")
     assert [t.cve_id for t, _ in no_status] == ["CVE-2026-7002"]
     assert await repo.list_with_cve("other-client") == []
+
+
+# ── Task 4: timestamp, updated_by, validasi email owner (HTTP) ────────────────
+
+
+async def _seed_tracker(session: AsyncSession, *cve_ids: str) -> None:
+    await _ensure_clients(session)
+    session.add_all([CveTracker(cve_id=c, client_id="default", tech="WordPress") for c in cve_ids])
+    await session.flush()
+
+
+async def test_put_sets_updated_by(api_client, api_session, auth_header) -> None:  # type: ignore[no-untyped-def]
+    await _seed_tracker(api_session, "CVE-2026-7101")
+    resp = await api_client.put(
+        "/api/cve/CVE-2026-7101/ticket",
+        headers=auth_header(username="bob"),
+        json={"affected_asset": "web-01"},
+    )
+    assert resp.status_code == 200
+    got = await api_client.get("/api/cve/CVE-2026-7101/ticket", headers=auth_header())
+    body = got.json()
+    assert body["updated_by"] == "bob"
+    assert body["created_at"]
+    assert body["updated_at"]
+    assert body["opened_at"]
+
+
+async def test_repeated_acknowledge_keeps_updated_by(  # type: ignore[no-untyped-def]
+    api_client, api_session, auth_header
+) -> None:
+    await _seed_tracker(api_session, "CVE-2026-7102")
+    url = "/api/cve/CVE-2026-7102"
+    assert (
+        await api_client.post(f"{url}/acknowledge", headers=auth_header(username="alice"))
+    ).status_code == 200
+    assert (
+        await api_client.put(
+            f"{url}/ticket", headers=auth_header(username="bob"), json={"comments": "x"}
+        )
+    ).status_code == 200
+    assert (
+        await api_client.post(f"{url}/acknowledge", headers=auth_header(username="carol"))
+    ).status_code == 200
+    body = (await api_client.get(f"{url}/ticket", headers=auth_header())).json()
+    assert body["acknowledged_by"] == "alice"
+    assert body["updated_by"] == "bob"
+
+
+async def test_acknowledge_sets_updated_by_on_first_ack(  # type: ignore[no-untyped-def]
+    api_client, api_session, auth_header
+) -> None:
+    await _seed_tracker(api_session, "CVE-2026-7103")
+    await api_client.post(
+        "/api/cve/CVE-2026-7103/acknowledge", headers=auth_header(username="alice")
+    )
+    body = (await api_client.get("/api/cve/CVE-2026-7103/ticket", headers=auth_header())).json()
+    assert body["updated_by"] == "alice"
+
+
+async def test_opened_at_is_earlier_of_created_and_ack(  # type: ignore[no-untyped-def]
+    api_client, api_session, auth_header
+) -> None:
+    await _seed_tracker(api_session, "CVE-2026-7104")
+    ticket = await AsyncCveTicketRepo(api_session).upsert(
+        cve_id="CVE-2026-7104", client_id="default"
+    )
+    ticket.created_at = datetime.datetime(2026, 11, 5, tzinfo=datetime.UTC)
+    ticket.acknowledge_time = datetime.datetime(2026, 10, 1, tzinfo=datetime.UTC)
+    await api_session.flush()
+    body = (await api_client.get("/api/cve/CVE-2026-7104/ticket", headers=auth_header())).json()
+    assert body["opened_at"].startswith("2026-10-01")
+    listing = (await api_client.get("/api/cve/tickets", headers=auth_header())).json()
+    item = next(t for t in listing["tickets"] if t["cve_id"] == "CVE-2026-7104")
+    assert item["opened_at"].startswith("2026-10-01")
+
+
+async def test_owner_email_partial_is_422(api_client, api_session, auth_header) -> None:  # type: ignore[no-untyped-def]
+    await _seed_tracker(api_session, "CVE-2026-7105")
+    url = "/api/cve/CVE-2026-7105/ticket"
+    bad = await api_client.put(url, headers=auth_header(), json={"owner_email": "name@"})
+    assert bad.status_code == 422
+    blank = await api_client.put(url, headers=auth_header(), json={"owner_email": ""})
+    assert blank.status_code == 200
+    ok = await api_client.put(url, headers=auth_header(), json={"owner_email": "a@example.com"})
+    assert ok.status_code == 200
+
+
+async def test_cve_reader_reads_tickets_but_cannot_put(  # type: ignore[no-untyped-def]
+    api_client, api_session, auth_header
+) -> None:
+    from cti_api import deps
+    from cti_core.db.repositories.auth import AsyncRoleRepo
+
+    await _seed_tracker(api_session, "CVE-2026-7106")
+    await AsyncRoleRepo(api_session).upsert_system_role(
+        name="cve_reader", display_name="CVE reader", permissions=["view_cve"]
+    )
+    await api_session.flush()
+    deps.invalidate_role_permissions()
+    hdr = auth_header(username="reader", role="cve_reader")
+    assert (await api_client.get("/api/cve/tickets", headers=hdr)).status_code == 200
+    put = await api_client.put("/api/cve/CVE-2026-7106/ticket", headers=hdr, json={})
+    assert put.status_code == 403
+    deps.invalidate_role_permissions()

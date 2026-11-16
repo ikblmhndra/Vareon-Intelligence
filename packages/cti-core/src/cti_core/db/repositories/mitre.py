@@ -37,6 +37,71 @@ def _row_type(view: str) -> str:
     return SECTOR if view == "industry" else ACTOR
 
 
+def _layer_envelope(
+    *,
+    view: str,
+    days: int,
+    description: str,
+    techniques: list[dict[str, Any]],
+    max_value: int,
+    metadata: list[dict[str, str]],
+) -> dict[str, Any]:
+    """Amplop layer Navigator, dipakai layer 'semua teknik' dan layer dari heatmap."""
+    view_label = "Threat Actor" if view == "ta" else "Industry"
+    label = f"{platform_name()} — {view_label} View ({days}d)"
+    return {
+        "name": label,
+        "versions": {"attack": "14", "navigator": "4.9", "layer": "4.5"},
+        "domain": "enterprise-attack",
+        "description": description,
+        "techniques": techniques,
+        "gradient": {"colors": ["#ffe766", "#ff6666"], "minValue": 0, "maxValue": max_value},
+        "legendItems": [],
+        "metadata": metadata,
+        "showTacticRowBackground": True,
+        "tacticRowBackground": "#1a1a2e",
+        "selectTechniquesAcrossTactics": True,
+    }
+
+
+def build_heatmap_layer(heatmap: dict[str, Any], *, view: str, days: int) -> dict[str, Any]:
+    """Layer Navigator dari keluaran `get_heatmap`: skor = jumlah kolom atas baris yang tampil."""
+    rows: list[str] = heatmap.get("rows", [])
+    ttps: list[dict[str, Any]] = heatmap.get("ttps", [])
+    matrix: list[list[int]] = heatmap.get("matrix", [])
+
+    techniques: list[dict[str, Any]] = []
+    for ci, ttp in enumerate(ttps):
+        tid = ttp.get("id")
+        if not tid or not tid.startswith("T"):
+            continue
+        cells = [(rows[ri], matrix[ri][ci]) for ri in range(len(rows)) if matrix[ri][ci] > 0]
+        cells.sort(key=lambda rc: rc[1], reverse=True)
+        techniques.append(
+            {
+                "techniqueID": tid,
+                "score": sum(v for _, v in cells),
+                "comment": ", ".join(f"{name}: {v}" for name, v in cells),
+                "enabled": True,
+                "showSubtechniques": False,
+            }
+        )
+
+    max_score = max((t["score"] for t in techniques), default=1) or 1
+    view_label = "threat actor" if view == "ta" else "industry"
+    return _layer_envelope(
+        view=view,
+        days=days,
+        description=(
+            f"Heatmap over the last {days} days ({view_label} view): "
+            f"{len(rows)} rows x {len(ttps)} columns; score = article co-mentions per technique."
+        ),
+        techniques=techniques,
+        max_value=max_score,
+        metadata=[{"name": "row", "value": r} for r in rows],
+    )
+
+
 class AsyncMitreHeatmapRepo:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -152,21 +217,29 @@ class AsyncMitreHeatmapRepo:
                 }
             )
 
-        view_label = "Threat Actor" if view == "ta" else "Industry"
-        label = f"{platform_name()} — {view_label} View ({days}d)"
-        return {
-            "name": label,
-            "versions": {"attack": "14", "navigator": "4.9", "layer": "4.5"},
-            "domain": "enterprise-attack",
-            "description": f"Generated from scraped articles over the last {days} days.",
-            "techniques": techniques,
-            "gradient": {"colors": ["#ffe766", "#ff6666"], "minValue": 0, "maxValue": 100},
-            "legendItems": [],
-            "metadata": [],
-            "showTacticRowBackground": True,
-            "tacticRowBackground": "#1a1a2e",
-            "selectTechniquesAcrossTactics": True,
-        }
+        return _layer_envelope(
+            view=view,
+            days=days,
+            description=f"Generated from scraped articles over the last {days} days.",
+            techniques=techniques,
+            max_value=100,
+            metadata=[],
+        )
+
+    async def get_heatmap_navigator_layer(
+        self,
+        *,
+        view: str,
+        days: int,
+        top_rows: int,
+        top_ttps: int,
+        ttp_sources: Sequence[str] | None,
+    ) -> dict[str, Any]:
+        """Layer Navigator yang sama dengan heatmap yang tampil (filter baris/kolom/sumber)."""
+        heatmap = await self.get_heatmap(
+            view=view, days=days, top_rows=top_rows, top_ttps=top_ttps, ttp_sources=ttp_sources
+        )
+        return build_heatmap_layer(heatmap, view=view, days=days)
 
     async def get_ttp_articles(
         self,
