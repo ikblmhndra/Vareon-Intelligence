@@ -1,6 +1,7 @@
 "use client";
 
 import { nativeSelectClass } from "@/components/ui/native-select";
+import { cn } from "@/lib/utils";
 import {
   Pagination,
   PaginationContent,
@@ -60,13 +61,13 @@ export function NumberedPager({
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <p className="text-xs text-muted-foreground">{summary ?? `Page ${page} of ${totalPages}`}</p>
         {sizer && (
-          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          <label className="flex items-center gap-2 text-xs whitespace-nowrap text-muted-foreground">
             Rows per page
             <select
               aria-label="Rows per page"
               value={pageSize}
               onChange={(e) => onPageSizeChange(Number(e.target.value))}
-              className={`${nativeSelectClass()} h-8 w-auto px-2 text-xs`}
+              className={cn(nativeSelectClass(), "h-8 w-auto rounded-md px-2 text-xs")}
             >
               {pageSizeOptions.map((n) => (
                 <option key={n} value={n}>
