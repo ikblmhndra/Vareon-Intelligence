@@ -248,8 +248,8 @@ export function RiskMatrixView() {
 
       {d && d.matrix.length > 0 && (
         <>
-          <div className="grid items-start gap-4 lg:grid-cols-5">
-            <Card className="lg:col-span-3">
+          <div className="grid items-start gap-4 lg:grid-cols-3">
+            <Card className="lg:col-span-2">
               <div className="flex flex-col gap-3 px-5">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
@@ -266,10 +266,13 @@ export function RiskMatrixView() {
                 <HeatGrid
                   aria-label="Risk score by industry and country"
                   rowLabels={d.industries}
+                  // Kode ISO 2 huruf supaya 20+ kolom sama lebar dan muat; nama lengkap lewat tooltip dan sr-only.
+                  fixedColumns
                   colLabels={d.countries.map((c) => (
-                    <span key={c} className="block max-w-24 truncate" title={countryName(c)}>
-                      {countryName(c)}
-                    </span>
+                    <abbr key={c} title={countryName(c)} className="no-underline">
+                      <span aria-hidden>{c}</span>
+                      <span className="sr-only">{countryName(c)}</span>
+                    </abbr>
                   ))}
                   active={
                     selected
@@ -312,7 +315,7 @@ export function RiskMatrixView() {
                 />
               </div>
             </Card>
-            <div className="lg:col-span-2">
+            <div className="lg:col-span-1">
               {selected ? (
                 <SelectedCellPanel
                   cell={selected}

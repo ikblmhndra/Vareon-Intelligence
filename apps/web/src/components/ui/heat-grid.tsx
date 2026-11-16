@@ -64,7 +64,7 @@ export function HeatCell({
       aria-label={ariaLabel}
       title={title}
       className={cn(
-        "flex h-10 w-full min-w-10 items-center justify-center gap-1 rounded-md px-1.5 text-xs font-semibold",
+        "flex h-10 w-full min-w-10 items-center justify-center gap-0.5 rounded-md px-1 text-xs font-semibold",
         value === null
           ? ""
           : variant === "tier"
@@ -91,6 +91,9 @@ interface HeatGridProps {
   active: [number, number] | null;
   onSelect: (r: number, c: number) => void;
   "aria-label": string;
+  /** Semua kolom nilai sama lebar persis (`table-fixed`) dan header di tengah: untuk grid banyak kolom berlabel
+   * pendek (kode negara Risk matrix). Kolom label 8.5rem; tabel minimal 3rem per kolom, lebih sempit = scroll. */
+  fixedColumns?: boolean;
 }
 
 /** Grid heatmap dengan header lengket (baris atas dan kolom kiri) dan navigasi panah 2-D lewat
@@ -102,6 +105,7 @@ export function HeatGrid({
   active,
   onSelect,
   "aria-label": ariaLabel,
+  fixedColumns = false,
 }: HeatGridProps) {
   const { onKeyDown, tabIndexFor, setRef, onFocusCell } = useGridRovingKeys(
     rowLabels.length,
@@ -112,16 +116,33 @@ export function HeatGrid({
   );
   return (
     <div className="max-h-[32rem] overflow-auto">
-      <table role="grid" aria-label={ariaLabel} onKeyDown={onKeyDown} className="w-full border-separate border-spacing-1">
+      <table
+        role="grid"
+        aria-label={ariaLabel}
+        onKeyDown={onKeyDown}
+        className={cn("w-full border-separate border-spacing-1", fixedColumns && "table-fixed")}
+        style={fixedColumns ? { minWidth: `calc(8.5rem + ${colLabels.length} * 3rem)` } : undefined}
+      >
+        {fixedColumns && (
+          <colgroup>
+            <col className="w-34" />
+            {colLabels.map((_, c) => (
+              <col key={c} />
+            ))}
+          </colgroup>
+        )}
         <thead>
           <tr>
-            <td className="sticky left-0 top-0 z-20 w-px bg-background whitespace-nowrap" />
+            <td className={cn("sticky left-0 top-0 z-20 bg-background", !fixedColumns && "w-px whitespace-nowrap")} />
             {colLabels.map((label, c) => (
               <th
                 key={c}
                 scope="col"
-                style={{ width: `${100 / colLabels.length}%` }}
-                className="sticky top-0 z-10 bg-background px-1 pb-1 text-left text-2xs font-semibold text-muted-foreground"
+                style={fixedColumns ? undefined : { width: `${100 / colLabels.length}%` }}
+                className={cn(
+                  "sticky top-0 z-10 bg-background px-1 pb-1 text-2xs font-semibold text-muted-foreground",
+                  fixedColumns ? "text-center" : "text-left",
+                )}
               >
                 {label}
               </th>
@@ -133,7 +154,10 @@ export function HeatGrid({
             <tr key={r}>
               <th
                 scope="row"
-                className="sticky left-0 z-10 w-px bg-background pr-2 text-left text-xs font-medium whitespace-nowrap"
+                className={cn(
+                  "sticky left-0 z-10 bg-background pr-2 text-left text-xs font-medium whitespace-nowrap",
+                  fixedColumns ? "truncate" : "w-px",
+                )}
               >
                 {label}
               </th>
