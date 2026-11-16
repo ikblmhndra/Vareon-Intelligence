@@ -21,6 +21,10 @@ RELEVANCE_LOCK_NAMESPACE = 7_311_003
 `STORY_LOCK_NAMESPACE = 7_311_002` (resolver story) dan `_URL_LOCK_NAMESPACE = 7_311_001`.
 Beda namespace supaya ketiganya tidak saling bentur."""
 
+_LOCK_KEYS = {"article": 0, "tweet": 1}
+"""Kunci kedua advisory per kind; `article` tetap 0 (sama dengan kunci sebelum ada `kind`)
+supaya latih artikel lama dan baru tetap saling mengunci selama deploy bergulir."""
+
 _STATUSES = ("active", "retired", "rejected")
 _GATE_STATES = ("shadow", "gate")
 
@@ -80,6 +84,19 @@ class GateStats:
     audit_last: list[bool]
 
 
+def check_kind(kind: str) -> str:
+    """`ValueError` kalau bukan kind yang dikenal (cermin CHECK `kind_valid`)."""
+    if kind not in _LOCK_KEYS:
+        raise ValueError(f"kind model relevansi tidak dikenal: {kind!r}")
+    return kind
+
+
+def _require_article(kind: str) -> None:
+    check_kind(kind)
+    if kind != "article":
+        raise NotImplementedError("gate_stats baru ada untuk kind 'article'")
+
+
 def check_status(status: str) -> str:
     """`ValueError` kalau bukan status yang dikenal (konvensi `role` mention negara)."""
     if status not in _STATUSES:
@@ -91,16 +108,20 @@ class RelevanceModelRepo:
     def __init__(self, session: Session) -> None:
         self.session = session
 
-    def lock(self) -> None:
-        """Kunci advisory tingkat transaksi: satu latih/aktivasi sekaligus, supaya dua worker
-        tidak sama-sama membuat baris `active`."""
+    def lock(self, kind: str = "article") -> None:
+        """Kunci advisory tingkat transaksi: satu latih/aktivasi sekaligus PER kind, supaya dua
+        worker tidak sama-sama membuat baris `active` untuk kind yang sama, sementara latih
+        artikel dan tweet tidak saling menunggu."""
         self.session.execute(
-            text("SELECT pg_advisory_xact_lock(:ns, 0)"), {"ns": RELEVANCE_LOCK_NAMESPACE}
+            text("SELECT pg_advisory_xact_lock(:ns, :k)"),
+            {"ns": RELEVANCE_LOCK_NAMESPACE, "k": _LOCK_KEYS[check_kind(kind)]},
         )
 
-    def get_active(self) -> RelevanceModel | None:
+    def get_active(self, kind: str = "article") -> RelevanceModel | None:
         return self.session.execute(
-            select(RelevanceModel).where(RelevanceModel.status == "active")
+            select(RelevanceModel).where(
+                RelevanceModel.status == "active", RelevanceModel.kind == kind
+            )
         ).scalar_one_or_none()
 
     def add_rejected(
@@ -111,8 +132,10 @@ class RelevanceModelRepo:
         class_counts: dict[str, int],
         metrics: dict[str, Any],
         reason: str,
+        kind: str = "article",
     ) -> int:
         row = RelevanceModel(
+            kind=check_kind(kind),
             status=check_status("rejected"),
             feature_version=feature_version,
             n_examples=n_examples,
@@ -134,19 +157,22 @@ class RelevanceModelRepo:
         class_counts: dict[str, int],
         metrics: dict[str, Any],
         now: datetime.datetime,
+        kind: str = "article",
     ) -> int:
-        """Pensiunkan model aktif lalu sisipkan yang baru; `gate_state` dan `gate_changed_at`
-        diwarisi (default `shadow`/NULL). Urutan penting: indeks unik parsial menolak dua baris
-        `active` sekaligus, jadi yang lama harus `retired` dulu. `now` belum dipakai kolom
-        apa pun (created_at server-side); tetap diterima agar antarmuka sama dengan
+        """Pensiunkan model aktif KIND INI lalu sisipkan yang baru; `gate_state` dan
+        `gate_changed_at` diwarisi (default `shadow`/NULL). Urutan penting: indeks unik parsial
+        menolak dua baris `active` sekaligus, jadi yang lama harus `retired` dulu. `now` belum
+        dipakai kolom apa pun (created_at server-side); tetap diterima agar antarmuka sama dengan
         `set_gate_state`."""
-        current = self.get_active()
+        check_kind(kind)
+        current = self.get_active(kind)
         gate_state, gate_changed_at = "shadow", None
         if current is not None:
             gate_state, gate_changed_at = current.gate_state, current.gate_changed_at
             current.status = check_status("retired")
             self.session.flush()
         row = RelevanceModel(
+            kind=kind,
             status=check_status("active"),
             artifact=artifact,
             feature_version=feature_version,
@@ -177,12 +203,15 @@ class RelevanceModelRepo:
         since: datetime.datetime,
         revert_samples: int,
         audit_since: datetime.datetime | None = None,
+        kind: str = "article",
     ) -> GateStats:
         """Hitung baris dalam band (`in_band` true, keputusan shadow/audit) dari `articles` dan
         `rejected_articles`. Setuju = vonis LLM `threat_news`: artikel bukan best practice;
         baris rejected tidak pernah setuju. Keputusan `gated` tidak dihitung (LLM tidak
         dipanggil, tidak ada vonis). `audit_since` hanya membatasi daftar audit, bukan hitungan
-        band."""
+        band. SQL-nya khusus artikel; `kind` selain `article` ditolak sampai ada sumber
+        vonis tweet."""
+        _require_article(kind)
         band = self.session.execute(
             text(_BAND_COUNT_SQL),
             {"bp": _BEST_PRACTICE, "since": since},
@@ -210,9 +239,11 @@ class AsyncRelevanceModelRepo:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def get_active(self) -> RelevanceModel | None:
+    async def get_active(self, kind: str = "article") -> RelevanceModel | None:
         result = await self.session.execute(
-            select(RelevanceModel).where(RelevanceModel.status == "active")
+            select(RelevanceModel).where(
+                RelevanceModel.status == "active", RelevanceModel.kind == kind
+            )
         )
         return result.scalar_one_or_none()
 
@@ -222,8 +253,10 @@ class AsyncRelevanceModelRepo:
         since: datetime.datetime,
         revert_samples: int,
         audit_since: datetime.datetime | None = None,
+        kind: str = "article",
     ) -> GateStats:
         """Cermin `RelevanceModelRepo.gate_stats` (SQL yang sama) untuk API."""
+        _require_article(kind)
         band = (
             await self.session.execute(
                 text(_BAND_COUNT_SQL), {"bp": _BEST_PRACTICE, "since": since}

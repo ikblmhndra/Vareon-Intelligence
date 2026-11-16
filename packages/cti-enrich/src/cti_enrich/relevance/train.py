@@ -105,9 +105,10 @@ def run_training(
     now: dt.datetime,
     *,
     dry_run: bool = False,
+    kind: str = "article",
 ) -> TrainOutcome:
     repo = RelevanceModelRepo(session)
-    repo.lock()
+    repo.lock(kind)
     if not dry_run:
         # Retensi jalan di SETIAP latih nyata, termasuk saat dilewati (contoh kurang), supaya
         # `tweet_verdicts` tidak menumpuk berminggu-minggu sebelum model tweet pertama terlatih.
@@ -157,6 +158,7 @@ def run_training(
                 class_counts=counts,
                 metrics=metrics,
                 reason=reason,
+                kind=kind,
             )
         return TrainOutcome("rejected", model_id, metrics, reason)
 
@@ -171,6 +173,7 @@ def run_training(
             class_counts=counts,
             metrics=metrics,
             now=now,
+            kind=kind,
         )
     return TrainOutcome("active", model_id, metrics, None)
 

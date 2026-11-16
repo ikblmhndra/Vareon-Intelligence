@@ -83,7 +83,7 @@ class _Cached:
     loaded_at: float
 
 
-_cache: _Cached | None = None
+_cache: dict[str, _Cached] = {}
 _stale_warned: set[int] = set()
 _runtime_fv: str | None = None
 
@@ -101,41 +101,42 @@ def _runtime_feature_version(embedder: Any) -> str:
 
 def _reset_cache() -> None:
     """Hook test: kosongkan cache model dan catatan peringatan stale."""
-    global _cache, _runtime_fv
-    _cache = None
+    global _runtime_fv
+    _cache.clear()
     _runtime_fv = None
     _stale_warned.clear()
 
 
-def _active(session: Session) -> _Cached | None:
-    """Model aktif dari cache; setelah TTL tanya DB lagi, muat ulang artifact hanya kalau
-    `model_id` berganti (gate_state selalu diambil dari baris terbaru)."""
-    global _cache
+def _active(session: Session, kind: str = "article") -> _Cached | None:
+    """Model aktif `kind` dari cache (satu entri per kind); setelah TTL tanya DB lagi, muat
+    ulang artifact hanya kalau `model_id` berganti (gate_state selalu diambil dari baris
+    terbaru)."""
     now = time.monotonic()
-    if _cache is not None and now - _cache.loaded_at < CACHE_TTL_SECONDS:
-        return _cache
+    cached = _cache.get(kind)
+    if cached is not None and now - cached.loaded_at < CACHE_TTL_SECONDS:
+        return cached
     # Savepoint (R4): sesi pipeline memegang kunci advisory URL dari `_known_article`; error SQL
     # di sini tanpa savepoint membuat transaksi sesi gagal dan menjatuhkan artikelnya.
     with session.begin_nested():
-        row = RelevanceModelRepo(session).get_active()
+        row = RelevanceModelRepo(session).get_active(kind)
     if row is None or row.artifact is None:
-        _cache = None
+        _cache.pop(kind, None)
         return None
-    if _cache is not None and _cache.model_id == row.id:
-        _cache.gate_state = row.gate_state
-        _cache.feature_version = row.feature_version
-        _cache.loaded_at = now
-        return _cache
+    if cached is not None and cached.model_id == row.id:
+        cached.gate_state = row.gate_state
+        cached.feature_version = row.feature_version
+        cached.loaded_at = now
+        return cached
     from cti_enrich.relevance import model as model_mod
 
-    _cache = _Cached(
+    _cache[kind] = _Cached(
         model_id=row.id,
         model=model_mod.loads(row.artifact),
         gate_state=row.gate_state,
         feature_version=row.feature_version,
         loaded_at=now,
     )
-    return _cache
+    return _cache[kind]
 
 
 def gated_classify(result: RelevanceResult) -> ClassifyResult:

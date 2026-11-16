@@ -46,7 +46,11 @@ def train() -> dict[str, Any]:
     # `sync_session` commit saat blok selesai: itu commit task ini (run_training tidak commit).
     with sync_session() as session:
         outcome = run_training(
-            session, get_embedder(), get_settings().relevance, datetime.datetime.now(datetime.UTC)
+            session,
+            get_embedder(),
+            get_settings().relevance,
+            datetime.datetime.now(datetime.UTC),
+            kind="article",
         )
     log.info("relevance_trained", status=outcome.status, model_id=outcome.model_id)
     if outcome.status == "rejected":
@@ -113,8 +117,8 @@ def evaluate() -> dict[str, Any]:
     result: dict[str, Any] = {"action": "none", "train_triggered": False}
     with sync_session() as session:
         repo = RelevanceModelRepo(session)
-        repo.lock()
-        row = repo.get_active()
+        repo.lock("article")
+        row = repo.get_active("article")
         if cfg.mode != "auto" and row is not None and row.gate_state == "gate":
             # Operator menurunkan mode: status di DB harus ikut, sebelum cabang lain.
             # Commit DULU, alert best-effort sesudahnya.
