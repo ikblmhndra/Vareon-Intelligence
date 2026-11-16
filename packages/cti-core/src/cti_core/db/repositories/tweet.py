@@ -16,11 +16,13 @@ from __future__ import annotations
 import datetime
 from typing import Any
 
-from sqlalchemy import ColumnElement, Select, Text, case, cast, func, or_, select
+from sqlalchemy import ColumnElement, Select, Text, case, cast, delete, func, or_, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from cti_core.db.models.tweet import MonitoredAccount, Tweet
+from cti_core.db.models.tweet_verdict import TweetVerdict
 
 
 class TweetRepo:
@@ -61,6 +63,52 @@ class TweetRepo:
         if not rows:
             return None
         return max(rows, key=int)
+
+
+class TweetVerdictRepo:
+    """Jalur tulis/baca `tweet_verdicts` (sync). Commit milik pemanggil."""
+
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def record(
+        self,
+        *,
+        tweet_id: str,
+        text: str,
+        related_cyber: bool,
+        source: str,
+        prompt_version: str | None,
+        relevance: dict[str, Any] | None,
+    ) -> None:
+        """Insert; kalau `tweet_id` sudah ada, diam-diam diabaikan (verdict pertama menang)."""
+        self.session.execute(
+            pg_insert(TweetVerdict)
+            .values(
+                tweet_id=tweet_id,
+                text=text,
+                related_cyber=related_cyber,
+                source=source,
+                prompt_version=prompt_version,
+                relevance=relevance,
+            )
+            .on_conflict_do_nothing(index_elements=[TweetVerdict.tweet_id])
+        )
+
+    def llm_rows(self, since: datetime.datetime | None = None) -> list[TweetVerdict]:
+        """Hanya `source='llm'`, terbaru dulu (bahan latih model tweet)."""
+        stmt = select(TweetVerdict).where(TweetVerdict.source == "llm")
+        if since is not None:
+            stmt = stmt.where(TweetVerdict.created_at >= since)
+        stmt = stmt.order_by(TweetVerdict.created_at.desc(), TweetVerdict.id.desc())
+        return list(self.session.execute(stmt).scalars().all())
+
+    def purge(self, older_than: datetime.datetime) -> int:
+        """Hapus baris (sumber apa pun) yang dibuat sebelum `older_than`."""
+        result = self.session.execute(
+            delete(TweetVerdict).where(TweetVerdict.created_at < older_than)
+        )
+        return int(result.rowcount or 0)  # type: ignore[attr-defined]
 
 
 def _has_items(key: str) -> ColumnElement[bool]:

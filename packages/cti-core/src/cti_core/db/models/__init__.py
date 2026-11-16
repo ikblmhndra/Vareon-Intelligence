@@ -85,6 +85,7 @@ from cti_core.db.models.story import Story
 from cti_core.db.models.techstack import TechStackEntry, TechStackTarget
 from cti_core.db.models.threat_reference import MonitoredPerson, ThreatActorGroup
 from cti_core.db.models.tweet import MonitoredAccount, Tweet
+from cti_core.db.models.tweet_verdict import TweetVerdict
 
 __all__ = [
     "ApiToken",
@@ -166,6 +167,7 @@ __all__ = [
     "ThreatActorGroup",
     "ThreatFeedEntry",
     "Tweet",
+    "TweetVerdict",
     "User",
     "UserClient",
 ]

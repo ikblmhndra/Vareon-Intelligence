@@ -16,6 +16,7 @@ from typing import Any, Literal
 
 from cti_core.config import RelevanceSettings
 from cti_core.db.repositories.relevance import RelevanceModelRepo
+from cti_core.db.repositories.tweet import TweetVerdictRepo
 from sqlalchemy.orm import Session
 
 from cti_enrich.relevance.dataset import load_examples
@@ -152,6 +153,7 @@ def run_training(
                 reason=reason,
             )
             repo.purge(now - dt.timedelta(days=RETENTION_DAYS))
+            TweetVerdictRepo(session).purge(now - dt.timedelta(days=RETENTION_DAYS))
         return TrainOutcome("rejected", model_id, metrics, reason)
 
     model_id = None
@@ -167,6 +169,7 @@ def run_training(
             now=now,
         )
         repo.purge(now - dt.timedelta(days=RETENTION_DAYS))
+        TweetVerdictRepo(session).purge(now - dt.timedelta(days=RETENTION_DAYS))
     return TrainOutcome("active", model_id, metrics, None)
 
 
