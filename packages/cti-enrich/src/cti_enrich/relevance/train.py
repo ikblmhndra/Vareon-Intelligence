@@ -108,6 +108,12 @@ def run_training(
 ) -> TrainOutcome:
     repo = RelevanceModelRepo(session)
     repo.lock()
+    if not dry_run:
+        # Retensi jalan di SETIAP latih nyata, termasuk saat dilewati (contoh kurang), supaya
+        # `tweet_verdicts` tidak menumpuk berminggu-minggu sebelum model tweet pertama terlatih.
+        cutoff = now - dt.timedelta(days=RETENTION_DAYS)
+        repo.purge(cutoff)
+        TweetVerdictRepo(session).purge(cutoff)
     examples = load_examples(session)
     tally = Counter(e.label for e in examples)
     counts = {c: tally.get(c, 0) for c in CLASSES}
@@ -152,8 +158,6 @@ def run_training(
                 metrics=metrics,
                 reason=reason,
             )
-            repo.purge(now - dt.timedelta(days=RETENTION_DAYS))
-            TweetVerdictRepo(session).purge(now - dt.timedelta(days=RETENTION_DAYS))
         return TrainOutcome("rejected", model_id, metrics, reason)
 
     model_id = None
@@ -168,8 +172,6 @@ def run_training(
             metrics=metrics,
             now=now,
         )
-        repo.purge(now - dt.timedelta(days=RETENTION_DAYS))
-        TweetVerdictRepo(session).purge(now - dt.timedelta(days=RETENTION_DAYS))
     return TrainOutcome("active", model_id, metrics, None)
 
 

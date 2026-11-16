@@ -9,9 +9,10 @@ from cti_core.config import RelevanceSettings
 from cti_core.db.engine import sync_session
 from cti_core.db.models.article import Article, RejectedArticle
 from cti_core.db.models.relevance import RelevanceModel
+from cti_core.db.models.tweet_verdict import TweetVerdict
 from cti_enrich.relevance.dataset import load_examples
 from cti_enrich.relevance.train import run_training
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from tests.unit.relevance_fakes import FakeEmbedder
@@ -114,6 +115,41 @@ def test_run_training_skipped_below_minimum(db_session: Session) -> None:
     out = run_training(db_session, FakeEmbedder(), cfg, NOW)
     assert out.status == "skipped"
     assert db_session.scalar(select(func.count()).select_from(RelevanceModel)) == 0
+
+
+def _seed_verdicts(session: Session) -> None:
+    session.execute(delete(TweetVerdict))
+    for tid in ("old", "new"):
+        session.add(TweetVerdict(tweet_id=tid, text="t", related_cyber=True, source="llm"))
+    session.flush()
+    session.execute(
+        update(TweetVerdict)
+        .where(TweetVerdict.tweet_id == "old")
+        .values(created_at=NOW - dt.timedelta(days=100))
+    )
+    session.execute(
+        update(TweetVerdict)
+        .where(TweetVerdict.tweet_id == "new")
+        .values(created_at=NOW - dt.timedelta(days=10))
+    )
+
+
+def _verdict_ids(session: Session) -> list[str]:
+    return sorted(session.execute(select(TweetVerdict.tweet_id)).scalars().all())
+
+
+def test_run_training_skipped_still_purges_old_tweet_verdicts(db_session: Session) -> None:
+    _seed_verdicts(db_session)
+    cfg = RelevanceSettings(train_min_examples=10_000)
+    assert run_training(db_session, FakeEmbedder(), cfg, NOW).status == "skipped"
+    assert _verdict_ids(db_session) == ["new"]
+
+
+def test_run_training_dry_run_purges_nothing(db_session: Session) -> None:
+    _seed_verdicts(db_session)
+    cfg = RelevanceSettings(train_min_examples=10_000)
+    run_training(db_session, FakeEmbedder(), cfg, NOW, dry_run=True)
+    assert _verdict_ids(db_session) == ["new", "old"]
 
 
 def test_run_training_rejected_keeps_previous(db_session: Session) -> None:
