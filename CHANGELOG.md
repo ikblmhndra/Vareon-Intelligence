@@ -8,10 +8,11 @@ router `changelog.py`) -- parser-nya expect header persis
 
 ## [0.8.18] - 2026-11-17
 
-**Tabel ticket di CVE Tracker → Ticketing kini berhalaman.** Prod menampilkan 1.300 ticket Open dalam satu tabel. Tabel memakai pager bernomor yang sama dengan daftar CVE dan Scrapers: 25 baris per halaman (25/50/100 lewat "Rows per page", diingat per browser). Hitungan status, pencarian, dan sakelar "Include false positives" tetap melihat seluruh ticket. Hanya web: API tidak berubah, tanpa migrasi, tanpa kunci `.env`.
+**Tabel ticket di CVE Tracker → Ticketing kini berhalaman, dan urutan daftar CVE bisa dipilih.** Prod menampilkan 1.300 ticket Open dalam satu tabel. Tabel memakai pager bernomor yang sama dengan daftar CVE dan Scrapers: 25 baris per halaman (25/50/100 lewat "Rows per page", diingat per browser). Hitungan status, pencarian, dan sakelar "Include false positives" tetap melihat seluruh ticket. Daftar CVE punya pilihan "Sort by" (detected, published, risk); default kini detected (CVE yang paling baru ditemukan di atas), sebelumnya selalu risk. Tanpa migrasi, tanpa kunci `.env`.
 
 ### Diubah
 - Ticketing: pager di bawah tabel ("Showing 1-25 of N"); ganti status, pencarian, sakelar FP, atau ukuran halaman kembali ke halaman 1. Panel kanan menampilkan ticket yang dipilih, atau ticket pertama di halaman yang sedang tampil.
+- CVEs: pilihan "Sort by" di kartu daftar (detected/published/risk, terbaru atau tertinggi dulu), default detected; subjudul mengikuti ("445 CVEs - sorted by detected date"). Ganti urutan kembali ke halaman 1. `GET /api/cve` menerima `sort_by=detected` (urut `detected_on`); default API tetap `published`.
 
 **Saat upgrade dari 0.8.16:** `make deploy`, tidak ada langkah lain. Runbook: `docs/prod-upgrade/0.8.18.md` dan `docs/PROD_UPGRADE_0.8.16_TO_0.8.18.md`.
 
