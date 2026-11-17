@@ -6,6 +6,15 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
+## [0.8.18] - 2026-11-17
+
+**Tabel ticket di CVE Tracker → Ticketing kini berhalaman.** Prod menampilkan 1.300 ticket Open dalam satu tabel. Tabel memakai pager bernomor yang sama dengan daftar CVE dan Scrapers: 25 baris per halaman (25/50/100 lewat "Rows per page", diingat per browser). Hitungan status, pencarian, dan sakelar "Include false positives" tetap melihat seluruh ticket. Hanya web: API tidak berubah, tanpa migrasi, tanpa kunci `.env`.
+
+### Diubah
+- Ticketing: pager di bawah tabel ("Showing 1-25 of N"); ganti status, pencarian, sakelar FP, atau ukuran halaman kembali ke halaman 1. Panel kanan menampilkan ticket yang dipilih, atau ticket pertama di halaman yang sedang tampil.
+
+**Saat upgrade dari 0.8.16:** `make deploy`, tidak ada langkah lain. Runbook: `docs/prod-upgrade/0.8.18.md` dan `docs/PROD_UPGRADE_0.8.16_TO_0.8.18.md`.
+
 ## [0.8.16] - 2026-11-08
 
 **Redesain FigCraft: tiga sumber data baru untuk halaman PIR, Intelligence, dan MITRE, penyeragaman tema web, dan redesain CVE Tracker beserta tambahan backend-nya.** API mendapat cakupan PIR per minggu, seri harian per entitas yang melonjak, dan layer ATT&CK Navigator yang sama persis dengan heatmap yang terlihat. Web memakai satu skala tier risiko, border field yang terbaca, dan fokus yang jelas. Halaman Exec dirombak: brief eksekutif harian tersimpan dan papan Analyst. Tiga migrasi aditif (`b7d41e9a2c63`, `c4e8a1f2b9d6`, `d9f2b6a4c1e7`) dijalankan otomatis oleh `make deploy`, dan satu dependency baru (`email-validator`). Tanpa kunci `.env`. Halaman X Intel, Recap, dan Newsletter ikut didesain ulang (tanpa migrasi), begitu juga halaman operasi Scrapers dan Data health (tiga field aditif di `GET /api/data-health`, tanpa migrasi). Halaman Login, sesi, dan Admin juga didesain ulang (halaman Access, tanpa migrasi). Dashboard juga didesain ulang (satu migrasi aditif `d9f2b6a4c1e7`).
