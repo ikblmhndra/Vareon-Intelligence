@@ -51,17 +51,38 @@ _BAND_UNION_SQL = """
 """Satu teks SQL untuk repo sync (gate, worker) dan async (Data health): angka yang dilihat
 operator dan yang dipakai gate tidak boleh berbeda."""
 
-_BAND_COUNT_SQL = (
-    f"SELECT count(*), count(*) FILTER (WHERE agree) FROM ({_BAND_UNION_SQL}) r WHERE ts >= :since"
-)
-_AUDIT_LAST_SQL = (
-    f"SELECT agree FROM ({_BAND_UNION_SQL}) r WHERE decision = 'audit' "
-    "AND (CAST(:audit_since AS timestamptz) IS NULL OR ts >= CAST(:audit_since AS timestamptz)) "
-    "ORDER BY ts DESC LIMIT :n"
-)
+_TWEET_BAND_SQL = """
+    SELECT created_at AS ts, related_cyber AS agree, relevance->>'decision' AS decision
+    FROM tweet_verdicts
+    WHERE source = 'llm'
+      AND relevance->>'in_band' = 'true'
+      AND relevance->>'decision' IN ('shadow', 'audit')
+"""
+"""Padanan `_BAND_UNION_SQL` untuk model tweet: vonis LLM di `tweet_verdicts`, setuju =
+`related_cyber`. `relevance` yang dicatat `None` tersimpan sebagai JSON `null` (bukan SQL NULL);
+`->>` pada JSON `null` maupun SQL NULL sama-sama menghasilkan NULL, jadi keduanya tersaring."""
+
+
+def _band_count_sql(band: str) -> str:
+    return f"SELECT count(*), count(*) FILTER (WHERE agree) FROM ({band}) r WHERE ts >= :since"
+
+
+def _audit_last_sql(band: str) -> str:
+    return (
+        f"SELECT agree FROM ({band}) r WHERE decision = 'audit' "
+        "AND (CAST(:audit_since AS timestamptz) IS NULL "
+        "OR ts >= CAST(:audit_since AS timestamptz)) "
+        "ORDER BY ts DESC LIMIT :n"
+    )
+
+
+_BAND_COUNT_SQL = _band_count_sql(_BAND_UNION_SQL)
+_AUDIT_LAST_SQL = _audit_last_sql(_BAND_UNION_SQL)
 """`:audit_since` NULL = tanpa batas waktu: itu yang dipakai tampilan Data health (N audit
 terakhir apa adanya). Gate memakai `gate_changed_at` supaya sampel basi dari periode gate
 sebelumnya tidak membalik gate lagi."""
+_TWEET_BAND_COUNT_SQL = _band_count_sql(_TWEET_BAND_SQL)
+_TWEET_AUDIT_LAST_SQL = _audit_last_sql(_TWEET_BAND_SQL)
 _MIDDLE_BAND_SQL = """
     SELECT (SELECT count(*) FROM articles WHERE created_at >= :since
               AND raw_enrichment->'relevance'->>'in_band' = 'false')
@@ -91,10 +112,12 @@ def check_kind(kind: str) -> str:
     return kind
 
 
-def _require_article(kind: str) -> None:
-    check_kind(kind)
-    if kind != "article":
-        raise NotImplementedError("gate_stats baru ada untuk kind 'article'")
+def _gate_queries(kind: str) -> tuple[str, str, dict[str, Any]]:
+    """`(SQL hitungan band, SQL audit terakhir, parameter tambahan)` per kind model. Satu sumber
+    untuk repo sync dan async supaya Data health dan gate memakai angka yang sama."""
+    if check_kind(kind) == "tweet":
+        return _TWEET_BAND_COUNT_SQL, _TWEET_AUDIT_LAST_SQL, {}
+    return _BAND_COUNT_SQL, _AUDIT_LAST_SQL, {"bp": _BEST_PRACTICE}
 
 
 def check_status(status: str) -> str:
@@ -209,16 +232,11 @@ class RelevanceModelRepo:
         `rejected_articles`. Setuju = vonis LLM `threat_news`: artikel bukan best practice;
         baris rejected tidak pernah setuju. Keputusan `gated` tidak dihitung (LLM tidak
         dipanggil, tidak ada vonis). `audit_since` hanya membatasi daftar audit, bukan hitungan
-        band. SQL-nya khusus artikel; `kind` selain `article` ditolak sampai ada sumber
-        vonis tweet."""
-        _require_article(kind)
-        band = self.session.execute(
-            text(_BAND_COUNT_SQL),
-            {"bp": _BEST_PRACTICE, "since": since},
-        ).one()
+        band. Kind `tweet` menghitung dari `tweet_verdicts` (setuju = `related_cyber`)."""
+        band_sql, audit_sql, extra = _gate_queries(kind)
+        band = self.session.execute(text(band_sql), {**extra, "since": since}).one()
         audits = self.session.execute(
-            text(_AUDIT_LAST_SQL),
-            {"bp": _BEST_PRACTICE, "n": revert_samples, "audit_since": audit_since},
+            text(audit_sql), {**extra, "n": revert_samples, "audit_since": audit_since}
         ).scalars()
         return GateStats(
             band_n=int(band[0]), band_agree=int(band[1]), audit_last=[bool(a) for a in audits]
@@ -256,16 +274,11 @@ class AsyncRelevanceModelRepo:
         kind: str = "article",
     ) -> GateStats:
         """Cermin `RelevanceModelRepo.gate_stats` (SQL yang sama) untuk API."""
-        _require_article(kind)
-        band = (
-            await self.session.execute(
-                text(_BAND_COUNT_SQL), {"bp": _BEST_PRACTICE, "since": since}
-            )
-        ).one()
+        band_sql, audit_sql, extra = _gate_queries(kind)
+        band = (await self.session.execute(text(band_sql), {**extra, "since": since})).one()
         audits = (
             await self.session.execute(
-                text(_AUDIT_LAST_SQL),
-                {"bp": _BEST_PRACTICE, "n": revert_samples, "audit_since": audit_since},
+                text(audit_sql), {**extra, "n": revert_samples, "audit_since": audit_since}
             )
         ).scalars()
         return GateStats(

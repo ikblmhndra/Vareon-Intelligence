@@ -1,4 +1,6 @@
-"""Task model relevansi lokal (P5): latih mingguan.
+"""Task model relevansi lokal (P5): latih mingguan, evaluasi gate tiap jam. Keduanya jalan per kind
+model (`article`, `tweet`; spec tweet-llm-cost Part C), masing-masing dengan transaksi, kunci, gate
+state dan alert sendiri. Alert dan key Redis kind `article` sama persis dengan sebelum ada kind.
 
 Import `cti_enrich` LAZY di dalam fungsi -- image `worker` tanpa extra `nlp` tetap harus bisa
 start (lihat `tasks/enrich.py` dan `tasks/story.py`)."""
@@ -7,14 +9,31 @@ from __future__ import annotations
 
 import html
 from dataclasses import asdict
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
 from cti_worker.celery_app import app
 from cti_worker.queues import QUEUE_ENRICH
 
+if TYPE_CHECKING:
+    import datetime
+
+    from cti_core.config import RelevanceSettings
+
 log = structlog.get_logger()
+
+KINDS = ("article", "tweet")
+
+
+def _kind_key(base: str, kind: str) -> str:
+    """Key Redis per kind; `article` memakai key lama apa adanya (dedupe tetap nyambung)."""
+    return base if kind == "article" else f"{base}:{kind}"
+
+
+def _kind_label(kind: str) -> str:
+    """Sisipan nama kind di teks alert: kosong untuk `article` (teks lama), " tweet" untuk tweet."""
+    return "" if kind == "article" else f" {kind}"
 
 
 def alert_ops(text: str, *, key: str, cooldown_s: int = 3600) -> None:
@@ -35,7 +54,9 @@ def alert_ops(text: str, *, key: str, cooldown_s: int = 3600) -> None:
 
 
 @app.task(name="relevance.train", queue=QUEUE_ENRICH)
-def train() -> dict[str, Any]:
+def train(kind: str | None = None) -> dict[str, Any]:
+    """Latih model `kind`, atau semua kind (`None`, jadwal mingguan). Model tweet hanya terlatih
+    kalau `tweet_verdicts` memenuhi minimum yang sama dengan artikel; sebelum itu `skipped`."""
     import datetime
 
     from cti_core.config import get_settings
@@ -43,82 +64,116 @@ def train() -> dict[str, Any]:
     from cti_enrich.relevance.embedder import get_embedder
     from cti_enrich.relevance.train import run_training
 
-    # `sync_session` commit saat blok selesai: itu commit task ini (run_training tidak commit).
-    with sync_session() as session:
-        outcome = run_training(
-            session,
-            get_embedder(),
-            get_settings().relevance,
-            datetime.datetime.now(datetime.UTC),
-            kind="article",
-        )
-    log.info("relevance_trained", status=outcome.status, model_id=outcome.model_id)
-    if outcome.status == "rejected":
-        # Teks alert memakai parse mode HTML Telegram: nilai dinamis WAJIB di-escape. Alasan
-        # seperti "agreement 0.949 < 0.95" membuat Telegram menolak pesan (dev, 2026-10-26).
-        alert_ops(
-            f"<b>Model relevansi baru DITOLAK</b>: {html.escape(outcome.reason or '')}. "
-            "Model sebelumnya tetap aktif.",
-            key="cti:relevance:train_rejected",
-            cooldown_s=6 * 24 * 3600,
-        )
-    return asdict(outcome)
+    outcomes: dict[str, Any] = {}
+    for k in KINDS if kind is None else (kind,):
+        # Satu transaksi per kind; `sync_session` commit saat blok selesai: itu commit task ini
+        # (run_training tidak commit).
+        with sync_session() as session:
+            outcome = run_training(
+                session,
+                get_embedder(),
+                get_settings().relevance,
+                datetime.datetime.now(datetime.UTC),
+                kind=k,
+            )
+        log.info("relevance_trained", kind=k, status=outcome.status, model_id=outcome.model_id)
+        if outcome.status == "rejected":
+            # Teks alert memakai parse mode HTML Telegram: nilai dinamis WAJIB di-escape. Alasan
+            # seperti "agreement 0.949 < 0.95" membuat Telegram menolak pesan (dev, 2026-10-26).
+            alert_ops(
+                f"<b>Model relevansi{_kind_label(k)} baru DITOLAK</b>: "
+                f"{html.escape(outcome.reason or '')}. Model sebelumnya tetap aktif.",
+                key=_kind_key("cti:relevance:train_rejected", k),
+                cooldown_s=6 * 24 * 3600,
+            )
+        outcomes[k] = asdict(outcome)
+    return outcomes
 
 
-def _trigger_train() -> bool:
-    """Picu `relevance.train` paling sering sekali per 24 jam (Redis `SET NX EX`). Tanpa dedupe,
-    evaluate tiap jam akan melatih ulang penuh terus selama model belum ada/tidak terpakai.
-    Redis error -> TIDAK memicu (lebih baik terlambat daripada banjir latih)."""
+def _trigger_train(kind: str = "article") -> bool:
+    """Picu `relevance.train` paling sering sekali per 24 jam per kind (Redis `SET NX EX`). Tanpa
+    dedupe, evaluate tiap jam akan melatih ulang penuh terus selama model belum ada/tidak terpakai.
+    Redis error -> TIDAK memicu (lebih baik terlambat daripada banjir latih). Pemicu `article`
+    tetap `train.delay()` tanpa argumen seperti sebelum ada kind (melatih semua kind)."""
     try:
         import redis
         from cti_core.config import get_settings
 
         client = redis.Redis.from_url(get_settings().redis.url)
-        if not client.set("relevance:train_trigger", "1", nx=True, ex=86400):
+        if not client.set(_kind_key("relevance:train_trigger", kind), "1", nx=True, ex=86400):
             return False
     except Exception as trigger_error:
-        log.warning("relevance_train_trigger_skipped", error=str(trigger_error)[:200])
+        log.warning("relevance_train_trigger_skipped", kind=kind, error=str(trigger_error)[:200])
         return False
-    train.delay()
+    if kind == "article":
+        train.delay()
+    else:
+        train.delay(kind)
     return True
 
 
 def _alert_gate_change(
-    old: str, new: str, band_n: int, band_agree: int, audit_pct: float | None
+    old: str,
+    new: str,
+    band_n: int,
+    band_agree: int,
+    audit_pct: float | None,
+    kind: str = "article",
 ) -> None:
     agree_pct = 100 * band_agree / band_n if band_n else 0.0
     audit_txt = f"{audit_pct:.1f}%" if audit_pct is not None else "belum ada sampel"
-    log.info("relevance_gate_changed", old=old, new=new, band_n=band_n)
+    log.info("relevance_gate_changed", kind=kind, old=old, new=new, band_n=band_n)
     alert_ops(
-        f"<b>Gate relevansi berubah: {html.escape(old)} ke {html.escape(new)}</b>\n"
+        f"<b>Gate relevansi{_kind_label(kind)} berubah: "
+        f"{html.escape(old)} ke {html.escape(new)}</b>\n"
         f"Judul dalam band: {band_n}, kesepakatan dengan LLM {agree_pct:.1f}%, "
         f"kesepakatan sampel audit {audit_txt}.",
-        key=f"relevance:gate:{new}",
+        key=_kind_key("relevance:gate", kind) + f":{new}",
     )
 
 
 @app.task(name="relevance.evaluate", queue=QUEUE_ENRICH)
 def evaluate() -> dict[str, Any]:
-    """Tiap jam: ukur kesepakatan band model dengan LLM dan geser gate shadow <-> gate.
-    Model tidak bisa dimuat atau perlu latih ulang -> picu `relevance.train` (dibatasi sekali
-    per 24 jam, tidak pernah saat mode `off`), tidak menilai gate."""
+    """Tiap jam: ukur kesepakatan band model dengan LLM dan geser gate shadow <-> gate, per kind.
+    Hasil kind `article` di level atas (bentuk lama), kind lain di bawah nama kind-nya."""
     import datetime
 
     from cti_core.config import get_settings
+
+    cfg = get_settings().relevance
+    now = datetime.datetime.now(datetime.UTC)
+    result = _evaluate_kind("article", cfg, now)
+    for kind in KINDS[1:]:
+        result[kind] = _evaluate_kind(kind, cfg, now)
+    return result
+
+
+def _evaluate_kind(kind: str, cfg: RelevanceSettings, now: datetime.datetime) -> dict[str, Any]:
+    """Evaluasi gate satu kind dalam transaksinya sendiri. Model tidak bisa dimuat atau perlu
+    latih ulang -> picu `relevance.train` (dibatasi sekali per 24 jam per kind, tidak pernah saat
+    mode `off`), tidak menilai gate.
+
+    Beda kind `tweet`: tanpa model aktif TIDAK memicu latih. Model tweet baru ada sesudah
+    `tweet_verdicts` memenuhi minimum (bisa berminggu-minggu); memicu latih tiap hari sampai saat
+    itu hanya membuang tenaga. Latih mingguan yang menanganinya."""
+    import datetime
+
     from cti_core.db.engine import sync_session
     from cti_core.db.repositories.relevance import GateStats, RelevanceModelRepo
     from cti_enrich.relevance import model as model_mod
     from cti_enrich.relevance.evaluate import next_state
-    from cti_enrich.stages.relevance import needs_retrain
+    from cti_enrich.stages import relevance as stage
 
-    cfg = get_settings().relevance
-    now = datetime.datetime.now(datetime.UTC)
+    # Kind `article` memakai bentuk panggilan lama (tanpa argumen kind).
+    def trigger() -> bool:
+        return _trigger_train() if kind == "article" else _trigger_train(kind)
+
     change: tuple[str, str, int, int, float | None] | None = None
     result: dict[str, Any] = {"action": "none", "train_triggered": False}
     with sync_session() as session:
         repo = RelevanceModelRepo(session)
-        repo.lock("article")
-        row = repo.get_active("article")
+        repo.lock(kind)
+        row = repo.get_active(kind)
         if cfg.mode != "auto" and row is not None and row.gate_state == "gate":
             # Operator menurunkan mode: status di DB harus ikut, sebelum cabang lain.
             # Commit DULU, alert best-effort sesudahnya.
@@ -126,27 +181,32 @@ def evaluate() -> dict[str, Any]:
             session.commit()
             change = ("gate", "shadow", 0, 0, None)
             result.update(action="changed", state="shadow")
-        if change is None and cfg.mode != "off":
+        if change is None and cfg.mode != "off" and (kind == "article" or row is not None):
             if row is not None:
                 try:
                     model_mod.loads(row.artifact or b"")
                 except Exception as load_error:
                     alert_ops(
-                        "<b>Model relevansi aktif gagal dimuat</b>: "
+                        f"<b>Model relevansi{_kind_label(kind)} aktif gagal dimuat</b>: "
                         f"{html.escape(str(load_error)[:200])}. "
                         "Pelatihan ulang dipicu; sementara itu LLM classify dipakai.",
-                        key="relevance:load",
+                        key=_kind_key("relevance:load", kind),
                     )
                     return {
                         "action": "retrain",
                         "reason": "load_failed",
-                        "train_triggered": _trigger_train(),
+                        "train_triggered": trigger(),
                     }
-            if needs_retrain(session):
+            retrain = (
+                stage.needs_retrain(session)
+                if kind == "article"
+                else stage.needs_retrain(session, kind)
+            )
+            if retrain:
                 return {
                     "action": "retrain",
                     "reason": "needs_retrain",
-                    "train_triggered": _trigger_train(),
+                    "train_triggered": trigger(),
                 }
         if change is None and row is not None:
             current = "gate" if row.gate_state == "gate" else "shadow"
@@ -157,6 +217,7 @@ def evaluate() -> dict[str, Any]:
                 # basi (sebelum revert terakhir) tidak membalik gate tiap jam. Di shadow tidak
                 # dipakai untuk transisi.
                 audit_since=row.gate_changed_at if current == "gate" else None,
+                kind=kind,
             )
             new_state = next_state(current, stats, cfg)
             result.update(state=current, band_n=stats.band_n, band_agree=stats.band_agree)
@@ -172,5 +233,5 @@ def evaluate() -> dict[str, Any]:
                 change = (current, new_state, stats.band_n, stats.band_agree, audit_pct)
                 result.update(action="changed", state=new_state)
     if change is not None:
-        _alert_gate_change(*change)
+        _alert_gate_change(*change, kind=kind)
     return result

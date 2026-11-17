@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from typing import Any
 
 from cti_enrich.relevance.model import CLASSES, Example, Probs
 from cti_enrich.relevance.train import band_metrics, confusion_matrix, split_holdout
@@ -160,7 +161,10 @@ def test_train_rejected_alert_escapes_reason(monkeypatch) -> None:
     import cti_worker.tasks.relevance as tasks
 
     sent: list[str] = []
-    monkeypatch.setattr(tasks, "alert_ops", lambda text, **kw: sent.append(text))
+    keys: list[str] = []
+    monkeypatch.setattr(
+        tasks, "alert_ops", lambda text, *, key, **kw: (sent.append(text), keys.append(key))
+    )
     monkeypatch.setattr(engine, "sync_session", lambda: contextlib.nullcontext(None))
     monkeypatch.setattr(embedder_mod, "get_embedder", lambda: None)
     monkeypatch.setattr(
@@ -174,9 +178,13 @@ def test_train_rejected_alert_escapes_reason(monkeypatch) -> None:
         from cti_core.config import get_settings
 
         get_settings.cache_clear()
-    assert len(sent) == 1
-    _assert_telegram_html_safe(sent[0])
-    assert "0.949 &lt; 0.95" in sent[0]
+    # Satu alert per kind; teks + key kind `article` tidak berubah, kind `tweet` menyebut dirinya.
+    assert keys == ["cti:relevance:train_rejected", "cti:relevance:train_rejected:tweet"]
+    for text in sent:
+        _assert_telegram_html_safe(text)
+        assert "0.949 &lt; 0.95" in text
+    assert sent[0].startswith("<b>Model relevansi baru DITOLAK</b>")
+    assert sent[1].startswith("<b>Model relevansi tweet baru DITOLAK</b>")
 
 
 def test_gate_change_alert_is_html_safe(monkeypatch) -> None:
@@ -187,3 +195,100 @@ def test_gate_change_alert_is_html_safe(monkeypatch) -> None:
     monkeypatch.setattr(tasks, "alert_ops", lambda text, **kw: sent.append(text))
     tasks._alert_gate_change("shadow", "gate", 200, 195, None)
     _assert_telegram_html_safe(sent[0])
+
+
+# ── kind tweet (spec tweet-llm-cost, Part C) ─────────────────────────────────────────────
+
+_TWEET_VOCAB = {
+    "reject": ["giveaway", "webinar", "football", "coffee", "holiday", "concert", "podcast"],
+    "threat_news": ["ransomware", "breach", "exploit", "leak", "botnet", "zeroday", "victim"],
+}
+
+
+def _tweets(label: str, n: int) -> list[Example]:
+    words = _TWEET_VOCAB[label]
+    return [
+        Example(
+            title=" ".join(words[(i + k) % len(words)] for k in (0, 2, 3)) + f" t{label[0]}{i}",
+            label=label,
+            at=NOW - dt.timedelta(days=30 + i % 20),
+        )
+        for i in range(n)
+    ]
+
+
+def _fake_training_db(monkeypatch, examples: list[Example]) -> dict[str, Any]:
+    """`run_training` tanpa Postgres: repo palsu mencatat panggilan, dataset tweet palsu, dan
+    dataset artikel yang tidak boleh disentuh untuk kind `tweet`."""
+    import cti_enrich.relevance.train as train_mod
+
+    calls: dict[str, Any] = {"lock": [], "activate": [], "rejected": []}
+
+    class _Repo:
+        def __init__(self, session: Any) -> None: ...
+
+        def lock(self, kind: str = "article") -> None:
+            calls["lock"].append(kind)
+
+        def purge(self, older_than: dt.datetime) -> int:
+            return 0
+
+        def activate(self, **kw: Any) -> int:
+            calls["activate"].append(kw)
+            return 7
+
+        def add_rejected(self, **kw: Any) -> int:
+            calls["rejected"].append(kw)
+            return 8
+
+    class _Verdicts:
+        def __init__(self, session: Any) -> None: ...
+
+        def purge(self, older_than: dt.datetime) -> int:
+            return 0
+
+    def no_articles(session: Any) -> list[Example]:
+        raise AssertionError("kind tweet tidak boleh membaca dataset artikel")
+
+    monkeypatch.setattr(train_mod, "RelevanceModelRepo", _Repo)
+    monkeypatch.setattr(train_mod, "TweetVerdictRepo", _Verdicts)
+    monkeypatch.setattr(train_mod, "load_examples", no_articles)
+    monkeypatch.setattr(train_mod, "load_tweet_examples", lambda session: examples)
+    return calls
+
+
+def test_training_tweet_kind_with_two_classes(monkeypatch) -> None:
+    from cti_core.config import RelevanceSettings
+    from cti_enrich.relevance.train import run_training
+
+    from tests.unit.relevance_fakes import FakeEmbedder
+
+    calls = _fake_training_db(monkeypatch, _tweets("reject", 600) + _tweets("threat_news", 600))
+
+    out = run_training(None, FakeEmbedder(), RelevanceSettings(), NOW, kind="tweet")  # type: ignore[arg-type]
+
+    assert out.status == "active", out.reason
+    assert calls["lock"] == ["tweet"]
+    assert len(calls["activate"]) == 1
+    act = calls["activate"][0]
+    assert act["kind"] == "tweet"
+    assert act["class_counts"] == {"reject": 600, "threat_news": 600}
+    assert set(out.metrics["confusion"]) == {"reject", "threat_news"}
+    assert set(out.metrics["holdout_counts"]) == {"reject", "threat_news"}
+
+
+def test_tweet_training_skips_below_minimum_per_class(monkeypatch) -> None:
+    from cti_core.config import RelevanceSettings
+    from cti_enrich.relevance.train import run_training
+
+    from tests.unit.relevance_fakes import FakeEmbedder
+
+    calls = _fake_training_db(monkeypatch, _tweets("reject", 50) + _tweets("threat_news", 1000))
+
+    out = run_training(None, FakeEmbedder(), RelevanceSettings(), NOW, kind="tweet")  # type: ignore[arg-type]
+
+    assert out.status == "skipped"
+    assert out.reason is not None and "reject" in out.reason
+    assert "threat_news" not in out.reason
+    assert out.metrics["class_counts"] == {"reject": 50, "threat_news": 1000}
+    assert calls["activate"] == [] and calls["rejected"] == []

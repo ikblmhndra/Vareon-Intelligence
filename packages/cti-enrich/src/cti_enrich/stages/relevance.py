@@ -154,14 +154,16 @@ def gated_classify(result: RelevanceResult) -> ClassifyResult:
 
 
 def run_relevance(
-    session: Session, *, title: str, url: str, cfg: RelevanceSettings
+    session: Session, *, title: str, url: str, cfg: RelevanceSettings, kind: str = "article"
 ) -> RelevanceResult | None:
+    """Prediksi model aktif `kind` untuk satu judul (tweet: teks tweet + URL tweet). Gate state
+    per kind; `cfg.mode` berlaku untuk kedua kind."""
     if cfg.mode == "off":
         return None
     try:
         from cti_enrich.relevance import model as model_mod
 
-        active = _active(session)
+        active = _active(session, kind)
         if active is None:
             return None
         embedder = get_embedder()
@@ -183,8 +185,8 @@ def run_relevance(
         return None
 
 
-def needs_retrain(session: Session) -> bool:
-    """True kalau tidak ada model aktif atau `feature_version`-nya beda dengan runtime.
+def needs_retrain(session: Session, kind: str = "article") -> bool:
+    """True kalau tidak ada model aktif `kind` atau `feature_version`-nya beda dengan runtime.
 
     `EmbedderUnavailable` -> False: di proses yang embedder-nya tidak ada, model hasil latih
     ulang pun tidak bisa jalan, jadi melatih di sana hanya membuang tenaga."""
@@ -192,5 +194,5 @@ def needs_retrain(session: Session) -> bool:
         runtime = _runtime_feature_version(get_embedder())
     except EmbedderUnavailable:
         return False
-    row = RelevanceModelRepo(session).get_active()
+    row = RelevanceModelRepo(session).get_active(kind)
     return row is None or row.feature_version != runtime

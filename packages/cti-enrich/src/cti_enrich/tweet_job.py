@@ -4,7 +4,8 @@
 
 Urutan:
 1. Sesi 1: tweet sudah ada di `tweets` (disimpan scraper/job lain) -> job dihapus, `duplicate`,
-   tanpa LLM. `verdict_for` (gate relevansi lokal, Part C) boleh memberi vonis tanpa LLM.
+   tanpa LLM. `verdict_for` (default `gate_verdict`, gate relevansi lokal Part C) boleh memberi
+   vonis tanpa LLM.
 2. LLM (`classify_tweet`) TANPA sesi terbuka, sama dengan aturan `jobs.py`.
 3. Sesi 2: kunci job (`SKIP LOCKED`; hilang = pihak lain menang -> `gone`), catat vonis di
    `tweet_verdicts` (semua tweet, termasuk yang ditolak: bahan latih model tweet), simpan ke
@@ -36,6 +37,8 @@ from cti_core.db.repositories.tweet import TweetRepo, TweetVerdictRepo
 from sqlalchemy.orm import Session
 
 from cti_enrich.stages.classify import TWEET_PROMPT_VERSION, ClassifyResult, classify_tweet
+from cti_enrich.stages.relevance import gated_classify, run_relevance
+from cti_enrich.stages.tier1 import run_tier1
 from cti_enrich.tweet_routing import TweetRoutingInput, route_tweet
 
 log = structlog.get_logger()
@@ -49,15 +52,45 @@ Verdict = tuple[ClassifyResult | None, str, dict[str, Any] | None]
 VerdictFor = Callable[[Session, EnrichJob], Verdict]
 """Langkah sebelum LLM, dipanggil di sesi 1: `(vonis, source, audit relevansi)`. Vonis `None` =
 tanya LLM (`source` diabaikan, jadi `llm`); audit relevansinya tetap dicatat (mode shadow).
-Default (`None`) = selalu LLM; Task 8 memasang gate relevansi tweet di sini."""
+Default = `gate_verdict` (gate relevansi tweet, Part C)."""
 
 _LLM = "llm"
+_GATE = "gate"
+
+
+def gate_verdict(session: Session, job: EnrichJob) -> Verdict:
+    """Gate relevansi tweet (spec tweet-llm-cost, Part C), aturan sama dengan artikel (P5): hanya
+    `threat_news` dalam band di luar sampel audit yang melewati LLM; luar band, sampel audit,
+    shadow dan reject selalu ke LLM, jadi gate tidak pernah diam-diam menolak tweet.
+
+    Tweet yang lolos gate mengambil industri dan vonis insiden dari Tier 1 (`incident_source`
+    "rule", seperti artikel yang lolos gate). Tier 1 tidak punya negara: `victim_countries` dan
+    `actor_countries` kosong untuk tweet ini (kerugian yang diterima spec). Kegagalan model/Tier 1
+    sudah ditangani `run_relevance`/`run_tier1` (jatuh ke LLM / hasil kosong)."""
+    from cti_core.config import get_settings
+
+    text = job.input_text or ""
+    relevance = run_relevance(
+        session, title=text, url=job.url, cfg=get_settings().relevance, kind="tweet"
+    )
+    if relevance is None:
+        return None, _LLM, None
+    audit = relevance.to_audit()
+    if relevance.decision.decision != "gated":
+        return None, _LLM, audit
+    tier1 = run_tier1(session=session, title=text, text=text, victim_name=None)
+    result = gated_classify(relevance)
+    result.industries_impacted = tier1.industries
+    result.confirmed_incident = tier1.incident.confirmed if tier1.incident is not None else None
+    audit["incident_source"] = "rule"
+    return result, _GATE, audit
+
 
 TweetOutcome = Literal["done", "duplicate", "gone"]
 
 
 def run_tweet_job(
-    job_id: int, now: datetime.datetime, *, verdict_for: VerdictFor | None = None
+    job_id: int, now: datetime.datetime, *, verdict_for: VerdictFor = gate_verdict
 ) -> TweetOutcome:
     """Jalankan satu job `tweet`. Outcome-nya bagian dari `jobs.JobOutcome`."""
     with sync_session() as session:
@@ -69,9 +102,7 @@ def run_tweet_job(
         if TweetRepo(session).exists(tweet_id):
             return _drop_duplicate(session, job_id, tweet_id)
         text = job.input_text or ""
-        result, source, relevance = (
-            verdict_for(session, job) if verdict_for is not None else (None, _LLM, None)
-        )
+        result, source, relevance = verdict_for(session, job)
     if result is None:
         result, source = classify_tweet(text), _LLM  # tanpa sesi terbuka
     return _finish(job_id, text, result, source, relevance, now)
