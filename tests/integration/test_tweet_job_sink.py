@@ -62,7 +62,8 @@ def tweet(tweet_id: str = "1", *, notify: bool = False, text: str = "hello") -> 
         text=text,
         author_username="a",
         scan_results={"cve_list": []},
-        routing={"topic": "apt"},
+        routing={"msg_data": f"Tweet : {text}"} if notify else {},
+        notice_text=f"<b>{text}</b>" if notify else None,
         notify=notify,
     )
 
@@ -87,8 +88,11 @@ def test_sink_creates_one_tweet_job(session: Session, sent: list[int]) -> None:
     assert job.scraper_id == SID
     assert job.context["tweet"]["tweet_id"] == "1"
     assert job.context["scan_results"] == {"cve_list": []}
-    assert job.context["routing"] == {"topic": "apt"}
+    assert job.context["routing"] == {}
     assert job.context["notify"] is False
+    assert job.context["notice_text"] is None
+    assert "notice_text" not in job.context["tweet"]
+    assert set(job.context) == {"tweet", "scan_results", "routing", "notify", "notice_text"}
 
 
 def test_sink_skips_tweet_already_stored(session: Session, sent: list[int]) -> None:
@@ -112,6 +116,41 @@ def test_notify_is_ored_on_conflict(session: Session, sent: list[int]) -> None:
 
     (job,) = jobs(session)
     assert job.context["notify"] is True
+    # Pesan ikut dari kedatangan `notify=True`: tanpa itu worker tidak punya teks untuk dikirim.
+    assert job.context["notice_text"] == "<b>hello</b>"
+    assert job.context["routing"] == {"msg_data": "Tweet : hello"}
+
+
+def test_notify_true_context_survives_a_later_notify_false_arrival(
+    session: Session, sent: list[int]
+) -> None:
+    run(session, tweet("1", notify=True))
+    from cti_scraper.base import ScraperMeta
+
+    meta = ScraperMeta(id="other", source="Other", schedule="*/15 * * * *", max_items=5)
+    sinks.dispatch(tweet("1", notify=False), meta, session)
+
+    (job,) = jobs(session)
+    assert job.context["notify"] is True and job.context["notice_text"] == "<b>hello</b>"
+
+
+def test_finish_run_send_failure_is_logged_and_other_jobs_still_sent(
+    session: Session, sent: list[int], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import structlog
+
+    def flaky(job_id: int) -> None:
+        sent.append(job_id)
+        if len(sent) == 1:
+            raise RuntimeError("broker down")
+
+    monkeypatch.setattr("cti_core.celery_client.send_enrich_llm", flaky)
+
+    with structlog.testing.capture_logs() as logs:
+        run(session, tweet("1"), tweet("2"))
+
+    assert len(sent) == 2
+    assert [e["job_id"] for e in logs if e["event"] == "tweet_job_send_now_failed"] == sent[:1]
 
 
 def test_sink_ignores_enrich_backpressure(

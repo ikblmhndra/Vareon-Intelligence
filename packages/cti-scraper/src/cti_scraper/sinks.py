@@ -15,6 +15,7 @@ from collections.abc import Callable
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any
 
+import structlog
 from cti_core.config import get_settings
 from cti_core.cve_promotion import NEW_CVE_ROWS_KEY
 from sqlalchemy.orm import Session
@@ -47,6 +48,8 @@ if TYPE_CHECKING:
 Sink = Callable[[Any, "ScraperMeta", Session], None]
 
 _SINKS: dict[type[Item], Sink] = {}
+
+log = structlog.get_logger()
 
 
 class NoSinkRegistered(Exception):
@@ -222,9 +225,12 @@ def finish_run(session: Session) -> None:
         from cti_core.celery_client import send_enrich_llm
 
         for job_id in job_ids:
-            # Best-effort: sewa yang habis membuat dispatcher mengambil job ini.
-            with contextlib.suppress(Exception):
+            # Best-effort: sewa yang habis membuat dispatcher mengambil job ini. Id bisa milik
+            # baris yang ikut di-rollback; worker membalasnya `gone`.
+            try:
                 send_enrich_llm(job_id)
+            except Exception:
+                log.warning("tweet_job_send_now_failed", job_id=job_id, exc_info=True)
     pairs = session.info.pop(_NEW_CVE_KEY, None)
     if pairs:
         from cti_scraper.cve_alert import notify_new_cves
@@ -398,7 +404,9 @@ def _tweet_job_sink(item: TweetJobItem, meta: ScraperMeta, session: Session) -> 
     if TweetRepo(session).exists(item.tweet_id):
         return
     tweet = item.model_dump(
-        mode="json", exclude={"scan_results", "routing", "notify"}, exclude_none=False
+        mode="json",
+        exclude={"scan_results", "routing", "notice_text", "notify"},
+        exclude_none=False,
     )
     job = EnrichJobRepo(session).create_tweet(
         url=item.url,
@@ -412,6 +420,7 @@ def _tweet_job_sink(item: TweetJobItem, meta: ScraperMeta, session: Session) -> 
             "scan_results": item.scan_results,
             "routing": item.routing,
             "notify": item.notify,
+            "notice_text": item.notice_text,
         },
     )
     if job is not None and lease_if_closed(session, job):

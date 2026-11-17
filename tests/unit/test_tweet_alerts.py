@@ -140,9 +140,14 @@ def test_tweet_alerts_yields_one_job_item_per_kept_tweet_with_notify() -> None:
     ot, zero_day = items
     assert zero_day.routing["zero_day_list"] and not ot.routing["zero_day_list"]
     assert set(ot.routing) == {
-        "cve_list", "related_tech_status", "report_status", "ot_status",
+        "msg_data", "cve_list", "related_tech_status", "report_status", "ot_status",
         "databreach_list", "zero_day_list",
     }  # fmt: skip
+    # Worker tidak punya scan untuk `build_message`: pesan utuh (routing) dan pesan Telegram
+    # (dibatasi 4096) ikut di item (Ruling 4).
+    raw = tweet(5, "Attack on critical infrastructure today")
+    assert ot.routing["msg_data"] == message_of(raw, limit=None)
+    assert ot.notice_text == message_of(raw)
     assert ot.author_username == "blackorbird" and ot.text.startswith("Attack on")
     assert {"apac_indicator", "cve_list", "ot_status", "mentioned_group"} <= set(ot.scan_results)
 
@@ -449,3 +454,15 @@ def test_other_transient_errors_are_not_retried_by_the_search_helper(no_sleep) -
         run(TrendingCve, Api([], status=503))
 
     assert no_sleep == []
+
+
+def test_long_tweet_routes_on_the_full_message_but_notices_the_capped_one() -> None:
+    """`#threatreport` di ekor post panjang: routing membaca `msg_data` utuh, Telegram menerima
+    `notice_text` yang muat batas 4096."""
+    long_text = "word " * 1500 + "#threatreport"
+
+    [item] = run(TweetAlerts1h, Api([tweet(1, long_text)]))
+
+    assert "#threatreport" in item.routing["msg_data"]
+    assert item.notice_text is not None and len(item.notice_text) <= 4096
+    assert "#threatreport" not in item.notice_text

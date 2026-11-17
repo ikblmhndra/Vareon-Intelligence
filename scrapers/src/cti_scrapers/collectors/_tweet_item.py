@@ -7,7 +7,8 @@ isinya sama:
   - `tweet_alerts_*` (`collectors/tweet_alerts.py`): tweet netral (`_twitter.Tweet`), memakai
     `tweet_job_item` (`notify=True`).
 Scraper TIDAK memanggil LLM: sink menulis job `tweet`, worker yang mengklasifikasi lalu menyimpan
-ke `tweets` (memakai `llm_fields` di sini) dan, kalau `notify`, merutekan alert Telegram.
+ke `tweets` (`cti_enrich.tweet_job`) dan, kalau `notify`, merutekan alert Telegram dari teks pesan
+yang dibangun scraper (`msg_data` di `routing`, `notice_text`).
 
 Modul BUKAN scraper; awalan `_` menandai helper internal paket `collectors`.
 """
@@ -36,27 +37,9 @@ def scan_results(scan: ScoreResult) -> dict[str, Any]:
     }
 
 
-def llm_fields(llm: Any | None) -> dict[str, Any]:
-    """Field LLM baris `tweets`; `llm` = `ClassifyResult` (bertipe `Any`: scraper tak boleh
-    mengimpor `stages.classify`, dijaga tes), dipanggil worker. `llm=None` (klasifikasi gagal, tweet tetap disimpan) = nilai kosong."""
-    return {
-        "confidence_score": round(llm.confidence * 100) if llm and llm.confidence else None,
-        "confirmed_incident": bool(llm.confirmed_incident) if llm else False,
-        "industries_impacted": llm.industries_impacted if llm else [],
-        "victim_countries": llm.victim_countries if llm else [],
-        "actor_countries": llm.actor_countries if llm else [],
-        "victim_name": llm.victim_name if llm else None,
-        "incident_confidence": (
-            round(llm.incident_confidence * 100)
-            if llm and llm.incident_confidence is not None
-            else None
-        ),
-        "incident_indicators": llm.incident_indicators if llm else [],
-    }
-
-
 def routing_fields(scan: ScoreResult) -> dict[str, Any]:
-    """Field `TweetRoutingInput` selain `msg_data` (worker membangun pesannya dari tweet sendiri).
+    """Field `TweetRoutingInput` selain `msg_data` (pesan utuh; hanya scraper `notify` yang
+    menambahkannya, lewat `tweet_job_item`).
     Kode lama: `related_tech_status` tweet HANYA dari `checkCVE` (vendor CVE cocok tech stack),
     dan cuma dihitung di cabang tanpa grup/negara."""
     return {
@@ -69,8 +52,20 @@ def routing_fields(scan: ScoreResult) -> dict[str, Any]:
     }
 
 
-def tweet_job_item(tweet: Tweet, scan: ScoreResult, *, notify: bool) -> TweetJobItem:
-    """Tweet netral -> `TweetJobItem` (job `tweet` di `enrich_jobs`; LLM dipanggil worker)."""
+def tweet_job_item(
+    tweet: Tweet,
+    scan: ScoreResult,
+    *,
+    notify: bool,
+    msg_data: str | None = None,
+    notice_text: str | None = None,
+) -> TweetJobItem:
+    """Tweet netral -> `TweetJobItem` (job `tweet` di `enrich_jobs`; LLM dipanggil worker).
+    `msg_data` (pesan utuh untuk `route_tweet`) dan `notice_text` (pesan Telegram) dari
+    `tweet_alerts.build_message`; worker tidak punya scan untuk membangunnya sendiri."""
+    routing = routing_fields(scan)
+    if msg_data is not None:
+        routing["msg_data"] = msg_data
     return TweetJobItem(
         tweet_id=tweet.id,
         url=tweet.url,
@@ -83,6 +78,7 @@ def tweet_job_item(tweet: Tweet, scan: ScoreResult, *, notify: bool) -> TweetJob
         lang=tweet.lang,
         media_urls=list(tweet.media_urls),
         scan_results=scan_results(scan),
-        routing=routing_fields(scan),
+        routing=routing,
+        notice_text=notice_text,
         notify=notify,
     )

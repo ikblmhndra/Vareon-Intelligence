@@ -231,9 +231,16 @@ class TweetAlertScraper(BaseScraper):
             return
 
         # Satu job per tweet: worker mengklasifikasi (LLM), menyimpan ke `tweets`, lalu merutekan
-        # topik Telegram dari `routing` + `build_message(tweet, scan)`. `author_username` kosong
-        # tetap di-yield; worker yang memutuskan (kolom `tweets.author_username` NOT NULL).
-        yield _tweet_item.tweet_job_item(tweet, scan, notify=True)
+        # topik Telegram dari `routing` (+ `msg_data` utuh) dan mengirim `notice_text`. Kedua
+        # pesan dibangun di sini karena worker tidak punya scan-nya. `author_username` kosong
+        # tetap di-yield; worker meng-alert tanpa mengarsipkan (`tweets.author_username` NOT NULL).
+        yield _tweet_item.tweet_job_item(
+            tweet,
+            scan,
+            notify=True,
+            msg_data=message,
+            notice_text=build_message(tweet, scan),
+        )
 
 
 _REFERENCE = ("techstack", "threat_actor_groups", "monitored_people")

@@ -110,8 +110,11 @@ class EnrichJobRepo:
     ) -> EnrichJob | None:
         """Job `tweet` (persist-first). Beda dari `create`: bila job `(tweet, url)` sudah ada,
         flag `context.notify` di-OR-kan (scraper `notify=True` yang tiba belakangan tidak boleh
-        kalah oleh baris `notify=False` yang lebih dulu masuk, atau alert-nya hilang). Return job
-        yang BARU dibuat, `None` bila itu konflik (`xmax = 0` hanya untuk baris yang di-INSERT)."""
+        kalah oleh baris `notify=False` yang lebih dulu masuk, atau alert-nya hilang). Caranya:
+        kedatangan `notify=True` menggantikan SELURUH `context`, karena hanya ia yang membawa teks
+        pesan (`routing.msg_data`, `notice_text`) yang dikirim worker; kedatangan `notify=False`
+        tidak mengubah apa pun. Return job yang BARU dibuat, `None` bila itu konflik (`xmax = 0`
+        hanya untuk baris yang di-INSERT)."""
         insert_stmt = pg_insert(EnrichJob).values(
             kind="tweet",
             url=url,
@@ -123,13 +126,12 @@ class EnrichJobRepo:
             input_text=input_text,
             context=context,
         )
-        notify_or = func.jsonb_set(
-            EnrichJob.context,
-            literal_column("'{notify}'::text[]"),
-            func.to_jsonb(
-                (EnrichJob.context.op("->>")("notify")).cast(Boolean)
-                | (insert_stmt.excluded.context.op("->>")("notify")).cast(Boolean)
+        notify_or = case(
+            (
+                insert_stmt.excluded.context.op("->>")("notify").cast(Boolean),
+                insert_stmt.excluded.context,
             ),
+            else_=EnrichJob.context,
         )
         stmt: Any = insert_stmt.on_conflict_do_update(
             index_elements=["kind", "url_hash"], set_={"context": notify_or}

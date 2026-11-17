@@ -48,8 +48,10 @@ class ArticleItem(Item):
 class TweetJobItem(Item):
     """Tweet yang BELUM diklasifikasi LLM: sink menulisnya sebagai job `tweet` di `enrich_jobs`
     (persist-first), worker `enrich.llm` yang memanggil LLM lalu menulis ke `tweets`. Isinya
-    dikonsumsi lewat `context` job. `routing` = field `TweetRoutingInput` selain `msg_data`
-    (dibangun worker dari tweet itu sendiri). `dedup_key()` = tweet_id seperti `TweetItem`."""
+    dikonsumsi lewat `context` job. `routing` = field `TweetRoutingInput` (termasuk `msg_data`,
+    pesan utuh) dan `notice_text` = pesan Telegram yang dikirim worker per topik; keduanya
+    dibangun scraper selagi scan-nya ada (worker tidak bisa memanggil `build_message`). Tanpa
+    `notify` (`monitor_x`) keduanya boleh kosong. `dedup_key()` = tweet_id seperti `TweetItem`."""
 
     tweet_id: str
     url: str
@@ -63,6 +65,7 @@ class TweetJobItem(Item):
     media_urls: list[str] = Field(default_factory=list)
     scan_results: dict[str, Any] = Field(default_factory=dict)
     routing: dict[str, Any] = Field(default_factory=dict)
+    notice_text: str | None = None
     notify: bool = False
 
     def dedup_key(self) -> str:

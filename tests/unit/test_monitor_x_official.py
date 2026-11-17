@@ -95,6 +95,7 @@ def test_monitor_x_yields_job_items_with_notify_false() -> None:
     [item] = run(Api({"akun_a": [post(7, "Acme breach")], "akun_b": []}))
 
     assert isinstance(item, TweetJobItem) and item.notify is False
+    assert item.notice_text is None and "msg_data" not in item.routing  # tanpa notice
     assert set(item.routing) >= {"related_tech_status", "ot_status", "zero_day_list"}
     assert item.text == "Acme breach 7" and item.url == "https://x.com/akun_a/status/7"
     assert (item.author_name, item.author_avatar, item.media_urls) == (None, None, [])
