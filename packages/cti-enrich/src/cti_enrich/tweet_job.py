@@ -63,10 +63,11 @@ def gate_verdict(session: Session, job: EnrichJob) -> Verdict:
     `threat_news` dalam band di luar sampel audit yang melewati LLM; luar band, sampel audit,
     shadow dan reject selalu ke LLM, jadi gate tidak pernah diam-diam menolak tweet.
 
-    Tweet yang lolos gate mengambil industri dan vonis insiden dari Tier 1 (`incident_source`
-    "rule", seperti artikel yang lolos gate). Tier 1 tidak punya negara: `victim_countries` dan
-    `actor_countries` kosong untuk tweet ini (kerugian yang diterima spec). Kegagalan model/Tier 1
-    sudah ditangani `run_relevance`/`run_tier1` (jatuh ke LLM / hasil kosong)."""
+    Tweet yang lolos gate mengambil industri, vonis insiden dan korban dari Tier 1
+    (`incident_source` "rule", seperti artikel yang lolos gate). Tier 1 tidak punya negara:
+    `victim_countries` dan `actor_countries` kosong untuk tweet ini (kerugian yang diterima spec).
+    Kegagalan model/Tier 1 sudah ditangani `run_relevance`/`run_tier1` (jatuh ke LLM / hasil
+    kosong)."""
     from cti_core.config import get_settings
 
     text = job.input_text or ""
@@ -81,7 +82,12 @@ def gate_verdict(session: Session, job: EnrichJob) -> Verdict:
     tier1 = run_tier1(session=session, title=text, text=text, victim_name=None)
     result = gated_classify(relevance)
     result.industries_impacted = tier1.industries
-    result.confirmed_incident = tier1.incident.confirmed if tier1.incident is not None else None
+    if tier1.incident is not None:
+        # Sama dengan artikel yang lolos gate: korban dari aturan bila insiden terkonfirmasi
+        # (X Intel memfilter dan mencari `victim_name`).
+        result.confirmed_incident = tier1.incident.confirmed
+        if tier1.incident.confirmed:
+            result.victim_name = tier1.incident.victim
     audit["incident_source"] = "rule"
     return result, _GATE, audit
 

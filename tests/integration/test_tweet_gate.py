@@ -126,6 +126,7 @@ def test_gated_tweet_skips_llm_and_fills_tier1_fields(
     assert tweet is not None
     assert tweet.industries_impacted == ["Healthcare & Life Sciences"]
     assert tweet.confirmed_incident is True
+    assert tweet.victim_name == "Hospital Acme"  # korban Tier 1 karena insiden terkonfirmasi
     assert tweet.victim_countries == [] and tweet.actor_countries == []
     assert tweet.confidence_score is not None and tweet.confidence_score >= 85
 
