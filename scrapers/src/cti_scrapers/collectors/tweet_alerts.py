@@ -5,7 +5,8 @@ daftar akun (`usernames_1hour.txt` / `usernames_130hour.txt`).
 Bedakan dari `monitor_x` (Fase 5): itu MENYIMPAN tweet akun `monitored_accounts` ke
 tabel `tweets` buat tab X Intel dan TIDAK mengirim alert; ini mengirim alert berkategori ke
 channel Telegram. Sejak 2026-10-16 tweet yang lolos klasifikasi JUGA disimpan ke `tweets`
-(satu `TweetItem` per tweet, sebelum notice-nya; `tweets.source` = id scraper ini): di prod
+(sejak 0.8.19 oleh worker job `tweet` dari `TweetJobItem` yang di-yield di sini, bukan lagi
+`TweetItem`; `tweets.source` = id scraper ini): di prod
 `monitor_x` mati sejak 2026-10-02 (kunci twitterapi.io ditolak, ia tak punya opsi `provider`)
 sementara tiga scraper lain pindah ke X resmi, dan tiga akun alert (`blueteamsec1`,
 `DarkWebInformer`, `VECERTRadar`) memang tak ada di `monitored_accounts`.

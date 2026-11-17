@@ -178,6 +178,7 @@ export function DataHealthView() {
       nowMs,
     );
     const worst: FreshnessRow = worstFreshness(fresh);
+    // Sengaja hanya blok artikel: blok tweet tanpa model tweet akan membuat halaman "unknown" berminggu-minggu.
     const relT = relevanceTone(d.relevance.article);
     const failT = failedJobsTone(d.enrichment);
     const cveT = cveIngestTone(d.cve_ingest);

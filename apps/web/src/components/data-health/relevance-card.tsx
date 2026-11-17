@@ -110,6 +110,7 @@ export function RelevanceCard({ rel }: { rel: RelByKind }) {
           <h2 className="font-heading text-xl font-bold tracking-tight text-foreground">Relevance model</h2>
           <p className="text-xs text-muted-foreground">Local model decides before the LLM does</p>
         </div>
+        {/* Sengaja dari blok artikel: `mode` satu setelan untuk kedua kind, jadi nilainya sama. */}
         <Chip kind="flag" value={rel.article.mode}>
           {rel.article.mode.toUpperCase()}
         </Chip>

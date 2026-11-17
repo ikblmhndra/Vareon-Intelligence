@@ -95,3 +95,43 @@ def test_eval_reports_agreement() -> None:
     assert report["related_cyber_agreement"] == 0.75
     assert report["confirmed_incident_agreement"] == 0.75
     assert report["old_prompt_chars"] > report["new_prompt_chars"]
+
+
+def test_eval_counts_errors_per_text_and_reports_direction() -> None:
+    texts = ["a", "b", "c", "d", "boom"]
+    old = {"a": True, "b": True, "c": False, "d": False}
+    new = {"a": True, "b": False, "c": True, "d": False}
+
+    def _mk(table: dict[str, bool]):
+        def run(t: str) -> ClassifyResult:
+            if t == "boom":
+                raise json.JSONDecodeError("Expecting value", "<think>", 0)
+            return ClassifyResult(related_cyber=table[t], confirmed_incident=table[t])
+
+        return run
+
+    report = tweet_prompt_eval.compare(texts, _mk(old), _mk(new))
+
+    assert (report["n"], report["errors"]) == (4, 1)
+    assert report["related_cyber_agreement"] == 0.5
+    assert report["old_related_new_not"] == 1
+    assert report["old_not_new_related"] == 1
+
+
+def test_eval_uses_its_own_llm_task_names(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Panggilan eval tidak boleh tercatat sebagai `classify`/`classify_tweet`: itu masuk breaker
+    dan status Data health."""
+    _, tasks = _use(monkeypatch, [REPLY])
+
+    tweet_prompt_eval.eval_old("x")
+    tweet_prompt_eval.eval_new("x")
+
+    assert tasks == ["classify_eval", "classify_tweet_eval"]
+
+
+def test_eval_export_writes_jsonl(tmp_path) -> None:
+    out = tmp_path / "tweets.jsonl"
+
+    tweet_prompt_eval.export(["a", 'b "q"'], str(out))
+
+    assert tweet_prompt_eval._load_file(str(out)) == ["a", 'b "q"']

@@ -67,15 +67,20 @@ def train(kind: str | None = None) -> dict[str, Any]:
     outcomes: dict[str, Any] = {}
     for k in KINDS if kind is None else (kind,):
         # Satu transaksi per kind; `sync_session` commit saat blok selesai: itu commit task ini
-        # (run_training tidak commit).
-        with sync_session() as session:
-            outcome = run_training(
-                session,
-                get_embedder(),
-                get_settings().relevance,
-                datetime.datetime.now(datetime.UTC),
-                kind=k,
-            )
+        # (run_training tidak commit). Gagal satu kind di-log dan kind lain tetap dilatih:
+        # model tweet yang rusak tidak boleh menahan latih mingguan model artikel, dan sebaliknya.
+        try:
+            with sync_session() as session:
+                outcome = run_training(
+                    session,
+                    get_embedder(),
+                    get_settings().relevance,
+                    datetime.datetime.now(datetime.UTC),
+                    kind=k,
+                )
+        except Exception:
+            log.error("relevance_train_failed", kind=k, exc_info=True)
+            continue
         log.info("relevance_trained", kind=k, status=outcome.status, model_id=outcome.model_id)
         if outcome.status == "rejected":
             # Teks alert memakai parse mode HTML Telegram: nilai dinamis WAJIB di-escape. Alasan
@@ -142,9 +147,19 @@ def evaluate() -> dict[str, Any]:
 
     cfg = get_settings().relevance
     now = datetime.datetime.now(datetime.UTC)
-    result = _evaluate_kind("article", cfg, now)
-    for kind in KINDS[1:]:
-        result[kind] = _evaluate_kind(kind, cfg, now)
+    result: dict[str, Any] = {}
+    for kind in KINDS:
+        # Per kind dalam try: gagal evaluasi satu kind (mis. model tweet) di-log dan kind lain tetap
+        # dievaluasi; tanpa ini error artikel menghentikan gate tweet, dan sebaliknya.
+        try:
+            out = _evaluate_kind(kind, cfg, now)
+        except Exception:
+            log.error("relevance_evaluate_failed", kind=kind, exc_info=True)
+            continue
+        if kind == "article":
+            result.update(out)
+        else:
+            result[kind] = out
     return result
 
 

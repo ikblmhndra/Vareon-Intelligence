@@ -3,9 +3,9 @@
 (task `enrich.llm`, `worker-nlp`) seperti job `classify` artikel.
 
 Urutan:
-1. Sesi 1: tweet sudah ada di `tweets` (disimpan scraper/job lain) -> job dihapus, `duplicate`,
-   tanpa LLM. `verdict_for` (default `gate_verdict`, gate relevansi lokal Part C) boleh memberi
-   vonis tanpa LLM.
+1. Sesi 1: tweet sudah ada di `tweets` atau sudah punya vonis di `tweet_verdicts` (disimpan/
+   divonis scraper/job lain) -> job dihapus, `duplicate`, tanpa LLM. `verdict_for` (default
+   `gate_verdict`, gate relevansi lokal Part C) boleh memberi vonis tanpa LLM.
 2. LLM (`classify_tweet`) TANPA sesi terbuka, sama dengan aturan `jobs.py`.
 3. Sesi 2: kunci job (`SKIP LOCKED`; hilang = pihak lain menang -> `gone`), catat vonis di
    `tweet_verdicts` (semua tweet, termasuk yang ditolak: bahan latih model tweet), simpan ke
@@ -38,7 +38,7 @@ from sqlalchemy.orm import Session
 
 from cti_enrich.stages.classify import TWEET_PROMPT_VERSION, ClassifyResult, classify_tweet
 from cti_enrich.stages.relevance import gated_classify, run_relevance
-from cti_enrich.stages.tier1 import run_tier1
+from cti_enrich.stages.tier1 import Tier1Result, run_tier1
 from cti_enrich.tweet_routing import TweetRoutingInput, route_tweet
 
 log = structlog.get_logger()
@@ -79,7 +79,7 @@ def gate_verdict(session: Session, job: EnrichJob) -> Verdict:
     audit = relevance.to_audit()
     if relevance.decision.decision != "gated":
         return None, _LLM, audit
-    tier1 = run_tier1(session=session, title=text, text=text, victim_name=None)
+    tier1 = _tier1(session, text)
     result = gated_classify(relevance)
     result.industries_impacted = tier1.industries
     if tier1.incident is not None:
@@ -90,6 +90,15 @@ def gate_verdict(session: Session, job: EnrichJob) -> Verdict:
             result.victim_name = tier1.incident.victim
     audit["incident_source"] = "rule"
     return result, _GATE, audit
+
+
+def _tier1(session: Session, text: str) -> Tier1Result:
+    """Tier 1 untuk tweet: tanpa ekstraksi teknik (tweet tidak punya kolom TTP). Dalam savepoint
+    seperti `stages.relevance._active`: error SQL yang lolos dari `run_tier1` membatalkan
+    savepoint saja, bukan transaksi sesi 1 (pembacaan DB di dalamnya sendiri sudah ber-savepoint
+    dan kegagalannya ditelan jadi hasil kosong)."""
+    with session.begin_nested():
+        return run_tier1(session=session, title=text, text=text, victim_name=None, techniques=False)
 
 
 TweetOutcome = Literal["done", "duplicate", "gone"]
@@ -105,7 +114,9 @@ def run_tweet_job(
             log.info("enrich_job_gone", job_id=job_id, kind="tweet")
             return "gone"
         tweet_id = str(job.context["tweet"]["tweet_id"])
-        if TweetRepo(session).exists(tweet_id):
+        if TweetRepo(session).exists(tweet_id) or TweetVerdictRepo(session).exists(tweet_id):
+            # Vonis tanpa baris `tweets` = ditolak (atau tanpa author) oleh job scraper lain:
+            # klasifikasi ulang hanya membayar LLM untuk jawaban yang sudah ada.
             return _drop_duplicate(session, job_id, tweet_id)
         text = job.input_text or ""
         result, source, relevance = verdict_for(session, job)
@@ -196,8 +207,9 @@ def _posted(tweet: dict[str, Any], job: EnrichJob) -> datetime.datetime:
 
 def _send_notices(job_id: int, routing: dict[str, Any], notice_text: str | None) -> None:
     if not notice_text or "msg_data" not in routing:
-        # Job `notify=False` yang di-OR jadi `True` sesudah worker membaca context-nya
-        # (balapan yang diterima), atau baris dari scraper versi lama.
+        # Tidak terjadi lewat konflik `notify`: `context` dibaca di sesi 2 di bawah kunci baris,
+        # dan kedatangan `notify=True` selalu membawa teksnya. Tanpa teks = baris dari scraper
+        # versi lama atau bug di pembuat job.
         log.warning("tweet_notice_without_text", job_id=job_id)
         return
     for topic in route_tweet(TweetRoutingInput(**routing)):

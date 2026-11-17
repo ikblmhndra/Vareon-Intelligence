@@ -100,6 +100,7 @@ class EnrichJobRepo:
     def create_tweet(
         self,
         *,
+        tweet_id: str,
         url: str,
         title: str,
         source: str,
@@ -108,7 +109,13 @@ class EnrichJobRepo:
         input_text: str | None,
         context: dict[str, Any],
     ) -> EnrichJob | None:
-        """Job `tweet` (persist-first). Beda dari `create`: bila job `(tweet, url)` sudah ada,
+        """Job `tweet` (persist-first). Identitas job = `tweet_id`, BUKAN `url`: `url_hash` dari
+        URL kanonik `https://x.com/i/status/<id>`. URL dari provider tidak bisa dipakai: twitterapi
+        di `monitor_x` boleh mengirim url kosong (semua tweet itu akan bertabrakan di satu job) dan
+        X official vs twitterapi membentuk URL berbeda untuk tweet yang sama (dua job, dua
+        panggilan LLM). `url` tetap disimpan apa adanya untuk tampilan.
+
+        Beda dari `create`: bila job `(tweet, tweet_id)` sudah ada,
         flag `context.notify` di-OR-kan (scraper `notify=True` yang tiba belakangan tidak boleh
         kalah oleh baris `notify=False` yang lebih dulu masuk, atau alert-nya hilang). Caranya:
         kedatangan `notify=True` menggantikan SELURUH `context`, karena hanya ia yang membawa teks
@@ -118,7 +125,7 @@ class EnrichJobRepo:
         insert_stmt = pg_insert(EnrichJob).values(
             kind="tweet",
             url=url,
-            url_hash=compute_url_hash(url),
+            url_hash=compute_url_hash(f"https://x.com/i/status/{tweet_id}"),
             title=title,
             source=source,
             scraper_id=scraper_id,

@@ -24,7 +24,9 @@ disamarkan dari secret dulu (`scrub_secrets`), baru dipotong repo ke 300 karakte
 (alert Telegram saat job menjadi `failed`).
 
 Job `tweet` (spec tweet-llm-cost) diteruskan ke `tweet_job.run_tweet_job` sesudah sesi 1;
-kegagalannya dicatat di sini dengan aturan yang sama dengan job `classify`."""
+kegagalan gateway/DB dan JSON yang belum mencapai batas dicatat di sini dengan aturan yang sama
+dengan job `classify`. Kegagalan finalnya beda: job dihapus tanpa alert analis (lihat
+`_record_failure`)."""
 
 from __future__ import annotations
 
@@ -399,6 +401,14 @@ def _record_failure(
                 article.llm_ttp_status = "failed"
             repo.delete(job)
             log.warning("enrich_ttp_job_gave_up", job_id=job_id, article_id=job.article_id)
+            return "failed"
+        if job.kind == "tweet":
+            # Gagal final (JSON rusak 3x, error lain): job dihapus seperti TTP, tanpa alert analis.
+            # Antrean Newsroom hanya menampilkan job `classify` dan terima/tolak menolak job
+            # `tweet` (409), jadi job `failed` akan tersangkut tak terlihat. Tidak ada yang dicatat
+            # di `tweets`/`tweet_verdicts`; tweet-nya hilang (dedup `scraper_seen` sudah ada).
+            repo.delete(job)
+            log.error("enrich_tweet_job_gave_up", job_id=job_id, error=error[:300])
             return "failed"
         if kind == "other":
             repo.mark_failed(job, error)

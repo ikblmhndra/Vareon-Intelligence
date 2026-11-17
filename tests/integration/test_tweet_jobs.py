@@ -16,6 +16,7 @@ from typing import Any
 import httpx
 import openai
 import pytest
+import structlog
 from cti_core.db.models.enrich_job import EnrichJob
 from cti_core.db.models.tweet import Tweet
 from cti_core.db.models.tweet_verdict import TweetVerdict
@@ -117,6 +118,7 @@ def make_job(
 ) -> int:
     url = f"https://x.com/{author or 'i'}/status/{tweet_id}"
     job = EnrichJobRepo(session).create_tweet(
+        tweet_id=tweet_id,
         url=url,
         title=text[:300],
         source="Twitter Alerts",
@@ -439,9 +441,11 @@ def test_quota_exhausted_is_a_gateway_error(
     assert failed == [] and stored(session) is None and verdict(session) is None
 
 
-def test_json_errors_fail_the_job_after_three(
+def test_json_errors_give_up_after_three_and_delete_the_tweet_job(
     session: Session, sent: list[tuple[str, str]], monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Job `tweet` yang gagal final dihapus (seperti TTP), tanpa alert analis: antrean Newsroom
+    hanya menampilkan job `classify`, jadi job `tweet` `failed` akan tersangkut tak terlihat."""
     failed: list[tuple[str, str]] = []
 
     def broken(text: str) -> ClassifyResult:
@@ -450,14 +454,57 @@ def test_json_errors_fail_the_job_after_three(
     monkeypatch.setattr(tweet_job, "classify_tweet", broken)
     job_id = make_job(session)
 
-    outcomes = [
-        jobs.run_job(job_id, now=NOW, on_failed=lambda *a: failed.append(a)) for _ in range(3)
-    ]
+    with structlog.testing.capture_logs() as logs:
+        outcomes = [
+            jobs.run_job(job_id, now=NOW, on_failed=lambda *a: failed.append(a)) for _ in range(3)
+        ]
 
     assert outcomes == ["retry", "retry", "failed"]
-    job = job_row(session, job_id)
-    assert job is not None and (job.state, job.json_failures) == ("failed", 3)
-    assert len(failed) == 1 and failed[0][0] == "Attack on critical infrastructure today"
-    # Job `failed` menunggu analis: kiriman basi dispatcher tidak memanggil LLM lagi.
-    assert jobs.run_job(job_id, now=NOW) == "failed"
+    assert job_row(session, job_id) is None
+    assert failed == []
+    assert [e for e in logs if e["event"] == "enrich_tweet_job_gave_up"]
     assert stored(session) is None and verdict(session) is None and sent == []
+
+
+def test_unexpected_error_deletes_the_tweet_job_without_analyst_alert(
+    session: Session, sent: list[tuple[str, str]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    failed: list[tuple[str, str]] = []
+
+    def bug(text: str) -> ClassifyResult:
+        raise RuntimeError("bug")
+
+    monkeypatch.setattr(tweet_job, "classify_tweet", bug)
+    job_id = make_job(session)
+
+    with structlog.testing.capture_logs() as logs:
+        outcome = jobs.run_job(job_id, now=NOW, on_failed=lambda *a: failed.append(a))
+
+    assert outcome == "failed"
+    assert job_row(session, job_id) is None and failed == []
+    [gave_up] = [e for e in logs if e["event"] == "enrich_tweet_job_gave_up"]
+    assert gave_up["error"].startswith("RuntimeError")
+    assert stored(session) is None and verdict(session) is None and sent == []
+
+
+def test_tweet_with_a_verdict_is_a_duplicate_without_llm(
+    session: Session, sent: list[tuple[str, str]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Scraper lain (mis. `monitor_x`) sudah mengklasifikasi tweet ini dan menolaknya: vonisnya
+    ada di `tweet_verdicts` walau tidak di `tweets`. Tidak ada panggilan LLM kedua."""
+    from cti_core.db.repositories.tweet import TweetVerdictRepo
+
+    def no_llm(text: str) -> ClassifyResult:
+        raise AssertionError("LLM tidak boleh dipanggil")
+
+    monkeypatch.setattr(tweet_job, "classify_tweet", no_llm)
+    job_id = make_job(session)
+    TweetVerdictRepo(session).record(
+        tweet_id="1001", text="t", related_cyber=False, source="llm",
+        prompt_version=None, relevance=None,
+    )  # fmt: skip
+    session.commit()
+
+    assert jobs.run_job(job_id, now=NOW) == "duplicate"
+
+    assert job_row(session, job_id) is None and sent == [] and stored(session) is None

@@ -268,12 +268,13 @@ def classify(title: str, *, task: str = "classify") -> ClassifyResult:
     )
 
 
-def classify_tweet(text: str) -> ClassifyResult:
+def classify_tweet(text: str, *, task: str = "classify_tweet") -> ClassifyResult:
     """Klasifikasi satu tweet dengan prompt pendek `_TWEET_PROMPT` (task `classify_tweet`).
-    Mesin retry/parse sama dengan `classify`; hanya prompt, tag dan versinya yang beda."""
+    Mesin retry/parse sama dengan `classify`; hanya prompt, tag dan versinya yang beda. `task`
+    menamai panggilan di log `llm_calls` (eval prompt memakai nama lain, di luar breaker)."""
     return _classify(
         text,
-        task="classify_tweet",
+        task=task,
         prompt=_TWEET_PROMPT,
         tag="tweet",
         prompt_version=TWEET_PROMPT_VERSION,

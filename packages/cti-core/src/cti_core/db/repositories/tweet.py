@@ -71,6 +71,11 @@ class TweetVerdictRepo:
     def __init__(self, session: Session) -> None:
         self.session = session
 
+    def exists(self, tweet_id: str) -> bool:
+        """Tweet ini sudah divonis (diterima ATAU ditolak, LLM atau gate)."""
+        stmt = select(TweetVerdict.id).where(TweetVerdict.tweet_id == tweet_id)
+        return self.session.execute(stmt).first() is not None
+
     def record(
         self,
         *,

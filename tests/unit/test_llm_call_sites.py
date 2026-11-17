@@ -13,6 +13,8 @@ ROOT = Path(__file__).resolve().parents[2]
 EXPECTED_TASKS = {
     "classify",
     "classify_tweet",
+    "classify_eval",
+    "classify_tweet_eval",
     "ttp",
     "recap_daily",
     "recap_weekly",

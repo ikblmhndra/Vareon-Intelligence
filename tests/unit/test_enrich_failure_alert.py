@@ -63,7 +63,8 @@ def test_llm_down_alerts_once_per_cooldown_window(
 
     [(topic, text)] = sent
     assert topic == "scraper_health"
-    assert "30 artikel" in text
+    # Yang menunggu bisa job artikel, TTP atau tweet: bukan "artikel" semua.
+    assert "30 job" in text and "30 artikel" not in text
     [(_key, (_, ttl))] = fake.keys.items()
     assert ttl == 15 * 60  # jendela dari setelan
 

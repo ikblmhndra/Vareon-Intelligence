@@ -184,3 +184,46 @@ def test_sink_does_not_send_when_breaker_open(
     run(session, tweet("1"))
 
     assert len(jobs(session)) == 1 and sent == []
+
+
+def test_job_identity_is_the_tweet_id_not_the_url(session: Session, sent: list[int]) -> None:
+    """`monitor_x` (twitterapi) bisa mengirim url kosong: dua tweet berbeda tanpa url tetap dua
+    job, bukan satu konflik `(tweet, hash(""))`."""
+    a, b = tweet("1"), tweet("2")
+    a.url = b.url = ""
+
+    run(session, a, b)
+
+    assert sorted(j.context["tweet"]["tweet_id"] for j in jobs(session)) == ["1", "2"]
+
+
+def test_same_tweet_with_different_urls_from_two_scrapers_is_one_job(
+    session: Session, sent: list[int]
+) -> None:
+    """X official dan twitterapi membentuk URL berbeda untuk tweet yang sama: tetap satu job, dan
+    `notify` di-OR seperti konflik biasa."""
+    from cti_scraper.base import ScraperMeta
+
+    run(session, tweet("1", notify=False))
+    other = tweet("1", notify=True)
+    other.url = "https://twitter.com/A/status/1?s=20"
+    meta = ScraperMeta(id="other", source="Other", schedule="*/15 * * * *", max_items=5)
+    sinks.dispatch(other, meta, session)
+
+    (job,) = jobs(session)
+    assert job.context["notify"] is True and job.context["notice_text"] == "<b>hello</b>"
+
+
+def test_sink_skips_tweet_that_already_has_a_verdict(session: Session, sent: list[int]) -> None:
+    """Tweet yang sudah divonis (mis. ditolak lewat `monitor_x`) tidak diklasifikasi ulang oleh
+    scraper lain: tidak ada job baru, tidak ada panggilan LLM kedua."""
+    from cti_core.db.repositories.tweet import TweetVerdictRepo
+
+    TweetVerdictRepo(session).record(
+        tweet_id="1", text="hello", related_cyber=False, source="llm",
+        prompt_version=None, relevance=None,
+    )  # fmt: skip
+
+    run(session, tweet("1"))
+
+    assert jobs(session) == []

@@ -131,6 +131,32 @@ def test_gated_tweet_skips_llm_and_fills_tier1_fields(
     assert tweet.confidence_score is not None and tweet.confidence_score >= 85
 
 
+def test_gated_tweet_runs_tier1_without_techniques_inside_a_savepoint(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Tweet tidak punya kolom TTP, jadi ekstraksi teknik dilewati; Tier 1 jalan dalam savepoint
+    (pola `stages.relevance._active`) supaya error SQL yang lolos tidak membatalkan sesi 1."""
+    from cti_enrich.stages.tier1 import Tier1Result
+
+    calls: list[tuple[bool, bool]] = []
+
+    def spy_tier1(**kw: Any) -> Tier1Result:
+        calls.append((kw["techniques"], kw["session"].in_nested_transaction()))
+        return Tier1Result.empty()
+
+    monkeypatch.setattr(tweet_job, "run_tier1", spy_tier1)
+    monkeypatch.setattr(tweet_job, "classify_tweet", lambda text: pytest.fail("tanpa LLM"))
+    _relevance_cfg(monkeypatch)
+    session.add(_model_row("tweet", "gate", _tweet_model()))
+    job_id = make_job(session, text=TEXT)
+
+    assert jobs.run_job(job_id, now=NOW) == "done"
+
+    assert calls == [(False, True)]
+    v = verdict(session)
+    assert v is not None and v.source == "gate"
+
+
 def test_shadow_tweet_model_still_calls_llm_and_records_relevance(
     session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:

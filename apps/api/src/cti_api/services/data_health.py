@@ -62,8 +62,10 @@ _ENRICH_QUEUE = "enrich"
 # diganti nama diam-diam terbaca 0 (`LLEN` kunci yang tidak ada = 0, sama dengan queue yang idle).
 _QUEUES: tuple[str, ...] = (*ALL_SCRAPE_QUEUES, "enrich", "notify", "maintenance", "cve")
 
-# Task yang menentukan status model: jalur enrichment artikel (kegagalan di sini memarkir artikel).
-_STATUS_TASKS = ("classify", "ttp")
+# Task yang menentukan status model: jalur job `enrich_jobs` (artikel, TTP, tweet). Sama dengan
+# `BREAKER_TASKS`: kegagalan `classify_tweet` ikut membuka breaker untuk SEMUA job, jadi harus
+# terlihat di status juga.
+_STATUS_TASKS = ("classify", "classify_tweet", "ttp")
 
 
 def _iso(ts: datetime.datetime | None) -> str | None:

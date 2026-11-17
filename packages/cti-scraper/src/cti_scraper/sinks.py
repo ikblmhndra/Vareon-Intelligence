@@ -355,7 +355,10 @@ def _ioc_feed_sink(item: IocFeedItem, meta: ScraperMeta, session: Session) -> No
 def _tweet_sink(item: TweetItem, meta: ScraperMeta, session: Session) -> None:
     """Insert-only ke `tweets` -- gantiin `monitorX.py::upsert_tweet`
     (`$setOnInsert`, gak pernah update tweet yang udah ada). `source` = scraper yang nulis
-    (`monitor_x` atau `tweet_alerts_*`); kalau tweet-nya udah disimpan scraper lain, ini no-op."""
+    (`monitor_x` atau `tweet_alerts_*`); kalau tweet-nya udah disimpan scraper lain, ini no-op.
+
+    Sejak 0.8.19 (spec tweet-llm-cost) TIDAK ada scraper yang meng-yield `TweetItem`: semua tweet
+    lewat `TweetJobItem` -> `_tweet_job_sink`. Sink ini dibiarkan (belum dihapus), tak terpakai."""
     from cti_core.db.repositories.tweet import TweetRepo
 
     repo = TweetRepo(session)
@@ -396,12 +399,15 @@ def _tweet_job_sink(item: TweetJobItem, meta: ScraperMeta, session: Session) -> 
     `enrich_jobs`, TANPA panggilan LLM di jalur scraper; worker yang mengklasifikasi lalu menulis
     `tweets`. Sengaja TIDAK memanggil `ensure_enrich_capacity()`: job ini tidak menambah antrian
     Celery `enrich` (hanya baris DB), jadi tidak ikut backpressure. Tweet yang sudah ada di
-    `tweets` dilewati (scraper lain sudah menyimpannya). Konflik `(tweet, url)` meng-OR flag
+    `tweets` atau sudah punya vonis di `tweet_verdicts` dilewati (scraper lain sudah menyimpan/
+    menolaknya; tanpa ini tweet yang ditolak dibayar LLM lagi tiap scraper lain melihatnya).
+    Konflik `(tweet, tweet_id)` meng-OR flag
     `notify` (lihat `EnrichJobRepo.create_tweet`)."""
     from cti_core.db.repositories.enrich_job import EnrichJobRepo, lease_if_closed
-    from cti_core.db.repositories.tweet import TweetRepo
+    from cti_core.db.repositories.tweet import TweetRepo, TweetVerdictRepo
 
-    if TweetRepo(session).exists(item.tweet_id):
+    if TweetRepo(session).exists(item.tweet_id) or TweetVerdictRepo(session).exists(item.tweet_id):
+        # Sudah tersimpan, atau sudah divonis (termasuk ditolak) lewat scraper lain.
         return
     tweet = item.model_dump(
         mode="json",
@@ -409,6 +415,7 @@ def _tweet_job_sink(item: TweetJobItem, meta: ScraperMeta, session: Session) -> 
         exclude_none=False,
     )
     job = EnrichJobRepo(session).create_tweet(
+        tweet_id=item.tweet_id,
         url=item.url,
         title=item.text[:_TWEET_TITLE_MAX],
         source=meta.source,

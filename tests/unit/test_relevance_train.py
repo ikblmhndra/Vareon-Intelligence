@@ -292,3 +292,58 @@ def test_tweet_training_skips_below_minimum_per_class(monkeypatch) -> None:
     assert "threat_news" not in out.reason
     assert out.metrics["class_counts"] == {"reject": 50, "threat_news": 1000}
     assert calls["activate"] == [] and calls["rejected"] == []
+
+
+def test_train_failure_of_one_kind_does_not_stop_the_other(monkeypatch) -> None:
+    import contextlib
+
+    import cti_core.db.engine as engine
+    import cti_enrich.relevance.embedder as embedder_mod
+    import cti_enrich.relevance.train as train_mod
+    from structlog.testing import capture_logs
+
+    _env(monkeypatch)
+    import cti_worker.tasks.relevance as tasks
+
+    def run_training(*a: Any, kind: str = "article", **kw: Any) -> Any:
+        if kind == "article":
+            raise RuntimeError("article boom")
+        return train_mod.TrainOutcome("skipped", None, {}, "kurang data")
+
+    monkeypatch.setattr(engine, "sync_session", lambda: contextlib.nullcontext(None))
+    monkeypatch.setattr(embedder_mod, "get_embedder", lambda: None)
+    monkeypatch.setattr(train_mod, "run_training", run_training)
+    try:
+        with capture_logs() as logs:
+            out = tasks.train()
+    finally:
+        from cti_core.config import get_settings
+
+        get_settings.cache_clear()
+    assert set(out) == {"tweet"} and out["tweet"]["status"] == "skipped"
+    [failed] = [e for e in logs if e["event"] == "relevance_train_failed"]
+    assert failed["kind"] == "article" and failed["log_level"] == "error"
+
+
+def test_evaluate_failure_of_one_kind_does_not_stop_the_other(monkeypatch) -> None:
+    from structlog.testing import capture_logs
+
+    _env(monkeypatch)
+    import cti_worker.tasks.relevance as tasks
+
+    def evaluate_kind(kind: str, cfg: Any, now: Any) -> dict[str, Any]:
+        if kind == "article":
+            raise RuntimeError("article boom")
+        return {"action": "none", "state": "shadow"}
+
+    monkeypatch.setattr(tasks, "_evaluate_kind", evaluate_kind)
+    try:
+        with capture_logs() as logs:
+            out = tasks.evaluate()
+    finally:
+        from cti_core.config import get_settings
+
+        get_settings.cache_clear()
+    assert out == {"tweet": {"action": "none", "state": "shadow"}}
+    [failed] = [e for e in logs if e["event"] == "relevance_evaluate_failed"]
+    assert failed["kind"] == "article" and failed["log_level"] == "error"

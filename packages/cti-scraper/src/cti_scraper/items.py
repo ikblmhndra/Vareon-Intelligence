@@ -260,7 +260,10 @@ class TweetItem(Item):
     """Nulis ke `tweets` -- gantiin `monitorX.py::build_tweet_doc` +
     `upsert_tweet` (Fase 5). `dedup_key()` = tweet_id, SELALU dedup normal
     (bukan `None` kayak `MalwareTrendItem`) -- tweet gak berubah isinya
-    setelah diposting, beda dari artikel yang bisa di-edit."""
+    setelah diposting, beda dari artikel yang bisa di-edit.
+
+    Tak terpakai sejak 0.8.19: scraper tweet meng-yield `TweetJobItem` (klasifikasi di worker).
+    Dibiarkan, belum dihapus."""
 
     tweet_id: str
     url: str
