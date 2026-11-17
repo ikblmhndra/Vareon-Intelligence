@@ -1,20 +1,20 @@
-# Prod upgrade runbook: 0.8.16 → 0.8.17
+# Prod upgrade runbook: 0.8.19 → 0.8.20
 
 Prod (`privy-admin@10.8.20.78`, compose project `niskala-intelligence`, repo `/home/privy-admin/Niskala-Intelligence`)
-runs **0.8.16** since 2026-11-16 (`GET /healthz` returned `"version": "0.8.16"`). Confirm the running version first;
-for older versions follow `docs/PROD_UPGRADE_0.8.11_TO_0.8.16.md` before this one.
+should run **0.8.19** before this release. Confirm the running version first (`GET /healthz`); for older versions follow
+`docs/PROD_UPGRADE_0.8.18_TO_0.8.19.md` (and the runbooks it points to) before this one.
 
 One `make deploy` (run by the user with `sudo`; the Deploy workflow is off and the checkout is owned by root) takes prod
-to 0.8.17. There are no migrations and no new `.env` keys.
+to 0.8.20. There are no migrations and no new `.env` keys.
 
-Per-release checks: `docs/prod-upgrade/0.8.17.md`. Its content is repeated below.
+Per-release checks: `docs/prod-upgrade/0.8.20.md`. Its content is repeated below.
 
 ---
 
-## 0.8.17 — IOC reputation enrichment no longer stalls on malformed IOC values
+## 0.8.20 — IOC reputation enrichment no longer stalls on malformed IOC values
 
 Release: not yet tagged (branch `fix/ioc-enrich-invalid-url`; merge to `origin/Dev` for the dev test, then PR to
-`main`). Patch on top of 0.8.16, which prod runs since 2026-11-16.
+`main`). Patch on top of 0.8.19 (merge after PR #93). Numbered 0.8.17 when written; renumbered because 0.8.18 and 0.8.19 shipped first.
 
 ### What changes in prod
 
@@ -64,7 +64,7 @@ and needs the user's approval; it is not part of this release.
 
 ### Rollback
 
-`make deploy` restores the `:prev` images on a failed health check. Rolling back to 0.8.16 brings the crash back.
+`make deploy` restores the `:prev` images on a failed health check. Rolling back to 0.8.19 or older brings the crash back.
 
 ### Known risks
 

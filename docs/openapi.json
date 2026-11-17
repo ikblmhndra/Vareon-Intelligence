@@ -12636,7 +12636,7 @@
   },
   "info": {
     "title": "Vareon Intelligence API",
-    "version": "0.8.17"
+    "version": "0.8.20"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -16343,7 +16343,7 @@
             "required": false,
             "schema": {
               "default": "published",
-              "pattern": "^(tech|severity|published|epss|risk)$",
+              "pattern": "^(tech|severity|published|detected|epss|risk)$",
               "title": "Sort By",
               "type": "string"
             }

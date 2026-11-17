@@ -218,7 +218,7 @@ async def list_cves(
     date_end: datetime.date | None = None,
     include_fp: bool = False,
     fp_only: bool = False,
-    sort_by: str = Query("published", pattern="^(tech|severity|published|epss|risk)$"),
+    sort_by: str = Query("published", pattern="^(tech|severity|published|detected|epss|risk)$"),
     sort_dir: str = Query("desc", pattern="^(asc|desc)$"),
     ack_filter: str | None = Query(None, pattern=_ACK_FILTER_PATTERN),
     date_basis: str = Query("published", pattern=_DATE_BASIS_PATTERN),
