@@ -5665,7 +5665,7 @@ export interface components {
             llm: components["schemas"]["LlmHealthOut"];
             pipeline: components["schemas"]["PipelineHealthOut"];
             queues: components["schemas"]["QueueHealthOut"];
-            relevance: components["schemas"]["RelevanceHealthOut"];
+            relevance: components["schemas"]["RelevanceByKindOut"];
             scrapers: components["schemas"]["ScraperHealthSummary"];
             sigma: components["schemas"]["SigmaHealthOut"];
             sources: components["schemas"]["SourceFreshnessOut"];
@@ -7864,6 +7864,14 @@ export interface components {
             /** Stix Id */
             stix_id: string;
             target: components["schemas"]["EntityRef"];
+        };
+        /**
+         * RelevanceByKindOut
+         * @description Model relevansi per kind: `article` (P5) dan `tweet` (gate tweet, spec tweet-llm-cost).
+         */
+        RelevanceByKindOut: {
+            article: components["schemas"]["RelevanceHealthOut"];
+            tweet: components["schemas"]["RelevanceHealthOut"];
         };
         /**
          * RelevanceHealthOut

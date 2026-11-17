@@ -93,6 +93,15 @@ _GATED_SQL = """
     SELECT count(*) FROM articles WHERE created_at >= :since
       AND raw_enrichment->'relevance'->>'decision' = 'gated'
 """
+_TWEET_MIDDLE_BAND_SQL = """
+    SELECT count(*) FROM tweet_verdicts WHERE created_at >= :since AND source = 'llm'
+      AND relevance->>'in_band' = 'false'
+"""
+_TWEET_GATED_SQL = """
+    SELECT count(*) FROM tweet_verdicts WHERE created_at >= :since AND source = 'gate'
+"""
+"""Padanan tweet: vonis `gate` = classify yang dilewati; luar band = vonis LLM dengan
+`in_band` false (selalu ke LLM)."""
 
 
 @dataclass(frozen=True)
@@ -285,12 +294,13 @@ class AsyncRelevanceModelRepo:
             band_n=int(band[0]), band_agree=int(band[1]), audit_last=[bool(a) for a in audits]
         )
 
-    async def middle_band_count(self, since: datetime.datetime) -> int:
-        """Baris (articles + rejected_articles) yang skornya di luar band sejak `since`."""
-        return int(
-            (await self.session.execute(text(_MIDDLE_BAND_SQL), {"since": since})).scalar_one()
-        )
+    async def middle_band_count(self, since: datetime.datetime, kind: str = "article") -> int:
+        """Baris yang skornya di luar band sejak `since`: articles + rejected_articles, atau
+        vonis LLM di `tweet_verdicts` untuk kind tweet."""
+        sql = _TWEET_MIDDLE_BAND_SQL if check_kind(kind) == "tweet" else _MIDDLE_BAND_SQL
+        return int((await self.session.execute(text(sql), {"since": since})).scalar_one())
 
-    async def gated_count(self, since: datetime.datetime) -> int:
-        """Artikel yang classify-nya dilewati gate sejak `since` (panggilan LLM yang dihemat)."""
-        return int((await self.session.execute(text(_GATED_SQL), {"since": since})).scalar_one())
+    async def gated_count(self, since: datetime.datetime, kind: str = "article") -> int:
+        """Item yang classify-nya dilewati gate sejak `since` (panggilan LLM yang dihemat)."""
+        sql = _TWEET_GATED_SQL if check_kind(kind) == "tweet" else _GATED_SQL
+        return int((await self.session.execute(text(sql), {"since": since})).scalar_one())

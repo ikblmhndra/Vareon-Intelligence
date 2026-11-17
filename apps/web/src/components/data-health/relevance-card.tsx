@@ -9,6 +9,7 @@ import type { components } from "@/lib/api/schema";
 import { fmtShortDate } from "@/lib/format";
 
 type Rel = components["schemas"]["RelevanceHealthOut"];
+type RelByKind = components["schemas"]["RelevanceByKindOut"];
 
 /** Pecahan 0-1 dari API jadi persen satu desimal ("96.4%"); null jadi "–". */
 const pc = (x: number | null): string => (x === null ? "–" : `${(x * 100).toFixed(1)}%`);
@@ -22,9 +23,9 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-/** Kartu model relevansi lokal. Tiga varian (DH8): mode off, belum ada model aktif (`gate_state` null),
- * dan model aktif dengan gauge + baris detail; notice shadow/gate-mati di atas baris bila perlu. */
-export function RelevanceCard({ rel }: { rel: Rel }) {
+/** Isi satu kind (Articles / Tweets). Tiga varian (DH8): mode off, belum ada model aktif (`gate_state`
+ * null), dan model aktif dengan gauge + baris detail; notice shadow/gate-mati di atas baris bila perlu. */
+function KindBlock({ label, rel }: { label: string; rel: Rel }) {
   const avoided = (
     <Row label="Classify calls avoided">
       {rel.classify_avoided_24h.toLocaleString()} / 24 h · {rel.classify_avoided_7d.toLocaleString()} / 7 d
@@ -33,17 +34,8 @@ export function RelevanceCard({ rel }: { rel: Rel }) {
   const since = rel.gate_changed_at ? ` since ${fmtShortDate(rel.gate_changed_at)}` : "";
 
   return (
-    <section className="surface-raised mb-4 rounded-2xl p-5">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div>
-          <h2 className="font-heading text-xl font-bold tracking-tight text-foreground">Relevance model</h2>
-          <p className="text-xs text-muted-foreground">Local model decides before the LLM does</p>
-        </div>
-        <Chip kind="flag" value={rel.mode}>
-          {rel.mode.toUpperCase()}
-        </Chip>
-      </div>
-
+    <div>
+      <h3 className="mb-2 text-sm font-semibold text-foreground">{label}</h3>
       {rel.mode === "off" ? (
         <>
           <Notice title="The relevance model is off">Every title goes to the LLM classify call.</Notice>
@@ -105,6 +97,27 @@ export function RelevanceCard({ rel }: { rel: Rel }) {
           </dl>
         </>
       )}
+    </div>
+  );
+}
+
+/** Kartu model relevansi lokal, satu blok per kind. Mode (off/shadow/auto) satu untuk keduanya. */
+export function RelevanceCard({ rel }: { rel: RelByKind }) {
+  return (
+    <section className="surface-raised mb-4 rounded-2xl p-5">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h2 className="font-heading text-xl font-bold tracking-tight text-foreground">Relevance model</h2>
+          <p className="text-xs text-muted-foreground">Local model decides before the LLM does</p>
+        </div>
+        <Chip kind="flag" value={rel.article.mode}>
+          {rel.article.mode.toUpperCase()}
+        </Chip>
+      </div>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <KindBlock label="Articles" rel={rel.article} />
+        <KindBlock label="Tweets" rel={rel.tweet} />
+      </div>
     </section>
   );
 }

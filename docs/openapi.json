@@ -3344,7 +3344,7 @@
             "$ref": "#/components/schemas/QueueHealthOut"
           },
           "relevance": {
-            "$ref": "#/components/schemas/RelevanceHealthOut"
+            "$ref": "#/components/schemas/RelevanceByKindOut"
           },
           "scrapers": {
             "$ref": "#/components/schemas/ScraperHealthSummary"
@@ -9107,6 +9107,23 @@
           "revoked_by"
         ],
         "title": "RelationshipOut",
+        "type": "object"
+      },
+      "RelevanceByKindOut": {
+        "description": "Model relevansi per kind: `article` (P5) dan `tweet` (gate tweet, spec tweet-llm-cost).",
+        "properties": {
+          "article": {
+            "$ref": "#/components/schemas/RelevanceHealthOut"
+          },
+          "tweet": {
+            "$ref": "#/components/schemas/RelevanceHealthOut"
+          }
+        },
+        "required": [
+          "article",
+          "tweet"
+        ],
+        "title": "RelevanceByKindOut",
         "type": "object"
       },
       "RelevanceHealthOut": {
