@@ -125,7 +125,7 @@ class EnrichJobRepo:
         )
         notify_or = func.jsonb_set(
             EnrichJob.context,
-            "{notify}",
+            literal_column("'{notify}'::text[]"),
             func.to_jsonb(
                 (EnrichJob.context.op("->>")("notify")).cast(Boolean)
                 | (insert_stmt.excluded.context.op("->>")("notify")).cast(Boolean)
