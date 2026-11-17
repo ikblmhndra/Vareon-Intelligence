@@ -54,7 +54,7 @@ def _patch_active(monkeypatch: pytest.MonkeyPatch, rows: list[Any]) -> list[int]
     class _Repo:
         def __init__(self, session: Any) -> None: ...
 
-        def get_active(self) -> Any:
+        def get_active(self, kind: str = "article") -> Any:
             calls.append(1)
             return rows[0]
 
@@ -182,3 +182,28 @@ def test_stage_imports_without_sklearn() -> None:
         [sys.executable, "-c", code], capture_output=True, text=True, timeout=180, check=False
     )
     assert proc.returncode == 0, proc.stderr[-3000:]
+
+
+def test_stage_cache_is_per_kind(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Model artikel dan tweet di-cache terpisah: kind lain tidak membaca cache kind ini."""
+    asked: list[str] = []
+    rows = {"article": _row(_trained(), model_id=1), "tweet": _row(_trained(), model_id=2)}
+
+    class _Repo:
+        def __init__(self, session: Any) -> None: ...
+
+        def get_active(self, kind: str = "article") -> Any:
+            asked.append(kind)
+            return rows[kind]
+
+    monkeypatch.setattr(stage, "RelevanceModelRepo", _Repo)
+    session = MagicMock()
+    art = stage._active(session)
+    tw = stage._active(session, kind="tweet")
+    assert art is not None and art.model_id == 1
+    assert tw is not None and tw.model_id == 2
+    assert asked == ["article", "tweet"]
+    # Panggilan kedua kena cache masing-masing: DB tidak ditanya lagi.
+    assert stage._active(session) is art
+    assert stage._active(session, kind="tweet") is tw
+    assert asked == ["article", "tweet"]

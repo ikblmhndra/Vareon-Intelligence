@@ -5,31 +5,32 @@ daftar akun (`usernames_1hour.txt` / `usernames_130hour.txt`).
 Bedakan dari `monitor_x` (Fase 5): itu MENYIMPAN tweet akun `monitored_accounts` ke
 tabel `tweets` buat tab X Intel dan TIDAK mengirim alert; ini mengirim alert berkategori ke
 channel Telegram. Sejak 2026-10-16 tweet yang lolos klasifikasi JUGA disimpan ke `tweets`
-(satu `TweetItem` per tweet, sebelum notice-nya; `tweets.source` = id scraper ini): di prod
+(sejak 0.8.19 oleh worker job `tweet` dari `TweetJobItem` yang di-yield di sini, bukan lagi
+`TweetItem`; `tweets.source` = id scraper ini): di prod
 `monitor_x` mati sejak 2026-10-02 (kunci twitterapi.io ditolak, ia tak punya opsi `provider`)
 sementara tiga scraper lain pindah ke X resmi, dan tiga akun alert (`blueteamsec1`,
-`DarkWebInformer`, `VECERTRadar`) memang tak ada di `monitored_accounts`. Scan dan verdict LLM
-sudah dihitung buat alert, jadi menyimpannya tidak menambah panggilan LLM.
+`DarkWebInformer`, `VECERTRadar`) memang tak ada di `monitored_accounts`.
 
-Alur per tweet (urutan penting: yang murah dulu, LLM terakhir):
+Alur per tweet (scraper TIDAK memanggil LLM; persist-first seperti artikel):
   1. balasan / retweet dibuang (query + cek `isReply`, awalan "RT ");
   2. filter per-akun (`falconfeedsio`, `ecrime_ch`, `h4ckmanac`) -- sama dengan lama;
   3. scan regex (`score_with_lists`): tweet berbau pendanaan dan "Ransomware Alert:"
      dibuang;
-  4. klasifikasi LLM (`related_cyber`) -- di kode lama SEBELUM filter 2-3, jadi
-     tweet yang toh dibuang tetap makan satu panggilan LLM;
-  5. rute ke topik (`tweet_routing.route_tweet`) -> satu `NoticeItem` per topik.
+  4. yang lolos di-yield sebagai `TweetJobItem` (`notify=True`, `routing` = sinyal scan).
+     Sink menulisnya sebagai job `tweet` di `enrich_jobs`; worker `enrich.llm` yang
+     mengklasifikasi (`related_cyber`), menyimpan ke `tweets`, lalu merutekan topik
+     (`tweet_routing.route_tweet`) dan mengirim satu notice per topik. Di kode lama LLM
+     jalan di sini dan SEBELUM filter 2-3.
 
 Perbedaan dari skrip lama:
   - SATU query `(from:a OR from:b ...)` per run, bukan satu request per akun
     (free tier twitterapi.io ~1 request/5 detik; lihat `_twitterapi.py`).
   - Sumber data: twitterapi.io (default) ATAU API resmi X v2, dipilih per-scraper lewat
     opsi `provider` di control plane -- lihat `_twitter.py`. Auth ikut sumber yang dipilih.
-  - Dedup = id tweet (+ topik) oleh framework, bukan `offset/tweetid.txt` yang
+  - Dedup = id tweet oleh framework (worker memakai id tweet + topik buat notice), bukan `offset/tweetid.txt` yang
     ditulis SETELAH `time.sleep(3)` per tweet (crash di antaranya = kirim ulang).
   - Jendela pencarian 2x interval jadwal; tweet yang sudah pernah dikirim di
-    dalam jendela itu dibuang dedup (dan ikut diklasifikasi ulang -- harga kecil
-    dibanding kehilangan tweet kalau satu run terlewat).
+    dalam jendela itu dibuang dedup (tanpa panggilan LLM ulang, karena LLM kini di worker).
   - Skrip lama `exit()` di tengah loop kalau satu akun error -> akun sisanya tidak
     pernah diproses. Sekarang error API = `ParseError` sekali di awal.
   - Pesan dibatasi 4096 karakter (setelah `html.escape`): sejak provider pindah ke X resmi, post
@@ -54,11 +55,9 @@ import re
 from collections.abc import Iterator
 from typing import ClassVar
 
-from cti_enrich.stages.classify import OpenAIQuotaExhausted, classify
 from cti_enrich.stages.score import ScoreResult, score_with_lists
-from cti_enrich.tweet_routing import TweetRoutingInput, route_tweet
 from cti_scraper.base import BaseScraper, ScrapeContext, ScraperMeta
-from cti_scraper.items import NoticeItem, TweetItem
+from cti_scraper.items import TweetJobItem
 
 from cti_scrapers.collectors import _tweet_item
 from cti_scrapers.collectors import _twitter as tw
@@ -186,7 +185,7 @@ class TweetAlertScraper(BaseScraper):
     accounts: ClassVar[tuple[str, ...]]
     window: ClassVar[datetime.timedelta]
 
-    def fetch(self, ctx: ScrapeContext) -> Iterator[NoticeItem | TweetItem]:
+    def fetch(self, ctx: ScrapeContext) -> Iterator[TweetJobItem]:
         spec = tw.TweetSearch(since=ctx.now - self.window, accounts=self.accounts)
 
         techstack: list[str] = ctx.reference["techstack"]
@@ -196,11 +195,9 @@ class TweetAlertScraper(BaseScraper):
         found = 0
         for tweet in tw.by_id(tw.search(ctx, spec)):
             for item in self._items(ctx, tweet, techstack, groups, people):
-                # Batas per run cuma buat pesan Telegram; arsip `TweetItem` tidak ikut dihitung.
-                if isinstance(item, NoticeItem):
-                    if found >= self.meta.max_items:
-                        return
-                    found += 1
+                if found >= self.meta.max_items:
+                    return
+                found += 1
                 yield item
 
     def _items(
@@ -210,7 +207,7 @@ class TweetAlertScraper(BaseScraper):
         techstack: list[str],
         groups: list[str],
         people: list[str],
-    ) -> Iterator[NoticeItem | TweetItem]:
+    ) -> Iterator[TweetJobItem]:
         text = tweet.text
         user = tweet.username
         if not text or tweet.is_reply or text.startswith("RT "):
@@ -234,50 +231,17 @@ class TweetAlertScraper(BaseScraper):
         if "Ransomware Alert:" in message:
             return
 
-        try:
-            verdict = classify(text, task="classify_tweet")
-        except OpenAIQuotaExhausted:
-            raise
-        except Exception as e:
-            # Tidak di-yield -> tidak ditandai seen -> dicoba lagi di run berikutnya
-            # (selama masih dalam jendela pencarian). Skrip lama: crash seluruh run.
-            ctx.log.warning(
-                "tweet_alerts: classify() gagal, tweet dilewati", tweet_id=tweet.id, error=str(e)
-            )
-            return
-        if not verdict.related_cyber:
-            return
-
-        if user:
-            # Arsip X Intel: SEKALI per tweet (bukan per topik), sebelum notice-nya, jadi gagal
-            # kirim Telegram tidak menghilangkan arsip dan sebaliknya (dedup `tweet_id` vs
-            # `tweet_id:topik` terpisah). Tanpa username kolom `author_username` (NOT NULL) kosong.
-            yield _tweet_item.from_tweet(tweet, scan, verdict)
-
-        topics = route_tweet(
-            TweetRoutingInput(
-                msg_data=message,
-                cve_list=scan.cve_list_title,
-                # Kode lama: `related_tech_status` tweet HANYA dari `checkCVE` (vendor CVE
-                # cocok tech stack), dan cuma dihitung di cabang tanpa grup/negara.
-                related_tech_status=scan.related_tech_cve_status,
-                report_status=scan.report_status,
-                ot_status=scan.ot_status,
-                databreach_list=scan.databreach_list,
-                zero_day_list=scan.zero_day_list,
-            )
+        # Satu job per tweet: worker mengklasifikasi (LLM), menyimpan ke `tweets`, lalu merutekan
+        # topik Telegram dari `routing` (+ `msg_data` utuh) dan mengirim `notice_text`. Kedua
+        # pesan dibangun di sini karena worker tidak punya scan-nya. `author_username` kosong
+        # tetap di-yield; worker meng-alert tanpa mengarsipkan (`tweets.author_username` NOT NULL).
+        yield _tweet_item.tweet_job_item(
+            tweet,
+            scan,
+            notify=True,
+            msg_data=message,
+            notice_text=build_message(tweet, scan),
         )
-        created = tweet.created_at
-        notice_text = build_message(tweet, scan)  # <= batas Telegram; `message` bisa lebih panjang
-        for topic in topics:
-            yield NoticeItem(
-                topic=topic,
-                text=notice_text,
-                key=f"{tweet.id}:{topic}",
-                title=f"@{user}: {text[:100]}",
-                url=tweet.url,
-                posted_on=created.date() if created else None,
-            )
 
 
 _REFERENCE = ("techstack", "threat_actor_groups", "monitored_people")
@@ -293,7 +257,7 @@ class TweetAlerts1h(TweetAlertScraper):
         credential="twitter",
         options=(tw.ALERTS_PROVIDER_OPTION,),
         reference_data=_REFERENCE,
-        max_items=40,
+        max_items=200,
         tags=("migrated", "bespoke", "twitter"),
         legacy_script="twitter",
     )
@@ -314,7 +278,7 @@ class TweetAlerts30m(TweetAlertScraper):
         credential="twitter",
         options=(tw.ALERTS_PROVIDER_OPTION,),
         reference_data=_REFERENCE,
-        max_items=40,
+        max_items=200,
         tags=("migrated", "bespoke", "twitter"),
         legacy_script="twitter30",
     )

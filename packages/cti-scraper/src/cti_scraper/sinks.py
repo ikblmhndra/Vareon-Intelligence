@@ -15,6 +15,7 @@ from collections.abc import Callable
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any
 
+import structlog
 from cti_core.config import get_settings
 from cti_core.cve_promotion import NEW_CVE_ROWS_KEY
 from sqlalchemy.orm import Session
@@ -31,6 +32,7 @@ from cti_scraper.items import (
     NoticeItem,
     RansomwareVictimItem,
     TweetItem,
+    TweetJobItem,
 )
 
 if TYPE_CHECKING:
@@ -46,6 +48,8 @@ if TYPE_CHECKING:
 Sink = Callable[[Any, "ScraperMeta", Session], None]
 
 _SINKS: dict[type[Item], Sink] = {}
+
+log = structlog.get_logger()
 
 
 class NoSinkRegistered(Exception):
@@ -213,8 +217,20 @@ definisi dengan promosi mirror (`cti_core.cve_promotion`), yang juga mengisinya.
 
 
 def finish_run(session: Session) -> None:
-    """Dipanggil `Runner.execute()` SETELAH run dicatat selesai. Mengirim ringkasan CVE baru yang
-    dikumpulkan `_cve_sink`. Tidak pernah raise: alert bukan alasan run gagal."""
+    """Dipanggil `Runner.execute()` SETELAH run dicatat selesai. Mengirim job `tweet` yang disewa
+    `_tweet_job_sink` dan ringkasan CVE baru yang dikumpulkan `_cve_sink`. Tidak pernah raise:
+    alert bukan alasan run gagal."""
+    job_ids = session.info.pop(_TWEET_JOB_IDS_KEY, None)
+    if job_ids:
+        from cti_core.celery_client import send_enrich_llm
+
+        for job_id in job_ids:
+            # Best-effort: sewa yang habis membuat dispatcher mengambil job ini. Id bisa milik
+            # baris yang ikut di-rollback; worker membalasnya `gone`.
+            try:
+                send_enrich_llm(job_id)
+            except Exception:
+                log.warning("tweet_job_send_now_failed", job_id=job_id, exc_info=True)
     pairs = session.info.pop(_NEW_CVE_KEY, None)
     if pairs:
         from cti_scraper.cve_alert import notify_new_cves
@@ -339,7 +355,10 @@ def _ioc_feed_sink(item: IocFeedItem, meta: ScraperMeta, session: Session) -> No
 def _tweet_sink(item: TweetItem, meta: ScraperMeta, session: Session) -> None:
     """Insert-only ke `tweets` -- gantiin `monitorX.py::upsert_tweet`
     (`$setOnInsert`, gak pernah update tweet yang udah ada). `source` = scraper yang nulis
-    (`monitor_x` atau `tweet_alerts_*`); kalau tweet-nya udah disimpan scraper lain, ini no-op."""
+    (`monitor_x` atau `tweet_alerts_*`); kalau tweet-nya udah disimpan scraper lain, ini no-op.
+
+    Sejak 0.8.19 (spec tweet-llm-cost) TIDAK ada scraper yang meng-yield `TweetItem`: semua tweet
+    lewat `TweetJobItem` -> `_tweet_job_sink`. Sink ini dibiarkan (belum dihapus), tak terpakai."""
     from cti_core.db.repositories.tweet import TweetRepo
 
     repo = TweetRepo(session)
@@ -365,6 +384,54 @@ def _tweet_sink(item: TweetItem, meta: ScraperMeta, session: Session) -> None:
         incident_confidence=item.incident_confidence,
         incident_indicators=item.incident_indicators,
     )
+
+
+_TWEET_JOB_IDS_KEY = "tweet_job_ids"
+"""Kunci `Session.info`: id job `tweet` yang disewa (breaker tertutup) selama run ini, dikirim
+SEKALI di `finish_run` (sesudah commit, saat worker bisa melihat barisnya)."""
+
+_TWEET_TITLE_MAX = 300
+
+
+@sink_for(TweetJobItem)
+def _tweet_job_sink(item: TweetJobItem, meta: ScraperMeta, session: Session) -> None:
+    """Persist-first (spec tweet-llm-cost, Part A): tweet ditulis sebagai job `tweet` di
+    `enrich_jobs`, TANPA panggilan LLM di jalur scraper; worker yang mengklasifikasi lalu menulis
+    `tweets`. Sengaja TIDAK memanggil `ensure_enrich_capacity()`: job ini tidak menambah antrian
+    Celery `enrich` (hanya baris DB), jadi tidak ikut backpressure. Tweet yang sudah ada di
+    `tweets` atau sudah punya vonis di `tweet_verdicts` dilewati (scraper lain sudah menyimpan/
+    menolaknya; tanpa ini tweet yang ditolak dibayar LLM lagi tiap scraper lain melihatnya).
+    Konflik `(tweet, tweet_id)` meng-OR flag
+    `notify` (lihat `EnrichJobRepo.create_tweet`)."""
+    from cti_core.db.repositories.enrich_job import EnrichJobRepo, lease_if_closed
+    from cti_core.db.repositories.tweet import TweetRepo, TweetVerdictRepo
+
+    if TweetRepo(session).exists(item.tweet_id) or TweetVerdictRepo(session).exists(item.tweet_id):
+        # Sudah tersimpan, atau sudah divonis (termasuk ditolak) lewat scraper lain.
+        return
+    tweet = item.model_dump(
+        mode="json",
+        exclude={"scan_results", "routing", "notice_text", "notify"},
+        exclude_none=False,
+    )
+    job = EnrichJobRepo(session).create_tweet(
+        tweet_id=item.tweet_id,
+        url=item.url,
+        title=item.text[:_TWEET_TITLE_MAX],
+        source=meta.source,
+        scraper_id=meta.id,
+        posted_on=item.posted_on.date() if item.posted_on else None,
+        input_text=item.text,
+        context={
+            "tweet": tweet,
+            "scan_results": item.scan_results,
+            "routing": item.routing,
+            "notify": item.notify,
+            "notice_text": item.notice_text,
+        },
+    )
+    if job is not None and lease_if_closed(session, job):
+        session.info.setdefault(_TWEET_JOB_IDS_KEY, []).append(job.id)
 
 
 @sink_for(CveMentionItem)

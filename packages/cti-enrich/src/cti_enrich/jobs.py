@@ -19,9 +19,14 @@ ke-3 job `failed` (job `ttp` malah dihapus dan artikel `llm_ttp_status='failed'`
 tetap); error lain = `failed` langsung supaya bug tidak berputar diam-diam. `last_error` selalu
 disamarkan dari secret dulu (`scrub_secrets`), baru dipotong repo ke 300 karakter.
 
-`cti_enrich` tidak boleh mengimpor `cti_scraper` maupun `cti_alerts`, jadi worker menyuntikkan
-`relevance_for` (marking/relevansi bawaan sumber untuk baris migrasi yang `context`-nya kosong)
-dan `on_failed` (alert Telegram saat job menjadi `failed`)."""
+`cti_enrich` tidak boleh mengimpor `cti_scraper`, jadi worker menyuntikkan `relevance_for`
+(marking/relevansi bawaan sumber untuk baris migrasi yang `context`-nya kosong) dan `on_failed`
+(alert Telegram saat job menjadi `failed`).
+
+Job `tweet` (spec tweet-llm-cost) diteruskan ke `tweet_job.run_tweet_job` sesudah sesi 1;
+kegagalan gateway/DB dan JSON yang belum mencapai batas dicatat di sini dengan aturan yang sama
+dengan job `classify`. Kegagalan finalnya beda: job dihapus tanpa alert analis (lihat
+`_record_failure`)."""
 
 from __future__ import annotations
 
@@ -61,6 +66,7 @@ from cti_enrich.stages.extract_ttps import extract_ttps, normalize_ttp_result, v
 from cti_enrich.story.attach import classify_from_story
 from cti_enrich.tier1.merge import merge_ttps
 from cti_enrich.tier1.ttps import SourcedTechnique, TtpSource
+from cti_enrich.tweet_job import run_tweet_job
 
 log = structlog.get_logger()
 
@@ -146,15 +152,17 @@ def _run(
             log.info("enrich_job_waits_for_analyst", job_id=job_id)
             return "failed"
         kind = job.kind
+        if kind != "classify" and decision is not None:
+            raise DecisionNotAllowed(f"keputusan analis hanya untuk job classify ({job_id})")
         if kind == "ttp":
-            if decision is not None:
-                raise DecisionNotAllowed(f"keputusan analis hanya untuk job classify ({job_id})")
             text = job.input_text or ""
-        else:
+        elif kind == "classify":
             started = _start_classify(session, job, decision, now, relevance_for)
             if isinstance(started, str):
                 return started
             prepared, verdict = started
+    if kind == "tweet":
+        return run_tweet_job(job_id, now)
     if kind == "ttp":
         return _finish_ttp(job_id, text)
     if verdict is None:
@@ -393,6 +401,14 @@ def _record_failure(
                 article.llm_ttp_status = "failed"
             repo.delete(job)
             log.warning("enrich_ttp_job_gave_up", job_id=job_id, article_id=job.article_id)
+            return "failed"
+        if job.kind == "tweet":
+            # Gagal final (JSON rusak 3x, error lain): job dihapus seperti TTP, tanpa alert analis.
+            # Antrean Newsroom hanya menampilkan job `classify` dan terima/tolak menolak job
+            # `tweet` (409), jadi job `failed` akan tersangkut tak terlihat. Tidak ada yang dicatat
+            # di `tweets`/`tweet_verdicts`; tweet-nya hilang (dedup `scraper_seen` sudah ada).
+            repo.delete(job)
+            log.error("enrich_tweet_job_gave_up", job_id=job_id, error=error[:300])
             return "failed"
         if kind == "other":
             repo.mark_failed(job, error)

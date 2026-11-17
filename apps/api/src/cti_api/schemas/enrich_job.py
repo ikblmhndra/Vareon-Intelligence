@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 class EnrichJobOut(BaseModel):
     id: int
-    kind: Literal["classify", "ttp"]
+    kind: Literal["classify", "ttp", "tweet"]
     url: str
     title: str
     source: str

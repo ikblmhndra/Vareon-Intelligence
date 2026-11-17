@@ -105,3 +105,36 @@ def test_job_deleted_with_article(db_session: Session) -> None:
     db_session.flush()
     db_session.expire_all()
     assert db_session.get(EnrichJob, job_id) is None
+
+
+def test_create_accepts_tweet_kind(db_session: Session) -> None:
+    repo = EnrichJobRepo(db_session)
+    job = _make(repo, "https://x.com/a/status/1", kind="tweet")
+    assert job is not None and job.kind == "tweet"
+
+
+def test_counts_include_pending_tweet(db_session: Session) -> None:
+    repo = EnrichJobRepo(db_session)
+    before = repo.counts()
+    for i, kind in enumerate(("classify", "ttp", "tweet")):
+        assert _make(repo, f"https://example.com/count-{i}", kind=kind) is not None
+    after = repo.counts()
+    assert after.pending_tweet - before.pending_tweet == 1
+    assert after.pending_classify - before.pending_classify == 1
+    assert after.pending_ttp - before.pending_ttp == 1
+
+
+def test_claim_due_orders_classify_tweet_ttp(db_session: Session) -> None:
+    repo = EnrichJobRepo(db_session)
+    # created_at urut terbalik dari urutan klaim yang diharapkan: kind harus menang atas umur
+    ttp = _make(repo, "https://example.com/o-ttp", kind="ttp")
+    tweet = _make(repo, "https://example.com/o-tweet", kind="tweet")
+    cls = _make(repo, "https://example.com/o-cls")
+    assert ttp and tweet and cls
+    for age, job in ((3, ttp), (2, tweet), (1, cls)):
+        job.created_at = NOW - datetime.timedelta(hours=age)
+        job.next_attempt_at = NOW - datetime.timedelta(minutes=1)
+    db_session.flush()
+
+    got = repo.claim_due(NOW, limit=3, lease=datetime.timedelta(minutes=15))
+    assert [j.kind for j in got] == ["classify", "tweet", "ttp"]

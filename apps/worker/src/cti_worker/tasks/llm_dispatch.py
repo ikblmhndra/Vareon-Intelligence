@@ -94,12 +94,13 @@ def _alert_once(key: str, text: str) -> None:
 
 
 def alert_llm_down(waiting: int) -> None:
-    """Breaker terbuka: gateway LLM gagal beruntun. Artikelnya aman (tersimpan sebagai job) dan
-    akan diproses sendiri begitu gateway pulih; pesan ini supaya penyebabnya diperiksa."""
+    """Breaker terbuka: gateway LLM gagal beruntun. Job-nya aman (artikel, TTP, tweet; tersimpan
+    di `enrich_jobs`) dan akan diproses sendiri begitu gateway pulih; pesan ini supaya
+    penyebabnya diperiksa. `waiting` = semua jenis job, jadi disebut "job", bukan "artikel"."""
     _alert_once(
         _DOWN_ALERT_KEY,
         "<b>Gateway LLM mati</b> -- enrichment ditahan circuit breaker.\n"
-        f"Menunggu: {waiting} artikel. Tersimpan sebagai job dan diproses otomatis begitu "
+        f"Menunggu: {waiting} job (artikel, TTP, tweet). Diproses otomatis begitu "
         "gateway pulih; cek gateway/model/kuota.",
     )
 
@@ -145,7 +146,7 @@ def dispatch(now: datetime.datetime) -> dict[str, int]:
         repo = EnrichJobRepo(session)
         if breaker.state == "open":
             counts = repo.counts()
-            waiting = counts.pending_classify + counts.pending_ttp
+            waiting = counts.pending_classify + counts.pending_ttp + counts.pending_tweet
         job_ids = [j.id for j in repo.claim_due(now, limit=limit, lease=LEASE)] if limit else []
         session.commit()
     if breaker.state == "half_open" and job_ids:

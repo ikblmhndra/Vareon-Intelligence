@@ -1,4 +1,5 @@
-"""Label latih model relevansi dari `articles` dan `rejected_articles` (spec 6).
+"""Label latih model relevansi dari `articles` dan `rejected_articles` (spec 6), dan untuk model
+tweet dari `tweet_verdicts` (spec tweet-llm-cost, Part C).
 
 Modul ini mengimpor `relevance.model` (hanya untuk dataclass `Example`; sklearn ikut terimpor
 lewat sana, jadi jangan impor dari jalur yang harus ringan). `to_examples` murni dan
@@ -13,6 +14,7 @@ from datetime import datetime
 from typing import Any, Literal
 
 from cti_core.db.models.article import Article, RejectedArticle
+from cti_core.db.repositories.tweet import TweetVerdictRepo
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -98,3 +100,18 @@ def load_examples(session: Session) -> list[Example]:
         for title, audit, reason, fk, at in session.execute(rej_stmt)
     )
     return to_examples(rows)
+
+
+def load_tweet_examples(session: Session) -> list[Example]:
+    """Contoh model tweet: HANYA baris `source='llm'` (`llm_rows`), supaya model tidak belajar dari
+    vonis gate-nya sendiri. Label biner: `threat_news` bila `related_cyber`, selain itu `reject`.
+    Dedup per teks ternormalisasi seperti judul artikel: baris terbaru menang (`llm_rows` terbaru
+    dulu, jadi kemunculan pertama dipertahankan kecuali ada `at` yang lebih baru)."""
+    best: dict[str, Example] = {}
+    for row in TweetVerdictRepo(session).llm_rows():
+        label = "threat_news" if row.related_cyber else "reject"
+        key = _normalise(row.text)
+        prev = best.get(key)
+        if prev is None or row.created_at > prev.at:
+            best[key] = Example(title=row.text, label=label, at=row.created_at)
+    return list(best.values())

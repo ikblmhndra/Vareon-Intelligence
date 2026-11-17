@@ -1,11 +1,14 @@
-"""Bentuk `TweetItem` (baris tabel `tweets`, tab X Intel) dari hasil scan regex dan klasifikasi LLM.
+"""Bentuk `TweetJobItem` (tweet yang menunggu klasifikasi LLM di worker) dari hasil scan regex.
 
-Dipakai dua jalur supaya baris `tweets` yang ditulis `monitor_x` dan `tweet_alerts_*` isinya sama:
+Dipakai dua jalur supaya baris `tweets` (tab X Intel) yang ditulis `monitor_x` dan `tweet_alerts_*`
+isinya sama:
   - `monitor_x` (`feeds/monitor_x.py`): tweet mentah twitterapi.io, memakai `scan_results` dan
-    `llm_fields`;
+    `routing_fields`; tweet X resmi memakai `tweet_job_item` (`notify=False`);
   - `tweet_alerts_*` (`collectors/tweet_alerts.py`): tweet netral (`_twitter.Tweet`), memakai
-    `from_tweet`. Scan dan klasifikasi sudah dihitung untuk alert, jadi menyimpannya tidak
-    menambah panggilan LLM.
+    `tweet_job_item` (`notify=True`).
+Scraper TIDAK memanggil LLM: sink menulis job `tweet`, worker yang mengklasifikasi lalu menyimpan
+ke `tweets` (`cti_enrich.tweet_job`) dan, kalau `notify`, merutekan alert Telegram dari teks pesan
+yang dibangun scraper (`msg_data` di `routing`, `notice_text`).
 
 Modul BUKAN scraper; awalan `_` menandai helper internal paket `collectors`.
 """
@@ -14,9 +17,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from cti_enrich.stages.classify import ClassifyResult
 from cti_enrich.stages.score import ScoreResult
-from cti_scraper.items import TweetItem
+from cti_scraper.items import TweetJobItem
 
 from cti_scrapers.collectors._twitter import Tweet
 
@@ -35,26 +37,36 @@ def scan_results(scan: ScoreResult) -> dict[str, Any]:
     }
 
 
-def llm_fields(llm: ClassifyResult | None) -> dict[str, Any]:
-    """Field LLM `TweetItem`; `llm=None` (klasifikasi gagal, tweet tetap disimpan) = nilai kosong."""
+def routing_fields(scan: ScoreResult) -> dict[str, Any]:
+    """Field `TweetRoutingInput` selain `msg_data` (pesan utuh; hanya scraper `notify` yang
+    menambahkannya, lewat `tweet_job_item`).
+    Kode lama: `related_tech_status` tweet HANYA dari `checkCVE` (vendor CVE cocok tech stack),
+    dan cuma dihitung di cabang tanpa grup/negara."""
     return {
-        "confidence_score": round(llm.confidence * 100) if llm and llm.confidence else None,
-        "confirmed_incident": bool(llm.confirmed_incident) if llm else False,
-        "industries_impacted": llm.industries_impacted if llm else [],
-        "victim_countries": llm.victim_countries if llm else [],
-        "actor_countries": llm.actor_countries if llm else [],
-        "victim_name": llm.victim_name if llm else None,
-        "incident_confidence": (
-            round(llm.incident_confidence * 100)
-            if llm and llm.incident_confidence is not None
-            else None
-        ),
-        "incident_indicators": llm.incident_indicators if llm else [],
+        "cve_list": scan.cve_list_title,
+        "related_tech_status": scan.related_tech_cve_status,
+        "report_status": scan.report_status,
+        "ot_status": scan.ot_status,
+        "databreach_list": scan.databreach_list,
+        "zero_day_list": scan.zero_day_list,
     }
 
 
-def from_tweet(tweet: Tweet, scan: ScoreResult, llm: ClassifyResult | None) -> TweetItem:
-    return TweetItem(
+def tweet_job_item(
+    tweet: Tweet,
+    scan: ScoreResult,
+    *,
+    notify: bool,
+    msg_data: str | None = None,
+    notice_text: str | None = None,
+) -> TweetJobItem:
+    """Tweet netral -> `TweetJobItem` (job `tweet` di `enrich_jobs`; LLM dipanggil worker).
+    `msg_data` (pesan utuh untuk `route_tweet`) dan `notice_text` (pesan Telegram) dari
+    `tweet_alerts.build_message`; worker tidak punya scan untuk membangunnya sendiri."""
+    routing = routing_fields(scan)
+    if msg_data is not None:
+        routing["msg_data"] = msg_data
+    return TweetJobItem(
         tweet_id=tweet.id,
         url=tweet.url,
         text=tweet.text,
@@ -66,5 +78,7 @@ def from_tweet(tweet: Tweet, scan: ScoreResult, llm: ClassifyResult | None) -> T
         lang=tweet.lang,
         media_urls=list(tweet.media_urls),
         scan_results=scan_results(scan),
-        **llm_fields(llm),
+        routing=routing,
+        notice_text=notice_text,
+        notify=notify,
     )

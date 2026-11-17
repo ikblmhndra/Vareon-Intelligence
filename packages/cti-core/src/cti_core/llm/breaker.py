@@ -1,8 +1,8 @@
 """Circuit breaker LLM tanpa state dan batas dispatch (spec P7g 4.4 / 4.5).
 
 Murni: tidak menyentuh DB atau Redis. Status dihitung dari baris `llm_calls` terbaru (task
-`classify` dan `ttp`) yang dikumpulkan pemanggil; `error` dan `empty` dihitung gagal. Tanpa state
-Redis dan tanpa setting baru, supaya restart worker tidak mengubah keputusan.
+`classify`, `classify_tweet` dan `ttp`) yang dikumpulkan pemanggil; `error` dan `empty` dihitung
+gagal. Tanpa state Redis dan tanpa setting baru, supaya restart worker tidak mengubah keputusan.
 
 Tertutup: kegagalan beruntun < `OPEN_AFTER`. Terbuka: n >= 3 dan cooldown
 `min(30 mnt, 2 mnt * 2^(n-3))` belum lewat. Setengah terbuka: cooldown lewat, tepat satu job
@@ -16,7 +16,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal
 
-BREAKER_TASKS = ("classify", "ttp")
+BREAKER_TASKS = ("classify", "classify_tweet", "ttp")
+"""Task `llm_calls` yang dihitung breaker. `classify_tweet` (job `tweet`, prompt pendek) ikut: job
+tweet lewat dispatcher yang sama, jadi gateway yang menolaknya harus ikut membuka breaker."""
 OPEN_AFTER = 3
 BATCH = 20
 LEASE = datetime.timedelta(minutes=15)

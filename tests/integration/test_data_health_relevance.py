@@ -7,6 +7,7 @@ import datetime
 
 from cti_core.db.models.article import RejectedArticle
 from cti_core.db.models.relevance import RelevanceModel
+from cti_core.db.models.tweet_verdict import TweetVerdict
 from cti_core.db.repositories.article import AsyncArticleRepo
 from httpx import AsyncClient
 from sqlalchemy import delete
@@ -99,7 +100,7 @@ async def test_data_health_relevance_section(
     await api_session.flush()
 
     body = (await api_client.get("/api/data-health", headers=auth_header(role="analyst"))).json()
-    rel = body["relevance"]
+    rel = body["relevance"]["article"]
     assert rel["mode"] == "auto"
     assert rel["gate_state"] == "gate"
     assert rel["gate_changed_at"] is not None
@@ -124,12 +125,78 @@ async def test_data_health_relevance_without_active_model(
     api_client: AsyncClient, api_session: AsyncSession, auth_header, fake_redis
 ) -> None:
     await api_session.execute(delete(RelevanceModel))
-    rel = (await api_client.get("/api/data-health", headers=auth_header(role="analyst"))).json()[
-        "relevance"
-    ]
+    body = (await api_client.get("/api/data-health", headers=auth_header(role="analyst"))).json()
+    rel = body["relevance"]["article"]
+    assert body["relevance"]["tweet"]["gate_state"] is None
     assert rel["gate_state"] is None
     assert rel["n_examples"] is None
     assert rel["holdout_agreement"] is None
     assert rel["band_agreement_14d"] is None
     assert rel["audit_agreement"] is None
     assert rel["classify_avoided_7d"] == 0
+
+
+async def test_data_health_reports_relevance_per_kind(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header, fake_redis
+) -> None:
+    await api_session.execute(delete(RelevanceModel))
+    await api_session.execute(delete(TweetVerdict))
+    now = datetime.datetime.now(datetime.UTC)
+    api_session.add(
+        RelevanceModel(
+            kind="tweet",
+            status="active",
+            feature_version="f",
+            n_examples=500,
+            class_counts={},
+            metrics={"agreement": 0.9, "band_share": 0.4},
+            gate_state="gate",
+            gate_changed_at=now - datetime.timedelta(days=1),
+        )
+    )
+    h = datetime.timedelta(hours=1)
+
+    def verdict(n: int, source: str, related: bool, relevance: dict | None, age=h) -> TweetVerdict:  # type: ignore[type-arg]
+        return TweetVerdict(
+            tweet_id=f"t{n}",
+            text="x",
+            related_cyber=related,
+            source=source,
+            relevance=relevance,
+            created_at=now - age,
+        )
+
+    api_session.add_all(
+        [
+            verdict(1, "llm", True, {"in_band": True, "decision": "shadow"}),
+            verdict(2, "llm", False, {"in_band": True, "decision": "audit"}),
+            verdict(3, "llm", True, {"in_band": False, "decision": "llm"}),
+            verdict(4, "gate", True, {"in_band": True, "decision": "gated"}),
+            verdict(
+                5,
+                "gate",
+                True,
+                {"in_band": True, "decision": "gated"},
+                3 * datetime.timedelta(days=1),
+            ),
+        ]
+    )
+    await api_session.flush()
+
+    rel = (await api_client.get("/api/data-health", headers=auth_header(role="analyst"))).json()[
+        "relevance"
+    ]
+    tw = rel["tweet"]
+    assert tw["gate_state"] == "gate"
+    assert tw["n_examples"] == 500
+    assert tw["holdout_agreement"] == 0.9
+    assert tw["band_titles_14d"] == 2
+    assert tw["band_agreement_14d"] == 0.5
+    assert tw["middle_band_14d"] == 1
+    assert tw["audit_samples"] == 1
+    assert tw["audit_agreement"] == 0.0
+    assert tw["classify_avoided_24h"] == 1
+    assert tw["classify_avoided_7d"] == 2
+    # artikel tak terpengaruh: tanpa model artikel aktif
+    assert rel["article"]["gate_state"] is None
+    assert rel["article"]["classify_avoided_7d"] == 0

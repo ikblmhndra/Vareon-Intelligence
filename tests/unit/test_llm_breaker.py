@@ -7,6 +7,7 @@ import datetime
 import pytest
 from cti_core.llm.breaker import (
     BATCH,
+    BREAKER_TASKS,
     Breaker,
     CallOutcome,
     breaker_state,
@@ -91,3 +92,8 @@ def test_is_fresh_window() -> None:
     assert is_fresh(today - datetime.timedelta(days=1), NOW)
     assert not is_fresh(today - datetime.timedelta(days=2), NOW)
     assert not is_fresh(None, NOW)
+
+
+def test_breaker_counts_classify_tweet() -> None:
+    """Gateway yang menolak klasifikasi tweet juga membuka breaker (spec tweet-llm-cost)."""
+    assert set(BREAKER_TASKS) == {"classify", "classify_tweet", "ttp"}

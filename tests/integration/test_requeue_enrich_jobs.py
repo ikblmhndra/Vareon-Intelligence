@@ -93,3 +93,26 @@ def test_apply_moves_classify_drops_ttp_and_rerun_is_noop(session: Session) -> N
     again = tool.requeue(session)
     assert (again.classify_pending, again.classify_failed, again.ttp) == (0, 0, 0)
     assert _counts(session) == (0, 0, 2)
+
+
+def test_apply_drops_tweet_jobs_without_touching_rejected_articles(session: Session) -> None:
+    """Job `tweet` bukan artikel: image lama akan menjalankannya sebagai `classify` (fetch URL
+    tweet, jadi artikel), jadi dihapus dan dihitung, tidak dipindah ke `rejected_articles`."""
+    _seed(session)
+    session.execute(
+        text(
+            """
+            INSERT INTO enrich_jobs (kind, url, url_hash, title, source, context)
+            VALUES ('tweet', 'https://x.com/a/status/1', :h, 'T', 'src', '{"notify": true}')
+            """
+        ),
+        {"h": "t" * 64},
+    )
+    session.flush()
+    assert tool.count(session).tweet == 1
+
+    summary = tool.requeue(session)
+
+    assert summary.tweet == 1
+    left = session.execute(text("SELECT count(*) FROM enrich_jobs")).scalar_one()
+    assert left == 0 and _counts(session) == (0, 0, 2)
