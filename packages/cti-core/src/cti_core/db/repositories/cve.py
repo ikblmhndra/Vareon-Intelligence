@@ -79,11 +79,13 @@ _SORT_FIELDS = {
     "tech": CveTracker.tech,
     "severity": CveTracker.cve_score,
     "published": CveTracker.published,
+    "detected": CveTracker.detected_on,
     "epss": CveTracker.epss_score,
 }
 """`epss` (sort key lama) sekarang kepetakan -- kolom `epss_score` udah
 ada (Grup B survei 7.4, `POST /epss-lookup`). Key gak dikenal tetap
-fallback ke `published`, port apa adanya."""
+fallback ke `published`, port apa adanya. `detected` (0.8.18) = waktu scraper pertama
+menemukan CVE (`detected_on`), urutan default list CVE di UI."""
 
 
 class CveTrackerRepo:

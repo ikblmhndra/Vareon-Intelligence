@@ -14,6 +14,7 @@ from cti_core.db.repositories.cve import (
     AsyncCveTicketRepo,
     AsyncCveTrackerRepo,
 )
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 pytestmark = pytest.mark.asyncio
@@ -150,6 +151,24 @@ class TestAsyncCveTrackerRepo:
             client_id="default", sort_by="tech", sort_dir="asc"
         )
         assert [c.tech for c in cves] == ["Linux", "WordPress", "nginx"]
+
+    async def test_list_filtered_sort_by_detected_desc(
+        self, async_db_session: AsyncSession
+    ) -> None:
+        """`sort_by=detected` (0.8.18, default list CVE di UI) urut `detected_on`, bukan
+        `published`: urutan detected sengaja dibalik dari urutan published."""
+        await _seed(async_db_session)
+        repo = AsyncCveTrackerRepo(async_db_session)
+        base = datetime.datetime(2026, 10, 1, tzinfo=datetime.UTC)
+        for i, cve_id in enumerate(["CVE-2026-0003", "CVE-2026-0002", "CVE-2026-0001"]):
+            await async_db_session.execute(
+                update(CveTracker)
+                .where(CveTracker.cve_id == cve_id)
+                .values(detected_on=base + datetime.timedelta(days=i))
+            )
+        await async_db_session.flush()
+        cves, _ = await repo.list_filtered(client_id="default", sort_by="detected", sort_dir="desc")
+        assert [c.cve_id for c in cves] == ["CVE-2026-0001", "CVE-2026-0002", "CVE-2026-0003"]
 
     async def test_get_stats_buckets_by_severity_score(
         self, async_db_session: AsyncSession
