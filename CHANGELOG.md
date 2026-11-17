@@ -6,6 +6,15 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
+## [0.8.18] - 2026-11-17
+
+**Tabel ticket di CVE Tracker → Ticketing kini berhalaman.** Prod menampilkan 1.300 ticket Open dalam satu tabel. Tabel memakai pager bernomor yang sama dengan daftar CVE dan Scrapers: 25 baris per halaman (25/50/100 lewat "Rows per page", diingat per browser). Hitungan status, pencarian, dan sakelar "Include false positives" tetap melihat seluruh ticket. Hanya web: API tidak berubah, tanpa migrasi, tanpa kunci `.env`.
+
+### Diubah
+- Ticketing: pager di bawah tabel ("Showing 1-25 of N"); ganti status, pencarian, sakelar FP, atau ukuran halaman kembali ke halaman 1. Panel kanan menampilkan ticket yang dipilih, atau ticket pertama di halaman yang sedang tampil.
+
+**Saat upgrade dari 0.8.16:** `make deploy`, tidak ada langkah lain. Runbook: `docs/prod-upgrade/0.8.18.md` dan `docs/PROD_UPGRADE_0.8.16_TO_0.8.18.md`.
+
 ## [0.8.16] - 2026-11-08
 
 **Redesain FigCraft: tiga sumber data baru untuk halaman PIR, Intelligence, dan MITRE, penyeragaman tema web, dan redesain CVE Tracker beserta tambahan backend-nya.** API mendapat cakupan PIR per minggu, seri harian per entitas yang melonjak, dan layer ATT&CK Navigator yang sama persis dengan heatmap yang terlihat. Web memakai satu skala tier risiko, border field yang terbaca, dan fokus yang jelas. Halaman Exec dirombak: brief eksekutif harian tersimpan dan papan Analyst. Tiga migrasi aditif (`b7d41e9a2c63`, `c4e8a1f2b9d6`, `d9f2b6a4c1e7`) dijalankan otomatis oleh `make deploy`, dan satu dependency baru (`email-validator`). Tanpa kunci `.env`. Halaman X Intel, Recap, dan Newsletter ikut didesain ulang (tanpa migrasi), begitu juga halaman operasi Scrapers dan Data health (tiga field aditif di `GET /api/data-health`, tanpa migrasi). Halaman Login, sesi, dan Admin juga didesain ulang (halaman Access, tanpa migrasi). Dashboard juga didesain ulang (satu migrasi aditif `d9f2b6a4c1e7`).
@@ -85,6 +94,9 @@ router `changelog.py`) -- parser-nya expect header persis
   - Exec: tombol aksi rata kanan di baris filter, "updated just now" tidak terpotong. Entities: kolom ATT&CK ID menampilkan "—" untuk sektor, kolom 30D/90D dipisah, alias tidak dipotong.
   - IOC dan Source reliability: label enum dibuat terbaca ("URL with path", "Vendor research"); tile IOC mengisi baris penuh. Sel kosong heatmap Risk matrix dan Sector heatmap tampil polos.
   - Helper murni baru (warna kategori, label enum, label tanggal) punya unit test `pnpm test:unit` (`node --test`).
+  - Dashboard: Lead story yang ringkasannya kosong/pendek menampilkan "Next in line" (artikel prioritas ke-6..8, tidak dobel dengan Must read; query must-read kini 8 artikel, tetap satu request). Needs action: Top countries pindah ke bawah tiga sinyal (bisa diklik ke Newsroom) dan peta setinggi 340 px tanpa panel bertumpuk.
+  - Risk matrix: header kolom memakai kode negara ISO (nama lengkap di tooltip dan pembaca layar), semua kolom sama lebar, kartu matriks 2/3 baris; sel kosong heatmap tampil sebagai petak permukaan supaya grid terbaca.
+  - CVE Tracker dan Scrapers: "Load more" diganti halaman bernomor dengan pilihan "Rows per page" (CVE 10/25/50/100, Scrapers 25/50/100, default 25), pilihan diingat per daftar di browser.
 
 ### Diperbaiki
 - `PUT /api/rfi/{id}` dan `PUT /api/pir/{id}`: `null` eksplisit kini mengosongkan field yang boleh kosong (RFI `due_date` dan `linked_pir`; PIR `start_date` dan `end_date`). Dulu nilai yang dikosongkan diam-diam diabaikan. `null` pada field wajib tetap diabaikan.
