@@ -141,7 +141,9 @@ def collect(session: Session, *, end: date, offset_hours: int, now: datetime) ->
     registry = discover()
     configs = ScraperConfigRepo(session).get_all()
     run_repo = ScraperRunRepo(session)
-    recent_runs = run_repo.list_recent_by_scraper_bulk(limit=3)
+    # 5, bukan 3: baris `running`/`overlap` saat laporan dibuat tidak boleh menyempitkan jendela
+    # 3 run SELESAI yang dipakai `notes_for` untuk ERROR.
+    recent_runs = run_repo.list_recent_by_scraper_bulk(limit=5)
     _, period_end_utc = local_day_bounds_utc(end, offset_hours)
     last_new = run_repo.last_new_items_by_scraper(before=period_end_utc)
 
