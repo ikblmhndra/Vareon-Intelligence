@@ -15,6 +15,25 @@ router `changelog.py`) -- parser-nya expect header persis
 - Extractor IOC tidak lagi mencocokkan lintas baris: spasi di sekitar pemisah defang hanya spasi/tab, sehingga IP, email, URL, dan domain defang tidak lagi tersambung dengan kata di baris berikutnya.
 
 **Saat upgrade dari 0.8.19:** `make deploy`, tidak ada langkah lain. 16 IOC rusak yang sudah tersimpan dibiarkan (kini dilewati enrichment); menghapusnya opsional dan butuh izin. Runbook: `docs/prod-upgrade/0.8.20.md` dan `docs/PROD_UPGRADE_0.8.19_TO_0.8.20.md`.
+## [0.8.19] - 2026-11-17
+
+**Klasifikasi tweet pindah dari scraper ke antrean enrich yang persist-first, dengan prompt pendek dan gate relevansi lokal, supaya biaya LLM tweet turun.** Di prod, `classify_tweet` dipanggil 1.674 kali dalam 7 hari untuk hanya 978 tweet yang tersimpan, dengan sekitar 4.144 prompt token per panggilan, sekitar 75 % dari seluruh token LLM. Sekarang scraper `tweet_alerts_*` dan `monitor_x` hanya menyimpan tweet sebagai job `tweet` di `enrich_jobs` (satu panggilan LLM per tweet, dengan breaker dan jadwal ulang yang sama dengan job `classify`), prompt khusus tweet jauh lebih pendek, dan gate relevansi lokal menjawab tanpa LLM begitu datanya cukup. Tiga migrasi aditif (`e3b7c5a9d1f4`, `f4c8a2d6b9e1`, `a7d3e1b5c9f2`) dijalankan otomatis oleh `make deploy`. Tanpa kunci `.env` baru.
+
+### Ditambahkan
+- Job `tweet` di `enrich_jobs` (migrasi `e3b7c5a9d1f4`): scraper menyimpan tweet sebagai job sebelum panggilan LLM apa pun; worker `enrich.llm` yang mengklasifikasi, menyimpan ke `tweets`, dan mengirim alert Telegram per topik.
+- Tabel `tweet_verdicts` (migrasi `f4c8a2d6b9e1`): vonis setiap tweet, termasuk yang ditolak, sebagai bahan latih gate tweet.
+- `relevance_models.kind` (migrasi `a7d3e1b5c9f2`): satu model relevansi aktif per jenis (artikel dan tweet).
+- Prompt klasifikasi tweet pendek tersendiri (`TWEET_PROMPT_VERSION`) dan `python -m cti_enrich.tweet_prompt_eval` untuk mengukur kesesuaiannya dengan prompt lama.
+- Data health: jumlah job tweet dan blok "Tweets relevance" untuk gate tweet.
+
+### Diubah
+- `tweet_alerts_1h`, `tweet_alerts_30m`, dan `monitor_x` tidak lagi memanggil LLM di `fetch()`. Alert Telegram untuk tweet kini keluar dari worker enrich, sekitar 2 menit sesudah scrape (sebelumnya langsung di scraper).
+- Tweet yang dijawab gate tanpa LLM tidak punya negara; korban Tier 1 tetap dipakai bila insidennya terkonfirmasi.
+- `tools/ops/requeue_enrich_jobs.py` juga menghapus job `tweet` saat persiapan rollback.
+
+### Saat upgrade dari 0.8.18:
+- `make deploy` menjalankan tiga migrasi di atas. Gate tweet baru aktif sesudah `tweet_verdicts` mencapai minimum latih (1.000 contoh, minimal 100 per kelas) dan model tweet dilatih; sebelum itu semua tweet lewat LLM dengan prompt pendek.
+- Cek sesudah deploy dan rollback: `docs/prod-upgrade/0.8.19.md` dan `docs/PROD_UPGRADE_0.8.18_TO_0.8.19.md`.
 ## [0.8.18] - 2026-11-17
 
 **Tabel ticket di CVE Tracker → Ticketing kini berhalaman, dan urutan daftar CVE bisa dipilih.** Prod menampilkan 1.300 ticket Open dalam satu tabel. Tabel memakai pager bernomor yang sama dengan daftar CVE dan Scrapers: 25 baris per halaman (25/50/100 lewat "Rows per page", diingat per browser). Hitungan status, pencarian, dan sakelar "Include false positives" tetap melihat seluruh ticket. Daftar CVE punya pilihan "Sort by" (detected, published, risk); default kini detected (CVE yang paling baru ditemukan di atas), sebelumnya selalu risk. Tanpa migrasi, tanpa kunci `.env`.

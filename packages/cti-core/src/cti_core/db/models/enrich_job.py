@@ -29,7 +29,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from cti_core.db.base import Base
 
-JOB_KINDS = ("classify", "ttp")
+JOB_KINDS = ("classify", "ttp", "tweet")
 JOB_STATES = ("pending", "failed")
 LLM_TTP_STATUSES = ("pending", "done", "skipped", "failed")
 
@@ -38,7 +38,7 @@ class EnrichJob(Base):
     __tablename__ = "enrich_jobs"
     __table_args__ = (
         UniqueConstraint("kind", "url_hash", name="uq_enrich_jobs_kind_url_hash"),
-        CheckConstraint("kind IN ('classify', 'ttp')", name="kind_valid"),
+        CheckConstraint("kind IN ('classify', 'ttp', 'tweet')", name="kind_valid"),
         CheckConstraint("state IN ('pending', 'failed')", name="state_valid"),
         Index("ix_enrich_jobs_state_kind_next", "state", "kind", "next_attempt_at"),
     )

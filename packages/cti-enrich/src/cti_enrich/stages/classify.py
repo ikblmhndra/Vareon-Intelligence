@@ -160,6 +160,42 @@ PROMPT_VERSION = hashlib.sha256(_PROMPT.encode()).hexdigest()[:8]
 biar keputusan lama bisa dibandingkan lintas revisi prompt (berubah otomatis
 kalau prompt diedit, gak perlu dinaikkan manual)."""
 
+_TWEET_PROMPT = """You triage short posts from curated threat-intelligence accounts on X. Decide whether a post carries real cyber threat intelligence.
+
+related_cyber = true for: ransomware leak-site claims, data breach or data dump notices, DDoS claims, defacements, CVE/exploit news (especially exploited in the wild), malware/APT/campaign reports, threat research.
+related_cyber = false for: product promotions, vendor marketing, job posts, funding/business news, event ads, generic opinions or greetings with no concrete threat.
+"confidence" is 0.0-1.0 for related_cyber.
+
+confirmed_incident = true ONLY when the post says a specific incident already happened: a named victim (company, agency, person) with a claimed or confirmed breach, leak, encryption, defacement, outage or exploitation. A CVE, advisory, report, forecast or speculation ("could", "may") is false. A group's claim of an attack on a named victim counts as true.
+"incident_confidence" is 0.0-1.0 for confirmed_incident.
+"incident_indicators" (empty list when confirmed_incident is false), choose from: ["named_victim", "confirmed_breach", "ransomware_deployment", "data_exfiltration", "service_disruption", "financial_loss", "government_disclosure", "vendor_disclosure", "active_campaign", "zero_day_exploitation"].
+"victim_name": the first named victim exactly as written in the post, or null.
+"victim_countries": countries attacked or breached; "actor_countries": countries the attacker is attributed to. Full English names ("Indonesia", not "Indonesian"); [] when unclear or not stated.
+"industries_impacted": up to 3 from ["Government & Public Sector", "Finance & Insurance", "Healthcare & Life Sciences", "Energy & Utilities", "Telecommunications", "Information Technology & Software", "Critical Infrastructure", "Retail & E-commerce", "Manufacturing & Industrial", "Education & Research", "Media & Entertainment", "Transportation & Logistics", "Other"], or ["General"] when broad. Never mix "General" with others.
+
+Examples:
+- "LockBit claims Acme Hospital, Brazil. 200GB leaked" -> {"related_cyber": true, "confirmed_incident": true, "victim_name": "Acme Hospital", "victim_countries": ["Brazil"]}
+- "We are hiring a SOC analyst, apply now" -> {"related_cyber": false, "confirmed_incident": false}
+
+Respond strictly in this JSON format:
+{
+"related_cyber": true/false,
+"confidence": 0.0-1.0,
+"industries_impacted": ["..."],
+"victim_countries": ["..."],
+"actor_countries": ["..."],
+"confirmed_incident": true/false,
+"incident_confidence": 0.0-1.0,
+"incident_indicators": ["..."],
+"victim_name": "Name or null"
+}
+"""
+
+
+TWEET_PROMPT_VERSION = hashlib.sha256(_TWEET_PROMPT.encode()).hexdigest()[:8]
+"""Sidik jari `_TWEET_PROMPT` (sama fungsinya dengan `PROMPT_VERSION`, terpisah supaya
+audit tweet dan audit artikel tidak saling menimpa)."""
+
 _AUDIT_CONTENT_MAX = 4000
 """Batas karakter respons mentah per percobaan di audit trail -- jawaban
 normal ~600 karakter; ini cuma pagar buat respons ngaco yang panjang."""
@@ -226,7 +262,28 @@ dilaporkan apa adanya di hasil korpus test, bukan disembunyiin."""
 
 
 def classify(title: str, *, task: str = "classify") -> ClassifyResult:
-    """`task` menamai panggilan di log `llm_calls`; tweet memakai `classify_tweet`."""
+    """`task` menamai panggilan di log `llm_calls`."""
+    return _classify(
+        title, task=task, prompt=_PROMPT, tag="article_title", prompt_version=PROMPT_VERSION
+    )
+
+
+def classify_tweet(text: str, *, task: str = "classify_tweet") -> ClassifyResult:
+    """Klasifikasi satu tweet dengan prompt pendek `_TWEET_PROMPT` (task `classify_tweet`).
+    Mesin retry/parse sama dengan `classify`; hanya prompt, tag dan versinya yang beda. `task`
+    menamai panggilan di log `llm_calls` (eval prompt memakai nama lain, di luar breaker)."""
+    return _classify(
+        text,
+        task=task,
+        prompt=_TWEET_PROMPT,
+        tag="tweet",
+        prompt_version=TWEET_PROMPT_VERSION,
+    )
+
+
+def _classify(
+    title: str, *, task: str, prompt: str, tag: str, prompt_version: str
+) -> ClassifyResult:
     client, model_name = get_llm_client(task=task)
     last_error: json.JSONDecodeError | None = None
     attempts: list[dict[str, Any]] = []
@@ -237,11 +294,11 @@ def classify(title: str, *, task: str = "classify") -> ClassifyResult:
                 response_format={"type": "json_object"},
                 # Percobaan 1 verbatim; retry pakai bentuk yang dikuatkan (lihat
                 # `llm_messages.py` -- persona "Kiro" di gateway dev).
-                messages=build_messages(_PROMPT, title, attempt=attempt, tag="article_title"),
+                messages=build_messages(prompt, title, attempt=attempt, tag=tag),
                 temperature=0,
                 n=1,
                 max_tokens=_MAX_TOKENS,
-                prompt_version=PROMPT_VERSION,
+                prompt_version=prompt_version,
                 **store_param(),
             )
         except RateLimitError as e:
@@ -289,5 +346,5 @@ def classify(title: str, *, task: str = "classify") -> ClassifyResult:
         incident_confidence=data.get("incident_confidence"),
         incident_indicators=data.get("incident_indicators", []) or [],
         victim_name=data.get("victim_name"),
-        audit={"model": model_name, "prompt_version": PROMPT_VERSION, "attempts": attempts},
+        audit={"model": model_name, "prompt_version": prompt_version, "attempts": attempts},
     )

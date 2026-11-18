@@ -43,6 +43,7 @@ from cti_api.schemas.data_health import (
     PipelineHealthOut,
     PipelineWindowOut,
     QueueHealthOut,
+    RelevanceByKindOut,
     RelevanceHealthOut,
     SigmaHealthOut,
     SourceFreshnessOut,
@@ -61,8 +62,10 @@ _ENRICH_QUEUE = "enrich"
 # diganti nama diam-diam terbaca 0 (`LLEN` kunci yang tidak ada = 0, sama dengan queue yang idle).
 _QUEUES: tuple[str, ...] = (*ALL_SCRAPE_QUEUES, "enrich", "notify", "maintenance", "cve")
 
-# Task yang menentukan status model: jalur enrichment artikel (kegagalan di sini memarkir artikel).
-_STATUS_TASKS = ("classify", "ttp")
+# Task yang menentukan status model: jalur job `enrich_jobs` (artikel, TTP, tweet). Sama dengan
+# `BREAKER_TASKS`: kegagalan `classify_tweet` ikut membuka breaker untuk SEMUA job, jadi harus
+# terlihat di status juga.
+_STATUS_TASKS = ("classify", "classify_tweet", "ttp")
 
 
 def _iso(ts: datetime.datetime | None) -> str | None:
@@ -157,6 +160,7 @@ async def _llm_health(
             retry_at=_iso(breaker.retry_at),
             pending_classify=jobs.pending_classify,
             pending_ttp=jobs.pending_ttp,
+            pending_tweet=jobs.pending_tweet,
             failed=jobs.failed,
             oldest_pending_at=_iso(jobs.oldest_pending_at),
         ),
@@ -172,12 +176,14 @@ def _ratio(part: int, whole: int) -> float | None:
     return part / whole if whole > 0 else None
 
 
-async def _relevance_health(session: AsyncSession, now: datetime.datetime) -> RelevanceHealthOut:
+async def _relevance_health(
+    session: AsyncSession, now: datetime.datetime, kind: Literal["article", "tweet"]
+) -> RelevanceHealthOut:
     cfg = get_settings().relevance
     repo = AsyncRelevanceModelRepo(session)
-    model = await repo.get_active()
+    model = await repo.get_active(kind=kind)
     window = now - datetime.timedelta(days=cfg.gate_window_days)
-    stats = await repo.gate_stats(since=window, revert_samples=cfg.revert_samples)
+    stats = await repo.gate_stats(since=window, revert_samples=cfg.revert_samples, kind=kind)
     metrics = model.metrics if model is not None else {}
     gate_state: Literal["shadow", "gate"] | None = None
     if model is not None:
@@ -192,11 +198,11 @@ async def _relevance_health(session: AsyncSession, now: datetime.datetime) -> Re
         holdout_band_share=metrics.get("band_share"),
         band_titles_14d=stats.band_n,
         band_agreement_14d=_ratio(stats.band_agree, stats.band_n),
-        middle_band_14d=await repo.middle_band_count(window),
+        middle_band_14d=await repo.middle_band_count(window, kind),
         audit_samples=len(stats.audit_last),
         audit_agreement=_ratio(sum(stats.audit_last), len(stats.audit_last)),
-        classify_avoided_24h=await repo.gated_count(now - datetime.timedelta(hours=24)),
-        classify_avoided_7d=await repo.gated_count(now - datetime.timedelta(days=7)),
+        classify_avoided_24h=await repo.gated_count(now - datetime.timedelta(hours=24), kind),
+        classify_avoided_7d=await repo.gated_count(now - datetime.timedelta(days=7), kind),
     )
 
 
@@ -297,7 +303,10 @@ async def _build(session: AsyncSession, redis: Redis, now: datetime.datetime) ->
             IocEnrichmentTypeOut(type=c.type, total=c.total, enriched=c.enriched) for c in coverage
         ],
         llm=await _llm_health(session, repo, now),
-        relevance=await _relevance_health(session, now),
+        relevance=RelevanceByKindOut(
+            article=await _relevance_health(session, now, "article"),
+            tweet=await _relevance_health(session, now, "tweet"),
+        ),
         sigma=await _sigma_health(session, now),
         cve_ingest=await _cve_ingest_health(session, now),
     )

@@ -63,3 +63,40 @@ def test_migration_moves_failed_rows(_migrated_schema: None, postgres_url: str) 
             conn.execute(sa.text("DELETE FROM enrich_jobs"))
             conn.execute(sa.text("DELETE FROM rejected_articles"))
         engine.dispose()
+
+
+TWEET_REV = "d9f2b6a4c1e7"
+
+
+def test_downgrade_deletes_tweet_jobs_then_restores_check(
+    _migrated_schema: None, postgres_url: str
+) -> None:
+    cfg = _cfg()
+    engine = sa.create_engine(postgres_url)
+    insert = sa.text(
+        "INSERT INTO enrich_jobs (kind, url, url_hash, title, source, context)"
+        " VALUES (:k, :u, :h, 't', 's', '{}')"
+    )
+    try:
+        with engine.begin() as conn:
+            conn.execute(sa.text("DELETE FROM enrich_jobs"))
+            conn.execute(insert, {"k": "tweet", "u": "https://x.com/1", "h": "ht"})
+            conn.execute(insert, {"k": "classify", "u": "https://e.com/1", "h": "hc"})
+        command.downgrade(cfg, TWEET_REV)
+        with engine.connect() as conn:
+            kinds = conn.execute(sa.text("SELECT kind FROM enrich_jobs")).scalars().all()
+        assert kinds == ["classify"]
+        with engine.begin() as conn:
+            try:
+                with conn.begin_nested():
+                    conn.execute(insert, {"k": "tweet", "u": "https://x.com/2", "h": "ht2"})
+            except sa.exc.IntegrityError:
+                rejected = True
+            else:
+                rejected = False
+        assert rejected
+    finally:
+        command.upgrade(cfg, "head")
+        with engine.begin() as conn:
+            conn.execute(sa.text("DELETE FROM enrich_jobs"))
+        engine.dispose()

@@ -10,10 +10,8 @@ from __future__ import annotations
 
 import httpx
 import pytest
-from cti_enrich.stages.classify import ClassifyResult
 from cti_scraper.errors import RateLimited, TransientFetchError
 from cti_scrapers.collectors import _twitterapi
-from cti_scrapers.feeds import monitor_x
 from cti_scrapers.feeds.monitor_x import MonitorX
 
 from tests.unit.scraper_helpers import json_response, make_ctx
@@ -53,7 +51,6 @@ class Api:
 
 @pytest.fixture(autouse=True)
 def _no_llm(monkeypatch: pytest.MonkeyPatch) -> list[float]:
-    monkeypatch.setattr(monitor_x, "classify", lambda text, **_: ClassifyResult(related_cyber=True))
     slept: list[float] = []
     # `monitor_x.py` dan `_twitterapi.py` sama-sama `import time` -- keduanya menunjuk modul
     # `time` yang SAMA di `sys.modules`, jadi satu monkeypatch ini menangkap sleep dari dua-duanya

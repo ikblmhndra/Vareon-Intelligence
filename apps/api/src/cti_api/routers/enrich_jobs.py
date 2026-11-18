@@ -53,7 +53,7 @@ def _serialize(job: EnrichJob) -> EnrichJobOut:
 
 @router.get("", response_model=EnrichJobListResponse)
 async def list_jobs(
-    kind: Literal["classify", "ttp"] | None = None,
+    kind: Literal["classify", "ttp", "tweet"] | None = None,
     state: Literal["pending", "failed"] | None = None,
     search: str | None = None,
     page: int = Query(1, ge=1),

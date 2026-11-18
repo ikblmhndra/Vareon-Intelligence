@@ -41,8 +41,8 @@ export function PipelineCard({ d }: { d: Health }) {
     { name: "ENRICH", value: `${depth === null ? "–" : depth.toLocaleString()} in queue now` },
     {
       name: "LLM JOBS",
-      value: `${(q.pending_classify + q.pending_ttp).toLocaleString()} pending now`,
-      sub: `classify ${q.pending_classify} · TTP ${q.pending_ttp}`,
+      value: `${(q.pending_classify + q.pending_ttp + q.pending_tweet).toLocaleString()} pending now`,
+      sub: `classify ${q.pending_classify} · TTP ${q.pending_ttp} · tweets ${q.pending_tweet}`,
     },
     { name: "NEWSROOM", value: `${w.articles_published.toLocaleString()} articles published` },
   ];

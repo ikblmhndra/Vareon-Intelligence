@@ -13,13 +13,11 @@ from typing import Any
 import httpx
 import pytest
 import structlog
-from cti_enrich.stages.classify import ClassifyResult
 from cti_scraper.base import ConfigError
 from cti_scraper.errors import ParseError, TransientFetchError
-from cti_scraper.items import TweetItem
+from cti_scraper.items import TweetJobItem
 from cti_scrapers.collectors import _twitter as tw
 from cti_scrapers.collectors import _x_official as x
-from cti_scrapers.collectors import tweet_alerts
 from cti_scrapers.collectors.trending_cve import TrendingCve
 from cti_scrapers.collectors.tweet_alerts import TweetAlerts1h
 
@@ -295,10 +293,7 @@ REFERENCE = {"techstack": ["acme"], "threat_actor_groups": ["apt41"], "monitored
 
 
 @pytest.fixture(autouse=True)
-def _llm_and_mitre(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        tweet_alerts, "classify", lambda text, **_: ClassifyResult(related_cyber=True)
-    )
+def _mitre(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("cti_enrich.stages.score._check_cve_vendor", lambda cve, stack: False)
 
 
@@ -317,24 +312,12 @@ def test_tweet_alerts_works_end_to_end_on_the_official_api() -> None:
     )
     ctx = make_ctx(TweetAlerts1h, api, reference=REFERENCE, options=OFFICIAL)
 
-    [archive, n] = list(TweetAlerts1h().fetch(ctx))
+    [item] = list(TweetAlerts1h().fetch(ctx))
 
-    # arsip ke `tweets`: X resmi hanya memberi username, jadi profil dan media kosong
-    assert isinstance(archive, TweetItem) and archive.tweet_id == "2"
-    assert (archive.author_username, archive.author_name, archive.media_urls) == (
-        "blackorbird",
-        None,
-        [],
-    )
-    assert (n.topic, n.key) == (
-        "feed_twitter",
-        "2:feed_twitter",
-    )  # kunci = id tweet, sama seperti twitterapi.io
-    assert "NEW TWEET FROM BLACKORBIRD" in n.text
-    assert "New backdoor   &amp; more" in n.text  # `&amp;` sekali, bukan `&amp;amp;`
-    assert "<a href='https://x.com/blackorbird/status/2'>See Tweet</a>" in n.text
-    assert "<a href='https://blog.example/p'>See Link</a>" in n.text
-    assert "<b>Posted On</b> : 17:00:00 on 2026-09-26" in n.text
+    # X resmi hanya memberi username, jadi profil dan media kosong; kunci dedup = id tweet
+    assert isinstance(item, TweetJobItem) and item.tweet_id == "2" and item.notify is True
+    assert (item.author_username, item.author_name, item.media_urls) == ("blackorbird", None, [])
+    assert item.url == "https://x.com/blackorbird/status/2"
     assert api.params[0]["start_time"] == "2026-09-26T10:00:00Z"  # NOW (12:00) - 2 jam
 
 

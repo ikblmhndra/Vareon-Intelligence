@@ -178,7 +178,8 @@ export function DataHealthView() {
       nowMs,
     );
     const worst: FreshnessRow = worstFreshness(fresh);
-    const relT = relevanceTone(d.relevance);
+    // Sengaja hanya blok artikel: blok tweet tanpa model tweet akan membuat halaman "unknown" berminggu-minggu.
+    const relT = relevanceTone(d.relevance.article);
     const failT = failedJobsTone(d.enrichment);
     const cveT = cveIngestTone(d.cve_ingest);
     const sigT = sigmaTone(d.sigma);
@@ -228,10 +229,10 @@ export function DataHealthView() {
     const e = d.enrichment;
     const q = d.queues;
     const monitorX = (scrapers.data?.problems ?? []).find((p) => p.id === "monitor_x");
-    const rel = d.relevance;
+    const rel = d.relevance.article;
 
     const llm = d.llm;
-    const pendingJobs = llm.queue.pending_classify + llm.queue.pending_ttp;
+    const pendingJobs = llm.queue.pending_classify + llm.queue.pending_ttp + llm.queue.pending_tweet;
 
     header = (
       <>
@@ -304,7 +305,7 @@ export function DataHealthView() {
         </div>
 
         <LlmCard llm={llm} nowMs={nowMs} />
-        <RelevanceCard rel={rel} />
+        <RelevanceCard rel={d.relevance} />
 
         <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
           <FreshnessCard rows={fresh} monitorX={monitorX} nowMs={nowMs} />

@@ -1,5 +1,5 @@
 """monitorX -- BESPOKE, subclass `BaseScraper` langsung. Nge-`yield`
-`TweetItem` (Fase 5) per tweet dari akun yang dipantau
+`TweetJobItem` per tweet dari akun yang dipantau
 (`monitored_accounts`, `credential="twitter"` lewat twitterapi.io), gantiin
 `ScraperNews/monitorX.py`.
 
@@ -16,9 +16,10 @@ Bandingkan sama script lama:
   `nlp.py:421` (score.py pakai versi bener), padahal monitorX.py PUNYA regex
   zero-day sendiri yang beda lagi (`r"(zero|0).day"`, tanpa `\b`, titik-bukan-
   literal) -- bukan bug yang sama, tapi ilang begitu SATU implementasi dipakai.
-- Validasi LLM (`articleValidator(text)`) -- di sini
-  `cti_enrich.stages.classify.classify(text)` (Fase 5, SATU LLM client +
-  fix `response_format`).
+- Validasi LLM (`articleValidator(text)`) -- TIDAK lagi di `fetch()`: scraper cuma meng-yield
+  `TweetJobItem` (`notify=False`); sink menulis job `tweet` di `enrich_jobs` dan worker yang
+  memanggil `cti_enrich.stages.classify.classify_tweet`. LLM yang down = job menunggu, bukan
+  tweet yang disimpan tanpa verdict (dulu `classify()` gagal -> baris `tweets` tanpa field LLM).
 - `state.json` (`load_state`/`save_state`, file lokal per-proses) -- gantiin
   `reference_data="tweet_last_seen_ids"` (MAX tweet_id per akun dari
   Postgres, di-resolve Runner SEBELUM `fetch()` -- state gak ilang kalau
@@ -52,8 +53,8 @@ Bandingkan sama script lama:
   Di X resmi loop-nya sama (satu pencarian PER AKUN, jeda `rate_limit` antar akun) tapi lewat adapter
   bersama (`_twitter.search`): X resmi tidak punya `since_id` di `TweetSearch`, jadi tiap akun dibaca
   dengan jendela `_OFFICIAL_WINDOW` (2x jadwal, supaya satu run terlewat tidak menghilangkan tweet) lalu
-  tweet yang id-nya <= `tweet_last_seen_ids` dibuang SEBELUM scan/LLM (tanpa itu tiap tweet di jendela
-  yang tumpang-tindih diklasifikasi ulang). Baris yang disimpan tanpa nama/avatar/followers/media: X resmi
+  tweet yang id-nya <= `tweet_last_seen_ids` dibuang SEBELUM scan (tanpa itu tiap tweet di jendela
+  yang tumpang-tindih diproses ulang). Baris yang disimpan tanpa nama/avatar/followers/media: X resmi
   hanya mengirim username (lihat `_x_official.py`).
 """
 
@@ -65,11 +66,10 @@ from datetime import datetime, timedelta
 from functools import partial
 from typing import Any
 
-from cti_enrich.stages.classify import ClassifyResult, OpenAIQuotaExhausted, classify
 from cti_enrich.stages.score import ScoreResult, score_with_lists
 from cti_scraper.base import BaseScraper, ScrapeContext, ScraperMeta
 from cti_scraper.errors import ParseError
-from cti_scraper.items import TweetItem
+from cti_scraper.items import TweetJobItem
 from cti_scraper.ratelimit import parse_rate
 
 from cti_scrapers.collectors import _tweet_item, _twitterapi
@@ -91,9 +91,9 @@ PROVIDER_OPTION = tw.provider_option(
     "(X hanya mengirim username). Pasang batas belanja di X Developer Console."
 )
 
-Candidate = tuple[str, str, Callable[[ScoreResult, ClassifyResult | None], TweetItem]]
-"""`(tweet_id, teks, pembangun TweetItem)` satu tweet, apa pun sumbernya. Pembangun dipanggil sesudah
-scan dan klasifikasi; dua sumber punya bentuk mentah berbeda (dict twitterapi.io vs `_twitter.Tweet`)."""
+Candidate = tuple[str, str, Callable[[ScoreResult], TweetJobItem]]
+"""`(tweet_id, teks, pembangun TweetJobItem)` satu tweet, apa pun sumbernya. Pembangun dipanggil sesudah
+scan; dua sumber punya bentuk mentah berbeda (dict twitterapi.io vs `_twitter.Tweet`)."""
 
 
 def _parse_created_at(raw: str) -> datetime | None:
@@ -153,16 +153,14 @@ def _fetch_tweets_for_account(
     return all_tweets
 
 
-def _build_tweet_item(
-    tweet: dict[str, Any], scan: ScoreResult, llm: ClassifyResult | None
-) -> TweetItem:
+def _build_tweet_item(tweet: dict[str, Any], scan: ScoreResult) -> TweetJobItem:
     author = tweet.get("author", {})
     media_urls = [
         m["media_url_https"]
         for m in tweet.get("extendedEntities", {}).get("media", [])
         if m.get("media_url_https")
     ]
-    return TweetItem(
+    return TweetJobItem(
         tweet_id=str(tweet["id"]),
         url=tweet.get("url", ""),
         text=tweet.get("text", ""),
@@ -174,7 +172,8 @@ def _build_tweet_item(
         lang=tweet.get("lang", "en"),
         media_urls=media_urls,
         scan_results=_tweet_item.scan_results(scan),
-        **_tweet_item.llm_fields(llm),
+        routing=_tweet_item.routing_fields(scan),
+        notify=False,
     )
 
 
@@ -193,7 +192,7 @@ def _official_candidates(ctx: ScrapeContext, account: str, since_id: str | None)
     found = tw.by_id(tw.search(ctx, spec))
     if since_id:
         found = [t for t in found if int(t.id) > int(since_id)]
-    return [(t.id, t.text, partial(_tweet_item.from_tweet, t)) for t in found]
+    return [(t.id, t.text, partial(_tweet_item.tweet_job_item, t, notify=False)) for t in found]
 
 
 class MonitorX(BaseScraper):
@@ -221,7 +220,7 @@ class MonitorX(BaseScraper):
         legacy_script="monitorX",
     )
 
-    def fetch(self, ctx: ScrapeContext) -> Iterator[TweetItem]:
+    def fetch(self, ctx: ScrapeContext) -> Iterator[TweetJobItem]:
         accounts: list[str] = ctx.reference["monitored_accounts"]
         if not accounts:
             ctx.log.warning("monitor_x: gak ada monitored_accounts aktif, skip run")
@@ -253,7 +252,7 @@ class MonitorX(BaseScraper):
             # `monitored_accounts` yang diseed dari dump lama bisa saja bercampur huruf.
             candidates = candidates_for(ctx, account, last_seen.get(account.lower()))
 
-            for tweet_id, text, build in candidates:
+            for _tweet_id, text, build in candidates:
                 if found >= self.meta.max_items:
                     return
 
@@ -267,18 +266,5 @@ class MonitorX(BaseScraper):
                 if scan.funding_keyword:
                     continue  # noise pendanaan, bukan sinyal TI -- port funding_status lama
 
-                try:
-                    llm = classify(text, task="classify_tweet")
-                except OpenAIQuotaExhausted:
-                    raise
-                except Exception:
-                    ctx.log.warning(
-                        "monitor_x: classify() gagal, simpan tanpa LLM", tweet_id=tweet_id
-                    )
-                    llm = None
-
-                if llm is not None and llm.related_cyber is False:
-                    continue
-
                 found += 1
-                yield build(scan, llm)
+                yield build(scan)

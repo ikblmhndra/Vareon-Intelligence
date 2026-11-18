@@ -1,4 +1,5 @@
-"""Model relevansi judul tiga kelas: reject / best_practice / threat_news.
+"""Model relevansi judul: tiga kelas untuk artikel (reject / best_practice / threat_news), dua
+kelas untuk tweet (reject / threat_news; vonis LLM tweet tidak punya best_practice).
 
 Fitur: TF-IDF kata (1,2) + TF-IDF karakter (char_wb 3-5) + embedding judul (384 dim),
 digabung `hstack`, lalu regresi logistik. Embedding TIDAK ikut di-pickle: ia dihitung ulang
@@ -24,6 +25,14 @@ from sklearn.linear_model import LogisticRegression
 from cti_enrich.relevance.embedder import Embedder
 
 CLASSES: tuple[str, str, str] = ("reject", "best_practice", "threat_news")
+
+KIND_CLASSES: dict[str, tuple[str, ...]] = {
+    "article": CLASSES,
+    "tweet": ("reject", "threat_news"),
+}
+"""Kelas per kind model. Model tweet biner; `Probs.best_practice` model tweet selalu 0.0 (kelas
+yang tidak ada di `classes_` diisi 0 oleh `predict`), jadi artifact artikel lama tetap dimuat dan
+memprediksi seperti sebelumnya."""
 
 
 @dataclass(frozen=True)
@@ -73,10 +82,12 @@ def feature_version(embedder: Embedder) -> str:
     return f"{embedder.name}|fastembed={fastembed}|sklearn={_pkg_version('scikit-learn')}"
 
 
-def fit(examples: Sequence[Example], embedder: Embedder) -> TrainedModel:
-    unknown = {e.label for e in examples} - set(CLASSES)
+def fit(
+    examples: Sequence[Example], embedder: Embedder, classes: Sequence[str] = CLASSES
+) -> TrainedModel:
+    unknown = {e.label for e in examples} - set(classes)
     if unknown:
-        raise ValueError(f"label di luar CLASSES: {sorted(unknown)}")
+        raise ValueError(f"label di luar kelas {tuple(classes)}: {sorted(unknown)}")
     titles = [e.title for e in examples]
     word = TfidfVectorizer(ngram_range=(1, 2), sublinear_tf=True)
     char = TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 5), sublinear_tf=True, min_df=2)
