@@ -140,13 +140,24 @@ Expected: all pass, `Success: no issues found`
 def test_every_scraper_declares_when_it_was_added():
     assert {s for s, c in discover().items() if not isinstance(c.meta.added, date)} == set()
 
+
 def test_added_dates_are_not_in_the_future():
-    assert {s: c.meta.added for s, c in discover().items() if c.meta.added and c.meta.added > date.today()} == {}
+    assert {
+        s: c.meta.added
+        for s, c in discover().items()
+        if c.meta.added and c.meta.added > date.today()
+    } == {}
+
 
 def test_every_scraper_resolves_an_absolute_source_url():
-    bad = {s for s, c in discover().items()
-           if not source_urls(c) or not all(urlparse(u).scheme in ("http", "https") and urlparse(u).netloc
-                                            for u in source_urls(c))}
+    bad = {
+        s
+        for s, c in discover().items()
+        if not source_urls(c)
+        or not all(
+            urlparse(u).scheme in ("http", "https") and urlparse(u).netloc for u in source_urls(c)
+        )
+    }
     assert bad == set()
 ```
 
