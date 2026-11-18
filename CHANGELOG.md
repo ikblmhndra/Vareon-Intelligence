@@ -12,7 +12,7 @@ router `changelog.py`) -- parser-nya expect header persis
 
 ### Ditambahkan
 - Task `report.feeds_logbook` (beat `report-feeds-logbook`, tiap hari 07:00 waktu lokal) yang hanya bekerja di hari terakhir tiap bulan: membangun workbook Excel di template dokumen perusahaan (satu baris per scraper: Added Date, Domain, Status, Method, Source Link, Last Update, Notes, plus blok tanda tangan) dan mengirimnya ke topik Telegram `logbook`. Sekali per bulan lewat `JobState` `feeds_logbook.last_report_month`; run manual dengan `day` selalu mengirim dan tidak menyentuh state itu.
-- Kolom Status dan Notes diturunkan dari registry, config, dan `scraper_runs` (aturan Notes: disabled lewat kode atau config, backpressure berturut-turut, run gagal); keduanya snapshot saat laporan dibuat.
+- Kolom Status dan Notes diturunkan dari registry, config, dan `scraper_runs`; keduanya potret saat laporan dibuat. Aturan Notes: scraper yang dimatikan diberi `paused_reason` bila ada, lalu `REPLACED BY CVE MIRROR`, `DISABLED` (dimatikan lewat kode), atau `TEMPORARY DISABLED`; scraper yang jalan diberi `NOT RUNNING` (mati), `NO RUN RECORDED` (belum ada run), `ERROR` (3 run selesai terbaru semuanya gagal dan tidak satu pun `backpressure`), atau `-`.
 - `ScraperMeta.added` (tanggal sumber mulai dikoleksi) dan `source_url` (bila family scraper tidak punya URL) kini terisi di seluruh 100 scraper. Keduanya wajib untuk scraper baru: contract test gagal bila `added` kosong atau tidak ada URL sumber yang bisa diturunkan.
 
 ## [0.8.20] - 2026-11-17
