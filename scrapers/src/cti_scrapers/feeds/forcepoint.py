@@ -16,6 +16,8 @@ kartu."""
 
 from __future__ import annotations
 
+from datetime import date
+
 from cti_scraper.base import ScraperMeta
 from cti_scraper.families.xpath import XPathScraper
 from cti_scraper.schedule import spread
@@ -24,6 +26,7 @@ from cti_scraper.schedule import spread
 class Forcepoint(XPathScraper):
     meta = ScraperMeta(
         id="forcepoint",
+        added=date(2026, 4, 28),
         content_kind="vendor_research",
         source="Forcepoint",
         schedule=spread("50 * * * *", "forcepoint"),

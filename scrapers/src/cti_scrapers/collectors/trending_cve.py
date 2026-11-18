@@ -23,6 +23,7 @@ from __future__ import annotations
 import datetime
 import re
 from collections.abc import Iterator
+from datetime import date
 
 from cti_scraper.base import BaseScraper, ScrapeContext, ScraperMeta
 from cti_scraper.items import CveMentionItem
@@ -36,8 +37,10 @@ _WINDOW = datetime.timedelta(minutes=30)
 class TrendingCve(BaseScraper):
     meta = ScraperMeta(
         id="trending_cve",
+        added=date(2026, 9, 30),
         content_kind="social",
         source="X/Twitter CVE Trending",
+        source_url="https://x.com",
         schedule="*/15 * * * *",
         rate_limit="10/minute",
         credential="twitter",

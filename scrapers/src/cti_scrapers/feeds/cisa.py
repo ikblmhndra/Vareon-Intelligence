@@ -15,6 +15,7 @@ Diaktifkan lagi kalau sumbernya balik/ada jalur baru -- lihat `docs/KNOWN_BROKEN
 from __future__ import annotations
 
 from collections.abc import Iterator
+from datetime import date
 from xml.etree.ElementTree import Element
 from xml.etree.ElementTree import ParseError as XmlParseError
 
@@ -36,6 +37,7 @@ def _remove_invalid_xml_bytes(raw: bytes) -> str:
 class Cisa(RSSScraper):
     meta = ScraperMeta(
         id="cisa",
+        added=date(2026, 9, 17),
         content_kind="advisory",
         source="CISA",
         schedule=spread("1 * * * *", "cisa"),

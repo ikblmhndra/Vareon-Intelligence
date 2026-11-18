@@ -111,6 +111,7 @@ def test_report_tasks_run_at_the_old_rundeck_local_times_converted_to_utc(monkey
         "report-daily-counters": "report.daily_counters",
         "report-news-of-the-day": "report.news_of_the_day",
         "report-logbook": "report.logbook",
+        "report-feeds-logbook": "report.feeds_logbook",
         "report-weekly-top-cve": "report.weekly_top_cve",
         "report-weekly-threat-actor-trend": "report.weekly_threat_actor_trend",
         "report-trending-cve": "report.trending_cve",
@@ -118,6 +119,7 @@ def test_report_tasks_run_at_the_old_rundeck_local_times_converted_to_utc(monkey
     assert _cron(reports["report-daily-counters"]) == ("55", "16", "*")  # 23:55 WIB
     assert _cron(reports["report-news-of-the-day"]) == ("58", "16", "*")  # 23:58 WIB
     assert _cron(reports["report-logbook"]) == ("0", "0", "*")  # 07:00 WIB
+    assert _cron(reports["report-feeds-logbook"]) == ("0", "0", "*")  # 07:00 WIB
     assert _cron(reports["report-weekly-top-cve"]) == ("1", "0", "0")  # Minggu 07:01 WIB
     assert _cron(reports["report-weekly-threat-actor-trend"]) == ("0", "6", "1")  # Senin 13:00 WIB
     assert _cron(reports["report-trending-cve"]) == ("5", "5,11,17,23", "*")  # 00/06/12/18 WIB

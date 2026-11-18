@@ -44,7 +44,7 @@ Bandingkan sama `ScraperNews/newCveThreat.py` asli (391 baris):
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import timedelta
+from datetime import date, timedelta
 from typing import Any
 from urllib.parse import quote, quote_plus
 
@@ -75,8 +75,10 @@ _MITRE_URL = "https://cveawg.mitre.org/api/cve"
 class NewCve(BaseScraper):
     meta = ScraperMeta(
         id="new_cve",
+        added=date(2026, 9, 17),
         content_kind="advisory",
         source="NVD/Tenable CVE Tracker",
+        source_url="https://services.nvd.nist.gov/rest/json/cves/2.0",
         schedule=spread("0 * * * *", "new_cve"),
         rate_limit="60/minute",
         # Satu baris per (CVE, client) dari window 8 hari yang di-upsert ulang tiap jam. Prod

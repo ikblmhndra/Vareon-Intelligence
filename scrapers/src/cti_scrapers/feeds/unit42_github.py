@@ -11,7 +11,7 @@ Beda dari `blackorbird.py`: loop SEMUA commit dalam 5 hari terakhir
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import datetime
+from datetime import date, datetime
 
 from cti_scraper.base import BaseScraper, ScrapeContext, ScraperMeta
 from cti_scraper.errors import ParseError
@@ -31,8 +31,10 @@ def _parse_commit_date(raw: str) -> datetime:
 class Unit42Github(BaseScraper):
     meta = ScraperMeta(
         id="unit42_github",
+        added=date(2026, 9, 17),
         content_kind="vendor_research",
         source="Unit42 GitHub",
+        source_url="https://github.com/PaloAltoNetworks/Unit42-timely-threat-intel",
         schedule="16 * * * *",
         rate_limit="30/minute",
         credential="github",

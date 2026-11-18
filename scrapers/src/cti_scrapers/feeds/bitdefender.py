@@ -6,6 +6,8 @@ di sini jadi default framework.
 
 from __future__ import annotations
 
+from datetime import date
+
 from cti_scraper.base import ScraperMeta
 from cti_scraper.families.rss import RSSScraper
 from cti_scraper.schedule import spread
@@ -14,6 +16,7 @@ from cti_scraper.schedule import spread
 class Bitdefender(RSSScraper):
     meta = ScraperMeta(
         id="bitdefender",
+        added=date(2026, 4, 28),
         content_kind="vendor_research",
         source="Bitdefender Labs",
         schedule=spread("*/15 * * * *", "bitdefender"),

@@ -364,7 +364,7 @@ Beat also schedules non-scraper tasks (`cti_worker.beat._periodic_schedule`, `_r
 | `confidence.refresh_stories`, `confidence.recompute_all` | maintenance | Every 10 minutes: re-assess (Admiralty code and priority) the articles of stories updated since the last successful run (watermark in Redis). Daily 03:20: re-assess every article, to pick up KEV/PoC, IOC suppression and `content_kind` changes. |
 | `cve.enrichment_sweep` | maintenance | Section 3.3. |
 | `cve.mirror_sync`, `cve.mirror_reconcile`, `cve.mirror_purge`, `cve.promote_entry` | cve | Section 3.3. |
-| `report.*` (daily counters, news of the day, logbook, weekly top CVE, trending CVE, threat actor trend) | notify | Scheduled Telegram reports. |
+| `report.*` (daily counters, news of the day, logbook, feeds logbook (monthly), weekly top CVE, trending CVE, threat actor trend) | notify | Scheduled Telegram reports. |
 
 Tasks that need business logic call the async `cti_api.services.*` functions through
 `cti_worker.tasks.periodic._run_async`, which wraps `asyncio.run` and resets the async engine afterwards.

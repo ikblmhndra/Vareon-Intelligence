@@ -1,5 +1,5 @@
 """Task laporan periodik (Fase 10.E): `report.daily_counters`, `report.news_of_the_day`,
-`report.logbook`, `report.weekly_top_cve`, `report.trending_cve`.
+`report.logbook`, `report.feeds_logbook`, `report.weekly_top_cve`, `report.trending_cve`.
 
 DB beneran (testcontainers) dan task dijalankan eager lewat `apply()`; yang
 di-patch cuma sisi luar: Telegram, LLM, dan HTTP ke MITRE. Yang dikunci:
@@ -21,6 +21,7 @@ from cti_core.db.engine import sync_session
 from cti_core.db.models.article import Article, RejectedArticle
 from cti_core.db.models.enrich_job import EnrichJob
 from cti_core.db.models.report_state import SCOPE_NEWS, SCOPE_TWEET, CveMention, JobState
+from cti_core.db.models.scraper import ScraperRun
 from cti_core.db.repositories.report_state import CveMentionRepo, JobStateRepo
 from cti_core.urlkit import url_hash
 from sqlalchemy import delete, select
@@ -28,6 +29,7 @@ from sqlalchemy import delete, select
 UTC = datetime.UTC
 DAY = "2026-09-26"  # hari LOKAL (WIB); 00:00 WIB = 2026-09-25 17:00 UTC
 PREFIX = "https://rpt.example/"
+RUN_PREFIX = "rpt-feeds-"
 
 
 def utc(day: int, hour: int, minute: int = 0) -> datetime.datetime:
@@ -66,6 +68,7 @@ def _clean(_migrated_schema: None) -> Iterator[None]:
             s.execute(delete(EnrichJob))
             s.execute(delete(CveMention))
             s.execute(delete(JobState))
+            s.execute(delete(ScraperRun).where(ScraperRun.run_id.like(f"{RUN_PREFIX}%")))
 
     wipe()
     yield
@@ -465,3 +468,123 @@ def test_trending_cve_with_nothing_mentioned_sends_nothing(tg: Telegram, mitre) 
 
     assert run(report_trending_cve) == {"status": "empty"}
     assert tg.alerts == []
+
+
+# --- logbook feeds bulanan --------------------------------------------------------------
+
+
+@pytest.fixture
+def today_is(monkeypatch: pytest.MonkeyPatch):
+    """Menetapkan "hari ini" lokal (07:00 WIB) tanpa mengubah jam sistem: run terjadwal tidak
+    menerima `day`, jadi satu-satunya sumber tanggalnya `local_now` milik modul task."""
+    from cti_worker.tasks import reports
+
+    def pin(day: str) -> None:
+        d = datetime.date.fromisoformat(day)
+
+        def fake(offset: int, **_kw: object) -> datetime.datetime:
+            tz = datetime.timezone(datetime.timedelta(hours=offset))
+            return datetime.datetime(d.year, d.month, d.day, 7, tzinfo=tz)
+
+        monkeypatch.setattr(reports, "local_now", fake)
+
+    return pin
+
+
+def _feeds_rows(data: bytes) -> tuple[list[tuple[str, list]], str]:
+    """Baris data workbook sebagai (URL target hyperlink kolom G, nilai sel) -- dikunci pada URL,
+    bukan nomor baris; dan teks E5. Daftar, bukan dict: beberapa scraper berbagi URL pertama."""
+    import io
+
+    import openpyxl
+
+    ws = openpyxl.load_workbook(io.BytesIO(data)).active
+    header = next(r for r in range(1, 60) if ws.cell(r, 3).value == "Added Date")
+    out: list[tuple[str, list]] = []
+    r = header + 1
+    while isinstance(ws.cell(r, 2).value, int):
+        out.append((ws.cell(r, 7).hyperlink.target, [ws.cell(r, c).value for c in range(2, 10)]))
+        r += 1
+    return out, ws["E5"].value
+
+
+def test_feeds_logbook_does_nothing_before_the_last_day(tg: Telegram, today_is) -> None:
+    from cti_worker.tasks.reports import report_feeds_logbook
+
+    today_is("2026-10-30")
+
+    assert run(report_feeds_logbook) == {"status": "not_due"}
+    assert tg.docs == []
+
+
+def test_feeds_logbook_sends_on_the_last_day_and_records_the_month(tg: Telegram, today_is) -> None:
+    from cti_scraper.registry import discover
+    from cti_worker.tasks.reports import report_feeds_logbook
+
+    today_is("2026-10-31")
+    with sync_session() as s:
+        s.add(
+            ScraperRun(
+                run_id=f"{RUN_PREFIX}anyrun-1",
+                scraper_id="anyrun",
+                status="ok",
+                started_at=datetime.datetime(2026, 10, 20, 2, 59, tzinfo=UTC),
+                finished_at=datetime.datetime(2026, 10, 20, 3, 0, tzinfo=UTC),
+                items_new=2,
+            )
+        )
+
+    result = run(report_feeds_logbook)
+
+    assert result["status"] == "sent" and result["manual"] is False
+    assert (result["start"], result["end"]) == ("2026-10-01", "2026-10-31")
+    [(topic, name, content, _caption)] = tg.docs
+    assert topic == "logbook"
+    assert name == "Logbook Threat Information Feeds 2026-10-31.xlsx"
+    rows, _ = _feeds_rows(content)
+    assert result["rows"] == len(rows) == len(discover())
+    [anyrun] = [v for url, v in rows if url == "https://any.run/cybersecurity-blog/feed/"]
+    assert anyrun[-2] == "20 Oktober 2026"  # kolom H = Last Update
+    with sync_session() as s:
+        assert JobStateRepo(s).get("feeds_logbook.last_report_month") == "2026-10"
+
+
+def test_feeds_logbook_sends_once_per_month(tg: Telegram, today_is) -> None:
+    from cti_worker.tasks.reports import report_feeds_logbook
+
+    today_is("2026-10-31")
+    assert run(report_feeds_logbook)["status"] == "sent"
+
+    assert run(report_feeds_logbook) == {"status": "already_sent", "month": "2026-10"}
+    assert len(tg.docs) == 1
+
+
+def test_feeds_logbook_telegram_failure_leaves_state_unwritten(tg: Telegram, today_is) -> None:
+    from cti_worker.tasks.reports import report_feeds_logbook
+
+    today_is("2026-10-31")
+    tg.fail = True
+
+    with pytest.raises(ConnectionError):
+        run(report_feeds_logbook)
+
+    with sync_session() as s:
+        assert JobStateRepo(s).get("feeds_logbook.last_report_month") is None
+
+
+def test_feeds_logbook_manual_run_mid_month_leaves_state_and_month_end_still_sends(
+    tg: Telegram, today_is
+) -> None:
+    from cti_worker.tasks.reports import report_feeds_logbook
+
+    result = run(report_feeds_logbook, day="2026-11-20")
+
+    assert result["status"] == "sent" and result["manual"] is True
+    _, title = _feeds_rows(tg.docs[0][2])
+    assert "1 November 2026 - 20 November 2026" in title
+    with sync_session() as s:
+        assert JobStateRepo(s).get("feeds_logbook.last_report_month") is None
+
+    today_is("2026-11-30")
+    assert run(report_feeds_logbook)["status"] == "sent"
+    assert len(tg.docs) == 2

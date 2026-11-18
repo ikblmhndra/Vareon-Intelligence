@@ -89,6 +89,8 @@ cp scrapers/src/cti_scrapers/feeds/bitdefender.py scrapers/src/cti_scrapers/feed
 
 from __future__ import annotations
 
+from datetime import date
+
 from cti_scraper.base import ScraperMeta
 from cti_scraper.families.rss import RSSScraper
 from cti_scraper.schedule import spread
@@ -97,6 +99,7 @@ from cti_scraper.schedule import spread
 class SourceName(RSSScraper):
     meta = ScraperMeta(
         id="source_name",  # slug, lower case. NEVER change it after deploy
+        added=date(2026, 11, 18),  # the day this source joins the platform
         source="Source Name",  # display label, must be UNIQUE and meaningful
         schedule=spread("*/30 * * * *", "source_name"),
         tags=("vendor",),
@@ -104,6 +107,14 @@ class SourceName(RSSScraper):
     )
     feeds = ("https://example.com/feed.xml",)
 ```
+
+`added` is required: `tests/contract/test_scraper_inventory.py` fails for any scraper without it
+(or with a date in the future). It is the date the source joins the platform, and it is the
+"Added Date" column of the monthly "Logbook Threat Information Feeds" report. The same test
+requires every scraper to resolve at least one absolute source URL (the report's "Domain" and
+"Source Link" columns). The family provides it (`feeds` for RSS, `url` for XPath/JSON API, the
+repository for `GithubCommitWatcher`), so set `source_url="https://..."` in `ScraperMeta` only
+when the family exposes no URL, e.g. a bespoke `BaseScraper` subclass.
 
 RSS attributes that often need changing (all `ClassVar`, see
 `packages/cti-scraper/src/cti_scraper/families/rss.py`):
@@ -123,6 +134,7 @@ RSS attributes that often need changing (all `ClassVar`, see
 class SourceName(XPathScraper):
     meta = ScraperMeta(
         id="source_name",
+        added=date(2026, 11, 18),
         source="Source Name",
         schedule=spread("0 */2 * * *", "source_name"),
         runtime="light",

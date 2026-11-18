@@ -6,6 +6,8 @@ docs/ADDING_A_SCRAPER.md.
 
 from __future__ import annotations
 
+from datetime import date
+
 from cti_scraper.base import ScraperMeta
 from cti_scraper.families.rss import RSSScraper
 from cti_scraper.schedule import spread
@@ -14,6 +16,7 @@ from cti_scraper.schedule import spread
 class Tenable(RSSScraper):
     meta = ScraperMeta(
         id="tenable",
+        added=date(2026, 9, 17),
         content_kind="vendor_research",
         source="Tenable",
         schedule=spread("45 * * * *", "tenable"),

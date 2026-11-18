@@ -22,6 +22,7 @@ from __future__ import annotations
 import html
 import re
 from collections.abc import Iterator
+from datetime import date
 from typing import Any
 
 from cti_scraper.base import ScrapeContext, ScraperMeta
@@ -39,6 +40,7 @@ _VERSION = re.compile(r".+-(\d+\.\d+)\.json$")
 class MitreGithub(GithubCommitWatcher):
     meta = ScraperMeta(
         id="mitre_github",
+        added=date(2026, 9, 30),
         content_kind="vendor_research",
         source="MITRE ATT&CK GitHub Monitor",
         schedule="15 * * * *",

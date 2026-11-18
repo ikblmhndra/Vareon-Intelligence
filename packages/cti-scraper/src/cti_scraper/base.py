@@ -9,7 +9,7 @@ import abc
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
 
 if TYPE_CHECKING:
@@ -173,6 +173,15 @@ class ScraperMeta:
     `threatintel.offsets` doang, gak dipakai runtime."""
 
     notes: str = ""
+
+    added: date | None = None
+    """Tanggal sumber mulai dipantau. Dipakai logbook feed bulanan (kolom "Added Date"); diisi dari
+    laporan Rundeck lama supaya riwayatnya tidak putus, `None` = belum tercatat."""
+
+    source_url: str | None = None
+    """URL sumber untuk logbook feed, hanya diisi bila family scraper tidak punya atribut URL
+    sendiri (collector bespoke). Kalau ada, menang atas `feeds`/`url` (lihat
+    `cti_scraper.inventory.source_urls`)."""
 
 
 @dataclass

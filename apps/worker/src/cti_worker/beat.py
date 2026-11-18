@@ -87,7 +87,9 @@ def _cron_to_crontab(cron: str) -> crontab:
 def _report_schedule(offset: int) -> dict[str, dict[str, object]]:
     """Laporan periodik Fase 10.E. Jam di bawah = jam LOKAL Rundeck lama (job
     "News Counter" 23:55, trendingNewsToday 23:58, Logbook 07:00, Top Cve Minggu
-    07:01, Twitter CVE Trending tiap 6 jam, tren threat actor Senin 13:00 -- yang terakhir
+    07:01, logbook feeds bulanan 07:00 tiap hari (task-nya sendiri yang menyaring hari terakhir
+    bulan, karena cron tidak bisa menyatakan "hari terakhir bulan"),
+    Twitter CVE Trending tiap 6 jam, tren threat actor Senin 13:00 -- yang terakhir
     dipilih user, bukan jadwal Rundeck lama); `local_to_utc_cron` menggesernya ke UTC sesuai
     `WorkerSettings.report_utc_offset_hours`."""
     trending_hours = ",".join(str(h) for h in sorted({(h - offset) % 24 for h in (0, 6, 12, 18)}))
@@ -104,6 +106,11 @@ def _report_schedule(offset: int) -> dict[str, dict[str, object]]:
         },
         "report-logbook": {
             "task": "report.logbook",
+            "schedule": crontab(**local_to_utc_cron(7, 0, offset)),
+            "options": {"queue": QUEUE_NOTIFY},
+        },
+        "report-feeds-logbook": {
+            "task": "report.feeds_logbook",
             "schedule": crontab(**local_to_utc_cron(7, 0, offset)),
             "options": {"queue": QUEUE_NOTIFY},
         },
