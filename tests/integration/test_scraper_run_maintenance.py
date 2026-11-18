@@ -93,6 +93,39 @@ def test_last_success_ignores_runs_with_failed_items(session: Session) -> None:
     assert abs((last["maint-test"] - (NOW - datetime.timedelta(hours=3))).total_seconds()) < 1
 
 
+def test_last_new_items_takes_the_newest_productive_run_before_the_bound(
+    session: Session,
+) -> None:
+    def run(run_id: str, scraper_id: str, items_new: int, finished: datetime.datetime | None):
+        session.add(
+            ScraperRun(
+                run_id=run_id,
+                scraper_id=scraper_id,
+                status="ok",
+                started_at=datetime.datetime(2026, 10, 1, tzinfo=datetime.UTC),
+                finished_at=finished,
+                items_new=items_new,
+            )
+        )
+
+    def day(m: int, d: int) -> datetime.datetime:
+        return datetime.datetime(2026, m, d, 8, 30, tzinfo=datetime.UTC)
+
+    run("a1", "lnew-a", 2, day(10, 5))
+    run("a2", "lnew-a", 0, day(10, 20))
+    run("a3", "lnew-a", 1, day(11, 2))  # sesudah batas: harus diabaikan
+    run("a4", "lnew-a", 3, None)  # belum selesai: diabaikan
+    run("b1", "lnew-b", 0, day(10, 10))
+    session.flush()
+
+    got = ScraperRunRepo(session).last_new_items_by_scraper(
+        before=datetime.datetime(2026, 11, 1, tzinfo=datetime.UTC)
+    )
+
+    assert got["lnew-a"] == day(10, 5)
+    assert "lnew-b" not in got
+
+
 class _Quiet(BaseScraper):
     __abstract__ = True
     meta = ScraperMeta(id="maint-origin", source="Test", schedule="0 * * * *")
