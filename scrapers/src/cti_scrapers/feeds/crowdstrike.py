@@ -12,6 +12,7 @@ dan "Counter Adversary Operations" gak muncul sama sekali -> 0 item lolos filter
 
 from __future__ import annotations
 
+from datetime import date
 from xml.etree.ElementTree import Element
 
 from cti_scraper.base import ScraperMeta
@@ -24,6 +25,7 @@ _ALLOWED_CATEGORIES = frozenset({"Counter Adversary Operations", "Threat Hunting
 class Crowdstrike(RSSScraper):
     meta = ScraperMeta(
         id="crowdstrike",
+        added=date(2026, 4, 28),
         content_kind="vendor_research",
         source="CrowdStrike",
         schedule=spread("30 * * * *", "crowdstrike"),

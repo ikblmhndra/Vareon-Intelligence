@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import html
 from collections.abc import Iterator
+from datetime import date
 from xml.etree.ElementTree import ParseError as XmlParseError
 
 import defusedxml.ElementTree as ET
@@ -33,6 +34,7 @@ from cti_scraper.schedule import spread
 class Cybersecnews(RSSScraper):
     meta = ScraperMeta(
         id="cybersecnews",
+        added=date(2026, 5, 6),
         content_kind="news",
         source="Cyber Security News",
         schedule=spread("0 * * * *", "cybersecnews"),

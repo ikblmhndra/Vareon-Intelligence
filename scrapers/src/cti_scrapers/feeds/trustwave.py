@@ -12,6 +12,8 @@ type="application/rss+xml">` di halaman blog live) di path TANPA `en-us`."""
 
 from __future__ import annotations
 
+from datetime import date
+
 from cti_scraper.base import ScraperMeta
 from cti_scraper.families.rss import RSSScraper
 from cti_scraper.schedule import spread
@@ -20,6 +22,7 @@ from cti_scraper.schedule import spread
 class Trustwave(RSSScraper):
     meta = ScraperMeta(
         id="trustwave",
+        added=date(2026, 9, 17),
         content_kind="vendor_research",
         source="LevelBlue SpiderLabs (dulu Trustwave)",
         schedule=spread("31 * * * *", "trustwave"),

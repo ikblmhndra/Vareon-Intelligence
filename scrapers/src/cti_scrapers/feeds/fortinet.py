@@ -6,6 +6,8 @@ docs/ADDING_A_SCRAPER.md.
 
 from __future__ import annotations
 
+from datetime import date
+
 from cti_scraper.base import ScraperMeta
 from cti_scraper.families.rss import RSSScraper
 from cti_scraper.schedule import spread
@@ -14,6 +16,7 @@ from cti_scraper.schedule import spread
 class Fortinet(RSSScraper):
     meta = ScraperMeta(
         id="fortinet",
+        added=date(2026, 5, 18),
         content_kind="vendor_research",
         source="Fortinet",
         schedule=spread("45 * * * *", "fortinet"),

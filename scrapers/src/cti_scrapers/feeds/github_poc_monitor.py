@@ -38,7 +38,7 @@ import math
 import re
 import zlib
 from collections.abc import Iterator, Mapping, Sequence
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from cti_scraper.base import BaseScraper, ScrapeContext, ScraperMeta
@@ -167,8 +167,10 @@ def _mitre_vendor_product(ctx: ScrapeContext, cve_id: str) -> tuple[str, str]:
 class GithubPocMonitor(BaseScraper):
     meta = ScraperMeta(
         id="github_poc_monitor",
+        added=date(2026, 9, 17),
         content_kind="vendor_research",
         source="GitHub CVE POC Monitor",
+        source_url="https://api.github.com/search/repositories",
         schedule=spread("0 * * * *", "github_poc_monitor"),
         rate_limit="30/minute",  # limit GitHub Search API, BUKAN REST biasa (5000/jam)
         max_items=100,

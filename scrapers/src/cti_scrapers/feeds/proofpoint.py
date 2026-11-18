@@ -6,6 +6,8 @@ anchor artikel muncul `page.content()` ambil HTML sebelum daftar ada."""
 
 from __future__ import annotations
 
+from datetime import date
+
 from cti_scraper.base import ScraperMeta
 from cti_scraper.families.xpath import XPathScraper
 from cti_scraper.schedule import spread
@@ -18,6 +20,7 @@ _TITLE, _LINK = link_card_xpaths("contains(@href, '/us/blog/threat-insight/')")
 class Proofpoint(XPathScraper):
     meta = ScraperMeta(
         id="proofpoint",
+        added=date(2026, 4, 28),
         content_kind="vendor_research",
         source="Proofpoint",
         schedule=spread("0 * * * *", "proofpoint"),

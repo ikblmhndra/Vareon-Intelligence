@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date
+
 from cti_scraper.base import ScraperMeta
 from cti_scraper.families.rss import RSSScraper
 from cti_scraper.schedule import spread
@@ -8,6 +10,7 @@ from cti_scraper.schedule import spread
 class Awssecurity(RSSScraper):
     meta = ScraperMeta(
         id="aws_security",
+        added=date(2026, 9, 17),
         content_kind="vendor_research",
         source="AWS Security",
         schedule=spread("*/15 * * * *", "awssecurity"),

@@ -17,6 +17,8 @@ diharapkan aktif."""
 
 from __future__ import annotations
 
+from datetime import date
+
 from cti_scraper.base import ScraperMeta
 from cti_scraper.families.rss import RSSScraper
 from cti_scraper.schedule import spread
@@ -27,6 +29,7 @@ _ATOM_NS = "{http://www.w3.org/2005/Atom}"
 class ToxinLabs(RSSScraper):
     meta = ScraperMeta(
         id="0xtoxin",
+        added=date(2026, 9, 30),
         content_kind="vendor_research",
         source="0xToxin (Toxin Labs)",
         schedule=spread("40 * * * *", "0xtoxin"),

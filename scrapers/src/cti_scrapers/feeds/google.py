@@ -9,6 +9,8 @@ Diaktifkan lagi kalau sumbernya balik/ada jalur baru -- lihat `docs/KNOWN_BROKEN
 
 from __future__ import annotations
 
+from datetime import date
+
 from cti_scraper.base import ScraperMeta
 from cti_scraper.families.rss import RSSScraper
 from cti_scraper.schedule import spread
@@ -17,6 +19,7 @@ from cti_scraper.schedule import spread
 class Google(RSSScraper):
     meta = ScraperMeta(
         id="google",
+        added=date(2026, 4, 28),
         content_kind="vendor_research",
         source="Google Threat Group",
         schedule=spread("30 * * * *", "google"),

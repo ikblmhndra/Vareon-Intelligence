@@ -53,6 +53,7 @@ import datetime
 import html
 import re
 from collections.abc import Iterator
+from datetime import date
 from typing import ClassVar
 
 from cti_enrich.stages.score import ScoreResult, score_with_lists
@@ -250,8 +251,10 @@ _REFERENCE = ("techstack", "threat_actor_groups", "monitored_people")
 class TweetAlerts1h(TweetAlertScraper):
     meta = ScraperMeta(
         id="tweet_alerts_1h",
+        added=date(2025, 8, 27),
         content_kind="social",
         source="X/Twitter Alerts (hourly list)",
+        source_url="https://x.com",
         schedule="5 * * * *",
         rate_limit="10/minute",
         credential="twitter",
@@ -271,8 +274,10 @@ class TweetAlerts1h(TweetAlertScraper):
 class TweetAlerts30m(TweetAlertScraper):
     meta = ScraperMeta(
         id="tweet_alerts_30m",
+        added=date(2025, 8, 27),
         content_kind="social",
         source="X/Twitter Alerts (half-hour list)",
+        source_url="https://x.com",
         schedule="35 * * * *",
         rate_limit="10/minute",
         credential="twitter",

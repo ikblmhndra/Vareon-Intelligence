@@ -8,6 +8,8 @@ semua itu jadi `_get_html()`+`_extract_indexed()` bawaan framework.
 
 from __future__ import annotations
 
+from datetime import date
+
 from cti_scraper.base import ScraperMeta
 from cti_scraper.families.xpath import XPathScraper
 from cti_scraper.schedule import spread
@@ -18,6 +20,7 @@ _CARD = "/html/body/div[2]/div/div[2]/section/div[1]/article[{i}]/div/div[1]/h3/
 class TrendMicro(XPathScraper):
     meta = ScraperMeta(
         id="trendmicro",
+        added=date(2026, 4, 28),
         content_kind="vendor_research",
         source="Trend Micro Research",
         schedule=spread("0 */2 * * *", "trendmicro"),

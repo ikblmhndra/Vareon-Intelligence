@@ -62,7 +62,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable, Iterator
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from functools import partial
 from typing import Any
 
@@ -198,8 +198,10 @@ def _official_candidates(ctx: ScrapeContext, account: str, since_id: str | None)
 class MonitorX(BaseScraper):
     meta = ScraperMeta(
         id="monitor_x",
+        added=date(2026, 9, 18),
         content_kind="social",
         source="X/Twitter Intel Monitor",
+        source_url="https://x.com",
         # Rundeck asli: `0/3` jam (`docs/legacy/rundeck-jobs-map.json`). Dulu `*/15` -- 12x lebih sering,
         # kredit twitterapi.io (dibagi 4 scraper) habis ~3 jam sesudah kunci baru (staging 2026-10-01).
         # Menit 8 = offset hasil `spread()` lama, supaya gak numpuk bareng trending_cve (:00/:15/...).

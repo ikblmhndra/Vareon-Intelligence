@@ -6,6 +6,8 @@ docs/ADDING_A_SCRAPER.md.
 
 from __future__ import annotations
 
+from datetime import date
+
 from cti_scraper.base import ScraperMeta
 from cti_scraper.families.rss import RSSScraper
 from cti_scraper.schedule import spread
@@ -14,6 +16,7 @@ from cti_scraper.schedule import spread
 class RecordedFuture(RSSScraper):
     meta = ScraperMeta(
         id="recorded_future",
+        added=date(2026, 4, 28),
         content_kind="vendor_research",
         source="Recordedfuture",
         schedule=spread("30 * * * *", "recorded_future"),

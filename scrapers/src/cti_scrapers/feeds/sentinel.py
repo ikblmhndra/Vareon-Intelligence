@@ -21,6 +21,7 @@ agen/model, `LABScon` = rekaman talk konferensi riset); kategori lama dipertahan
 
 from __future__ import annotations
 
+from datetime import date
 from xml.etree.ElementTree import Element
 
 from cti_scraper.base import ScraperMeta
@@ -41,6 +42,7 @@ _ALLOWED_CATEGORIES = frozenset(
 class Sentinel(RSSScraper):
     meta = ScraperMeta(
         id="sentinel",
+        added=date(2026, 4, 28),
         content_kind="vendor_research",
         source="SentinelOne Labs",
         schedule=spread("30 * * * *", "sentinel"),

@@ -11,6 +11,8 @@ atom.xml` beneran Atom, bukan situs yang baru pindah format."""
 
 from __future__ import annotations
 
+from datetime import date
+
 from cti_scraper.base import ScraperMeta
 from cti_scraper.families.rss import RSSScraper
 from cti_scraper.schedule import spread
@@ -21,6 +23,7 @@ _ATOM_NS = "{http://www.w3.org/2005/Atom}"
 class Doyensec(RSSScraper):
     meta = ScraperMeta(
         id="doyensec",
+        added=date(2026, 4, 28),
         content_kind="vendor_research",
         source="Doyensec",
         schedule=spread("46 * * * *", "doyensec"),

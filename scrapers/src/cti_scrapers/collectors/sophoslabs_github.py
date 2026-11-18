@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import html
 from collections.abc import Iterator
+from datetime import date
 from typing import Any
 
 from cti_scraper.base import ScrapeContext, ScraperMeta
@@ -28,6 +29,7 @@ _UPLOAD_MESSAGE = "Add files via upload"
 class SophoslabsGithub(GithubCommitWatcher):
     meta = ScraperMeta(
         id="sophoslabs_github",
+        added=date(2026, 9, 30),
         content_kind="vendor_research",
         source="Sophoslabs GitHub Monitor",
         schedule="47 * * * *",
