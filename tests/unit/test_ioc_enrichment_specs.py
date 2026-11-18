@@ -40,6 +40,10 @@ def test_abuseipdb_spec_is_ip_only_with_a_three_day_ttl_and_the_configured_rate(
         ("ip", "198.51.100.7", "not a public IP address"),  # rentang dokumentasi
         ("ip", "not-an-ip", "not a valid IP address"),
         ("domain", "example.test", None),
+        # Produksi 2026-11-16: nilai hasil extractor yang nyambung lewat baris baru
+        ("domain", "europe.\nlinkrdr.cc", "malformed value (contains whitespace)"),
+        ("url", "https://radar.cloudflare.com.\nforward", "malformed value (contains whitespace)"),
+        ("sha256", "ab cd", "malformed value (contains whitespace)"),
     ],
 )
 def test_skip_reason(ioc_type: str, value: str, reason: str | None) -> None:

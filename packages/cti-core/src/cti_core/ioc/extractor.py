@@ -46,7 +46,10 @@ _TLD = (
     r"id|my|ph|vn|ua|tr|sa|ae|za|ng|ke|gh)"
 )
 
-_RE_IP = re.compile(r"\b(?:\d{1,3})(?:\s*" + _SEP + r"\s*(?:\d{1,3})){3}\b")
+# Spasi di sekitar pemisah defang hanya horizontal (`[ \t]*`, bukan `\s*`): IOC tidak pernah
+# melintasi baris. Produksi 2026-11-16: `\s*` menyimpan 16 IOC seperti `2.34.2.\n16` dan
+# `and @peteo.\ninitial`, dan satu di antaranya memacetkan `ioc.enrich_pending`.
+_RE_IP = re.compile(r"\b(?:\d{1,3})(?:[ \t]*" + _SEP + r"[ \t]*(?:\d{1,3})){3}\b")
 _RE_VERSION_PREFIX = re.compile(
     r"(?:version|ver|firmware|software|release|patch|build|update|v)\s*[:\s]*"
     r"(\d{1,3}(?:\.\d{1,3}){3})",
@@ -55,9 +58,9 @@ _RE_VERSION_PREFIX = re.compile(
 _RE_URL_PROTO = re.compile(
     r"(?:hxxps?|https?|fxp|ftp)://(?:"
     + _LABEL
-    + r"(?:\s*"
+    + r"(?:[ \t]*"
     + _SEP
-    + r"\s*))+[a-zA-Z]{2,}(?:/[^\s]*)?"
+    + r"[ \t]*))+[a-zA-Z]{2,}(?:/[^\s]*)?"
 )
 _RE_URL_PATH = re.compile(
     r"(?:"
@@ -74,11 +77,11 @@ _RE_URL_PATH = re.compile(
     + r"/[^\s]+"
 )
 _RE_EMAIL = re.compile(
-    r"[a-zA-Z0-9._%+-]+(?:\s*(?:\[@\]|\[at\]|@|\(@\))\s*)"
+    r"[a-zA-Z0-9._%+-]+(?:[ \t]*(?:\[@\]|\[at\]|@|\(@\))[ \t]*)"
     + _LABEL
-    + r"(?:\s*"
+    + r"(?:[ \t]*"
     + _SEP
-    + r"\s*)+[a-zA-Z]{2,}"
+    + r"[ \t]*)+[a-zA-Z]{2,}"
 )
 # `{0,10}`, BUKAN `*` polos kayak source asli -- SATU-SATUNYA deviasi
 # disengaja dari port byte-identik (lihat docstring modul). `*` bareng
@@ -97,14 +100,14 @@ _RE_EMAIL = re.compile(
 # buat dibandingin).
 _RE_DOMAIN_DEFANGED = re.compile(
     _LABEL
-    + r"(?:\s*"
+    + r"(?:[ \t]*"
     + _SEP
-    + r"\s*"
+    + r"[ \t]*"
     + _LABEL
     + r"){0,10}"
-    + r"\s*"
+    + r"[ \t]*"
     + _DEFANG_SEP
-    + r"\s*"
+    + r"[ \t]*"
     + r"[a-zA-Z]{2,}"
 )
 _RE_SHA256 = re.compile(r"\b[a-fA-F0-9]{64}\b")
@@ -125,7 +128,7 @@ _PRIVATE_NETWORKS = [
     _ipaddress.ip_network("255.255.255.255/32"),
 ]
 
-_RE_DEFANG_DOT = re.compile(r"\s*(?:\[\.\]|\[\.|\.  \]|\(\.\)|\{\.\}|\[dot\]|\(dot\)|\\.)\s*")
+_RE_DEFANG_DOT = re.compile(r"[ \t]*(?:\[\.\]|\[\.|\.  \]|\(\.\)|\{\.\}|\[dot\]|\(dot\)|\\.)[ \t]*")
 _RE_DEFANG_PROTO = re.compile(r"^hxx(ps?)://", re.IGNORECASE)
 _RE_DEFANG_FXP = re.compile(r"^fxp://", re.IGNORECASE)
 
