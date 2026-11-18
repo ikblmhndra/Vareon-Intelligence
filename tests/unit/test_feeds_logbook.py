@@ -10,6 +10,7 @@ from __future__ import annotations
 import io
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
+from importlib import resources
 from types import SimpleNamespace
 from typing import Any
 
@@ -139,6 +140,20 @@ def test_workbook_fills_header_rows_and_leaves_signers_blank() -> None:
     assert all(ws[c].value in (None, "") for c in ("E38", "G38", "E39", "G39"))
     merged = {str(r) for r in ws.merged_cells.ranges}
     assert {"E30:F30", "G30:H30", "E38:F38", "G38:H38", "E39:F39", "G39:H39"} <= merged
+
+
+def test_template_and_report_carry_no_review_comments() -> None:
+    # Templat user membawa komentar review Excel yang sudah selesai; komentar ikut tercetak di tiap
+    # laporan dan (setelah legenda digeser) menempel di sel yang salah, jadi semuanya dibuang.
+    template = resources.files("cti_worker.reports").joinpath(
+        "templates/feeds_logbook_template.xlsx"
+    )
+    with resources.as_file(template) as path:
+        sheets = [load(path.read_bytes())]
+    sheets.append(load(build([ROW_A], start=date(2026, 10, 1), end=date(2026, 10, 31))))
+
+    for ws in sheets:
+        assert [c.coordinate for row in ws.iter_rows() for c in row if c.comment] == []
 
 
 def test_missing_dates_render_as_dash() -> None:
