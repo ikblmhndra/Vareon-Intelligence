@@ -1,5 +1,6 @@
 """Task laporan periodik (Fase 10.E) -- gantiin job Rundeck `sendCounter`,
-`trendingNewsToday`, `logbook`, `topCve`, bagian laporan `trendingCve`, dan pasangan
+`trendingNewsToday`, `logbook`, `topCve`, logbook feeds bulanan (Excel inventaris sumber),
+bagian laporan `trendingCve`, dan pasangan
 `threatactorTrendGraylog`/`threatactorTrendTelegram`.
 
 Pola tiap task: (1) baca DB di dalam `sync_session()`, (2) TUTUP sesi, (3) baru
@@ -36,6 +37,7 @@ from cti_worker.queues import QUEUE_NOTIFY
 from cti_worker.reports import (
     cve_digest,
     daily_counters,
+    feeds_logbook,
     logbook,
     news_of_the_day,
     threat_actor_trend,
@@ -45,6 +47,7 @@ from cti_worker.reports.timeutil import local_now
 log = structlog.get_logger()
 
 LOGBOOK_STATE_KEY = "logbook.last_report_date"
+FEEDS_LOGBOOK_STATE_KEY = "feeds_logbook.last_report_month"
 
 
 def _today(day: str | None, offset: int) -> datetime.date:
@@ -145,6 +148,53 @@ def report_logbook(self: Any, day: str | None = None) -> dict[str, object]:
         JobStateRepo(session).set(LOGBOOK_STATE_KEY, today.isoformat())
     log.info("report_logbook_sent", entries=len(entries), start=str(start), end=str(today))
     return {"status": "sent", "entries": len(entries)}
+
+
+# ── logbook feeds (bulanan) ──────────────────────────────────────────────────────
+
+
+@app.task(bind=True, name="report.feeds_logbook", queue=QUEUE_NOTIFY)
+def report_feeds_logbook(self: Any, day: str | None = None) -> dict[str, object]:
+    """Inventaris feed (Excel) ke topik `logbook`, sebulan sekali di hari terakhir bulan.
+
+    Dua mode, sengaja dipisah: run TERJADWAL (tanpa `day`) hanya jalan di hari terakhir bulan
+    dan memakai state `FEEDS_LOGBOOK_STATE_KEY` supaya beat yang menembak ulang tidak mengirim
+    dua kali. Run MANUAL (`day` diisi) selalu mengirim periode 1 bulan itu s.d. `day` dan TIDAK
+    membaca maupun menulis state, supaya uji coba di tengah bulan tidak menggugurkan laporan
+    akhir bulan: `celery -A cti_worker.celery_app call report.feeds_logbook
+    --args='["2026-10-31"]'`."""
+    offset = get_settings().worker.report_utc_offset_hours
+    manual = day is not None
+    today = _today(day, offset)
+    if not manual:
+        if not feeds_logbook.is_last_day_of_month(today):
+            return {"status": "not_due"}
+        month = today.strftime("%Y-%m")
+        with sync_session() as session:
+            sent_month = JobStateRepo(session).get(FEEDS_LOGBOOK_STATE_KEY)
+        if sent_month == month:
+            return {"status": "already_sent", "month": month}
+
+    start, end = feeds_logbook.period_for(today)
+    with sync_session() as session:
+        rows = feeds_logbook.collect(
+            session, end=end, offset_hours=offset, now=datetime.datetime.now(datetime.UTC)
+        )
+    data = feeds_logbook.build(rows, start=start, end=end)
+    send_document(
+        "logbook", feeds_logbook.filename_for(end), data, feeds_logbook.caption(start, end)
+    )
+    if not manual:
+        with sync_session() as session:  # SESUDAH kirim sukses
+            JobStateRepo(session).set(FEEDS_LOGBOOK_STATE_KEY, end.strftime("%Y-%m"))
+    log.info("report_feeds_logbook_sent", rows=len(rows), start=str(start), end=str(end))
+    return {
+        "status": "sent",
+        "rows": len(rows),
+        "start": start.isoformat(),
+        "end": end.isoformat(),
+        "manual": manual,
+    }
 
 
 # ── topCve ───────────────────────────────────────────────────────────────────────
