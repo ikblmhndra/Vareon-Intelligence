@@ -22,6 +22,7 @@ from cti_worker.reports.feeds_logbook import (
     FeedRow,
     build,
     caption,
+    existed_by,
     filename_for,
     is_last_day_of_month,
     notes_for,
@@ -169,3 +170,37 @@ def test_filename_and_caption() -> None:
         "\n    === <b>THREAT INFORMATION FEEDS REPORT</b> ===\n"
         "<b>Start Entry Date</b>: 01 Oktober 2026\n<b>End Entry Date</b>: 31 Oktober 2026"
     )
+
+
+def test_notes_cell_wraps_and_never_becomes_a_formula() -> None:
+    # `paused_reason` adalah teks bebas admin: panjang harus membungkus, dan awalan "=" tidak
+    # boleh jadi formula Excel hidup.
+    row = replace(ROW_A, notes="=1+1")
+    ws = load(build([row], start=date(2026, 10, 1), end=date(2026, 10, 31)))
+
+    assert ws["I22"].value == "=1+1" and ws["I22"].data_type == "s"
+    assert ws["I22"].alignment.wrap_text
+
+
+def test_workbook_properties_carry_no_personal_names() -> None:
+    template = resources.files("cti_worker.reports").joinpath(
+        "templates/feeds_logbook_template.xlsx"
+    )
+    with resources.as_file(template) as path:
+        props = openpyxl.load_workbook(path).properties
+    assert props.creator in {None, "", "Vareon Intelligence"}
+    assert props.lastModifiedBy in {None, "", "Vareon Intelligence"}
+
+    built = openpyxl.load_workbook(
+        io.BytesIO(build([ROW_A], start=date(2026, 10, 1), end=date(2026, 10, 31)))
+    ).properties
+    assert built.creator == "Vareon Intelligence"
+    assert not built.lastModifiedBy
+
+
+def test_replay_skips_scrapers_added_after_the_period() -> None:
+    end = date(2026, 11, 30)
+    assert existed_by(date(2026, 11, 30), end)
+    assert existed_by(date(2026, 3, 5), end)
+    assert existed_by(None, end)
+    assert not existed_by(date(2026, 12, 1), end)

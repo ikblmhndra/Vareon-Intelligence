@@ -175,7 +175,7 @@ class ScraperMeta:
     notes: str = ""
 
     added: date | None = None
-    """Tanggal sumber mulai dipantau. Dipakai logbook feed bulanan (kolom "Date Added"); diisi dari
+    """Tanggal sumber mulai dipantau. Dipakai logbook feed bulanan (kolom "Added Date"); diisi dari
     laporan Rundeck lama supaya riwayatnya tidak putus, `None` = belum tercatat."""
 
     source_url: str | None = None

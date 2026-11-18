@@ -581,7 +581,7 @@ def test_feeds_logbook_manual_run_mid_month_leaves_state_and_month_end_still_sen
 
     assert result["status"] == "sent" and result["manual"] is True
     _, title = _feeds_rows(tg.docs[0][2])
-    assert "1 November 2026 - 20 November 2026" in title.replace(chr(0x2013), "-")
+    assert "1 November 2026 - 20 November 2026" in title
     with sync_session() as s:
         assert JobStateRepo(s).get("feeds_logbook.last_report_month") is None
 

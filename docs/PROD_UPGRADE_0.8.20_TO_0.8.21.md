@@ -47,8 +47,10 @@ Nothing.
 
 1. Restart `beat` so the new schedule entry exists (the schedule is built once at import):
    `docker compose -p niskala-intelligence restart beat`.
-2. Optional, on dev only: send a sample without touching the month state:
-   `celery -A cti_worker.celery_app call report.feeds_logbook --args='["<today ISO>"]'`. A manual run with `day` never reads
+2. On prod, if the report did not arrive on the last day of the month, resend it with the last day of that month as the date
+   (`celery call` needs `--queue notify`; without it the message lands on the unconsumed `celery` queue and nothing is sent):
+   `cd /home/privy-admin/Niskala-Intelligence && docker compose -p niskala-intelligence exec -T worker celery -A cti_worker.celery_app call report.feeds_logbook --queue notify --args='["YYYY-MM-DD"]'`.
+3. Optional, on dev: send a sample the same way with today's date. This is safe because a manual run with `day` never reads
    or writes `feeds_logbook.last_report_month`, so the real end-of-month report is not suppressed.
 
 ### One-off commands

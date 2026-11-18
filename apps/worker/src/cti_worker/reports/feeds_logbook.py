@@ -134,6 +134,13 @@ def notes_for(
     return "-"
 
 
+def existed_by(added: date | None, end: date) -> bool:
+    """Apakah scraper sudah ada pada akhir periode. Replay bulan lampau (kirim ulang November
+    tanggal 3 Desember) tidak boleh memuat sumber yang baru ditambahkan sesudah periode itu.
+    `added is None` tetap ikut (contract test mencegahnya, tapi jangan sampai baris hilang)."""
+    return added is None or added <= end
+
+
 def collect(session: Session, *, end: date, offset_hours: int, now: datetime) -> list[FeedRow]:
     """Satu `FeedRow` per scraper terdaftar, urut `added` lalu `source`. Status dan Notes adalah
     potret SAAT laporan dibuat (seperti skrip lama); hanya Last Update yang dibatasi akhir
@@ -150,6 +157,8 @@ def collect(session: Session, *, end: date, offset_hours: int, now: datetime) ->
     rows: list[FeedRow] = []
     for scraper_id, cls in registry.items():
         meta = cls.meta
+        if not existed_by(meta.added, end):
+            continue
         config = configs.get(scraper_id)
         urls = source_urls(cls)  # contract test: tiap scraper punya minimal satu URL
         ts = last_new.get(scraper_id)
@@ -230,7 +239,10 @@ def build(rows: Sequence[FeedRow], *, start: date, end: date) -> bytes:
                 cell.style = "Hyperlink"  # gaya bernama menimpa border/alignment: pasang duluan
                 cell.hyperlink = row.link
             cell.border = _B_THIN
-            cell.alignment = _CENTER_WRAP if column == 4 else _CENTER  # Domain bisa banyak host
+            # Domain bisa banyak host; Notes bisa teks bebas admin yang panjang
+            cell.alignment = _CENTER_WRAP if column in (4, 9) else _CENTER
+            if column == 9:
+                cell.data_type = "s"  # alasan berawalan "=" jangan jadi formula hidup
         status = ws.cell(row=r, column=5)
         italic = copy.copy(status.font)
         italic.i = True
@@ -245,6 +257,11 @@ def build(rows: Sequence[FeedRow], *, start: date, end: date) -> bytes:
             anchor.border = _B_THIN
             anchor.alignment = _CENTER
             ws.merge_cells(start_row=r, start_column=left, end_row=r, end_column=right)
+
+    # Metadata templat membawa nama orang; setiap laporan mewarisinya padahal kolom tanda tangan
+    # sengaja kosong.
+    workbook.properties.creator = "Vareon Intelligence"
+    workbook.properties.lastModifiedBy = None
 
     buffer = io.BytesIO()
     workbook.save(buffer)

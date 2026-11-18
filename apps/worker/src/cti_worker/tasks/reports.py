@@ -11,7 +11,10 @@ ditahan selama panggilan jaringan lambat.
 
 Jam laporan mengikuti `WorkerSettings.report_utc_offset_hours` (lihat `beat.py`).
 Semua task menerima `day` (ISO) opsional supaya laporan yang terlewat bisa diulang
-manual: `celery -A cti_worker call report.daily_counters --args='["2026-09-25"]'`.
+manual: `celery -A cti_worker.celery_app call report.daily_counters --queue notify
+--args='["2026-09-25"]'`. `--queue notify` wajib: `call` memakai `send_task` yang tidak
+membaca `queue=` dekorator, jadi tanpa itu pesan jatuh ke antrean `celery` yang tidak
+dikonsumsi worker mana pun.
 Tanpa retry otomatis (sama filosofi `periodic.py`): gagal sekali, jadwal berikutnya
 mencoba lagi; kegagalan kelihatan di log Celery, bukan ditelan.
 """
@@ -162,7 +165,7 @@ def report_feeds_logbook(self: Any, day: str | None = None) -> dict[str, object]
     dua kali. Run MANUAL (`day` diisi) selalu mengirim periode 1 bulan itu s.d. `day` dan TIDAK
     membaca maupun menulis state, supaya uji coba di tengah bulan tidak menggugurkan laporan
     akhir bulan: `celery -A cti_worker.celery_app call report.feeds_logbook
-    --args='["2026-10-31"]'`."""
+    --queue notify --args='["2026-10-31"]'` (tanpa `--queue notify` pesan tidak pernah diambil)."""
     offset = get_settings().worker.report_utc_offset_hours
     manual = day is not None
     today = _today(day, offset)
