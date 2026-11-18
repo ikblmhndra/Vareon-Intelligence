@@ -1,0 +1,72 @@
+# Prod upgrade runbook: 0.8.20 → 0.8.21
+
+Prod (`privy-admin@10.8.20.78`, compose project `niskala-intelligence`, repo `/home/privy-admin/Niskala-Intelligence`)
+should run **0.8.20** before this release. Confirm the running version first (`GET /healthz`); for older versions follow
+`docs/PROD_UPGRADE_0.8.19_TO_0.8.20.md` (and the runbooks it points to) before this one.
+
+One `make deploy` (run by the user with `sudo`; the Deploy workflow is off and the checkout is owned by root) takes prod
+to 0.8.21. There are no migrations and no new `.env` keys; restart `beat` afterwards for the new schedule entry.
+
+Per-release checks: `docs/prod-upgrade/0.8.21.md`. Its content is repeated below.
+
+---
+
+## 0.8.21 — Monthly "Logbook Threat Information Feeds" report built from the scraper registry
+
+Release: not yet tagged (branch `claude/feeds-logbook`; merge to `origin/Dev` for the dev test, then PR to `main`).
+Minor feature on top of 0.8.20.
+
+### What changes in prod
+
+- New Celery task `report.feeds_logbook` (queue `notify`, beat entry `report-feeds-logbook`, daily 07:00 local). It does
+  nothing except on the last day of the month, when it builds the Excel workbook `Logbook Threat Information Feeds
+  <period end ISO>.xlsx` (one row per registered scraper: added date, domain, status, method, link, last update, notes)
+  on the company template and sends it to the existing Telegram topic `logbook`. It is idempotent per month through
+  the `JobState` key `feeds_logbook.last_report_month`; a manual run with `day` always sends and never touches that key.
+- `ScraperMeta.added` (required) and `source_url` (when the scraper family exposes no URL) are now set on all 100
+  scrapers; a contract test requires `added` and a resolvable source URL for every new scraper.
+- New helpers: `cti_scraper.inventory`, `ScraperRunRepo.last_new_items_by_scraper`, `cti_worker.reports.feeds_logbook`
+  and the template `reports/templates/feeds_logbook_template.xlsx`.
+
+This replaces the report that used to come from a script on the retired Rundeck host, which described the old jobs
+(194 of 200 rows "Disabled").
+
+### Migrations
+
+None. `alembic_version` stays at `d9f2b6a4c1e7`.
+
+### Settings / .env
+
+None. The report reuses the existing `logbook` thread id.
+
+### Before deploy
+
+Nothing.
+
+### After deploy
+
+1. Restart `beat` so the new schedule entry exists (the schedule is built once at import):
+   `docker compose -p niskala-intelligence restart beat`.
+2. On prod, if the report did not arrive on the last day of the month, resend it with the last day of that month as the date
+   (`celery call` needs `--queue notify`; without it the message lands on the unconsumed `celery` queue and nothing is sent):
+   `cd /home/privy-admin/Niskala-Intelligence && docker compose -p niskala-intelligence exec -T worker celery -A cti_worker.celery_app call report.feeds_logbook --queue notify --args='["YYYY-MM-DD"]'`.
+3. Optional, on dev: send a sample the same way with today's date. This is safe because a manual run with `day` never reads
+   or writes `feeds_logbook.last_report_month`, so the real end-of-month report is not suppressed.
+
+### One-off commands
+
+Optional: give a specific Notes text to the five scrapers that are disabled in code:
+`cti-scraper disable <id> --reason "..."`. Not required for the report to work.
+
+### Rollback
+
+`make deploy` restores the `:prev` images on a failed health check. Rolling back to the previous image needs no DB
+change; the `JobState` key is simply ignored.
+
+### Known risks
+
+- `added` was seeded from the retired Rundeck report of 2026-10-31: 73 scrapers took that report's date and 27 took the
+  date their file was first committed (13 because their host is shared by many sources, 12 with no matching row, 2
+  ambiguous). The PR lists the shared-host matches for the user to check.
+- Status and Notes are a snapshot at build time (derived from the registry, `scraper_runs` and config of the moment the
+  report runs), not a history.

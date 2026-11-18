@@ -8,7 +8,7 @@ bare `&`, gak butuh `xml_fixups`/`html_unescape`) udah cukup.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from xml.etree.ElementTree import Element
 
 from cti_scraper.base import ScraperMeta
@@ -19,6 +19,7 @@ from cti_scraper.schedule import spread
 class F5(RSSScraper):
     meta = ScraperMeta(
         id="f5",
+        added=date(2026, 4, 30),
         content_kind="vendor_research",
         source="F5 Labs",
         schedule=spread("46 * * * *", "f5"),

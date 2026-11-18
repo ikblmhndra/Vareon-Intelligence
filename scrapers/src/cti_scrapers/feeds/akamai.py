@@ -6,7 +6,7 @@ ngandung tahun ini.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from xml.etree.ElementTree import Element
 
 from cti_scraper.base import ScraperMeta
@@ -17,6 +17,7 @@ from cti_scraper.schedule import spread
 class Akamai(RSSScraper):
     meta = ScraperMeta(
         id="akamai",
+        added=date(2026, 4, 28),
         content_kind="vendor_research",
         source="Akamai",
         schedule=spread("31 * * * *", "akamai"),

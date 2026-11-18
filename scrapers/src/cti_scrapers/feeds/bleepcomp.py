@@ -5,6 +5,7 @@ asli cuma nerima item yang punya `<category>Security</category>`.
 
 from __future__ import annotations
 
+from datetime import date
 from xml.etree.ElementTree import Element
 
 from cti_scraper.base import ScraperMeta
@@ -15,6 +16,7 @@ from cti_scraper.schedule import spread
 class Bleepcomp(RSSScraper):
     meta = ScraperMeta(
         id="bleepcomp",
+        added=date(2026, 4, 28),
         content_kind="news",
         source="Bleeping Computer",
         schedule=spread("30 * * * *", "bleepcomp"),

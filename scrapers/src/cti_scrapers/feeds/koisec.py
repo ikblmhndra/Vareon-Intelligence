@@ -9,6 +9,8 @@ Diaktifkan lagi kalau sumbernya balik/ada jalur baru -- lihat `docs/KNOWN_BROKEN
 
 from __future__ import annotations
 
+from datetime import date
+
 from cti_scraper.base import ScraperMeta
 from cti_scraper.families.xpath import XPathScraper
 from cti_scraper.schedule import spread
@@ -17,6 +19,7 @@ from cti_scraper.schedule import spread
 class Koisec(XPathScraper):
     meta = ScraperMeta(
         id="koisec",
+        added=date(2026, 4, 28),
         content_kind="vendor_research",
         source="Koi Security",
         schedule=spread("17 * * * *", "koisec"),

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import datetime
 from collections.abc import Iterator
+from datetime import date
 
 from cti_scraper.base import BaseScraper, ScrapeContext, ScraperMeta
 from cti_scraper.errors import ParseError
@@ -38,8 +39,10 @@ def _iso_date(value: object) -> datetime.date | None:
 class RansomwareLive(BaseScraper):
     meta = ScraperMeta(
         id="ransomware_live",
+        added=date(2026, 7, 1),
         content_kind="news",
         source="ransomware.live",
+        source_url="https://api.ransomware.live/v2/victims",
         schedule="17 * * * *",
         rate_limit="4/minute",
         max_items=500,  # snapshot bulanan, bukan feed artikel -- bukan 50 biasa

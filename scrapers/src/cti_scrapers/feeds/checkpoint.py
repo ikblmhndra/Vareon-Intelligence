@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 from cti_scraper.base import ScraperMeta
 from cti_scraper.families.xpath import XPathScraper
 from cti_scraper.schedule import spread
@@ -14,6 +16,7 @@ from cti_scraper.schedule import spread
 class Checkpoint(XPathScraper):
     meta = ScraperMeta(
         id="checkpoint",
+        added=date(2026, 4, 28),
         content_kind="vendor_research",
         source="Checkpoint Research",
         schedule=spread("30 * * * *", "checkpoint"),

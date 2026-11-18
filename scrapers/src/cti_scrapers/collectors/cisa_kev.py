@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterator
-from datetime import timedelta
+from datetime import date, timedelta
 
 from cti_scraper.base import BaseScraper, ScrapeContext, ScraperMeta
 from cti_scraper.errors import ParseError
@@ -37,9 +37,11 @@ _URL_RE = re.compile(r"https:\/\/[a-zA-Z0-9\-._~:\/?#\[\]@!$&'()*+,;=%]+")
 class CisaKev(BaseScraper):
     meta = ScraperMeta(
         id="cisa_kev",
+        added=date(2026, 4, 28),
         content_kind="kev",
         default_relevance="always",
         source="CISA KEV",
+        source_url="https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json",
         schedule="*/30 * * * *",
         max_items=1000,  # snapshot katalog penuh, difilter tanggal di dalam fetch()
         tags=("cve", "collector"),

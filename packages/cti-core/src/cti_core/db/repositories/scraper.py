@@ -186,6 +186,26 @@ class ScraperRunRepo:
         """Run bersih terakhir per scraper (status ok/empty/partial dan `items_failed = 0`)."""
         return {sid: ts for sid, ts in self.session.execute(_last_success_stmt())}
 
+    def last_new_items_by_scraper(
+        self, *, before: datetime.datetime
+    ) -> dict[str, datetime.datetime]:
+        """Run selesai terbaru per scraper yang menghasilkan item baru (`items_new > 0`).
+
+        Dipakai kolom "Last Update" logbook feeds: kapan sumber terakhir benar-benar memberi
+        konten baru, bukan sekadar terakhir dijalankan. `before` = akhir periode laporan, supaya
+        replay bulan lampau tidak menampilkan tanggal dari sesudah bulan itu. Run yang belum
+        selesai (`finished_at` NULL, mis. dibiarkan reaper) tidak dihitung."""
+        stmt = (
+            select(ScraperRun.scraper_id, func.max(ScraperRun.finished_at))
+            .where(
+                ScraperRun.items_new > 0,
+                ScraperRun.finished_at.is_not(None),
+                ScraperRun.finished_at < before,
+            )
+            .group_by(ScraperRun.scraper_id)
+        )
+        return {sid: ts for sid, ts in self.session.execute(stmt) if ts is not None}
+
     def has_running(
         self,
         scraper_id: str,

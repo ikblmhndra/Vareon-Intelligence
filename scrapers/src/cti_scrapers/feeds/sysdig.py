@@ -9,6 +9,8 @@ itu `www.sysdig.com` (dan dedup-nya cocok sama URL canonical). `max_items=10`: f
 
 from __future__ import annotations
 
+from datetime import date
+
 from cti_scraper.base import ScraperMeta
 from cti_scraper.families.rss import RSSScraper
 from cti_scraper.schedule import spread
@@ -17,6 +19,7 @@ from cti_scraper.schedule import spread
 class Sysdig(RSSScraper):
     meta = ScraperMeta(
         id="sysdig",
+        added=date(2026, 4, 28),
         content_kind="vendor_research",
         source="Sysdig",
         schedule=spread("32 * * * *", "sysdig"),

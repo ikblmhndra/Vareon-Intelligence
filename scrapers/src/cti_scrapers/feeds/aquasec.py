@@ -5,6 +5,8 @@ mengiklankan feed lewat `<link rel="alternate">` -- URL feed WordPress-nya ketem
 
 from __future__ import annotations
 
+from datetime import date
+
 from cti_scraper.base import ScraperMeta
 from cti_scraper.families.rss import RSSScraper
 from cti_scraper.schedule import spread
@@ -13,6 +15,7 @@ from cti_scraper.schedule import spread
 class Aquasec(RSSScraper):
     meta = ScraperMeta(
         id="aquasec",
+        added=date(2026, 4, 28),
         content_kind="vendor_research",
         source="Aquasec",
         schedule=spread("45 * * * *", "aquasec"),

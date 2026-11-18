@@ -27,6 +27,7 @@ jadi digabung ke absolut di sini (`urljoin`), bukan diwarisin relatif.
 from __future__ import annotations
 
 from collections.abc import Iterator
+from datetime import date
 from urllib.parse import urljoin
 
 from cti_scraper.base import BaseScraper, ScrapeContext, ScraperMeta
@@ -46,8 +47,10 @@ def _card(i: int) -> str:
 class AnyRunTrends(BaseScraper):
     meta = ScraperMeta(
         id="any_run_trends",
+        added=date(2026, 9, 17),
         content_kind="vendor_research",
         source="ANY.RUN Malware Trends",
+        source_url="https://any.run/malware-trends/",
         schedule=spread("0 0 * * 1", "any_run_trends"),  # mingguan, cocok "past 7 days"
         runtime="browser",
         rate_limit="6/minute",

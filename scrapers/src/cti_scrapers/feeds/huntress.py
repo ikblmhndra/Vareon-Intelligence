@@ -7,6 +7,8 @@ klasifikasi enrichment kalau bukan CTI. `max_items=10`: feed memuat seluruh arsi
 
 from __future__ import annotations
 
+from datetime import date
+
 from cti_scraper.base import ScraperMeta
 from cti_scraper.families.rss import RSSScraper
 from cti_scraper.schedule import spread
@@ -15,6 +17,7 @@ from cti_scraper.schedule import spread
 class Huntress(RSSScraper):
     meta = ScraperMeta(
         id="huntress",
+        added=date(2026, 4, 28),
         content_kind="vendor_research",
         source="Huntress",
         schedule=spread("30 * * * *", "huntress"),

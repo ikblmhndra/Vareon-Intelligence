@@ -12659,7 +12659,7 @@
   },
   "info": {
     "title": "Vareon Intelligence API",
-    "version": "0.8.19"
+    "version": "0.8.21"
   },
   "openapi": "3.1.0",
   "paths": {

@@ -25,7 +25,7 @@ perilakunya emang beda di source aslinya).
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import datetime
+from datetime import date, datetime
 
 from cti_scraper.base import BaseScraper, ScrapeContext, ScraperMeta
 from cti_scraper.errors import ParseError
@@ -45,8 +45,10 @@ def _parse_commit_date(raw: str) -> datetime:
 class Blackorbird(BaseScraper):
     meta = ScraperMeta(
         id="blackorbird",
+        added=date(2026, 9, 17),
         content_kind="vendor_research",
         source="Blackorbird GitHub",
+        source_url="https://github.com/blackorbird/APT_REPORT",
         schedule="47 * * * *",
         rate_limit="30/minute",
         credential="github",

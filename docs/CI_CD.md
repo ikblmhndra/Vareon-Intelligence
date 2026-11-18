@@ -50,9 +50,10 @@ SSH needs to be opened.
 
 ## What `deploy.sh` does (also runnable by hand: `make deploy`)
 
-Before upgrading prod across several releases, follow `docs/PROD_UPGRADE_0.8.18_TO_0.8.19.md` (per-release checks in
-`docs/prod-upgrade/<version>.md`). Prod older than 0.8.18 first follows `docs/PROD_UPGRADE_0.8.16_TO_0.8.18.md`, and prod
-older than 0.8.16 starts with `docs/PROD_UPGRADE_0.8.11_TO_0.8.16.md`.
+Before upgrading prod across several releases, follow `docs/PROD_UPGRADE_0.8.20_TO_0.8.21.md` (per-release checks in
+`docs/prod-upgrade/<version>.md`). Prod older than 0.8.20 first follows `docs/PROD_UPGRADE_0.8.19_TO_0.8.20.md`, prod older
+than 0.8.19 `docs/PROD_UPGRADE_0.8.18_TO_0.8.19.md`, prod older than 0.8.18 `docs/PROD_UPGRADE_0.8.16_TO_0.8.18.md`, and
+prod older than 0.8.16 starts with `docs/PROD_UPGRADE_0.8.11_TO_0.8.16.md`.
 
 | Step | On failure -> |
 |---|---|

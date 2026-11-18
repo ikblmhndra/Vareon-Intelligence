@@ -27,7 +27,7 @@ tanggal buat scraper ini)."""
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from cti_core.ioc.extractor import extract_iocs
@@ -106,8 +106,10 @@ def _patch_preview(patch: str) -> str:
 class DeepDarkCti(BaseScraper):
     meta = ScraperMeta(
         id="deepdark_cti",
+        added=date(2026, 9, 18),
         content_kind="vendor_research",
         source="deepdarkCTI GitHub Monitor",
+        source_url="https://github.com/fastfire/deepdarkCTI",
         schedule=spread("0 */6 * * *", "deepdark_cti"),
         credential="github",
         tags=("migrated", "bespoke", "ioc"),

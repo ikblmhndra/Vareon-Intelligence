@@ -17,6 +17,7 @@ from __future__ import annotations
 import datetime
 import html
 from collections.abc import Iterator
+from datetime import date
 from typing import Any
 
 from cti_scraper.base import ScrapeContext, ScraperMeta
@@ -33,6 +34,7 @@ def _filtered_patch(patch: str) -> str:
 class AptTtpSimulation(GithubCommitWatcher):
     meta = ScraperMeta(
         id="apt_ttp_simulation",
+        added=date(2026, 9, 30),
         content_kind="vendor_research",
         source="APT TTP Simulation GitHub Monitor",
         schedule="47 * * * *",

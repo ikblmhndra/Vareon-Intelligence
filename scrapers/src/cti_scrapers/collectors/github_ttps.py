@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import html
 from collections.abc import Iterator
+from datetime import date
 from typing import Any
 
 from cti_scraper.base import ScrapeContext, ScraperMeta
@@ -25,6 +26,7 @@ from cti_scraper.items import NoticeItem
 class GithubTtps(GithubCommitWatcher):
     meta = ScraperMeta(
         id="github_ttps",
+        added=date(2026, 9, 30),
         content_kind="vendor_research",
         source="ThreatActors-TTPs GitHub Monitor",
         schedule="0 * * * *",

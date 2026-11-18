@@ -5,6 +5,8 @@ arsip blog, jadi tanpa batas kecil run pertama bakal ngantri puluhan artikel lam
 
 from __future__ import annotations
 
+from datetime import date
+
 from cti_scraper.base import ScraperMeta
 from cti_scraper.families.rss import RSSScraper
 from cti_scraper.schedule import spread
@@ -13,6 +15,7 @@ from cti_scraper.schedule import spread
 class Groupib(RSSScraper):
     meta = ScraperMeta(
         id="groupib",
+        added=date(2026, 4, 28),
         content_kind="vendor_research",
         source="Group Ib",
         schedule=spread("15 * * * *", "groupib"),

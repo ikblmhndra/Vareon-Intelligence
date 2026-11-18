@@ -18,6 +18,7 @@ Sama kayak scraper lain yang punya rantai smart-escape `&` (lihat
 from __future__ import annotations
 
 from collections.abc import Iterator
+from datetime import date
 
 from cti_scraper.base import BaseScraper, ScrapeContext, ScraperMeta
 from cti_scraper.errors import ParseError
@@ -32,8 +33,10 @@ _ALLOWED_CATEGORIES = {"Emergent Threat Response", "Research", "Threat Intel", "
 class Rapid7(BaseScraper):
     meta = ScraperMeta(
         id="rapid7",
+        added=date(2026, 5, 18),
         content_kind="vendor_research",
         source="Rapid7",
+        source_url="https://www.rapid7.com/rss.xml",
         schedule=spread("2 * * * *", "rapid7"),
         tags=("migrated",),
         legacy_label="NEW ARTICLE FROM RAPID7",

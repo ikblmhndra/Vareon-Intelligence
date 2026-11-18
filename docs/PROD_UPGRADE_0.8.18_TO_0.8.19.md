@@ -62,8 +62,10 @@ Write the numbers down for the after-deploy comparison.
 
 1. `enrich_jobs` of kind `tweet` drain (rows appear and disappear, none pile up):
    `SELECT kind, count(*) FROM enrich_jobs GROUP BY 1;`
-2. `classify_tweet` calls per day are about the number of distinct new tweets, and prompt tokens per call are at most
-   about 1,000 (was about 4,144):
+2. `classify_tweet` calls per day are about the number of distinct new tweets, and prompt tokens per call are about
+   3,300 (was about 4,144). `prompt_tokens` include roughly 2,500 tokens that the LLM gateway (9router) adds to every
+   call: the tweet prompt itself is about 640 tokens (article prompt about 1,700). Most of the saving comes from one call
+   per tweet and, later, from the tweet gate:
    `SELECT date(at), count(*), round(avg(prompt_tokens)) FROM llm_calls WHERE task='classify_tweet' AND at > now()-interval '3 days' GROUP BY 1 ORDER BY 1;`
 3. `tweet_verdicts` grows:
    `SELECT source, related_cyber, count(*) FROM tweet_verdicts GROUP BY 1,2;`
@@ -74,7 +76,19 @@ Write the numbers down for the after-deploy comparison.
 
 None. Training the tweet relevance model is the usual weekly training once `tweet_verdicts` has enough rows.
 
-Prompt eval on dev: <to be filled after the dev run>
+Prompt eval on dev: **not completed** (2026-11-17). Of 300 prod tweet texts, only about 50 got answers from both prompts
+before the dev gateway's free OpenRouter models hit their daily limit (`free-models-per-day`); the run was stopped and the
+user chose to validate the short prompt on prod instead. After deploy, check daily for the first week:
+
+```sql
+-- accept rate of the short prompt vs the stored-tweet volume before 0.8.19 (prod: ~140 stored tweets/day)
+SELECT date(created_at), count(*) FILTER (WHERE related_cyber) AS related, count(*) AS classified
+FROM tweet_verdicts WHERE source = 'llm' GROUP BY 1 ORDER BY 1;
+SELECT date(created_at), count(*) FROM tweets WHERE created_at > now() - interval '14 days' GROUP BY 1 ORDER BY 1;
+```
+
+A clear drop in stored tweets per day (or analysts missing known leak/breach posts) means the short prompt rejects too
+much: revert `classify_tweet` to the article prompt in a hotfix (the job pipeline stays).
 
 ### Rollback
 

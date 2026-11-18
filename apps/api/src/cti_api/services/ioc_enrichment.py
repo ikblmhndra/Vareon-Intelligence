@@ -143,6 +143,10 @@ def build_specs(settings: Settings, http: httpx.AsyncClient) -> list[ProviderSpe
 
 def _skip_reason(ioc_type: str, value: str) -> str | None:
     """Alasan IOC tidak layak dikirim ke provider mana pun, atau `None`."""
+    # Nilai rusak (mis. hasil extractor lama yang nyambung lewat baris baru) tidak bisa dikirim:
+    # httpx menolaknya dengan `InvalidURL`, jadi lewati sebelum memakai budget.
+    if any(ch.isspace() or not ch.isprintable() for ch in value):
+        return "malformed value (contains whitespace)"
     if ioc_type == "ip":
         try:
             address = ipaddress.ip_address(value)
@@ -232,6 +236,24 @@ async def enrich_pending(
                 else:
                     stats["failed"] += 1
                     failures_in_a_row += 1
+            except httpx.InvalidURL:
+                # Nilai ini tidak bisa dikirim sama sekali (bukan provider yang bermasalah): kartu
+                # `unknown` supaya tidak macet di kepala antrean. Produksi 2026-11-16: exception ini
+                # lolos dari `except` di bawah dan task crash tiap 15 menit.
+                log.warning(
+                    "ioc_enrich_failed",
+                    provider=spec.key,
+                    ioc_id=ioc.id,
+                    ioc_type=ioc.type,
+                    error="InvalidURL",
+                )
+                card = ioc_providers.skipped_card(
+                    spec.key, spec.name, "rejected: value cannot be sent (InvalidURL)"
+                )
+                card["checked_at"] = now.isoformat()
+                await repo.set_enrichment_provider(ioc, card, now=now)
+                await session.commit()
+                stats["rejected"] += 1
             except (httpx.TransportError, ValueError, KeyError, TypeError) as exc:
                 log.warning(
                     "ioc_enrich_failed",

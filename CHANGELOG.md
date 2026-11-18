@@ -6,6 +6,24 @@ router `changelog.py`) -- parser-nya expect header persis
 `## [versi] - tanggal`, jangan ubah formatnya tanpa liat
 `apps/api/src/cti_api/routers/changelog.py`.
 
+## [0.8.21] - 2026-11-18
+
+**Fitur: laporan bulanan "Logbook Threat Information Feeds" dibuat langsung dari registry scraper Vareon.** Laporan lama datang dari skrip di host Rundeck yang sudah dimatikan, jadi isinya menggambarkan job lama (194 dari 200 baris "Disabled"). Tanpa migrasi dan tanpa kunci `.env`; restart `beat` supaya jadwal baru terbaca.
+
+### Ditambahkan
+- Task `report.feeds_logbook` (beat `report-feeds-logbook`, tiap hari 07:00 waktu lokal) yang hanya bekerja di hari terakhir tiap bulan: membangun workbook Excel di template dokumen perusahaan (satu baris per scraper: Added Date, Domain, Status, Method, Source Link, Last Update, Notes, plus blok tanda tangan) dan mengirimnya ke topik Telegram `logbook`. Sekali per bulan lewat `JobState` `feeds_logbook.last_report_month`; run manual dengan `day` selalu mengirim dan tidak menyentuh state itu; kirim ulang bulan lampau tidak memuat scraper yang ditambahkan sesudah periode itu.
+- Kolom Status dan Notes diturunkan dari registry, config, dan `scraper_runs`; keduanya potret saat laporan dibuat. Aturan Notes: scraper yang dimatikan diberi `paused_reason` bila ada, lalu `REPLACED BY CVE MIRROR`, `DISABLED` (dimatikan lewat kode), atau `TEMPORARY DISABLED`; scraper yang jalan diberi `NOT RUNNING` (mati), `NO RUN RECORDED` (belum ada run), `ERROR` (3 run selesai terbaru semuanya gagal dan tidak satu pun `backpressure`), atau `-`.
+- `ScraperMeta.added` (tanggal sumber mulai dikoleksi) dan `source_url` (bila family scraper tidak punya URL) kini terisi di seluruh 100 scraper. Keduanya wajib untuk scraper baru: contract test gagal bila `added` kosong atau tidak ada URL sumber yang bisa diturunkan.
+
+## [0.8.20] - 2026-11-17
+
+**Perbaikan: enrichment reputasi IOC (VirusTotal, OTX) tidak lagi macet karena nilai IOC yang rusak.** Cek prod 16 Nov: `ioc.enrich_pending` crash tiap 15 menit dengan `InvalidURL` karena 16 IOC berisi baris baru (mis. `2.34.2.\n16`, `and @peteo.\ninitial`). IOC itu tidak pernah dapat kartu, jadi tetap di kepala antrean, dan 742 domain, 554 URL serta sekitar 670 hash tidak pernah di-enrich. Tanpa migrasi dan tanpa kunci `.env`.
+
+### Diperbaiki
+- `ioc.enrich_pending`: nilai yang mengandung spasi atau karakter tak tercetak dilewati sebelum lookup (kartu `unknown`, alasan `malformed value (contains whitespace)`), dan `httpx.InvalidURL` dari lookup menjadi kartu `unknown` alih-alih exception yang menghentikan seluruh run.
+- Extractor IOC tidak lagi mencocokkan lintas baris: spasi di sekitar pemisah defang hanya spasi/tab, sehingga IP, email, URL, dan domain defang tidak lagi tersambung dengan kata di baris berikutnya.
+
+**Saat upgrade dari 0.8.19:** `make deploy`, tidak ada langkah lain. 16 IOC rusak yang sudah tersimpan dibiarkan (kini dilewati enrichment); menghapusnya opsional dan butuh izin. Runbook: `docs/prod-upgrade/0.8.20.md` dan `docs/PROD_UPGRADE_0.8.19_TO_0.8.20.md`.
 ## [0.8.19] - 2026-11-17
 
 **Klasifikasi tweet pindah dari scraper ke antrean enrich yang persist-first, dengan prompt pendek dan gate relevansi lokal, supaya biaya LLM tweet turun.** Di prod, `classify_tweet` dipanggil 1.674 kali dalam 7 hari untuk hanya 978 tweet yang tersimpan, dengan sekitar 4.144 prompt token per panggilan, sekitar 75 % dari seluruh token LLM. Sekarang scraper `tweet_alerts_*` dan `monitor_x` hanya menyimpan tweet sebagai job `tweet` di `enrich_jobs` (satu panggilan LLM per tweet, dengan breaker dan jadwal ulang yang sama dengan job `classify`), prompt khusus tweet jauh lebih pendek, dan gate relevansi lokal menjawab tanpa LLM begitu datanya cukup. Tiga migrasi aditif (`e3b7c5a9d1f4`, `f4c8a2d6b9e1`, `a7d3e1b5c9f2`) dijalankan otomatis oleh `make deploy`. Tanpa kunci `.env` baru.

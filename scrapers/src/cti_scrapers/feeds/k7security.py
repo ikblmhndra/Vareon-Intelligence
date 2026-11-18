@@ -5,6 +5,8 @@ buat dicocokkan di halaman itu lagi."""
 
 from __future__ import annotations
 
+from datetime import date
+
 from cti_scraper.base import ScraperMeta
 from cti_scraper.families.rss import RSSScraper
 from cti_scraper.schedule import spread
@@ -13,6 +15,7 @@ from cti_scraper.schedule import spread
 class K7security(RSSScraper):
     meta = ScraperMeta(
         id="k7security",
+        added=date(2026, 9, 17),
         content_kind="vendor_research",
         source="K7 Security",
         schedule=spread("1 * * * *", "k7security"),

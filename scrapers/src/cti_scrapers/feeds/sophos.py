@@ -9,6 +9,8 @@ loop item, `is_new_and_mark`/`push_job`, gak ada filter apa pun.
 
 from __future__ import annotations
 
+from datetime import date
+
 from cti_scraper.base import ScraperMeta
 from cti_scraper.families.rss import RSSScraper
 from cti_scraper.schedule import spread
@@ -17,6 +19,7 @@ from cti_scraper.schedule import spread
 class Sophos(RSSScraper):
     meta = ScraperMeta(
         id="sophos",
+        added=date(2026, 4, 28),
         content_kind="vendor_research",
         source="Sophos",
         schedule=spread("30 * * * *", "sophos"),

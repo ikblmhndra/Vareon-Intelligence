@@ -12,6 +12,8 @@ placeholder itu no-op, aman.
 
 from __future__ import annotations
 
+from datetime import date
+
 from cti_scraper.base import ScraperMeta
 from cti_scraper.families.xpath import XPathScraper
 from cti_scraper.schedule import spread
@@ -22,6 +24,7 @@ _CARD = '//*[@id="list"]/div[2]/div/div/div/div[2]/h5/strong/a'
 class Socradar(XPathScraper):
     meta = ScraperMeta(
         id="socradar",
+        added=date(2026, 4, 28),
         content_kind="vendor_research",
         source="SOCRadar",
         schedule=spread("0 * * * *", "socradar"),

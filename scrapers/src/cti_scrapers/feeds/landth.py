@@ -6,6 +6,8 @@ artikel baru -- gak ada tumpang-tindih dedup, artikel lama gak bakal ke-alert ul
 
 from __future__ import annotations
 
+from datetime import date
+
 from cti_scraper.base import ScraperMeta
 from cti_scraper.families.rss import RSSScraper
 from cti_scraper.schedule import spread
@@ -14,6 +16,7 @@ from cti_scraper.schedule import spread
 class Landth(RSSScraper):
     meta = ScraperMeta(
         id="landth",
+        added=date(2026, 9, 17),
         content_kind="vendor_research",
         source="Depi (dulu L&H)",
         schedule=spread("16 * * * *", "landth"),

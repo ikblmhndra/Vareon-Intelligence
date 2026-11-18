@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date
+
 from cti_scraper.base import ScraperMeta
 from cti_scraper.families.rss import RSSScraper
 from cti_scraper.schedule import spread
@@ -8,6 +10,7 @@ from cti_scraper.schedule import spread
 class ZeroDayInitiative(RSSScraper):
     meta = ScraperMeta(
         id="zeroday_initiative",
+        added=date(2026, 9, 17),
         content_kind="advisory",
         source="zerodayinitiative.com",
         schedule=spread("*/15 * * * *", "zeroday_initiative"),
