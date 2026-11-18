@@ -73,6 +73,7 @@ class LlmQueueOut(BaseModel):
     """Akhir cooldown breaker; `None` saat tertutup."""
     pending_classify: int
     pending_ttp: int
+    pending_tweet: int
     failed: int
     oldest_pending_at: str | None
 
@@ -148,6 +149,13 @@ class RelevanceHealthOut(BaseModel):
     classify_avoided_7d: int
 
 
+class RelevanceByKindOut(BaseModel):
+    """Model relevansi per kind: `article` (P5) dan `tweet` (gate tweet, spec tweet-llm-cost)."""
+
+    article: RelevanceHealthOut
+    tweet: RelevanceHealthOut
+
+
 class SigmaHealthOut(BaseModel):
     """Snapshot SigmaHQ (P7e). `red` = 0 aturan; `amber` = snapshot >60 hari atau `last_error`."""
 
@@ -181,6 +189,6 @@ class DataHealthOut(BaseModel):
     sources: SourceFreshnessOut
     ioc_enrichment: list[IocEnrichmentTypeOut]
     llm: LlmHealthOut
-    relevance: RelevanceHealthOut
+    relevance: RelevanceByKindOut
     sigma: SigmaHealthOut
     cve_ingest: CveIngestHealthOut

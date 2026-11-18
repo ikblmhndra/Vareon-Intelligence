@@ -4,9 +4,8 @@ Dipanggil dari klien terinstrumentasi (`get_llm_client(task=...)`), jadi satu ti
 semua pemanggil. Kegagalan mencatat TIDAK PERNAH boleh menggagalkan panggilan LLM: token sudah
 terbayar dan pemanggilnya (enrichment, recap, email CVE) tidak tahu soal log ini.
 
-Pengecualian yang diterima (spec bagian 3.2): `fetch()` scraper di `monitor_x`/`tweet_alerts`
-dilarang menyentuh DB, tetapi mereka memanggil LLM lewat klien ini, jadi `fetch()` mereka
-mencapai DB lewat log best-effort ini saja. Tidak ada jalur baca/tulis lain dari scraper."""
+Scraper TIDAK memanggil LLM: `fetch()` `monitor_x`/`tweet_alerts` cuma meng-yield `TweetJobItem`
+dan worker (job `tweet`) yang mengklasifikasi, jadi `fetch()` tidak mencapai DB lewat log ini."""
 
 from __future__ import annotations
 

@@ -45,6 +45,33 @@ class ArticleItem(Item):
         return canonicalize_url(self.url)
 
 
+class TweetJobItem(Item):
+    """Tweet yang BELUM diklasifikasi LLM: sink menulisnya sebagai job `tweet` di `enrich_jobs`
+    (persist-first), worker `enrich.llm` yang memanggil LLM lalu menulis ke `tweets`. Isinya
+    dikonsumsi lewat `context` job. `routing` = field `TweetRoutingInput` (termasuk `msg_data`,
+    pesan utuh) dan `notice_text` = pesan Telegram yang dikirim worker per topik; keduanya
+    dibangun scraper selagi scan-nya ada (worker tidak bisa memanggil `build_message`). Tanpa
+    `notify` (`monitor_x`) keduanya boleh kosong. `dedup_key()` = tweet_id seperti `TweetItem`."""
+
+    tweet_id: str
+    url: str
+    text: str
+    author_username: str
+    author_name: str | None = None
+    author_avatar: str | None = None
+    author_followers: int | None = None
+    posted_on: datetime.datetime | None = None
+    lang: str | None = None
+    media_urls: list[str] = Field(default_factory=list)
+    scan_results: dict[str, Any] = Field(default_factory=dict)
+    routing: dict[str, Any] = Field(default_factory=dict)
+    notice_text: str | None = None
+    notify: bool = False
+
+    def dedup_key(self) -> str:
+        return self.tweet_id
+
+
 class NoticeItem(Item):
     """Pesan Telegram MURNI -- gak lewat enrichment (LLM/klasifikasi) dan gak
     nulis tabel apa pun. Jalur keluar buat job lama yang cuma "pantau sesuatu ->
@@ -233,7 +260,10 @@ class TweetItem(Item):
     """Nulis ke `tweets` -- gantiin `monitorX.py::build_tweet_doc` +
     `upsert_tweet` (Fase 5). `dedup_key()` = tweet_id, SELALU dedup normal
     (bukan `None` kayak `MalwareTrendItem`) -- tweet gak berubah isinya
-    setelah diposting, beda dari artikel yang bisa di-edit."""
+    setelah diposting, beda dari artikel yang bisa di-edit.
+
+    Tak terpakai sejak 0.8.19: scraper tweet meng-yield `TweetJobItem` (klasifikasi di worker).
+    Dibiarkan, belum dihapus."""
 
     tweet_id: str
     url: str

@@ -9,9 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
-from cti_enrich.stages.classify import ClassifyResult
 from cti_scraper.reference_data import _resolve_tweet_last_seen_ids
-from cti_scrapers.feeds import monitor_x
 from cti_scrapers.feeds.monitor_x import MonitorX
 
 from tests.unit.scraper_helpers import json_response, make_ctx
@@ -43,7 +41,6 @@ def test_last_seen_ids_are_keyed_by_lowercase_username_and_keep_the_numeric_max(
 def test_since_id_is_used_for_an_account_whose_stored_tweets_have_mixed_case(
     monkeypatch: Any,
 ) -> None:
-    monkeypatch.setattr(monitor_x, "classify", lambda text, **_: ClassifyResult(related_cyber=True))
     queries: list[str] = []
 
     def api(request: httpx.Request) -> httpx.Response:

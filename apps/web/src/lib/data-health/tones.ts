@@ -59,7 +59,7 @@ export function llmJobsTone(llm: S["LlmHealthOut"], nowMs: number): Tone {
   const q = llm.queue;
   if (llm.status === "failing" || q.breaker === "open") return "bad";
   const oldest = q.oldest_pending_at ? Date.parse(q.oldest_pending_at) : NaN;
-  const pending = q.pending_classify + q.pending_ttp;
+  const pending = q.pending_classify + q.pending_ttp + q.pending_tweet;
   const stale = pending > 0 && (!Number.isFinite(oldest) || nowMs - oldest > PENDING_WATCH_MS);
   if (q.breaker === "half_open" || q.failed > 0 || stale) return "warn";
   return llm.status === "unknown" ? "unknown" : "ok";

@@ -11,17 +11,20 @@ import argparse
 import datetime as dt
 import json
 from collections import Counter
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from typing import Any, Literal
 
 from cti_core.config import RelevanceSettings
 from cti_core.db.repositories.relevance import RelevanceModelRepo
+from cti_core.db.repositories.tweet import TweetVerdictRepo
 from sqlalchemy.orm import Session
 
-from cti_enrich.relevance.dataset import load_examples
+from cti_enrich.relevance.dataset import load_examples, load_tweet_examples
 from cti_enrich.relevance.embedder import Embedder
 from cti_enrich.relevance.model import (
     CLASSES,
+    KIND_CLASSES,
     Example,
     Probs,
     dumps,
@@ -50,7 +53,12 @@ class TrainOutcome:
 
 
 def split_holdout(
-    examples: list[Example], *, now: dt.datetime, holdout_days: int, min_time_holdout: int = 150
+    examples: list[Example],
+    *,
+    now: dt.datetime,
+    holdout_days: int,
+    min_time_holdout: int = 150,
+    classes: Sequence[str] = CLASSES,
 ) -> Holdout:
     """Holdout waktu (contoh `holdout_days` terakhir) bila cukup besar; kalau tidak, 20%
     berstrata. Holdout waktu meniru pemakaian nyata: model menilai judul yang lebih baru."""
@@ -59,7 +67,7 @@ def split_holdout(
     train = [e for e in examples if e.at < cutoff]
     # Semua kelas harus ada di `train`: kelas yang seluruhnya jatuh di jendela terakhir tidak
     # akan bisa dipelajari, jadi pakai fallback berstrata.
-    if len(test) >= min_time_holdout and {e.label for e in train} >= set(CLASSES):
+    if len(test) >= min_time_holdout and {e.label for e in train} >= set(classes):
         return Holdout(train, test, "time")
     from sklearn.model_selection import train_test_split
 
@@ -84,11 +92,14 @@ def band_metrics(probs: list[Probs], labels: list[str], threshold: float) -> dic
     }
 
 
-def confusion_matrix(probs: list[Probs], labels: list[str]) -> dict[str, dict[str, int]]:
-    """{label sebenarnya: {prediksi argmax: jumlah}} atas SEMUA contoh holdout, nol disertakan."""
-    out = {t: {p: 0 for p in CLASSES} for t in CLASSES}
+def confusion_matrix(
+    probs: list[Probs], labels: list[str], classes: Sequence[str] = CLASSES
+) -> dict[str, dict[str, int]]:
+    """{label sebenarnya: {prediksi argmax: jumlah}} atas SEMUA contoh holdout, nol disertakan.
+    Argmax hanya di antara `classes` (model tweet tidak punya best_practice)."""
+    out = {t: {p: 0 for p in classes} for t in classes}
     for prob, label in zip(probs, labels, strict=True):
-        pred = max(CLASSES, key=lambda c: getattr(prob, c))
+        pred = max(classes, key=lambda c: getattr(prob, c))
         out[label][pred] += 1
     return out
 
@@ -104,34 +115,43 @@ def run_training(
     now: dt.datetime,
     *,
     dry_run: bool = False,
+    kind: str = "article",
 ) -> TrainOutcome:
+    classes = KIND_CLASSES[kind]
     repo = RelevanceModelRepo(session)
-    repo.lock()
-    examples = load_examples(session)
+    repo.lock(kind)
+    if not dry_run:
+        # Retensi jalan di SETIAP latih nyata, termasuk saat dilewati (contoh kurang), supaya
+        # `tweet_verdicts` tidak menumpuk berminggu-minggu sebelum model tweet pertama terlatih.
+        cutoff = now - dt.timedelta(days=RETENTION_DAYS)
+        repo.purge(cutoff)
+        TweetVerdictRepo(session).purge(cutoff)
+    # Dataset per kind: tweet dari `tweet_verdicts` (vonis LLM saja), artikel dari tabel artikel.
+    examples = load_tweet_examples(session) if kind == "tweet" else load_examples(session)
     tally = Counter(e.label for e in examples)
-    counts = {c: tally.get(c, 0) for c in CLASSES}
+    counts = {c: tally.get(c, 0) for c in classes}
 
     # Minimum dicek pada SELURUH contoh sebelum dibelah: holdout kecil di kelas langka berisik.
     if len(examples) < cfg.train_min_examples:
         return _skipped(
             f"contoh {len(examples)} < train_min_examples {cfg.train_min_examples}", counts
         )
-    short = [c for c in CLASSES if counts[c] < cfg.train_min_per_class]
+    short = [c for c in classes if counts[c] < cfg.train_min_per_class]
     if short:
         return _skipped(
             f"kelas kurang dari train_min_per_class {cfg.train_min_per_class}: {short}", counts
         )
 
-    split = split_holdout(examples, now=now, holdout_days=cfg.holdout_days)
-    candidate = fit(split.train, embedder)
+    split = split_holdout(examples, now=now, holdout_days=cfg.holdout_days, classes=classes)
+    candidate = fit(split.train, embedder, classes)
     probs = predict(candidate, [e.title for e in split.test], embedder)
     metrics: dict[str, Any] = dict(
         band_metrics(probs, [e.label for e in split.test], cfg.accept_threshold)
     )
     holdout_tally = Counter(e.label for e in split.test)
-    metrics["confusion"] = confusion_matrix(probs, [e.label for e in split.test])
+    metrics["confusion"] = confusion_matrix(probs, [e.label for e in split.test], classes)
     metrics["holdout_kind"] = split.kind
-    metrics["holdout_counts"] = {c: holdout_tally.get(c, 0) for c in CLASSES}
+    metrics["holdout_counts"] = {c: holdout_tally.get(c, 0) for c in classes}
 
     version = feature_version(embedder)
     problems: list[str] = []
@@ -150,14 +170,14 @@ def run_training(
                 class_counts=counts,
                 metrics=metrics,
                 reason=reason,
+                kind=kind,
             )
-            repo.purge(now - dt.timedelta(days=RETENTION_DAYS))
         return TrainOutcome("rejected", model_id, metrics, reason)
 
     model_id = None
     if not dry_run:
         # Lolos: refit di SEMUA contoh (holdout ikut belajar) lalu jadikan aktif.
-        final = fit(examples, embedder)
+        final = fit(examples, embedder, classes)
         model_id = repo.activate(
             artifact=dumps(final),
             feature_version=version,
@@ -165,14 +185,15 @@ def run_training(
             class_counts=counts,
             metrics=metrics,
             now=now,
+            kind=kind,
         )
-        repo.purge(now - dt.timedelta(days=RETENTION_DAYS))
     return TrainOutcome("active", model_id, metrics, None)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Latih model relevansi judul.")
     parser.add_argument("--dry-run", action="store_true", help="hitung semuanya, tanpa menulis")
+    parser.add_argument("--kind", choices=("article", "tweet"), default="article")
     args = parser.parse_args()
 
     from cti_core.config import get_settings
@@ -188,6 +209,7 @@ def main() -> None:
             get_settings().relevance,
             dt.datetime.now(dt.UTC),
             dry_run=args.dry_run,
+            kind=args.kind,
         )
     print(json.dumps(asdict(outcome), indent=2, default=str))
 

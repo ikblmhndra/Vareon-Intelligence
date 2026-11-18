@@ -232,6 +232,25 @@ async def test_data_health_llm_block_ok_when_latest_call_succeeded(
     assert llm["last_error"]["http_status"] == 500
 
 
+async def test_data_health_llm_status_counts_classify_tweet(
+    api_client: AsyncClient, api_session: AsyncSession, auth_header, fake_redis
+) -> None:
+    """`classify_tweet` ikut breaker, jadi kegagalannya harus terlihat di status juga: tanpa itu
+    breaker bisa terbuka karena tweet sementara Data health masih "ok"."""
+    await api_session.execute(delete(LlmCall))
+    h = datetime.timedelta(hours=1)
+    api_session.add_all(
+        [
+            _call("classify", "ok", 2 * h),
+            _call("classify_tweet", "error", h, http_status=503, error_type="InternalServerError"),
+        ]
+    )
+    await api_session.flush()
+    llm = (await api_client.get("/api/data-health", headers=auth_header())).json()["llm"]
+    assert llm["status"] == "failing"
+    assert llm["last_error"]["task"] == "classify_tweet"
+
+
 async def test_data_health_llm_status_unknown_without_calls(
     api_client: AsyncClient, api_session: AsyncSession, auth_header, fake_redis
 ) -> None:

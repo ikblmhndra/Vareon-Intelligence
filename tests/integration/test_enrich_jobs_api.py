@@ -246,3 +246,25 @@ async def test_article_out_exposes_llm_ttp_status(
     assert resp.status_code == 200
     [item] = resp.json()["articles"]
     assert item["llm_ttp_status"] == "pending"
+
+
+async def test_tweet_jobs_are_listed_filtered_and_refuse_a_decision(
+    api_client: AsyncClient,
+    api_session: AsyncSession,
+    auth_header: Callable[..., dict[str, str]],
+    sent: list[tuple[int, str | None]],
+) -> None:
+    jobs = await _seed(api_session)
+    tweet = _job(9, "tweet", title="tweet text", source="monitor_x")
+    api_session.add(tweet)
+    await api_session.flush()
+
+    listed = await api_client.get("/api/enrich-jobs", headers=auth_header())
+    only = await api_client.get("/api/enrich-jobs", params={"kind": "tweet"}, headers=auth_header())
+    accept = await api_client.post(f"/api/enrich-jobs/{tweet.id}/accept", headers=auth_header())
+
+    assert listed.status_code == 200 and listed.json()["total"] == len(jobs) + 1
+    assert only.status_code == 200 and only.json()["total"] == 1
+    assert only.json()["items"][0]["kind"] == "tweet"
+    assert accept.status_code == 409
+    assert sent == []

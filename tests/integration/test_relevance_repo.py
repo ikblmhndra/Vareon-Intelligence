@@ -37,6 +37,18 @@ def _activate(repo: RelevanceModelRepo, artifact: bytes, now: dt.datetime = NOW)
     )
 
 
+def _activate_tweet(repo: RelevanceModelRepo, artifact: bytes) -> int:
+    return repo.activate(
+        artifact=artifact,
+        feature_version="fv1",
+        n_examples=35,
+        class_counts=COUNTS,
+        metrics={"agreement": 0.97},
+        now=NOW,
+        kind="tweet",
+    )
+
+
 def _row(session: Session, model_id: int) -> RelevanceModel:
     session.expire_all()
     row = session.get(RelevanceModel, model_id)
@@ -61,6 +73,43 @@ def test_activate_retires_previous_and_inherits_gate_state(db_session: Session) 
     active = repo.get_active()
     assert active is not None and active.id == b
     assert active.artifact == b"B"
+
+
+def test_one_active_model_per_kind(db_session: Session) -> None:
+    repo = RelevanceModelRepo(db_session)
+    article = _activate(repo, b"A")
+    tweet = _activate_tweet(repo, b"T1")
+    assert _row(db_session, article).status == "active"
+    # Model tweet kedua memensiunkan model tweet pertama saja; model artikel tidak tersentuh.
+    tweet2 = _activate_tweet(repo, b"T2")
+    assert _row(db_session, tweet).status == "retired"
+    assert _row(db_session, tweet2).status == "active"
+    assert _row(db_session, article).status == "active"
+    assert _row(db_session, tweet2).kind == "tweet"
+    assert repo.get_active(kind="tweet").id == tweet2  # type: ignore[union-attr]
+
+
+def test_get_active_defaults_to_article(db_session: Session) -> None:
+    repo = RelevanceModelRepo(db_session)
+    article = _activate(repo, b"A")
+    _activate_tweet(repo, b"T")
+    active = repo.get_active()
+    assert active is not None and active.id == article and active.kind == "article"
+    since = NOW - dt.timedelta(days=1)
+    assert repo.gate_stats(since=since, revert_samples=5) == repo.gate_stats(
+        since=since, revert_samples=5, kind="article"
+    )
+
+
+def test_kind_check_rejects_unknown(db_session: Session) -> None:
+    with pytest.raises(IntegrityError), db_session.begin_nested():
+        db_session.execute(
+            text(
+                "INSERT INTO relevance_models (status, kind, feature_version, n_examples,"
+                " class_counts, metrics, gate_state) VALUES ('retired', 'bogus', 'x', 1,"
+                " '{}', '{}', 'shadow')"
+            )
+        )
 
 
 def test_only_one_active_row(db_session: Session) -> None:

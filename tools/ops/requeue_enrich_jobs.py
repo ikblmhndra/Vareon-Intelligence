@@ -7,6 +7,10 @@ Image lama tidak kenal tabel `enrich_jobs`: job `classify` yang menunggu akan te
 `auto_replay_count=0`, alasan `[enrichment_failed] requeued after rollback`, supaya
 `enrich.auto_replay` lama menguras-nya (image 0.8.2 belum punya auto-replay: barisnya tetap
 parkir menunggu Replay manual). Job `ttp` dihapus (artikelnya tetap membawa TTP Tier 1).
+Job `tweet` (spec tweet-llm-cost) juga dihapus: tweet bukan artikel, dan image lama akan
+menjalankannya sebagai `classify` (fetch URL tweet lalu menyimpannya sebagai artikel). Tweet-nya
+hilang (dedup `scraper_seen` sudah menandainya), sama dengan downgrade migrasi yang menghapus baris
+`tweet`.
 Satu transaksi; idempoten (jalan kedua = tidak ada yang dipindah).
 
 Default = LAPORAN (tidak menulis). `--apply` menulis.
@@ -46,6 +50,7 @@ class Summary:
     classify_pending: int
     classify_failed: int
     ttp: int
+    tweet: int
 
 
 def count(session: Session) -> Summary:
@@ -57,14 +62,16 @@ def count(session: Session) -> Summary:
         classify_pending=by.get(("classify", "pending"), 0),
         classify_failed=by.get(("classify", "failed"), 0),
         ttp=by.get(("ttp", "pending"), 0) + by.get(("ttp", "failed"), 0),
+        tweet=by.get(("tweet", "pending"), 0) + by.get(("tweet", "failed"), 0),
     )
 
 
 def requeue(session: Session) -> Summary:
-    """Pindahkan job classify, hapus job ttp. Tidak commit (pemanggil yang memutuskan)."""
+    """Pindahkan job classify, hapus job ttp dan tweet. Tidak commit (pemanggil yang
+    memutuskan)."""
     summary = count(session)
     session.execute(_MOVE_CLASSIFY, {"reason": REASON})
-    session.execute(text("DELETE FROM enrich_jobs WHERE kind IN ('classify', 'ttp')"))
+    session.execute(text("DELETE FROM enrich_jobs WHERE kind IN ('classify', 'ttp', 'tweet')"))
     return summary
 
 
@@ -87,12 +94,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             session.rollback()
     print(
         f"classify pending: {s.classify_pending} | classify failed: {s.classify_failed} | "
-        f"ttp: {s.ttp}"
+        f"ttp: {s.ttp} | tweet: {s.tweet}"
     )
     if args.apply:
         print(
             f"Selesai: {s.classify_pending + s.classify_failed} job classify dipindah ke "
-            f"rejected_articles (transient), {s.ttp} job ttp dihapus."
+            f"rejected_articles (transient), {s.ttp} job ttp dan {s.tweet} job tweet dihapus."
         )
     else:
         print("LAPORAN -- tidak ada yang ditulis. Jalankan ulang dengan --apply.")

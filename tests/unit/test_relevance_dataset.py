@@ -90,3 +90,61 @@ def test_dedup_latest_wins() -> None:
 def test_dedup_tie_keeps_later_in_iteration() -> None:
     out = to_examples([_rej("Same", at=T1), _art("same", at=T1)])
     assert [e.label for e in out] == ["threat_news"]
+
+
+# ── tweet (spec tweet-llm-cost, Part C) ──────────────────────────────────────────────────
+
+
+def _verdict(text: str, related: bool, at: dt.datetime = T1) -> Any:
+    from types import SimpleNamespace
+
+    return SimpleNamespace(text=text, related_cyber=related, created_at=at, source="llm")
+
+
+def _fake_verdict_repo(monkeypatch: Any, rows: list[Any]) -> list[Any]:
+    """`TweetVerdictRepo` palsu yang hanya punya `llm_rows`: sumber data lain akan error."""
+    import cti_enrich.relevance.dataset as dataset
+
+    sessions: list[Any] = []
+
+    class _Repo:
+        def __init__(self, session: Any) -> None:
+            sessions.append(session)
+
+        def llm_rows(self, since: dt.datetime | None = None) -> list[Any]:
+            return rows
+
+    monkeypatch.setattr(dataset, "TweetVerdictRepo", _Repo)
+    return sessions
+
+
+def test_tweet_examples_use_llm_rows_only(monkeypatch: Any) -> None:
+    from cti_enrich.relevance.dataset import load_tweet_examples
+
+    session = object()
+    rows = [
+        _verdict("LockBit  claims ACME", True, at=T2),
+        _verdict("lockbit claims acme", False, at=T1),  # duplikat ternormalisasi, lebih tua
+        _verdict("Lunch thread", False),
+    ]
+    sessions = _fake_verdict_repo(monkeypatch, rows)
+
+    got = load_tweet_examples(session)  # type: ignore[arg-type]
+
+    assert sessions == [session]
+    assert sorted((e.title, e.label, e.at) for e in got) == [
+        ("LockBit  claims ACME", "threat_news", T2),
+        ("Lunch thread", "reject", T1),
+    ]
+
+
+def test_tweet_labels_are_binary(monkeypatch: Any) -> None:
+    from cti_enrich.relevance.dataset import load_tweet_examples
+    from cti_enrich.relevance.model import KIND_CLASSES
+
+    rows = [_verdict(f"tweet {i}", i % 2 == 0) for i in range(10)]
+    _fake_verdict_repo(monkeypatch, rows)
+
+    labels = {e.label for e in load_tweet_examples(object())}  # type: ignore[arg-type]
+
+    assert labels == set(KIND_CLASSES["tweet"]) == {"reject", "threat_news"}

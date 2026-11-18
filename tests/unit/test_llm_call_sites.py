@@ -13,6 +13,8 @@ ROOT = Path(__file__).resolve().parents[2]
 EXPECTED_TASKS = {
     "classify",
     "classify_tweet",
+    "classify_eval",
+    "classify_tweet_eval",
     "ttp",
     "recap_daily",
     "recap_weekly",
@@ -80,3 +82,19 @@ def test_every_get_llm_client_call_names_a_task() -> None:
     missing, literals = _scan()
     assert not missing, f"get_llm_client() tanpa task=: {missing}"
     assert literals == EXPECTED_TASKS
+
+
+def test_no_scraper_imports_classify() -> None:
+    """Scraper tidak memanggil LLM di `fetch()`: klasifikasi tweet ada di worker (job `tweet`)."""
+    offenders: list[str] = []
+    for path in (ROOT / "scrapers" / "src").rglob("*.py"):
+        for node in ast.walk(ast.parse(path.read_text())):
+            if isinstance(node, ast.ImportFrom) and (node.module or "").endswith("stages.classify"):
+                offenders.append(f"{path.relative_to(ROOT)}:{node.lineno}")
+            elif isinstance(node, ast.Import):
+                offenders += [
+                    f"{path.relative_to(ROOT)}:{node.lineno}"
+                    for a in node.names
+                    if a.name.endswith("stages.classify")
+                ]
+    assert not offenders, f"scraper mengimpor stages.classify: {offenders}"

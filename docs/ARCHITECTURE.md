@@ -119,9 +119,25 @@ Intel tab:
 | | `monitor_x` | `tweet_alerts_1h` / `tweet_alerts_30m` |
 |---|---|---|
 | Accounts | the active rows of `monitored_accounts` (X Intel → Monitored Accounts) | two hardcoded lists in `collectors/tweet_alerts.py` (10 + 11 accounts) |
-| Item type / sink | `TweetItem` → `tweets` (insert-only) | `NoticeItem` → Telegram, plus one `TweetItem` → `tweets` per tweet that passes `classify()` |
-| Enrichment | regex scan + `classify()`; saves author, media and LLM fields | regex scan + `classify()` + topic routing; per-account filters; the same scan and LLM fields are saved with the tweet (no extra LLM call) |
+| Item type / sink | `TweetJobItem` (`notify=False`) → `enrich_jobs` kind `tweet`; the enrich worker writes `tweets` (no Telegram) | `TweetJobItem` (`notify=True`) → `enrich_jobs` kind `tweet` (see "Tweet flow" below); Telegram and `tweets` are written by the enrich worker |
+| Enrichment | regex scan in `fetch()`; the LLM verdict (`classify_tweet` or the tweet gate) comes later from the enrich worker; saves author, media and LLM fields | regex scan, topic routing and per-account filters in `fetch()`; the LLM verdict comes later from the enrich worker (job `tweet`) |
 | Provider | twitterapi.io (default) or X official, chosen per scraper in the Scrapers tab | same |
+
+**Tweet flow (persist-first).** Tweets join the persist-first path of articles; the LLM is no longer in the tweet
+scrapers' `fetch()`:
+
+`tweet_alerts_*` or `monitor_x` scraper → `TweetJobItem` → sink writes an `enrich_jobs` row of kind `tweet` (one job
+per tweet id; skipped when the tweet is already in `tweets` or `tweet_verdicts`) → `enrich.llm_dispatch`
+(beat, every minute, behind the same circuit breaker) → `enrich.llm` in `worker-nlp` → `cti_enrich.tweet_job`: a tweet
+already in `tweets` is dropped as a duplicate; otherwise the local tweet relevance gate (relevance model kind `tweet`,
+active only after `tweet_verdicts` has 1,000 examples and 100 per class) answers without the LLM, or `classify_tweet`
+(short dedicated prompt) is called → one row in `tweet_verdicts` for every tweet, rejected ones included (training
+data) → relevant tweets are stored in `tweets` → after the commit, one Telegram notice per topic (only when the tweet
+is at most 6 hours old). Alerts therefore leave the enrich worker about 2 minutes after the scrape. Tweets answered by
+the gate have no countries. A job that fails for good (bad JSON three times, unexpected error) is deleted without an
+analyst alert. Rolling the image back to 0.8.11-0.8.18 requires `DELETE FROM enrich_jobs WHERE kind='tweet'` and
+retiring an active tweet relevance model (see `docs/prod-upgrade/0.8.19.md`, "Rollback");
+`tools/ops/requeue_enrich_jobs.py` is only for rollbacks to images without `enrich_jobs` (0.8.10 or older).
 
 `tweets.source` records the scraper that stored a row first (`monitor_x`, `tweet_alerts_1h`, `tweet_alerts_30m`);
 the sink is insert-only, so a tweet both families see keeps the first writer's row and `source` does not mean

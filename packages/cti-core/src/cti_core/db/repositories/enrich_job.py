@@ -6,12 +6,14 @@ import datetime
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import Boolean, case, func, literal_column, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from cti_core.db.models.enrich_job import EnrichJob
+from cti_core.db.repositories.llm_call import LlmCallRepo
+from cti_core.llm.breaker import BREAKER_TASKS, LEASE, RECENT_CALLS, breaker_state
 from cti_core.urlkit import url_hash as compute_url_hash
 
 JSON_FAILURE_CAP = 3
@@ -25,6 +27,7 @@ ERROR_MAX_CHARS = 300
 class JobCounts:
     pending_classify: int
     pending_ttp: int
+    pending_tweet: int
     failed: int
     oldest_pending_at: datetime.datetime | None
 
@@ -39,6 +42,7 @@ def _counts_query() -> Any:
     return select(
         func.count().filter(pending, EnrichJob.kind == "classify"),
         func.count().filter(pending, EnrichJob.kind == "ttp"),
+        func.count().filter(pending, EnrichJob.kind == "tweet"),
         func.count().filter(EnrichJob.state == "failed"),
         func.min(EnrichJob.created_at).filter(pending),
     )
@@ -93,6 +97,60 @@ class EnrichJobRepo:
             self.session.refresh(job)
         return job
 
+    def create_tweet(
+        self,
+        *,
+        tweet_id: str,
+        url: str,
+        title: str,
+        source: str,
+        scraper_id: str | None,
+        posted_on: datetime.date | None,
+        input_text: str | None,
+        context: dict[str, Any],
+    ) -> EnrichJob | None:
+        """Job `tweet` (persist-first). Identitas job = `tweet_id`, BUKAN `url`: `url_hash` dari
+        URL kanonik `https://x.com/i/status/<id>`. URL dari provider tidak bisa dipakai: twitterapi
+        di `monitor_x` boleh mengirim url kosong (semua tweet itu akan bertabrakan di satu job) dan
+        X official vs twitterapi membentuk URL berbeda untuk tweet yang sama (dua job, dua
+        panggilan LLM). `url` tetap disimpan apa adanya untuk tampilan.
+
+        Beda dari `create`: bila job `(tweet, tweet_id)` sudah ada,
+        flag `context.notify` di-OR-kan (scraper `notify=True` yang tiba belakangan tidak boleh
+        kalah oleh baris `notify=False` yang lebih dulu masuk, atau alert-nya hilang). Caranya:
+        kedatangan `notify=True` menggantikan SELURUH `context`, karena hanya ia yang membawa teks
+        pesan (`routing.msg_data`, `notice_text`) yang dikirim worker; kedatangan `notify=False`
+        tidak mengubah apa pun. Return job yang BARU dibuat, `None` bila itu konflik (`xmax = 0`
+        hanya untuk baris yang di-INSERT)."""
+        insert_stmt = pg_insert(EnrichJob).values(
+            kind="tweet",
+            url=url,
+            url_hash=compute_url_hash(f"https://x.com/i/status/{tweet_id}"),
+            title=title,
+            source=source,
+            scraper_id=scraper_id,
+            posted_on=posted_on,
+            input_text=input_text,
+            context=context,
+        )
+        notify_or = case(
+            (
+                insert_stmt.excluded.context.op("->>")("notify").cast(Boolean),
+                insert_stmt.excluded.context,
+            ),
+            else_=EnrichJob.context,
+        )
+        stmt: Any = insert_stmt.on_conflict_do_update(
+            index_elements=["kind", "url_hash"], set_={"context": notify_or}
+        ).returning(EnrichJob.id, literal_column("(xmax = 0)").label("inserted"))
+        row = self.session.execute(stmt).one()
+        if not row.inserted:
+            return None
+        job = self.session.get(EnrichJob, row.id)
+        if job is not None:
+            self.session.refresh(job)
+        return job
+
     def has_classify(self, url_hash: str, *, exclude_id: int | None = None) -> bool:
         """`exclude_id`: job runner yang menjalankan `prepare` untuk job-nya sendiri (baris
         `input_text IS NULL`) tidak boleh berhenti karena job itu."""
@@ -114,15 +172,17 @@ class EnrichJobRepo:
     def claim_due(
         self, now: datetime.datetime, *, limit: int, lease: datetime.timedelta
     ) -> list[EnrichJob]:
-        """Job `pending` yang jatuh tempo, `classify` dulu lalu yang paling lama; `next_attempt_at`
-        digeser `lease` supaya crash antara commit dan kirim tidak menimbulkan kirim ulang tanpa
-        henti."""
+        """Job `pending` yang jatuh tempo: `classify`, lalu `tweet`, lalu `ttp`, masing-masing yang
+        paling lama; `next_attempt_at` digeser `lease` supaya crash antara commit dan kirim tidak
+        menimbulkan kirim ulang tanpa henti."""
         rows = list(
             self.session.execute(
                 select(EnrichJob)
                 .where(EnrichJob.state == "pending", EnrichJob.next_attempt_at <= now)
                 .order_by(
-                    case((EnrichJob.kind == "classify", 0), else_=1),
+                    case(
+                        (EnrichJob.kind == "classify", 0), (EnrichJob.kind == "tweet", 1), else_=2
+                    ),
                     EnrichJob.created_at,
                     EnrichJob.id,
                 )
@@ -165,8 +225,8 @@ class EnrichJobRepo:
         self.session.flush()
 
     def counts(self) -> JobCounts:
-        pc, pt, f, oldest = self.session.execute(_counts_query()).one()
-        return JobCounts(pc, pt, f, oldest)
+        pc, pt, pw, f, oldest = self.session.execute(_counts_query()).one()
+        return JobCounts(pc, pt, pw, f, oldest)
 
 
 class AsyncEnrichJobRepo:
@@ -220,5 +280,22 @@ class AsyncEnrichJobRepo:
         await self.session.flush()
 
     async def counts(self) -> JobCounts:
-        pc, pt, f, oldest = (await self.session.execute(_counts_query())).one()
-        return JobCounts(pc, pt, f, oldest)
+        pc, pt, pw, f, oldest = (await self.session.execute(_counts_query())).one()
+        return JobCounts(pc, pt, pw, f, oldest)
+
+
+def lease_if_closed(session: Session, job: EnrichJob) -> bool:
+    """Breaker TERTUTUP -> job baru boleh dikirim langsung sesudah commit (spec 4.5), supaya
+    latensi normal tetap detik, bukan menunggu putaran dispatcher. Dipanggil SEBELUM commit yang
+    membuat job-nya: `next_attempt_at` digeser `LEASE` di transaksi yang sama, jadi dispatcher
+    tidak mengirimnya lagi selagi worker mungkin masih memprosesnya. Terbuka/setengah terbuka:
+    job dibiarkan jatuh tempo untuk dispatcher. Satu query `llm_calls` yang murah; error DB di
+    sini diteruskan (commit-nya toh gagal juga). Dipakai pipeline artikel dan sink tweet, jadi
+    tinggal di `cti_core` (cti-scraper tidak boleh depends ke cti-enrich)."""
+    recent = LlmCallRepo(session).recent_for_tasks(BREAKER_TASKS, limit=RECENT_CALLS)
+    now = datetime.datetime.now(datetime.UTC)
+    if breaker_state(recent, now).state != "closed":
+        return False
+    job.next_attempt_at = now + LEASE
+    session.flush()
+    return True

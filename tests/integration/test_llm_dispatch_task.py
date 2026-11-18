@@ -446,7 +446,7 @@ def test_outage_then_recovery_drains_without_manual_action(
 
     def drained() -> bool:
         c = EnrichJobRepo(session).counts()
-        return c.pending_classify + c.pending_ttp + c.failed == 0
+        return c.pending_classify + c.pending_ttp + c.pending_tweet + c.failed == 0
 
     rounds(240, until=drained)
 
